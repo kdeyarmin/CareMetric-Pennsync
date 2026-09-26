@@ -247,6 +247,104 @@ export const HANDLERS = Object.freeze({
       return contract('listAgencyRoster', params);
     },
   }),
+  // The seven operational tables. Each of these serves frontend ENTITY calls
+  // rather than a ported Base44 function name, so there is no original
+  // handler to reproduce — the authorization being ported is the entity's own
+  // `rls` block, and it lives in the contract like every other. Nothing about
+  // who may read or write is restated here.
+  getAgencySettings: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['agency_code', 'office_name', 'limit'], 'INVALID_PARAMS');
+      return contract('getAgencySettings', params);
+    },
+  }),
+  saveAgencySettings: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('saveAgencySettings', params);
+    },
+  }),
+  listAgencyTasks: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, [
+        'patient_id', 'related_entity', 'related_entity_id', 'exclude_status',
+        'order', 'limit',
+      ], 'INVALID_PARAMS');
+      return contract('listAgencyTasks', params);
+    },
+  }),
+  createAgencyTask: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('createAgencyTask', params);
+    },
+  }),
+  listPdfTemplates: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['parent_template_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listPdfTemplates', params);
+    },
+  }),
+  savePdfTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('savePdfTemplate', params);
+    },
+  }),
+  deletePdfTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      return contract('deletePdfTemplate', params);
+    },
+  }),
+  listCarePlans: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'patient_id', 'order', 'limit'], 'INVALID_PARAMS');
+      return contract('listCarePlans', params);
+    },
+  }),
+  saveCarePlan: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'patient_id', 'fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('saveCarePlan', params);
+    },
+  }),
+  listFaceToFaceEncounters: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['referral_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listFaceToFaceEncounters', params);
+    },
+  }),
+  saveFaceToFaceEncounter: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('saveFaceToFaceEncounter', params);
+    },
+  }),
+  listPatientDocumentRecords: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listPatientDocumentRecords', params);
+    },
+  }),
+  listNoteConversions: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['recovery_request_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listNoteConversions', params);
+    },
+  }),
+  createNoteConversion: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('createNoteConversion', params);
+    },
+  }),
   getAgencyRosterMember: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, ['user_id'], 'INVALID_PARAMS');

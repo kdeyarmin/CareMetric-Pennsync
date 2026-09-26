@@ -2136,6 +2136,258 @@ export const RECORD_CONTRACTS = Object.freeze({
     ]),
   }),
 
+  // The seven operational tables the frontend reads and writes directly.
+  //
+  // These port no Base44 FUNCTION. Their originals are entity calls against
+  // the generic entity API, so the authorization being ported is each
+  // entity's own `rls` block and nothing else, and
+  // `20260920580000_contract_operational_tables.sql` says per entity what that
+  // block said and what replaces it. As everywhere else, none of it is
+  // restated here: this module maps an argument set onto a fixed RPC and
+  // carries no authorization at all.
+  getAgencySettings: Object.freeze({
+    rpc: 'pennsync_contract_agency_settings_read',
+    params: Object.freeze(['agency_code', 'office_name', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_agency_code: args.agency_code === undefined ? null : args.agency_code,
+      p_office_name: args.office_name === undefined ? null : args.office_name,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_SETTINGS_AGENCY_NOT_HELD',
+      'PENNSYNC_SETTINGS_LIMIT_INVALID',
+    ]),
+  }),
+  saveAgencySettings: Object.freeze({
+    rpc: 'pennsync_contract_agency_settings_save',
+    params: Object.freeze(['id', 'fields']),
+    // An absent id is a create and an explicit null is the same thing; the
+    // contract has no third case, so there is nothing for it to refuse.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_SETTINGS_AGENCY_NOT_HELD',
+      'PENNSYNC_SETTINGS_FORBIDDEN',
+      'PENNSYNC_SETTINGS_NOT_FOUND',
+      'PENNSYNC_SETTINGS_ID_INVALID',
+      'PENNSYNC_SETTINGS_FIELDS_INVALID',
+      'PENNSYNC_SETTINGS_FIELDS_EMPTY',
+      'PENNSYNC_SETTINGS_FIELD_UNKNOWN',
+      'PENNSYNC_SETTINGS_FIELD_RESERVED',
+      'PENNSYNC_SETTINGS_FIELD_INVALID',
+    ]),
+  }),
+  listAgencyTasks: Object.freeze({
+    rpc: 'pennsync_contract_task_list',
+    params: Object.freeze([
+      'patient_id', 'related_entity', 'related_entity_id', 'exclude_status',
+      'order', 'limit',
+    ]),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_related_entity: args.related_entity === undefined ? null : args.related_entity,
+      p_related_entity_id: args.related_entity_id === undefined
+        ? null : args.related_entity_id,
+      p_exclude_status: args.exclude_status === undefined ? null : args.exclude_status,
+      // The default is the order every other read in this file has, and an
+      // explicit null reaches the contract as null so the contract refuses it.
+      p_order: args.order === undefined ? 'created_date' : args.order,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TASK_AGENCY_NOT_HELD',
+      'PENNSYNC_TASK_ORDER_INVALID',
+      'PENNSYNC_TASK_LIMIT_INVALID',
+    ]),
+  }),
+  createAgencyTask: Object.freeze({
+    rpc: 'pennsync_contract_task_create',
+    params: Object.freeze(['fields']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_fields: args.fields ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_TASK_AGENCY_NOT_HELD',
+      'PENNSYNC_TASK_FIELDS_INVALID',
+      'PENNSYNC_TASK_FIELDS_EMPTY',
+      'PENNSYNC_TASK_FIELD_UNKNOWN',
+      'PENNSYNC_TASK_FIELD_RESERVED',
+      'PENNSYNC_TASK_FIELD_INVALID',
+      'PENNSYNC_TASK_TITLE_REQUIRED',
+      'PENNSYNC_TASK_CHART_FORBIDDEN',
+    ]),
+  }),
+  listPdfTemplates: Object.freeze({
+    rpc: 'pennsync_contract_pdf_template_list',
+    params: Object.freeze(['parent_template_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_parent_template_id: args.parent_template_id === undefined
+        ? null : args.parent_template_id,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TEMPLATE_AGENCY_NOT_HELD',
+      'PENNSYNC_TEMPLATE_LIMIT_INVALID',
+    ]),
+  }),
+  savePdfTemplate: Object.freeze({
+    rpc: 'pennsync_contract_pdf_template_save',
+    params: Object.freeze(['id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TEMPLATE_AGENCY_NOT_HELD',
+      'PENNSYNC_TEMPLATE_FORBIDDEN',
+      'PENNSYNC_TEMPLATE_NOT_FOUND',
+      'PENNSYNC_TEMPLATE_ID_INVALID',
+      'PENNSYNC_TEMPLATE_FIELDS_INVALID',
+      'PENNSYNC_TEMPLATE_FIELDS_EMPTY',
+      'PENNSYNC_TEMPLATE_FIELD_UNKNOWN',
+      'PENNSYNC_TEMPLATE_FIELD_RESERVED',
+      'PENNSYNC_TEMPLATE_FIELD_INVALID',
+      'PENNSYNC_TEMPLATE_NAME_REQUIRED',
+      'PENNSYNC_TEMPLATE_CATEGORY_REQUIRED',
+      'PENNSYNC_TEMPLATE_FILE_REQUIRED',
+    ]),
+  }),
+  deletePdfTemplate: Object.freeze({
+    rpc: 'pennsync_contract_pdf_template_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_id: args.id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_TEMPLATE_AGENCY_NOT_HELD',
+      'PENNSYNC_TEMPLATE_FORBIDDEN',
+      'PENNSYNC_TEMPLATE_NOT_FOUND',
+      'PENNSYNC_TEMPLATE_ID_INVALID',
+    ]),
+  }),
+  listCarePlans: Object.freeze({
+    rpc: 'pennsync_contract_care_plan_list',
+    params: Object.freeze(['id', 'patient_id', 'order', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_id: args.id === undefined ? null : args.id,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_order: args.order === undefined ? 'created_date' : args.order,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CARE_PLAN_AGENCY_NOT_HELD',
+      'PENNSYNC_CARE_PLAN_ORDER_INVALID',
+      'PENNSYNC_CARE_PLAN_LIMIT_INVALID',
+    ]),
+  }),
+  saveCarePlan: Object.freeze({
+    rpc: 'pennsync_contract_care_plan_save',
+    params: Object.freeze(['id', 'patient_id', 'fields']),
+    // `patient_id` is a parameter of its own rather than a field, because it
+    // is the row's whole tenancy: settable when the plan is created and
+    // refused by name afterwards.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_id: args.id === undefined ? null : args.id,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_fields: args.fields ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CARE_PLAN_AGENCY_NOT_HELD',
+      'PENNSYNC_CARE_PLAN_NOT_FOUND',
+      'PENNSYNC_CARE_PLAN_ID_INVALID',
+      'PENNSYNC_CARE_PLAN_FIELDS_INVALID',
+      'PENNSYNC_CARE_PLAN_FIELDS_EMPTY',
+      'PENNSYNC_CARE_PLAN_FIELD_UNKNOWN',
+      'PENNSYNC_CARE_PLAN_FIELD_RESERVED',
+      'PENNSYNC_CARE_PLAN_FIELD_INVALID',
+      'PENNSYNC_CARE_PLAN_PATIENT_REQUIRED',
+      'PENNSYNC_CARE_PLAN_PROBLEM_REQUIRED',
+      'PENNSYNC_CARE_PLAN_GOAL_REQUIRED',
+      'PENNSYNC_CARE_PLAN_CHART_FORBIDDEN',
+    ]),
+  }),
+  listFaceToFaceEncounters: Object.freeze({
+    rpc: 'pennsync_contract_face_to_face_list',
+    params: Object.freeze(['referral_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_referral_id: args.referral_id === undefined ? null : args.referral_id,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_F2F_AGENCY_NOT_HELD',
+      'PENNSYNC_F2F_FORBIDDEN',
+      'PENNSYNC_F2F_LIMIT_INVALID',
+    ]),
+  }),
+  saveFaceToFaceEncounter: Object.freeze({
+    rpc: 'pennsync_contract_face_to_face_save',
+    params: Object.freeze(['id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_F2F_AGENCY_NOT_HELD',
+      'PENNSYNC_F2F_FORBIDDEN',
+      'PENNSYNC_F2F_NOT_FOUND',
+      'PENNSYNC_F2F_ID_INVALID',
+      'PENNSYNC_F2F_FIELDS_INVALID',
+      'PENNSYNC_F2F_FIELDS_EMPTY',
+      'PENNSYNC_F2F_FIELD_UNKNOWN',
+      'PENNSYNC_F2F_FIELD_RESERVED',
+      'PENNSYNC_F2F_FIELD_INVALID',
+      'PENNSYNC_F2F_CHART_FORBIDDEN',
+    ]),
+  }),
+  listPatientDocumentRecords: Object.freeze({
+    rpc: 'pennsync_contract_document_record_list',
+    params: Object.freeze(['patient_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_DOCUMENT_RECORD_AGENCY_NOT_HELD',
+      'PENNSYNC_DOCUMENT_RECORD_LIMIT_INVALID',
+    ]),
+  }),
+  listNoteConversions: Object.freeze({
+    rpc: 'pennsync_contract_note_conversion_list',
+    params: Object.freeze(['recovery_request_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_recovery_request_id: args.recovery_request_id === undefined
+        ? null : args.recovery_request_id,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_NOTE_CONVERSION_AGENCY_NOT_HELD',
+      'PENNSYNC_NOTE_CONVERSION_LIMIT_INVALID',
+    ]),
+  }),
+  createNoteConversion: Object.freeze({
+    rpc: 'pennsync_contract_note_conversion_create',
+    params: Object.freeze(['fields']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_fields: args.fields ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_NOTE_CONVERSION_AGENCY_NOT_HELD',
+      'PENNSYNC_NOTE_CONVERSION_FIELDS_INVALID',
+      'PENNSYNC_NOTE_CONVERSION_FIELDS_EMPTY',
+      'PENNSYNC_NOTE_CONVERSION_FIELD_UNKNOWN',
+      'PENNSYNC_NOTE_CONVERSION_FIELD_RESERVED',
+      'PENNSYNC_NOTE_CONVERSION_FIELD_INVALID',
+      'PENNSYNC_NOTE_CONVERSION_CHART_FORBIDDEN',
+    ]),
+  }),
+
   // Batch E: seven screens whose records the browser read RAW, with no Base44
   // function between them and the entity. So these are not ported names either
   // — what governed each call was the entity's own access block, and
