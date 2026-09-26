@@ -904,6 +904,13 @@ describe('the declared entity routes', () => {
       expect(fixture.apiCalls.at(-1).body.params)
         .toEqual({ order: 'incident_date', limit: 100, patient_id: 'p-1' });
 
+      // A control for the `-incident_date` refusal below: that case is named
+      // "a column this capability does not order by", and without a sort this
+      // route DOES take, the same refusal would fire for a route that orders by
+      // nothing at all — which is a different defect wearing the same detail.
+      await adapter.raw.entities.ComplianceAudit.list('-audit_date', 200);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ order: 'audit_date', limit: 200 });
+
       await adapter.raw.entities.PersonnelCredential.filter({ status: 'pending_approval' },
         undefined, 1000);
       // No order asked for is no order sent: the contract defaults it, and a
@@ -1307,10 +1314,13 @@ describe("what batch E's routes take on trust", () => {
     // joins this set by existing — which is why the number GREW rather than
     // being relaxed when batch D's nine paged operational reads arrived, again
     // for the two library reads whose call sites were once called unprovable,
-    // and again for the two `PatientAlert` reads. That growth is the point: the
-    // loop below reaches each new route by construction, so a route cannot land
-    // without its argument count being checked.
-    expect(paged.length).toBe(42);
+    // again for the two `PatientAlert` reads, and again here for the five
+    // compliance reads' seven. That growth is the point: the loop below reaches
+    // each new route by construction, so a route cannot land without its
+    // argument count being checked. The number is re-measured on each rebase
+    // rather than added to, because a figure arrived at by arithmetic over two
+    // branches is not a reading of either.
+    expect(paged.length).toBe(49);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;
