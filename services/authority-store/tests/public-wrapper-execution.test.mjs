@@ -2,7 +2,8 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import {
-  AGENCY_A, assertNoDeadBodies, buildStore, callAs, publicWrappers, sweep,
+  AGENCY_A, assertNoDeadBodies, buildStore, callAs, functionBodies, helperReach,
+  publicWrappers, sweep,
 } from './public-wrapper-execution.mjs';
 
 /**
@@ -50,6 +51,7 @@ const ANSWERS = Object.freeze([
   'pennsync_contract_library_document_list',
   'pennsync_contract_medicare_compliance_rule_list',
   'pennsync_contract_medicare_guideline_list',
+  'pennsync_contract_note_conversion_create',
   'pennsync_contract_note_conversion_list',
   'pennsync_contract_notification_list',
   'pennsync_contract_notification_mark_all',
@@ -124,7 +126,6 @@ const STOPS = Object.freeze({
   pennsync_contract_membership_inspect: 'PENNSYNC_MEMBERSHIP_SUBJECT_INVALID',
   pennsync_contract_membership_transition: 'PENNSYNC_MEMBERSHIP_SUBJECT_INVALID',
   pennsync_contract_note_append: 'PENNSYNC_NOTE_PATIENT_INVALID',
-  pennsync_contract_note_conversion_create: 'PENNSYNC_NOTE_CONVERSION_FIELDS_INVALID',
   pennsync_contract_note_history: 'PENNSYNC_NOTE_PATIENT_INVALID',
   pennsync_contract_notification_create: 'PENNSYNC_NOTIFICATION_INVALID',
   pennsync_contract_notification_preference_save: 'PENNSYNC_SCREEN_PAYLOAD_INVALID',
@@ -210,7 +211,157 @@ const DRIVEN = Object.freeze({
   pennsync_contract_clinical_event_list: { p_patient_id: 'patient-a1' },
   pennsync_contract_patient_recommendation_list: { p_patient_id: 'patient-a1' },
   pennsync_contract_patient_education_list: { p_patient_id: 'patient-a1' },
+  // Driven rather than pinned because a reading of the FILES attributed a
+  // call to `operational_limit` to this body — the file's trailing
+  // `grant`/`revoke` block names every signature in it, so splitting by
+  // `create function` hands that block to whatever function it follows. The
+  // body has no such call, and this is the only way to say so with the
+  // instrument rather than with a second reading: it is a WRITE, and a write
+  // left pinned would have been the one path nobody could speak for.
+  pennsync_contract_note_conversion_create: {
+    p_fields: JSON.stringify({ patient_id: 'patient-a1', visit_type: 'routine' }),
+  },
 });
+
+
+/**
+ * The `pennsync_records` helpers a wrapper on the ANSWERS side actually runs.
+ *
+ * This is the gate's own blind spot, pinned rather than left to a reader — a
+ * PINNED wrapper stops at its refusal, so everything below that line in its
+ * body is unexecuted, and the helpers are exactly where a shared defect lives.
+ * `operational_limit` is a helper: one bad line in it killed seven
+ * capabilities, and a pin over any of them would have hidden all of it.
+ *
+ * So the number is worth saying plainly. 122 of the 344 helpers reachable from
+ * a public wrapper are executed here, a little over a third, and paying down a
+ * pin is what moves it. The set is pinned rather than the count, for the reason
+ * D113 settled: a count holds while one name leaves and another arrives.
+ */
+const EXECUTED_HELPERS = Object.freeze([
+  'adr_reminder_message',
+  'adr_reminder_title',
+  'agency_today',
+  'ai_agreement_acknowledgments',
+  'ai_agreement_version',
+  'alert_row',
+  'caller_assigned_patients',
+  'caller_email',
+  'caller_identity',
+  'caller_opens_every_chart',
+  'caller_roster',
+  'caller_tenant_role',
+  'caller_user_id',
+  'care_plan_projected',
+  'chart_not_elsewhere',
+  'contract_activity_list',
+  'contract_adr_deadline_sweep',
+  'contract_agency_settings_read',
+  'contract_ai_agreement_status',
+  'contract_ai_configuration_read',
+  'contract_alert_list',
+  'contract_care_plan_list',
+  'contract_clinical_event_list',
+  'contract_clinical_library_folder_list',
+  'contract_clinical_library_template_list',
+  'contract_clinical_pathway_list',
+  'contract_compliance_rule_lookup',
+  'contract_credential_expiration_sweep',
+  'contract_credential_renewal_sweep',
+  'contract_dashboard',
+  'contract_data_quality_audit',
+  'contract_document_record_list',
+  'contract_document_template_list',
+  'contract_education_material_list',
+  'contract_expiration_notice_sweep',
+  'contract_face_to_face_list',
+  'contract_fleet_vehicles',
+  'contract_invitation_sweep',
+  'contract_library_document_list',
+  'contract_medicare_compliance_rule_list',
+  'contract_medicare_guideline_list',
+  'contract_note_conversion_create',
+  'contract_note_conversion_list',
+  'contract_notification_list',
+  'contract_notification_mark_all',
+  'contract_notification_preference_get',
+  'contract_ocr_feedback_list',
+  'contract_ocr_training_list',
+  'contract_on_call_shift_list',
+  'contract_patient_education_list',
+  'contract_patient_recommendation_list',
+  'contract_pdf_search_corpus',
+  'contract_pdf_template_list',
+  'contract_physician_list',
+  'contract_referral_assignees',
+  'contract_referral_list',
+  'contract_roster_list',
+  'contract_roster_report',
+  'contract_sent_education_list',
+  'contract_task_list',
+  'contract_tenant_context',
+  'contract_tenant_memberships',
+  'contract_time_off_approved',
+  'contract_validation_rule_list',
+  'contract_visit_point_config_list',
+  'credential_due_offsets',
+  'credential_notice_message',
+  'credential_notice_title',
+  'credential_sweep',
+  'dashboard_care_plan',
+  'dashboard_incident',
+  'dashboard_patient',
+  'dashboard_visit',
+  'deployment_app',
+  'document_record_projected',
+  'f2f_projected',
+  'fleet_vehicle_row',
+  'jsonb_head',
+  'library_answer',
+  'library_owner_visible',
+  'library_page_size',
+  'library_row_id',
+  'note_conversion_projected',
+  'note_conversion_reserved',
+  'note_conversion_writable',
+  'notification_action_url',
+  'notification_in_app_off',
+  'notification_in_app_off_safe',
+  'notification_mint',
+  'notification_row',
+  'notification_sound',
+  'notification_text',
+  'operational_chart',
+  'operational_check_fields',
+  'operational_limit',
+  'operational_locator',
+  'operational_new_id',
+  'pdf_search_document_type',
+  'pdf_search_row',
+  'quality_json_missing',
+  'quality_pct',
+  'quality_score',
+  'reference_read_limit',
+  'reference_read_role',
+  'referral_authority',
+  'referral_canonical_email',
+  'referral_exact_identifier',
+  'referral_row',
+  'referral_scope',
+  'roster_entry',
+  'screen_agency_admin',
+  'screen_agency_admin_required',
+  'screen_agency_held',
+  'screen_chart',
+  'screen_limit',
+  'settings_projected',
+  'settings_reserved',
+  'task_projected',
+  'template_projected',
+  'tenant_agency',
+  'tenant_membership_row',
+  'time_off_row',
+]);
 
 const APP = '6a9881683dc68a0bd54f1ef7';
 let db;
@@ -305,4 +456,51 @@ test('a caller with no membership reaches no body, so the sweep measures an AUTH
   assert.equal(held.outcome, 'answered');
   assert.equal(notHeld.outcome, 'refused');
   assert.match(notHeld.message, /AGENCY_NOT_HELD/);
+});
+
+test('the helpers an answering wrapper runs are exactly what is pinned', async () => {
+  const answered = new Set(results.filter(r => r.outcome === 'answered').map(r => r.name));
+  const reach = helperReach(await functionBodies(db));
+  const executed = new Set();
+  const reachable = new Set();
+  for (const [wrapper, helpers] of reach) {
+    for (const helper of helpers) {
+      reachable.add(helper);
+      if (answered.has(wrapper)) executed.add(helper);
+    }
+  }
+  assert.ok(reachable.size > executed.size,
+    'every reachable helper is executed, which would make the blind spot empty '
+    + 'and this assertion vacuous; re-read it rather than deleting it');
+  assert.deepEqual([...executed].sort(), [...EXECUTED_HELPERS].sort(),
+    'the helpers this sweep executes changed');
+  // D96's pattern: a number a check cannot assert usefully is READ and PRINTED,
+  // so the debt is visible in the job log rather than promised in a comment.
+  console.log(`# helpers executed: ${executed.size} of ${reachable.size} reachable`);
+});
+
+test('a dead helper behind a PINNED wrapper is what this gate cannot see, and it says so', async () => {
+  // The honest statement of the limit, planted rather than argued. A helper
+  // reached only from a pinned wrapper can be broken and the sweep stays
+  // green — which is why the set above is pinned and printed, and why paying
+  // a pin down is the only thing that closes it.
+  const planted = new PGlite();
+  try {
+    await buildStore(planted);
+    await seed(planted);
+    // `contract_task_create` is pinned at PENNSYNC_TASK_FIELDS_INVALID, so it
+    // never reaches `task_projected` and a dead one there is invisible here.
+    await planted.exec(`create or replace function "pennsync_records".task_projected(
+        p_row "pennsync_records"."task") returns jsonb
+      language plpgsql stable set search_path = '' as $dead$
+      begin return pg_catalog.to_jsonb(pg_catalog.least(1, 2)); end $dead$;`);
+    const swept = await sweep(planted, { defaults: DEFAULTS, perName: DRIVEN });
+    const reported = swept.filter(r => r.outcome === 'failed').map(r => r.name);
+    assert.equal(reported.includes('pennsync_contract_task_create'), false,
+      'if this is now reported, the pin was paid down and this case needs another');
+    assert.equal(swept.find(r => r.name === 'pennsync_contract_task_create').outcome,
+      'refused', 'the pinned wrapper refuses before it reaches the dead helper');
+  } finally {
+    await planted.close();
+  }
 });

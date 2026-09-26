@@ -138,3 +138,47 @@ export async function buildStore(db, options = {}) {
   await applyRecordMigrations(db, options);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 }
+
+/**
+ * Which `pennsync_records` helpers the sweep actually executes.
+ *
+ * This is the gate's own blind spot, measured rather than assumed. A PINNED
+ * wrapper's body stops at its refusal, so everything below that line is
+ * unexecuted — and the helpers are where the shared defects live, which is the
+ * whole reason this suite exists: `operational_limit` is a helper, and seven
+ * wrappers died on it. A pin therefore hides more than one capability.
+ *
+ * The reach is the transitive closure of `pennsync_records.<name>(` over the
+ * function bodies, one wrapper at a time, taken from `pg_proc.prosrc` so it
+ * describes the store that was built rather than the files on disk — a
+ * `create or replace` in a later migration is what a caller reaches, and
+ * splitting the FILES by `create function` instead attributes a trailing
+ * `grant`/`revoke` block, which names every signature in the file, to whatever
+ * function it happens to follow.
+ */
+export function helperReach(rows) {
+  const bodies = new Map(rows.filter(r => r.schema === 'pennsync_records').map(r => [r.name, r.src]));
+  const calls = text => [...String(text ?? '').matchAll(/"?pennsync_records"?\s*\.\s*"?([a-z0-9_]+)"?\s*\(/g)]
+    .map(match => match[1]).filter(name => bodies.has(name));
+  const closure = (seeds) => {
+    const seen = new Set();
+    const pending = [...seeds];
+    while (pending.length > 0) {
+      const name = pending.pop();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      pending.push(...calls(bodies.get(name)));
+    }
+    return seen;
+  };
+  return new Map(rows.filter(r => r.schema === 'public').map(r => [r.name, closure(calls(r.src))]));
+}
+
+/** Every function body in the two schemas, as text. */
+export async function functionBodies(db) {
+  const { rows } = await db.query(`
+    select p.proname as name, p.prosrc as src, n.nspname as schema
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'pennsync_records') and p.prokind = 'f'`);
+  return rows;
+}
