@@ -140,11 +140,18 @@ export async function buildStore(db, options = {}) {
 }
 
 /**
- * Which `pennsync_records` helpers the sweep actually executes.
+ * Which `pennsync_records` helpers a wrapper could reach, syntactically.
  *
- * This is the gate's own blind spot, measured rather than assumed. A PINNED
+ * An UPPER BOUND on what the sweep runs and not a coverage figure: this is a
+ * transitive closure over CALL SITES, so a helper an answering wrapper skips —
+ * on an empty result, or a branch the fixtures do not take — is in the set
+ * anyway. Naming the result `executed` was a defect of exactly the kind D129
+ * describes, a number correct for the predicate it computed and wrong for the
+ * one its name claimed.
+ *
+ * It still bounds the gate's blind spot, which is what it is for. A PINNED
  * wrapper's body stops at its refusal, so everything below that line is
- * unexecuted — and the helpers are where the shared defects live, which is the
+ * certainly unexecuted — and the helpers are where the shared defects live, which is the
  * whole reason this suite exists: `operational_limit` is a helper, and seven
  * wrappers died on it. A pin therefore hides more than one capability.
  *

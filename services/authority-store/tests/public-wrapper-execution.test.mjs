@@ -79,13 +79,20 @@ const ANSWERS = Object.freeze([
 /**
  * The wrappers these arguments do not get past, and where each stops.
  *
- * Four are not argument debt and will not be paid down from here:
- * `pennsync_records_list` and its four siblings answer
- * `PENNSYNC_BROKER_ENTITY_NOT_BROKERED` because the broker family serves three
- * entities and the sweep names none, and the three `pennsync_staging_*` reads
- * answer `PENNSYNC_APP_NOT_ADMITTED` because the staging pair is bound to an
- * app id this store does not admit. They are pinned like the rest so that a
- * change to either refusal is visible.
+ * Two GROUPS here are not argument debt and will not be paid down from this
+ * fixture. All five `pennsync_records_*` wrappers answer
+ * `PENNSYNC_BROKER_ENTITY_NOT_BROKERED`, because the broker family serves
+ * three entities and the sweep names none. The `pennsync_staging_*` wrappers
+ * answer `PENNSYNC_APP_NOT_ADMITTED` or an action refusal, because the staging
+ * pair is bound to an app id this store does not admit. They are pinned like
+ * the rest so that a change to either refusal is visible.
+ *
+ * No count is given for either group deliberately, and the reason is D129's:
+ * an earlier draft of this comment said "four", which was the number of them
+ * among the THIRTY-SEVEN limit-taking wrappers — one broker read and three
+ * staging reads — set down beside a map that pins every wrapper in the store.
+ * Two populations, one sentence, the smaller count. The names are in the map
+ * below; count them there, against the population you actually mean.
  */
 const STOPS = Object.freeze({
   pennsync_contract_activity_append: 'PENNSYNC_AUDIT_ACTION_INVALID',
@@ -225,20 +232,32 @@ const DRIVEN = Object.freeze({
 
 
 /**
- * The `pennsync_records` helpers a wrapper on the ANSWERS side actually runs.
+ * The `pennsync_records` helpers STATICALLY REACHABLE from a wrapper on the
+ * ANSWERS side. An UPPER BOUND on what this sweep runs, never a coverage
+ * figure — read the next paragraph before quoting it.
  *
- * This is the gate's own blind spot, pinned rather than left to a reader — a
- * PINNED wrapper stops at its refusal, so everything below that line in its
- * body is unexecuted, and the helpers are exactly where a shared defect lives.
- * `operational_limit` is a helper: one bad line in it killed seven
- * capabilities, and a pin over any of them would have hidden all of it.
+ * It is a syntactic transitive closure over the function bodies, so it counts
+ * a helper an answering wrapper could call, not one it did. An answered
+ * wrapper skips a call on an empty result or an untaken branch:
+ * `contract_notification_list` answers here and the fixtures seed no
+ * notification, so its loop never reaches `notification_sound`, which this set
+ * nevertheless contains. Closing that gap means runtime instrumentation and
+ * seeded rows for every branch worth measuring, and this suite does neither.
+ * Naming it `EXECUTED` was the defect D129 describes arriving in a variable
+ * name: the number was right for the predicate it computed and wrong for the
+ * one its name claimed.
  *
- * So the number is worth saying plainly. 122 of the 344 helpers reachable from
- * a public wrapper are executed here, a little over a third, and paying down a
- * pin is what moves it. The set is pinned rather than the count, for the reason
- * D113 settled: a count holds while one name leaves and another arrives.
+ * What it is still good for is the direction of travel. A PINNED wrapper stops
+ * at its refusal, so nothing below that line can run, and the helpers are
+ * exactly where a shared defect lives — `operational_limit` is one, and a pin
+ * over any of the seven it killed would have hidden all of them. 122 of the
+ * 344 helpers reachable from a public wrapper are reachable from an ANSWERING
+ * one, so at most a little over a third of them run, and paying down a pin is
+ * what moves that ceiling. The set is pinned rather than the count, for the
+ * reason D113 settled: a count holds while one name leaves and another
+ * arrives.
  */
-const EXECUTED_HELPERS = Object.freeze([
+const REACHED_HELPERS = Object.freeze([
   'adr_reminder_message',
   'adr_reminder_title',
   'agency_today',
@@ -458,25 +477,28 @@ test('a caller with no membership reaches no body, so the sweep measures an AUTH
   assert.match(notHeld.message, /AGENCY_NOT_HELD/);
 });
 
-test('the helpers an answering wrapper runs are exactly what is pinned', async () => {
+test('the helpers an answering wrapper can reach are exactly what is pinned', async () => {
   const answered = new Set(results.filter(r => r.outcome === 'answered').map(r => r.name));
   const reach = helperReach(await functionBodies(db));
-  const executed = new Set();
+  const reached = new Set();
   const reachable = new Set();
   for (const [wrapper, helpers] of reach) {
     for (const helper of helpers) {
       reachable.add(helper);
-      if (answered.has(wrapper)) executed.add(helper);
+      if (answered.has(wrapper)) reached.add(helper);
     }
   }
-  assert.ok(reachable.size > executed.size,
-    'every reachable helper is executed, which would make the blind spot empty '
-    + 'and this assertion vacuous; re-read it rather than deleting it');
-  assert.deepEqual([...executed].sort(), [...EXECUTED_HELPERS].sort(),
-    'the helpers this sweep executes changed');
+  assert.ok(reachable.size > reached.size,
+    'every helper in the store is reachable from an answering wrapper, which '
+    + 'would make the blind spot empty and this assertion vacuous; re-read it '
+    + 'rather than deleting it');
+  assert.deepEqual([...reached].sort(), [...REACHED_HELPERS].sort(),
+    'the helpers an answering wrapper can reach changed');
   // D96's pattern: a number a check cannot assert usefully is READ and PRINTED,
   // so the debt is visible in the job log rather than promised in a comment.
-  console.log(`# helpers executed: ${executed.size} of ${reachable.size} reachable`);
+  // It says REACHABLE rather than executed, because that is what it measures.
+  console.log(`# helpers reachable from an answering wrapper: ${reached.size} `
+    + `of ${reachable.size} (an upper bound on what runs, not coverage)`);
 });
 
 test('a dead helper behind a PINNED wrapper is what this gate cannot see, and it says so', async () => {
