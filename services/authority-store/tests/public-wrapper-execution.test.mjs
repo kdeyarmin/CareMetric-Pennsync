@@ -502,10 +502,19 @@ test('the helpers an answering wrapper can reach are exactly what is pinned', as
 });
 
 test('a dead helper behind a PINNED wrapper is what this gate cannot see, and it says so', async () => {
-  // The honest statement of the limit, planted rather than argued. A helper
-  // reached only from a pinned wrapper can be broken and the sweep stays
-  // green — which is why the set above is pinned and printed, and why paying
-  // a pin down is the only thing that closes it.
+  // The honest statement of the limit, planted rather than argued, and there
+  // are TWO reasons a helper goes unmeasured rather than one. A helper reached
+  // only from a pinned wrapper can be broken and the sweep stays green,
+  // because the refusal is above the call. And a helper an ANSWERING wrapper
+  // reaches can be broken too, when the call sits on a path these fixtures do
+  // not take: `contract_task_list` answers, reaches `task_projected`, and
+  // never calls it, because the task table is empty and the projection runs
+  // per row. This case is invisible for both reasons at once, so it asserts
+  // both — an assertion that named only the pin would keep passing after the
+  // pin was paid down, for the other reason, and read as though it still
+  // measured the first. The test below it is the positive control: a dead
+  // helper on a path the fixtures DO take is reported, which is what makes
+  // this silence a blind spot rather than a plant that never worked.
   const planted = new PGlite();
   try {
     await buildStore(planted);
@@ -522,6 +531,51 @@ test('a dead helper behind a PINNED wrapper is what this gate cannot see, and it
       'if this is now reported, the pin was paid down and this case needs another');
     assert.equal(swept.find(r => r.name === 'pennsync_contract_task_create').outcome,
       'refused', 'the pinned wrapper refuses before it reaches the dead helper');
+    // The second reason, asserted so the case cannot go quiet on one of them.
+    assert.equal(reported.includes('pennsync_contract_task_list'), false,
+      'if this is now reported, the fixtures seed a task and the empty-result '
+      + 'half of the blind spot has closed; this case needs another');
+    assert.equal(swept.find(r => r.name === 'pennsync_contract_task_list').outcome,
+      'answered', 'the list wrapper answers over no rows, so the projection never runs');
+  } finally {
+    await planted.close();
+  }
+});
+
+test('a dead helper an answering wrapper really calls IS reported', async () => {
+  // The control for the case above. Its silence only means something if the
+  // same plant, on a path these fixtures take, is loud — otherwise a broken
+  // plant and a blind spot are the same green. `operational_limit` is the
+  // helper the seven capabilities died on, and re-introducing the schema
+  // qualification that killed them is the real defect rather than a synthetic
+  // one: `least` is a parser construct, so `pg_catalog.least(...)` does not
+  // resolve at call time and every wrapper that pages through it dies.
+  const planted = new PGlite();
+  try {
+    await buildStore(planted);
+    await seed(planted);
+    await planted.exec(`create or replace function "pennsync_records".operational_limit(
+        p_limit integer, p_prefix text) returns integer
+      language plpgsql immutable set search_path = '' as $dead$
+      begin
+        if p_limit is null then return 50; end if;
+        if p_limit < 1 then
+          raise exception using errcode='22023', message=p_prefix || '_LIMIT_INVALID';
+        end if;
+        return pg_catalog.least(p_limit, 5000);
+      end $dead$;`);
+    const swept = await sweep(planted, { defaults: DEFAULTS, perName: DRIVEN });
+    const reported = swept.filter(r => r.outcome === 'failed').map(r => r.name);
+    assert.ok(reported.length > 0,
+      'a dead helper on a taken path was not reported at all, so the plant does '
+      + 'not bite and the blind-spot case above proves nothing');
+    for (const name of reported) {
+      assert.ok(ANSWERS.includes(name),
+        `${name} is reported dead but is not on the ANSWERS side, so this plant `
+        + 'broke something other than the path it names');
+    }
+    console.log(`# control: a dead operational_limit is reported by ${reported.length} `
+      + 'answering wrappers');
   } finally {
     await planted.close();
   }
