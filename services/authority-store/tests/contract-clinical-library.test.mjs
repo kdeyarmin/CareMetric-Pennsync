@@ -297,6 +297,21 @@ test('the chart a write names is resolved in the agency the request names', asyn
   const crossed = fields => JSON.stringify({
     phrase: 'crossed', category: 'assessment', patient_id: fields,
   });
+  // The PRECONDITION, asserted rather than arranged. `_NOT_FOUND` is raised
+  // both for a chart that is real and elsewhere and for a chart that is not
+  // real at all, so a refusal test that never shows the chart EXISTS would
+  // pass unchanged if the fixture lost it — measuring absence while claiming
+  // to measure tenancy. ADMIN_A holds both agencies, so it can write each
+  // chart in the agency that actually holds it. The rows are removed again so
+  // the suite's shared state is what the later tests expect.
+  for (const [agency, chart] of [[B, 'patient-b1'], [A, 'patient-a1']]) {
+    const held = await call(ADMIN_A, 'pennsync_contract_clinical_library_template_write',
+      [agency, 'create', null, crossed(chart)]);
+    assert.equal(held.row.patient_id, chart);
+    await db.query(`delete from ${SCHEMA}."clinical_library_template" where id = $1`,
+      [held.row.id]);
+  }
+
   // ADMIN_A holds BOTH agencies; ADMIN_B holds only B. Both are refused, and
   // both cases matter: a guard written the other way round — `not exists`, so
   // the foreign chart has to be VISIBLE to prove the row foreign — passes the
