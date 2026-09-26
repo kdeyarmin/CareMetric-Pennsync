@@ -7402,3 +7402,67 @@ these.
 `job_title` fixtures in place after the decision would leave a suite asserting
 behaviour over a field the store still does not hold, which is how this survived
 to be found by a column census rather than by a failing test.
+
+## D105 — A total on a page, where a generated file already holds it
+
+2026-09-26. The rule, in the words it was settled in: **where a page states a
+total that a generated file already holds, pin the page to that file or drop
+the figure. Stage J and the pennsync-api README are the two instances on
+record.**
+
+A generated file is measured on every run and a page is measured never, so a
+figure copied from the first into the second is correct exactly once. Nothing
+fails when it stops being correct — the page still reads well, the number is
+still plausible, and the tool that knows better is printing the right answer a
+few lines away in the same CI log.
+
+**Instance one, #303.** Stage J of `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`
+paraphrased `check:entity-routes` into a blockquote. It now carries that tool's
+output **byte for byte in a fenced block**, and `tools-entity-routes.test.mjs`
+holds it there. Paste what the tool prints; never retype, rewrap or re-indent
+it, because a comparison that normalised first would be a second
+representation of the same thing, which is the defect this exists to stop.
+
+**Instance two, #307.** `services/pennsync-api/README.md` said the broker
+family serves **31** entities. `brokered-entities.mjs` holds **three**, all
+read-only, and `check:record-brokers` prints `5 operations over 3 entities`
+every CI run. 31 was the pre-D22 allowlist — wrong by ten, in the direction
+that reads as write access to thirty-one tables, beside a sentence naming
+`insert`, `update` and `delete`. `records.test.mjs` now derives the count from
+`BROKERED_ENTITIES` and holds the page to it.
+
+**Two assertions, not one.** Each pin checks that the page carries the thing at
+all AND that what it carries is current. A single conditional that compared
+only when it found a block would **pass by finding nothing** — the
+instrument-always-returns-true failure, arriving inside the check written to
+stop it. An absent name and a stale number are different failures and each owes
+its own message.
+
+**Read both forms.** The README spells small numbers out, so the pin reads
+digits and number words alike. A check that read one form would be the
+one-representation defect it exists for.
+
+**A historical figure stays sayable.** "The allowlist was 31 until D22" is a
+record; "the family serves 31 entities" is a stale total. The same distinction
+governs Stage J: a move is stated as its **size and its cause**, and the total
+it produced is left to the block. Forbidding every numeral would delete the
+sentence that separates a remainder falling by five because D83's
+global-reference writes stopped counting as landable, with nothing adopted,
+from the same remainder falling by nine because nine screens adopted routes —
+same arithmetic, opposite news — and the page would become MORE misleading by
+passing.
+
+**Where a pin stops reading is part of the page, not only of the test.** Stage
+J's scanned region runs from the block to the next heading of any level. A
+stage-wide scan failed a correct page the day `routes` reached 33 and collided
+with prose about "about 33 hollowed-out pages" — a different instrument's
+figure, legitimately there. Spelling that number into the check would have been
+a relaxation dressed as a fix, and an allowlist is how a check comes to vouch
+for prose it stopped reading. So the page gained a `####` heading where the
+destination gate's material starts. **Cost, stated rather than hidden:** a
+route-gate total placed below that heading escapes the check.
+
+**What this does not settle.** It is a rule about pages that quote generated
+totals, not a rule against prose describing measurements. And a pin proves the
+page agrees with the file; it says nothing about whether the file agrees with a
+deployment, which stays the hosted comparison's half (D88, D95).
