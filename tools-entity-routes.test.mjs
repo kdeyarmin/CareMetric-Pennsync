@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -279,4 +280,149 @@ test('the unproved line is there exactly when there is an unproved route', () =>
   assert.equal(summaryLines(report).length, 3);
   assert.equal(summaryLines({ ...report, unproved_routes: ['Visit.list'] }).length, 4);
   assert.match(summaryLines({ ...report, unproved_routes: ['Visit.list'] })[2], /UNPROVED.*Visit\.list/);
+});
+
+const PLAN = 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md';
+
+/**
+ * The figures that have actually drifted, by the name the report gives them.
+ * Not every number in the report: `generic_family_reads` and its siblings are
+ * single digits, which cannot be told from ordinary prose by value, and that
+ * limit is recorded rather than worked around — see the prose test below.
+ */
+const PINNED_FIGURES = [
+  'routes', 'routed_sites', 'landable_sites', 'unrouted_sites', 'needs_named_capability',
+];
+
+function fencedBlocks(page) {
+  const blocks = [];
+  let open = null;
+  for (const line of page.split('\n')) {
+    if (line.startsWith('```')) {
+      if (open === null) open = [];
+      else { blocks.push(open.join('\n')); open = null; }
+      continue;
+    }
+    if (open !== null) open.push(line);
+  }
+  return blocks;
+}
+
+/**
+ * Stage J's prose about the pinned block, with fenced blocks removed: from the
+ * end of the block to the next heading of any level.
+ *
+ * BOTH ends are measured rather than convenient, and both for the same reason:
+ * Stage J describes two instruments, and the other one's figures are prose
+ * here. Above the block are the destination gate's landable count and a
+ * Base44-surface count of function invocations; below it, before the boundary
+ * was there, was a paragraph reading "roughly 9 top-level destinations and
+ * about 33 hollowed-out pages", which failed a correct page the day `routes`
+ * reached 33. Spelling that one out would have been a relaxation dressed as a
+ * fix, and an allowlist is how a check comes to vouch for prose it stopped
+ * reading. So the page gained a `####` heading where the destination gate's
+ * material starts, and this region ends there — a boundary a reader can see,
+ * rather than one only this test knows about.
+ *
+ * What that buys and what it costs: everything between the block and that
+ * heading is read, and nothing below it is. A route-gate total put below the
+ * heading escapes, which is why the heading's own paragraph says which gate
+ * each side belongs to.
+ */
+function proseAfterPinnedBlock(page, firstLine) {
+  const lines = page.split('\n');
+  const start = lines.indexOf(firstLine);
+  if (start < 0) return null;
+  const close = lines.findIndex((line, index) => index > start && line.startsWith('```'));
+  const end = lines.findIndex((line, index) => index > close && /^#{1,6} /.test(line));
+  const kept = [];
+  let fence = false;
+  for (const line of lines.slice(close + 1, end < 0 ? lines.length : end)) {
+    if (line.startsWith('```')) { fence = !fence; continue; }
+    if (!fence) kept.push(line);
+  }
+  return kept.join('\n');
+}
+
+test('the go-live plan carries this tree\'s entity-route reading verbatim', () => {
+  const page = readFileSync(resolve(repository, PLAN), 'utf8');
+  const printed = summaryLines(measureRoutes(repository)).join('\n');
+  const readings = fencedBlocks(page).filter(block => block.startsWith('entity routes: '));
+
+  // TWO assertions rather than one, because they are two different failures
+  // and the first one is the dangerous shape. A check that looked for a block
+  // and compared only if it found one would pass by finding nothing, which is
+  // the instrument-always-returns-true failure inside the check written to
+  // stop it. So the absence of the reading is its own assertion.
+  assert.ok(readings.length > 0,
+    `${PLAN} no longer carries an entity-route reading in a fenced block at all.\n`
+    + '  It is the page a reader uses to decide where the finish line is; without\n'
+    + '  the block this test vouches for nothing.');
+
+  assert.ok(readings.includes(printed),
+    `${PLAN} does not carry THIS tree's entity-route reading.\n`
+    + `  measured here:\n${printed}\n`
+    + `  the page carries:\n${readings.join('\n  ---\n')}\n`
+    + '  Run `pnpm run check:entity-routes` and replace the current block with its\n'
+    + '  output, in the SAME change as whatever moved the figures. Do not rewrap it:\n'
+    + '  this page used to paraphrase the reading, and a comparison that normalised\n'
+    + '  the prose first would be a second representation of the same thing, which is\n'
+    + '  the defect this gate exists to catch. The dated #294 block above it is a\n'
+    + '  record of that head and is deliberately not maintained.');
+});
+
+/**
+ * The rule is no TOTAL from the block, not no number at all, and the
+ * difference is the one thing on the page worth protecting.
+ *
+ * Stage J has to be able to say that a remainder fell by five because D83
+ * reclassified five reads and nothing was adopted, and that it fell by nine
+ * because nine screens adopted routes. Those two moves look identical in the
+ * numbers and mean opposite things, and the sentence distinguishing them is
+ * the only thing stopping a falling remainder from reading as progress it is
+ * not. Forbidding every numeral would delete it and the page would become MORE
+ * misleading by passing.
+ *
+ * So a move is stated as its SIZE and its CAUSE, and the total it produced is
+ * left to the block. A delta is not a figure the block carries, so it survives
+ * this check on its own; a dated reading of an earlier head is a record and
+ * lives inside a fence, which this region skips. The residual risk is a delta
+ * that happens to equal a pinned total — the coincident-figures trap — and the
+ * remedy is the one already in the message below: spell it as a word.
+ */
+test('the prose after that block points at it and restates none of its figures', () => {
+  const page = readFileSync(resolve(repository, PLAN), 'utf8');
+  const report = measureRoutes(repository);
+  const prose = proseAfterPinnedBlock(page, summaryLines(report)[0]);
+  assert.ok(prose !== null, `${PLAN} does not carry the pinned block's first line`);
+
+  for (const figure of PINNED_FIGURES) {
+    const value = report[figure];
+    // A numeral in this document is a figure — small numbers are spelled out
+    // ("four entities", "nine sites") — so this stays honest as `unrouted_sites`
+    // falls toward single digits, which is the direction we want it to fall.
+    // What changes when a figure goes small is the MESSAGE and never the check:
+    // a magnitude threshold would be the relaxation, written in advance, and a
+    // check that silently stops reading one of its five inputs is the
+    // instrument that always returns true.
+    const restated = new RegExp(String.raw`(?<![-\w#.])${value}(?![-\w.])`, 'g');
+    const found = [...prose.matchAll(restated)];
+    assert.equal(found.length, 0,
+      `${PLAN}: Stage J's prose restates \`${figure}\` (${value}) ${found.length} time(s).\n`
+      + `  first here: ...${prose.slice(Math.max(0, found[0]?.index - 70), found[0]?.index + 40).replace(/\n/g, ' ')}...\n`
+      + '  The measured figures live in the pinned block; the prose points at it and\n'
+      + '  restates none of them, because a sentence beside a checked block is prose\n'
+      + '  this test does not read and a green check is a claim about the whole page.\n'
+      + '  A MOVE is still sayable: give its size and its cause and leave the total it\n'
+      + '  produced to the block, because a remainder falling by five because five\n'
+      + '  reads were reclassified and falling by nine because nine screens adopted\n'
+      + '  routes are the same arithmetic and opposite news. A reading of an EARLIER\n'
+      + '  head is a record, not a restatement, and belongs in a fence, which this\n'
+      + '  region skips.\n'
+      + (value < 10
+        ? '  This figure is now a single digit. If the match is ordinary prose rather\n'
+          + '  than a restated figure, spell the number as a word, as the rest of this\n'
+          + '  page does. If it is the figure, move it inside the block.\n'
+        : ''));
+  }
 });
