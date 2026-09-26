@@ -7755,10 +7755,15 @@ typed by the domain. Nothing was wrong. What was wrong is that nothing could
 have told us if something were.
 
 Both guards now build both directories, in the order a deployment applies them,
-and their pins are the true sets: **24** private tables and **22** app-scoped
-columns, each one more than the authority directory alone produces and the
-extra one `file_object` in both cases. Those two figures are measured on this
-branch's merged tree and will move again — D109 landed `staff_name` in the
+and their pins are the true sets. Measured on this branch's merged tree, the
+widened build holds **24** private tables and **22** app-scoped columns; the
+authority-only build holds **23** and **21**. The difference in each case is the
+one object the record directory creates: the table `pennsync_private.file_object`
+and its own `app_id` column. State the pair, because **a pin's value is a
+property of which directories the test BUILDS** and a bare number is what makes
+this a trap: 21 was the right app-scoped count for the build that existed
+before this change and is the wrong one for the build after it, with neither
+reading a mistake. Both figures will move again — D109 landed `staff_name` in the
 authority directory on the same day — so re-derive them rather than quoting
 them. What does not move is the derivation, and it is worth writing down
 because a grep that gets it wrong reads as a disagreement rather than a
