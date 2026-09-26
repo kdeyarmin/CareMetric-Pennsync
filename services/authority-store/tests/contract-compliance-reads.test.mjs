@@ -27,7 +27,7 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const READS = 'services/authority-store/supabase/record-migrations/'
-  + '20260920570000_contract_compliance_reads.sql';
+  + '20260920640000_contract_compliance_reads.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
