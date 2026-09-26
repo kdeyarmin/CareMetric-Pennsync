@@ -1,12 +1,11 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The staff roster contract (D23).
@@ -27,21 +26,27 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * would come out backwards.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const CONTRACT = 'services/authority-store/supabase/record-migrations/20260920030000_contract_roster.sql';
 /**
- * Forward migrations over that contract, applied in order after it.
+ * The record migrations whose behaviour this suite measures.
  *
- * This list is HAND-KEPT and that is a known defect rather than a design: the
- * suite applies the authority migration DIRECTORY and then three record files
- * by name, so a forward record migration nobody remembers to add here is not
- * applied at all and ships with this suite green — on the only legal path for
- * changing an applied contract (D88). Deriving the whole apply list from the
- * directory is the real fix and is a follow-on; until then, adding a forward
- * file over this contract means adding it here in the same change.
+ * It does NOT decide what is applied: `applyRecordMigrations` reads the
+ * directory, so a forward file over this contract lands the moment it is
+ * committed. That is what this list used to be a hand-kept substitute for, and
+ * the substitute was a real defect — the suite applied the authority DIRECTORY
+ * and three record files by name, so a forward migration nobody remembered to
+ * add was not applied at all and shipped with this suite green, on the only
+ * legal path for changing an applied contract (D88).
+ *
+ * What it is now is an ASSERTION, in D79's shape rather than better prose: the
+ * contract and its two forward files are what the tests below measure, so if
+ * any of them stopped being applied the suite fails HERE and names the file,
+ * instead of in a projection count that reads like a contract bug. A forward
+ * file nobody lists is still applied, so keeping this costs nothing.
  */
-const FORWARD = [
-  'services/authority-store/supabase/record-migrations/20260920620000_roster_created_date.sql',
-  'services/authority-store/supabase/record-migrations/20260920630000_roster_display_name.sql',
+const MEASURED = [
+  '20260920030000_contract_roster.sql',
+  '20260920620000_roster_created_date.sql',
+  '20260920630000_roster_display_name.sql',
 ];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -91,13 +96,15 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  await db.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8'));
-  // The broker family is what grants a caller USAGE on the schema; a contract
-  // reached through it inherits that and grants nothing of its own. Applying
-  // it here is the deployment's own order rather than a convenience.
-  await db.exec(readFileSync(resolve(repository, BROKER_MIGRATION_FILE), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, CONTRACT), 'utf8'));
-  for (const file of FORWARD) await db.exec(readFileSync(resolve(repository, file), 'utf8'));
+  // The record half is the DIRECTORY, not a list of names. The broker family
+  // is what grants a caller USAGE on the schema and a contract reached through
+  // it inherits that, so the deployment's own order is what is wanted here and
+  // reading the directory is how it stays that way as files arrive.
+  const appliedRecordMigrations = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(appliedRecordMigrations.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
+  }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // A third agency whose four members hold the four roles nothing else here
   // exercises. Added in this suite rather than in `fixtures.sql`, which is
@@ -497,7 +504,7 @@ test('a revoked membership leaves the roster, however the carried row reads', as
   } finally { await db.exec('rollback'); }
 });
 
-test('no caller role reaches the roster except through the two contracts', async () => {
+test('no caller role reaches the roster except through a contract that authorizes', async () => {
   const { rows } = await db.query(`
     select p.proname as name, pg_catalog.oidvectortypes(p.proargtypes) as args, n.nspname as schema
     from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
@@ -510,18 +517,28 @@ test('no caller role reaches the roster except through the two contracts', async
       ['authenticated', `${row.schema}.${row.name}(${row.args})`]);
     if (allowed[0].allowed) reachable.push(`${row.schema}.${row.name}`);
   }
-  // The two contracts are reachable by both spellings, which is deliberate and
-  // is what `listPolicyLibrary` does: each is SECURITY DEFINER and performs
-  // its own authorization, and the `public` wrapper only exists so a caller
-  // reaches it without a Supabase project setting naming another schema.
+  // Each is reachable by both spellings, which is deliberate and is what
+  // `listPolicyLibrary` does: each is SECURITY DEFINER and performs its own
+  // authorization, and the `public` wrapper only exists so a caller reaches it
+  // without a Supabase project setting naming another schema.
   //
   // What must NOT be reachable is anything that does no authorization:
   // `caller_roster`, which answers the authority store's roster for whatever
   // agency it is handed, and `roster_entry`, which projects a row with the
   // privileged fields filled in if its boolean says so.
+  //
+  // `contract_roster_report` is the THIRD, and it was invisible here until the
+  // build stopped being a hand-kept list of files: D69's roster PDF is a real
+  // roster-named contract with its own gate, and the store this suite used to
+  // assemble simply did not contain it. So the old two-name assertion was true
+  // of the fixture and false of the store — which is the whole reason the apply
+  // list is read from the directory now. Its own suite proves its refusals; what
+  // this one asserts is that it, too, is a contract rather than a helper.
   assert.deepEqual(reachable.sort(),
     ['pennsync_records.contract_roster_get', 'pennsync_records.contract_roster_list',
-      'public.pennsync_contract_roster_get', 'public.pennsync_contract_roster_list']);
+      'pennsync_records.contract_roster_report',
+      'public.pennsync_contract_roster_get', 'public.pennsync_contract_roster_list',
+      'public.pennsync_contract_roster_report']);
   for (const unreachable of ['caller_roster', 'roster_entry']) {
     assert.ok(!reachable.some(name => name.endsWith(unreachable)),
       `${unreachable} performs no authorization and must not be callable`);
