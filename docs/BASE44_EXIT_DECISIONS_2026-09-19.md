@@ -7949,6 +7949,74 @@ postgres suite is the speculative push the drive-to-green rules forbid. So the
 commission needs a session with 17 tooling of its own, not a change to CI. It
 is recorded as open rather than half-done.
 
+## D114 — What a migration can reach, rather than what it appears to invoke
+
+D110 left one thing standing on an unchecked premise. `MIGRATION_CODES` names
+the `PENNSYNC_*` codes a failing migration can print, and it deliberately
+excludes a code raised inside a `create function` body: that is a refusal
+answered to a caller at runtime, not a migration failure. The exclusion is
+right. What it rests on is the claim that no such body can *run* while a
+migration is applying — which held by observation, and whose failure mode is
+silent. A constraint added in a later migration is validated against the rows
+already present, so a `check` calling one of this store's own functions executes
+that function at migration time, and its refusal prints with no name: exactly
+the diagnosis D110 exists to prevent, arriving through the door D110 left open.
+
+**The decision is that the reachable set is asserted, not the invoked set.** The
+first form of this was "no migration invokes a `pennsync_*` function at
+migration time", and it is false. The deployment pin adds
+`deployment_matches_pin` and `deployment_app_is_pinned`, and both really do call
+`pennsync_private.deployment_app_id()` and `pennsync_private.app_admitted()` on
+apply. Neither raises. That — not absence — is the claim, and it is the claim
+because it is the one that is true.
+
+`services/authority-store/tests/migration-time-reachability.test.mjs` asserts
+the exact set of migration-time calls, walks what each of those bodies itself
+calls, and requires the codes reachable through that closure to be empty. Three
+properties are load-bearing rather than stylistic.
+
+- **The exact set, never membership.** "No raiser appears among the invoked" is
+  satisfied by a correct answer *and* by a parser that found nothing; an
+  equality over the invoked set is satisfied only by the first.
+- **Whatever the parser cannot place is a failure somebody resolves.** An
+  unclassified statement reds the test and names itself. Tolerating one would
+  make this vacuous by the shortest available route: an unreadable shape is how
+  a real call would arrive.
+- **The closure, because the answer is otherwise a coincidence.** Both pinned
+  functions are named by a constraint of their own, so a depth-one reading finds
+  the pair and proves nothing about the link between them — and
+  `app_admitted` does call `deployment_app_id`.
+
+**The over-approximation that looks safe and is not.** The tempting shape is to
+count every `pennsync_*` token outside a function body as a reference and refuse
+if any of them raises. That fails on arrival: the do-block preconditions hold
+162 `to_regprocedure`/`to_regclass` existence lookups naming contract functions,
+most of which do raise. **Over-approximating a reference set does not make a
+ratchet safely stricter when the references are mostly not calls** — it makes it
+red on the day it lands and deleted the day after. So every occurrence is placed
+in a named statement kind, and a name in a trigger definition, a grant, a
+comment or a policy is a reference rather than a call. Inside a *body* the
+direction of safety reverses and the over-approximation is taken, because there
+being wrong can only widen the closure and a wider closure can only red.
+
+**A gap the closure found in the parser, worth recording for its shape.** Both
+pinned functions are written by `execute format($fn$ create function … $fn$)`
+inside a do-block, and the first segmenter stripped nested dollar-quoted regions
+wholesale. So the one function a migration-time constraint actually calls had no
+readable body, and the tool answered "nothing reachable raises" — correctly, and
+for no reason it had established. It is the house defect in its quietest form:
+not a wrong answer, a right answer nothing was standing behind. The segmenter
+now recurses, and the test fails on a reached name it cannot read rather than
+treating the absence as empty.
+
+**Proved by sabotage, not by reading.** Counting `alter table` as non-executing,
+stripping generated SQL again, blinding the body walk, dropping quoted-identifier
+declarations, discarding unclassified occurrences and counting trigger DDL as
+executing each red a different assertion; a raising function planted behind a
+`check` constraint in a real migration directory reds the exact-set assertion by
+name. The registration in `test:authority-store` was proved the same way, by
+removing it and watching `testRegistryContract` name the file.
+
 ## D115 — A derived population fails closed on empty, or it is the vacuous case with a new cause
 
 2026-09-26. Decided while converting `contract-roster.test.mjs` off its
@@ -8099,6 +8167,55 @@ about an instrument whose population is smaller than the one you meant.
 The near-miss is recorded rather than the catch, because going and looking is
 what closed all three and no check did.
 
+## D119 — A right answer is not evidence the instrument read anything
+
+D114's reachability tool answered "nothing reachable raises", and the answer was
+correct. It was also worth nothing, because the tool could not read either of
+the two functions it was answering about. Both are written by
+`execute format($fn$ create function … $fn$)` inside a do-block, and the
+segmenter stripped nested dollar-quoted regions wholesale, so both bodies were
+erased before anything looked at them. An empty set of codes came back from an
+empty set of bodies. Nothing was standing behind a true statement.
+
+**The rule is to verify the instrument SAW the thing before trusting that it
+agrees with you.** It is the sibling of D118, which covers an instrument that
+measures less than you assumed, and it is the dangerous one of the pair: that
+case announces itself the day the answer comes out wrong. This one never would
+have. The tool would have kept
+returning the right answer until a migration put a raising function behind a
+`check` constraint, at which point it would have returned the right answer's
+shape and the wrong answer's content, with every suite green throughout. A
+check whose failure mode is "still correct, for no reason" has no failure mode
+anybody will notice.
+
+**The worked example is the closure, and it is worth following because the
+coincidence is so ordinary.** `deployment_matches_pin` calls
+`deployment_app_id()` and `deployment_app_is_pinned` calls `app_admitted()`, so
+a depth-one reading of the migrations finds both functions and is complete. It
+is also entirely uninformative about the link between them — `app_admitted`
+calls `deployment_app_id` from inside its own body — so the set was right by
+arithmetic rather than by derivation. Two constraints happening to name one
+function each is not a property of the store; it is a fact about today. Walking
+the closure is what turns the same two names into an answer, and walking the
+closure is what demanded the bodies be readable, which is how the blind spot
+surfaced at all.
+
+**How to apply it.** When a check returns the answer you expected, ask what it
+would have had to read to know that, and confirm it read it. Three cheap forms:
+assert a positive control on the population (D114 fails if a directory declares
+no functions, or if `raising` falls below a floor — the sabotage that drops
+quoted-identifier declarations takes it 174 → 31 and reds there); make the
+parser report what it could not consume rather than skipping it, so silence is
+distinguishable from nothing-to-say; and, where a result is derived from a set,
+fail on a member the tool could not resolve instead of treating it as empty.
+D114 does all three, and each came out of this one finding rather than out of
+foresight.
+
+This is the same family as the repository's standing lesson that a test
+measures its fixture, and as D107's point that a repair which restores green and
+records nothing has told you nothing. The addition here is that the artefact
+need not be broken or silent. It can be right, loud, and hollow.
+
 ## D120 — A sabotage raises the production assertion, not a re-implementation of it
 
 *2026-09-26.*
@@ -8243,6 +8360,75 @@ override assertions pass under both, and that is stated in the test rather than
 discovered later: an assertion satisfied by the wrong answer as well as the
 right one is documentation, not a control. This is D120's rule about sabotage
 and D107's about a repair that records nothing, arriving together.
+
+## D125 — A union is verified by what it removed, not by what it contains
+
+Two threads append to one file, the merge conflicts, and the resolution is a
+union. Checking it by reading — "both sides are present" — is the natural move
+and the wrong one, because it asks for attention on a file you have already
+read four times tonight, and because a missing entry looks exactly like an
+entry you have already scrolled past.
+
+**The check is the removal, and it is one command:**
+
+```
+git diff origin/main -- docs/BASE44_EXIT_DECISIONS_2026-09-19.md | grep -c '^-[^-]'
+```
+
+Zero. A resolution that dropped another thread's entry cannot produce zero,
+whatever it looks like on screen. Pair it with the headings the diff ADDS, and
+the two together say "mine arrived, nobody else's left" without reading a line
+of prose.
+
+**Assert it rather than assume it, and the reason is what happened here.** The
+resolution taken was "take main's text, append my block", which is correct only
+when MY side is the pure append. A script asserted that both sides were pure
+appends — and the assertion FAILED, because #316 had also inserted a pointer
+into D109 recording that D110 closed its caveat. Main was not appending; it was
+appending and editing. The union was still right, for a reason that had not
+been established until the assertion refused: my side was the pure append, and
+only my side needed to be. Without the check the resolution would have been
+correct by luck, which is D119 in a conflict marker.
+
+**The same rule over a list has a sharper failure mode.** `package.json`'s
+`test:authority-store` is a space-separated list of suites, and a union over it
+silently RESTORES a suite the other side deliberately removed — a union is not
+safe over a list somebody may be shrinking. **And the one-integer check
+above is not available there**, because the list is one line: replacing it is
+one removal and one addition, so the grep reports `1` for a resolution that
+dropped nothing. Reaching for it anyway and reading that `1` as a dropped
+suite is the same mistake in the other direction. Over a list the check is a
+SET DIFFERENCE against each side — assert that neither side's entries are
+missing from the result, then count it distinct (70 on main, 71 here, nothing
+dropped, one added). The property being asserted is the same one; only its
+cheap violation looks different.
+
+**The one-integer check covers ONE side, and saying so is the entry's own
+rule applied to itself.** `git diff origin/main -- <file> | grep -c '^-[^-]'`
+compares the resolution with MAIN, so it can only catch dropping somebody
+else's entry. Dropping your own is invisible to it: the diff simply has fewer
+additions, and zero is still zero. Nothing in six resolutions of this file
+would have said so.
+
+The other side is the same shape and equally cheap — compare each entry you
+are carrying against the version you resolved FROM, not against a memory of
+having written it:
+
+```
+git show <pre-resolution-head>:<file>   # extract your own headings' blocks
+git show HEAD:<file>                    # and require them byte-identical
+```
+
+Byte-identical, not present: a heading that survived with a paragraph lost to
+a hunk boundary is the failure a presence check cannot see, and it is the
+failure a conflict resolution actually produces. Run both, and the pair says
+"nobody else's left, and mine came through whole" without reading either.
+
+**Generalisation.** Where two parties edit one artefact and the merge is
+mechanical, state the property you are relying on as an assertion in the
+resolution itself, and pick a property whose violation is cheap to detect.
+"Nothing was removed" is one integer. "Everything that should be here is here"
+is a reading, and a reading is what you were trying to avoid.
 
 ## D127 — An idempotent catch-up is undetectable by its own effect
 
