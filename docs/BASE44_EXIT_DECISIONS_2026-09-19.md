@@ -7734,6 +7734,78 @@ is named above — and that the three checks above cannot be the instrument for
 the survey, because an object they are blind to is exactly what is being looked
 for. The survey reads the two migration directories against each other on a
 FIXED head.
+## D110 — A guard follows the code, not the directory it was born in
+
+**The rule.** When a check's subject is a *kind of thing* — a raised code, a
+disposition, a call site — it enumerates every place that thing can occur, and
+the enumeration is asserted per place rather than over the union. A check that
+reads one directory because that is where its first instances happened to live
+is not measuring its subject; it is measuring a location, and it keeps passing
+while the subject moves.
+
+**The instance.** `services/authority-store/tests/http-boundary.test.mjs`
+reads the `do $$ … $$` preconditions of the store's migrations and fails when a
+`PENNSYNC_*` code they raise is missing from `MIGRATION_CODES` in
+`http-local-stack.mjs`. That allowlist is what lets a redacted CI log name which
+migration refused: `classifyToolFailure` emits a literal from the list and never
+the CLI's own output, because that output carries credentials. A code outside
+the list falls back to the generic verdict, which is precisely the diagnosis the
+scan exists to prevent — the scan was itself added after the broker and contract
+migrations raised two codes nobody had allowlisted.
+
+It read `supabase/record-migrations/` alone. The authority migrations under
+`supabase/migrations/` raise three codes of their own, and one of them,
+`PENNSYNC_UNKNOWN_DEPLOYMENT_APP`, had never been in the allowlist. It is raised
+by `20260919090000_deployment_app_pin.sql` when the app id in
+`pennsync.deployment_app_id` is not one `known_app` carries — that is, exactly
+when an operator mistypes the pin while standing a new deployment up, which is
+the failure whose diagnosis matters most and the one whose log is most redacted.
+The migration's own comment says an unrecognised value "fails the migration
+outright, so a typo cannot produce an uncontained store"; the operator reading
+that failure got `LOCAL_CLI_START_SQL_REJECTED`.
+
+**What changed.** The scan takes a frozen list of directories and asserts each
+one raised something before taking the union, because a renamed or moved
+directory would otherwise contribute nothing and pass on the other's codes —
+this guard's own defect arriving a second time, which is what D107 asks a
+refusal test to rule out. `PENNSYNC_UNKNOWN_DEPLOYMENT_APP` is allowlisted with
+its reason.
+
+**The widening is proved to bite, three ways**, because a guard that reads
+correctly and does nothing is the outcome this project keeps finding:
+
+- Running the widened scan before allowlisting reports
+  `PENNSYNC_UNKNOWN_DEPLOYMENT_APP` as unnamed. The gap was real, not a
+  hypothesis about future migrations.
+- Narrowing the list back to `record-migrations/` with the code left in the
+  allowlist passes everything. That is the measurement that matters: the old
+  scan could not have found this code under any circumstances, so nothing short
+  of widening would have surfaced it.
+- A planted case writes two files into a temporary directory — one raising a
+  code inside a `do $$` precondition, one raising a different code inside a
+  `create function` body — and asserts the first is seen and reported unnamed
+  while the second is invisible. Breaking the block pattern fails both that case
+  and the real one; pointing a scanned directory at one holding no `.sql` fails
+  the per-directory assertion by name.
+
+The second bullet is the general form worth carrying: **to show that widening a
+check found something, run the narrow version with the fix already in place.**
+If it passes, the narrow check could never have reported the defect, and the
+widening is the whole finding rather than a tidy-up that happened to coincide
+with one.
+
+**Also fixed here, as the same class in a second habitat.** The comment above
+`PENNSYNC_RECORD_STORE_REQUIRED` credited the scan to
+`record-migration-codes.test.mjs`, a file that does not exist; the assertion is
+in `http-boundary.test.mjs`. A pointer that reads perfectly and resolves to
+nothing costs the next reader a session, which is the `staging_app` →
+`deployment_app` lesson arriving in a comment rather than in SQL.
+
+**Scope left open.** This says nothing about codes raised outside a migration,
+and deliberately: a code inside a `create function` body is a refusal answered to
+a caller at runtime, not a migration failure, and naming one in this list would
+be wrong in the other direction. The planted case holds that line.
+
 
 
 ## D113 — A guard must build the population its assertion names
