@@ -81,7 +81,18 @@ export function classifyToolFailure(binary, args, error) {
   // Match known diagnostic categories only. No child text, filename, URL, token,
   // command, numeric exit payload or error cause is included in the returned code.
   const output = `${error.stdout || ''}\n${error.stderr || ''}`;
-  let reason = 'FAILED_OUTPUT_REDACTED';
+  // D123. THE FALL-THROUGH IS NOT ALSO THE EMPTY CASE. `FAILED_OUTPUT_REDACTED`
+  // used to receive both "matched none of the categories above" and "there was
+  // nothing to match", and main's own unreproducible
+  // `LOCAL_CLI_START_FAILED_OUTPUT_REDACTED` at `00ae087b` is what that cost: a
+  // reader could not tell whether the CLI had said something this module does
+  // not recognise, or had said nothing at all. They point at different things —
+  // an unrecognised diagnostic is a category to add here, while a silent
+  // non-zero exit is the runner or the child dying before it printed, which is
+  // outside this repository entirely — and the silent reading is the one that
+  // vanishes into the other. It stays inside the no-forwarding rule because
+  // neither code carries a byte of what the child said.
+  let reason = output.trim() === '' ? 'FAILED_NO_OUTPUT' : 'FAILED_OUTPUT_REDACTED';
   if (error.code === 'ENOENT') reason = 'EXECUTABLE_NOT_FOUND';
   else if (/supabase-go/i.test(output) && /not found|no such file|ENOENT|missing/i.test(output)) reason = 'DELEGATE_MISSING';
   else if (/failed to parse config|invalid config|decoding failed|toml:/i.test(output)) reason = 'CONFIG_INVALID';
