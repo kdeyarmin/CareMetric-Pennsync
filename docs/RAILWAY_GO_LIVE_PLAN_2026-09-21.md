@@ -1542,13 +1542,18 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   row, never replay it.
 
   The three derived migration counts were last re-derived that way, on a tree
-  rebased onto #311, and each rose by two: the roster's `created_date` order
-  and its display name are two forward record migrations. Every derived wave
-  moved because these values are **cumulative supersets rather than prefixes**,
-  so a migration in the read-only wave is in the two beyond it as well. No
-  handler count moved, which is the check worth reading here — the change adds
-  no capability, so a handler count that had moved would have meant the wave
-  classification shifted rather than that work arrived.
+  rebased onto the merge of the entry above, and each rose by two over the
+  figures that entry left: the roster's `created_date` order and its display
+  name are two forward record migrations. Every derived wave moved because
+  these values are **cumulative supersets rather than prefixes**, so a
+  migration in the read-only wave is in the two beyond it as well. No handler
+  count moved, which is the check worth reading here — the change adds no
+  capability, so a handler count that had moved would have meant the wave
+  classification shifted rather than that work arrived. The +2 was read off
+  `--summary` on the merged tree rather than added to either side's number:
+  the two conflicting readings above were both correct for their own tree, and
+  reconciling them by arithmetic is how a delta gets stated over a total that
+  no longer exists.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient

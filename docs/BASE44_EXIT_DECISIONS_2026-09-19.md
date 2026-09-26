@@ -7667,35 +7667,70 @@ names suggested rather than where the collation sorts it. The position is
 verified against a real cluster now. Both halves are the same lesson from
 different ends — a check is only as good as what it is given to look at.
 
-**A caveat that cuts the other way, and it is the same substitution.** Moving an
-object into the authority directory to satisfy the three checks above moves it
-OUT of a fourth. `services/authority-store/tests/http-boundary.test.mjs:115`
-scans `record-migrations/` and nothing else, cross-checking every code the
-migrations raise against the classifier's allowlist so that a redacted CI log
-still names what refused. It is run by CI at
-`.github/workflows/pennsync-authority.yml:158` — what it sits outside is
-`pnpm test`, not CI, and an earlier index line reading "the guard EXISTS" was
-doing the work of "the guard covers this", which is this ruling's own defect
-arriving in the sentence describing its remedy.
+**There is a second instance, and the pin does not report it.**
+`pennsync_private.file_object`, created by
+`record-migrations/20260920520000_file_locator_map.sql` for D77's locator map,
+carries `app_id pennsync_private.deployment_app` and is absent from all three
+checks — measured, not inferred: it appears in neither
+`restore-schema-fixture.mjs` nor `authority.test.mjs`, and
+`app-namespace-containment.test.mjs` builds from `../supabase/migrations/` at
+its line 60 and nowhere else.
 
-Read the guard's scope narrowly before applying the caveat, because it is
-narrower than the directory: it consumes only `do $$ … $$` preconditions, and
-its own comment says a code raised inside a `CREATE FUNCTION` body is
-deliberately out of scope, being a refusal answered to a caller rather than a
-migration failure. So what a move can silently lose coverage of is exactly a
-migration-level `do $$` precondition. This change loses none —
-`migrations/20260920605000_staff_name.sql` has no `do $$` block and raises no
-code (its only `PENNSYNC_` string is a comment naming another function's
-refusal), while the halves that do raise codes stayed in `record-migrations/`
-and are still scanned. That was confirmed against the files rather than
-reasoned from the shape of the change.
+Read carefully what that does to the domain count, because the obvious reading
+is wrong in a way worth stating. The pin is not merely stale by one: it is
+CORRECT for the tree it measures and silent about the store. Raising it to 22
+for a table the build cannot create would fail the assertion, so a reader who
+"fixes" the number breaks the check, and a reader who leaves it is pinning a
+count that omits a real app-scoped table. That is the pin's SCOPE rather than
+its value, which is the same substitution as the ruling above — a figure read
+off a build and believed of a deployment. This change leaves the count at 21,
+which is what this build holds, and names the gap here rather than moving a
+number it cannot measure.
 
-**The open half is D110**, which the plan thread holds: the guard should follow
-the CODE rather than the directory, scanning both and proving the new half bites
-under sabotage. Until it lands, a move of an object carrying a `do $$`
-precondition owes that check by hand.
+Moving `file_object` is not taken here. It is D77's table, its move changes
+what a fresh store gets and therefore owes the same forward reasoning D88
+requires, and the survey below is already under way in another thread; a second
+hand editing those three pins concurrently is how one of them ends up describing
+neither tree. What this entry fixes is the belief that the instance was
+singular.
 
-**Scope left open.** Whether any other object in `pennsync_private` is on the
-wrong side of this line is not surveyed here. A survey run while the contract
-batches are landing would be a reading of a tree that is moving, and the three
-checks above will catch the next one at the moment it is named.
+**A caveat for whoever runs the survey, measured rather than reasoned.** A
+fourth check looks at these files and is scoped differently from the three
+above: `services/authority-store/tests/http-boundary.test.mjs:115` reads
+`record-migrations/` and nothing else, cross-checking every code those
+migrations raise against the classifier's allowlist so a redacted CI log still
+names what refused. It is run by CI at
+`.github/workflows/pennsync-authority.yml:158`; what it sits outside is
+`pnpm test`.
+
+Its scope is narrower than the directory, and the narrowing is the whole of the
+caveat: it consumes only `do $$ … $$` blocks, because its own comment draws the
+line at a `CREATE FUNCTION` body — a code raised there is a refusal answered to
+a caller, not a migration failure, and the suite asserts that in the other
+direction too. So relocating a FILE moves its `do $$` precondition out of the
+scan, while relocating an OBJECT and leaving the precondition where it is
+costs nothing.
+
+That distinction is not hypothetical for the survey, and the first reading of it
+was wrong in both directions before it was measured. This change is the safe
+shape: `migrations/20260920605000_staff_name.sql` carries no `do $$` block and
+raises no code at all, its only `PENNSYNC_` string being a comment naming
+another function's refusal, and the two halves that do raise codes stayed in
+`record-migrations/` and are still scanned. But
+`record-migrations/20260920520000_file_locator_map.sql` — the file holding the
+other instance — DOES carry a precondition raising
+`PENNSYNC_RECORD_STORE_REQUIRED`, so moving that file whole would lose
+coverage of it, while `PENNSYNC_FILE_OBJECT_IMMUTABLE` beside it is outside the
+scan either way, being raised in a trigger body. Move the table and leave the
+precondition. Anyone applying this paragraph should re-measure the file in front
+of them: every claim in it was read out of the two files and the test, and an
+earlier reading of the same question taken from the shape of the rule reached
+the opposite conclusion twice.
+
+**Scope left open.** The full survey of `pennsync_private` is not run here and
+belongs to one hand rather than several, since its output is edits to the same
+three pins. What is settled is that the instance is not singular — `file_object`
+is named above — and that the three checks above cannot be the instrument for
+the survey, because an object they are blind to is exactly what is being looked
+for. The survey reads the two migration directories against each other on a
+FIXED head.
