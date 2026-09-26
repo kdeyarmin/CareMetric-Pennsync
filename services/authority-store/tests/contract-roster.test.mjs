@@ -397,13 +397,20 @@ const ROUND_TRIPPABLE = [
 ];
 
 test('the roster projects only seven columns a screen could send back', async () => {
-  const contract = await readFile(resolve(repository, CONTRACT), 'utf8');
   const guard = await readFile(resolve(repository, SELF_WRITE), 'utf8');
 
-  // The projection, read out of the contract's own `jsonb_build_object`.
-  const projection = contract.slice(contract.indexOf('select jsonb_build_object('));
-  const projected = [...projection.slice(0, projection.indexOf('$projection$'))
-    .matchAll(/^\s*'([a-z_]+)',/gm)].map(match => match[1]);
+  // The projection is read from the BUILT STORE, not from the contract's own
+  // file, and that distinction is the whole reliability of this test. A
+  // projection can be changed by a LATER migration — `create or replace
+  // function roster_entry` in a forward file is how a widening has to ship,
+  // since editing an applied migration in place is refused (D88). A version of
+  // this test that parsed `20260920030000_contract_roster.sql` passed
+  // unchanged while a forward migration added a column to the answer: the
+  // house defect, deciding from one representation while the thing arrives in
+  // another. Asking the store what it actually returns cannot go stale that
+  // way.
+  const [entry] = (await listAs(ADMIN_A)).entries;
+  const projected = Object.keys(entry).sort();
   // The allowlist, read out of the guard's own array literal.
   const writable = [...guard.slice(guard.indexOf("where f.key <> all (array["))
     .matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
@@ -413,7 +420,7 @@ test('the roster projects only seven columns a screen could send back', async ()
   assert.ok(projected.length >= 20, `read ${projected.length} projected columns, expected the full projection`);
   assert.ok(writable.length >= 15, `read ${writable.length} self-writable columns, expected the full allowlist`);
   assert.ok(projected.includes('tenant_role') && projected.includes('email'),
-    'the projection parse must find the authority columns');
+    'the projection must carry the authority columns');
   assert.ok(writable.includes('saved_signature') && writable.includes('preferred_language'),
     'the allowlist parse must find columns the roster does NOT project');
 
