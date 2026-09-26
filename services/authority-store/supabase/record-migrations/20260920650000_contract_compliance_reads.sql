@@ -1,6 +1,6 @@
 -- The read half of five compliance domains the frontend already writes.
 --
--- The filename's suffix is 640000 rather than 570000, and that is a
+-- The filename's suffix is 650000 rather than 570000, and that is a
 -- correctness property rather than a preference. `planMigration` sorts each
 -- directory's filenames and refuses `MIGRATE_OUT_OF_ORDER` the moment an
 -- APPLIED file sorts after a PENDING one, because applying the earlier file
@@ -9,16 +9,22 @@
 -- `contract_reference_reads` on the alphabet alone, so on any store that had
 -- already applied the reference reads — which the hosted project will the
 -- moment its operator works the backlog — the whole plan refused and this
--- migration could never be applied at all. It sorts after every committed
--- record migration now, and it has been moved TWICE for that reason: 570000 to
--- 590000, then to 640000 when #309 landed two roster migrations at 620000 and
--- 630000. That is the property to re-check on every rebase rather than once —
--- a suffix is only "after everything applied" relative to a tree, and any merge
--- that lands a migration ahead of this one restores the hazard the moment an
--- operator applies the backlog. The same shape is live in the pair sharing 580000,
+-- migration could never be applied at all.
+--
+-- It sorts after every committed record migration now, and it has been moved
+-- FOUR times for that reason: 570000 to 590000, then to 640000 when #309 landed
+-- two roster migrations at 620000 and 630000, then to 650000 when a sibling
+-- landed `20260920640000_operational_limit.sql` — the same PREFIX, which sorts
+-- after this file's name on the alphabet, so a shared timestamp is not a
+-- collision but it is not safety either. **A suffix is only "after everything
+-- applied" relative to a TREE**, so this is re-checked on every rebase rather
+-- than once, and it is now ASSERTED rather than re-read: the suite applies the
+-- whole record directory in apply order and requires this contract to be the
+-- last name in it, which is what caught the fourth move at rebase time instead
+-- of at an operator's apply. The same shape is live in the pair sharing 580000,
 -- where `contract_operational_tables` sorts before `contract_screen_records`;
 -- that is not this migration's to move, and nothing in the tree checks the
--- property yet.
+-- property for a file already merged.
 --
 -- HAND WRITTEN, like every contract. Five list capabilities over five carried
 -- tables — `incident`, `compliance_audit`, `adr_audit_case`,

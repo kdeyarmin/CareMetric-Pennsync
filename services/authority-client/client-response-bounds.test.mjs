@@ -25,7 +25,7 @@ import { API_TARGETS, BULK_RESPONSE_BYTES, STAGING_APP_ID, createStagingAuthorit
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATION = resolve(HERE,
-  '../authority-store/supabase/record-migrations/20260920640000_contract_compliance_reads.sql');
+  '../authority-store/supabase/record-migrations/20260920650000_contract_compliance_reads.sql');
 
 /** The client's own default, restated here so a change to it fails this suite. */
 const DEFAULT_RESPONSE_BYTES = 1024 * 1024;
