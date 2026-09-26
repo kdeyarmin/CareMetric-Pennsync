@@ -5,8 +5,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The five compliance read contracts.
@@ -26,28 +26,12 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * asserting the migration's comment.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const READS = 'services/authority-store/supabase/record-migrations/'
-  + '20260920640000_contract_compliance_reads.sql';
-// The crossed-chart guard lives in #313's file, not this one, so a suite that
-// applied only the store and this migration would fail to create the contract
-// at all. It is named rather than globbed for the reason the others are: this
-// suite applies record files BY CONSTANT, and a glob would silently pull in
-// whatever a sibling branch lands next.
-//
-// Naming it drags in its own two preconditions, and they are not decoration:
-// `20260920590000_chart_agency.sql` refuses to apply unless
-// `contract_task_list` exists, and `20260920580000_contract_operational_tables.sql`
-// in turn refuses without `pennsync_private.resolve_file_locator`. So the chain
-// is four files rather than one, measured by applying each alone and reading
-// the refusal it raised rather than by reading the headers. A shorter list
-// fails in `before`, which is the good direction: the suite cannot come to run
-// against a database where `chart_not_elsewhere` silently does not exist.
-const LOCATORS = 'services/authority-store/supabase/record-migrations/'
-  + '20260920520000_file_locator_map.sql';
-const OPERATIONAL = 'services/authority-store/supabase/record-migrations/'
-  + '20260920580000_contract_operational_tables.sql';
-const CHART_AGENCY = 'services/authority-store/supabase/record-migrations/'
-  + '20260920590000_chart_agency.sql';
+const RECORDS = 'services/authority-store/supabase/record-migrations/';
+const READS_NAME = '20260920640000_contract_compliance_reads.sql';
+// `chart_not_elsewhere`'s own file, read only for its text: the sabotage below
+// restores the term from the migration that ships it rather than from a retyped
+// copy. It is APPLIED by the directory walk, not by name.
+const CHART_AGENCY = RECORDS + '20260920590000_chart_agency.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -79,10 +63,28 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, LOCATORS,
-    OPERATIONAL, CHART_AGENCY, READS]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The WHOLE record directory in apply order, through #316's helper, rather
+  // than a hand-kept list of the files this contract happens to need.
+  //
+  // A list was written first and it named four: the record store, the broker
+  // family, `20260920590000_chart_agency.sql` for the `chart_not_elsewhere`
+  // term the ADR read below calls, and — because that file refuses to apply
+  // without `contract_task_list`, which refuses without
+  // `resolve_file_locator` — two more found by applying each alone and reading
+  // the refusal it raised. Its comment argued that naming files was safer than
+  // a glob, because a glob pulls in whatever a sibling branch lands next.
+  //
+  // That reasoning was backwards and #316 says why: the directory IS what a
+  // deployment applies, so a sibling's forward migration reaching this suite is
+  // the point rather than the hazard, and D88 makes a forward file the only
+  // legal way to change a store that has already applied the original. The
+  // helper fails closed on an empty listing, so this cannot quietly build a
+  // store with no contracts in it and then pass every refusal.
+  const applied = await applyRecordMigrations(db);
+  assert.ok(applied.includes(READS_NAME), `${READS_NAME} was not applied`);
+  assert.equal(applied.at(-1), READS_NAME,
+    'this contract must sort last in the directory, or `planMigration` refuses '
+    + 'MIGRATE_OUT_OF_ORDER once an earlier file has been applied to a store');
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   await db.exec(`insert into auth.users(id,email,email_confirmed_at)
