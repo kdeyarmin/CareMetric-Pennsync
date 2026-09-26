@@ -7942,3 +7942,40 @@ about an instrument whose population is smaller than the one you meant.
 
 The near-miss is recorded rather than the catch, because going and looking is
 what closed all three and no check did.
+
+## D122 — A composite figure is not partially readable
+
+Where a figure is a difference over populations read by different instruments,
+and one term needs a credential this session does not hold, report the terms you
+did read — each named with its instrument and the head it was read on — and
+**refuse the figure itself**. A session that supplies two of three terms and
+lets the reader close the gap has produced an inference wearing a
+measurement's clothes: the arithmetic is the reader's, the authority is the
+measurer's, and nothing in the sentence says so.
+
+The pending-migration count is the worked example. It is
+
+    committed (pinned) − LOCAL_ONLY_MIGRATIONS − what the hosted ledger has run
+
+and the first two terms are two different predicates over the same directory
+while the third is a row count in a hosted database behind a credential. Ladder,
+working from a checkout at `00ae087`, read the first two — the pin holds 85 keys
+and 85 `.sql` files sit in the two migration directories at that same head — and
+**declined the third and therefore the figure**, because it holds no hosted
+credential. That refusal is the decision. The alternative, publishing 85 and 1
+and letting a reader subtract a remembered 74, is how three derivations came to
+disagree on one night while each stayed internally consistent: a carried term is
+not a read term, and a figure assembled across two heads is a figure about
+neither.
+
+Closing it is cheap when the instrument is available, and that is the other half
+of the rule: at `00ae087` the hosted job's own failure message reads "the ledger
+holds 74 rows for 84 committed migrations", which supplies the third term AND an
+independent reading of the first, at that head, from one instrument. Pending is
+10. Prefer that to a subtraction every time, and where it is not available, say
+which term you are missing rather than which number you expect.
+
+This is D106's rule (state the derivation, not the result) sharpened to the case
+where the derivation cannot be completed, and it is the companion of D116: D116
+is about a figure you cannot reproduce with the instrument's own key, and this is
+about a figure one of whose terms you cannot read at all.
