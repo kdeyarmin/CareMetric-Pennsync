@@ -1,12 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 
 /**
  * A person's own notifications.
@@ -22,19 +19,16 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * of the six columns this reader filters on, so every alert it wrote would
  * have been invisible to the administrator it was for.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const AUDIT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920010000_activity_audit.sql';
-const NOTE_HISTORY = 'services/authority-store/supabase/record-migrations/'
-  + '20260920170000_contract_note_history.sql';
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const INCIDENT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920290000_contract_incident.sql';
-const MINT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920285000_notification_mint.sql';
-const NOTIFICATION = 'services/authority-store/supabase/record-migrations/'
-  + '20260920300000_contract_notification.sql';
+// The record files whose BEHAVIOUR this suite measures. It no longer decides
+// what is applied — the whole directory is — so a forward migration over any of
+// them is in the build the moment it is committed. Naming them still buys
+// something: a regression names the file rather than surfacing as a refusal code
+// that reads like a contract bug.
+const MEASURED = [
+  '20260920285000_notification_mint.sql',
+  '20260920290000_contract_incident.sql',
+  '20260920300000_contract_notification.sql',
+];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -49,6 +43,8 @@ const ALL = 'select "public"."pennsync_contract_notification_mark_all"($1) as re
 const SUBMIT = 'select "public"."pennsync_contract_incident_submit"($1,$2) as result';
 const A = 'agency-a';
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
 
 const seed = async (id, recipient, overrides = {}) => {
   const member = (await db.query(
@@ -81,11 +77,16 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // `caller_membership` arrives with the note-history contract (D34); the
-  // incident contract is here for the cross-contract test at the end.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT,
-    NOTE_HISTORY, TIME_OFF, MINT, INCIDENT, NOTIFICATION]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
+  // Every record migration, in the deployment's own order, rather than the eight
+  // files this suite used to name. The named build was short of the record
+  // directory by sixty files, so anything a later migration changed about the
+  // notification table or its contracts reached the deployment and not this
+  // store — and the cross-contract test at the end is exactly the shape that
+  // cannot see its own gap (D45).
+  applied = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.query(`insert into ${SCHEMA}."patient"
@@ -326,4 +327,33 @@ test('D44 urgent alert really reaches the administrator it is for', async () => 
   const moved = await move(ADMIN_A, alert.id, alert.version, 'dismiss');
   assert.equal(moved.idempotent, false);
   assert.equal((await list(ADMIN_A)).notifications.length, 0);
+});
+
+test('the store this suite measures is the whole record directory', async () => {
+  // The conversion's own check, and it is about the NAMES rather than about the
+  // store's state. A first version of this test asserted the column defaults
+  // `20260920590000_column_defaults.sql` sets on the very table this suite
+  // inserts into, reasoning that the old eight-file build could not have had
+  // them. Sabotage — omitting that file from the walk — left the test GREEN, and
+  // that is a finding about the test rather than about the build: the file is
+  // DERIVED from the generated store (D88's catch-up shape), so a build from
+  // nothing already carries every default it would add. A catch-up migration is
+  // by construction invisible in a fresh build; that is the property its own
+  // suite proves, and it is why no state assertion here can show the walk
+  // reached one. D127.
+  //
+  // So what is asserted is the relation the build now has: the applied set IS
+  // the directory. The eight files this suite used to name are a subset of it,
+  // and a forward migration is in the build the moment it is committed without
+  // anyone editing this file.
+  assert.deepEqual(applied, await recordMigrationNames());
+  for (const name of MEASURED) assert.ok(applied.includes(name));
+  // Named rather than counted: a count moves on somebody else's merge. These
+  // two arrived on main while this conversion was being written and neither is
+  // in MEASURED, which is the point.
+  for (const arrival of ['20260920590000_column_defaults.sql',
+    '20260920590000_chart_agency.sql']) {
+    assert.ok(applied.includes(arrival),
+      `${arrival} reaches this store although nothing here names it`);
+  }
 });
