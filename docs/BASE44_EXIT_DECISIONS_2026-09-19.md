@@ -7907,3 +7907,38 @@ correction. It did so by luck rather than design: the mirror version, treating
 check as passing. The direction is not a detail to leave to chance, which is the
 same discipline as D107's refusal to accept a repair that restores green and
 records nothing.
+
+## D118 — An instrument that covered less than you assumed reports about itself, not about the thing
+
+An instrument whose coverage is narrower than the question it was pointed at
+still exits in the shape of a result, and that shape is the whole danger: it
+answers about *itself* — about its pattern, its working directory, the branch it
+loaded rather than measured — while reading as an answer about the tree, the
+file, or the store. Nothing fails, so nothing surfaces it.
+
+Three instances arrived in one night, on one watch, and they are unlike enough
+that the shared shape is the useful part rather than any one of them:
+
+- **A grep whose pattern missed a name.** Checking that a sibling thread's two
+  new `MIGRATION_CODES` entries had survived a base merge, a grep matched one and
+  not the other. That is a reading about the PATTERN. The diff is the reading
+  about the FILE, and it showed both entries present. A colleague's change was
+  one report away from being called lost.
+- **A validation step that declined to run.** `pnpm run lint` from a drifted
+  working directory printed `script matched with lint is present in the root of
+  the workspace` and exited zero. A validation that declines to run and a
+  validation that passes are indistinguishable from the exit code alone.
+- **A job that stood down.** `Verify the committed store on hosted staging` is
+  green on a pull request by LOADING rather than measuring; only on `main`, with
+  `skipped 0`, is its green a measurement. A PR-side green says nothing about
+  what is pending.
+
+The rule: before treating an instrument's quiet exit as an answer, establish
+what it actually covered. Where a narrower and a wider reading both exist, the
+wider one is the reading about the thing — prefer it, and where only the
+narrower is available, say which one you have. This is D116's sibling from the
+other side: D116 is about a count whose key you cannot reproduce, and this is
+about an instrument whose population is smaller than the one you meant.
+
+The near-miss is recorded rather than the catch, because going and looking is
+what closed all three and no check did.
