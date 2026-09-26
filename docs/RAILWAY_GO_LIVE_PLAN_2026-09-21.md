@@ -1509,7 +1509,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 50 | 22 |
-  | `mutating` (derived) | 49 | 34 |
+  | `mutating` (derived) | 49 | 35 |
   | `integration` (derived) | 19 | 15 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1527,6 +1527,19 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   with its own CI green throughout. The figures above already carry batch A's
   seven reference reads and batch C's fourteen library and configuration
   capabilities.
+
+  The `mutating` row's migrations rose by one with D108, and the derivation
+  rather than the number: that entry's forward migration redefines
+  `library_chart` and `patient_education_chart`, so the wave carrying the
+  handlers over those two contracts gains it as a prerequisite. Its handler
+  count does not move, because the entry adds no capability — the file is
+  classified into a wave rather than merely no longer refused by
+  `LADDER_FUNCTION_DEFINED_TWICE`, which are different claims. The figure in
+  the row above was re-derived on the tree that carries batch D, not carried
+  over from the reading this entry was first written against: that earlier
+  reading said 32 → 33, and replaying it onto a base where batch D had landed
+  would have stated a delta over a total that no longer existed. Re-derive this
+  row, never replay it.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
