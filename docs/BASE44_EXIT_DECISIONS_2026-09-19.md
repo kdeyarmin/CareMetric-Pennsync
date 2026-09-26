@@ -8403,6 +8403,27 @@ missing from the result, then count it distinct (70 on main, 71 here, nothing
 dropped, one added). The property being asserted is the same one; only its
 cheap violation looks different.
 
+**The one-integer check covers ONE side, and saying so is the entry's own
+rule applied to itself.** `git diff origin/main -- <file> | grep -c '^-[^-]'`
+compares the resolution with MAIN, so it can only catch dropping somebody
+else's entry. Dropping your own is invisible to it: the diff simply has fewer
+additions, and zero is still zero. Nothing in six resolutions of this file
+would have said so.
+
+The other side is the same shape and equally cheap — compare each entry you
+are carrying against the version you resolved FROM, not against a memory of
+having written it:
+
+```
+git show <pre-resolution-head>:<file>   # extract your own headings' blocks
+git show HEAD:<file>                    # and require them byte-identical
+```
+
+Byte-identical, not present: a heading that survived with a paragraph lost to
+a hunk boundary is the failure a presence check cannot see, and it is the
+failure a conflict resolution actually produces. Run both, and the pair says
+"nobody else's left, and mine came through whole" without reading either.
+
 **Generalisation.** Where two parties edit one artefact and the merge is
 mechanical, state the property you are relying on as an assertion in the
 resolution itself, and pick a property whose violation is cheap to detect.
