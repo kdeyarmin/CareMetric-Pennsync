@@ -117,6 +117,65 @@ test('a start that fails applying a migration is named, and nothing else is forw
     'LOCAL_CLI_START_EXECUTABLE_NOT_FOUND');
   assert.equal(classifyToolFailure('docker', ['volume'], {}), 'LOCAL_DOCKER_VOLUMES_FAILED_NO_OUTPUT');
   assert.equal(classifyToolFailure('supabase', ['nonsense'], {}), 'LOCAL_TOOL_FAILED_NO_OUTPUT');
+  // D141. Three classes a start really fails with, each planted as the tool
+  // actually prints it rather than as the pattern spelled backwards. Before the
+  // branches they all answer `FAILED_OUTPUT_REDACTED`, which is the assertion
+  // that fails — and that matters more than usual here, because these branches
+  // were added on an occurrence whose own text is unrecoverable, so a branch
+  // nothing has been shown to reach would look exactly like one that works.
+  assert.equal(start('Error response from daemon: driver failed programming external '
+    + 'connectivity on endpoint supabase_db_pennsync: Bind for 0.0.0.0:54322 failed: '
+    + 'port is already allocated'), 'LOCAL_CLI_START_PORT_TAKEN_DURING_START');
+  assert.equal(start('listen tcp 0.0.0.0:54321: bind: address already in use'),
+    'LOCAL_CLI_START_PORT_TAKEN_DURING_START');
+  assert.equal(start('toomanyrequests: You have reached your pull rate limit. You may '
+    + 'increase the limit by authenticating and upgrading'), 'LOCAL_CLI_START_IMAGE_UNAVAILABLE');
+  assert.equal(start('failed to pull image public.ecr.aws/supabase/postgres:15.8.1: '
+    + 'manifest unknown'), 'LOCAL_CLI_START_IMAGE_UNAVAILABLE');
+  assert.equal(start('service supabase_db_pennsync is not healthy'),
+    'LOCAL_CLI_START_SERVICE_UNHEALTHY');
+  // Docker's own compose wording, which a bare `unhealthy` alternative used to
+  // catch by accident and a narrowed one must still catch on purpose.
+  assert.equal(start('dependency failed to start: container supabase_db_pennsync is unhealthy'),
+    'LOCAL_CLI_START_SERVICE_UNHEALTHY');
+  // AND THE NARROWING ITSELF, on Copilot's finding against this change. A bind
+  // failure that is NOT an occupied port must fall through to the redacted
+  // verdict rather than be named a taken port: naming a wrong cause confidently
+  // is worse than naming none, and it is the too-wide half of the asymmetry this
+  // branch's own comment describes. With the bare `bind: ` alternative restored
+  // these two answer `PORT_TAKEN_DURING_START` and fail.
+  assert.equal(start('listen tcp 0.0.0.0:54321: bind: permission denied'),
+    'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
+  assert.equal(start('bind: cannot assign requested address'),
+    'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
+  // AND THE ORDER, on Codex's finding against this change. A named migration
+  // refusal is normally followed by its CONSEQUENCE, so a classifier that asks
+  // about the consequence first reports it and hides the refusal — which is the
+  // one fact this module exists to preserve. Same for a SQL fault whose text
+  // happens to carry an infrastructure phrase. Move the three new branches back
+  // above the migration and SQL checks and these three fail with
+  // `SERVICE_UNHEALTHY` and `IMAGE_UNAVAILABLE` as actual.
+  assert.equal(start('ERROR:  PENNSYNC_CALLER_MEMBERSHIP_REQUIRED\n'
+    + 'container supabase_db_pennsync exited'),
+  'LOCAL_CLI_START_MIGRATION_PENNSYNC_CALLER_MEMBERSHIP_REQUIRED');
+  assert.equal(start('PENNSYNC_UNKNOWN_DEPLOYMENT_APP\ndependency failed to start: '
+    + 'container supabase_db_pennsync is unhealthy'),
+  'LOCAL_CLI_START_MIGRATION_PENNSYNC_UNKNOWN_DEPLOYMENT_APP');
+  assert.equal(start('ERROR:  relation "x" does not exist\nSQLSTATE 42P01\nrate limit'),
+    'LOCAL_CLI_START_SQL_REJECTED');
+  // The order between them is load-bearing, not incidental: an image the runner
+  // could not obtain ALSO leaves the service unstarted, so a message carrying
+  // both must report the cause and not the consequence. Swap the two branches
+  // and this one answers `SERVICE_UNHEALTHY` and fails.
+  assert.equal(start('failed to pull image: manifest unknown\n'
+    + 'container supabase_db_pennsync exited'), 'LOCAL_CLI_START_IMAGE_UNAVAILABLE');
+  // And none of the three may carry a byte of what the tool said. The port case
+  // is the one to check, because the daemon names the container and the port in
+  // the same sentence the pattern matches on.
+  for (const planted of ['Bind for 0.0.0.0:54322 failed: port is already allocated',
+    'toomanyrequests: pull rate limit for supabase/postgres', 'supabase_db_pennsync is not healthy']) {
+    assert.match(start(planted), /^LOCAL_CLI_START_[A-Z_]+$/);
+  }
   // Categories that already existed still win over the new ones.
   assert.equal(start('ERROR: Cannot connect to the Docker daemon'), 'LOCAL_CLI_START_DAEMON_UNAVAILABLE');
   assert.equal(classifyToolFailure('supabase', ['start'], { stdout: 'ERROR: x', killed: true }),

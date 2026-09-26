@@ -131,6 +131,10 @@ test('the refusal survives the filter that decides what may be printed', () => {
   // says the child printed nothing is replaced by the generic verdict on its
   // way out — which is the defect it was split out of.
   assert.ok(emittable('LOCAL_CLI_START_FAILED_NO_OUTPUT'));
+  // D141's three additions are admitted by the same shape, no edit needed.
+  assert.ok(emittable('LOCAL_CLI_START_PORT_TAKEN_DURING_START'));
+  assert.ok(emittable('LOCAL_CLI_START_IMAGE_UNAVAILABLE'));
+  assert.ok(emittable('LOCAL_CLI_START_SERVICE_UNHEALTHY'));
   // And the widening is five digits and nothing else: the redaction exists
   // because the CLI prints credentials, so it stays shut on everything a
   // subprocess could have said.
