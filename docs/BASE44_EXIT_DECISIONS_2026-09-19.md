@@ -8103,6 +8103,16 @@ and the three `pennsync_staging_*` reads are bound to an app id this store does
 not admit. That is the difference between 37 and the 33 measured elsewhere, and
 naming it keeps two predicates from reading as a disagreement.
 
+**The second example, which is the one that will catch you.** This rule reads
+as being about test design, and it is not. Four minutes after writing the
+paragraphs above, the author of this entry sent the project owner a sentence
+that said seven list capabilities were broken and that a new check "calls all
+152 of these" — handing one population's count to another population in the
+only message a person was going to read. The suite it describes had the rule
+applied correctly throughout. So the place this bites next is a status line, a
+pull request body or a note to somebody who cannot check, not a sweep: any
+sentence carrying two counts of different things owes each of them its noun.
+
 **How to apply.** Declare each capability as one that ANSWERS under stated
 arguments, or as one PINNED to the refusal it stops at, and make the two sets
 equal the real surface. Then a pin is a visible debt instead of silent
@@ -8110,3 +8120,59 @@ coverage, paying one down fails as loudly as one changing, and the sweep's
 reach is a number somebody can read rather than an assumption. And keep a
 positive control: a sweep whose finding count is zero and whose detector has
 never fired are the same reading (D119).
+
+
+## D132 — An instrument can silently cover MORE than its author assumed, not only less
+
+*2026-09-26.*
+
+**The rule.** D118 records that an instrument which quietly covered less than
+you assumed is reporting about itself rather than about the tree. The other
+half was missing: an instrument can just as quietly cover MORE, by taking in
+text or rows that belong to nothing it is measuring. The two are one family
+with opposite signs, and the over-capture is the more dangerous of them —
+truncation reads like completeness, which is merely uninformative, while
+over-capture reads like a FINDING, and a finding gets acted on.
+
+**The worked example.** A reading of `services/authority-store/supabase/record-migrations/`
+split both files on `create function` boundaries and counted the bodies
+containing a call to `pennsync_records.operational_limit`. It reported eight,
+against seven measured by execution, and the extra one was
+`contract_note_conversion_create` — a WRITE path, which would have changed what
+the defect's blast radius was called rather than merely its size.
+
+The body has no such call.
+`20260920580000_contract_operational_tables.sql` ends each group of functions
+with a `revoke`/`grant` block that names every signature in the file, including
+`operational_limit(integer, text)` at line 1366. A split on `create function`
+puts that block inside the chunk of whatever function precedes it. The text was
+never in the body; it belonged to no body at all.
+
+Note what the splitter did NOT do. It did not mis-parse, drop a file, or fail.
+It produced a larger number, from real text, in the file it was pointed at —
+which is exactly what a real finding looks like. The instrument's author had
+already caught themselves once and corrected the claim from "eight bodies call
+it" to "eight is an upper bound from reading, not reachability", and that
+correction was right and still left the artefact in place, because the artefact
+is not about reachability.
+
+**What settled it, and the discipline that matters.** Three readings, each with
+its own instrument: the wrapper driven with valid fields ANSWERED on the tree
+where the other seven were dying; its body in `pg_proc.prosrc` contained
+neither `operational_limit` nor `least`; and a closure over the function bodies
+in the built store returned seven.
+
+Then the part worth copying. Seven was the answer the reader expected, so the
+crosser was CONTROLLED before the result was reported: a call to the helper was
+planted inside that very function in a scratch build, and the crosser had to
+report eight and name the plant. A crosser that agreed by reading nothing would
+have stayed at seven and looked like confirmation (D119). **Controlling the
+answer you expect is harder than controlling the one that surprises you, and it
+is the one that is usually skipped.**
+
+**How to apply.** When an instrument splits a corpus into units, ask what lives
+BETWEEN the units, because it lands in one of them. Prefer the built artefact
+over the source text where one exists — `pg_proc.prosrc` has no trailing grant
+block and no `create or replace` ambiguity. And where two instruments disagree
+by one, do not average them or prefer the larger: the difference has a cause,
+and it is usually in the cheaper instrument's boundaries.
