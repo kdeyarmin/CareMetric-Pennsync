@@ -5,8 +5,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import {
+  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, recordMigrationNames,
+} from './record-migrations.mjs';
 
 /**
  * Vehicle maintenance.
@@ -21,8 +23,12 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * real `for update` on that same parent, which is what it was emulating.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const FLEET = 'services/authority-store/supabase/record-migrations/'
-  + '20260920310000_contract_fleet.sql';
+// The file whose BEHAVIOUR this suite measures. It no longer decides what is
+// applied — the whole record directory is — so a forward migration over this
+// contract is in the build the moment it is committed. There is none today,
+// measured before the swap rather than inferred from the pass afterwards.
+const FLEET = '20260920310000_contract_fleet.sql';
+const MEASURED = [FLEET];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -48,6 +54,8 @@ const GOOD_ENTRY = Object.freeze({
   cost_cents: 8950, invoice_reference: 'RA-99',
 });
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
 
 before(async () => {
   db = new PGlite();
@@ -56,8 +64,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, FLEET]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
+  applied = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, name] of [[A, 'Keystone Home Health'], [B, 'Allegheny Care Partners']]) {
@@ -388,7 +398,7 @@ test('the two actions this contract does not serve are served already', async ()
   // `context` is `contract_tenant_memberships` (D34) and `staff` is
   // `contract_roster` (D22); the handler routes both. Read rather than
   // asserted, so that deleting either contract fails here.
-  const source = readFileSync(resolve(repository, FLEET), 'utf8');
+  const source = readFileSync(new URL(FLEET, RECORD_MIGRATION_DIRECTORY), 'utf8');
   for (const absent of ['contract_fleet_context', 'contract_fleet_staff']) {
     assert.equal(source.includes(absent), false, `${absent} should not exist`);
   }
@@ -398,4 +408,62 @@ test('the two actions this contract does not serve are served already', async ()
     handlers.indexOf('manageVehicleMaintenance:') + 2600);
   assert.match(body, /listMyTenantMemberships/);
   assert.match(body, /listAgencyRoster/);
+});
+
+test('the widened build is the whole record directory and exposes the same contract', async () => {
+  // Two claims, and the second is the one that needs a control.
+  //
+  // First, the store this suite measures is now the directory itself rather
+  // than a list kept here — so a forward migration over the fleet contract is
+  // in the build the moment it is committed, which is what D88 makes the only
+  // legal way to change a store that has already applied the original.
+  const names = await recordMigrationNames();
+  assert.deepEqual(applied, names,
+    'the build is the record directory, sorted, and nothing else');
+  for (const arriving of ['20260920590000_column_defaults.sql',
+    '20260920590000_chart_agency.sql']) {
+    assert.ok(applied.includes(arriving),
+      `${arriving} reaches this suite's store now and did not before`);
+  }
+
+  // Second, the widening changed nothing about what THIS capability exposes.
+  // That is D127's strong case, and it was established before the swap: five
+  // files in the record directory name the fleet contract or its tables — the
+  // generated store, this contract, the derived column-defaults catch-up, and
+  // two that only mention it in a comment — and nothing dated after the
+  // contract carries a `create or replace` naming fleet or vehicle. The
+  // catch-up is derived from the generated store, so its defaults are already
+  // in a fresh build and it is unobservable here, which is exactly D127's
+  // point. An assertion over the current surface alone would pass whether or
+  // not the widening moved it, so the old three-file store is built here as a
+  // control and the two surfaces are compared. `proname` AND the identity
+  // arguments, because PostgREST resolves an RPC by the names of the body's
+  // keys, so a renamed parameter is a changed surface.
+  const fleetSurface = async client => (await client.query(
+    `select p.proname, pg_get_function_identity_arguments(p.oid) as args
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where p.proname like '%fleet%' or p.proname like '%vehicle%'
+      order by 1, 2`)).rows;
+  const derived = await fleetSurface(db);
+  assert.ok(derived.length > 0, 'the contract must be reachable at all');
+
+  const control = new PGlite();
+  try {
+    await control.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+    const dir = new URL('../supabase/migrations/', import.meta.url);
+    for (const name of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) {
+      await control.exec(await readFile(new URL(name, dir), 'utf8'));
+    }
+    // The hand-kept build this file carried before the swap, rebuilt by
+    // omitting everything else rather than by naming paths again.
+    await applyRecordMigrations(control, {
+      omit: names.filter(name => ![
+        '20260919170000_record_store.sql', '20260919180000_record_brokers.sql', FLEET,
+      ].includes(name)),
+    });
+    assert.deepEqual(derived, await fleetSurface(control),
+      'widening the store must not change what this contract exposes');
+  } finally {
+    await control.close();
+  }
 });
