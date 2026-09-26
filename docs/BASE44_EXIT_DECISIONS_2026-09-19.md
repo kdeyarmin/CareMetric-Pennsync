@@ -8168,6 +8168,55 @@ about an instrument whose population is smaller than the one you meant.
 The near-miss is recorded rather than the catch, because going and looking is
 what closed all three and no check did.
 
+## D119 — A right answer is not evidence the instrument read anything
+
+D114's reachability tool answered "nothing reachable raises", and the answer was
+correct. It was also worth nothing, because the tool could not read either of
+the two functions it was answering about. Both are written by
+`execute format($fn$ create function … $fn$)` inside a do-block, and the
+segmenter stripped nested dollar-quoted regions wholesale, so both bodies were
+erased before anything looked at them. An empty set of codes came back from an
+empty set of bodies. Nothing was standing behind a true statement.
+
+**The rule is to verify the instrument SAW the thing before trusting that it
+agrees with you.** It is the sibling of D118, which covers an instrument that
+measures less than you assumed, and it is the dangerous one of the pair: that
+case announces itself the day the answer comes out wrong. This one never would
+have. The tool would have kept
+returning the right answer until a migration put a raising function behind a
+`check` constraint, at which point it would have returned the right answer's
+shape and the wrong answer's content, with every suite green throughout. A
+check whose failure mode is "still correct, for no reason" has no failure mode
+anybody will notice.
+
+**The worked example is the closure, and it is worth following because the
+coincidence is so ordinary.** `deployment_matches_pin` calls
+`deployment_app_id()` and `deployment_app_is_pinned` calls `app_admitted()`, so
+a depth-one reading of the migrations finds both functions and is complete. It
+is also entirely uninformative about the link between them — `app_admitted`
+calls `deployment_app_id` from inside its own body — so the set was right by
+arithmetic rather than by derivation. Two constraints happening to name one
+function each is not a property of the store; it is a fact about today. Walking
+the closure is what turns the same two names into an answer, and walking the
+closure is what demanded the bodies be readable, which is how the blind spot
+surfaced at all.
+
+**How to apply it.** When a check returns the answer you expected, ask what it
+would have had to read to know that, and confirm it read it. Three cheap forms:
+assert a positive control on the population (D114 fails if a directory declares
+no functions, or if `raising` falls below a floor — the sabotage that drops
+quoted-identifier declarations takes it 174 → 31 and reds there); make the
+parser report what it could not consume rather than skipping it, so silence is
+distinguishable from nothing-to-say; and, where a result is derived from a set,
+fail on a member the tool could not resolve instead of treating it as empty.
+D114 does all three, and each came out of this one finding rather than out of
+foresight.
+
+This is the same family as the repository's standing lesson that a test
+measures its fixture, and as D107's point that a repair which restores green and
+records nothing has told you nothing. The addition here is that the artefact
+need not be broken or silent. It can be right, loud, and hollow.
+
 ## D120 — A sabotage raises the production assertion, not a re-implementation of it
 
 *2026-09-26.*
