@@ -7612,3 +7612,62 @@ predating a requirement can migrate rather than be refused at load. The missing
 column DEFAULTS are the real gap, and they are separate — a default fires only
 where a column is omitted, so it costs the import path nothing and costs every
 create everything. That entry is left as written, being a dated record.
+## D109 — A `pennsync_private` table created from the record directory is outside three ratchets
+
+2026-09-26. The rule: **a `pennsync_private` TABLE belongs in
+`services/authority-store/supabase/migrations/` unless it depends on something
+in `pennsync_records`. The test is not tidiness. It is whether the three checks
+that measure that schema can see the table at all**, because each of them builds
+from that directory and from nothing else:
+
+- `tests/restore-schema-fixture.mjs` pins every table and column the store is
+  proved to survive a `pg_dump` and `pg_restore` with.
+- `tests/authority.test.mjs` pins the `pennsync_private` table list, and with it
+  asserts that EVERY table there has row security both enabled and forced.
+- `tests/app-namespace-containment.test.mjs` pins that every app-scoped column
+  carries the `deployment_app` domain, with the count pinned so adding one is a
+  deliberate act.
+
+`20260920110000_claim_new_chart.sql` is the exception on the other side and
+states its own reason: it asks `pennsync_records.caller_tenant_role`, so it
+cannot apply before the record store exists. It creates a FUNCTION, not a table.
+
+**The instance.** `pennsync_private.staff_name` — the staff display name the
+owner chose over showing a work email — was created by
+`record-migrations/20260920630000_roster_display_name.sql`, beside the
+`caller_roster` bridge and the two roster contracts that read it. Nothing was
+wrong with the table. It was simply invisible to all three checks, and it stayed
+invisible until the fixture was edited to name it, at which point the backup
+rehearsal failed because the table did not exist in its lab.
+
+**What makes it worth a number is the one-line fix that was not taken.**
+Deleting that fixture entry would also have gone green, and would have left the
+table permanently outside the backup rehearsal with three ratchets reporting
+nothing — a guard that reads correctly and does nothing, which is the worst
+outcome this project keeps rediscovering. Moving the table instead made all
+three fire, which is the coverage argument as a measurement rather than as a
+claim: the RLS assertion in particular is one the table passes on the substance
+and was simply never being asked.
+
+**The ordering is by construction, not by timestamp.**
+`tools-pennsync-migrate.mjs` walks `[MIGRATION_DIRECTORY,
+RECORD_MIGRATION_DIRECTORY]` in that order, and every harness does the same, so
+an authority migration always applies before any record migration whatever the
+two file names say. That is what makes splitting one change across the two
+directories safe, and it is worth stating because the timestamps invite the
+opposite conclusion.
+
+**How it was found.** On CI, and not by either red that had been predicted for
+that pull request. The failing job was `restore-postgres`, which needs
+PostgreSQL 17 with real `pg_dump` and `pg_restore` and therefore runs in neither
+`pnpm test` nor a local PostgreSQL 16 cluster. Its proximate fault was smaller
+and separate: that fixture compares the catalogue POSITIONALLY against an
+object's insertion order, and the new entry was placed where a reading of the
+names suggested rather than where the collation sorts it. The position is
+verified against a real cluster now. Both halves are the same lesson from
+different ends — a check is only as good as what it is given to look at.
+
+**Scope left open.** Whether any other object in `pennsync_private` is on the
+wrong side of this line is not surveyed here. A survey run while the contract
+batches are landing would be a reading of a tree that is moving, and the three
+checks above will catch the next one at the moment it is named.
