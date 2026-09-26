@@ -13,8 +13,18 @@ import { readMigrations } from '../../../tools-pennsync-provision.mjs';
  * `pg_catalog.least(a, b)` raises `function pg_catalog.least(...) does not
  * exist` the first time the body runs. `pennsync_records.operational_limit`
  * shipped with exactly that, and because a plpgsql body does not resolve names
- * at creation, the migration applied cleanly and seven list capabilities died
- * on any non-null limit.
+ * at creation, the migration applied cleanly and eight capabilities died on any
+ * non-null limit.
+ *
+ * WHERE THE HABIT COMES FROM, AND WHY DROPPING THE PREFIX IS SAFE. That
+ * function is declared `immutable set search_path = ''`, which is why its body
+ * reached for a qualification in the first place: under an empty search path a
+ * real function MUST be qualified or it is not found, and every other qualified
+ * call in this store is correct for that reason. A construct is not a schema
+ * object, so it resolves under an empty search path with no qualification at
+ * all, and removing the prefix adds no search-path exposure. That is why the
+ * failure below says DROP the prefix -- sending the next author to find the
+ * right schema for `least` sends them somewhere that does not exist.
  *
  * WHY A GUARD AND NOT A FIX. The tree holds hundreds of qualified calls over
  * forty-odd distinct names, and all but one work ONLY because they happen to be
@@ -86,8 +96,10 @@ test('every pg_catalog name the migrations qualify is a real function', async ()
       if (!await resolves(db, name)) unresolved.push(`${name} (${[...files].sort().join(', ')})`);
     }
     assert.deepEqual(unresolved, [],
-      'these are SQL constructs or misspellings, not functions, and cannot be schema-qualified;'
-      + ' drop the pg_catalog. prefix');
+      'pg_catalog holds no function of this name. If it is a construct -- least, greatest,'
+      + ' coalesce, nullif -- DROP the prefix: it is not a schema object, so it resolves'
+      + " under an empty search_path unqualified and loses nothing. Otherwise the name"
+      + ' itself is misspelt, and that is what to fix');
   } finally {
     await db.close();
   }
