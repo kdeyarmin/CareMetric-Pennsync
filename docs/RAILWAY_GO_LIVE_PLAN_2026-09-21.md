@@ -2767,76 +2767,87 @@ complete-set proof answers that risk where the ceiling only approximated it,
 and those 5 are served today. A declaration is not a success, and the only way
 to tell them apart is to run the call.
 
-Measured on `main` after #294:
+Measured on `main` after #294, and kept as a dated record of that head rather
+than maintained:
 
-> entity routes: 14 declared, 29/242 landable call sites SERVED, 213 still to
-> adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
-> and 2 pass arguments this cannot read — of those 213, across 39 entities: a
-> wider generic family could serve 1 reads and 0 writes above D16's ceiling;
-> 212 need a named capability
+```
+entity routes: 14 declared, 29/242 landable call sites SERVED, 213 still to adopt
+  30 of those are sites a declared route REFUSES (User.list:sort), and 2 pass arguments this cannot read
+  of those 213, across 39 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 212 need a named capability
+```
 
-After #295 and #300:
+And after #295 and #300, also a record of that head and not maintained either:
 
-> entity routes: 21 declared, 38/237 landable call sites SERVED, 199 still to
-> adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
-> and 2 pass arguments this cannot read — of those 199, across 38 entities: a
-> wider generic family could serve 1 reads and 0 writes above D16's ceiling;
-> 198 need a named capability
+```
+entity routes: 21 declared, 38/237 landable call sites SERVED, 199 still to adopt
+  30 of those are sites a declared route REFUSES (User.list:sort), and 2 pass arguments this cannot read
+  of those 199, across 38 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 198 need a named capability
+```
 
-And after #299, batch E's ten contracts, which is what this head measures:
+And the reading on THIS tree, after #299 carried batch E. This one is
+`pnpm run check:entity-routes`'s own output and is **pinned**:
+`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
+so paste what the tool prints and never retype, rewrap or re-indent it.
 
-> entity routes: 33 declared, 47/237 landable call sites SERVED, 190 still to
-> adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
-> and 5 pass arguments this cannot read — 3 route(s) are declared but UNPROVED
-> — every call site passes a variable, so the contract's own refusals are what
-> checks them: `NotificationPreference.create`, `NotificationPreference.update`,
-> `PatientRecommendation.create` — of those 190, across 33 entities: a wider
-> generic family could serve 1 reads and 0 writes above D16's ceiling; 189 need
-> a named capability
+```
+entity routes: 33 declared, 47/237 landable call sites SERVED, 190 still to adopt
+  30 of those are sites a declared route REFUSES (User.list:sort), and 5 pass arguments this cannot read
+  3 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 190, across 33 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 189 need a named capability
+```
 
-And after #296, batch D's fourteen over the operational tables, which is what
-this head measures:
+**What that block says, and why the prose below it names no total from it.**
+The numerator is the count of landable call sites a declared route actually
+serves when the site's own arguments are put through it, and the denominator is
+the count of sites with anywhere to land at all. The numerator moved on #295
+(batch C's nine reference and configuration sites) and again on #299 (batch E's
+nine, which are different sites — chased rather than inferred from the
+entities), and not on #300, which changed the denominator only. The third line
+of the block appears exactly when the tool prints it: a route every one of
+whose call sites passes a variable cannot be run through the gate at all, so
+what checks it is the contract's own refusals and the suite that raises them.
 
-> entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adopt
->   30 of those are sites a declared route REFUSES (User.list:sort), and 20 pass arguments this cannot read
->   8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
->   of those 166, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 165 need a named capability
+**The two lines about unreadable sites and unproved routes are one population,
+and that was measured rather than assumed.** Each of the three unproved routes
+has exactly one call site — `src/components/oasis/OASISToPatientChartPusher.jsx`
+and the two in `src/components/notifications/NotificationPreferences.jsx` — and
+those three sites are three of the sites the line above counts as unreadable.
+So the unreadable count rose on this merge because three sites GAINED a
+declared route the gate cannot run, not because three sites stopped being
+readable: nothing regressed inside a merge whose headline is capabilities
+landing. The two readings could as easily have described separate populations,
+which would have meant the opposite, and the only way to tell was to open the
+three files. The general form is worth carrying to any reading like it: **a
+figure that can only go up when a route is added should be labelled as such
+wherever it appears**, because unlabelled it is indistinguishable from a count
+of things that broke.
 
-**The served figure and both denominators are in the block above and are not
-restated here.** The numerator moved on #295 (batch C's nine reference and
-configuration sites), again on #299 (batch E's nine, which are different sites
-— chased rather than inferred from the entities) and again on #296 (batch D's,
-over the seven operational tables), and not on #300, which changed the
-denominator only. **The unreadable count rose with the last two, and that is
-not a regression**: those are sites over entities that now HAVE a route and
-pass a variable, so they became countable rather than becoming worse. Said
-without a figure on purpose, because "the unreadable count tripled" would be
-accurate and misleading at once. The third line above is new
-and appears exactly when the tool prints it: a route every one of whose call
-sites passes a variable cannot be run through the gate, so what checks it is
-the contract's own refusals and the suite that raises them.
-
-Both denominators are real and they are different populations — the larger is
-every entity call the frontend makes, the smaller the subset with a table
-behind it — so a served figure quoted without saying which one it is over is
-the same label error this page warns about above. **The smaller denominator
-moved on its own** when D83's five global-reference writes stopped being
-counted as landable, so the readings above but the last are records of earlier
-heads and the last is the current one. Re-derive them
-rather than quoting them: every merge that points a screen moves the numerator
-and every migration that carries an entity moves the denominator.
+**Two denominators, both real and different populations** — every entity call
+the frontend makes, and the subset with a table behind it. A served figure
+quoted without saying which one it is over is the same label error this page
+warns about above. **And the smaller one has moved on its own**: it fell by
+five when D83's global-reference writes stopped counting as landable, and the
+remainder fell by the same five with **nothing adopted**. #299 then moved that
+remainder again, by nine, because nine screens adopted routes. Those two moves
+look alike in the numbers and mean opposite things, which is the whole reason
+this section states sizes and causes and leaves every total to the block: a
+remainder falling is progress or reclassification depending on which, and only
+the cause tells you. Re-derive rather than quoting — every merge that points a
+screen moves the numerator and every migration that carries an entity moves the
+denominator.
 
 **And this page carries two remainders that are not the same population, which
 is worth saying because they were briefly the same number.** The route gate's
-remainder — call sites with nowhere to land *yet* — is the block's own "still
-to adopt". The destination gate's is **208**: call sites with nowhere to land
-*at all*. On the head where this paragraph was first written the two were the
-same number, so either read as correct there, and every batch since has moved
-the first and left the second alone. A sentence that had been right became
-wrong with nothing changing in it. The block's refusal count is the more useful
-number for planning than the remainder itself: the route exists and the
-*screen* has to change, which is per-screen work rather than per-entity work.
-Sites whose arguments the tool cannot read count as unserved,
+remainder is call sites with nowhere to land *yet*, printed in the block above.
+The destination gate's is **208**: call sites with nowhere to land *at all*,
+measured by `check:frontend-destination` and not by this gate. On the head
+where this paragraph was first written the two were the same number, so either
+read as correct there, and #295 and #299 each moved the first and left the
+second alone. A sentence that had been right became wrong with nothing changing
+in it. The block's second line counts the sites a declared route REFUSES: the
+route exists and the *screen* has to change, which is per-screen work rather
+than per-entity work, and that is the more useful number for planning than the
+remainder itself. Sites whose arguments the tool cannot read count as unserved,
 because a gate that guessed would be back to counting declarations.
 
 **The gate has three states, and the third one is why the batches can work at
@@ -2888,6 +2899,14 @@ contracts are not an expensive approach chosen over a cheap one that was
 available. What is left is roughly forty entities' worth of named contracts and
 handlers — the same shape as the 80 already built — rather than one design
 decision.
+
+#### The destination gate, which measures a different population
+
+Everything above this heading is the route gate's, and its measured figures
+live in the pinned block rather than in the prose around it. Everything below
+is `check:frontend-destination`'s — a different instrument over a different
+population, whose figures are prose here and are not pinned. A paragraph put on
+the wrong side of this line will read as a claim about the other gate.
 
 **What the dropped domains cost, and by which instrument.** `node
 tools-frontend-retired-inventory.mjs --summary`, re-measured on `main` after

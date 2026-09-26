@@ -73,7 +73,7 @@ Use pnpm through Corepack. Do not use npm or yarn for installs.
 Standard scripts are in `package.json` and `README.md`. Notable points:
 
 - `pnpm run dev` starts only the Vite dev server (default `http://localhost:5173`) inside the cloud environment.
-- `pnpm test` runs the utility/core, schema/contract, security, deduplication, and component/page suites.
+- `pnpm test` runs the utility/core, schema/contract, security, deduplication, and component/page suites. It is an `&&` chain of eleven scripts, so a failure in any one **skips every script after it**, and those five are the LAST five in the chain. `test:external-integrations` is third and includes `tools-app-store-migration.test.mjs`, which fails on a shallow clone and passes on a full one — so on a shallow clone the chain stops there and eight scripts never run: `test:pennsync-api`, `test:central-admin`, `test:utils`, `test:contracts`, `test:security`, `test:dedupe`, `test:hhgs` and `test:components`. The failure is loud, but what it hides is silent: reading it as "the known iOS-assets failure, everything else passed" is reading a partial run as a whole one. Re-run the skipped scripts by name, or clone full.
 - `pnpm run lint` is clean: 0 errors AND 0 warnings. Keep it that way — a new warning is a real finding, not background noise. Coverage includes `src/App.jsx`, `src/main.jsx`, and `src/routes.jsx`.
 - `pnpm run typecheck` is an informational baseline in CI (`continue-on-error`); it may report pre-existing errors and is not a gate.
 - `pnpm run typecheck:signal` **is** a CI gate (CI + Workflow Quality). It filters the checkJs pass to high-signal defect codes; keep it at 0 findings.
