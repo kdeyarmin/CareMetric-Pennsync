@@ -8260,8 +8260,17 @@ It survives review because **a plpgsql body resolves no names at creation** —
 D51's rule arriving from a second direction. `20260920580000_contract_operational_tables.sql`
 applies cleanly with `pg_catalog.least` inside `pennsync_records.operational_limit`,
 and the error is a runtime `42883` raised on the call rather than on the apply.
-Eight contract functions call that helper and the route seam always sends a
-limit, so what it reaches is every list call in seven capabilities, not an edge.
+Seven contract functions call that helper, all of them list reads and none a
+write, and the route seam always sends a limit, so what it reaches is every list
+call in seven capabilities, not an edge. **Eight was the first answer, from two
+instruments that reached it independently, and both were reading the same
+thing**: the file's closing `revoke`/`grant` block names every signature in the
+file, this helper's among them, and a reader that chunks on create-function
+boundaries puts that block inside the chunk of whichever function happens to
+precede it — here `contract_note_conversion_create`, which calls nothing. That
+is D132, and the count that stands is the one measured by driving each wrapper
+and crossing the bodies out of `pg_proc`, with a planted call proving the
+crosser reports eight when there really are eight.
 
 The remedy is **dropping the prefix, never re-qualifying it**. A construct is not
 a schema object, so it resolves under an empty `search_path` with no prefix at
