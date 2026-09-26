@@ -35,6 +35,11 @@
 -- because one of those sites also passes an offset the route has no parameter
 -- for, so it stays refused for that reason instead. The 6 left all ask for
 -- `full_name`, which no store holds.
+--
+-- The 25 is over CALL SITES passing that sort string; the 30 is over the gate's
+-- REFUSED SITES on the head it was read on. Those are different populations and
+-- they are allowed to disagree — never reconcile, average or sum them, and say
+-- which population a figure is over beside the figure.
 begin;
 
 set local role "pennsync_records_owner";

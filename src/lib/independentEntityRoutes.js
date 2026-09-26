@@ -67,8 +67,13 @@ const unsupported = (detail) => {
  *
  * The roster now serves two orders: email with the user id as the tiebreaker,
  * and `created_date` DESCENDING with nulls last and the same tiebreakers. So
- * `-created_date` — which 25 of the frontend's call sites pass, and which this
- * route used to refuse — maps to `created_desc`.
+ * `-created_date` — which 25 `User.list` CALL SITES pass, and which this route
+ * used to refuse — maps to `created_desc`.
+ *
+ * That 25 is over call sites passing that sort string. It is a DIFFERENT
+ * population from the gate's refusal count and from the count of `User` sites
+ * refused on a sort, and the three are allowed to disagree: do not reconcile,
+ * average or sum them. Say which population a figure is over, beside it.
  *
  * Bare `created_date` is still refused, and deliberately: the contract has one
  * direction, ascending is a different page of people, and answering it with

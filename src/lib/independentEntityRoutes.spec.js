@@ -108,7 +108,9 @@ describe('the declared entity routes', () => {
       await expect(adapter.raw.entities.User.list(sort)).resolves.toEqual([]);
     }
 
-    // And `-created_date`, which 25 call sites pass and this route used to
+    // And `-created_date`, which 25 `User.list` CALL SITES pass (a different
+    // population from the gate's refusal count — see the route's own header)
+    // and this route used to
     // refuse, now reaches the contract as its own word for that order. Asserted
     // on the REQUEST BODY rather than on the call succeeding: a route that
     // accepted the sort and dropped it would answer alphabetically and pass a
