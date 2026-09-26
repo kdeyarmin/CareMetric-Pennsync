@@ -175,10 +175,14 @@ for (const { entity, label, call, args } of READS) {
         [`${entity}-${CROSSED}`, `${entity}-${UNCARRIED}`, `${entity}-${UNCHARTED}`],
         'the crossed row must be returned with the term removed');
 
-      // And now the control, which is the only thing that changed.
-      const guarded = await as(ADMIN_A, call, args);
-      assert.ok(!ids(guarded).includes(`${entity}-${CROSSED}`),
-        'the crossed row survived the term');
+      // And now the control, which is the only thing that changed. The
+      // assertion is the EXACT surviving set rather than `!includes(crossed)`:
+      // a weaker one is satisfied by a second, different regression — a term
+      // that hid all three rows would pass it — and a refusal test that a
+      // wrong answer can satisfy is the vacuous case one assertion away.
+      assert.deepEqual(ids(await as(ADMIN_A, call, args)),
+        [`${entity}-${UNCARRIED}`, `${entity}-${UNCHARTED}`],
+        'the term must remove the crossed row and nothing else');
     });
 
   test(`${label}: a row naming no chart, or one this store does not carry, stays`,
