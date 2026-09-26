@@ -508,18 +508,25 @@ describe('the declared entity routes', () => {
     it('refuses an ascending sort, an unknown column and an operator it cannot express', async () => {
       const { fixture, adapter } = await signedIn();
       fixture.apiResponse = listed([]);
+      // Each case names the `detail` it expects, not just the code. Every one of
+      // this module's refusals throws the same `ARGUMENTS_UNSUPPORTED` as both
+      // message and code, across eleven distinct details, so asserting the
+      // message alone would pass on any refusal at all — including one raised
+      // for a reason that has nothing to do with the case being tested.
       const refused = [
         // The contracts order descending only. Quietly reversing a screen is
         // the silent-reorder bug from the other direction.
-        () => adapter.raw.entities.Incident.list('created_date', 200),
-        () => adapter.raw.entities.Incident.list('-severity', 200),
-        () => adapter.raw.entities.ComplianceAudit.list('-incident_date', 200),
-        () => adapter.raw.entities.Incident.list('-created_date'),
-        () => adapter.raw.entities.Incident.filter({ severity: 'high' }, '', 200),
-        () => adapter.raw.entities.PolicyAcknowledgment.filter(
-          { user_id: { $in: ['a'] } }, '', 200),
+        [() => adapter.raw.entities.Incident.list('created_date', 200), 'sort_direction'],
+        [() => adapter.raw.entities.Incident.list('-severity', 200), 'sort'],
+        [() => adapter.raw.entities.ComplianceAudit.list('-incident_date', 200), 'sort'],
+        [() => adapter.raw.entities.Incident.list('-created_date'), 'limit_required'],
+        [() => adapter.raw.entities.Incident.filter({ severity: 'high' }, '', 200), 'filter_field'],
+        [() => adapter.raw.entities.PolicyAcknowledgment.filter(
+          { user_id: { $in: ['a'] } }, '', 200), 'filter_operator'],
       ];
-      for (const call of refused) await expect(call()).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      for (const [call, detail] of refused) {
+        await expect(call()).rejects.toMatchObject({ code: ARGUMENTS_UNSUPPORTED, detail });
+      }
       expect(fixture.apiCalls).toHaveLength(0);
     });
 
