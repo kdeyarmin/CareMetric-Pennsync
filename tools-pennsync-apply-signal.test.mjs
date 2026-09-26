@@ -278,18 +278,3 @@ test('a refusal from the migration readers is reported as a refusal to measure',
   }), 1);
   assert.match(errors[0], /^::error title=Apply signal not measured::PROVISION_MIGRATION_CARRIAGE_RETURN/);
 });
-
-test('TEMPORARY DELIBERATE FAILURE — remove in the next commit', () => {
-  // This test exists to measure one thing and is reverted immediately after.
-  //
-  // The workflow change in this pull request claims that `if: ${{ !cancelled() }}`
-  // on steps two through eleven means a failing script no longer suppresses its
-  // siblings. actionlint proves the expression is VALID, which is not its runtime
-  // effect, and an argument from another workflow's `if: always()` teardown is an
-  // analogy rather than a measurement. So this failure is planted in the FIRST
-  // script (`test:pennsync-transfer`, the only script that runs this file) and the
-  // run's log answers both halves: whether steps two through eleven ran anyway,
-  // and whether the job still failed. A guard that reads correctly and does
-  // nothing is the outcome worth ruling out.
-  assert.equal('deliberate failure, measuring the step split', 'this assertion is meant to fail');
-});
