@@ -57,7 +57,16 @@ function bounds(sql, fn) {
   assert.ok(ceiling, `${fn} does not take its limit through compliance_read_limit`);
   const projection = body.slice(body.indexOf('jsonb_build_object('));
   const keys = [...projection.matchAll(/'([a-z0-9_]+)'\s*,/g)].map(match => match[1]);
-  assert.ok(keys.length >= 15, `${fn} projects ${keys.length} keys, which is not a projection`);
+  // Not a floor on the COUNT. A length inequality is satisfied by a regex that
+  // stopped matching the projection and started matching something else of a
+  // similar size, and that shape has already passed in this repository while
+  // measuring nothing. What is pinned instead is the projection's own structure:
+  // every row a contract in this family returns carries `id`, and a projection
+  // names each column once, so a parse that drifted onto other quoted text fails
+  // on one of the two rather than on an arbitrary threshold.
+  assert.ok(keys.includes('id'), `${fn}'s parsed projection has no 'id'; the parse has drifted`);
+  assert.deepEqual([...new Set(keys)], keys,
+    `${fn}'s parsed projection repeats a key, so this is not a jsonb_build_object key list`);
   // `"key":null,` per column, plus the array's own brackets. A floor, not an
   // estimate: every real value is longer than `null`.
   const perRow = keys.reduce((total, key) => total + key.length + 8, 0) + 2;

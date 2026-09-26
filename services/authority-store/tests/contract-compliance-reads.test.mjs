@@ -81,7 +81,15 @@ before(async () => {
   // helper fails closed on an empty listing, so this cannot quietly build a
   // store with no contracts in it and then pass every refusal.
   const applied = await applyRecordMigrations(db);
-  assert.ok(applied.includes(READS_NAME), `${READS_NAME} was not applied`);
+  // The SET, read independently of the helper, rather than membership of this
+  // one file. `includes` is satisfied by a build that applied this contract and
+  // skipped others — which is how a suite comes to assert refusals against a
+  // store missing the very table a contract reads, and pass, because a contract
+  // that does not exist refuses everything. An equality over the whole directory
+  // is satisfied only by the build a deployment would get.
+  assert.deepEqual(applied,
+    readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
+    'the record directory and what was applied to this store disagree');
   assert.equal(applied.at(-1), READS_NAME,
     'this contract must sort last in the directory, or `planMigration` refuses '
     + 'MIGRATE_OUT_OF_ORDER once an earlier file has been applied to a store');
