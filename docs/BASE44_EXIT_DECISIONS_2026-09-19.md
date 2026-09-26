@@ -8362,6 +8362,48 @@ discovered later: an assertion satisfied by the wrong answer as well as the
 right one is documentation, not a control. This is D120's rule about sabotage
 and D107's about a repair that records nothing, arriving together.
 
+## D125 — A union is verified by what it removed, not by what it contains
+
+Two threads append to one file, the merge conflicts, and the resolution is a
+union. Checking it by reading — "both sides are present" — is the natural move
+and the wrong one, because it asks for attention on a file you have already
+read four times tonight, and because a missing entry looks exactly like an
+entry you have already scrolled past.
+
+**The check is the removal, and it is one command:**
+
+```
+git diff origin/main -- docs/BASE44_EXIT_DECISIONS_2026-09-19.md | grep -c '^-[^-]'
+```
+
+Zero. A resolution that dropped another thread's entry cannot produce zero,
+whatever it looks like on screen. Pair it with the headings the diff ADDS, and
+the two together say "mine arrived, nobody else's left" without reading a line
+of prose.
+
+**Assert it rather than assume it, and the reason is what happened here.** The
+resolution taken was "take main's text, append my block", which is correct only
+when MY side is the pure append. A script asserted that both sides were pure
+appends — and the assertion FAILED, because #316 had also inserted a pointer
+into D109 recording that D110 closed its caveat. Main was not appending; it was
+appending and editing. The union was still right, for a reason that had not
+been established until the assertion refused: my side was the pure append, and
+only my side needed to be. Without the check the resolution would have been
+correct by luck, which is D119 in a conflict marker.
+
+**The same rule over a list has a sharper failure mode.** `package.json`'s
+`test:authority-store` is a space-separated list of suites, and a union over it
+silently RESTORES a suite the other side deliberately removed — a union is not
+safe over a list somebody may be shrinking. So the removal check there is not a
+formality: assert that neither side dropped an entry, then union, then count
+the result distinct (71 unique files, asserted rather than eyeballed).
+
+**Generalisation.** Where two parties edit one artefact and the merge is
+mechanical, state the property you are relying on as an assertion in the
+resolution itself, and pick a property whose violation is cheap to detect.
+"Nothing was removed" is one integer. "Everything that should be here is here"
+is a reading, and a reading is what you were trying to avoid.
+
 ## D127 — An idempotent catch-up is undetectable by its own effect
 
 **Added 2026-09-26.** A forward migration written so that a fresh build and a
