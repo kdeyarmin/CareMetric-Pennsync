@@ -1,12 +1,11 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import {
+  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, recordMigrationNames,
+} from './record-migrations.mjs';
 
 /**
  * Reporting an incident, and moving one through its review.
@@ -18,15 +17,19 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * here are that finding: an administrator may not soften their OWN incident,
  * and may not review it either.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const AUDIT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920010000_activity_audit.sql';
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const MINT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920285000_notification_mint.sql';
-const INCIDENT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920290000_contract_incident.sql';
+// The file whose BEHAVIOUR this suite measures. It no longer decides what gets
+// applied: the store is the whole record directory now, so a forward migration
+// over this contract is in the build the moment it is committed rather than
+// when somebody remembers to add it here (D88).
+const INCIDENT = '20260920290000_contract_incident.sql';
+const MEASURED = [INCIDENT];
+// The hand-kept list this file used to carry, which the last test rebuilds as
+// its control. Six of sixty-nine.
+const HAND_KEPT = Object.freeze([
+  '20260919170000_record_store.sql', '20260919180000_record_brokers.sql',
+  '20260920010000_activity_audit.sql', '20260920230000_contract_time_off.sql',
+  '20260920285000_notification_mint.sql', INCIDENT,
+]);
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -42,6 +45,8 @@ const GOOD = Object.freeze({
   report: 'Found on the bedroom floor, alert and oriented.',
 });
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
 
 before(async () => {
   db = new PGlite();
@@ -50,11 +55,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The time-off migration carries `time_off_date`, which this contract reuses
-  // rather than declaring a second date parser.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT, TIME_OFF,
-    MINT, INCIDENT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
+  applied = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, agency, first, last] of [
@@ -350,7 +354,7 @@ test('a merge cannot move an incident onto a chart nobody can open', async () =>
 });
 
 test('the trail write is in the same transaction as the change (D37)', async () => {
-  const source = readFileSync(resolve(repository, INCIDENT), 'utf8');
+  const source = await readFile(new URL(INCIDENT, RECORD_MIGRATION_DIRECTORY), 'utf8');
   // Scoped to the two contract bodies: every contract's owner preamble has an
   // `exception when` of its own.
   const body = source.slice(source.indexOf('create function "pennsync_records".contract_incident_submit'),
@@ -363,4 +367,77 @@ test('the trail write is in the same transaction as the change (D37)', async () 
   // header quotes the name, the contracts never return it.
   assert.equal(body.includes('audit_recorded'), false);
   assert.equal(body.includes('Record this transition manually'), false);
+});
+
+test('the swap widened the store and left this capability unchanged', async () => {
+  // D127's STRONG case, established by measurement before the swap rather than
+  // read off the pass afterwards: of the thirty-eight record migrations dated
+  // after this contract, none redefines any function it provides or calls, and
+  // none alters the `incident` table. So the derived build must leave this
+  // capability exactly as the hand-kept six-file build did.
+  //
+  // The comparison population is the capability's OWN functions, and that is
+  // the part worth copying. A control scoped by the obvious pattern —
+  // `proname like '%incident%'`, which is what the timesheet suite's control
+  // uses for its own name — FAILS here, and not because anything is wrong:
+  // four later migrations legitimately add functions matching it
+  // (`contract_state_incident_submit` and its wrapper, `state_event_incident_type`,
+  // `dashboard_incident`). A pattern that matches the neighbourhood answers a
+  // question about the neighbourhood. So the eight below are named, and the
+  // neighbourhood GROWING is asserted separately — as the known-positive that
+  // proves the two builds really differ, without which "identical surface"
+  // would also be satisfied by a control that had applied the same files.
+  assert.deepEqual(applied, await recordMigrationNames());
+  assert.ok(applied.length > HAND_KEPT.length * 2,
+    'the store is the directory, not the old six files');
+  for (const name of HAND_KEPT) {
+    assert.ok(applied.includes(name), `${name} is still in the directory`);
+  }
+
+  const OWN = ['incident_lifecycle', 'incident_can_transition',
+    'incident_needs_corrective_action', 'incident_row',
+    'contract_incident_submit', 'contract_incident_update',
+    'pennsync_contract_incident_submit', 'pennsync_contract_incident_update'];
+  // Identity arguments because PostgREST resolves an RPC by parameter name;
+  // the body hash, volatility, definer, strictness and leakproofness because a
+  // redefinition can keep the signature and change every one of them (D95's
+  // point about what a representation leaves out).
+  const own = async client => (await client.query(
+    `select p.proname, pg_get_function_identity_arguments(p.oid) as args,
+            pg_catalog.md5(p.prosrc) as body, p.provolatile, p.prosecdef,
+            p.proisstrict, p.proleakproof
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where p.proname = any($1) order by 1, 2`, [OWN])).rows;
+  const neighbourhood = async client => (await client.query(
+    `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where p.proname like '%incident%' order by 1`)).rows.map(r => r.proname);
+
+  const derived = await own(db);
+  assert.equal(derived.length, OWN.length, 'every function this contract provides is reachable');
+
+  // The hand-kept build this file used to carry, rebuilt here as the control.
+  const control = new PGlite();
+  try {
+    await control.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+    const dir = new URL('../supabase/migrations/', import.meta.url);
+    for (const name of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) {
+      await control.exec(await readFile(new URL(name, dir), 'utf8'));
+    }
+    await applyRecordMigrations(control,
+      { omit: applied.filter(name => !HAND_KEPT.includes(name)) });
+    assert.deepEqual(derived, await own(control),
+      'widening the store must not change this capability');
+    // The known-positive. Without it the assertion above is satisfied by two
+    // identical builds, which is exactly the failure it exists to rule out.
+    const before = await neighbourhood(control);
+    const after = await neighbourhood(db);
+    assert.ok(after.length > before.length,
+      `the derived store must really be wider: ${before.length} -> ${after.length}`);
+    assert.deepEqual(before.filter(name => !OWN.includes(name)), [],
+      'the hand-kept build reaches nothing else incident-named');
+    assert.ok(after.filter(name => !OWN.includes(name)).length > 0,
+      'and the derived one does, which is why the pattern is the wrong population');
+  } finally {
+    await control.close();
+  }
 });
