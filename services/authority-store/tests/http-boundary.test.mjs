@@ -95,6 +95,28 @@ test('a start that fails applying a migration is named, and nothing else is forw
   assert.match(classified, /^LOCAL_CLI_START_[A-Z_]+$/);
   // An unrecognized failure keeps the original redacted verdict.
   assert.equal(start('something went wrong'), 'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
+  // D123. A SILENT child is its own reading, not the redacted one. Before the
+  // split both answered `FAILED_OUTPUT_REDACTED`, so main's own unreproducible
+  // failure at `00ae087b` could not be told from an unrecognised diagnostic —
+  // and they point at different things, one a category to add and one a child
+  // that died before printing. Against the single default the first three of
+  // these assert `…NO_OUTPUT === …OUTPUT_REDACTED` and fail.
+  assert.equal(start(''), 'LOCAL_CLI_START_FAILED_NO_OUTPUT');
+  assert.equal(classifyToolFailure('supabase', ['start'], {}), 'LOCAL_CLI_START_FAILED_NO_OUTPUT');
+  // Whitespace only is silence too: the module joins stdout and stderr with a
+  // newline, so a child that printed nothing still yields "\n" and a literal
+  // emptiness check would never fire.
+  assert.equal(start('  ', '\n\t'), 'LOCAL_CLI_START_FAILED_NO_OUTPUT');
+  // And the split must not swallow a better reading. Each of these is silent,
+  // so each reaches the new default first and is then overridden — invert the
+  // predicate to always-silent and these four keep passing, which is why the
+  // three above are the ones that discriminate.
+  assert.equal(classifyToolFailure('supabase', ['start'], { killed: true }),
+    'LOCAL_CLI_START_TIMED_OUT');
+  assert.equal(classifyToolFailure('supabase', ['start'], { code: 'ENOENT' }),
+    'LOCAL_CLI_START_EXECUTABLE_NOT_FOUND');
+  assert.equal(classifyToolFailure('docker', ['volume'], {}), 'LOCAL_DOCKER_VOLUMES_FAILED_NO_OUTPUT');
+  assert.equal(classifyToolFailure('supabase', ['nonsense'], {}), 'LOCAL_TOOL_FAILED_NO_OUTPUT');
   // Categories that already existed still win over the new ones.
   assert.equal(start('ERROR: Cannot connect to the Docker daemon'), 'LOCAL_CLI_START_DAEMON_UNAVAILABLE');
   assert.equal(classifyToolFailure('supabase', ['start'], { stdout: 'ERROR: x', killed: true }),

@@ -8177,6 +8177,12 @@ disagree on one night while each stayed internally consistent: a carried term is
 not a read term, and a figure assembled across two heads is a figure about
 neither.
 
+The cost of refusing is small and the cost of not refusing is invisible, which is
+why the rule is worth having rather than merely being right: the version that
+published 10 on two terms **would have been right, and would have been right by
+luck, and the reader could not have told which.** At `00ae087b` the missing term
+was one finished job away — about two minutes.
+
 Closing it is cheap when the instrument is available, and that is the other half
 of the rule: at `00ae087` the hosted job's own failure message reads "the ledger
 holds 74 rows for 84 committed migrations", which supplies the third term AND an
@@ -8189,3 +8195,51 @@ where the derivation cannot be completed, and it is the companion of D116: D116
 is about a figure you cannot reproduce with the instrument's own key, and this is
 about a figure one of whose terms you cannot read at all.
 
+## D123 — A classifier's fall-through must not also be its empty case
+
+When a classifier's default bucket receives both "the input matched none of the
+categories above" and "there was no input to match", the two readings become one
+code, and the one that disappears is the one that says the instrument had
+nothing to work with. That is the worse loss of the two: an unrecognised input
+is a category to add to the classifier, while an absent one usually means the
+thing being classified never got as far as producing it, and points outside the
+classifier entirely.
+
+**The example, and it cost a night's diagnosis.** `classifyToolFailure` in
+`services/authority-store/tests/http-local-stack.mjs` defaulted to
+`FAILED_OUTPUT_REDACTED`, and on 2026-09-26 `Verify independent Auth and API`
+failed on `main` at `00ae087b` with `LOCAL_CLI_START_FAILED_OUTPUT_REDACTED`
+after 62 seconds of a twelve-minute budget. By the classifier's own named
+categories that ruled out a SQL fault, our own migration codes, the Docker
+daemon, a config or flag fault and a timeout kill — a genuinely useful negative
+result — and then said nothing about the one remaining question, because
+"unrecognised" and "silent" were the same answer. The failure did not reproduce
+on a re-run, so that code is all the evidence there will ever be, and it cannot
+distinguish a CLI diagnostic this module has no pattern for from a child that
+died before printing a byte.
+
+The rule is to give the empty case its own name. `FAILED_NO_OUTPUT` now answers
+where the joined output trims to nothing, and `FAILED_OUTPUT_REDACTED` keeps its
+original meaning. Neither carries a byte of what the child said, so the
+no-forwarding discipline this module exists for is unchanged, and the added code
+is admitted by `emittable` — which a test asserts, because a new reading that
+the emit filter replaces with the generic verdict on its way out has been lost
+in a second place rather than saved.
+
+**Two properties of the split are load-bearing.** The check is on the TRIMMED
+text, because the module joins stdout and stderr with a newline, so a child that
+printed nothing still yields `"\n"` and a literal emptiness test would never
+fire. And the new default is assigned before the named branches rather than
+after, so `ENOENT` and a timeout kill — both of which usually arrive silent —
+still answer `EXECUTABLE_NOT_FOUND` and `TIMED_OUT`; splitting a fall-through
+must not let it overtake a better reading.
+
+**Sabotaged in both directions, because they prove different things.**
+Restoring the single default fails the three new assertions, which proves the
+empty case is reachable at all. Inverting the predicate to always-silent fails
+the pre-existing unrecognised-output assertion, which proves the set
+discriminates rather than merely accepting the new code. The four
+override assertions pass under both, and that is stated in the test rather than
+discovered later: an assertion satisfied by the wrong answer as well as the
+right one is documentation, not a control. This is D120's rule about sabotage
+and D107's about a repair that records nothing, arriving together.
