@@ -361,7 +361,7 @@ $defaults$;
 --
 -- THE CARE-TEAM HALF BELOW IS NOT EXERCISED BY ANYTHING IN THIS REPOSITORY,
 -- and that is measured rather than suspected: delete the second `if` outright
--- and all 28 tests in `contract-operational-tables.test.mjs` still pass. It is
+-- and all 29 tests in `contract-operational-tables.test.mjs` still pass. It is
 -- not a narrowing either — `task_insert` and its siblings already carry D24 —
 -- and the reason no test can tell it apart is upstream of the check: a
 -- clinician handed a chart they are not assigned to is refused by the FIRST
