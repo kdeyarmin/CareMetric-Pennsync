@@ -2784,16 +2784,27 @@ entity routes: 21 declared, 38/237 landable call sites SERVED, 199 still to adop
   of those 199, across 38 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 198 need a named capability
 ```
 
-And the reading on THIS tree, after #299 carried batch E. This one is
-`pnpm run check:entity-routes`'s own output and is **pinned**:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what the tool prints and never retype, rewrap or re-indent it.
+And after #299, batch E's ten contracts — a record of that head, not
+maintained either:
 
 ```
 entity routes: 33 declared, 47/237 landable call sites SERVED, 190 still to adopt
   30 of those are sites a declared route REFUSES (User.list:sort), and 5 pass arguments this cannot read
   3 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
   of those 190, across 33 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 189 need a named capability
+```
+
+And the reading on THIS tree, after #296 carried batch D's fourteen over the
+operational tables. This one is `pnpm run check:entity-routes`'s own output and
+is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
+byte for byte, so paste what the tool prints and never retype, rewrap or
+re-indent it.
+
+```
+entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adopt
+  30 of those are sites a declared route REFUSES (User.list:sort), and 20 pass arguments this cannot read
+  8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 166, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 165 need a named capability
 ```
 
 **What that block says, and why the prose below it names no total from it.**
@@ -2821,6 +2832,15 @@ three files. The general form is worth carrying to any reading like it: **a
 figure that can only go up when a route is added should be labelled as such
 wherever it appears**, because unlabelled it is indistinguishable from a count
 of things that broke.
+
+**#296 is the second merge of that shape and the label earned its keep.** Batch
+D's fourteen capabilities over the seven operational tables adopted twenty-four
+sites and declared five further routes the gate cannot run, so the unreadable
+line rose by fifteen in a merge that adopted more sites than any before it.
+Fifteen is the size and the cause is routes arriving, not screens breaking: the
+ten sites beyond the five unproved routes are over entities that had no route
+to be unreadable against until this merge, so they left the undifferentiated
+remainder and joined a line that counts them. Every total stays in the block.
 
 **Two denominators, both real and different populations** — every entity call
 the frontend makes, and the subset with a table behind it. A served figure
