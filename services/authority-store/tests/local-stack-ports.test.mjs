@@ -127,6 +127,10 @@ test('the refusal survives the filter that decides what may be printed', () => {
   assert.ok(emittable('LOCAL_PORT_ALREADY_IN_USE 54321'));
   assert.ok(emittable('LOCAL_PORT_ALREADY_IN_USE'));
   assert.ok(emittable('EXPECTED_START_OR_STOP'));
+  // D123's new code has to survive the same filter, or the one reading that
+  // says the child printed nothing is replaced by the generic verdict on its
+  // way out — which is the defect it was split out of.
+  assert.ok(emittable('LOCAL_CLI_START_FAILED_NO_OUTPUT'));
   // And the widening is five digits and nothing else: the redaction exists
   // because the CLI prints credentials, so it stays shut on everything a
   // subprocess could have said.
