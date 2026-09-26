@@ -7466,3 +7466,52 @@ route-gate total placed below that heading escapes the check.
 totals, not a rule against prose describing measurements. And a pin proves the
 page agrees with the file; it says nothing about whether the file agrees with a
 deployment, which stays the hosted comparison's half (D88, D95).
+
+## D106 — Prose beside a figure states the derivation, not the result
+
+2026-09-26. The rule, in the words it was settled in: **prose beside a figure
+states the DERIVATION, not the result — a number can survive a change for a
+different reason and its explanation goes stale with nothing failing.**
+
+A sibling of D105 and not the same rule. D105 is about a page carrying a total
+a generated file already holds, and its remedy is a pin. This one cannot be
+pinned, because what goes wrong is the sentence rather than the number. The
+remedy is to write the derivation, so a reader recomputes instead of trusting.
+
+**The instance.** `AGENTS.md` said the fingerprint tool "pins all 75 committed
+migrations' sha256 — one fewer reaches a deployment, since
+`LOCAL_ONLY_MIGRATIONS` holds one back, which is why the hosted ledger's row
+count is 74". Measured from the tools rather than from the page:
+`fingerprints()` and `readPin()` both answer 78, the directory holds 78 `.sql`
+files, `readMigrations` — the provisioner's own list, which is what
+`hosted-store.test.mjs` compares against — also answers 78, and
+`LOCAL_ONLY_MIGRATIONS` has exactly one entry. So it is **78 committed, 77
+reaching a deployment, 74 applied, 3 pending**, which closes and matches the
+hosted assertion's own message.
+
+**What makes it worth a decision is which half rotted.** The sentence was true
+when written. Then three migrations arrived, and 74 stayed 74 for an entirely
+different reason: it had been everything that reaches a deployment, and became
+everything that has been applied, three short of it. The figure never moved, so
+nothing could notice. A reader of that page today concludes the hosted ledger
+is complete — which is the single most load-bearing fact about the current red
+being expected rather than new drift (D93) — and concludes it from a file whose
+job is telling a new session how this repository works.
+
+**The general shape.** A number is a result; the sentence beside it is usually
+a derivation stated as one. When the inputs move, only the derivation is wrong,
+and a derivation has nothing to fail. So write what the figure is computed FROM
+and where each input is read, not what it came out as. Where three related
+counts sit near each other — committed, reaching a deployment, applied — say
+that each is derived and give the command, because the temptation is always to
+read one off another, and that is the arithmetic that silently stops holding.
+
+**What was done.** The claim is now the derivation: the pin is described by the
+two functions that answer it and the test that compares them, and the three
+counts are named with what each is computed from. The figure 78 is deliberately
+not written in its place — replacing a stale explanation with a fresh result
+would reproduce this entry's defect at the next merge that adds a migration.
+
+**Scope left open.** Other derivations on that page may be stated as results the
+same way. Not surveyed here on purpose: a hunt run mid-batch would be a reading
+of a tree that is moving. It is worth one pass when the contract batches are in.
