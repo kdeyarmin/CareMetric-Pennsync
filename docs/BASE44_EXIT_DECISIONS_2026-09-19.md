@@ -8304,7 +8304,7 @@ deliberately RED on the live bug, because a guard that has never been seen to
 fire on the instance it was written for is a promise rather than a control, and
 it went green when the forward fix merged. Its first version scanned the
 migration FILES instead, which a forward-only repair makes permanently red;
-that correction is D135.
+that correction is D136.
 
 Two things about building it are worth more than the guard.
 
@@ -8370,7 +8370,7 @@ assertion that did not are both findings, and reporting only the first leaves th
 next reader with a shape that reads as proved. The replaced assertion is quoted
 in the suite's own comment for the same reason.
 
-<<<<<<< HEAD
+
 ## D130 — Fixing an instrument does not fix the readings already taken with it
 
 D126's scan was found blind: `[a-z_]+` does not truncate a digit-bearing name,
@@ -8416,6 +8416,50 @@ only in relays and was dropped by construction. That is the lucky case, not the
 rule.
 
 
+
+## D131 — D88's silence is a property of the apply, not of the pull request
+
+**The belief this corrects, which was written down and acted on.** "A modified
+already-committed migration is the shape nothing reports" — the apparent
+corollary of D88, and false as stated. D88 says that `planMigration` matches on a
+migration's NAME and the ledger holds no content hash, so a store that already
+ran a file never sees an edit to it. That is a statement about the APPLY. It says
+nothing about whether the edit is visible at review time, and reasoning from it
+to "nothing reports this" conflates the two.
+
+**What actually reports it.** `applySignal` in
+`tools-pennsync-apply-signal.mjs` computes an `editing` set beside `arriving` —
+`key in base && base[key] !== head[key]`, over the pins at the two heads — and it
+reaches the operator-facing output, not just the returned object. #312
+regenerated `record-migrations/20260919170000_record_store.sql`, moving its
+pinned fingerprint from `aa381137…` to `8f1ff975…`, and its own
+`Say what merging this asks an operator to apply` job printed:
+
+    ##[warning]1 committed migration change text. A store that already ran the
+    file will never see the edit; ship a forward migration in the same change
+    (D88).
+
+by name, with the remedy, alongside the arriving-migration warning. #312 then did
+exactly what the warning asks: `20260920590000_column_defaults.sql` is the
+forward, derived rather than typed, and `record-store-catchup.test.mjs` proves an
+existing store converges on a fresh build's 425 defaults by rendered expression,
+idempotently in both orders, backfilling nothing.
+
+**The reusable rule.** A decision states a property of one mechanism, and the
+next reader is one step away from applying it to a neighbouring mechanism where
+it does not hold. So when a decision is invoked to explain why something is
+invisible, name WHICH mechanism is blind and check the others yourself: here the
+apply is silent, the pull request is loud, the ledger row count cannot see it
+because it counts rows rather than content, and the hosted comparison sees it
+plainly because it compares the schema a fresh build produces against the store.
+Four mechanisms, one edit, and only one of them silent.
+
+**And the half worth keeping.** This was measured because it was asked for, not
+because it was doubted — the answer expected on both sides was that nothing
+reports it, and reading the job log is what contradicted it. A conclusion drawn
+from a decision's text is a prediction about an instrument, which is D116's
+distinction and the reason the log is quoted above rather than summarised.
+
 ## D133 — A bound with its direction survives being wrong about the mechanism
 
 Where you can bound a figure but not measure it, **publish the bound, say which
@@ -8459,7 +8503,8 @@ figure when a term is unreadable. This says what to do when you are not refusing
 same in spirit: publish what the instrument can support and name the instrument,
 never the answer you expect the measurement to give.
 
-## D135 — Gate what will RUN, not what was written
+
+## D136 — Gate what will RUN, not what was written
 
 D126's guard first scanned the migration FILES for `pg_catalog.<name>(`. That is
 the wrong population, and the way it is wrong only became visible when the
@@ -8498,6 +8543,22 @@ into the forward migration fails the catalog test naming
 `pennsync_records.operational_limit`, and taking it out of the frozen one fails
 this test naming D88.
 
+A remedy was proposed and refuted here, and that is worth recording rather than
+quietly dropping. The first reading of the problem was that the gate's SCOPE was
+wrong — that a whole-tree scan has no legal remedy under D88, so the gate should
+be re-scoped to the files a change arrives with, where a bad new spelling is
+caught before it is frozen. **Measurement refuted it directly rather than merely
+outweighing it.** The forward fix's own header explains the bug it repairs and
+quotes the broken call to do it, so a diff-scoped gate fails on the change that
+fixes the defect — it does not even solve the case it was proposed for. The gate
+was never unsatisfiable because of its scope. It was unsatisfiable because it
+asked about TEXT, and a text question about a frozen file has no legal answer.
+Change the QUESTION and the remedy reappears with the whole store still in
+scope. The general rule underneath — **a gate whose only available remedy is a
+forbidden action is unsatisfiable by construction** — is right, and the thing to
+check when you meet one is whether the question can move before the population
+does.
+
 This is D132 arriving in a second instrument on the same night. There, text
 chunked on create-function boundaries said eight callers where `pg_proc` said
 seven, because a `revoke` block belongs to no body. Here, text said a defect
@@ -8505,47 +8566,3 @@ survives where `pg_proc` says it does not, because a superseded definition
 belongs to no store. Twice in one evening the catalog was right and the text was
 not, for unrelated reasons — which is the argument for reaching for the catalog
 first rather than for a better parser.
-=======
-## D131 — D88's silence is a property of the apply, not of the pull request
-
-**The belief this corrects, which was written down and acted on.** "A modified
-already-committed migration is the shape nothing reports" — the apparent
-corollary of D88, and false as stated. D88 says that `planMigration` matches on a
-migration's NAME and the ledger holds no content hash, so a store that already
-ran a file never sees an edit to it. That is a statement about the APPLY. It says
-nothing about whether the edit is visible at review time, and reasoning from it
-to "nothing reports this" conflates the two.
-
-**What actually reports it.** `applySignal` in
-`tools-pennsync-apply-signal.mjs` computes an `editing` set beside `arriving` —
-`key in base && base[key] !== head[key]`, over the pins at the two heads — and it
-reaches the operator-facing output, not just the returned object. #312
-regenerated `record-migrations/20260919170000_record_store.sql`, moving its
-pinned fingerprint from `aa381137…` to `8f1ff975…`, and its own
-`Say what merging this asks an operator to apply` job printed:
-
-    ##[warning]1 committed migration change text. A store that already ran the
-    file will never see the edit; ship a forward migration in the same change
-    (D88).
-
-by name, with the remedy, alongside the arriving-migration warning. #312 then did
-exactly what the warning asks: `20260920590000_column_defaults.sql` is the
-forward, derived rather than typed, and `record-store-catchup.test.mjs` proves an
-existing store converges on a fresh build's 425 defaults by rendered expression,
-idempotently in both orders, backfilling nothing.
-
-**The reusable rule.** A decision states a property of one mechanism, and the
-next reader is one step away from applying it to a neighbouring mechanism where
-it does not hold. So when a decision is invoked to explain why something is
-invisible, name WHICH mechanism is blind and check the others yourself: here the
-apply is silent, the pull request is loud, the ledger row count cannot see it
-because it counts rows rather than content, and the hosted comparison sees it
-plainly because it compares the schema a fresh build produces against the store.
-Four mechanisms, one edit, and only one of them silent.
-
-**And the half worth keeping.** This was measured because it was asked for, not
-because it was doubted — the answer expected on both sides was that nothing
-reports it, and reading the job log is what contradicted it. A conclusion drawn
-from a decision's text is a prediction about an instrument, which is D116's
-distinction and the reason the log is quoted above rather than summarised.
->>>>>>> origin/main

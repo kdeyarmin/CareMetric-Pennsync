@@ -38,7 +38,7 @@ import { LOCAL_ONLY_MIGRATIONS } from '../../../tools-pennsync-migrate.mjs';
  * not the same kind; resolve every instance, never generalise from the ones
  * that work.
  *
- * WHY IT READS `pg_proc` AND NOT THE MIGRATION TEXT, which is D135 and was
+ * WHY IT READS `pg_proc` AND NOT THE MIGRATION TEXT, which is D136 and was
  * learned here the hard way. The first version scanned the SQL files. That
  * answers "was a broken qualification ever written", where the question worth
  * gating is "will a broken qualification ever RUN" -- and after D88 those two
