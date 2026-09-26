@@ -1508,9 +1508,22 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 36 | 20 |
-  | `mutating` (derived) | 39 | 31 |
+  | `read-only` (derived) | 43 | 21 |
+  | `mutating` (derived) | 42 | 32 |
   | `integration` (derived) | 19 | 15 |
+
+  `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
+  capabilities over the seven entities whose screens read them RAW — seven
+  reads and three writes — and both migration counts rose by the one migration
+  those ten share. Nothing moved between waves; every one of the ten is new.
+  **These counts are GLOBAL, so this row belongs to whichever batch merges
+  next rather than to the plan.** Re-derive it from
+  `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
+  never add to the number already printed here: a batch that branched before a
+  sibling merged and then added its own delta reds `main` on its own merge,
+  with its own CI green throughout. The figures above already carry batch A's
+  seven reference reads and batch C's fourteen library and configuration
+  capabilities.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
@@ -2767,30 +2780,47 @@ And after #295 and #300, which is the current reading:
 > wider generic family could serve 1 reads and 0 writes above D16's ceiling;
 > 198 need a named capability
 
-**As of #300 on `main`: 38 of the 237 call sites that have somewhere to land
-are served, out of 445 entity call sites in the app.** The numerator moved on
-#295 (batch C's nine reference and configuration sites) and not on #300, which
-changed the denominator only. Both denominators are real and they are different
-populations — 445 is every entity call the frontend makes, 237 is the subset
-with a table behind it — so a served figure quoted without saying which one it
-is over is the same label error this page warns about above. **The smaller
+And after #299, batch E's ten contracts, which is what this head measures:
+
+> entity routes: 33 declared, 47/237 landable call sites SERVED, 190 still to
+> adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
+> and 5 pass arguments this cannot read — 3 route(s) are declared but UNPROVED
+> — every call site passes a variable, so the contract's own refusals are what
+> checks them: `NotificationPreference.create`, `NotificationPreference.update`,
+> `PatientRecommendation.create` — of those 190, across 33 entities: a wider
+> generic family could serve 1 reads and 0 writes above D16's ceiling; 189 need
+> a named capability
+
+**As of #299: 47 of the 237 call sites that have somewhere to land are served,
+out of 445 entity call sites in the app.** The numerator moved on #295 (batch
+C's nine reference and configuration sites) and again on #299 (batch E's nine,
+which are different sites — chased rather than inferred from the entities), and
+not on #300, which changed the denominator only. The third line above is new
+and appears exactly when the tool prints it: a route every one of whose call
+sites passes a variable cannot be run through the gate, so what checks it is
+the contract's own refusals and the suite that raises them.
+
+Both denominators are real and they are different populations — 445 is every
+entity call the frontend makes, 237 is the subset with a table behind it — so
+a served figure quoted without saying which one it is over is the same label
+error this page warns about above. **The smaller
 denominator moved on its own**: 242 became 237 when D83's five global-reference
-writes stopped being counted as landable, so the first reading above is a
-record of #294 and the second is the current one. Re-derive them rather than
-quoting them: every merge that points a screen moves the numerator and every
-migration that carries an entity moves the denominator.
+writes stopped being counted as landable, so the first two readings above are
+records of #294 and of #300 and the third is the current one. Re-derive them
+rather than quoting them: every merge that points a screen moves the numerator
+and every migration that carries an entity moves the denominator.
 
 **And this page carries two remainders that are not the same population, which
 is worth saying because they were briefly the same number.** The route gate's
-remainder — call sites with nowhere to land *yet* — is **199**. The destination
+remainder — call sites with nowhere to land *yet* — is **190**. The destination
 gate's is **208**: call sites with nowhere to land *at all*. On the
 head where this paragraph was first written the two were both 208, so either
 number read as correct there, and the rebase over #295 moved the first to 199
-and left the second alone. A sentence that had been right became wrong with
-nothing changing in it. 30 of the 199 are sites a declared route REFUSES: the
+and #299 moved it to 190, leaving the second alone both times. A sentence that
+had been right became wrong with nothing changing in it. 30 of the 190 are sites a declared route REFUSES: the
 route exists and the *screen* has to change, which is per-screen work rather
 than per-entity work, and that is the more useful number for planning than the
-199 itself. Sites whose arguments the tool cannot read count as unserved,
+190 itself. Sites whose arguments the tool cannot read count as unserved,
 because a gate that guessed would be back to counting declarations.
 
 **The gate has three states, and the third one is why the batches can work at

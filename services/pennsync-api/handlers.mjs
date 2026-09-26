@@ -97,7 +97,13 @@ export function validatePatientData(patient) {
     if (message) errors.push({ field: 'date_of_birth', message });
   }
 
-  for (const [field, check, prefix] of [
+  // Annotated because the array's own inference is a union of every element
+  // type, so `field` reads as "string or a validator" and indexing the patient
+  // with it is a real diagnostic rather than a missing annotation. It surfaced
+  // only when batch E's route spec first pulled this module into the checkJs
+  // program, which is the ordinary way a latent finding arrives.
+  /** @type {Array<[string, (value: unknown) => string | null, string]>} */
+  const fieldChecks = [
     ['email', validateEmail, ''],
     ['phone', validatePhone, ''],
     ['emergency_contact_phone', validatePhone, 'Emergency contact phone: '],
@@ -105,7 +111,8 @@ export function validatePatientData(patient) {
     ['physician_phone', validatePhone, 'Physician phone: '],
     ['caregiver_email', validateEmail, 'Caregiver email: '],
     ['caregiver_phone', validatePhone, 'Caregiver phone: '],
-  ]) {
+  ];
+  for (const [field, check, prefix] of fieldChecks) {
     if (!patient[field]) continue;
     const message = check(patient[field]);
     if (message) errors.push({ field, message: prefix + message });
@@ -1419,6 +1426,81 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, ['scope', 'id', 'fields'], 'INVALID_PARAMS');
       return contract('saveAiConfiguration', params);
+    },
+  }),
+
+  // Batch E. Ten capabilities over seven entities the browser read RAW, with
+  // no Base44 function in between — so none of these is a ported name, and
+  // what each replaces is the entity's own access block rather than a
+  // handler's gate. Five of the seven needed a check the store's policies do
+  // not carry; all of it is in the contract, none of it is restated here.
+  listChartClinicalEvents: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listChartClinicalEvents', params);
+    },
+  }),
+  listOcrCorrections: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['applied_to_training', 'limit'], 'INVALID_PARAMS');
+      return contract('listOcrCorrections', params);
+    },
+  }),
+  listOcrTrainingRuns: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listOcrTrainingRuns', params);
+    },
+  }),
+  listSentEducationMaterials: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listSentEducationMaterials', params);
+    },
+  }),
+  recordSentEducationMaterial: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'material'], 'INVALID_PARAMS');
+      if (!isObject(params.material)) fail(400, 'INVALID_PARAMS');
+      return contract('recordSentEducationMaterial', params);
+    },
+  }),
+  listChartRecommendations: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listChartRecommendations', params);
+    },
+  }),
+  recordChartRecommendation: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'recommendation'], 'INVALID_PARAMS');
+      if (!isObject(params.recommendation)) fail(400, 'INVALID_PARAMS');
+      return contract('recordChartRecommendation', params);
+    },
+  }),
+  lookupComplianceRule: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['rule_code', 'limit'], 'INVALID_PARAMS');
+      return contract('lookupComplianceRule', params);
+    },
+  }),
+  getMyNotificationPreferences: Object.freeze({
+    // The address is passed THROUGH rather than dropped, and the contract
+    // refuses one that is not the caller's. A handler that dropped it would
+    // answer a question about somebody else with an answer about the caller.
+    handle({ params, contract }) {
+      exactObject(params, ['user_email'], 'INVALID_PARAMS');
+      return contract('getMyNotificationPreferences', params);
+    },
+  }),
+  saveMyNotificationPreferences: Object.freeze({
+    // Same for the id the screen holds on its update branch: the contract
+    // checks it belongs to the caller, so a stale id is a refusal rather than
+    // a save onto whichever row happens to be theirs.
+    handle({ params, contract }) {
+      exactObject(params, ['expected_id', 'preference'], 'INVALID_PARAMS');
+      if (!isObject(params.preference)) fail(400, 'INVALID_PARAMS');
+      return contract('saveMyNotificationPreferences', params);
     },
   }),
 });

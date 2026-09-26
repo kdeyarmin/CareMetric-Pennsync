@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -1323,10 +1323,10 @@ test('nothing in the queue is startable and unwritten', async () => {
   // only caller: the family serves the entities whose own schema plainly
   // permits a read, which is a disposition rather than a capability.
   //
-  // The seven reference reads (D101) and the fourteen clinical library,
-  // patient education and per-agency configuration capabilities after them are
-  // the same kind of thing for the same reason, and they are why this list
-  // needs stating rather than deriving. The SPA called
+  // Batch A's seven reference reads (D101), batch C's fourteen clinical
+  // library, patient education and configuration capabilities, and batch E's
+  // ten screen records are the same kind of thing for the same reason, and
+  // they are why this list needs stating rather than deriving. The SPA called
   // `base44.entities.Physician.list(...)` and the rest straight through the
   // platform SDK, so there is no Base44 function to be the port of — what was
   // ported is the CALL, and what it succeeds is each entity's own `rls` block
@@ -1334,16 +1334,29 @@ test('nothing in the queue is startable and unwritten', async () => {
   // never count them and their absence from it is not a gap — which is exactly
   // why they are enumerated here, where a name arriving without a reviewed
   // contract has to come past this list.
-  assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
-    ['getAgencyRosterMember', 'listAgencyRoster', 'listBrokeredRecords',
-      'listClinicalLibraryFolders', 'listClinicalLibraryTemplates', 'listClinicalPathways',
-      'listCustomValidationRules', 'listDocumentTemplates', 'listEducationMaterials',
-      'listLibraryDocuments', 'listMedicareComplianceRules', 'listMedicareGuidelines',
-      'listOnCallShifts', 'listPatientEducationAssignments', 'listPhysicians',
-      'listVisitPointConfigs', 'manageClinicalLibraryFolder',
-      'manageClinicalLibraryTemplate', 'manageClinicalPathway',
-      'manageCustomValidationRule', 'manageEducationMaterial',
-      'managePatientEducationAssignment', 'readAiConfiguration', 'saveAiConfiguration']);
+  const facilities = [...shipped].filter(name => !report.port_blockers.none.includes(name)).sort();
+  // The list is STATED, for the reason above. This only adds the half that is
+  // checkable: a name with a Base44 function of its own is a port and belongs
+  // in the queue, so it cannot reach this list by somebody forgetting which
+  // kind it was.
+  for (const name of facilities) {
+    assert.ok(!existsSync(resolve(repository, 'base44/functions', name)),
+      `${name} has a Base44 function, so it is a port and belongs in the queue`);
+  }
+  assert.deepEqual(facilities, [
+    'getAgencyRosterMember', 'getMyNotificationPreferences', 'listAgencyRoster',
+    'listBrokeredRecords', 'listChartClinicalEvents', 'listChartRecommendations',
+    'listClinicalLibraryFolders', 'listClinicalLibraryTemplates', 'listClinicalPathways',
+    'listCustomValidationRules', 'listDocumentTemplates', 'listEducationMaterials',
+    'listLibraryDocuments', 'listMedicareComplianceRules', 'listMedicareGuidelines',
+    'listOcrCorrections', 'listOcrTrainingRuns', 'listOnCallShifts',
+    'listPatientEducationAssignments', 'listPhysicians', 'listSentEducationMaterials',
+    'listVisitPointConfigs', 'lookupComplianceRule', 'manageClinicalLibraryFolder',
+    'manageClinicalLibraryTemplate', 'manageClinicalPathway', 'manageCustomValidationRule',
+    'manageEducationMaterial', 'managePatientEducationAssignment', 'readAiConfiguration',
+    'recordChartRecommendation', 'recordSentEducationMaterial', 'saveAiConfiguration',
+    'saveMyNotificationPreferences',
+  ]);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {

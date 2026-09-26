@@ -407,6 +407,85 @@ function shiftWindow(query) {
  * apart into the shape the entity method’s callers already expect: an ARRAY
  * for `list`, the ROW for `get`.
  */
+/**
+ * Each batch E read contract's own page ceiling, as
+ * `20260920580000_contract_screen_records.sql` passes it to `screen_limit`.
+ *
+ * It is here because the route needs it to know when an answer could be
+ * truncated, and it is a SECOND COPY of a number that lives in SQL — which is
+ * the shape that drifts where nothing measures it. So
+ * `independentEntityRoutes.spec.js` reads the ceilings back out of the
+ * migration and fails if any of them disagrees with this table, rather than a
+ * comment here claiming they match.
+ */
+export const SCREEN_CEILINGS = Object.freeze({
+  listChartClinicalEvents: 200,
+  listChartRecommendations: 200,
+  listOcrCorrections: 500,
+  listOcrTrainingRuns: 200,
+  listSentEducationMaterials: 200,
+  lookupComplianceRule: 50,
+});
+
+
+/**
+ * Batch E's nine reads, each a named contract that orders and pages IN SQL.
+ *
+ * So no re-ordering happens here and the complete-set rule has nothing to
+ * prove about the order — the contract's `order by` is the screen's own. What
+ * it still has to prove is the SIZE: a screen passing `ALL_ROWS` against a
+ * contract whose ceiling is 500 would render 500 rows as the whole set, which
+ * is the same lie in a different place. So a limit above the ceiling is served
+ * only when the answer comes back short of it.
+ *
+ * `order` is the ONE sort string the contract produces, and anything else
+ * refuses. There is no swapping: an order a screen asked for and did not get
+ * is invisible on the screen, which is why `sortKey` exists at all.
+ *
+ * `query` names the filter fields the contract takes as parameters. A field
+ * outside it refuses rather than being dropped, and a field inside it is
+ * passed to the contract rather than applied here — the contract's predicate
+ * runs under the policies, and one applied after the page would narrow a set
+ * the store had already decided.
+ */
+function screenRead({ entity, function: handler, projection, order, ceiling, query = {}, filtered, build }) {
+  const read = (args) => {
+    const [rawQuery, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
+    if (sort !== undefined && sort !== null && sort !== order) unsupported('sort');
+    if (rawQuery !== undefined && rawQuery !== null) {
+      if (typeof rawQuery !== 'object' || Array.isArray(rawQuery)) unsupported('filter');
+      for (const field of Object.keys(rawQuery)) {
+        if (!Object.hasOwn(query, field)) unsupported('filter_field');
+        if (rawQuery[field] !== null && typeof rawQuery[field] === 'object') unsupported('filter_operator');
+      }
+    }
+    return { query: rawQuery ?? {}, size: pageSize(limit) };
+  };
+  return {
+    function: handler,
+    projection,
+    // DECLARED, because `request` takes a rest parameter and so reveals a
+    // `length` of 0. `read` above destructures `(query, sort, limit)` for a
+    // filtered read and `(sort, limit)` for a list, which is the entity
+    // method's own signature; a fourth argument is an argument this route has
+    // no parameter for, and the guard refuses it rather than discarding it.
+    arity: filtered ? 3 : 2,
+    request: (...args) => {
+      const { query: asked, size } = read(args);
+      return build(asked, size === undefined ? undefined : Math.min(size, ceiling));
+    },
+    response: (result, ...args) => {
+      const entries = result?.entries;
+      if (!Array.isArray(entries)) unsupported('answer');
+      const { size } = read(args);
+      // Only a caller who asked for MORE than the contract can give needs the
+      // proof; anybody at or under the ceiling got exactly what they asked for.
+      if (size !== undefined && size > ceiling && entries.length >= ceiling) incomplete(entity);
+      return size === undefined ? entries : entries.slice(0, size);
+    },
+  };
+}
+
 const DECLARED_ROUTES = Object.freeze({
   /**
    * The staff directory: 36 of the frontend’s call sites, the largest single
@@ -486,6 +565,229 @@ const DECLARED_ROUTES = Object.freeze({
    * today and this reproduces it; changing it is a product decision, and one
    * worth taking, but not inside a port.
    */
+  /**
+   * Batch E: the seven entities whose screens read them RAW, with no Base44
+   * function between the browser and the row. Each one's authorization was the
+   * entity's own access block, and five of the seven say something the owned
+   * store's policies do not — so these routes reach named contracts that carry
+   * it, never a generic read.
+   *
+   * Nine of the twelve batch E call sites are here. The other three are
+   * `NotificationPreference.create`/`.update` and `PatientRecommendation.
+   * create`, which pass a whole variable as their payload: the route gate
+   * proves a declaration by running each call site's real arguments, and it
+   * cannot read those, so declaring them would fail the build rather than
+   * serve anything. The capabilities exist — `saveMyNotificationPreferences`
+   * and `recordChartRecommendation` — and the seam for them is per-screen work
+   * once those payloads are named at the call site.
+   *
+   * `ComplianceRule.create` and `.update` are absent for a different and
+   * permanent reason: D83 makes a global reference table migration-written, so
+   * there is no writer to route to.
+   */
+  'ClinicalEvent.filter': Object.freeze({
+    ...screenRead({
+      entity: 'ClinicalEvent',
+      function: 'listChartClinicalEvents',
+      projection: 'chart_clinical_event',
+      order: '-event_date',
+      ceiling: SCREEN_CEILINGS.listChartClinicalEvents,
+      query: { patient_id: true },
+      filtered: true,
+      build: (query, limit) => ({ patient_id: query.patient_id ?? null, ...(limit === undefined ? {} : { limit }) }),
+    }),
+    reason: 'The chart timeline reads one patient\'s events, which D24 narrows to the caller\'s care team.',
+  }),
+  'PatientRecommendation.filter': Object.freeze({
+    ...screenRead({
+      entity: 'PatientRecommendation',
+      function: 'listChartRecommendations',
+      projection: 'chart_recommendation_status',
+      order: '-created_date',
+      ceiling: SCREEN_CEILINGS.listChartRecommendations,
+      query: { patient_id: true },
+      filtered: true,
+      build: (query, limit) => ({ patient_id: query.patient_id ?? null, ...(limit === undefined ? {} : { limit }) }),
+    }),
+    // The projection name is doing work: the analyser counts statuses and the
+    // contract returns the id and the status ONLY (D64), so a screen reading
+    // a title here gets `undefined` rather than a row that rode into a prompt.
+    reason: 'The outcomes analyser counts a chart\'s recommendations by status and reads no other field.',
+  }),
+  'OCRFeedback.list': Object.freeze({
+    ...screenRead({
+      entity: 'OCRFeedback',
+      function: 'listOcrCorrections',
+      projection: 'ocr_correction',
+      order: '-created_date',
+      ceiling: SCREEN_CEILINGS.listOcrCorrections,
+      filtered: false,
+      build: (_query, limit) => (limit === undefined ? {} : { limit }),
+    }),
+    reason: 'The corrections dashboard reads every correction the caller wrote, newest first.',
+  }),
+  'OCRFeedback.filter': Object.freeze({
+    ...screenRead({
+      entity: 'OCRFeedback',
+      function: 'listOcrCorrections',
+      projection: 'ocr_correction',
+      order: null,
+      ceiling: SCREEN_CEILINGS.listOcrCorrections,
+      query: { applied_to_training: true },
+      filtered: true,
+      build: (query, limit) => ({
+        ...(Object.hasOwn(query, 'applied_to_training') ? { applied_to_training: query.applied_to_training } : {}),
+        ...(limit === undefined ? {} : { limit }),
+      }),
+    }),
+    // This one asks for `ALL_ROWS` against a 500-row contract, so it is served
+    // exactly when the answer comes back short of the ceiling.
+    reason: 'The training monitor reads the corrections not yet folded into a session, which is a contract parameter.',
+  }),
+  'OCRTrainingSession.list': Object.freeze({
+    ...screenRead({
+      entity: 'OCRTrainingSession',
+      function: 'listOcrTrainingRuns',
+      projection: 'ocr_training_run',
+      order: '-created_date',
+      ceiling: SCREEN_CEILINGS.listOcrTrainingRuns,
+      filtered: false,
+      build: (_query, limit) => (limit === undefined ? {} : { limit }),
+    }),
+    reason: 'The training monitor reads an agency\'s runs, which the entity gates on the admin tier.',
+  }),
+  'SentEducationMaterial.list': Object.freeze({
+    ...screenRead({
+      entity: 'SentEducationMaterial',
+      function: 'listSentEducationMaterials',
+      projection: 'sent_education_material',
+      order: '-sent_date',
+      ceiling: SCREEN_CEILINGS.listSentEducationMaterials,
+      filtered: false,
+      build: (_query, limit) => (limit === undefined ? {} : { limit }),
+    }),
+    // The panel loses `personalized_content`, which the contract does not
+    // project: a row's whole patient-specific body on a list screen.
+    reason: 'The education library\'s activity panel reads what the caller has sent, newest first.',
+  }),
+  'SentEducationMaterial.create': Object.freeze({
+    function: 'recordSentEducationMaterial',
+    projection: 'sent_education_material_id',
+    // `patient_name`, `sent_by` and `sent_date` are DROPPED rather than
+    // forwarded, and that is the one place this file does drop an argument. It
+    // is deliberate and the contract is why: all three are derived from the
+    // chart the contract just authorized and from the caller's own identity,
+    // so forwarding the screen's copies would let a second answer disagree
+    // with the store's. Everything the caller genuinely owns is forwarded, and
+    // a field outside the contract's list is refused there BY NAME (D39).
+    reason: 'The material sender records one send against a chart it has already opened.',
+    request: (material) => {
+      if (material === null || typeof material !== 'object' || Array.isArray(material)) unsupported('payload');
+      const { patient_id: patientId, patient_name: _name, sent_by: _sender, sent_date: _sent, ...rest } = material;
+      return { patient_id: patientId ?? null, material: rest };
+    },
+    response: (result) => ({ id: result?.id }),
+  }),
+  'NotificationPreference.filter': Object.freeze({
+    function: 'getMyNotificationPreferences',
+    projection: 'own_notification_preference',
+    // The screen reads `prefs[0]`, so the answer is an ARRAY of nought or one.
+    // The address is forwarded rather than dropped: the contract refuses one
+    // that is not the caller's, because answering a question about somebody
+    // else with an answer about the caller is right every time and
+    // unverifiable.
+    reason: 'The settings screen reads the caller\'s own notification preferences by their address.',
+    request: (query) => {
+      if (query === null || typeof query !== 'object' || Array.isArray(query)) unsupported('filter');
+      for (const field of Object.keys(query)) {
+        if (field !== 'user_email') unsupported('filter_field');
+        if (query[field] !== null && typeof query[field] === 'object') unsupported('filter_operator');
+      }
+      return Object.hasOwn(query, 'user_email') ? { user_email: query.user_email } : {};
+    },
+    response: (result) => (result?.found ? [result.preference] : []),
+  }),
+  'ComplianceRule.filter': Object.freeze({
+    ...screenRead({
+      entity: 'ComplianceRule',
+      function: 'lookupComplianceRule',
+      projection: 'compliance_rule',
+      order: '-created_date',
+      ceiling: SCREEN_CEILINGS.lookupComplianceRule,
+      query: { rule_code: true },
+      filtered: true,
+      build: (query, limit) => ({ rule_code: query.rule_code ?? null, ...(limit === undefined ? {} : { limit }) }),
+    }),
+    // Its two siblings on the same screen, `create` and `update`, have no
+    // route and will not get one: D83 says a global reference table is written
+    // by migration and never at runtime.
+    reason: 'The regulatory monitor looks a rule up by its auditor-matchable code before offering a change.',
+  }),
+  /**
+   * Batch E's three writes, declared UNPROVED.
+   *
+   * Every one of their call sites passes a whole variable as its payload, so
+   * `check:entity-routes` cannot run the real arguments through `request` and
+   * cannot prove the route serves them. Under batch A's third disposition that
+   * is a declaration reported as unproved rather than counted as adopted — and
+   * the reason it is safe to declare is that "cannot prove this serves" and
+   * "does not serve" are different states. What checks these is the contract's
+   * own refusal suite against the real migration: an unknown field is
+   * `PENNSYNC_SCREEN_FIELD_NOT_WRITABLE`, a chart the caller cannot open is
+   * `PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE`, somebody else's row is
+   * `PENNSYNC_SCREEN_NOT_YOUR_ROWS`, and each of those is raised in
+   * `contract-screen-records.test.mjs` on the side that raises it.
+   *
+   * What the screens lose is the entity's own answer shape. Base44 returned
+   * the created row and these return the id, so a screen reading a field back
+   * off the answer gets `undefined` rather than a stale value — the per-screen
+   * work Stage J is made of, and the reason `projection` is declared.
+   */
+  'PatientRecommendation.create': Object.freeze({
+    function: 'recordChartRecommendation',
+    projection: 'chart_recommendation_id',
+    reason: 'The OASIS chart pusher creates one recommendation against a chart the contract authorizes.',
+    request: (recommendation) => {
+      if (recommendation === null || typeof recommendation !== 'object' || Array.isArray(recommendation)) {
+        unsupported('payload');
+      }
+      const { patient_id: patientId, ...rest } = recommendation;
+      return { patient_id: patientId ?? null, recommendation: rest };
+    },
+    response: (result) => ({ id: result?.id }),
+  }),
+  'NotificationPreference.create': Object.freeze({
+    function: 'saveMyNotificationPreferences',
+    projection: 'own_notification_preference_id',
+    // `user_email` is dropped because the contract takes it from the caller
+    // and refuses a payload naming it; the screen sends its own copy, which is
+    // the same address by construction and a second answer if it ever is not.
+    reason: 'The settings screen creates the caller\'s preference row when they have never saved one.',
+    request: (preference) => {
+      if (preference === null || typeof preference !== 'object' || Array.isArray(preference)) {
+        unsupported('payload');
+      }
+      const { user_email: _address, id: _id, ...rest } = preference;
+      return { expected_id: null, preference: rest };
+    },
+    response: (result) => ({ id: result?.id }),
+  }),
+  'NotificationPreference.update': Object.freeze({
+    function: 'saveMyNotificationPreferences',
+    projection: 'own_notification_preference_id',
+    // The id is FORWARDED, never dropped: the contract checks the row is the
+    // caller's and refuses if it is not, which it cannot do without it.
+    reason: 'The settings screen saves over the preference row it is already holding the id of.',
+    request: (id, preference) => {
+      if (typeof id !== 'string' || id === '') unsupported('subject');
+      if (preference === null || typeof preference !== 'object' || Array.isArray(preference)) {
+        unsupported('payload');
+      }
+      const { user_email: _address, id: _id, ...rest } = preference;
+      return { expected_id: id, preference: rest };
+    },
+    response: (result) => ({ id: result?.id }),
+  }),
   'FacilityDocumentationRule.list': Object.freeze({
     ...brokeredRead({
       entity: 'FacilityDocumentationRule',
