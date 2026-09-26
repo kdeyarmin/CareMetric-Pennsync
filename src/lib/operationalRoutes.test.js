@@ -5,7 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { callArguments } from '../../tools-entity-call-arguments.mjs';
-import { ROUTED_OPERATIONS } from './independentEntityRoutes.js';
+import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS }
+  from './independentEntityRoutes.js';
 
 const REPOSITORY = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -132,4 +133,42 @@ test('every AgencySettings column the admin panels mirror is one the save accept
   // Without this the loop passes on a tree where the panels were renamed away
   // and every column set came back empty.
   assert.ok(mirrored > 20, `only ${mirrored} columns mirrored — the panels were not read`);
+});
+
+/**
+ * The arity of each operational route, against the signature it replaces.
+ *
+ * #302's guard refuses arguments PAST the declared arity, so a number that is
+ * too GENEROUS fails open on exactly the case the guard exists to catch — a
+ * third argument to a two-argument route is accepted and silently dropped, and
+ * the module loads clean either way. Both of these families take a rest
+ * parameter, so `request.length` is 0 and the number is declared by hand;
+ * over-declaring either by one changes nothing that any other test in the tree
+ * can see, which is measured rather than assumed.
+ *
+ * So the number is checked against the thing it is a number OF: the Base44
+ * entity method's own signature, which is what a call site is written to.
+ * `list(sort, limit)` is two, `filter(query, sort, limit)` is three,
+ * `create(payload)` is one, `update(id, payload)` is two. Every one of the
+ * declared routes agrees with this table today, not only the operational ones,
+ * but this asserts the ones this change owns — the rest are their authors' to
+ * pin, and a check that fails somebody else's correct route is worse than none.
+ */
+test('each operational route declares the arity its entity method has', () => {
+  const SIGNATURE = { list: 2, filter: 3, create: 1, update: 2, delete: 1, get: 1 };
+  const operational = Object.entries(ENTITY_ROUTES)
+    .filter(([, route]) => route.projection === 'operational_row');
+  assert.ok(operational.length >= 19,
+    `only ${operational.length} operational routes found — the projection name has moved`);
+  for (const [key, route] of operational) {
+    const operation = key.split('.')[1];
+    const expected = SIGNATURE[operation];
+    assert.ok(expected !== undefined, `${key}: no signature recorded for ${operation}`);
+    assert.equal(route.arity, expected,
+      `${key} declares arity ${route.arity}; ${operation} takes ${expected}`);
+    // And the guard is really wired at that number, rather than the number
+    // merely being written down beside a route that accepts anything.
+    assert.throws(() => route.request(...Array.from({ length: expected + 1 })),
+      error => error.code === ARGUMENTS_UNSUPPORTED, `${key} accepts one argument too many`);
+  }
 });
