@@ -24,6 +24,11 @@ const expected = {
   'pennsync_private.patient': 'app_id,id,agency_id,display_name,synthetic,version,status',
   'pennsync_private.patient_context': 'app_id,agency_id,patient_id,version,provenance_kind,provenance_sha256,data,data_sha256,created_at',
   'pennsync_private.patient_disclosure_audit': 'id,app_id,actor_id,agency_id,membership_id,membership_version,tenant_role,patient_id,context_version,context_sha256,purpose,access_basis,assignment_id,assignment_version,created_at',
+  // The staff name Kevin chose over showing a work email. Its own table rather
+  // than a column on `identity_map`, because that row is verification evidence
+  // and `protect_identity()` permits only a revocation, so a name there could be
+  // set at enrolment and never again. Keyed per PERSON, not per membership.
+  'pennsync_private.staff_name': 'app_id,auth_user_id,display_name,recorded_at',
   'pennsync_private.s3_receipt': 'app_id,actor_id,request_id,agency_id,patient_id,referral_id,action,payload,result,payload_sha256,referral_sha256',
   'pennsync_private.s3_referral': 'app_id,id,agency_id,patient_id,actor_id,creation_request_id,version,data',
   'pennsync_private.s4_compliance_audit': 'app_id,id,agency_id,patient_id,visit_id,data',

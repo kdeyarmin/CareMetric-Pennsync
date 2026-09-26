@@ -41,6 +41,7 @@ const CONTRACT = 'services/authority-store/supabase/record-migrations/2026092003
  */
 const FORWARD = [
   'services/authority-store/supabase/record-migrations/20260920620000_roster_created_date.sql',
+  'services/authority-store/supabase/record-migrations/20260920630000_roster_display_name.sql',
 ];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -113,6 +114,19 @@ ${'    '}${ROLES_C.map(([n, role]) => `('${uid(n)}','${role}-c@example.invalid',
       values('${APP}','${C}','Synthetic Agency C','active');
     insert into pennsync_private.membership(app_id,id,agency_id,auth_user_id,base44_user_id,tenant_role,status) values
 ${'    '}${ROLES_C.map(([n, role]) => `('${APP}','membership-${n}','${C}','${uid(n)}','${rid(n)}','${role}','active')`).join(',\n    ')};`);
+  // A name for two of agency-a's three, in the AUTHORITY store rather than on
+  // the carried row — `pennsync_records."user"` has no name column and cannot
+  // get one, because it is generated from entity definitions that have no name
+  // property at all. 3 is left without so the absent ROW is exercised beside the
+  // present one, and the strings are `Synthetic ...` because the column's CHECK
+  // admits nothing else until the owner's hold is lifted by its own migration.
+  await db.exec(`insert into pennsync_private.staff_name(app_id, auth_user_id, display_name)
+    select '${APP}', auth_user_id, case base44_user_id
+      when '${rid(1)}' then 'Synthetic Admin One'
+      when '${rid(2)}' then 'Synthetic Clinician Two' end
+    from pennsync_private.identity_map
+    where app_id = '${APP}' and base44_user_id in ('${rid(1)}','${rid(2)}');`);
+
   // Personnel detail for each, so the widening can be read rather than assumed
   // absent, and every authority label a lie exactly as above.
   // The carried row carries NO email — the roster's address is the authority
@@ -356,6 +370,95 @@ test('an order this contract does not implement is refused by name', async () =>
     'PENNSYNC_ROSTER_AGENCY_NOT_HELD');
 });
 
+/*
+ * The name. Kevin chose "add a name to our own store" over showing the work
+ * email or copying names out of Base44, so the roster carries one — in
+ * `pennsync_private.identity_map` beside `expected_email`, because the carried
+ * table is generated from entity definitions that have no name property at all.
+ *
+ * His answer bought the COLUMN and not the NAMES: real names in production is
+ * his own hold, and the CHECK below is what makes shipping empty a refusal
+ * rather than a convention.
+ */
+test('the roster carries a name from our own store, and null where none is recorded', async () => {
+  const entries = (await listAs(ADMIN_A)).entries;
+  assert.deepEqual(entries.map(entry => entry.full_name),
+    ['Synthetic Admin One', 'Synthetic Clinician Two', null],
+    'the name comes from the authority row, and a colleague without one answers null');
+
+  // Projected for EVERY caller, not only a privileged one. The address beside it
+  // already is, a colleague's name is not personnel detail, and a key that
+  // appeared only for some callers would tell a handler which kind it is serving.
+  const seen = (await listAs(CLINICIAN_A)).entries;
+  assert.deepEqual(seen.map(entry => entry.full_name),
+    entries.map(entry => entry.full_name), 'an unprivileged caller reads the same names');
+  assert.equal(seen[0].phone, null, 'while personnel detail is still withheld from them');
+
+  // And the single read agrees with the list. Two functions project through one
+  // `roster_entry`, but they call it separately, so a change that reached one and
+  // not the other would pass a test that only read the list.
+  const one = (await as(ADMIN_A, GET, [A, rid(2)]))[0].result;
+  assert.equal(one.full_name, 'Synthetic Clinician Two');
+  const none = (await as(ADMIN_A, GET, [A, rid(3)]))[0].result;
+  assert.ok('full_name' in none && none.full_name === null);
+});
+
+test('a name outside the owner hold is refused by the column, not by a convention', async () => {
+  // Driven as the role a write could actually arrive as. No caller role holds a
+  // grant on `pennsync_private.identity_map` — it is force-RLS with no policy —
+  // so this is the migration role, which is the widest thing in the store. If
+  // the constraint let a real name through here, nothing else would stop one.
+  for (const name of ['Jane Doe', 'synthetic lower', ' Synthetic Padded', 'Synthetic']) {
+    await db.exec('begin');
+    await assert.rejects(db.query(`update pennsync_private.staff_name set display_name = $1
+      where app_id = '${APP}' and auth_user_id = '${uid(1)}'`, [name]),
+    error => {
+      assert.match(String(error?.message ?? error), /staff_name_display_name_check|check constraint/);
+      return true;
+    }, `a name of "${name}" must be refused while the owner hold stands`);
+    await db.exec('rollback');
+  }
+  // And a name the hold admits still goes in, so the constraint is refusing the
+  // real ones rather than refusing everything.
+  await db.exec('begin');
+  await db.query(`update pennsync_private.staff_name set display_name = 'Synthetic Renamed'
+    where app_id = '${APP}' and auth_user_id = '${uid(1)}'`);
+  await db.exec('rollback');
+});
+
+test('no caller can write the name, so a screen cannot send one back', async () => {
+  // The whole of why widening this projection needs no write-side change: the
+  // table it comes from is reachable only by a definer. There is no self-write
+  // allowlist to extend, and who may SET a name is a decision nobody has taken.
+  // D107: assert the PRECONDITION that makes the refusal reachable, not merely
+  // that a write failed. A refusal over a table that was empty, or absent, or
+  // named something else would read identically here, and the same "permission
+  // denied" would then be proving nothing about access. So first establish, as
+  // the migration role, that the row this caller is being refused is really
+  // there and really readable by somebody.
+  const present = await db.query(`select display_name from pennsync_private.staff_name
+    where app_id = '${APP}' and auth_user_id = '${uid(1)}'`);
+  assert.equal(present.rows.length, 1, 'the row must exist, or the refusals below are vacuous');
+  assert.equal(present.rows[0].display_name, 'Synthetic Admin One');
+
+  await refusal(as(ADMIN_A, `update pennsync_private.staff_name set display_name = 'Synthetic Other'
+    where app_id = '${APP}' and auth_user_id = '${uid(1)}'`),
+  'permission denied for table staff_name');
+  await refusal(as(ADMIN_A, 'select display_name from pennsync_private.staff_name'),
+    'permission denied for table staff_name');
+
+  // And the reachability condition itself, stated rather than relied on: no
+  // caller role holds ANY privilege on this table. That is what makes "there is
+  // no self-write allowlist to widen" true, and it is the thing that would stop
+  // being true if somebody added a grant while touching something else.
+  const granted = await db.query(`select grantee, privilege_type
+    from information_schema.role_table_grants
+    where table_schema = 'pennsync_private' and table_name = 'staff_name'
+      and grantee in ('anon', 'authenticated', 'service_role', 'pennsync_records_owner', 'public')`);
+  assert.deepEqual(granted.rows, [],
+    'a grant here is how the name becomes writable without anybody deciding it should be');
+});
+
 test('a malformed cursor or subject is refused rather than guessed at', async () => {
   for (const cursor of ['', 'nonsense', rid(1).toUpperCase(), `${rid(1)}0`, rid(1).slice(0, 23)]) {
     await refusal(as(ADMIN_A, LIST, [A, 200, cursor]), 'PENNSYNC_ROSTER_CURSOR_INVALID');
@@ -560,7 +663,7 @@ test('the roster projects only seven columns a screen could send back', async ()
     + 'mirrors the row: widen this set only with the write side read in the same change');
   // And state the other half as a number, so a projection that grew is visible
   // here even when the round-trippable set did not move.
-  assert.equal(projected.length - overlap.length, 18,
+  assert.equal(projected.length - overlap.length, 19,
     'projected columns that a caller can never write; a change here is fine, '
     + 'but it should be a change somebody meant');
 });
