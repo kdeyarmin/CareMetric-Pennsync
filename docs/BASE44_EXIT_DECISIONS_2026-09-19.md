@@ -7880,7 +7880,13 @@ names to a map — a guard that listed the tables without round-tripping their
 data would read as coverage and be none. It also has a side effect the other
 two do not: `record_store.sql` creates the `pennsync_records_owner` role, and
 that harness is built to contain no role DDL. And it could not be measured
-here: `withRestoreLab` requires PostgreSQL **17** tooling and this container
-has 16, so the suite does not run at all, which makes an unproved change to a
-CI-gated postgres suite exactly the thing this entry argues against. It is
-recorded as open rather than half-done.
+here: `withRestoreLab` (`restore-rehearsal.mjs:89`) requires PostgreSQL **17**
+tooling and this container has 16, so the suite refuses with
+`LOCAL_POSTGRES_TOOL_VERSION_MISMATCH` before any database work. Note what that
+constraint is and is not, because the obvious reading would misdirect whoever
+takes the commission: the CI runner has PostgreSQL 17.10, so CI can run this
+suite perfectly well. What is missing is a LOCAL 17 cluster to prove a change
+against before pushing it, and "push it and see what CI says" on a credentialed
+postgres suite is the speculative push the drive-to-green rules forbid. So the
+commission needs a session with 17 tooling of its own, not a change to CI. It
+is recorded as open rather than half-done.

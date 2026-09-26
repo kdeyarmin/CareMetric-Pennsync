@@ -18,6 +18,29 @@ const app = '6a9881683dc68a0bd54f1ef7';
 const AUTHORITY_PRIVATE_TABLES = ['identity_map','agency','membership','patient','assignment','chart_assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt','s3_referral','s3_receipt','known_app','deployment','enrollment_receipt','staff_name'];
 /** D77's locator mapping, created from `record-migrations/` (D109). */
 const RECORD_PRIVATE_TABLES = ['file_object'];
+
+/**
+ * The production assertion over `pennsync_private`: exactly these tables, and
+ * every one of them with row security both enabled and FORCED.
+ *
+ * A function so the sabotage below raises THIS assertion rather than its own
+ * recomputation of the same predicate. That distinction is the whole value of
+ * the sabotage: were the forced half dropped here, a sabotage that recomputed
+ * `relrowsecurity && relforcerowsecurity` for itself would still go green on a
+ * planted unforced table, and the regression it exists to catch would ship.
+ *
+ * `file_object` is D77's locator mapping, created from `record-migrations/`: it
+ * was absent from this list because it could not be in the database this suite
+ * built, not because anyone left it out. `staff_name` is in the authority half
+ * because the table was put there, and force-RLS with no policy is what keeps
+ * "who may set a staff name" an open decision rather than one taken by omission.
+ */
+function assertPrivateTablesSecured(rows,expected) {
+  assert.deepEqual(rows.map(x=>x.relname).sort(),[...expected].sort(),
+    'the set of pennsync_private tables changed');
+  assert.deepEqual(rows.filter(x=>!(x.relrowsecurity&&x.relforcerowsecurity)).map(x=>x.relname),[],
+    'every pennsync_private table must have row security enabled AND forced');
+}
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const request = n => `30000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -198,19 +221,7 @@ scenario('public wrappers are invoker-only; private grants and RLS are complete'
   assert.deepEqual(rows.rows.map(x=>x.proname).sort(),['context','memberships','patients','patient','assignment','revoke_membership','s4_create','s4_read','s3_create','s3_confirm','s3_read','s3_list','visit_documentation','patient_context','visits_schedule','referral_patient','referral_patients'].map(x=>`pennsync_staging_${x}`).sort());
   assert.equal(rows.rows.some(x=>x.prosecdef),false);
   const tables=await privileged("select relname,relrowsecurity,relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='pennsync_private' and relkind='r'");
-  // Every table in the schema, which since D113 means both migration
-  // directories. `file_object` is D77's locator mapping and is created from
-  // `record-migrations/`: it was absent from this list because it could not be
-  // in the database this suite built, not because anyone left it out.
-  //
-  // `staff_name` joins the list because the table moved into this directory: it
-  // is where every other `pennsync_private` table is created, and this pin and
-  // the restore fixture are what the move buys. The row-security assertion
-  // below is the one that matters for it — force-RLS with no policy is what
-  // keeps "who may set a staff name" an open decision rather than one taken by
-  // omission.
-  assert.deepEqual(tables.rows.map(x=>x.relname).sort(),[...AUTHORITY_PRIVATE_TABLES,...RECORD_PRIVATE_TABLES].sort());
-  assert.equal(tables.rows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true);
+  assertPrivateTablesSecured(tables.rows,[...AUTHORITY_PRIVATE_TABLES,...RECORD_PRIVATE_TABLES]);
   const paths=await privileged("select proname,proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='pennsync_private'");
   assert.equal(paths.rows.every(x=>x.proconfig?.includes('search_path=""')),true);
 });
@@ -293,19 +304,20 @@ test('a private table left unforced in the record tier is caught by the widened 
     const planted=pathToFileURL(root+'/').href;
     wide=await build(['../supabase/migrations/','../supabase/record-migrations/',planted]);
     const wideRows=await privateTables(wide);
-    // The exact set, not membership of the planted name: an `includes` here
-    // would stay green while a second table vanished in the same change.
-    assert.deepEqual(wideRows.map(x=>x.relname).sort(),
-      [...AUTHORITY_PRIVATE_TABLES,...RECORD_PRIVATE_TABLES,'planted_unforced'].sort(),
-      'the plant must reach the widened build');
-    assert.equal(wideRows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),false,'the forced check must refuse it');
+    // The plant reaches the widened build, and the PRODUCTION assertion is what
+    // refuses it — named in the expected set so the only thing left to fail on
+    // is the forced half. Recomputing that predicate here instead would prove
+    // this test's arithmetic and say nothing about the guard.
+    assert.throws(()=>assertPrivateTablesSecured(wideRows,
+      [...AUTHORITY_PRIVATE_TABLES,...RECORD_PRIVATE_TABLES,'planted_unforced']),
+    /enabled AND forced/,'the forced check must refuse it');
     assert.deepEqual(wideRows.filter(x=>!(x.relrowsecurity&&x.relforcerowsecurity)).map(x=>x.relname),['planted_unforced']);
 
     narrow=await build(['../supabase/migrations/']);
-    const narrowRows=await privateTables(narrow);
-    assert.deepEqual(narrowRows.map(x=>x.relname).sort(),[...AUTHORITY_PRIVATE_TABLES].sort(),
-      'a record migration is not applied by the narrow build, and nothing else moved either');
-    assert.equal(narrowRows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true,'the narrow scope passes with the plant in place');
+    // The control, through the same assertion: a record migration is not
+    // applied by the narrow build, nothing else moved, and the forced half
+    // passes — so the scope this guard had before D113 could not have caught it.
+    assertPrivateTablesSecured(await privateTables(narrow),AUTHORITY_PRIVATE_TABLES);
   } finally {
     await wide?.close(); await narrow?.close();
     await rm(root,{recursive:true,force:true});

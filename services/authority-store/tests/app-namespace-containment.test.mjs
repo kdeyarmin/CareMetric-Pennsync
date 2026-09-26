@@ -171,19 +171,46 @@ test('the dated record of the pin cannot disagree with it, or be edited', async 
 });
 
 /**
+ * Every app-scoped column, named, and split by the directory that creates it.
+ *
+ * Named rather than counted, and this is the second shape of the same mistake
+ * D113 is about. A count plus a hand-picked subset is satisfied by a change
+ * that drops one unlisted column and adds another — the total holds, the
+ * one-per-table check holds, the `loose` query stays empty, and a column that
+ * left the containment is never reported. The set is the population; the
+ * length of it is a summary of the population.
+ */
+const AUTHORITY_APP_SCOPED = ['agency.app_id', 'archive_patient_import_receipt.app_id',
+  'assignment.app_id', 'chart_assignment.app_id', 'enrollment_receipt.app_id',
+  'identity_map.app_id', 'membership.app_id', 'mutation_receipt.app_id', 'patient.app_id',
+  'patient_context.app_id', 'patient_disclosure_audit.app_id', 's3_receipt.app_id',
+  's3_referral.app_id', 's4_compliance_audit.app_id', 's4_create_receipt.app_id',
+  's4_note_conversion.app_id', 's4_note_history.app_id', 's4_visit.app_id',
+  // The staff display name. A name keyed per person is the row most likely to
+  // be re-keyed later, and the containment is what stops one deployment's
+  // names reaching another.
+  'staff_name.app_id',
+  'visit_disclosure_audit.app_id', 'visit_list_disclosure_audit.app_id'];
+/** D77's locator mapping, created from `record-migrations/` (D109). */
+const RECORD_APP_SCOPED = ['file_object.app_id'];
+
+/**
  * The containment assertion itself, over whatever database it is handed.
  *
  * It is a function so the sabotage below can raise it from a build the guard
- * never makes. `expected` is a parameter for the same reason and for no other:
- * the narrow control passes the count the authority-only scope used to see, so
- * that "the old scope would still have passed" is asserted rather than argued.
+ * never makes, and so both raise the SAME assertion: a sabotage that recomputes
+ * the predicate proves its own arithmetic rather than the guard's. `expected`
+ * is a parameter for one reason — the narrow control passes the set the
+ * authority-only scope used to see, so "the old scope would still have passed"
+ * is asserted rather than argued.
  */
 async function assertAppScopedColumns(db, expected) {
   // A new table typing app_id as text would sit outside the containment
-  // entirely, so the count is pinned: adding one is a deliberate act.
+  // entirely, so the whole set is pinned: adding one is a deliberate act.
   const scoped = await db.query(`select table_name, column_name from information_schema.columns
     where table_schema = 'pennsync_private' and domain_name = 'deployment_app' order by table_name, column_name`);
-  assert.equal(scoped.rows.length, expected, 'the number of app-scoped columns changed');
+  assert.deepEqual(scoped.rows.map(r => `${r.table_name}.${r.column_name}`).sort(), [...expected].sort(),
+    'the set of app-scoped columns changed');
   // Exactly one per table: no table carries a second, separately typed app id.
   assert.equal(new Set(scoped.rows.map(r => r.table_name)).size, scoped.rows.length);
   // Nothing else in the schema names an app id without going through the domain.
@@ -198,26 +225,8 @@ async function assertAppScopedColumns(db, expected) {
 }
 
 test('every app-scoped column carries the domain rather than plain text', async () => {
-  // 22 since D113 widened the build, not since a column was added: 21 of these
-  // come from the authority directory and `file_object` from the record one.
-  const scoped = await assertAppScopedColumns(staging, 22);
-  for (const name of ['identity_map', 'agency', 'membership', 'patient', 'assignment',
-    // D24's production care team. It is a sibling of `assignment` rather than
-    // the same table because `assignment` keys to `pennsync_private.patient`,
-    // which holds synthetic rows only — and that key is load-bearing for the
-    // archive import's rollback guard, so it could not simply come off.
-    'chart_assignment',
-    // The staff display name. Named here rather than only counted, because a
-    // name keyed per person is the row most likely to be re-keyed later, and
-    // the containment is what stops one deployment's names reaching another.
-    'staff_name',
-    'patient_disclosure_audit', 'visit_disclosure_audit', 'visit_list_disclosure_audit',
-    // D77's locator mapping, created from `record-migrations/`. Named here so
-    // the widened build is what the assertion rests on rather than the count.
-    'file_object',
-    'enrollment_receipt']) {
-    assert.ok(scoped.some(r => r.table_name === name), `${name} must stay app-scoped`);
-  }
+  // The whole set, from both directories since D113 widened the build.
+  await assertAppScopedColumns(staging, [...AUTHORITY_APP_SCOPED, ...RECORD_APP_SCOPED]);
   const registry = await staging.query(`select table_name, data_type, domain_name from information_schema.columns
     where table_schema = 'pennsync_private' and column_name = 'app_id'
       and table_name in ('known_app','deployment') order by table_name`);
@@ -395,9 +404,10 @@ test('an enrolled identity must carry its evidence hash and a coherent revocatio
  * the other fifty-three suites that walk it.
  *
  * Both halves are the finding. The wide build must REFUSE it; the narrow build
- * must PASS, at the count the authority-only scope used to see, which is what
+ * must PASS, at the set the authority-only scope used to see, which is what
  * says the old scope could never have caught this rather than merely that the
- * new one does.
+ * new one does. Both halves raise `assertAppScopedColumns` rather than
+ * recomputing its predicates, so weakening the guard fails the sabotage too.
  */
 test('a plain-text app id planted in the record tier is caught by the widened build and missed by the narrow one', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pennsync-d113-'));
@@ -413,9 +423,12 @@ test('a plain-text app id planted in the record tier is caught by the widened bu
     `);
     const planted = pathToFileURL(root + '/').href;
     wide = await deploy(STAGING_APP, { directories: [...MIGRATION_DIRECTORIES, planted] });
-    // It escapes both ways: the domain count does not move, and the column is
-    // loose. Either assertion alone would be satisfied by the other's absence.
-    await assert.rejects(assertAppScopedColumns(wide, 22), /an app id column escaped the domain/);
+    // It escapes past the domain: the pinned set does not gain it, because it
+    // is not domain-typed, and the `loose` query is what names it. The guard's
+    // own function is what refuses, so a guard that stopped asking would fail
+    // here too.
+    await assert.rejects(assertAppScopedColumns(wide, [...AUTHORITY_APP_SCOPED, ...RECORD_APP_SCOPED]),
+      /an app id column escaped the domain/);
     const loose = await wide.query(`select table_name from information_schema.columns
       where table_schema = 'pennsync_private' and column_name = 'app_id'
         and domain_name is distinct from 'deployment_app'
@@ -423,17 +436,10 @@ test('a plain-text app id planted in the record tier is caught by the widened bu
     assert.deepEqual(loose.rows, [{ table_name: 'planted_escape' }]);
 
     // The control. Authority directory only: the plant is a record migration,
-    // so it is not applied at all, and the old pin still passes.
+    // so it is not applied at all, and the authority-only set still passes —
+    // name for name, so a column leaving as another arrives is not a pass.
     narrow = await deploy(STAGING_APP, { directories: ['../supabase/migrations/'] });
-    const narrowRows = await assertAppScopedColumns(narrow, 21);
-    // And the exact set, derived rather than retyped: the narrow set is the
-    // wide one less the column the record directory creates. A count
-    // alone would stay green if one column left as another arrived.
-    const wideRows = await deploy(STAGING_APP).then(async database => {
-      try { return await assertAppScopedColumns(database, 22); } finally { await database.close(); }
-    });
-    assert.deepEqual(narrowRows.map(r => `${r.table_name}.${r.column_name}`),
-      wideRows.map(r => `${r.table_name}.${r.column_name}`).filter(name => name !== 'file_object.app_id'));
+    await assertAppScopedColumns(narrow, AUTHORITY_APP_SCOPED);
   } finally {
     await wide?.close(); await narrow?.close();
     await rm(root, { recursive: true, force: true });
