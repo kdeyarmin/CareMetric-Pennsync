@@ -8312,6 +8312,7 @@ where the derivation cannot be completed, and it is the companion of D116: D116
 is about a figure you cannot reproduce with the instrument's own key, and this is
 about a figure one of whose terms you cannot read at all.
 
+
 ## D123 — A classifier's fall-through must not also be its empty case
 
 When a classifier's default bucket receives both "the input matched none of the
@@ -8360,6 +8361,7 @@ override assertions pass under both, and that is stated in the test rather than
 discovered later: an assertion satisfied by the wrong answer as well as the
 right one is documentation, not a control. This is D120's rule about sabotage
 and D107's about a repair that records nothing, arriving together.
+
 
 ## D125 — A union is verified by what it removed, not by what it contains
 
@@ -8429,6 +8431,79 @@ mechanical, state the property you are relying on as an assertion in the
 resolution itself, and pick a property whose violation is cheap to detect.
 "Nothing was removed" is one integer. "Everything that should be here is here"
 is a reading, and a reading is what you were trying to avoid.
+## D126 — A name that resolves and a name that parses are not the same kind
+
+Every function in the record store is created `set search_path = ''`, so nothing
+in a body resolves unqualified and the house habit is to write `pg_catalog.` in
+front of every built-in. That habit is correct for a **catalogued function** and
+meaningless for a **parser construct**. `LEAST`, `GREATEST`, `COALESCE` and
+`NULLIF` are constructs: the grammar handles them, `pg_proc` holds no row for any
+of them, and `pg_catalog.least(a, b)` is therefore a reference to a function that
+exists in no PostgreSQL. It is not a style question and there is no version of
+the server where it works.
+
+It survives review because **a plpgsql body resolves no names at creation** —
+D51's rule arriving from a second direction. `20260920580000_contract_operational_tables.sql`
+applies cleanly with `pg_catalog.least` inside `pennsync_records.operational_limit`,
+and the error is a runtime `42883` raised on the call rather than on the apply.
+Seven contract functions call that helper, all of them list reads and none a
+write, and the route seam always sends a limit, so what it reaches is every list
+call in seven capabilities, not an edge. **Eight was the first answer, from two
+instruments that reached it independently, and both were reading the same
+thing**: the file's closing `revoke`/`grant` block names every signature in the
+file, this helper's among them, and a reader that chunks on create-function
+boundaries puts that block inside the chunk of whichever function happens to
+precede it — here `contract_note_conversion_create`, which calls nothing. That
+is D132, and the count that stands is the one measured by driving each wrapper
+and crossing the bodies out of `pg_proc`, with a planted call proving the
+crosser reports eight when there really are eight.
+
+The remedy is **dropping the prefix, never re-qualifying it**. A construct is not
+a schema object, so it resolves under an empty `search_path` with no prefix at
+all and loses nothing — there is no namespace it could be shadowed from, which
+is the only thing the qualification was ever buying. "Qualify it properly" has no
+referent here, and reaching for some other schema name is the wrong repair for
+the right smell.
+
+The guard's other half is that it stays SILENT on the correct form, and that is
+a real population rather than a courtesy. At `4fdcd92` the two migration
+directories hold 26 unqualified `least` and `greatest` calls across 15 files —
+the right way to write them, and exactly what the fix turns the broken call
+into. One of those files is `20260920580000_contract_screen_records.sql`, which
+shares a timestamp prefix with the file holding the defect: the two kinds sit
+side by side, written the same week, and nothing in the source tells them apart.
+A guard that fired on the correct form would be worse than no guard, because it
+would read as a rule against the constructs and the obvious way to quiet it is
+to put the prefix back. Silence proves nothing on its own — a pattern matching
+nothing is just as quiet — so the test plants both forms, asserts the pattern
+separates them, and asserts the store really does hold the correct form, and the
+two halves fail for different reasons.
+
+The decision is the one the guard's name carries: **resolve every instance, never
+generalise from the ones that work.** Forty-six of the forty-seven names this
+store qualifies are real functions, and reading any of them tells you nothing
+about the forty-seventh. `services/authority-store/tests/catalog-qualified-names.test.mjs`
+builds the store and asks `pg_proc` about every name its function bodies
+qualify, so the check is the same kind as the failure. It was opened
+deliberately RED on the live bug, because a guard that has never been seen to
+fire on the instance it was written for is a promise rather than a control, and
+it went green when the forward fix merged. Its first version scanned the
+migration FILES instead, which a forward-only repair makes permanently red;
+that correction is D136.
+
+Two things about building it are worth more than the guard.
+
+Its first scan used `[a-z_]+` and went silently blind over `pg_catalog.md5(` and
+`pg_catalog.sha256(`, reporting 45 distinct names where there are 47 — D118
+again, an instrument that truncates producing a true reading about a population
+nobody chose. The class now admits digits, and the control **pins those two names
+as scanned** rather than asserting a total, so the blindness fails the suite
+instead of quietly shrinking a number.
+
+And repairing that instrument did not repair what had already been published
+with it — the site count went on being quoted at a figure the blind class had
+produced. That is D130, which came out of this guard and is written up in its
+own right because it is not about `pg_catalog` at all.
 ## D127 — An idempotent catch-up is undetectable by its own effect
 
 **Added 2026-09-26.** A forward migration written so that a fresh build and a
@@ -8580,6 +8655,50 @@ reach is a number somebody can read rather than an assumption. And keep a
 positive control: a sweep whose finding count is zero and whose detector has
 never fired are the same reading (D119).
 
+## D130 — Fixing an instrument does not fix the readings already taken with it
+
+D126's scan was found blind: `[a-z_]+` does not truncate a digit-bearing name,
+it skips it entirely, so `pg_catalog.md5(` and `pg_catalog.sha256(` were never
+matched. The class was repaired, and the distinct-name figure was re-taken with
+the repaired class — 45 became 47, and that correction was reported.
+
+**The site count was not re-taken.** It had been published as 482, measured with
+the blind class, and it went on being quoted after the class was fixed, because
+the repair was made where the blindness was *found* and the other reading had
+come off the same instrument in a different invocation. At `1e7e0f0` the figure
+is **518** across the two migration directories, and the 36 it was short are
+exactly 31 `pg_catalog.md5(` and 5 `pg_catalog.sha256(`. That decomposition is
+what makes this a measurement rather than a second guess: the repaired
+instrument and the blind one differ by precisely the population the blindness
+named, and nothing else accounts for the gap.
+
+So: **when a pattern, a class, a filter or a query turns out to be blind,
+re-take every figure that came off it, not only the one that exposed it.** A
+repair is scoped to an instrument; the readings are already elsewhere — in a
+pull request body, a relay, a comment, a page — and nothing carries the repair
+to them. The figure that exposes a blind spot is the one under your eyes, and it
+is therefore the least likely of them to still be wrong afterwards.
+
+That is also what makes a bare figure different in kind from a wrong one. **A
+wrong figure with its instrument attached is self-correcting — anyone holding it
+can re-take it and will. A bare figure is a debt owed by exactly one session**,
+the one that produced it, and it is discharged only if that session happens to
+notice. 482 was the second kind.
+
+This is D118 arriving from the side D118 does not cover. D118 is about the
+moment of reading: an instrument that truncates reports a true reading about a
+population nobody chose. This is about everything read before the instrument was
+understood. It is also why D122's insistence on naming the instrument **and** the
+head beside every figure is load-bearing rather than ceremony — a figure
+carrying its instrument can be re-taken by whoever holds it, while 482 carried
+neither and could only be corrected by the session that produced it happening to
+notice.
+
+Here the correction cost nothing: no count was pinned in the tree, and the
+coordinator holds no counts in project memory by rule, so the stale figure lived
+only in relays and was dropped by construction. That is the lucky case, not the
+rule.
+
 ## D131 — D88's silence is a property of the apply, not of the pull request
 
 **The belief this corrects, which was written down and acted on.** "A modified
@@ -8677,6 +8796,112 @@ over the source text where one exists — `pg_proc.prosrc` has no trailing grant
 block and no `create or replace` ambiguity. And where two instruments disagree
 by one, do not average them or prefer the larger: the difference has a cause,
 and it is usually in the cheaper instrument's boundaries.
+
+## D133 — A bound with its direction survives being wrong about the mechanism
+
+Where you can bound a figure but not measure it, **publish the bound, say which
+way it is loose, and name who can close it.** Do not publish the number. A bound
+stated that way survives being wrong about *why* it is loose; a number does not
+survive at all.
+
+The worked example is D126's caller count. Reading
+`20260920580000_contract_operational_tables.sql` for the text `operational_limit`
+gives eight functions, and that was sent as an upper bound by reading, with the
+reason it could only be an upper bound — a call can sit on a branch the module
+never takes — and with the close routed to the sessions that can execute.
+
+**The bound held and the reason did not.** It was loose for a mechanism nobody
+had imagined: the eighth mention is not a call on a dead branch, it is the file's
+closing `revoke`/`grant` block, which names every signature in the file, so the
+text sits in no function body at all. An instrument that chunks on
+create-function boundaries puts that block inside the chunk of whichever
+function happens to precede it — here `contract_note_conversion_create`, which
+calls nothing (D132). Seven stands, all list reads and no write among them.
+
+Now compare what each phrasing would have cost. "Eight" would have been
+retracted. "Seven", had it been guessed, would have been right by luck and
+retracted anyway the first time someone asked how it was known. **"At most
+eight, loose in this direction, and here is who can close it" needed no
+retraction, because it claimed exactly what the reading could support** — and
+the framing is what made the closing measurement happen rather than being
+assumed unnecessary.
+
+The corollary is sharper than the rule and is the part to carry. **Two readers
+agreeing is not corroboration when they share a blind spot.** Two instruments
+reached eight independently, which reads like confirmation and was not: both
+were consuming the same `revoke` block. What turns that from a platitude into
+something a reader can act on is *naming the shared input* — once the block is
+named, anyone can check whether a third reader shares it too, and agreement
+between readers that do not is worth something again.
+
+This is D122's companion from the other side. D122 says refuse a composite
+figure when a term is unreadable. This says what to do when you are not refusing
+— when the figure is readable but only approximately — and the answer is the
+same in spirit: publish what the instrument can support and name the instrument,
+never the answer you expect the measurement to give.
+
+## D136 — Gate what will RUN, not what was written
+
+D126's guard first scanned the migration FILES for `pg_catalog.<name>(`. That is
+the wrong population, and the way it is wrong only became visible when the
+defect it was written for was fixed.
+
+D88 freezes a migration that has already applied, so a defect in one is repaired
+by a forward `create or replace` and the broken text stays in the tree for good
+with a correct definition layered over it. A file scan is then red on that line
+**forever**, and the only edit that quiets it is exactly the one D88 exists to
+prevent. The fix made it worse rather than better:
+`20260920640000_operational_limit.sql` explains in its header what it replaces,
+quoting the broken call, so a file scan went from one occurrence to three — one
+frozen definition and two sentences of prose.
+
+So the guard builds the store and reads `pg_proc.prosrc`. A superseded
+definition is not in the catalog; a header comment is not in a body; what is
+there is exactly what a caller will execute. Its failure now names the FUNCTION
+rather than the file, which is the thing that will actually raise.
+
+The general form: **where a repair is forward-only, a check over source text
+measures history and a check over built state measures behaviour, and only the
+second can ever be green.** Ask which one a check is before the first forward
+fix lands, not after — the two agree perfectly until the moment they stop, and
+the moment they stop is the moment the check's subject is repaired.
+
+Two properties are worth copying. The build is `readMigrations` less
+`LOCAL_ONLY_MIGRATIONS`, the same one the hosted comparison uses, so the
+population is the store a deployment gets rather than a directory chosen in the
+test. And the one thing a file scan was good for is KEPT, as an assertion rather
+than as a habit: a test asserts that the frozen migration still contains the
+broken call **and** that the built store does not. Either half alone is
+satisfied by the wrong world — the first by a store nobody repaired, the second
+by a tree somebody edited — and together they make a quiet D88 violation loud.
+Both were proved by sabotage, in opposite directions: putting the prefix back
+into the forward migration fails the catalog test naming
+`pennsync_records.operational_limit`, and taking it out of the frozen one fails
+this test naming D88.
+
+A remedy was proposed and refuted here, and that is worth recording rather than
+quietly dropping. The first reading of the problem was that the gate's SCOPE was
+wrong — that a whole-tree scan has no legal remedy under D88, so the gate should
+be re-scoped to the files a change arrives with, where a bad new spelling is
+caught before it is frozen. **Measurement refuted it directly rather than merely
+outweighing it.** The forward fix's own header explains the bug it repairs and
+quotes the broken call to do it, so a diff-scoped gate fails on the change that
+fixes the defect — it does not even solve the case it was proposed for. The gate
+was never unsatisfiable because of its scope. It was unsatisfiable because it
+asked about TEXT, and a text question about a frozen file has no legal answer.
+Change the QUESTION and the remedy reappears with the whole store still in
+scope. The general rule underneath — **a gate whose only available remedy is a
+forbidden action is unsatisfiable by construction** — is right, and the thing to
+check when you meet one is whether the question can move before the population
+does.
+
+This is D132 arriving in a second instrument on the same night. There, text
+chunked on create-function boundaries said eight callers where `pg_proc` said
+seven, because a `revoke` block belongs to no body. Here, text said a defect
+survives where `pg_proc` says it does not, because a superseded definition
+belongs to no store. Twice in one evening the catalog was right and the text was
+not, for unrelated reasons — which is the argument for reaching for the catalog
+first rather than for a better parser.
 
 ## D147 — An entry can survive a merge intact and stop being an entry
 
