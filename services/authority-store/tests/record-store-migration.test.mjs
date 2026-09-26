@@ -365,10 +365,16 @@ test('D82: a person may correct their own profile, and the store refuses every o
     // Each value must DIFFER from the one already stored, and that is asserted
     // rather than assumed. The guard fires on `is distinct from`, so a write of
     // the value the row already holds changes nothing and is correctly not
-    // refused -- which would make the case below pass vacuously, or vanish, with
-    // nothing in the test saying why. It is not hypothetical: `staff_role` was
-    // written as 'nurse' here until that became the column's emitted default,
-    // and the assertion went quiet rather than red.
+    // refused. It is not hypothetical: `staff_role` was written as 'nurse' here
+    // until that became the column's emitted default.
+    //
+    // That break was LOUD -- `Missing expected rejection` -- and the assertion
+    // below is not here to make it louder. It is here because the repair is
+    // silent: swapping in another value restores green and records nothing, so
+    // the next coincidence costs the same rediscovery from a red with no
+    // explanation in it. Whether such a break shouts or passes is a property of
+    // the ASSERTION, not of the break: `assert.rejects` names an exact outcome,
+    // and one weaker assertion away is the version that goes vacuously green.
     const refused = { role: 'admin', is_approved: 'true', staff_role: 'office_staff',
       agency_name: 'Somewhere Else', offboarded_at: '2026-01-01T00:00:00Z' };
     for (const [column, value] of Object.entries(refused)) {
