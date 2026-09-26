@@ -100,6 +100,35 @@ export function classifyToolFailure(binary, args, error) {
   else if (/cannot connect to the docker daemon|error during connect|is the docker daemon running/i.test(output)) reason = 'DAEMON_UNAVAILABLE';
   else if (/permission denied while trying to connect to the docker/i.test(output)) reason = 'DAEMON_PERMISSION_DENIED';
   else if (error.killed) reason = 'TIMED_OUT';
+  // D141. THE FALL-THROUGH IS A QUEUE, AND THESE THREE WERE IN IT. D123 split
+  // `FAILED_OUTPUT_REDACTED` from `FAILED_NO_OUTPUT` and said in as many words
+  // that an unrecognised diagnostic is "a category to add here"; the plan
+  // thread's `2e430717` then produced one, on a head that carries D123, so the
+  // reading is trustworthy for the first time: the CLI printed something none
+  // of the branches above name. What it printed is NOT recoverable -- the
+  // no-forwarding rule means nothing captured it -- so these branches claim
+  // nothing about THAT occurrence and are not offered as its cause. They are
+  // the classes a `supabase start` demonstrably fails with that had no name,
+  // so the NEXT one says which rather than falling through. Each pattern is
+  // planted in `http-boundary.test.mjs`, because a branch nothing has been
+  // shown to reach is indistinguishable from a branch that cannot be.
+  //
+  // A port taken between the pre-flight and the start is the one worth calling
+  // out: the port series exists precisely because that window is real, and it
+  // is attached to the error as `observed` at pre-flight time, which cannot
+  // fire for a port that was free when it looked. Docker reports it from the
+  // daemon, so it arrives HERE, and it read as unrecognised until now.
+  else if (/port is already allocated|address already in use|bind: /i.test(output)) reason = 'PORT_TAKEN_DURING_START';
+  // An image the runner could not obtain is not this repository's fault and is
+  // worth separating from one it obtained and could not run: a registry rate
+  // limit is the common shape on a shared runner and resolves itself, where a
+  // missing manifest is a pin nobody can satisfy.
+  else if (/toomanyrequests|rate limit|failed to pull|manifest unknown|manifest for .* not found|pull access denied/i.test(output)) reason = 'IMAGE_UNAVAILABLE';
+  // And a container the daemon started and then judged unhealthy, which is the
+  // shape a start takes when it gets far enough to wait on a service. It sits
+  // after the two above because an unobtainable image also leaves a service
+  // unstarted, and the earlier cause is the one to report.
+  else if (/is not healthy|service not healthy|unhealthy|health check failed|container .* (?:exited|is not running)/i.test(output)) reason = 'SERVICE_UNHEALTHY';
   // A migration that raised one of our own codes says so by name. Nothing but a
   // literal above is emitted, so this stays inside the no-forwarding rule while
   // turning an unreadable start failure into the one fact worth knowing.
