@@ -1508,9 +1508,9 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 50 | 22 |
-  | `mutating` (derived) | 49 | 35 |
-  | `integration` (derived) | 19 | 15 |
+  | `read-only` (derived) | 50 | 24 |
+  | `mutating` (derived) | 49 | 37 |
+  | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1540,6 +1540,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   reading said 32 → 33, and replaying it onto a base where batch D had landed
   would have stated a delta over a total that no longer existed. Re-derive this
   row, never replay it.
+
+  The three derived migration counts were last re-derived that way, on a tree
+  rebased onto #311, and each rose by two: the roster's `created_date` order
+  and its display name are two forward record migrations. Every derived wave
+  moved because these values are **cumulative supersets rather than prefixes**,
+  so a migration in the read-only wave is in the two beyond it as well. No
+  handler count moved, which is the check worth reading here — the change adds
+  no capability, so a handler count that had moved would have meant the wave
+  classification shifted rather than that work arrived.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
@@ -2807,11 +2816,8 @@ entity routes: 33 declared, 47/237 landable call sites SERVED, 190 still to adop
   of those 190, across 33 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 189 need a named capability
 ```
 
-And the reading on THIS tree, after #296 carried batch D's fourteen over the
-operational tables. This one is `pnpm run check:entity-routes`'s own output and
-is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
-byte for byte, so paste what the tool prints and never retype, rewrap or
-re-indent it.
+And after #296 carried batch D's fourteen over the operational tables — a
+record of that head, not maintained either:
 
 ```
 entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adopt
@@ -2819,6 +2825,29 @@ entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adop
   8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
   of those 166, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 165 need a named capability
 ```
+
+And the reading on THIS tree, after the roster gained a creation order. This
+one is `pnpm run check:entity-routes`'s own output and is **pinned**:
+`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
+so paste what the tool prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 52 declared, 95/237 landable call sites SERVED, 142 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 20 pass arguments this cannot read
+  8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 142, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 141 need a named capability
+```
+
+**The move above is 24 sites, and its cause is one order rather than any new
+capability.** The roster contract learned to answer `created_date` descending,
+which is what the `User.list` sites that were refused on their sort were asking
+for; the declared count does not move, because no route was added. Every one of
+the 24 leaves the sort bucket, which is why that line falls while the unreadable
+line holds. The figure this block reads off its predecessor is also the one
+place a reader should be most careful: the previous block's numerator and this
+tree's base reading are the same number for two unrelated reasons, and the two
+were told apart by running the printer on both trees rather than by reasoning
+about them.
 
 **What that block says, and why the prose below it names no total from it.**
 The numerator is the count of landable call sites a declared route actually
