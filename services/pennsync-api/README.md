@@ -192,9 +192,17 @@ capability above: `app.mjs` binds it to the caller's own request, the bearer
 stays in the closure, and a handler receives `records(operation, entity, args)`
 rather than a connection, a key or a table name.
 
-Five operations — `list`, `get`, `insert`, `update`, `delete` — over the 31
-entities the broker family serves (`brokered-entities.mjs`, generated from the
-same plan as the family's SQL). Everything else is refused here before a request
+Five operations — `list`, `get`, `insert`, `update`, `delete` — over the
+entities the broker family serves, which today is **three, all read-only**:
+`Announcement`, `FacilityDocumentationRule` and `RegulatoryUpdate`. Read that
+count from `brokered-entities.mjs` rather than from this sentence — the file is
+generated from the same plan as the family's SQL, and `check:record-brokers`
+prints it as `record brokers unchanged: 5 operations over 3 entities`. The
+allowlist was 31 until D22 taught D16's ceiling to read each entity schema's own
+`rls` block, and 28 of those declare an authority decision a generic family
+cannot evaluate; this page said 31 for some time after that. So three of the
+five operations reach no entity at all today, and that is the family working as
+D22 left it rather than a gap. Everything else is refused here before a request
 leaves the service: an unknown operation, an entity outside the family, a write
 to reference data, or an argument nobody declared. The database is still the
 authority on every one of those answers — `record-brokers.test.mjs` applies the
