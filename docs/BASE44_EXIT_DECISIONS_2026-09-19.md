@@ -7949,6 +7949,75 @@ postgres suite is the speculative push the drive-to-green rules forbid. So the
 commission needs a session with 17 tooling of its own, not a change to CI. It
 is recorded as open rather than half-done.
 
+## D114 — What a migration can reach, rather than what it appears to invoke
+
+D110 left one thing standing on an unchecked premise. `MIGRATION_CODES` names
+the `PENNSYNC_*` codes a failing migration can print, and it deliberately
+excludes a code raised inside a `create function` body: that is a refusal
+answered to a caller at runtime, not a migration failure. The exclusion is
+right. What it rests on is the claim that no such body can *run* while a
+migration is applying — which held by observation, and whose failure mode is
+silent. A constraint added in a later migration is validated against the rows
+already present, so a `check` calling one of this store's own functions executes
+that function at migration time, and its refusal prints with no name: exactly
+the diagnosis D110 exists to prevent, arriving through the door D110 left open.
+
+**The decision is that the reachable set is asserted, not the invoked set.** The
+first form of this was "no migration invokes a `pennsync_*` function at
+migration time", and it is false. The deployment pin adds
+`deployment_matches_pin` and `deployment_app_is_pinned`, and both really do call
+`pennsync_private.deployment_app_id()` and `pennsync_private.app_admitted()` on
+apply. Neither raises. That — not absence — is the claim, and it is the claim
+because it is the one that is true.
+
+`services/authority-store/tests/migration-time-reachability.test.mjs` asserts
+the exact set of migration-time calls, walks what each of those bodies itself
+calls, and requires the codes reachable through that closure to be empty. Three
+properties are load-bearing rather than stylistic.
+
+- **The exact set, never membership.** "No raiser appears among the invoked" is
+  satisfied by a correct answer *and* by a parser that found nothing; an
+  equality over the invoked set is satisfied only by the first.
+- **Whatever the parser cannot place is a failure somebody resolves.** An
+  unclassified statement reds the test and names itself. Tolerating one would
+  make this vacuous by the shortest available route: an unreadable shape is how
+  a real call would arrive.
+- **The closure, because the answer is otherwise a coincidence.** Both pinned
+  functions are named by a constraint of their own, so a depth-one reading finds
+  the pair and proves nothing about the link between them — and
+  `app_admitted` does call `deployment_app_id`.
+
+**The over-approximation that looks safe and is not.** The tempting shape is to
+count every `pennsync_*` token outside a function body as a reference and refuse
+if any of them raises. That fails on arrival: the do-block preconditions hold
+162 `to_regprocedure`/`to_regclass` existence lookups naming contract functions,
+most of which do raise. **Over-approximating a reference set does not make a
+ratchet safely stricter when the references are mostly not calls** — it makes it
+red on the day it lands and deleted the day after. So every occurrence is placed
+in a named statement kind, and a name in a trigger definition, a grant, a
+comment or a policy is a reference rather than a call. Inside a *body* the
+direction of safety reverses and the over-approximation is taken, because there
+being wrong can only widen the closure and a wider closure can only red.
+
+**A gap the closure found in the parser, worth recording for its shape.** Both
+pinned functions are written by `execute format($fn$ create function … $fn$)`
+inside a do-block, and the first segmenter stripped nested dollar-quoted regions
+wholesale. So the one function a migration-time constraint actually calls had no
+readable body, and the tool answered "nothing reachable raises" — correctly, and
+for no reason it had established. It is the house defect in its quietest form:
+not a wrong answer, a right answer nothing was standing behind. The segmenter
+now recurses, and the test fails on a reached name it cannot read rather than
+treating the absence as empty.
+
+**Proved by sabotage, not by reading.** Counting `alter table` as non-executing,
+stripping generated SQL again, blinding the body walk, dropping quoted-identifier
+declarations, discarding unclassified occurrences and counting trigger DDL as
+executing each red a different assertion; a raising function planted behind a
+`check` constraint in a real migration directory reds the exact-set assertion by
+name. The registration in `test:authority-store` was proved the same way, by
+removing it and watching `testRegistryContract` name the file.
+
+
 ## D115 — A derived population fails closed on empty, or it is the vacuous case with a new cause
 
 2026-09-26. Decided while converting `contract-roster.test.mjs` off its
