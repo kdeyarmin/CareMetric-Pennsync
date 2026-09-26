@@ -8,7 +8,8 @@
 -- WHAT HIS ANSWER BOUGHT. The COLUMN, not the NAMES. Real people's names in
 -- production is one of the holds he keeps himself, and he answered where a name
 -- comes from rather than whose names go in. So this ships EMPTY, and the CHECK
--- below is what makes that a refusal rather than a convention.
+-- on the table — in the authority migration named below — is what makes that a
+-- refusal rather than a convention.
 --
 -- WHY IT IS NOT ON THE CARRIED TABLE, which is the first thing anybody will
 -- reach for. `pennsync_records."user"` is GENERATED from the entity definitions
@@ -23,8 +24,9 @@
 -- already comes from (`identity_map.expected_email`) for exactly that reason.
 -- D34's rule says to check which store already models something before writing
 -- anything; the answer here is that this store models the person and the other
--- one does not model their name at all. Which TABLE it belongs in is the next
--- paragraph, and the first answer was wrong.
+-- one does not model their name at all. Which TABLE it belongs in, and which
+-- DIRECTORY, are both in that migration, and the first answer to each was
+-- wrong.
 --
 -- WHO MAY SET IT IS STILL OPEN, and this placement is what keeps it open
 -- honestly rather than by omission. `pennsync_private` is force-RLS with no
@@ -43,58 +45,20 @@
 -- rather than serving it in the default one.
 begin;
 
--- WHY IT IS NOT ON `identity_map` EITHER, which is where I put it first and
--- where the schema refused it. That table permits exactly ONE update:
--- `pennsync_private.protect_identity()` raises `PENNSYNC_IMMUTABLE_IDENTITY`
--- unless the change is a revocation, enumerating the columns that may not move.
--- A name there could be set at enrolment and never again, which is dead for
--- every staff member already enrolled — and D99's own comment on that function
--- says why adding a column to the table is not free: a check that decides from
--- an enumeration is silently wrong about what the enumeration does not name, so
--- a revocation could have rewritten the name on its way through.
+-- THE TABLE IS NOT CREATED HERE. It is
+-- `migrations/20260920605000_staff_name.sql`, in the authority directory, which
+-- also carries why it is not a column on `identity_map` and why it is keyed per
+-- person. In short: `pennsync_private` is the authority store's schema, the
+-- table depends on nothing in `pennsync_records`, and
+-- `restore-schema-fixture.mjs` pins the shape this store survives a dump and
+-- restore with from that directory alone — so a table created from here would
+-- sit outside the backup rehearsal with nothing reporting it. Both
+-- `tools-pennsync-migrate.mjs` and every harness apply the authority directory
+-- whole before this one, so the table exists by the time the functions below
+-- read it.
 --
--- The refusal is correct on the merits. `identity_map` holds VERIFICATION
--- EVIDENCE — `source_evidence_sha256`, `verified_at`, a one-way revocation —
--- and a display name is mutable profile data. Mixing the second into the first
--- is what the trigger exists to prevent. So the name gets its own table,
--- keyed per PERSON rather than per membership: somebody who holds a membership
--- in two agencies is one person with one name, and a per-membership row would
--- let those two disagree.
-create table pennsync_private.staff_name (
-  -- `deployment_app`, read off the LIVE `identity_map` column rather than out of
-  -- the migration that created the table: that migration says `staging_app`, and
-  -- the domain has been renamed since. A type name copied from the oldest file
-  -- that mentions it applies cleanly against a fresh reading of history and
-  -- fails against the store.
-  app_id pennsync_private.deployment_app not null,
-  auth_user_id uuid not null,
-  -- The hold, in the database. `pennsync_private.agency.name` is constrained
-  -- `like 'Synthetic %'` and `20260920610000_production_agency_name.sql` sits
-  -- written and never run to lift it on the owner's word; a person's name is
-  -- that same hold in a sharper form, so it gets the same shape of constraint
-  -- and its lift will be its own migration, gated the same way. A hold kept by
-  -- hand is one slip from gone.
-  display_name text not null check (display_name like 'Synthetic %'
-    and display_name = btrim(display_name) and length(display_name) between 11 and 120),
-  recorded_at timestamptz not null default clock_timestamp(),
-  -- NOT NULL, because absence is the absent ROW. A nullable column would give
-  -- two ways to say "no name recorded" and the roster would have to mean the
-  -- same thing by both.
-  primary key (app_id, auth_user_id),
-  foreign key (app_id, auth_user_id)
-    references pennsync_private.identity_map(app_id, auth_user_id)
-);
-
--- Force-RLS with NO policy, like `chart_assignment`: with no policy for a
--- command PostgreSQL matches no rows rather than raising, so no caller reads or
--- writes this table by any path, the record owner included. That is what keeps
--- "who may set a name" an open decision rather than one taken by omission —
--- since D82 the only roster write is `auth.updateMe` over
--- `pennsync_records."user"`, and this table is not reachable from there at all,
--- so there is no self-write allowlist to widen. A write path would be a new
--- contract with a gate of its own.
-alter table pennsync_private.staff_name enable row level security;
-alter table pennsync_private.staff_name force row level security;
+-- What is here is the half that needs the record store: the bridge that reads
+-- the name and the two contracts that project it.
 
 -- `caller_roster` is the bridge and already reads this table. It is a definer
 -- owned by the MIGRATION role, which is why it can read `pennsync_private` at
