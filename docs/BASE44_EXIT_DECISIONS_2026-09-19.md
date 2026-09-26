@@ -8297,10 +8297,13 @@ The decision is the one the guard's name carries: **resolve every instance, neve
 generalise from the ones that work.** Forty-six of the forty-seven names this
 store qualifies are real functions, and reading any of them tells you nothing
 about the forty-seventh. `services/authority-store/tests/catalog-qualified-names.test.mjs`
-scans both migration directories and asks `pg_proc` about each name in a PGlite
-instance, so the check is the same kind as the failure. It was opened
+builds the store and asks `pg_proc` about every name its function bodies
+qualify, so the check is the same kind as the failure. It was opened
 deliberately RED on the live bug, because a guard that has never been seen to
-fire on the instance it was written for is a promise rather than a control.
+fire on the instance it was written for is a promise rather than a control, and
+it went green when the forward fix merged. Its first version scanned the
+migration FILES instead, which a forward-only repair makes permanently red;
+that correction is D135.
 
 Two things about building it are worth more than the guard.
 
@@ -8455,3 +8458,50 @@ figure when a term is unreadable. This says what to do when you are not refusing
 — when the figure is readable but only approximately — and the answer is the
 same in spirit: publish what the instrument can support and name the instrument,
 never the answer you expect the measurement to give.
+
+## D135 — Gate what will RUN, not what was written
+
+D126's guard first scanned the migration FILES for `pg_catalog.<name>(`. That is
+the wrong population, and the way it is wrong only became visible when the
+defect it was written for was fixed.
+
+D88 freezes a migration that has already applied, so a defect in one is repaired
+by a forward `create or replace` and the broken text stays in the tree for good
+with a correct definition layered over it. A file scan is then red on that line
+**forever**, and the only edit that quiets it is exactly the one D88 exists to
+prevent. The fix made it worse rather than better:
+`20260920640000_operational_limit.sql` explains in its header what it replaces,
+quoting the broken call, so a file scan went from one occurrence to three — one
+frozen definition and two sentences of prose.
+
+So the guard builds the store and reads `pg_proc.prosrc`. A superseded
+definition is not in the catalog; a header comment is not in a body; what is
+there is exactly what a caller will execute. Its failure now names the FUNCTION
+rather than the file, which is the thing that will actually raise.
+
+The general form: **where a repair is forward-only, a check over source text
+measures history and a check over built state measures behaviour, and only the
+second can ever be green.** Ask which one a check is before the first forward
+fix lands, not after — the two agree perfectly until the moment they stop, and
+the moment they stop is the moment the check's subject is repaired.
+
+Two properties are worth copying. The build is `readMigrations` less
+`LOCAL_ONLY_MIGRATIONS`, the same one the hosted comparison uses, so the
+population is the store a deployment gets rather than a directory chosen in the
+test. And the one thing a file scan was good for is KEPT, as an assertion rather
+than as a habit: a test asserts that the frozen migration still contains the
+broken call **and** that the built store does not. Either half alone is
+satisfied by the wrong world — the first by a store nobody repaired, the second
+by a tree somebody edited — and together they make a quiet D88 violation loud.
+Both were proved by sabotage, in opposite directions: putting the prefix back
+into the forward migration fails the catalog test naming
+`pennsync_records.operational_limit`, and taking it out of the frozen one fails
+this test naming D88.
+
+This is D132 arriving in a second instrument on the same night. There, text
+chunked on create-function boundaries said eight callers where `pg_proc` said
+seven, because a `revoke` block belongs to no body. Here, text said a defect
+survives where `pg_proc` says it does not, because a superseded definition
+belongs to no store. Twice in one evening the catalog was right and the text was
+not, for unrelated reasons — which is the argument for reaching for the catalog
+first rather than for a better parser.
