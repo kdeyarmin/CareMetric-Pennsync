@@ -158,8 +158,13 @@ async function as(n, sql, params = []) {
 }
 const call = (n, fn, args) => as(n,
   `select "public"."${fn}"(${args.map((_, i) => `$${i + 1}`).join(',')}) as result`, args);
+// The code must end where it is asserted to end. A bare substring match is
+// satisfied by any LONGER code sharing the prefix — `_FORBIDDEN` by
+// `_FORBIDDEN_TO_ASSIGN` — which proves a refusal happened rather than which
+// one did. None of these codes is a prefix of another today; the boundary is
+// what keeps that from becoming a silent assertion when one is added.
 const refusal = (promise, code) => assert.rejects(promise, error => {
-  assert.match(String(error?.message ?? error), new RegExp(code));
+  assert.match(String(error?.message ?? error), new RegExp(`${code}(?![A-Z_])`));
   return true;
 }, `expected ${code}`);
 const ids = answer => answer.entries.map(row => row.id);
