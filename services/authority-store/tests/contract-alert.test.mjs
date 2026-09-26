@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 
 /**
  * Patient alerts (`contract_alert_list` / `contract_alert_update`).
@@ -19,9 +20,44 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * revoked. The fixture proves the substitution rather than asserting it: a
  * chart carries a stale `assigned_nurses` entry naming a caller who has no
  * assignment, and that caller sees nothing.
+ *
+ * The store is the whole record directory (`applyRecordMigrations`), not a
+ * hand-kept list, so a FORWARD migration over this capability is in the build
+ * the moment it is committed — D88's only legal way to change a store that has
+ * already applied the original.
+ *
+ * The case is STRONG, and it took building the control to say so. Reading the
+ * tree said otherwise: `20260920590000_column_defaults.sql` names
+ * `patient_alert` and sets defaults on the two columns this suite asserts, which
+ * classifies as an absorbing arrival. The control refuted it. That file is a
+ * CATCH-UP, derived by `tools-pennsync-record-catchup.mjs` from the defaults the
+ * generated store already emits, so a build from nothing gets the same state out
+ * of `record_store.sql` and the forward is a no-op there — the property that
+ * makes a catch-up correct is exactly what makes it invisible to a suite that
+ * builds from nothing. So no catch-up forward can ever be a conversion's
+ * known-positive, and the neighbourhood's growth is this file's instead.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const ALERT = 'services/authority-store/supabase/record-migrations/20260920160000_contract_alert.sql';
+/**
+ * The file whose BEHAVIOUR this suite measures. It no longer decides what is
+ * applied, so it is an assertion about the build rather than an input to it.
+ */
+const MEASURED = ['20260920160000_contract_alert.sql'];
+/**
+ * The three files this suite used to hand-list, by name, for the control build.
+ * Scoped to the CAPABILITY and not to a name pattern: `proname like '%alert%'`
+ * would sweep in `contract_notification_create`'s type list and the clinical
+ * pair, which legitimately move, so it would answer a question about the
+ * neighbourhood instead of about this contract.
+ */
+const HAND_LISTED = [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ALERT]
+  .map(path => path.slice(path.lastIndexOf('/') + 1));
+/** Every function this capability is reached through, by exact name. */
+const SURFACE = [
+  'alert_row', 'contract_alert_list', 'contract_alert_update',
+  'pennsync_contract_alert_list', 'pennsync_contract_alert_update',
+];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -33,16 +69,25 @@ const UPDATE = 'select "public"."pennsync_contract_alert_update"($1,$2,$3,$4) as
 const A = 'agency-a'; const B = 'agency-b';
 const MINE = pid(1); const THEIRS = pid(2); const ELSEWHERE = pid(3);
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
+
+/** The authority half, which every build here starts from. */
+async function buildAuthority(client) {
+  await client.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
+    await client.exec(await readFile(new URL(name, dir), 'utf8'));
+  }
+}
 
 before(async () => {
   db = new PGlite();
-  await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
-  const dir = new URL('../supabase/migrations/', import.meta.url);
-  for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
-    await db.exec(await readFile(new URL(name, dir), 'utf8'));
-  }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ALERT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
+  await buildAuthority(db);
+  applied = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`update pennsync_private.membership set tenant_role = 'office_staff'
@@ -219,4 +264,107 @@ test('the contract is the only way in, and it cannot be reached by a caller as i
     'the address list is named only in the header that rejects it');
   assert.equal(/caller_assigned_patients|caller_opens_every_chart/.test(sql), false,
     'the chart narrowing is the policies\' and is not restated');
+});
+
+test('the swap widened the store and left this capability reachable unchanged', async () => {
+  // The STRONG post-swap check: nothing a caller of this capability can reach
+  // moves when the store becomes the whole directory. An unchanged answer proves
+  // nothing on its own, so two things bound it — the builds are shown to DIFFER
+  // (the neighbourhood grew), and the instrument is shown to NOTICE (removing one
+  // function from the control changes what it reports).
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the build is the directory, not a list this file keeps');
+  assert.ok(applied.length > HAND_LISTED.length,
+    'the store is the directory, not the old three files');
+
+  // Scoped to the CAPABILITY by exact name. `proname like '%alert%'` would sweep
+  // in `contract_notification_create`'s type list and the clinical pair, which
+  // legitimately move, so it would answer about the neighbourhood instead. Too
+  // wide fails loudly and gets caught; too narrow passes quietly, so the breadth
+  // of `SURFACE` is checked below against the pattern in the CONTROL build,
+  // where the capability's own functions are the only alert ones there are.
+  const surface = async client => (await client.query(
+    `select n.nspname, p.proname,
+            pg_get_function_identity_arguments(p.oid) as args,
+            p.prosecdef, p.provolatile, p.proowner::regrole::text as owner,
+            pg_catalog.md5(p.prosrc) as body,
+            has_function_privilege('authenticated', p.oid, 'execute') as callable
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where p.proname = any($1) order by 1, 2, 3`, [SURFACE])).rows;
+  // The composite argument of `alert_row` deparses to the same text whatever
+  // columns `patient_alert` holds, so a column ARRIVING is invisible here; the
+  // projection test above is what carries that half (D95: a representation is
+  // not the thing).
+  const defaults = async client => (await client.query(
+    `select column_name, column_default from information_schema.columns
+      where table_schema = $1 and table_name = 'patient_alert'
+        and column_name in ('status', 'flagged_urgent') order by 1`, [SCHEMA])).rows;
+  const recordFunctions = async client => (await client.query(
+    `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = $1 order by 1`, [SCHEMA])).rows.map(row => row.proname);
+
+  const derived = await surface(db);
+  assert.deepEqual(derived.map(row => row.proname), [...SURFACE].sort(),
+    'each named function exists exactly once in the derived build');
+
+  const control = new PGlite();
+  try {
+    await buildAuthority(control);
+    const names = await recordMigrationNames();
+    await applyRecordMigrations(control, {
+      omit: names.filter(name => !HAND_LISTED.includes(name)),
+    });
+    // `SURFACE` is the whole surface, not a list that quietly went narrow: in a
+    // build holding only the alert contract, the wide pattern finds exactly it.
+    const wide = (await control.query(
+      `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where p.proname like '%alert%' order by 1`)).rows.map(row => row.proname);
+    assert.deepEqual([...new Set(wide)].sort(), [...SURFACE].sort(),
+      'SURFACE names every alert function the capability brings, and no more');
+
+    // The STRONG half: widening the store changed nothing a caller can reach,
+    // down to the body digest, the definer flag and the execute grant.
+    assert.deepEqual(derived, await surface(control),
+      'widening the store must not change what this capability exposes');
+
+    // Why `column_defaults.sql` is NOT the known-positive, recorded as a
+    // measurement rather than as prose: it names `patient_alert` and sets these
+    // two defaults, and both builds already carry them, because it is a catch-up
+    // derived from what the generated store emits.
+    const arriving = await defaults(db);
+    assert.deepEqual(arriving,
+      [{ column_name: 'flagged_urgent', column_default: 'false' },
+        { column_name: 'status', column_default: "'active'::text" }]);
+    assert.deepEqual(await defaults(control), arriving,
+      'a catch-up forward is a no-op in a build from nothing, so it cannot be '
+      + 'the known-positive');
+
+    // The known-positive is the neighbourhood, as a SET relation rather than a
+    // count: the derived build holds functions the control does not, and loses
+    // none of the control's.
+    const held = new Set(await recordFunctions(control));
+    const derivedNames = await recordFunctions(db);
+    const grew = derivedNames.filter(name => !held.has(name));
+    assert.ok(grew.length > 0, 'the derived build holds functions the control does not');
+    assert.deepEqual([...held].filter(name => !new Set(derivedNames).has(name)), [],
+      'widening only adds: no function the control had is gone');
+
+    // And the instrument is shown to notice, with the guard removed: drop one of
+    // the five from the control and the comparison above must stop agreeing. The
+    // control is a throwaway, so this is its last use.
+    await control.exec(
+      'drop function "public"."pennsync_contract_alert_list"(text,text,text,text[],integer)');
+    assert.notDeepEqual(derived, await surface(control),
+      'the surface comparison responds to a function going missing');
+  } finally {
+    await control.close();
+  }
+
+  // Neither default reaches this suite's rows, since every insert supplies both
+  // columns. `status` is where that is observable — the default is `active` and
+  // this row holds `acknowledged`, which the filter test above reads.
+  // `flagged_urgent`'s default equals the fixture value, so on that column the
+  // question cannot be answered here and this test claims nothing about it.
+  assert.equal(await column(aid(2), 'status'), 'acknowledged',
+    'the fixture value stands, not the column default');
 });
