@@ -23,6 +23,16 @@ import {
  * sat at `PENNSYNC_TASK_ORDER_INVALID` and `PENNSYNC_CARE_PLAN_ORDER_INVALID`
  * under a null order, and both are among the seven capabilities that cannot run
  * at all. A sweep is only as honest as its arguments (D129).
+ *
+ * SO IF YOU ARE SHIPPING A FORWARD MIGRATION, READ THIS. These maps pin a
+ * STATE of the store, not a property of it, and a forward that makes a pinned
+ * wrapper answer — or that changes the code one refuses with — contradicts the
+ * map the moment it merges. The map moves in the SAME change as the migration,
+ * or `main` is red between the two merges and the red belongs to whoever split
+ * them. That a red here is a POSSIBLE and correct outcome of somebody else's
+ * migration is the point of the equality: the first reading of a failure is
+ * "this suite saw the change", not "this suite is broken". The failure names
+ * the wrapper and both codes, so the edit is one line.
  */
 const ANSWERS = Object.freeze([
   'pennsync_contract_activity_list',
