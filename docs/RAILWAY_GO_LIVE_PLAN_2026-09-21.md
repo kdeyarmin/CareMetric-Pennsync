@@ -1508,7 +1508,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 50 | 24 |
+  | `read-only` (derived) | 50 | 25 |
   | `mutating` (derived) | 49 | 37 |
   | `integration` (derived) | 19 | 17 |
 
@@ -1518,7 +1518,14 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   those ten share. Nothing moved between waves; every one of the ten is new.
   Batch D's fourteen over the operational tables then took `read-only` to 50
   and `mutating` to 49, again with one shared migration each and nothing moved
-  between waves.
+  between waves. The crossed-chart read control then added one migration to
+  `read-only` and none to `mutating` or `integration`, and no handler to
+  anything: it replaces four reads that already exist, so no capability
+  arrived, and the write half of that defect was closed in the batch before
+  it. Every other movement since batch D belongs to a sibling batch rather
+  than to this one — which is what the paragraph below means about the figures
+  being global, and why the row is re-derived on the merged tree instead of
+  being added to.
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and

@@ -60,6 +60,16 @@ export const MIGRATION_CODES = Object.freeze([
   // who mistypes `pennsync.deployment_app_id` when pinning a new deployment
   // gets a named refusal instead of the generic redacted verdict.
   'PENNSYNC_UNKNOWN_DEPLOYMENT_APP',
+  // The crossed-chart read control needs the capabilities it replaces. Named
+  // CAPABILITIES rather than CONTRACTS because the assertion below this list
+  // forbids a code reading as a broker or contract refusal, and those are
+  // answered to a caller at runtime rather than printed in a CI log.
+  'PENNSYNC_OPERATIONAL_CAPABILITIES_REQUIRED',
+  // And it refuses outright to an administrator that does not bypass row-level
+  // security, because its helper would then answer null for every chart and
+  // the term reading it would keep every row — a control that applies cleanly
+  // and does nothing.
+  'PENNSYNC_CHART_AGENCY_ADMIN_MUST_BYPASS_RLS',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
