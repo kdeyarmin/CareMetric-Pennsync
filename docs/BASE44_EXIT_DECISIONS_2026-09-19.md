@@ -8017,7 +8017,6 @@ executing each red a different assertion; a raising function planted behind a
 name. The registration in `test:authority-store` was proved the same way, by
 removing it and watching `testRegistryContract` name the file.
 
-
 ## D115 — A derived population fails closed on empty, or it is the vacuous case with a new cause
 
 2026-09-26. Decided while converting `contract-roster.test.mjs` off its
@@ -8394,9 +8393,15 @@ correct by luck, which is D119 in a conflict marker.
 **The same rule over a list has a sharper failure mode.** `package.json`'s
 `test:authority-store` is a space-separated list of suites, and a union over it
 silently RESTORES a suite the other side deliberately removed — a union is not
-safe over a list somebody may be shrinking. So the removal check there is not a
-formality: assert that neither side dropped an entry, then union, then count
-the result distinct (71 unique files, asserted rather than eyeballed).
+safe over a list somebody may be shrinking. **And the one-integer check
+above is not available there**, because the list is one line: replacing it is
+one removal and one addition, so the grep reports `1` for a resolution that
+dropped nothing. Reaching for it anyway and reading that `1` as a dropped
+suite is the same mistake in the other direction. Over a list the check is a
+SET DIFFERENCE against each side — assert that neither side's entries are
+missing from the result, then count it distinct (70 on main, 71 here, nothing
+dropped, one added). The property being asserted is the same one; only its
+cheap violation looks different.
 
 **Generalisation.** Where two parties edit one artefact and the merge is
 mechanical, state the property you are relying on as an assertion in the
