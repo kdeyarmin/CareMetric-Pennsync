@@ -8189,3 +8189,55 @@ where the derivation cannot be completed, and it is the companion of D116: D116
 is about a figure you cannot reproduce with the instrument's own key, and this is
 about a figure one of whose terms you cannot read at all.
 
+
+## D126 — A name that resolves and a name that parses are not the same kind
+
+Every function in the record store is created `set search_path = ''`, so nothing
+in a body resolves unqualified and the house habit is to write `pg_catalog.` in
+front of every built-in. That habit is correct for a **catalogued function** and
+meaningless for a **parser construct**. `LEAST`, `GREATEST`, `COALESCE` and
+`NULLIF` are constructs: the grammar handles them, `pg_proc` holds no row for any
+of them, and `pg_catalog.least(a, b)` is therefore a reference to a function that
+exists in no PostgreSQL. It is not a style question and there is no version of
+the server where it works.
+
+It survives review because **a plpgsql body resolves no names at creation** —
+D51's rule arriving from a second direction. `20260920580000_contract_operational_tables.sql`
+applies cleanly with `pg_catalog.least` inside `pennsync_records.operational_limit`,
+and the error is a runtime `42883` raised on the call rather than on the apply.
+Eight contract functions call that helper and the route seam always sends a
+limit, so what it reaches is every list call in seven capabilities, not an edge.
+
+The remedy is **dropping the prefix, never re-qualifying it**. A construct is not
+a schema object, so it resolves under an empty `search_path` with no prefix at
+all and loses nothing — there is no namespace it could be shadowed from, which
+is the only thing the qualification was ever buying. "Qualify it properly" has no
+referent here, and reaching for some other schema name is the wrong repair for
+the right smell.
+
+The decision is the one the guard's name carries: **resolve every instance, never
+generalise from the ones that work.** Forty-six of the forty-seven names this
+store qualifies are real functions, and reading any of them tells you nothing
+about the forty-seventh. `services/authority-store/tests/catalog-qualified-names.test.mjs`
+scans both migration directories and asks `pg_proc` about each name in a PGlite
+instance, so the check is the same kind as the failure. It was opened
+deliberately RED on the live bug, because a guard that has never been seen to
+fire on the instance it was written for is a promise rather than a control.
+
+Two things about building it are worth more than the guard.
+
+Its first scan used `[a-z_]+` and went silently blind over `pg_catalog.md5(` and
+`pg_catalog.sha256(`, reporting 45 distinct names where there are 47 — D118
+again, an instrument that truncates producing a true reading about a population
+nobody chose. The class now admits digits, and the control **pins those two names
+as scanned** rather than asserting a total, so the blindness fails the suite
+instead of quietly shrinking a number.
+
+And repairing that instrument did not repair what had already been published with
+it. The site count travelled on as 482 — measured with the blind class, and
+still quoted after the class had been fixed for the **names**. At `1e7e0f0` the
+figure is **518** across the two migration directories, and the 36 it was short
+are exactly 31 `md5` and 5 `sha256`, which is what makes the gap a decomposition
+rather than a guess. **Fixing an instrument fixes the readings you re-take with
+it, not the ones already in circulation** — so when a pattern turns out to be
+blind, re-take every figure that came off it, not only the one that exposed it.
