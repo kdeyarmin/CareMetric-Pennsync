@@ -126,6 +126,62 @@ test('an entity redeclaring a platform column merges instead of losing it', () =
   assert.equal(sql.match(/"created_by"/g).length, 1, 'created_by must appear exactly once');
 });
 
+test('a schema default becomes the column\'s own default, in the column', () => {
+  const plan = planEntity('Probe', entity({
+    label: { type: 'string', default: 'medicare' },
+    quoted: { type: 'string', default: "it's" },
+    flag: { type: 'boolean', default: false },
+    count: { type: 'integer', default: 0 },
+    rate: { type: 'number', default: 1.5 },
+    features: { type: 'array', default: ['a', 'b'] },
+    unset: { type: 'string' },
+  }), 'port');
+  const sql = renderEntity(plan);
+  assert.match(sql, /"label" text default 'medicare'/);
+  // The same escaping the enum literals get: a quote must not end the literal.
+  assert.match(sql, /"quoted" text default 'it''s'/);
+  assert.match(sql, /"flag" boolean default false/);
+  assert.match(sql, /"count" bigint default 0/);
+  assert.match(sql, /"rate" double precision default 1.5/);
+  assert.match(sql, /"features" jsonb default '\["a","b"\]'::jsonb/);
+  // A property with no `default` gets none. Asserted because a renderer that
+  // emitted `default null` for every other column would satisfy every line
+  // above and change what an INSERT does nowhere -- and would be invisible.
+  assert.match(sql, /"unset" text,/);
+  assert.equal(sql.includes('default null'), false);
+});
+
+test('NOT NULL is not added alongside a default, which is the whole point', () => {
+  // Nullability here is a decision about legacy rows. A default that also made
+  // the column required would refuse writes the store accepts today, and the
+  // required-field rule belongs to the contract, by name.
+  const sql = renderEntity(planEntity('Probe',
+    entity({ flag: { type: 'boolean', default: true } }), 'port'));
+  assert.match(sql, /"flag" boolean default true,/);
+  assert.equal(/"flag" boolean[^,]*not null/.test(sql), false);
+});
+
+test('a default whose type disagrees with the column is refused, not cast', () => {
+  // PLANTED, because no carried schema does this: the refusal has no instance
+  // in the tree, so without a planted one its only evidence would be that
+  // nothing triggers it. A cast would store a plausible wrong value in every
+  // row that omits the column, which nothing downstream could distinguish from
+  // the value being meant.
+  for (const [property, kind] of [
+    [{ type: 'string', default: 7 }, 'text'],
+    [{ type: 'boolean', default: 'true' }, 'boolean'],
+    [{ type: 'integer', default: 1.5 }, 'bigint'],
+    [{ type: 'number', default: 'many' }, 'double precision'],
+    // A date default is refused although the value is a string of the right
+    // shape: what an absent date MEANS is a decision, and no schema asks.
+    [{ type: 'string', format: 'date', default: '2026-01-01' }, 'date'],
+  ]) {
+    assert.throws(() => planEntity('Probe', entity({ field: property }), 'port'),
+      new RegExp(`DEFAULT_TYPE_DISAGREES:Probe\\.field:${kind}`),
+      `${JSON.stringify(property)} should not have been accepted`);
+  }
+});
+
 test('a conflicting platform column is a reviewable error, never a silent drop', () => {
   assert.throws(() => planEntity('Probe', entity({ id: { type: 'string' } }), 'port'), /IDENTITY_COLUMN_REDEFINED/);
   assert.throws(() => planEntity('Probe', entity({ source_app_id: { type: 'string' } }), 'port'), /IDENTITY_COLUMN_REDEFINED/);
