@@ -7734,6 +7734,14 @@ is named above — and that the three checks above cannot be the instrument for
 the survey, because an object they are blind to is exactly what is being looked
 for. The survey reads the two migration directories against each other on a
 FIXED head.
+**Added 2026-09-26, after D110 merged.** The caveat above is now closed and its
+advice is spent: `http-boundary.test.mjs` scans BOTH migration directories, so a
+`do $$` precondition no longer loses the classifier's coverage by changing
+directory, and the "move the table, not the file" workaround is no longer needed
+for that reason. The paragraph is left as written because it is the record of
+what was true when the table moved, and because its reasoning still holds for
+any check that reads one directory. Read it with this pointer, not instead of it.
+
 ## D110 — A guard follows the code, not the directory it was born in
 
 **The rule.** When a check's subject is a *kind of thing* — a raised code, a
