@@ -148,6 +148,21 @@ test('a start that fails applying a migration is named, and nothing else is forw
     'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
   assert.equal(start('bind: cannot assign requested address'),
     'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
+  // AND THE ORDER, on Codex's finding against this change. A named migration
+  // refusal is normally followed by its CONSEQUENCE, so a classifier that asks
+  // about the consequence first reports it and hides the refusal — which is the
+  // one fact this module exists to preserve. Same for a SQL fault whose text
+  // happens to carry an infrastructure phrase. Move the three new branches back
+  // above the migration and SQL checks and these three fail with
+  // `SERVICE_UNHEALTHY` and `IMAGE_UNAVAILABLE` as actual.
+  assert.equal(start('ERROR:  PENNSYNC_CALLER_MEMBERSHIP_REQUIRED\n'
+    + 'container supabase_db_pennsync exited'),
+  'LOCAL_CLI_START_MIGRATION_PENNSYNC_CALLER_MEMBERSHIP_REQUIRED');
+  assert.equal(start('PENNSYNC_UNKNOWN_DEPLOYMENT_APP\ndependency failed to start: '
+    + 'container supabase_db_pennsync is unhealthy'),
+  'LOCAL_CLI_START_MIGRATION_PENNSYNC_UNKNOWN_DEPLOYMENT_APP');
+  assert.equal(start('ERROR:  relation "x" does not exist\nSQLSTATE 42P01\nrate limit'),
+    'LOCAL_CLI_START_SQL_REJECTED');
   // The order between them is load-bearing, not incidental: an image the runner
   // could not obtain ALSO leaves the service unstarted, so a message carrying
   // both must report the cause and not the consequence. Swap the two branches

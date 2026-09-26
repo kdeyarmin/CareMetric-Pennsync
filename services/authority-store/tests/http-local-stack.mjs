@@ -100,6 +100,23 @@ export function classifyToolFailure(binary, args, error) {
   else if (/cannot connect to the docker daemon|error during connect|is the docker daemon running/i.test(output)) reason = 'DAEMON_UNAVAILABLE';
   else if (/permission denied while trying to connect to the docker/i.test(output)) reason = 'DAEMON_PERMISSION_DENIED';
   else if (error.killed) reason = 'TIMED_OUT';
+  // A migration that raised one of our own codes says so by name. Nothing but a
+  // literal above is emitted, so this stays inside the no-forwarding rule while
+  // turning an unreadable start failure into the one fact worth knowing.
+  else if (MIGRATION_CODES.some(code => output.includes(code))) {
+    reason = `MIGRATION_${MIGRATION_CODES.find(code => output.includes(code))}`;
+  }
+  // Otherwise say at least whether the database rejected something, which
+  // separates a SQL fault from a daemon or image fault without quoting either.
+  else if (/^\s*ERROR:\s/mi.test(output) || /\bSQLSTATE\b/i.test(output)) reason = 'SQL_REJECTED';
+  // THE THREE BELOW SIT AFTER THE MIGRATION AND SQL BRANCHES, NOT BEFORE THEM, on
+  // Codex's finding against this change. A named `PENNSYNC_*` refusal is usually
+  // followed by its CONSEQUENCE -- the container the refusal killed exits -- so
+  // placed earlier these branches reported `SERVICE_UNHEALTHY` and hid the
+  // precise refusal the classifier exists to preserve. Same for a SQL fault whose
+  // text happens to carry `rate limit`. The rule is that a fact about OUR OWN
+  // migrations outranks an infrastructure heuristic about the run, and the chain's
+  // order is the only thing that expresses it.
   // D141. THE FALL-THROUGH IS A QUEUE, AND THESE THREE WERE IN IT. D123 split
   // `FAILED_OUTPUT_REDACTED` from `FAILED_NO_OUTPUT` and said in as many words
   // that an unrecognised diagnostic is "a category to add here"; the plan
@@ -141,15 +158,6 @@ export function classifyToolFailure(binary, args, error) {
   // greedy `.*` that could span an unrelated clause on the same line.
   else if (/is not healthy|is unhealthy|service not healthy|health check failed|container [^\s]+ (?:exited|is not running)/i
     .test(output)) reason = 'SERVICE_UNHEALTHY';
-  // A migration that raised one of our own codes says so by name. Nothing but a
-  // literal above is emitted, so this stays inside the no-forwarding rule while
-  // turning an unreadable start failure into the one fact worth knowing.
-  else if (MIGRATION_CODES.some(code => output.includes(code))) {
-    reason = `MIGRATION_${MIGRATION_CODES.find(code => output.includes(code))}`;
-  }
-  // Otherwise say at least whether the database rejected something, which
-  // separates a SQL fault from a daemon or image fault without quoting either.
-  else if (/^\s*ERROR:\s/mi.test(output) || /\bSQLSTATE\b/i.test(output)) reason = 'SQL_REJECTED';
   return `LOCAL_${phase}_${reason}`;
 }
 async function captured(binary, args, timeout = 120000) {
