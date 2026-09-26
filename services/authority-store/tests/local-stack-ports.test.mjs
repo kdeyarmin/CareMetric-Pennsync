@@ -136,6 +136,60 @@ test('the refusal survives the filter that decides what may be printed', () => {
   assert.ok(!emittable('failed to start: sb_secret_abcdefghij'));
 });
 
+test('every failed attempt is described as it happens, not once at the end', async () => {
+  // D112. The refusal carried ONE description, taken after the last attempt, so
+  // a holder that had already changed was reported as the cause. Against that
+  // implementation this asserts 1 === 6 and fails.
+  const { server, port } = await hold();
+  try {
+    let refusal = null;
+    await assert.rejects(unusedPort(port), error => { refusal = error; return true; });
+    assert.equal(refusal.message, `LOCAL_PORT_ALREADY_IN_USE ${port}`);
+    assert.ok(Array.isArray(refusal.observed), 'the series is what makes the moment readable');
+    assert.equal(refusal.observed.length, PORT_ATTEMPTS);
+    refusal.observed.forEach((line, index) => {
+      assert.match(line, new RegExp(`^attempt ${index + 1} `));
+      // The bind's own code was discarded entirely before, so nothing could
+      // tell EADDRINUSE from an EACCES that would misdirect the whole diagnosis.
+      assert.match(line, /^attempt \d+ EADDRINUSE: /);
+    });
+  } finally {
+    server.close();
+  }
+});
+
+test('a holder that changes mid-window is visible as a change', linuxOnly, async () => {
+  // The sharp half, and the shape the fourth occurrence actually had: the port
+  // is held throughout by the listener, so all attempts fail, while what
+  // /proc/net/tcp says about it changes underneath. Reading only the last
+  // attempt loses the connection that was live when the bind first failed --
+  // which is how `Port 54322: TIME_WAIT` came to be printed for a refusal
+  // TIME_WAIT cannot cause.
+  const { server, port } = await hold();
+  server.on('connection', socket => socket.resume());
+  const client = connect(port, '127.0.0.1');
+  await new Promise((ready, no) => { client.once('connect', ready); client.once('error', no); });
+  // Leave the connection up past the first attempt and drop it well before the
+  // last. Destroyed from the CLIENT side, so any TIME_WAIT lands on the
+  // client's own ephemeral port rather than the one under test.
+  setTimeout(() => client.destroy(), PORT_RETRY_MS + 400).unref();
+  try {
+    let refusal = null;
+    await assert.rejects(unusedPort(port), error => { refusal = error; return true; });
+    const [first] = refusal.observed;
+    const last = refusal.observed[refusal.observed.length - 1];
+    assert.match(first, /ESTABLISHED/, 'the live connection was not captured at the failure');
+    assert.ok(!/ESTABLISHED/.test(last), 'the fixture did not change, so this proves nothing');
+    // Both readings are of the same port and neither is wrong; they are of
+    // different moments, and only the first is the moment the bind failed.
+    assert.match(first, /LISTEN/);
+    assert.match(last, /LISTEN/);
+  } finally {
+    client.destroy();
+    server.close();
+  }
+});
+
 test('the holder description answers for a free port without throwing', async () => {
   const port = await freePort();
   const said = await describePortHolder(port);
