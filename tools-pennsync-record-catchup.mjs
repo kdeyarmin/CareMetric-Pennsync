@@ -281,10 +281,139 @@ export function renderIndexCatchup(repository = here) {
   return INDEX_HEADER + idempotentIndex(readDistributionIndex(repository)) + INDEX_FOOTER;
 }
 
+export const DEFAULTS_CATCHUP_MIGRATION =
+  'services/authority-store/supabase/record-migrations/20260920590000_column_defaults.sql';
+
+/** `  "column" type default <literal>,` exactly as the generator emits it. */
+const DEFAULT_LINE = /^ {2}"([a-z_0-9]+)" [a-z ]+ default (.+?),$/;
+const TABLE_OPENS = /^create table "pennsync_records"\."([a-z_0-9]+)" \($/;
+
+/**
+ * Every column default in the generated store, as (table, column, literal).
+ *
+ * Read out of the emitted SQL rather than re-planned from the schemas, for the
+ * reason the two readers above are: a second derivation is a second answer to
+ * the same question, and it drifts where nothing measures. Reading the file
+ * also keeps this tool free of `tools-entity-schema-plan.mjs`, which pulls in
+ * `json5` -- the isolated authority job installs no root packages, so a suite
+ * there importing this would die at load rather than on an assertion.
+ *
+ * It REFUSES a line inside a table that carries ` default ` and does not match
+ * the shape, instead of skipping it. A skipped column is a default that exists
+ * on a fresh store and on no existing one, with both files agreeing and
+ * nothing able to see the difference -- which is D88 all over again, one
+ * column at a time.
+ */
+export function readColumnDefaults(repository = here) {
+  const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
+  const rows = [];
+  let table = null;
+  for (const line of sql.split('\n')) {
+    const opens = TABLE_OPENS.exec(line);
+    if (opens) { [, table] = opens; continue; }
+    if (table === null) continue;
+    if (line === ');') { table = null; continue; }
+    const match = DEFAULT_LINE.exec(line);
+    if (match) { rows.push({ table, column: match[1], literal: match[2] }); continue; }
+    if (line.includes(' default ')) throw new Error(`CATCHUP_DEFAULT_LINE_UNREADABLE: ${line}`);
+  }
+  if (rows.length === 0) throw new Error('CATCHUP_DEFAULTS_MISSING');
+  return rows;
+}
+
+/**
+ * `alter column ... set default` per row, which is already idempotent: setting
+ * the default a column already has is a no-op, so a fresh provision may run
+ * the generated file and then this one.
+ *
+ * Nothing here BACKFILLS. A default decides what a row gets when an INSERT
+ * omits the column, and every row already stored keeps the null it has. That
+ * is deliberate: writing today's default into rows that were created without
+ * one would assert a value nobody observed, which is the rule D94 states about
+ * the ledger's own untouchable rows.
+ */
+export function renderDefaultStatements(rows) {
+  return rows.map(({ table, column, literal: value }) =>
+    `alter table "pennsync_records".${JSON.stringify(table)} `
+    + `alter column ${JSON.stringify(column)} set default ${value};`).join('\n');
+}
+
+const DEFAULTS_HEADER = `-- The entity schemas' column defaults, for a store that already exists (D88).
+--
+-- \`planEntity\` never read a property's \`default\`, so the generated store
+-- emitted none of the 425 the carried schemas declare. That is not cosmetic:
+-- where a contract's INSERT omits such a column the row stored a null, while
+-- the Base44 original stored the schema's value. Sixteen columns across six
+-- contracts are in that state -- among them \`incident.state_reportable\`,
+-- whose STORED value D44's resolve gate reads, and \`physician.referral_count\`,
+-- which a null makes increment to null.
+--
+-- Sixteen, and not the thirty-one first measured: an INSERT column list is NOT
+-- what the row holds at commit. The timesheet submit inserts a skeleton of
+-- seven columns and then UPDATEs \`status\` and all ten payroll numerics in the
+-- same transaction, so the row never exists with a null in any of them. The
+-- instrument read insert lists and called an omitted column a divergence.
+--
+-- DERIVED, never typed: \`node tools-pennsync-record-catchup.mjs --write\` reads
+-- every emitted \`default\` out of the generated migration. Four hundred and
+-- twenty-five retyped literals is exactly the transcription D12 settled
+-- against, and a drifted one would be a plausible wrong value rather than an
+-- error.
+--
+-- It sets defaults and BACKFILLS NOTHING. Every row already in the store keeps
+-- the null it holds; only inserts that omit the column change. Filling those
+-- rows would assert a value nobody observed.
+begin;
+
+do $$
+begin
+  if to_regclass('pennsync_records.patient') is null then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_STORE_REQUIRED';
+  end if;
+end $$;
+
+do $$
+declare v_admin text := current_user;
+begin
+  if exists (select 1 from pg_catalog.pg_roles
+    where rolname = 'pennsync_records_owner' and (rolsuper or rolbypassrls)) then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS';
+  end if;
+  begin
+    execute format('grant %I to current_user with set true', 'pennsync_records_owner');
+  exception
+    when syntax_error then execute format('grant %I to current_user', 'pennsync_records_owner');
+    when others then null; -- already held, or not ours to grant; proven below
+  end;
+  begin
+    execute format('set role %I', 'pennsync_records_owner');
+    execute format('set role %I', v_admin);
+  exception when others then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE';
+  end;
+end $$;
+
+-- As the owner, because \`alter table\` is the owner's to run.
+set local role "pennsync_records_owner";
+
+`;
+
+const DEFAULTS_FOOTER = `
+
+reset role;
+commit;
+`;
+
+/** The defaults catch-up, header and all. */
+export function renderDefaultsCatchup(repository = here) {
+  return DEFAULTS_HEADER + renderDefaultStatements(readColumnDefaults(repository)) + DEFAULTS_FOOTER;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const derived = [
     [CATCHUP_MIGRATION, renderCatchup()],
     [INDEX_CATCHUP_MIGRATION, renderIndexCatchup()],
+    [DEFAULTS_CATCHUP_MIGRATION, renderDefaultsCatchup()],
   ];
   let stale = false;
   for (const [file, sql] of derived) {
