@@ -7805,3 +7805,63 @@ nothing costs the next reader a session, which is the `staging_app` →
 and deliberately: a code inside a `create function` body is a refusal answered to
 a caller at runtime, not a migration failure, and naming one in this list would
 be wrong in the other direction. The planted case holds that line.
+
+## D115 — A derived population fails closed on empty, or it is the vacuous case with a new cause
+
+2026-09-26. Decided while converting `contract-roster.test.mjs` off its
+hand-kept apply list.
+
+**The rule.** When a check stops naming its population and starts DERIVING it —
+from a directory, a glob, a schema query, a manifest — the derivation must raise
+on an empty result rather than returning nothing. A population of zero satisfies
+every assertion over it, so a derivation that can quietly come back empty has
+replaced one silent wrongness with another.
+
+**Why it needs saying next to D113.** D113 is the rule that a guard must BUILD
+the population its assertion names; this is what that fix costs if it is taken
+carelessly. The hand-kept list's failure was that it named too few files. A
+directory walk cannot name too few — and can name NONE, if the path is wrong,
+the filter is wrong, or the directory moves. The suite that then builds a store
+with no contracts in it still passes every refusal it asserts, because a
+function that does not exist refuses everybody. The two failures are the same
+vacuous pass arriving through opposite mistakes, and only one of them has a
+list to inspect.
+
+**The instance.** `services/authority-store/tests/record-migrations.mjs` reads
+the record migration directory for every suite that adopts it. It raises
+`PENNSYNC_TEST_RECORD_MIGRATIONS_EMPTY` on an empty listing, and separately on a
+directory holding files but no `.sql` — "has files" and "has migrations" are
+different questions, and a walk can pass the first while failing its caller.
+
+**Two properties that make the refusal provable rather than promised.** The
+module takes the directory as a PARAMETER with the real one as its default, so
+its own suite drives the empty case, the no-SQL case and a dropped-file case
+through the same code path the suites use, rather than through a second copy of
+the walk that could agree with itself while disagreeing with this one. And the
+suite pins the RELATION to the directory — the names equal an independently read
+listing, sorted — and deliberately not a COUNT, which moves on somebody else's
+merge and would fail while saying nothing about this module. Three anchors stand
+in for the count: the generated store, the generated broker family, and one
+hand-written forward migration, which are the three shapes the hand-kept lists
+named separately.
+
+**Proved by sabotage, both halves.** Returning `[]` instead of raising fails two
+of the six tests. Executing in `readdir` order while answering sorted fails
+three — the applier's test asserts that the SQL reached the database in order,
+not only that the answer was sorted, because a walk could sort its return value
+and execute in any order. Dropping a forward file from the roster build fails
+all sixteen of that suite's tests and the first message names the file.
+
+**The worked example is D113's, not this entry's.** Converting that one suite
+failed immediately: its assertion that only two contracts reach the roster was
+true of the fixture and false of the store, which holds three — D69's
+`contract_roster_report`, whose file the hand-kept build never applied, green
+since D69 shipped. That belongs in D113 as its example and is not restated here.
+What this entry adds is the other direction: the fix for it must not be able to
+derive nothing.
+
+**Scope.** One suite is converted. That is deliberate rather than partial: four
+pull requests were open on these files the night this landed, and a sweep would
+have collided with all of them. The remaining conversions go one suite per
+change, and the one data point says to expect a finding in each rather than a
+green re-run — it says nothing about how many there are.
