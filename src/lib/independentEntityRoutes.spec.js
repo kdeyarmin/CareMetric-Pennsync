@@ -706,8 +706,9 @@ describe("what batch E's routes take on trust", () => {
     const paged = Object.keys(ENTITY_ROUTES)
       .filter(key => key.endsWith('.list') || key.endsWith('.filter'));
     // Not an allowlist: every route keyed for a read is covered, and a new one
-    // joins this set by existing.
-    expect(paged.length).toBe(29);
+    // joins this set by existing — which is why the number GREW rather than
+    // being relaxed when batch D's nine paged operational reads arrived.
+    expect(paged.length).toBe(38);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;
