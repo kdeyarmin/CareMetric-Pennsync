@@ -78,5 +78,6 @@
   "record-migrations/20260920570000_contract_reference_reads.sql": "07230f90b94693fe8c6f8d23c0289256c861004f7a0c0be3a9243a23769b961c",
   "record-migrations/20260920580000_contract_library_chart_defaults.sql": "548eebbf741066ef818bab1b5ffadd389f3f31e1e1a70b2b323537f9200f97fc",
   "record-migrations/20260920580000_contract_operational_tables.sql": "f61fd4581a53dc3260bb6ed3263909808b86be4016a4d507890793e067f452f5",
-  "record-migrations/20260920580000_contract_screen_records.sql": "4f32f97dad7963060634b07b12aea9939f7d5bc7108263938d254a7e9b0b3031"
+  "record-migrations/20260920580000_contract_screen_records.sql": "4f32f97dad7963060634b07b12aea9939f7d5bc7108263938d254a7e9b0b3031",
+  "record-migrations/20260920620000_roster_created_date.sql": "742ca7f43b5812917faa3f6fda5e6aaa3d89fa44287ec6ee98e69aac1566b0ad"
 }

@@ -113,18 +113,27 @@ export const RECORD_CONTRACTS = Object.freeze({
   // one reviewed contract rather than 35 copies of a query. It is an endpoint
   // in its own right — a staff directory is something a caller asks for — and
   // the thing those 35 handlers will call while serving.
+  //
+  // `order` is the contract's own vocabulary and not the caller's sort string:
+  // `email` or `created_desc`, and anything else is refused by name rather
+  // than served in the default order, because a caller asking for newest-first
+  // and handed alphabetical gets a plausible page of the wrong people. The
+  // frontend's `-created_date` is translated at the route, which is where a
+  // Base44 sort string belongs.
   listAgencyRoster: Object.freeze({
     rpc: 'pennsync_contract_roster_list',
-    params: Object.freeze(['limit', 'after']),
+    params: Object.freeze(['limit', 'after', 'order']),
     body: (agencyId, args) => ({
       p_agency: agencyId,
       p_limit: args.limit === undefined ? null : args.limit,
       p_after: args.after === undefined ? null : args.after,
+      p_order: args.order === undefined ? null : args.order,
     }),
     codes: Object.freeze([
       'PENNSYNC_ROSTER_AGENCY_NOT_HELD',
       'PENNSYNC_ROSTER_CURSOR_INVALID',
       'PENNSYNC_ROSTER_CURSOR_UNKNOWN',
+      'PENNSYNC_ROSTER_ORDER_UNSUPPORTED',
     ]),
   }),
   // The authorized patient read. Three contracts for two Base44 capabilities,

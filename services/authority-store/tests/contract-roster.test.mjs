@@ -28,6 +28,20 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const CONTRACT = 'services/authority-store/supabase/record-migrations/20260920030000_contract_roster.sql';
+/**
+ * Forward migrations over that contract, applied in order after it.
+ *
+ * This list is HAND-KEPT and that is a known defect rather than a design: the
+ * suite applies the authority migration DIRECTORY and then three record files
+ * by name, so a forward record migration nobody remembers to add here is not
+ * applied at all and ships with this suite green — on the only legal path for
+ * changing an applied contract (D88). Deriving the whole apply list from the
+ * directory is the real fix and is a follow-on; until then, adding a forward
+ * file over this contract means adding it here in the same change.
+ */
+const FORWARD = [
+  'services/authority-store/supabase/record-migrations/20260920620000_roster_created_date.sql',
+];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -82,6 +96,7 @@ before(async () => {
   // it here is the deployment's own order rather than a convenience.
   await db.exec(readFileSync(resolve(repository, BROKER_MIGRATION_FILE), 'utf8'));
   await db.exec(readFileSync(resolve(repository, CONTRACT), 'utf8'));
+  for (const file of FORWARD) await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // A third agency whose four members hold the four roles nothing else here
   // exercises. Added in this suite rather than in `fixtures.sql`, which is
@@ -113,15 +128,24 @@ ${'    '}${ROLES_C.map(([n, role]) => `('${APP}','${rid(n)}','agency-a',`
   // absent: a colleague with a membership and no profile row is still on the
   // roster, which is the half of this a join written the other way round
   // would silently drop.
+  // `created_date` is carried HERE rather than set by the test that reads it:
+  // the column is not on `PROFILE_SELF_WRITABLE`, so D82's trigger refuses an
+  // update naming it — which the creation-order test asserts, because a
+  // fixture that had to route around a guard is worth saying out loud.
+  //
+  // 1 is older than 2 so that creation order and alphabetical order DISAGREE.
+  // An order test over rows whose two orders coincide passes with the ordering
+  // deleted: an assertion both the fixed and the broken path satisfy.
   await db.exec(`insert into ${SCHEMA}."user"
     ("source_app_id","id","agency_id","agency_name","account_type","role",
-     "staff_role","duty_status","phone","credentials","license_number","manager_email") values
+     "staff_role","duty_status","phone","credentials","license_number","manager_email",
+     "created_date") values
     ('${APP}','${rid(1)}','agency-b','Claimed B','platform_admin','admin',
-     'nurse','on_duty','555-0001','RN BSN','LIC-1','boss@example.invalid'),
+     'nurse','on_duty','555-0001','RN BSN','LIC-1','boss@example.invalid','${CREATED[1]}'),
     ('${APP}','${rid(2)}','agency-b','Claimed B','platform_admin','admin',
-     'social_worker','off_duty','555-0002','MSW','LIC-2','boss@example.invalid'),
+     'social_worker','off_duty','555-0002','MSW','LIC-2','boss@example.invalid','${CREATED[2]}'),
     ('${APP}','${rid(4)}','agency-a','Claimed A','platform_admin','admin',
-     'office_staff','off_duty','555-0004','none','LIC-4','boss@example.invalid');`);
+     'office_staff','off_duty','555-0004','none','LIC-4','boss@example.invalid','${CREATED[4]}');`);
 });
 after(async () => db?.close());
 
@@ -142,6 +166,17 @@ const refusal = (promise, code) => assert.rejects(promise, error => {
 }, `expected ${code}`);
 const listAs = async (n, agency = A, limit = 200, after = null) =>
   (await as(n, LIST, [agency, limit, after]))[0].result;
+/**
+ * Profile creation dates for the carried rows. 1 is OLDER than 2 so creation
+ * order and alphabetical order disagree; 3 has no carried row at all and so no
+ * date, which is what makes the keyset's null branch reachable here.
+ */
+const CREATED = Object.freeze({
+  1: '2024-03-01T00:00:00Z', 2: '2025-07-04T00:00:00Z', 4: '2024-11-11T00:00:00Z',
+});
+const LIST_ORDERED = 'select "public"."pennsync_contract_roster_list"($1,$2,$3,$4) as result';
+const orderedAs = async (n, order, agency = A, limit = 200, after = null) =>
+  (await as(n, LIST_ORDERED, [agency, limit, after, order]))[0].result;
 
 test('the roster is the authority store membership, not the carried row own label', async () => {
   const result = await listAs(ADMIN_A);
@@ -231,6 +266,94 @@ test('it reads alphabetically and pages without repeating or skipping a colleagu
   assert.deepEqual(walked, all.entries.map(entry => entry.id), 'the walk must be the roster, in order');
   assert.equal(new Set(walked).size, 3);
   assert.equal(cursor, null);
+});
+
+/*
+ * Creation order. 30 of the frontend's `User.list` sites ask for
+ * `-created_date` and this contract could not answer, so the route refused
+ * them and those screens still read Base44. The column alone unblocks none of
+ * them; the order is the thing they need.
+ *
+ * The fixture's three agency-a rows all carry a null `created_date` — the
+ * column is nullable with no default — so the dates are set here, and they are
+ * set so that creation order and alphabetical order DISAGREE. An order test
+ * over rows whose two orders coincide passes with the ordering deleted, which
+ * is an assertion both the fixed and the broken path satisfy.
+ *
+ * 3 is left null on purpose: it is the colleague with a membership and no
+ * profile row, which is what makes the null branch of the keyset reachable
+ * here rather than hypothetical.
+ */
+test('it reads in creation order, newest first, with the profileless colleague last', async () => {
+  const alphabetical = (await listAs(ADMIN_A)).entries.map(entry => entry.id);
+  const created = (await orderedAs(ADMIN_A, 'created_desc')).entries.map(entry => entry.id);
+  assert.deepEqual(alphabetical, [rid(1), rid(2), rid(3)], 'alphabetical is unchanged');
+  assert.deepEqual(created, [rid(2), rid(1), rid(3)],
+    'newest first, and the colleague with no profile row sorts last because nulls do');
+  assert.notDeepEqual(created, alphabetical,
+    'the two orders must disagree, or this test passes with the ordering deleted');
+
+  // The column reaches the answer, and null for the profileless colleague
+  // rather than absent — a composite left join answers null to every field.
+  const [newest, , last] = (await orderedAs(ADMIN_A, 'created_desc')).entries;
+  assert.equal(new Date(newest.created_date).toISOString(), new Date(CREATED[2]).toISOString());
+  assert.ok('created_date' in last && last.created_date === null,
+    'the profileless colleague carries the key with a null, not a missing key');
+
+  // And the default is still alphabetical, whether the argument is omitted or
+  // explicitly null: a screen that sends nothing must not be re-sorted.
+  assert.deepEqual((await orderedAs(ADMIN_A, null)).entries.map(entry => entry.id), alphabetical);
+  assert.deepEqual((await orderedAs(ADMIN_A, 'email')).entries.map(entry => entry.id), alphabetical);
+
+  // Widening a read's projection is safe only where the write side cannot take
+  // the column back. For this store that is not the contract's doing and not
+  // D82's allowlist either: there is no roster write contract, and no caller
+  // role holds ANY grant on the carried table, so a screen mirroring the row
+  // it just read has nowhere to send it. Driven rather than read off the
+  // migrations, because "no grant" is exactly the kind of claim that stays
+  // true in a comment after it has stopped being true in SQL.
+  //
+  // Recorded because it cost two attempts: as the record owner with no caller
+  // the same update matches ZERO ROWS — the table is force-RLS and
+  // `user_update` asks `id = caller_user_id()` — so an `assert.rejects` around
+  // it passes having proved nothing, which is the shape of a vacuous test.
+  for (const column of ['created_date', 'phone']) {
+    await refusal(as(ADMIN_A, `update ${SCHEMA}."user" set "${column}" = null
+      where "source_app_id" = '${APP}' and "id" = '${rid(1)}'`),
+      'permission denied for table user');
+  }
+});
+
+test('a creation-order walk crosses the null boundary without repeating or skipping', async () => {
+  const all = (await orderedAs(ADMIN_A, 'created_desc')).entries.map(entry => entry.id);
+  const walked = [];
+  let cursor = null;
+  for (let page = 0; page < 5; page += 1) {
+    const result = await orderedAs(ADMIN_A, 'created_desc', A, 1, cursor);
+    walked.push(...result.entries.map(entry => entry.id));
+    cursor = result.next;
+    if (!cursor) break;
+  }
+  // The third step is the one that matters: its cursor names a row whose own
+  // `created_date` is null, so the keyset takes its null branch — a comparison
+  // against a null cursor value is null, which would end the walk one
+  // colleague early and report the agency as smaller than it is.
+  assert.deepEqual(walked, all, 'the walk must be the roster, in creation order, exactly once');
+  assert.equal(new Set(walked).size, 3);
+  assert.equal(cursor, null, 'the last page carries no cursor');
+});
+
+test('an order this contract does not implement is refused by name', async () => {
+  // Serving an unknown order in the default one would hand a caller asking for
+  // newest-first a plausible page that is simply the wrong people.
+  for (const order of ['', 'created', 'created_asc', '-created_date', 'email desc', 'EMAIL']) {
+    await refusal(as(ADMIN_A, LIST_ORDERED, [A, 200, null, order]),
+      'PENNSYNC_ROSTER_ORDER_UNSUPPORTED');
+  }
+  // The order is checked AFTER membership, so an unknown order does not tell a
+  // stranger whether the agency exists.
+  await refusal(as(ADMIN_B, LIST_ORDERED, [A, 200, null, 'nonsense']),
+    'PENNSYNC_ROSTER_AGENCY_NOT_HELD');
 });
 
 test('a malformed cursor or subject is refused rather than guessed at', async () => {
@@ -437,7 +560,7 @@ test('the roster projects only seven columns a screen could send back', async ()
     + 'mirrors the row: widen this set only with the write side read in the same change');
   // And state the other half as a number, so a projection that grew is visible
   // here even when the round-trippable set did not move.
-  assert.equal(projected.length - overlap.length, 17,
+  assert.equal(projected.length - overlap.length, 18,
     'projected columns that a caller can never write; a change here is fine, '
     + 'but it should be a change somebody meant');
 });
