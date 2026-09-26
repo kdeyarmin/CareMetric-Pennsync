@@ -340,7 +340,7 @@ test('the store this suite measures is the whole record directory', async () => 
   // nothing already carries every default it would add. A catch-up migration is
   // by construction invisible in a fresh build; that is the property its own
   // suite proves, and it is why no state assertion here can show the walk
-  // reached one.
+  // reached one. D127.
   //
   // So what is asserted is the relation the build now has: the applied set IS
   // the directory. The eight files this suite used to name are a subset of it,
