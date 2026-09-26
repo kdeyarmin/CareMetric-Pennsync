@@ -167,8 +167,13 @@ test('each operational route declares the arity its entity method has', () => {
     assert.equal(route.arity, expected,
       `${key} declares arity ${route.arity}; ${operation} takes ${expected}`);
     // And the guard is really wired at that number, rather than the number
-    // merely being written down beside a route that accepts anything.
+    // merely being written down beside a route that accepts anything. The
+    // assertion is on `detail`, not the code: every refusal in that module
+    // carries the same `ARGUMENTS_UNSUPPORTED`, so a route that rejects the
+    // filler for a reason of its own — a sort it cannot honour, a filter field
+    // it does not take — would satisfy a code-only check vacuously.
     assert.throws(() => route.request(...Array.from({ length: expected + 1 })),
-      error => error.code === ARGUMENTS_UNSUPPORTED, `${key} accepts one argument too many`);
+      error => error.code === ARGUMENTS_UNSUPPORTED && error.detail === 'argument_count',
+      `${key} accepts one argument too many`);
   }
 });
