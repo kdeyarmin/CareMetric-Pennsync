@@ -504,6 +504,14 @@ describe('the declared entity routes', () => {
       await adapter.raw.entities.ComplianceAudit.list('-audit_date', 200);
       expect(fixture.apiCalls.at(-1).body.params).toEqual({ order: 'audit_date', limit: 200 });
 
+      // And a control for each `filter_value` refusal below: the SAME two
+      // fields, carrying a value, are served. Without these two the refusal
+      // would pass for a route that rejected those fields outright, which is
+      // the opposite defect.
+      await adapter.raw.entities.ComplianceAudit.filter({ visit_id: 'v-1' }, '-audit_date', 200);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ order: 'audit_date', limit: 200, visit_id: 'v-1' });
+
       await adapter.raw.entities.PersonnelCredential.filter({ status: 'pending_approval' },
         undefined, 1000);
       // No order asked for is no order sent: the contract defaults it, and a
@@ -530,6 +538,17 @@ describe('the declared entity routes', () => {
         [() => adapter.raw.entities.Incident.filter({ severity: 'high' }, '', 200), 'filter_field'],
         [() => adapter.raw.entities.PolicyAcknowledgment.filter(
           { user_id: { $in: ['a'] } }, '', 200), 'filter_operator'],
+        // The widening case, and the only refusal here that is about the ANSWER
+        // rather than the request's shape. `JSON.stringify` drops an
+        // `undefined` value, and every contract reads a null parameter as "no
+        // filter", so a field named with nothing in it would reach the store as
+        // an unfiltered read and answer with the whole agency under a heading
+        // naming one patient. Both spellings, because they arrive by different
+        // routes: `undefined` from an unset prop, `null` from a cleared one.
+        [() => adapter.raw.entities.Incident.filter(
+          { patient_id: undefined }, '-created_date', 200), 'filter_value'],
+        [() => adapter.raw.entities.ComplianceAudit.filter(
+          { visit_id: null }, '-created_date', 200), 'filter_value'],
       ];
       for (const [call, detail] of refused) {
         await expect(call()).rejects.toMatchObject({ code: ARGUMENTS_UNSUPPORTED, detail });

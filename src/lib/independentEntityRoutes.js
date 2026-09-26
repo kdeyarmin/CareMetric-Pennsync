@@ -367,10 +367,26 @@ function contractRead({ handler, sortable, filterable = [], filtered }) {
       if (typeof query !== 'object' || Array.isArray(query)) unsupported('filter');
       for (const [field, condition] of Object.entries(query)) {
         if (!filterable.includes(field)) unsupported('filter_field');
+        // A field named with NOTHING in it is refused, and this is the one
+        // refusal here that is about widening rather than about shape. Every
+        // contract below reads a null parameter as "no filter", and
+        // `JSON.stringify` drops an `undefined` value outright, so
+        // `filter({ patient_id: patientId })` with an unset `patientId` would
+        // reach the contract as an UNFILTERED read and answer with the whole
+        // agency under a heading naming one patient. Naming a field you have no
+        // value for is a caller's mistake and is told, because the alternative
+        // is the widest possible answer to the narrowest possible question.
+        //
+        // Measured before adding it rather than assumed necessary: all fifteen
+        // sites these routes serve guard the subject themselves today, with
+        // `enabled: !!patientId`, an early return or a throw. That is a
+        // property of each CALLER, though, and a sixteenth site would not
+        // inherit it, so the check belongs on the route.
+        if (condition === undefined || condition === null) unsupported('filter_value');
         // The contracts take a scalar per filter and no operator; `$in` would
         // have to be widened here, which is the silent-widening shape rule one
         // exists for.
-        if (condition !== null && typeof condition === 'object') unsupported('filter_operator');
+        if (typeof condition === 'object') unsupported('filter_operator');
         request[field] = condition;
       }
       return request;
