@@ -81,7 +81,18 @@ export function classifyToolFailure(binary, args, error) {
   // Match known diagnostic categories only. No child text, filename, URL, token,
   // command, numeric exit payload or error cause is included in the returned code.
   const output = `${error.stdout || ''}\n${error.stderr || ''}`;
-  let reason = 'FAILED_OUTPUT_REDACTED';
+  // D123. THE FALL-THROUGH IS NOT ALSO THE EMPTY CASE. `FAILED_OUTPUT_REDACTED`
+  // used to receive both "matched none of the categories above" and "there was
+  // nothing to match", and main's own unreproducible
+  // `LOCAL_CLI_START_FAILED_OUTPUT_REDACTED` at `00ae087b` is what that cost: a
+  // reader could not tell whether the CLI had said something this module does
+  // not recognise, or had said nothing at all. They point at different things —
+  // an unrecognised diagnostic is a category to add here, while a silent
+  // non-zero exit is the runner or the child dying before it printed, which is
+  // outside this repository entirely — and the silent reading is the one that
+  // vanishes into the other. It stays inside the no-forwarding rule because
+  // neither code carries a byte of what the child said.
+  let reason = output.trim() === '' ? 'FAILED_NO_OUTPUT' : 'FAILED_OUTPUT_REDACTED';
   if (error.code === 'ENOENT') reason = 'EXECUTABLE_NOT_FOUND';
   else if (/supabase-go/i.test(output) && /not found|no such file|ENOENT|missing/i.test(output)) reason = 'DELEGATE_MISSING';
   else if (/failed to parse config|invalid config|decoding failed|toml:/i.test(output)) reason = 'CONFIG_INVALID';
@@ -243,21 +254,50 @@ export async function describePortHolder(port) {
  * the refusal now carries the port and prints what held it. A port something
  * actually HOLDS stays held for all PORT_ATTEMPTS and still refuses, so the
  * guarantee is unchanged. Do not replace this with a single bind.
+ *
+ * THE HOLDER IS DESCRIBED AT EACH FAILURE, NEVER AFTER THE RETRIES (D112).
+ * The first version of that diagnostic ran `describePortHolder` once, after the
+ * last attempt, and the fourth occurrence is what showed why that is not the
+ * same thing: `ac251b2` printed `Port 54322: TIME_WAIT` and then the refusal,
+ * and the measurement above says TIME_WAIT cannot refuse a bind. Both readings
+ * were right about different MOMENTS -- something live held the port through
+ * ~5.6 s of retries and had closed into TIME_WAIT by the time it was
+ * described. So the reader got a representation of a moment that was not the
+ * failure, which is worse than no diagnostic: it looks like evidence, it reads
+ * as a cause, and it makes an unmade decision (whether to reserve these ports)
+ * look ready to make. A diagnostic belongs at the moment of failure.
+ *
+ * Every failed attempt is therefore described as it happens and kept, and the
+ * whole series is printed on refusal, so a holder that changed across the
+ * window is visible as a change rather than collapsed into its last state. The
+ * bind's own `errno` code is carried too, allowlisted to `E`-prefixed letters:
+ * it was discarded entirely before, so nothing could tell `EADDRINUSE` from an
+ * `EACCES` or `EADDRNOTAVAIL` that would make this whole paragraph misdirected.
+ *
+ * The cost is one `/proc` walk per failed attempt instead of one per refusal,
+ * paid only on a path that is already a second into failing. The series is also
+ * attached to the error as `observed`, which `emittable` never prints -- only
+ * `error.message` reaches an operator, and that stays the bare code and port.
  */
 export async function unusedPort(port) {
+  const observed = [];
   for (let attempt = 1; ; attempt += 1) {
     try {
       await bindOnce(port);
       return;
-    } catch {
+    } catch (error) {
+      // Guarded although `describePortHolder` is written not to throw: a
+      // diagnostic that replaced the refusal with the redacted verdict would
+      // lose the port as well as the holder, which is the whole point of it.
+      let holder = 'holder not described';
+      try { holder = await describePortHolder(port); } catch { /* keep the refusal */ }
+      const code = /^E[A-Z]{2,15}$/.test(error?.code || '') ? error.code : 'code not reported';
+      observed.push(`attempt ${attempt} ${code}: ${holder}`);
       if (attempt >= PORT_ATTEMPTS) {
-        // Guarded although `describePortHolder` is written not to throw: a
-        // diagnostic that replaced the refusal with the redacted verdict would
-        // lose the port as well as the holder, which is the whole point of it.
-        let holder = 'holder not described';
-        try { holder = await describePortHolder(port); } catch { /* keep the refusal */ }
-        process.stderr.write(`Port ${port}: ${holder}\n`);
-        throw new Error(`LOCAL_PORT_ALREADY_IN_USE ${port}`);
+        for (const line of observed) process.stderr.write(`Port ${port}: ${line}\n`);
+        const refusal = new Error(`LOCAL_PORT_ALREADY_IN_USE ${port}`);
+        refusal.observed = observed;
+        throw refusal;
       }
       await delay(PORT_RETRY_MS);
     }
