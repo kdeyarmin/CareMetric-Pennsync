@@ -9000,6 +9000,19 @@ else the equality cannot: it names the three files by name, so a rename that
 leaves directory and store in perfect agreement still fails, and the failure
 says which file this suite lost.
 
+**Both repairs landed, independently, within the hour.** This branch wrote the
+`deepEqual` into the `before` hook; #330 wrote it into the test that owns the
+directory walk, and reached `contract-roster.test.mjs` and
+`contract-timesheet.test.mjs` the same way. The merge resolved to #330's,
+because a second equality over the same two sets is not a second check. Worth
+recording that two readers found one shape from opposite ends on the same
+evening: the shape is common enough that finding one instance is not evidence
+the rest are sound, which is the argument for sweeping rather than fixing what
+turns up. #330's timesheet note is the better half of the rule in practice —
+where the weak line and the line carrying the property sit in different
+`test()` bodies, BOTH say so, because deleting or skipping the far one returns
+the suite to the unpinned shape with nothing failing.
+
 **And the instrument that found it committed the same defect.** The sweep
 written to hunt this shape flags a weak line as probably-sound when a
 `deepEqual` or a length equality sits within six lines of it. That proximity

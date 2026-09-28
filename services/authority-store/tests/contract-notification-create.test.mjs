@@ -39,6 +39,8 @@ const GOOD = Object.freeze({
   message: 'The visit note is ready for your signature.', type: 'task_assigned',
 });
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
 
 before(async () => {
   db = new PGlite();
@@ -47,19 +49,7 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // Two assertions over the applied set, and they carry DIFFERENT properties.
-  // The equality is the population: `includes` alone is satisfied by any
-  // superset, so it can say a file this suite measures reached the store and
-  // can never say the store is the directory. That second half is what the
-  // comment below the envelope test claims, and until this line existed
-  // nothing in the file established it (D151). The loop that follows is not
-  // redundant under it: it names the three files by name, so a rename that
-  // kept the directory and the store in agreement still fails here, and the
-  // failure names which file this suite lost.
-  const applied = await applyRecordMigrations(db);
-  assert.deepEqual(applied, await recordMigrationNames(),
-    'this store must be the whole record directory in its own order: a suite '
-    + 'that applies a subset measures a store nobody deploys');
+  applied = await applyRecordMigrations(db);
   for (const name of MEASURED) {
     assert.ok(applied.includes(name),
       `${name} must be applied: this suite measures its behaviour`);
@@ -253,12 +243,16 @@ test('the envelope lives in the facility and nowhere else', async () => {
   //
   // The population is the record directory now, read through the same walk that
   // builds this suite's store, so the file list and the store cannot disagree.
-  // That last clause is carried by the `deepEqual` in `before` and by nothing
-  // here; the `names.length > 4` that used to stand on this line read as
-  // though it carried it and was satisfied by any list of five (D151).
   // Widening it changed no verdict: exactly one file inserts such a row today,
   // and the four it used to scan happened to include it.
   const names = await recordMigrationNames();
+  // The RELATION, not a count. `names.length > 4` said only that the directory
+  // holds more than the four files this test used to name; it did not say the
+  // store was built from them, so the comment above it claimed something no
+  // assertion carried, and a build omitting a file nobody lists here would have
+  // passed. That is the shape Copilot found on #327.
+  assert.deepEqual(applied, names,
+    'the store IS the directory: the file list and the build cannot disagree');
   const inserts = [];
   for (const name of names) {
     const source = await readFile(new URL(name, RECORD_MIGRATION_DIRECTORY), 'utf8');

@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations } from './record-migrations.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 
 /**
  * The staff roster contract (D23).
@@ -88,6 +88,8 @@ const LIST = 'select "public"."pennsync_contract_roster_list"($1,$2,$3) as resul
 const GET = 'select "public"."pennsync_contract_roster_get"($1,$2) as result';
 const A = 'agency-a'; const B = 'agency-b';
 let db;
+/** The record migrations this suite's store was built from; pinned as a relation below. */
+let applied;
 
 before(async () => {
   db = new PGlite();
@@ -100,9 +102,9 @@ before(async () => {
   // is what grants a caller USAGE on the schema and a contract reached through
   // it inherits that, so the deployment's own order is what is wanted here and
   // reading the directory is how it stays that way as files arrive.
-  const appliedRecordMigrations = await applyRecordMigrations(db);
+  applied = await applyRecordMigrations(db);
   for (const name of MEASURED) {
-    assert.ok(appliedRecordMigrations.includes(name),
+    assert.ok(applied.includes(name),
       `${name} must be applied: this suite measures its behaviour`);
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
@@ -683,4 +685,15 @@ test('the roster projects only seven columns a screen could send back', async ()
   assert.equal(projected.length - overlap.length, 19,
     'projected columns that a caller can never write; a change here is fine, '
     + 'but it should be a change somebody meant');
+});
+
+test('the store this suite measures IS the record directory', async () => {
+  // A relation, not a count, and not a membership check either. `MEASURED`
+  // asserts that the files this suite measures were applied, which any build
+  // applying them plus some arbitrary subset of everything else satisfies — so
+  // a build omitting a file nobody lists here would have passed. That is the
+  // shape Copilot found on #327, and the fix is the same: compare the applied
+  // set against the directory walk's own answer.
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the applied set is the record directory, sorted, and nothing else');
 });
