@@ -467,13 +467,100 @@ describe('the declared entity routes', () => {
       }
     });
 
-    it('declares no write, so none is served', async () => {
+    // The four library write capabilities shipped before their routes did, and
+    // the test that used to sit here asserted the gap — `ClinicalPathway`
+    // refusing every write with `STAGING_OPERATION_UNAVAILABLE`. It is deleted
+    // rather than narrowed, because an assertion that a capability is
+    // unreachable is the thing the route was written to make false; what
+    // replaces it is what the writes now DO.
+    it('names the action the contract takes, and sends the id and the payload each one needs',
+      async () => {
+        const { fixture, adapter } = await signedIn();
+        fixture.apiResponse = libraryAnswer([]);
+
+        // A create sends the payload and NO id, because the row does not exist
+        // to have one. An update sends both. A delete sends the id and no
+        // payload at all — which is why these are three declarations over one
+        // contract and not `operationalSave`'s absent-id inference: that would
+        // read a delete as an update with no fields.
+        await adapter.raw.entities.ClinicalPathway.create({ pathway_name: 'CHF' });
+        expect(fixture.apiCalls.at(-1).url)
+          .toBe(`${stagingApiUrl}/v1/functions/manageClinicalPathway`);
+        expect(fixture.apiCalls.at(-1).body.params)
+          .toEqual({ action: 'create', fields: { pathway_name: 'CHF' } });
+
+        await adapter.raw.entities.ClinicalPathway.update('p-1', { is_active: false });
+        expect(fixture.apiCalls.at(-1).body.params)
+          .toEqual({ action: 'update', id: 'p-1', fields: { is_active: false } });
+
+        await adapter.raw.entities.ClinicalPathway.delete('p-1');
+        expect(fixture.apiCalls.at(-1).body.params).toEqual({ action: 'delete', id: 'p-1' });
+      });
+
+    it('sends each of the four its own capability, and never a neighbour\'s', async () => {
       const { fixture, adapter } = await signedIn();
-      for (const operation of ['create', 'update', 'delete']) {
-        await expect(adapter.raw.entities.ClinicalPathway[operation]({}))
-          .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
+      fixture.apiResponse = libraryAnswer([]);
+      // One shared `library_write` body serves all four, which is exactly why
+      // this is worth asserting: the four contracts differ only in the name
+      // they are reached by, so a copied declaration pointing at the wrong one
+      // would write a template into the folder table and nothing in the shape
+      // of the request would look wrong.
+      const expected = [
+        ['ClinicalPathway', 'manageClinicalPathway'],
+        ['ClinicalLibraryTemplate', 'manageClinicalLibraryTemplate'],
+        ['ClinicalLibraryFolder', 'manageClinicalLibraryFolder'],
+        ['EducationMaterial', 'manageEducationMaterial'],
+      ];
+      for (const [entity, capability] of expected) {
+        for (const [operation, args] of [
+          ['create', [{ title: 'x' }]], ['update', ['row-1', { title: 'x' }]],
+          ['delete', ['row-1']],
+        ]) {
+          await adapter.raw.entities[entity][operation](...args);
+          expect(fixture.apiCalls.at(-1).url)
+            .toBe(`${stagingApiUrl}/v1/functions/${capability}`);
+          expect(fixture.apiCalls.at(-1).body.params.action).toBe(operation);
+        }
+      }
+      expect(fixture.apiCalls).toHaveLength(expected.length * 3);
+    });
+
+    it('refuses an argument shape the contract cannot mean, before any request', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([]);
+      // An empty id is not an id, and an array is not a field object. These
+      // refuse HERE rather than at the contract because a request built from
+      // them would name a row nobody meant.
+      for (const call of [
+        () => adapter.raw.entities.ClinicalPathway.update('', { a: 1 }),
+        () => adapter.raw.entities.ClinicalPathway.update(undefined, { a: 1 }),
+        () => adapter.raw.entities.ClinicalPathway.delete(''),
+        () => adapter.raw.entities.ClinicalPathway.create([{ a: 1 }]),
+        () => adapter.raw.entities.ClinicalPathway.create(null),
+        () => adapter.raw.entities.ClinicalLibraryFolder.update('f-1', 'name'),
+      ]) {
+        await expect(call()).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
       }
       expect(fixture.apiCalls).toHaveLength(0);
+    });
+
+    it('hands back the row the contract wrote, not the envelope around it', async () => {
+      const { fixture, adapter } = await signedIn();
+      // Every action of every one of the four answers
+      // `{created|updated|deleted: true, row}` — one shared body, so one
+      // projection. A route reading `entries` or the whole envelope would hand
+      // a screen an object it cannot render, and each verb is checked because
+      // the key beside `row` is the only thing that differs between them.
+      const row = { id: 'p-1', pathway_name: 'CHF' };
+      for (const verb of ['created', 'updated', 'deleted']) {
+        fixture.apiResponse = () => new Response(
+          JSON.stringify({
+            success: true, result: { [verb]: true, row },
+            execution: 'pennsync-api', base44ExecutionDependency: false,
+          }), { headers: { 'content-type': 'application/json' } });
+        expect(await adapter.raw.entities.ClinicalPathway.create({ pathway_name: 'CHF' }))
+          .toEqual(row);
+      }
     });
   });
 
@@ -617,6 +704,9 @@ describe("what batch E's routes take on trust", () => {
     const report = measureRoutes(cwd());
     expect([...report.unproved_routes].sort()).toEqual([
       'AgencySettings.create', 'AgencySettings.update',
+      'ClinicalLibraryFolder.create', 'ClinicalLibraryTemplate.create',
+      'ClinicalPathway.create', 'ClinicalPathway.update',
+      'EducationMaterial.create',
       'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
       'NoteConversion.create',
       'NotificationPreference.create', 'NotificationPreference.update',
@@ -639,6 +729,28 @@ describe("what batch E's routes take on trust", () => {
       // write and a junk row that answered `success: true`.
       'PENNSYNC_SCREEN_FIELD_REQUIRED', 'PENNSYNC_SCREEN_FIELD_VALUE_INVALID']) {
       expect(suite, `${code} must be exercised by the contract suite`).toContain(code);
+    }
+
+    // The same standard for the five clinical-library writes, whose suite is a
+    // different file. All four capabilities route through ONE `library_write`
+    // body, so the two halves are asserted separately and mean different
+    // things: the pathway codes are the BODY's refusals — the payload checks,
+    // the required and reserved fields, the missing row — and cover the shared
+    // machinery once, while each entity's own `_FORBIDDEN` is the gate that
+    // contract puts in front of it, which is the half a copied declaration
+    // would get wrong. Asserting only the first would leave three capabilities
+    // resting on a fourth's proof.
+    const library = readFileSync(
+      'services/authority-store/tests/contract-clinical-library.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_PATHWAY_ACTION_INVALID', 'PENNSYNC_PATHWAY_AGENCY_NOT_HELD',
+      'PENNSYNC_PATHWAY_FIELDS_INVALID', 'PENNSYNC_PATHWAY_FIELDS_EMPTY',
+      'PENNSYNC_PATHWAY_FIELD_UNKNOWN', 'PENNSYNC_PATHWAY_FIELD_RESERVED',
+      'PENNSYNC_PATHWAY_FIELD_REQUIRED', 'PENNSYNC_PATHWAY_ID_INVALID',
+      'PENNSYNC_PATHWAY_NOT_FOUND',
+      'PENNSYNC_PATHWAY_FORBIDDEN', 'PENNSYNC_LIBRARY_TEMPLATE_FORBIDDEN',
+      'PENNSYNC_LIBRARY_FOLDER_FORBIDDEN', 'PENNSYNC_EDUCATION_MATERIAL_FORBIDDEN']) {
+      expect(library, `${code} must be exercised by the library contract suite`)
+        .toContain(code);
     }
 
     // Batch D's five, the same standing on their own suite. A second family of

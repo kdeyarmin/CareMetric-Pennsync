@@ -556,6 +556,50 @@ function operationalSave({ fn, key, reason, withId }) {
 }
 
 /**
+ * `Entity.create(payload)`, `Entity.update(id, payload)` and
+ * `Entity.delete(id)` onto ONE contract that takes an action beside the id and
+ * the payload — the shape the four clinical-library writers share.
+ *
+ * It is deliberately not `operationalSave`. That helper reads an ABSENT id as
+ * a create, which works where one contract has two shapes and no third; these
+ * four have a `delete` whose id is present and whose payload is absent, so the
+ * same inference would read a delete as an update with no fields. The action
+ * is a parameter of the contract, so the route names it rather than deriving
+ * it, and each of the three call shapes gets its own declaration.
+ *
+ * Every one of these contracts routes through `library_write`, which answers
+ * `{created|updated|deleted: true, row}` — so the projection is `row` for all
+ * three actions and for all four entities. Read that rather than inferring it
+ * per entity: the shared body is why it is uniform.
+ */
+function libraryWrite({ fn, reason, action }) {
+  const withId = action !== 'create';
+  const withFields = action !== 'delete';
+  return Object.freeze({
+    function: fn,
+    projection: 'operational_row',
+    reason,
+    // Declared because the rest parameter hides the count, as the two helpers
+    // above it declare theirs.
+    arity: (withId ? 1 : 0) + (withFields ? 1 : 0),
+    request: (...args) => {
+      const [id, fields] = withId ? args : [undefined, args[0]];
+      if (withId && (typeof id !== 'string' || id === '')) unsupported('id');
+      if (withFields
+        && (fields === null || typeof fields !== 'object' || Array.isArray(fields))) {
+        unsupported('fields');
+      }
+      return {
+        action,
+        ...(withId ? { id } : {}),
+        ...(withFields ? { fields } : {}),
+      };
+    },
+    response: (result) => result?.row,
+  });
+}
+
+/**
  * The declared routes for the seven, kept out of the object literal below so
  * the reason for each stays beside the call sites it serves.
  *
@@ -1357,6 +1401,54 @@ const DECLARED_ROUTES = Object.freeze({
       request: (query) => ({ active_only: query?.is_active === true }),
     }),
     reason: 'The OASIS recommender and the trigger both read the active pathways.',
+  }),
+  'ClinicalPathway.create': libraryWrite({
+    fn: 'manageClinicalPathway', action: 'create',
+    reason: 'The pathway manager saves a new pathway, and the AI generator writes one it drafted.',
+  }),
+  'ClinicalPathway.update': libraryWrite({
+    fn: 'manageClinicalPathway', action: 'update',
+    reason: 'The pathway manager edits a pathway, and the AI updater rewrites one in place.',
+  }),
+  'ClinicalPathway.delete': libraryWrite({
+    fn: 'manageClinicalPathway', action: 'delete',
+    reason: 'The pathway manager removes a pathway.',
+  }),
+  'ClinicalLibraryTemplate.create': libraryWrite({
+    fn: 'manageClinicalLibraryTemplate', action: 'create',
+    reason: 'The library manager saves a new template, and the phrase seeder writes the starter set.',
+  }),
+  'ClinicalLibraryTemplate.update': libraryWrite({
+    fn: 'manageClinicalLibraryTemplate', action: 'update',
+    reason: 'The library manager edits a template and clears the folder of every template in a folder it deletes.',
+  }),
+  'ClinicalLibraryTemplate.delete': libraryWrite({
+    fn: 'manageClinicalLibraryTemplate', action: 'delete',
+    reason: 'The library manager removes a template.',
+  }),
+  'ClinicalLibraryFolder.create': libraryWrite({
+    fn: 'manageClinicalLibraryFolder', action: 'create',
+    reason: 'The library manager creates a folder.',
+  }),
+  'ClinicalLibraryFolder.update': libraryWrite({
+    fn: 'manageClinicalLibraryFolder', action: 'update',
+    reason: 'The library manager renames a folder and reparents the children of one it deletes.',
+  }),
+  'ClinicalLibraryFolder.delete': libraryWrite({
+    fn: 'manageClinicalLibraryFolder', action: 'delete',
+    reason: 'The library manager removes a folder.',
+  }),
+  'EducationMaterial.create': libraryWrite({
+    fn: 'manageEducationMaterial', action: 'create',
+    reason: 'The material editor saves a new material and the library duplicates an existing one.',
+  }),
+  'EducationMaterial.update': libraryWrite({
+    fn: 'manageEducationMaterial', action: 'update',
+    reason: 'The material editor saves an edit, and the sender stamps the material it just sent.',
+  }),
+  'EducationMaterial.delete': libraryWrite({
+    fn: 'manageEducationMaterial', action: 'delete',
+    reason: 'The education library removes a material.',
   }),
   'ClinicalLibraryFolder.list': Object.freeze({
     ...libraryRead({ capability: 'listClinicalLibraryFolders', sortable: ['order'] }),

@@ -2840,10 +2840,8 @@ entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adop
   of those 166, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 165 need a named capability
 ```
 
-And the reading on THIS tree, after the roster gained a creation order. This
-one is `pnpm run check:entity-routes`'s own output and is **pinned**:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what the tool prints and never retype, rewrap or re-indent it.
+And after the roster gained a creation order — a record of that head, not
+maintained either:
 
 ```
 entity routes: 52 declared, 95/237 landable call sites SERVED, 142 still to adopt
@@ -2852,8 +2850,38 @@ entity routes: 52 declared, 95/237 landable call sites SERVED, 142 still to adop
   of those 142, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 141 need a named capability
 ```
 
-**The move above is 24 sites, and its cause is one order rather than any new
-capability.** The roster contract learned to answer `created_date` descending,
+The move into THAT block was 24 sites, and its cause was one order rather than
+any new capability: the roster contract learned to answer `created_date`
+descending, which is what the `User.list` sites that were refused on their sort
+were asking for, so the declared count did not move and every one of the 24 left
+the sort bucket.
+
+And the reading on THIS tree, after the four clinical-library write capabilities
+gained their routes. This one is `pnpm run check:entity-routes`'s own output and
+is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
+byte for byte, so paste what the tool prints and never retype, rewrap or
+re-indent it.
+
+```
+entity routes: 64 declared, 102/237 landable call sites SERVED, 135 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 32 pass arguments this cannot read
+  13 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 135, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 134 need a named capability
+```
+
+**The move above is seven sites, and its cause is twelve routes over four
+capabilities that already shipped — no contract, no migration and no SQL.**
+`manageClinicalPathway`, `manageClinicalLibraryTemplate`, `manageClinicalLibraryFolder`
+and `manageEducationMaterial` each take an action beside the id and the payload,
+so each serves a `create`, an `update` and a `delete`, and the twelve
+declarations are the whole of the change. Five of the twelve are UNPROVED and
+seven are served, which is why the unproved line grows by five in the same merge
+the served count grows by seven: a route whose call sites all pass a variable is
+counted in the first and not the second. The unreadable line grows by twelve
+because every one of those sites GAINED a declared route the gate cannot run —
+the same reading #296's paragraph below records, arriving a second time, and the
+reason to state it is that a rising unreadable count beside a rising served
+count looks like a regression and is the opposite. The roster contract learned to answer `created_date` descending,
 which is what the `User.list` sites that were refused on their sort were asking
 for; the declared count does not move, because no route was added. Every one of
 the 24 leaves the sort bucket, which is why that line falls while the unreadable
