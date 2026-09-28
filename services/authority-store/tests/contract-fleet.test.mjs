@@ -436,14 +436,23 @@ test('the widened build is the whole record directory and exposes the same contr
   // in a fresh build and it is unobservable here, which is exactly D127's
   // point. An assertion over the current surface alone would pass whether or
   // not the widening moved it, so the old three-file store is built here as a
-  // control and the two surfaces are compared. `proname` AND the identity
-  // arguments, because PostgREST resolves an RPC by the names of the body's
-  // keys, so a renamed parameter is a changed surface.
+  // control and the two surfaces are compared. `proname` AND BOTH argument
+  // renderings, because PostgREST resolves an RPC by the names of the body's
+  // keys: a renamed parameter is a changed surface, and so is an argument
+  // DEFAULT added or removed, which decides which request-body shapes exist.
+  // `pg_get_function_identity_arguments` omits defaults by definition (D95
+  // says so in those words), so a control built on it alone stays green while
+  // the surface moves — and every contract suite calls positionally, so
+  // nothing else here would notice. Measured rather than reasoned: a forward
+  // migration changing only a default leaves the identity-arguments version of
+  // this control at 15 pass / 0 fail and fails this one by name.
   const fleetSurface = async client => (await client.query(
-    `select p.proname, pg_get_function_identity_arguments(p.oid) as args
+    `select p.proname,
+            pg_get_function_identity_arguments(p.oid) as identity_args,
+            pg_get_function_arguments(p.oid) as full_args
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where p.proname like '%fleet%' or p.proname like '%vehicle%'
-      order by 1, 2`)).rows;
+      order by 1, 2, 3`)).rows;
   const derived = await fleetSurface(db);
   assert.ok(derived.length > 0, 'the contract must be reachable at all');
 

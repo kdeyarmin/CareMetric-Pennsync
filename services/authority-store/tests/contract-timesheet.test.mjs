@@ -49,6 +49,10 @@ before(async () => {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
   applied = await applyRecordMigrations(db);
+  // This loop asserts only that the named files were applied, which any
+  // superset satisfies. What pins the build to the directory is the
+  // `deepEqual` in the last test of this file; the two are load-bearing for
+  // each other, so do not delete or skip that test without replacing this.
   for (const name of MEASURED) {
     assert.ok(applied.includes(name),
       `${name} must be applied: this suite measures its behaviour`);
@@ -368,15 +372,30 @@ test('the swap widened the store and left this contract reachable unchanged', as
   // moved. A test that only checked the current set would pass whether or not the
   // widening had changed it (D127's lesson: an assertion that cannot distinguish
   // the two answers is not evidence).
-  assert.deepEqual(applied, await recordMigrationNames());
+  // THIS line is what pins the build, and it lives in a different `test()`
+  // body from the check it rescues: the `MEASURED` loop in the before hook
+  // asserts only that the named files were applied, which any superset
+  // satisfies. Delete or skip this test and the suite silently returns to the
+  // unpinned shape with nothing failing, so the two are load-bearing for each
+  // other and both say so. The `names.length > 6` that used to sit here was
+  // deleted rather than reworded: it claimed "the store is the directory",
+  // which is this line's property and not its own, and `recordMigrationNames`
+  // already fails closed on an empty directory.
   const names = await recordMigrationNames();
-  assert.ok(names.length > 6, 'the store is the directory, not the old six files');
+  assert.deepEqual(applied, names,
+    'the applied set is the record directory, sorted, and nothing else');
 
   const timesheetSurface = async client => (await client.query(
-    `select p.proname, pg_get_function_identity_arguments(p.oid) as args
+    // Both argument renderings: `pg_get_function_identity_arguments` omits
+    // argument DEFAULTS by definition (D95), and a default decides which
+    // request-body shapes PostgREST accepts, so a control on the identity
+    // form alone stays green while the surface moves.
+    `select p.proname,
+            pg_get_function_identity_arguments(p.oid) as identity_args,
+            pg_get_function_arguments(p.oid) as full_args
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where p.proname like '%timesheet%'
-      order by 1, 2`)).rows;
+      order by 1, 2, 3`)).rows;
   const derived = await timesheetSurface(db);
   assert.ok(derived.length > 0, 'the contract must be reachable at all');
 
