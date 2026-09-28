@@ -8951,3 +8951,74 @@ symptom is always local to whatever the instrument keys on — so it never looks
 like the same bug twice. When concatenating text that anything downstream
 parses positionally, normalise the boundary rather than trusting the parts, and
 assert the unit count on the result rather than on the inputs.
+
+## D151 — Two lines that lend each other standing, and neither has any
+
+A weak assertion beside a strong one is not a weak assertion. It reads as part
+of what the strong one establishes, and the strong one reads as though the weak
+one were another of its terms. **The loan runs in both directions, and which
+direction it runs in decides the repair.** Both directions turned up in one
+evening, in different files, and neither was found by reading the line on its
+own — a line's weakness is only visible once you ask what, exactly, it carries
+that its neighbour does not.
+
+**Direction one: the weak line borrows from the strong.** The plan thread's
+case. A membership test sat beside an equality that already fixed the whole
+population, so the membership test could not fail without the equality failing
+first. It was not wrong; it was inert, and it made the block look like it was
+checking two things. The repair is to DELETE it. Nothing is lost, because
+nothing about the property depended on it.
+
+**Direction two: the strong sentence borrows from the weak line.** This
+branch's case, at `contract-notification-create.test.mjs`. The comment said the
+population "is the record directory now, read through the same walk that builds
+this suite's store, so the file list and the store cannot disagree" — a true
+and load-bearing sentence — and the assertion under it was
+`assert.ok(names.length > 4)`, satisfied by any list of five. The walk really
+did read the directory, so the file list was right; what nothing established
+was that the STORE was built from the same set. `applyRecordMigrations` was
+called and only `applied.includes(name)` was asserted over its result, which is
+the #327 shape and is satisfied by any superset — and by any subset containing
+the three. The sentence was true of the code as written and would have stayed
+on the page had a later change applied a subset, at which point it would have
+been false and nothing would have said so.
+
+**The repair is the one that is easy to get backwards.** The obvious edit is to
+soften the comment to match the line — "the file list is read from the
+directory" — which is true, passes review, and throws the property away.
+**Never soften a true sentence to fit a weak line.** Add the assertion that
+makes it true: `assert.deepEqual(applied, await recordMigrationNames())`. That
+is the shape the build thread used for the same class and it is the general
+one — where an overclaiming message sits over a weaker assertion, move the
+assertion up to the message rather than the message down to the assertion.
+
+**The rule, for either direction:** name which line carries the property. Then
+delete the other, or make it carry its own weight. Do not leave two lines where
+one is standing on the other. Here the `deepEqual` carries the population and
+the `includes` loop was KEPT, because under the equality it carries something
+else the equality cannot: it names the three files by name, so a rename that
+leaves directory and store in perfect agreement still fails, and the failure
+says which file this suite lost.
+
+**And the instrument that found it committed the same defect.** The sweep
+written to hunt this shape flags a weak line as probably-sound when a
+`deepEqual` or a length equality sits within six lines of it. That proximity
+flag is the credibility loan, mechanised, and it was wrong in BOTH directions:
+it cleared weak lines whose nearby strong assertion measured something else
+entirely, and it flagged lines whose real carrier was twenty lines up in a
+`before` hook. Proximity is not an argument. A neighbour lends nothing; only
+the question "what does this line establish that the other does not" resolves
+it, and that question has to be asked of every pair, one at a time.
+
+**What that sweep cannot see, stated because an unstated blind spot is a
+promise.** It reads LINES. An assertion split across lines is invisible to it;
+so is one built from a variable assigned somewhere else, and so is a helper
+that asserts on its caller's behalf — which is most of the shared fixtures. Its
+comment detector over-captures badly (225 hits, nearly all ordinary prose), so
+the claim half is a reading list and not a result. And it cannot tell a sound
+membership test from an unsound one at all: `includes` over a set the file
+itself built is fine, `includes` over a set something else built is the #327
+shape, and the two are the same characters. Every line it prints is a thing to
+READ. **A sweep of this kind produces candidates, never findings, and saying so
+is part of the result** — a candidate list quoted as a count of defects is the
+house defect arriving in the instrument built to catch it.
