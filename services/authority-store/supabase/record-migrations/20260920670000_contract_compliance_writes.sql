@@ -119,6 +119,8 @@
 -- a tenant; a row written by something else with a null visit is readable by
 -- nobody, which is the read half's recorded finding and not this one's to fix.
 
+begin;
+
 do $precondition$
 begin
   if pg_catalog.to_regprocedure(
@@ -778,3 +780,5 @@ grant execute on function "public"."pennsync_contract_adr_case_update"(text,text
   to authenticated;
 grant execute on function "public"."pennsync_contract_adr_case_delete"(text,text)
   to authenticated;
+
+commit;
