@@ -1032,6 +1032,23 @@ describe('the declared entity routes', () => {
      *     reads `['limit', 'after', 'order']`, because that contract really
      *     does take the parameter.
      *
+     * TWO SABOTAGES FAILED BEFORE ONE BIT, and both failures are findings
+     * rather than fumbles, so they are recorded rather than quietly retried.
+     *
+     *   - Re-adding `orderable: ['-created_date']` changed nothing, because
+     *     `orderKey` strips the leading dash before the lookup and compares the
+     *     FIELD. A plant written in the declaration's own vocabulary was
+     *     therefore inert, and an inert plant is indistinguishable from a
+     *     working check with nothing to find. `orderable` takes `created_date`.
+     *   - Deleting `orderKey`'s `ordered` short-circuit — the apparent inverse
+     *     of the six route fixes — also changed nothing, and that one is a real
+     *     property of this check. With `orderable` empty the fall-through
+     *     raises `unsupported('sort')`, so the site leaves the SERVED set
+     *     entirely and becomes one of the gate's REFUSALS. This check reads
+     *     served sites, so a route that breaks by refusing is invisible here
+     *     and is counted in the gate's own line instead. The two readings
+     *     partition the failures; neither sees the other's.
+     *
      * AN EMPTY EXPECTATION IS NOT EVIDENCE (D174), so the plant below is what
      * says this check still bites. Without it the whole test passes with
      * `violations` never populated — a broken driver and a clean tree are the
