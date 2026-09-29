@@ -871,6 +871,17 @@ const operationalRoutes = Object.freeze({
  * migration and fails if any of them disagrees with this table, rather than a
  * comment here claiming they match.
  */
+/**
+ * `contract_alert_list`'s own row ceiling, as `least(p_limit, 500)` in
+ * `20260920160000_contract_alert.sql`.
+ *
+ * Separate from `SCREEN_CEILINGS` because it is enforced differently: batch E's
+ * contracts pass their bound to a shared `screen_limit`, and this one clamps
+ * inline. The spec reads BOTH back out of their own migrations, so neither is a
+ * number this file is trusted on.
+ */
+export const ALERT_CEILING = 500;
+
 export const SCREEN_CEILINGS = Object.freeze({
   listChartClinicalEvents: 200,
   listChartRecommendations: 200,
@@ -943,6 +954,18 @@ function screenRead({
       const { query: asked, size } = read(args);
       return build(asked, size === undefined ? undefined : Math.min(size, ceiling));
     },
+    /**
+     * `answerKey` is not a convenience. Every batch E contract answers
+     * `entries`, so this read the key as a constant — and the FIRST route
+     * declared over a contract outside that family answers `alerts`
+     * (`contract_alert_list` builds `jsonb_build_object('alerts', …)`). A
+     * route that took `entries` from it would pass `check:entity-routes` and
+     * refuse every real call, because the gate runs a declaration's `request`
+     * against each call site's arguments and never exercises `response`
+     * (D168). So the key is declared per route and
+     * `independentEntityRoutes.spec.js` drives this function with the
+     * contract's own answer shape rather than asserting the name.
+     */
     response: (result, ...args) => {
       const entries = result?.[answerKey];
       if (!Array.isArray(entries)) unsupported('answer');
@@ -1094,6 +1117,74 @@ const DECLARED_ROUTES = Object.freeze({
     // contract returns the id and the status ONLY (D64), so a screen reading
     // a title here gets `undefined` rather than a row that rode into a prompt.
     reason: 'The outcomes analyser counts a chart\'s recommendations by status and reads no other field.',
+  }),
+  /**
+   * Patient alerts: four of the five `PatientAlert` call sites, over
+   * `getScopedPatientAlerts` and D21/D24's `contract_alert_list`.
+   *
+   * The strict reading behind these two, because the block does NOT land whole
+   * and the one that fails is worth naming. `WorkflowExecutionEngine.jsx:113`
+   * calls `PatientAlert.create(data)` with a payload its workflow rule builds,
+   * and there is no route for it: exactly ONE migration in the record
+   * directory inserts `patient_alert`, `contract_clinical_extract`, and that
+   * insert derives every column from an extracted clinical event inside its own
+   * loop and takes no caller payload at all. There is no parameter to widen, so
+   * serving that site needs a create contract, which is a forward migration and
+   * a decision about the store rather than a screen.
+   *
+   * The other four are answered clause for clause. `patient_id` and `status`
+   * are parameters; `-created_date` IS the contract's own SQL order
+   * (`created_date desc nulls last, id desc`), so nothing here re-sorts a page;
+   * and the two sites passing `PATIENT_HISTORY_ROWS` (1000) plus the one
+   * passing 5000 are above the ceiling, which is served with the completeness
+   * proof rather than refused — `contract_alert_list` clamps SILENTLY with
+   * `least(p_limit, 500)`, so without that proof a screen would render 500
+   * alerts as though they were every alert.
+   *
+   * `severity` is a contract parameter and is deliberately NOT declared here,
+   * because no call site filters on it; a site that started to would refuse
+   * rather than have the filter dropped.
+   *
+   * The projection is the whole row — `alert_row` builds twenty-five fields —
+   * and the two screens over the filter read `status` and `severity` only. One
+   * of them builds a model prompt, so this was checked rather than assumed:
+   * only a COUNT of active alerts reaches it, no alert text and no severity
+   * string, so nothing here puts a subject or a clinical detail in a prompt.
+   */
+  'PatientAlert.filter': Object.freeze({
+    ...screenRead({
+      entity: 'PatientAlert',
+      function: 'getScopedPatientAlerts',
+      projection: 'patient_alert_row',
+      order: '-created_date',
+      ceiling: ALERT_CEILING,
+      answerKey: 'alerts',
+      query: { patient_id: true, status: true },
+      filtered: true,
+      build: (query, limit) => ({
+        ...(query.patient_id === undefined ? {} : { patient_id: query.patient_id }),
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(limit === undefined ? {} : { limit }),
+      }),
+    }),
+    reason: 'Two analysers count one chart\'s alerts by status and severity, which D24 narrows to the care team.',
+  }),
+  'PatientAlert.list': Object.freeze({
+    ...screenRead({
+      entity: 'PatientAlert',
+      function: 'getScopedPatientAlerts',
+      projection: 'patient_alert_row',
+      order: '-created_date',
+      ceiling: ALERT_CEILING,
+      answerKey: 'alerts',
+      filtered: false,
+      build: (_query, limit) => (limit === undefined ? {} : { limit }),
+    }),
+    // The unfiltered read is the agency's alerts, which is what the contract
+    // answers when `p_patient_id` is null — and D24 still decides which charts
+    // are in it, so an `office_staff` caller gets an empty list rather than a
+    // refusal. The screen already gates itself on `isAdmin`.
+    reason: 'The patient overview lists the agency\'s alerts newest first, bounded and proved complete.',
   }),
   'OCRFeedback.list': Object.freeze({
     ...screenRead({

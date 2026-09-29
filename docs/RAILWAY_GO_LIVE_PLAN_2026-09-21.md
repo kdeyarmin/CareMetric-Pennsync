@@ -123,11 +123,17 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=7 files=12 external_secret=2 none=78
+port queue: entity_authorization=6 files=12 external_secret=2 none=78
 ```
 
-99 carried capabilities, **78 written, 21 blocked** (2026-09-23, after D89, D90
-and D91). `records_schema` is absent from that line rather than zero in it,
+98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
+The carried total falls by one here rather than the written total rising,
+because D153 retired `enforceStaffRoleIntegrity` instead of porting it: the
+owned store constrains `staff_role` on both tables and lets nobody write it, so
+the sweep that reverted a spoofed value has no work left. **A bucket shrinking
+is not the same event as a port landing, and this page should not let the two
+read alike** — a written count that did not move is the tell.
+`records_schema` is absent from that line rather than zero in it,
 because `portQueueLine` omits an empty bucket — and that bucket is empty with
 every capability in it BUILT, which is the first time. Three of the buckets
 below have emptied, one of them twice, and the fourth has shrunk by one:
@@ -145,12 +151,13 @@ below have emptied, one of them twice, and the fourth has shrunk by one:
   mail can be sent; see §4's `Core.SendEmail` row. What a release of these two
   is NOT is a release of invitations, which have no send at all — their
   `delivery_paused: true` is a literal on an audit entry (D42).
-- `entity_authorization` **8 → 7**. D83 took two out by retiring them — a
+- `entity_authorization` **8 → 7 → 6**. D83 took two out by retiring them — a
   `global` reference table is written by migration, never at runtime — and D84
   put `offboardUser` in, where the measurement always said it belonged. D82
-  settled the profile-write path and moved none of them, because all six write
-  somebody else's row, a column outside the allowlist, or a payload nothing can
-  read.
+  settled the profile-write path and moved none of them out, because each of the
+  profile writers it then held writes somebody else's row, a column outside the
+  allowlist, or a payload nothing can read. D153 then took a third out by
+  retiring it, which is a capability leaving rather than a port landing.
 - `records_schema` **0 → 3 → 0**. D84 moving three capabilities in was the queue
   working rather than regressing: "blocked on a schema" became "its port is not
   written yet", against a store that exists. All three have since been written —
@@ -2685,7 +2692,7 @@ administrative write paths, and a vendor key.
 | Blocker | Count | What it needs |
 | --- | ---: | --- |
 | `files` | 12 | Stage H, and one decision that is not this repository's. D85 re-measured D77 and it holds: the integration runtime serves a stored object only to its uploader, and a migrated object has no uploader. The mapping, resolver and planner are built; the bytes are not copied. Four different things in one bucket — 2 wait only on the reader model, 5 need the copy and the reader model, 5 have a write leg that needs neither, and 1 has two further blockers |
-| `entity_authorization` | 7 | Ports to write, not decisions. D82 settled D23's open profile-write path at the caller's own row, and these are the seven admin and scheduled paths it deliberately does NOT reach: `autoApproveInvitedUser`, `autoEndDutyDay`, `enforceStaffRoleIntegrity`, `offboardUser`, `setNurseDutyStatus`, `userManagement`, `userManagementV2`. D83 took the two `MedicareGuideline` writers out of this bucket by retiring them: a `global` table is written by migration |
+| `entity_authorization` | 6 | **NOT all ports, and this row said otherwise until D153 measured it.** D82 settled D23's open profile-write path at the caller's own row, and these are the admin and scheduled paths it deliberately does NOT reach: `autoApproveInvitedUser`, `autoEndDutyDay`, `offboardUser`, `setNurseDutyStatus`, `userManagement`, `userManagementV2`. **Two of these six are decisions rather than ports**: `autoApproveInvitedUser` and `autoEndDutyDay` carry the `schedulerAuth` fence and so have no caller at all, which is D49's unchosen per-agency scheduler identity and not a contract anybody can write; a declaration would not unblock either. A third decision, `enforceStaffRoleIntegrity`, has left the bucket entirely: D153 retired it because the owned store made it unnecessary. Of the six left, none can be ported against a capability that already exists: all six write `User`, and nothing in the store writes `pennsync_records.user` at all, so each is a forward migration rather than a repoint. D83 took the two `MedicareGuideline` writers out of this bucket by retiring them: a `global` table is written by migration |
 | ~~`records_schema`~~ | 0 | **Emptied by D89, D90 and D91.** The three capabilities D84 kept as `port` with an uncarried leg — `distributePolicyAcknowledgment`, `sendExpirationNotifications`, `generateAIReport` — are all written. D75 had taken this bucket to zero on a correction; this is the first time every capability that was in it has been built. Note that `portQueueLine` omits an empty bucket, so it no longer appears in the measured line at all |
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
 | ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
@@ -2850,22 +2857,9 @@ entity routes: 54 declared, 98/237 landable call sites SERVED, 139 still to adop
   of those 139, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 138 need a named capability
 ```
 
-And the reading on THIS tree, after the five write capabilities that had
-shipped without routes gained them. This one is
-`pnpm run check:entity-routes`'s own output and is **pinned**:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what the tool prints and never retype, rewrap or re-indent it.
-
-```
-entity routes: 67 declared, 107/237 landable call sites SERVED, 130 still to adopt
-  6 of those are sites a declared route REFUSES (User.list:sort), and 37 pass arguments this cannot read
-  13 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
-  of those 130, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 129 need a named capability
-```
-
-**The move above is nine sites across thirteen declarations, and its cause is
-routing capabilities that already shipped — no contract, no migration and no
-SQL.** `manageClinicalPathway`, `manageClinicalLibraryTemplate`,
+**Nine of the sites in the pinned reading further down, across thirteen
+declarations, came from routing capabilities that already shipped — no
+contract, no migration and no SQL.** `manageClinicalPathway`, `manageClinicalLibraryTemplate`,
 `manageClinicalLibraryFolder` and `manageEducationMaterial` each take an action
 beside the id and the payload, so each serves a `create`, an `update` and a
 `delete`, and twelve declarations were the whole of that. The thirteenth is
@@ -2900,11 +2894,17 @@ the tree, which is the shape of a check whose subject is gone.
 
 **The branch that made this move kept its own intermediate readings and they
 are deliberately not on this page.** It measured at 95, then 102, then 104
-served before merging, and those three heads are a branch's staging history
+served before merging, and 107 on the head that merged, which `main` never
+stood on because another branch landed in between; those four heads are a
+branch's staging history
 rather than anything a deployment or a reader passed through. A record block
 earns its place by being a head somebody could have been standing on; pasting a
 branch's private waypoints into a chain that otherwise tracks `main` would make
-the page describe a line of development that never existed.
+the page describe a line of development that never existed. The last of those
+four is the one worth naming, because it was a real pull request head with a
+real CI run on it and it still does not belong here: `main` went from the
+patient-alert reading straight to the merged one, and a block for the head in
+between would describe a tree no reader could have checked out of `main`.
 
 **The move into that record was three sites across two routes, and its cause
 was a re-measurement rather than anything new being built.** Both capabilities have
@@ -3058,6 +3058,60 @@ contracts are not an expensive approach chosen over a cheap one that was
 available. What is left is roughly forty entities' worth of named contracts and
 handlers — the same shape as the 80 already built — rather than one design
 decision.
+
+**And the reading on THIS tree, after four patient-alert call sites adopted two
+routes and the five write capabilities that had shipped without routes gained
+them.** This one is `pnpm run check:entity-routes`'s own output and is
+**pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it byte
+for byte, so paste what the tool prints and never retype, rewrap or re-indent
+it.
+
+```
+entity routes: 69 declared, 111/237 landable call sites SERVED, 126 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 37 pass arguments this cannot read
+  13 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 126, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 125 need a named capability
+```
+
+**Four of the thirteen sites in that move are two routes' worth, and their
+cause is capabilities that had been shipped for weeks reaching a screen for the
+first time.**
+`getScopedPatientAlerts` and `contract_alert_list` have existed since D21;
+nothing was built here. What the reading needed was the strict question asked
+per call site rather than per entity — does a contract answer the statement this
+site makes, given its parameters, its ordering, its limit and its gate — and
+four of the five `PatientAlert` sites answer yes. The fifth is a `create`, and
+it is a permanent negative rather than a queue item: exactly one migration in
+the record directory inserts `patient_alert`, and that insert derives every
+column from an extracted clinical event and takes no caller payload, so serving
+it needs a create contract rather than a route.
+
+**A first reading of the same five got three of them wrong, and the reason is
+worth more than the correction.** It called them unservable because
+`contract_alert_list` clamps rows at a ceiling two of the sites ask past and one
+asks ten times past. That is what the contract and the call site say together,
+and it is not what happens: `independentEntityRoutes.js` had already settled it,
+because a screen naming a large bound is naming one it does not expect to reach,
+so the route asks for one row more up to the ceiling and a short page is the
+proof it did not reach it. The reading had both ends and not the artefact in the
+middle that consumes the declaration. **There are three things to read in a
+question like this, not two.**
+
+**Declaring them turned up a latent defect in the shared read helper, which is
+the more useful half of this change — and it is the second one in a day.**
+`screenRead`'s response read `result.entries` as a constant, because every batch
+E contract answers `entries`; `contract_alert_list` answers `alerts`. A route
+declared over it with the helper as it stood passed the route gate and would
+have refused every real call, because the gate runs a declaration's `request`
+against each call site's arguments and never exercises `response`. The answer
+key is a parameter now rather than a copied response function, so the next
+contract outside that family cannot inherit it by copying. The library sort
+mis-order above is the same shape in the same file within the hour, which puts
+the population plainly: it is not routes over unusual contracts, it is every
+route whose `response` or `order` was written by copying a sibling. The claim
+that the gate is blind to this is demonstrated rather than asserted — with the
+key sabotaged back to the constant both projection tests fail and the gate
+reports its figures unchanged.
 
 #### The destination gate, which measures a different population
 
