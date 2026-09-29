@@ -697,3 +697,53 @@ test('every declared answer key is one its contract actually returns', () => {
   assert.ok(sample, 'the plant needs a body the extractor found');
   assert.equal(answeredKeys(sample).has('rows_that_no_contract_answers'), false);
 });
+
+/**
+ * Every screen read's declared default sort against the `order by` its
+ * contract actually runs.
+ *
+ * The route's `order` is what the SPA believes it is getting, and the contract
+ * decides what it gets. A disagreement is silent in a way the answer-key one is
+ * not: a wrong key REFUSES and somebody notices, while a wrong sort returns the
+ * right rows in the wrong order and looks like data. That asymmetry is why this
+ * is worth a check of its own rather than a line in the one above.
+ *
+ * The FIRST `order by` in the body is the one compared, because that is the
+ * query whose rows become the answer; a later one belongs to a sibling
+ * function's projection. A body with none FAILS rather than skipping, for the
+ * reason the extractor above now fails on a missing body: not-found is a
+ * statement about the instrument, never about the route.
+ */
+test('every declared default sort is the one its contract runs', () => {
+  const bodies = contractBodies();
+  const { declared } = declaredAnswerKeys();
+  const sorted = declared.filter(route => route.order !== null);
+  // Derived, not typed, for the reason the count above is: a route dropping its
+  // `order` should shrink this population visibly rather than quietly.
+  assert.equal(sorted.length, declared.length - 1,
+    `${declared.length - sorted.length} screen reads declare no default sort.\n`
+    + '  Exactly one is expected to (the unfiltered OCR list). If that changed,\n'
+    + '  say so here rather than letting the population move silently.');
+
+  for (const route of sorted) {
+    const body = bodies.get(route.rpc);
+    assert.ok(body, `no SQL body for \`${route.rpc}\`; fix the extractor, not the route`);
+    const clause = body.match(/order by ([^\n]+)/i);
+    assert.ok(clause,
+      `\`${route.rpc}\` runs no \`order by\` at all, yet `
+      + `${route.entity}.${route.capability} declares \`${route.order}\`.\n`
+      + '  Read the SQL before believing this: an absent clause here has twice been\n'
+      + '  the extractor rather than the contract.');
+    const field = route.order.replace(/^-/, '');
+    const descending = route.order.startsWith('-');
+    assert.ok(clause[1].includes(`"${field}"`),
+      `${route.entity}.${route.capability} declares \`${route.order}\`, but `
+      + `\`${route.rpc}\` orders by:\n    ${clause[1]}`);
+    assert.equal(/\bdesc\b/i.test(clause[1]), descending,
+      `${route.entity}.${route.capability} declares \`${route.order}\` `
+      + `(${descending ? 'descending' : 'ascending'}), but \`${route.rpc}\` orders by:\n`
+      + `    ${clause[1]}\n`
+      + '  Rows come back in the opposite order and nothing refuses, which is the\n'
+      + '  whole reason this is checked separately from the answer key.');
+  }
+});
