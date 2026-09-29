@@ -11561,3 +11561,130 @@ The reason is not carelessness, it is momentum. I had just proved one confident 
 Measured and merged at `028fb7b6` (#362, squashed to `bd28cddb`), where the comment now says what is actually true about that branch, including that it is unexercised on real input.
 
 **This is NOT the lexer trap, and the two must not be folded together.** The plan thread really did hit that one — its first lexer stripped the body and every contract came back clean, caught by a control requiring the lexer to keep text inside a `$tag$` body. That instance is plan's and its body should be plan's. I did not hit it; I imagined I had. Counting my retraction beside plan's real instance would manufacture a second draw out of a withdrawal, which is the same error as quoting a positive control as coverage.
+
+## D202 — A guard written to tolerate missing data turns a wrong call into a clean zero, and the run stays internally consistent.
+
+Plan's, measured on my
+own instrument, 2026-09-29.
+
+I wrote a per-site loop calling `callArguments(repo, site)`. That function's
+signature is `callArguments(repository)` and it returns an ARRAY of every entity
+call site. JavaScript ignores a surplus argument, so the call was legal and the
+return value was a perfectly correct answer to a question I had not asked. My
+loop then read `args.arguments` — `undefined` on an array — and my own careful
+`if (!args || !args.arguments) continue` skipped every iteration. The run
+printed `453 sites, 0 readable, 0 unreadable` and nothing failed, because **the
+loop body executed zero times**: there was no computation to be wrong.
+
+**Nothing threw, so there is no error the guard absorbed.** The guard absorbed a
+SHAPE mismatch, and a shape mismatch has nothing to absorb. That is worth
+stating because the obvious reading — a defensive guard swallowing an exception
+— is wrong and would send the next person looking for a `try`/`catch`.
+
+**The defence is an accounting identity whose operands come from DIFFERENT
+walks**: `readable + unreadable === total` fails on the first run, because the
+total is counted by one pass and the partition by another. An identity built
+from a single walk's own outputs proves that walk is self-consistent, which it
+always is. Count the skips and refuse on an implausible skip rate rather than
+continuing quietly.
+
+**What actually caught it was implausibility, and that is luck with a plausible
+number one step away.** Zero is not a believable partition of 453. Had the true
+answer been small, the same silence would have read as a finding.
+
+**This is NOT the same mechanism as a vacuously satisfied comparison**, where
+two absent operands are honestly reported as not differing: there the
+computation runs and returns a true answer about nothing, here it does not run
+at all. The defences differ — asserting an operand is present catches that one
+and not this, an accounting identity catches this one and not that — which is
+the test for whether two findings are one entry.
+
+## D203 — A direction that holds only while something else is true is most wrong on the day the work succeeds
+
+`tools-entity-routes.mjs` prints fourteen figures. Their meanings are not readable off their own names: `declared_but_refused` RISES when the migration progresses, because `servedSites` skips a key no route declares at all, so a call site is invisible until somebody declares a route for it and the route then refuses some of its sites. A reader meeting a rise there without that sentence concludes the opposite of what happened. So each figure now carries, beside the code that prints it, which way it moves under progress, under regression, and under a change to the instrument alone.
+
+Three of the fourteen have a fourth thing, and it is the entry. `declared_but_refused`, `declared_but_unreadable` and `unproved_routes` each have a progress cause that exists **only while keys with landable call sites remain undeclared**. That is not an incidental condition. It is the precise state the migration exists to eliminate. On the day the last key is declared, all three notes keep saying a rise can be progress, and it can no longer be: every remaining cause is regression or an instrument change. The table would start lying, silently, at exactly the moment the project succeeded — and nobody audits a document for having become wrong by things going right.
+
+**The rule.** Where an artefact states what a figure's movement MEANS, any cause available only under a condition carries that condition in the artefact, next to the cause. Not in a document beside it, and not as prose a reader is trusted to hold: the note and the condition are one claim, and a claim split across two places is a claim whose halves rot separately.
+
+**Why this is not D167.** D167's mechanism is an undated heading above dated readings, and its repair is to reshape into a dated finding — date, instrument, tree, assert nothing about now. That repair cannot apply here, because a direction rule is not a reading. It is correct today and becomes wrong by the world moving toward the goal rather than away from it, and dating it would produce a note nobody could act on. D166 is about what a figure is BUILT from (a residual is not a work list); D179 is about re-deriving a partition instead of keeping a sum consistent. This is about a stated meaning being conditional. No one sentence states this and any of those three without an "and also".
+
+**The ordering is the operative half, and it is the part to copy.** I found the three occupied entries first, by reading each figure's causes against the tool, and the `precondition` field followed. Had I added the field first and then gone looking for users, it would be an affordance — a slot that invites being filled and proves nothing about the table. Found first, it is a finding: three of fourteen figures are in that position and eleven are not. A test measures that some landable call site is still undeclared, so the condition is asserted rather than asserted-about, and a `precondition` with no `progress` cause is refused — a condition on nothing is a condition on nothing.
+
+The observation that started it came from the build session, about a figure of theirs: the world makes one of the causes unavailable, and nothing in the number says so. I did not take it as a fact about my table; I ran it against the table and it found three. That is the whole distance between a note and a fix.
+
+## D205 — A negative asserted in the alarming direction recruits action before it recruits checking
+
+A negative claim about the tree — *nothing checks this*, *that body is not written*, *no test
+covers it* — is one search away from being settled. Asserting one without running that search
+is an ordinary error. Asserting one **in the direction that says something is missing** is not
+an ordinary error, because alarm is acted on faster than it is verified. Both halves are
+measured here and they sat in different seats.
+
+**My half: two instances, ninety minutes apart, same mechanism.**
+
+I told four sessions that `ledger.names` in `hosted-store.test.mjs` is the only assertion
+anywhere in the repository that detects a renamed or deleted applied migration, and that it is
+therefore dark while the two assertions above it throw. It is not the only one.
+`tools-pennsync-migrate.mjs:200-208` makes the same detection from the other side — a ledger
+name the repository does not carry means the database was migrated from a different tree, and
+it refuses `MIGRATE_LEDGER_UNKNOWN` — and it runs green in the `Report the hosted staging
+migration gap` job of the same workflow. What I had actually established was *unreachable in
+this file*. What I said was *absent everywhere*. I never grepped.
+
+Then I told three sessions that D163's body was unwritten and owed by me. It is on `main` at
+`docs/BASE44_EXIT_DECISIONS_2026-09-19.md:10095` — fifty-two lines, six subheadings, complete.
+I never grepped for that either. In both cases the inference was the same: I read a local
+absence and published a global one, and in both cases the published version was the alarming
+one.
+
+**The coordinator's half: it acted on both, and asked neither time what I had searched.**
+
+On the first it built a ruling about restoring a detection to somewhere reachable — work
+scoped, credentials considered, a plan formed — for a detection that was never dark. On the
+second it pressed the redeploy session for a collection window to file a body already on
+`main`. Two sessions, two pieces of real work started, on two claims that a single `grep`
+would have ended.
+
+**Why this is not just "check your claims".** A negative in the reassuring direction —
+*nothing is broken*, *no migration arrived* — gets challenged, because the cost of it being
+wrong is obvious and the reader's instinct is to confirm. A negative in the alarming direction
+gets *scheduled*. The reader's next move is to fix the hole, and fixing the hole is
+indistinguishable, right up until it lands, from fixing a hole that exists. Nobody in the
+chain is being careless; the alarm simply arrives with work attached, and the work consumes
+the attention the checking would have needed.
+
+**The rule.** Before publishing a claim that something is absent from the tree, run the search
+that would refute it, and say in the same sentence what was searched and how. "I grepped the
+five modules `tools-entity-routes.mjs` imports" is a claim about five files; "nothing in the
+repository does this" is a claim about the repository and needs a search over the repository.
+Where the search was not run, mark the claim as bounded to what was read — *unreachable in
+this file* is a finding, and it is a different finding from *absent*.
+
+And on the receiving side: an alarming negative is the one to ask about before acting, not
+after. The question is "what did you search", and it costs one message. Neither of us asked it
+twice in one night.
+
+*Measured 2026-09-29. Instruments: `grep` over the repository at `bd28cddb` for both
+retractions; the green `Report the hosted staging migration gap` job of run 36555889513 for
+the surviving detection.*
+
+## D206 — A cost that falls on nobody has no advocate in the comparison
+
+The occurrence is mine, on 2026-09-29, and the reversal is the evidence rather than the ruling.
+
+I held a validated tooling change uncommitted because committing it meant folding a second concern into a one-file, test-only pull request that was already out of draft. I weighed that against losing the work and judged for holding, and I said so in those terms: *the work is safe — the diff and both files are in my scratchpad.* The coordinator ruled for my reading. An hour later I reversed against my own recommendation and committed it.
+
+**What changed was not information.** This session runs in a container that is reclaimed after inactivity; that is a standing fact about every session here, it was in front of me the whole time, and the coordinator had it too. Neither of us failed to know it. What I did was compare a cost with a person attached to it against a cost with nobody attached, and let the one that could complain decide. A surprised reviewer asks a question. A reclaimed container asks nothing, produces no evidence that it happened, and the work is simply not there — there is no one to be surprised, nothing to file, and no moment at which anybody discovers the trade was bad.
+
+So the comparison was never between two costs. It was between one cost and an advocate.
+
+**The mechanism transmits, which is the half worth the entry.** A cost with nobody attached does not only go unweighted by the person holding it; it can be handed to a second person in a form that removes the advocate again. The sentence that did that was mine — "the work is safe in my scratchpad" — and the coordinator has put their own seat in their own terms: *I compared a cost with a person attached to it against a cost with nobody attached, and let the one that could complain decide. I priced the half I could see a face in.* I had framed their ruling as correct on an incomplete set, and they declined the excuse: they had the same standing fact I did. What I handed them was not a gap but a reassurance, and it did to their comparison exactly what the invisible cost had done to mine. An entry in which the coordinator only ruled would teach less than one in which they are also the person it worked on.
+
+**The remedy.** Before a comparison decides, name the parties to each cost and ask which of them can speak. Where one side's cost falls on nobody — a container nobody will notice being reclaimed, a reading that never happened, work that simply is not there — the correction is **not** to weight the silent side more heavily by feel. Feel is what was already wrong. It is to make that side produce evidence. Committing and pushing is what gave mine a voice: the bytes now exist somewhere a person can find them, and the question "is this work safe" became answerable by something other than my own assurance that it was.
+
+Note what the remedy is not. "Think harder about the downside" would not have worked, because I was not failing to know the downside. "Ask who pays, and whether they can speak" works because it forces the silent party into the sentence, where it has to be priced rather than assumed away.
+
+**Why this is not D167, since it comes close.** One sentence does state both — *an outcome that produces no complaint is under-weighted, whether it is a stale reassurance nobody investigates or a cost nobody is there to object to* — and on the strict form of the widening test that is a hit. It fails the test that matters because it is vaguer than either half: it states the observation the two share and drops both remedies, and the remedies are different operations. D167's is about how a recorded sentence is written down — date it, name the instrument, name the tree, assert nothing about now. This one is a question asked before a decision is taken, and it has nothing to date, because a cost is not a reading. Two errors that rhyme are not one instance when the mechanisms differ and the fixes differ.
+
+The nearest sibling in the document is not D167's heading but a line buried in the publication work: a dedicated test is kept rather than folded into the comparison because *silence is also what a reading that never happened looks like*, so the test asserts the reading happened and prints what it found, and the next person reads the state rather than inferring it from the absence of a complaint. That is this entry one layer down, in an instrument rather than in a judgement. The same correction applies in both places: do not read an absent complaint as an absent cost.
