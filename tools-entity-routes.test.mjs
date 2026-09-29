@@ -444,7 +444,25 @@ test('the go-live plan carries this tree\'s entity-route reading verbatim', () =
 test('the prose after that block points at it and restates none of its figures', () => {
   const page = readFileSync(resolve(repository, PLAN), 'utf8');
   const report = measureRoutes(repository);
-  const prose = proseAfterPinnedBlock(page, summaryLines(report)[0]);
+  const firstLine = summaryLines(report)[0];
+
+  // The region below is found by the FIRST line equal to the block's first
+  // line, so a verbatim duplicate of that line anywhere EARLIER in the page
+  // moves this check onto prose it was not written for — prose which restates
+  // none of these figures, so it passes. Planted, that reads fifteen green and
+  // a blind check, which is indistinguishable from a page that is fine. The
+  // absence case is the assertion below and keeps its own message, because a
+  // duplicated block and a missing one are different mistakes with different
+  // remedies and one message cannot name both.
+  const copies = page.split('\n').filter(line => line === firstLine).length;
+  assert.ok(copies <= 1,
+    `${PLAN} carries the pinned block's first line ${copies} times.\n`
+    + '  The prose region checked below starts at the FIRST one, so a second copy\n'
+    + '  silently relocates this check to some other part of the page and it stops\n'
+    + '  reading Stage J at all. Keep exactly one copy of the measured block; a\n'
+    + '  reading of an earlier head is a record and must differ from it.');
+
+  const prose = proseAfterPinnedBlock(page, firstLine);
   assert.ok(prose !== null, `${PLAN} does not carry the pinned block's first line`);
 
   for (const figure of PINNED_FIGURES) {
