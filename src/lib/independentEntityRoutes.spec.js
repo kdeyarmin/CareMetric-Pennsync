@@ -2011,4 +2011,120 @@ describe("what batch E's routes take on trust", () => {
     expect(crossed, 'the driver has stopped reaching routes rather than the routes having changed')
       .toBeGreaterThan(60);
   });
+  /*
+   * EVERY DECLARATION IS STILL IN THE TABLE IT WAS WRITTEN INTO.
+   *
+   * `ENTITY_ROUTES` is a JavaScript object, so two declarations of one key are
+   * not two -- the later silently replaces the earlier and nothing downstream
+   * can tell. `check:entity-routes` reports coverage over the SURVIVOR, which
+   * is the worst direction for a gate whose job is saying which calls have a
+   * route: it answers "declared" while a key is served by whichever
+   * declaration happened to come last, chosen by nobody.
+   *
+   * ESLint's `no-dupe-keys` catches the case that found this -- two literals
+   * in one literal -- and that is a real defence, in a different gate. It is
+   * NOT the whole class. `DECLARED_ROUTES` spreads `operationalRoutes`, and a
+   * literal colliding with a key that spread produces is invisible to that
+   * rule, because the two are not in the same object literal. Measured, not
+   * reasoned: planting `'Task.filter'` as a literal beside the spread that
+   * already declares it leaves lint SILENT, the gate reporting the same 81
+   * declared, and this suite green -- while the spread wins and a merged,
+   * reviewed route does nothing.
+   *
+   * So the comparison is the source's declarations against the table that came
+   * out of them. It fires on a collision within either block, on a collision
+   * ACROSS them, on a computed key this cannot read, and on a spread from
+   * somewhere this does not know about -- and it fails CLOSED, because a parse
+   * that stops seeing a block reports fewer keys than the table has rather
+   * than agreeing with it.
+   */
+  it('declares each route once, across every block the table is built from', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('src/lib/independentEntityRoutes.js', 'utf8');
+
+    const blockOf = (name) => {
+      const opened = source.indexOf(`const ${name} = Object.freeze({`);
+      expect(opened, `${name} is no longer declared the way this parse reads it`)
+        .toBeGreaterThan(-1);
+      const closed = source.indexOf('\n});', opened);
+      expect(closed).toBeGreaterThan(opened);
+      return source.slice(opened, closed);
+    };
+
+    // Every top-level line of a block, with comments dropped rather than
+    // pattern-matched away: a comment's own text can start in column three.
+    const topLevelLines = (block) => {
+      const kept = [];
+      let inComment = false;
+      for (const line of block.split('\n')) {
+        const trimmed = line.trim();
+        if (inComment) {
+          if (trimmed.includes('*/')) inComment = false;
+          continue;
+        }
+        if (trimmed.startsWith('/*')) {
+          if (!trimmed.includes('*/')) inComment = true;
+          continue;
+        }
+        if (trimmed.startsWith('//')) continue;
+        if (/^ {2}\S/.test(line)) kept.push(line);
+      }
+      return kept;
+    };
+
+    // The key-set comparison below is blind to a declaration it cannot read
+    // that OVERWRITES a key some other declaration already supplies: the
+    // object holds the same keys either way, so the sets agree while the
+    // later declaration silently decides the route. Measured, not reasoned —
+    // `[['Task', 'filter'].join('.')]: operationalRoutes['Task.create']`
+    // planted after the spread leaves this suite at 60/60 green while
+    // `ENTITY_ROUTES['Task.filter'].function` is `createAgencyTask`.
+    //
+    // So the shapes a top-level line may take are enumerated, and anything
+    // else REFUSES rather than being skipped. That is the fail-closed half:
+    // the key comparison catches what the parse can read, and this catches
+    // the parse being handed something it cannot.
+    const KEY_LINE = /^ {2}'([^']+)': /;
+    const NESTED_CLOSE = /^ {2}\}\),?$/;
+    const SPREAD = /^ {2}\.\.\.([A-Za-z_$][\w$]*),$/;
+    const PARSED_BLOCKS = ['operationalRoutes', 'DECLARED_ROUTES'];
+
+    const unreadable = [];
+    const spreadsFound = [];
+    const declared = PARSED_BLOCKS.flatMap((name) => {
+      const keys = [];
+      for (const line of topLevelLines(blockOf(name))) {
+        const key = KEY_LINE.exec(line);
+        if (key) { keys.push(key[1]); continue; }
+        const spread = SPREAD.exec(line);
+        if (spread) { spreadsFound.push(spread[1]); continue; }
+        if (NESTED_CLOSE.test(line)) continue;
+        unreadable.push(`${name}: ${line.trim()}`);
+      }
+      return keys;
+    });
+
+    expect(unreadable, 'a top-level declaration this parse cannot read. If it names a key\n'
+      + '  that already exists, it overwrites it and the key comparison below stays\n'
+      + '  green — so it is refused here rather than skipped')
+      .toEqual([]);
+
+    // A spread from somewhere this parse does not read is the same hazard
+    // wearing different syntax: its keys arrive in the table unexamined.
+    expect([...new Set(spreadsFound)].sort(), 'a block is spread in that this parse does\n'
+      + '  not read, so its declarations are not compared against anything')
+      .toEqual(['operationalRoutes']);
+
+    // The parse reaching the real blocks, proved before it is relied on: a
+    // pattern that matched nothing would report no duplicates just as happily.
+    expect(declared.length).toBeGreaterThan(70);
+
+    const duplicated = declared.filter((key, index) => declared.indexOf(key) !== index);
+    expect(duplicated, 'a route key is declared twice; the later one silently wins and the\n'
+      + '  gate reports coverage over whichever that is').toEqual([]);
+
+    expect([...declared].sort(), 'the source declarations and the built table disagree, so\n'
+      + '  either a key arrives by a route this parse cannot read, or one was lost')
+      .toEqual([...Object.keys(ENTITY_ROUTES)].sort());
+  });
 });

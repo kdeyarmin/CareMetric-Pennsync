@@ -8,7 +8,9 @@ import { HANDLER_NAMES } from './services/pennsync-api/handlers.mjs';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor }
   from './src/lib/independentEntityRoutes.js';
-import { main, measureRoutes, servedSites, summaryLines } from './tools-entity-routes.mjs';
+import { FIGURE_DIRECTIONS, MINIMUM_REASON, NOT_A_MEASUREMENT, directionLines, main, measureRoutes,
+  servedSites, summaryLines }
+  from './tools-entity-routes.mjs';
 import { callArguments } from './tools-entity-call-arguments.mjs';
 import { SERVED, measureDestinations } from './tools-frontend-destination.mjs';
 import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
@@ -791,4 +793,139 @@ test('the landable sites partition exactly, and the audit prose carries the part
       `${PLAN} does not say "${word}" — the audit prose states the partition in\n`
       + `  words and this part is now ${count}. Update the prose.`);
   }
+});
+
+test('every figure the tool reports says which way it moves, and nothing else does', () => {
+  const report = measureRoutes(repository);
+  const reported = Object.keys(report).filter(key => !NOT_A_MEASUREMENT.includes(key));
+  // Both directions, so neither half can drift: a figure added to the report
+  // with no direction fails here, and a direction for a figure that no longer
+  // exists fails here too. A rule like "skip anything that is not a number"
+  // would have exempted the next string-valued figure silently, which is why
+  // the exemptions are NAMED.
+  assert.deepEqual(
+    reported.slice().sort(),
+    Object.keys(FIGURE_DIRECTIONS).slice().sort(),
+    'a reported figure has no direction note, or a direction note names a figure the report does not carry',
+  );
+  for (const name of NOT_A_MEASUREMENT) {
+    assert.ok(Object.hasOwn(report, name), `${name} is exempted from the direction check and is not in the report`);
+  }
+  for (const [figure, note] of Object.entries(FIGURE_DIRECTIONS)) {
+    assert.ok(['measured', 'derived'].includes(note.evidence), `${figure}: evidence is neither measured nor derived`);
+    const causes = ['progress', 'regression', 'instrument'].filter(cause => note[cause]);
+    assert.ok(causes.length > 0, `${figure}: a direction note with no cause says nothing`);
+    for (const cause of causes) {
+      assert.ok(note[cause].length >= MINIMUM_REASON, `${figure}.${cause}: too short to be a reason`);
+    }
+    if (note.precondition) {
+      assert.ok(note.progress, `${figure}: a precondition with no progress cause conditions nothing`);
+      assert.ok(note.precondition.length >= MINIMUM_REASON, `${figure}.precondition: too short to be a reason`);
+    }
+  }
+});
+
+test('a direction that only holds under a precondition still holds', () => {
+  // The three preconditioned entries all say the same thing: a rise can be a
+  // route arriving only while keys with call sites remain undeclared. That is
+  // measurable, so it is measured rather than trusted — on the day Stage J
+  // leaves no undeclared key, this fails and somebody re-reads those three
+  // notes instead of a figure quietly changing meaning under a reader.
+  const conditioned = Object.entries(FIGURE_DIRECTIONS).filter(([, note]) => note.precondition);
+  assert.ok(conditioned.length > 0, 'the precondition machinery has no user; delete it or give it one');
+  for (const [, note] of conditioned) {
+    assert.equal(note.precondition, 'keys with landable call sites remain undeclared',
+      'a second precondition arrived and this check still measures only the first');
+  }
+  const measured = measureDestinations(repository);
+  const undeclared = measured.sites.filter(site => SERVED.includes(site.destination))
+    .filter(site => !Object.hasOwn(ENTITY_ROUTES, `${site.entity}.${site.operation}`));
+  assert.ok(undeclared.length > 0,
+    'no landable call site is undeclared any more, so those three notes assert a cause that can no longer occur');
+});
+
+test('a rise in the refused count is what declaring a route looks like', () => {
+  // The worked example behind `declared_but_refused`, run rather than asserted
+  // from the text. `measureRoutes` takes its routes as a parameter precisely so
+  // a planted table can be measured without touching the module.
+  const before = measureRoutes(repository);
+  const key = Object.keys(callArguments(repository)
+    .filter(call => call.arguments !== null)
+    .reduce((keys, call) => {
+      const name = `${call.entity}.${call.operation}`;
+      if (!Object.hasOwn(ENTITY_ROUTES, name)) keys[name] = true;
+      return keys;
+    }, {}))[0];
+  assert.ok(key, 'no undeclared key with readable call sites is left to plant against');
+
+  const planted = Object.freeze({
+    ...ENTITY_ROUTES,
+    [key]: Object.freeze({
+      function: 'listAgencyTasks',
+      reason: 'planted by this test to measure which figure a declaration moves',
+      projection: 'none',
+      request: () => { const error = new Error('planted'); error.detail = 'planted_refusal'; throw error; },
+      response: () => [],
+    }),
+  });
+  const after = measureRoutes(repository, planted);
+
+  // The whole point: the frontend did not change, no screen broke, and the
+  // refused count went UP because a key that was being skipped is now claimed.
+  assert.ok(after.declared_but_refused > before.declared_but_refused,
+    'declaring a refusing route over a skipped key should raise the refused count');
+  assert.equal(after.landable_sites, before.landable_sites);
+  assert.equal(after.routed_sites, before.routed_sites);
+  assert.equal(after.unrouted_sites, before.unrouted_sites);
+  assert.equal(after.routes, before.routes + 1);
+
+  // The positive control, inside the check. Those four equalities would also
+  // hold if the plant had done nothing at all — a route whose key had no call
+  // sites, say — so the same declaration with a request that ACCEPTS the
+  // arguments has to move the figures the refusing one left alone. Without
+  // this the test passes while measuring nothing.
+  const serving = Object.freeze({
+    ...planted,
+    [key]: Object.freeze({ ...planted[key], request: () => ({}) }),
+  });
+  const adopted = measureRoutes(repository, serving);
+  assert.ok(adopted.routed_sites > before.routed_sites, 'the control plant served no call site');
+  assert.ok(adopted.unrouted_sites < before.unrouted_sites, 'the control plant adopted nothing');
+  assert.equal(adopted.declared_but_refused, before.declared_but_refused,
+    'a serving route should leave the refused count where it was');
+});
+
+test('the direction notes print without being pinned into the summary', () => {
+  const report = measureRoutes(repository);
+  const summary = summaryLines(report).join('\n');
+  // The summary's wording is pinned by AGENTS.md. If explaining a figure ever
+  // starts editing the line that carries it, this fails and the pin has to
+  // move deliberately rather than as a side effect.
+  for (const figure of Object.keys(FIGURE_DIRECTIONS)) {
+    const note = FIGURE_DIRECTIONS[figure];
+    for (const cause of ['progress', 'regression', 'instrument']) {
+      if (note[cause]) assert.ok(!summary.includes(note[cause]), `${figure}.${cause} leaked into the pinned summary`);
+    }
+  }
+  const printed = directionLines().join('\n');
+  assert.ok(printed.includes('declared_but_refused'), 'the printer does not name the figures');
+  assert.ok(printed.startsWith('what a RISE in each figure means:'));
+});
+
+test('the counts this tool states about its own figures are derived, not typed', () => {
+  // `directionLines`'s own comment names four numbers. They were typed once,
+  // wrongly, before they were measured — which is the defect this whole change
+  // is about, arriving inside it. So the prose is pinned to the structure.
+  const all = Object.entries(FIGURE_DIRECTIONS);
+  const causes = (note) => ['progress', 'regression', 'instrument'].filter(cause => note[cause]);
+  assert.equal(all.length, 14, 'the number of figures changed');
+  assert.equal(all.filter(([, note]) => causes(note).length > 1).length, 9,
+    'the number of figures whose rise has more than one cause changed');
+  assert.equal(all.filter(([, note]) => note.progress).length, 7,
+    'the number of figures whose rise can be progress changed');
+  assert.equal(all.filter(([, note]) => note.progress && note.regression).length, 5,
+    'the number of figures whose rise can be either progress or regression changed');
+  const source = readFileSync(resolve(repository, 'tools-entity-routes.mjs'), 'utf8');
+  assert.ok(source.includes('fourteen figures, nine where a rise has more'),
+    'the sentence stating those counts is no longer where this test can find it');
 });
