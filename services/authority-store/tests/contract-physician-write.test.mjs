@@ -200,6 +200,38 @@ test('a delete removes the row, and another agency\'s row is not reachable by ei
   assert.notEqual(await rowOf('phys-b1'), undefined, 'agency B\'s row survived');
 });
 
+test("D40's gate is EACH contract's own: update and delete refuse the roles create does", async () => {
+  // This case exists because the suite passed without it while the gate was
+  // removed from `update` and `delete` outright. The create test above named
+  // D40 and proved it at ONE entry point; the other two were assumed. A gate
+  // helper called by three functions is proved by three callers or by none --
+  // dropping either `perform physician_write_role` left all nine tests green,
+  // and a clinician could have edited or deleted any provider in the agency.
+  //
+  // So the sabotage has to enter where the refusal is DECIDED. Asserting
+  // `physician_write_role` refuses a clinician would pass with no contract
+  // calling it at all, which is the same defect one layer down.
+  const before = await rowOf('phys-a1');
+  for (const who of [CLINICIAN_A, UNASSIGNED_A]) {
+    for (const [what, run] of [
+      ['profile', () => call(who, UPDATE, [A, 'phys-a1', 'profile', { specialty: 'x' }, null])],
+      ['record_referral', () => call(who, UPDATE, [A, 'phys-a1', 'record_referral', null, null])],
+      ['delete', () => call(who, DELETE, [A, 'phys-a1'])],
+    ]) {
+      assert.match(await refusal(run), /PENNSYNC_PHYSICIAN_WRITE_FORBIDDEN/,
+        `role ${who} was admitted to ${what}`);
+    }
+  }
+  // And the row is untouched by every one of those refusals, because a gate
+  // that raises after the write would satisfy the assertions above.
+  // Compared against a read taken just above rather than against the seed: an
+  // earlier committing case increments this row, so a seed constant here would
+  // be asserting the order the tests happen to run in.
+  const still = await rowOf('phys-a1');
+  assert.equal(still.referral_count, before.referral_count);
+  assert.equal(still.specialty, before.specialty);
+});
+
 test('the writable field list is one list, so create and update cannot drift', async () => {
   const { rows } = await db.query('select pennsync_records.physician_writable_fields() as f');
   const fields = rows[0].f;
