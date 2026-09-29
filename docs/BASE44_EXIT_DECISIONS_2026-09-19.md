@@ -8219,7 +8219,7 @@ Hunting for a second instance of the shared-exemption-list shape (D208), I built
 
 D118's own rule -- establish what an instrument actually covered -- is right and was not enough here, because what it covered was a plausible, non-empty, enumerable set of every cross-file exemption list in the tree. So ask the second question as well: **is the class I am hunting defined by a property my transport uses to find things?** A sweep enumerating by import cannot find what is not imported; one enumerating by call cannot find what is not called; one enumerating by registration cannot find what is not registered. Where the answer is yes, the population has to be built from the side that does not use that property -- the directory listing, `pg_proc`, the file itself -- and both populations named, so the difference is a figure rather than an assumption.
 
-The neighbouring guard a reader will reach for is D115, which fails a derived population closed when it comes back empty, and it does not cover this. A non-empty result can still be blind: D115 answers the case where the instrument read nothing, which announces itself as a zero, and this is the case where it read a great many of the wrong things, which announces itself as nothing at all. (That distinction is build's, brought here rather than found here.)
+The neighbouring guard a reader will reach for is D115, which fails a derived population closed when it comes back empty, and it does not cover this. A non-empty result can still be blind: D115 answers the case where the instrument read nothing, which announces itself as a zero, and this is the case where it read a great many of the right things and never saw the class it was looking for, which announces itself as nothing at all. (That distinction is not mine. It came from the thread at `session_014Rj741CnDBeZPn16bE65LK`, and is brought here rather than found here.)
 
 Measured on `ec570e15`. The second instance was found by reading the file, not by the sweep; the sweep is what is being recorded.
 
@@ -12061,6 +12061,48 @@ disagreement between sessions, not for reading harder.
 *Written 2026-09-29. The second instance is the physician-write thread's, quoted
 as sent and unedited. The discriminator that separates this from D170 — that its
 failure costs the record rather than a belief — is that thread's too.*
+
+### Widening, 2026-09-29: the derivation, not the answer
+
+**Widening, 2026-09-29: a wrong derivation reaching a right answer.** The
+redeploy thread's, first-person and its own instance.
+
+The entry above is a claim wrong when made that the world later confirms. This
+is the same mechanism one step earlier, in the reasoning rather than in the
+world: **a wrong derivation that arrives at the right answer survives every
+check aimed at the answer, so the only thing that catches it is reading the
+derivation — which nobody does when the total looks fine.**
+
+**My instance.** Reporting on which of D198 to D205 had bodies, I wrote that
+"six have bodies and two do not (D200, D201 — D201 landed earlier, so that is
+seven)". The sentence puts D201 in both halves of its own count. **Seven is
+correct.** The route to it is not, and the two cannot both hold.
+
+What makes it D211's rather than a slip is what a reader would do with it.
+D198 to D205 is eight numbers, and 6 + 2 and 7 + 1 both make eight. **The one
+check anybody actually runs on a sentence like that is the arithmetic, and it
+closes under either reading.** So the passing is what removes the scrutiny, and
+the correct total is the thing standing guard over the wrong path to it. The
+plan thread put that half better than I did — both readings close, so the check
+a reader would run cannot separate them — and it landed in the paragraph
+reporting on the audit that found this class, which is where these keep
+arriving.
+
+**Why this is not D170, since it was filed there first and moved.** D170 is a
+result that cannot tell two worlds apart. Here the result can and does: seven is
+the world's answer and it is right. What fails is the AIM — the check is
+pointed at the answer when the defect is in the derivation, and the answer and
+the derivation are two things rather than two worlds. D211 already states it at
+a different grain: anywhere a check passes for a reason its author did not
+establish, the passing is what removes the scrutiny. A right total reached by a
+wrong path is that sentence exactly.
+
+**The routing is worth as much as the finding.** The coordinator ruled it a
+widening of D170. The main-watch thread — which owns D211, and said so in the
+same breath — argued it belonged here instead, **against its own interest**,
+and the coordinator reversed. The fold test is only worth having if it can move
+an entry toward the person running it and still be trusted; this is the case
+where it did, and the person who would have gained said so first.
 
 ## D212 — A named refusal is overridden by a later general yes, the override inherits authority by sitting beside a real quotation, and carriage keeps the authority and drops the seam.
 Plan's, 2026-09-29, with the first stage found by batch C and verified here
