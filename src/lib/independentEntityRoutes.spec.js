@@ -328,6 +328,75 @@ describe('the declared entity routes', () => {
       }
       expect(fixture.apiCalls).toHaveLength(0);
     });
+
+    it('sorts and filters only on columns the record store actually has', async () => {
+      const { readFileSync } = await import('node:fs');
+      const { BROKERED_ENTITIES, READ_ONLY_MODES } =
+        await import('../../services/pennsync-api/brokered-entities.mjs');
+      // This family is the one place the browser orders and filters rows
+      // ITSELF, over a page it has proved complete. That is sound, and it is
+      // sound for a reason nothing here was checking: a field it sorts on has
+      // to BE a column, or `ordered` compares `undefined` with `undefined`,
+      // every row ties, and the screen is served the store's own order under
+      // the name of the one it asked for. No refusal, no empty page, nothing
+      // to notice — the same silence as a response key that is never sent.
+      //
+      // Both sides are generated. The entities come from the file
+      // `tools-record-brokers.mjs` writes beside the family's SQL, and the
+      // columns from the record-store migration `tools-entity-schema-plan.mjs`
+      // writes. Neither is typed here, so a column renamed in the generator
+      // fails this rather than surviving in a second copy.
+      const migration = readFileSync(
+        'services/authority-store/supabase/record-migrations/20260919170000_record_store.sql', 'utf8');
+      const columnsOf = (entity) => {
+        const table = entity.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+        const start = migration.indexOf(`create table "pennsync_records"."${table}" (`);
+        expect(start, `${table} is not in the record store`).toBeGreaterThan(-1);
+        const body = migration.slice(start, migration.indexOf('\n);', start));
+        return new Set([...body.matchAll(/^\s+"([a-z_]+)"\s/gm)].map(m => m[1]));
+      };
+
+      // A name no table here carries, in the shape a real field has, so the
+      // probe below is a discriminator rather than a syntax check.
+      const NOT_A_COLUMN = 'sort_order';
+
+      const brokered = Object.entries(ENTITY_ROUTES)
+        .filter(([, route]) => route.function === 'listBrokeredRecords');
+      expect(brokered.length, 'no brokered route is declared').toBeGreaterThan(0);
+
+      for (const [key, route] of brokered) {
+        const filtered = key.endsWith('.filter');
+        const asked = route.request(...(filtered ? [{}, undefined, 10] : [undefined, 10]));
+        const entity = asked.entity;
+        expect(BROKERED_ENTITIES[entity], `${key} reaches an entity the family does not serve`)
+          .toBeDefined();
+        expect(READ_ONLY_MODES, `${key} reads an entity the family does not serve read-only`)
+          .toContain(BROKERED_ENTITIES[entity]);
+
+        const columns = columnsOf(entity);
+        expect(columns.has(NOT_A_COLUMN), 'the probe name is a real column after all').toBe(false);
+
+        // Acceptance implies column, in both directions of the sort and for
+        // every filter field, probed over the table's own columns plus the one
+        // name that is not there.
+        const accepts = (call) => { try { call(); return true; } catch { return false; } };
+        for (const field of [...columns, NOT_A_COLUMN]) {
+          for (const sort of [field, `-${field}`]) {
+            const taken = accepts(() => (filtered
+              ? route.request({}, sort, 10)
+              : route.request(sort, 10)));
+            if (taken) {
+              expect(columns.has(field), `${key} sorts on ${field}, which is not a column`).toBe(true);
+            }
+          }
+          if (!filtered) continue;
+          const taken = accepts(() => route.request({ [field]: 'x' }, undefined, 10));
+          if (taken) {
+            expect(columns.has(field), `${key} filters on ${field}, which is not a column`).toBe(true);
+          }
+        }
+      }
+    });
   });
 
   describe('the reads the named library contracts serve', () => {
