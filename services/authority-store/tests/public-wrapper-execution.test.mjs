@@ -506,12 +506,20 @@ test('every public wrapper is closed to anon and open to a signed-in caller', as
   // population is `captured` -- the names the service's own capabilities build
   // a request for. That is the right population for what IT claims (every call
   // the service makes resolves and is callable), and it is not the population
-  // the grant property is about. Measured on this store: 157 public functions,
-  // 137 of them captured, so twenty were carrying an unasserted grant -- the
-  // one contract in that suite's `UNCALLED` list, the three broker writes it
-  // proves are unreachable, and sixteen `pennsync_staging_*` wrappers the
-  // ported service never calls. All twenty are correctly closed today, which
-  // is why nothing was failing and why nothing would have.
+  // the grant property is about. What sits outside `captured` is the one
+  // contract in that suite's `UNCALLED` list, the three broker writes it
+  // proves are unreachable, and every `pennsync_staging_*` wrapper the ported
+  // service never calls. All of them are correctly closed today, which is why
+  // nothing was failing and why nothing would have.
+  //
+  // No total is written here on purpose: both sides move whenever a migration
+  // adds a wrapper or a port adds a caller, so a snapshot in a comment goes
+  // stale while the file around it stays correct, and a reader cannot tell
+  // which of the two is wrong. The population this test runs over is the one
+  // `ANSWERS` and `STOPS` pin below, so it is never out of date. To take the
+  // figures for a pull request, measure them and name the head:
+  //   node --input-type=module -e "…buildStore(db); publicWrappers(db)…"
+  // from this directory, which is what produced the counts in #365's body.
   //
   // The twenty-first is the one that moves: a wrapper whose migration lands
   // before its handler is exposed and uncaptured, and the only way to get that
@@ -543,6 +551,39 @@ test('a wrapper granted to anon IS reported, proved by planting one', async () =
     assert.deepEqual(rows.filter(row => row.anon).map(row => row.name),
       ['pennsync_contract_activity_list'],
       'planting one grant changed the findings by something other than that grant');
+  } finally {
+    await planted.close();
+  }
+});
+
+test('a wrapper closed to a signed-in caller IS reported, proved by revoking one', async () => {
+  // The other half of the same production helper, and it needs its own plant.
+  // `assertClosedToAnon` raises on the `anon` list FIRST, so the control above
+  // stops at that line and never reaches the `authenticated` assertion below
+  // it: revoke the signed-in grant and both the real-store test and that
+  // control stay green, which is the shape this suite exists to refuse. The
+  // two failures are also opposite -- a wrapper open to `anon` is a
+  // disclosure, one closed to `authenticated` refuses every real caller at
+  // release time -- so one plant cannot stand in for the other.
+  //
+  // Raised by Copilot on #365; the gap was real and this is the fix rather
+  // than an argument about it.
+  const planted = new PGlite();
+  try {
+    await buildStore(planted);
+    // Same choice as above: an existing wrapper, not one created here.
+    await planted.exec('revoke execute on function "public"."pennsync_contract_activity_list"'
+      + '(text,integer,text) from authenticated;');
+    const rows = await callerPrivileges(planted);
+    // The PRODUCTION assertion again (D120), reaching its second line this time
+    // because the first has nothing to report on this build.
+    assert.deepEqual(rows.filter(row => row.anon).map(row => row.name), [],
+      'the revoke was supposed to change the signed-in grant and nothing else');
+    assert.throws(() => assertClosedToAnon(assert, rows), /pennsync_contract_activity_list/,
+      'closing a wrapper to a signed-in caller was not reported');
+    assert.deepEqual(rows.filter(row => !row.authenticated).map(row => row.name),
+      ['pennsync_contract_activity_list'],
+      'revoking one grant changed the findings by something other than that grant');
   } finally {
     await planted.close();
   }
