@@ -2177,9 +2177,41 @@ describe("what batch E's routes take on trust", () => {
 
     // A spread from somewhere this parse does not read is the same hazard
     // wearing different syntax: its keys arrive in the table unexamined.
-    expect([...new Set(spreadsFound)].sort(), 'a block is spread in that this parse does\n'
-      + '  not read, so its declarations are not compared against anything')
-      .toEqual(['operationalRoutes']);
+    //
+    // THE EXPECTATION IS NOW THE EMPTY SET, AND THAT IS A STRONGER STATE
+    // RATHER THAN A DIFFERENT ONE. It read `['operationalRoutes']` while
+    // `DECLARED_ROUTES` ended in a `...operationalRoutes,` line, which this
+    // parse tolerated because that block is one it reads — so the keys were
+    // examined and the assertion was pinning WHICH spread existed, not that
+    // spreading was safe. `ENTITY_ROUTES` is built by `withoutCollisions`
+    // over the two blocks by name now, so there is no spread anywhere and
+    // nothing arrives in the table by a route this parse cannot follow.
+    //
+    // Keep the assertion rather than deleting it with the spread it named,
+    // and note EXACTLY which edit it is the only thing that catches — a first
+    // version of this comment said it "fails the moment somebody reintroduces
+    // a spread", which is three cases wearing one sentence, and sabotage
+    // separated them.
+    //
+    //   - A spread whose keys COLLIDE now throws at module load out of
+    //     `withoutCollisions`, before any test runs. Louder than an assertion
+    //     and nothing here is needed for it.
+    //   - A spread in the `ENTITY_ROUTES` expression itself is caught by the
+    //     wiring test below, which reads that export's own source.
+    //   - A spread of a block that does NOT collide, placed inside one of the
+    //     PARSED_BLOCKS, is caught by NEITHER: the guard sees no duplicate and
+    //     the wiring test is not looking there. Its keys reach the table with
+    //     no comparison having examined them, and the key-set assertion at the
+    //     end stays green because it reads the same spread.
+    //
+    // That third case is this assertion's own, and it was proved by planting
+    // a valid non-colliding block and watching this line name it. If a spread
+    // is ever wanted back, the block it names joins `PARSED_BLOCKS` in the
+    // same change.
+    expect([...new Set(spreadsFound)].sort(), 'a block is spread, so its declarations reach\n'
+      + '  ENTITY_ROUTES without passing through withoutCollisions and are compared\n'
+      + '  against nothing. Build the table over the block by name instead')
+      .toEqual([]);
 
     // The parse reaching the real blocks, proved before it is relied on: a
     // pattern that matched nothing would report no duplicates just as happily.
