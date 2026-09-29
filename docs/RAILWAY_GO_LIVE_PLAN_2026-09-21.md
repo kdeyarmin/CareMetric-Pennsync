@@ -3572,16 +3572,24 @@ is not a create, and **a write can be invisible by construction**.
 `"pennsync_records".library_write(p_table, …)` builds its statement with
 `execute pg_catalog.format('insert into "pennsync_records".%I …', p_table, …)`,
 so the table is a STRING ARGUMENT and no static reader of a contract body can
-see the write at all. **Seven tables are written only that way** —
-`ai_configuration`, `clinical_library_folder`, `clinical_library_template`,
-`clinical_pathway`, `custom_validation_rule`, `education_material` and
-`patient_education_assignment` — so it is a family, not one odd contract.
+see the write at all. Seven tables are written
+through it — `ai_configuration`, `clinical_library_folder`,
+`clinical_library_template`, `clinical_pathway`, `custom_validation_rule`,
+`education_material` and `patient_education_assignment` — so it is a family,
+not one odd contract. **Six of those seven are written ONLY that way**, and the
+exception is worth naming because it is this section's own subject at the wrong
+unit: `clinical_library_template` also takes a direct `update` in
+`contract_clinical_phrase`, which increments its `usage_count`. So the table is
+visible to a static reader and that contract's write is not. What dynamic SQL
+hides is a CONTRACT's write, never a table, and a first draft of this paragraph
+said seven tables because the two units read interchangeably in one English
+sentence.
 
 **The general form is worth more than the instance: the question decides whether
 dynamic SQL defeats you.** `tools-pennsync-release-ladder.mjs` walks the same
 call graph and is not defeated, because it asks whether a contract writes AT ALL
-and which migrations its closure needs, never which table. All seven of those
-capabilities classify `mutates: true`.
+and which migrations its closure needs, never which table. Every contract
+reaching its write through the helper classifies `mutates: true`.
 
 **It survived by an accident of phrasing until #358, and the fix is the shape
 to copy.** Its `DML` test is a text match, so it fires on the `insert into`
@@ -3598,32 +3606,38 @@ reads exactly like a correctness improvement — would have classified the helpe
 read-only and taken every contract reaching its write through it into a read
 wave.
 
-**How wide that family is has two readings and is NOT settled here.** #358's
-header names six, all ending `_write`. A reading taken for this section makes it
-seven, adding `contract_ai_configuration_save`, which also calls
-`library_write`, also has no DML of its own once quoted text and both comment
-forms are removed, and calls no other helper that has any — and the reading
-discriminates rather than answering uniformly, because 49 of the store's 135
-contracts do carry their own DML and 86 do not. Whether that seventh belongs in
-the family is the ladder thread's to settle, since it owns the matcher; what is
-not in doubt is that six of them classify read-only under the tightening and
-that six is a floor.
+**The family is SEVEN contracts, and the two populations around it are not the
+same set.** Seven contracts reach a write through `library_write` and through
+nothing else; each has no DML of its own once quoted text and both comment forms
+are removed, so the tightening would classify all seven read-only. #358's header
+read six, which was a defect in the header rather than in the check, fixed
+forward on #362. The other population is the EIGHT names the classifier guard
+holds, and the difference is not arithmetic:
+`contract_sent_education_record` is in the second and not the first, because it
+carries its own DML and was probed here as a positive control. Two sessions
+measured these on independent harnesses and agreed, including the discriminating
+reading underneath them — 49 of the store's 135 contracts carry their own DML
+and 86 do not, re-derived here on `03a92329` — which is what makes the pair
+quotable at all. It discriminates rather than answering uniformly, which is the
+property to check before believing any of these numbers: a lexer that ate the
+whole `$$` body would have reported the family read-only and been right about
+all seven for the wrong reason.
 
-**What made it survivable was the guard, and the guard was silent on exactly the
-six.** `mutationClassifierHolds` refuses when a contract named with a writing
+**What made it survivable was the guard, and the guard was silent on six of the
+seven.** `mutationClassifierHolds` refuses when a contract named with a writing
 verb classifies read-only. Ladder measured the before-state directly, by
 removing `write` from `MUTATING_VERBS` on a tree that contains the fix and
 sweeping both trees: the six `_write` contracts go SILENT to HELD, the two
 already covered stay HELD, and the guard's reach over the whole registry goes
 from 47 of 133 origins to 53. **Nothing else moved**, which is the property
-worth checking before believing either figure. Those two were held by two
-DIFFERENT verbs — `save` and `record` were both already in the list — and one of
-them, `contract_sent_education_record`, is not in this family at all: it was a
-positive control, because without one a run that refuses for nothing and a
-classifier that reads nothing print the same thing. **Count the controls out of
-the coverage figure before quoting it**; a sweep of eight names over a family of
-six or seven yields at least three defensible numbers, and this paragraph
-produced all three before anybody measured the before-state.
+worth checking before believing either figure. The seventh was never silent —
+`contract_ai_configuration_save` is held by `save`, which was already in the
+list — so the family's exposure and the guard's blind spot were never the same
+set, and reading either off the other gives the wrong answer by one in both
+directions. **Count the controls out of the coverage figure before quoting
+it**: a sweep of eight names over a family of seven yields at least three
+defensible numbers, and this paragraph produced all three before anybody
+measured the before-state.
 
 **#358 closed both halves in one change**: the verb is in the list, so the same
 sweep on `8bc9d214` holds for every name probed, and the matcher's header now
