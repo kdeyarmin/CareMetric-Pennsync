@@ -2475,6 +2475,22 @@ nowhere — narrower, which is the only direction available.
 
 Port queue: `records_schema` 58 → 57, written 29 → 30.
 
+**Widening, 2026-09-29. The same rule in the other direction: a representation that is SILENT about a rule is not evidence that no rule exists.**
+
+D36 above records a comment claiming a permission the code never gives. The mirror case arrived porting the writes for `on_call_shift`, `library_document` and `document_template`, and it is the more dangerous of the two, because the first has something on the page to be suspicious of and this one has nothing.
+
+Three screens write those three tables. Two state the permission rule in the browser: `src/pages/OnCallSchedule.jsx` and `src/pages/TemplateManagement.jsx` each compute `isAdminLike(currentUser)` and refuse the mutation with a toast when it is false — two occurrences apiece. The third, `src/components/documents/TemplateLibrary.jsx`, creates, updates and deletes `library_document` at lines 131, 102 and 71, and contains **zero** occurrences of `isAdminLike`, `isAdminView`, `canManage`, `currentUser` or the word `role`. It performs no check at all. Base44's RLS refuses those writes and nothing in the screen does.
+
+So the three screens do not disagree. Two restate the rule and one does not, and all three are governed by the same rule, which lives where D36 says to look — the entity schemas. `base44/entities/OnCallShift.jsonc`, `LibraryDocument.jsonc` and `DocumentTemplate.jsonc` each declare `rls.create`, `rls.update` and `rls.delete` as `{"user_condition": {"role": "admin"}}`. Nine declarations, identical.
+
+**The failure mode is quiet and one-directional.** A port that reads the gate off the screen gets the right answer twice and, on the third, finds nothing to port and ships a contract with no role gate — opening those writes from the platform administrator D14 and D22 removed to every member of the agency. Nothing refuses, no test fails, and the diff of the screen shows no deletion, because there was never a line there to delete. **The two screens that DO check are what make it dangerous rather than obvious**: they establish a pattern under which the third reads as a screen with no permission requirement, rather than as a screen that does not restate one.
+
+**So the rule D36 states about a comment holds for an absence, and the absence is the harder half.** Where a rule is expressed in more than one place, the places are not interchangeable sources for it, and the number of places expressing it is not a property of the rule. Find the representation that ENFORCES it and read it there. Where a check is missing from a representation, the question is "does this representation enforce anything?" — never "is there a rule?"
+
+**What was done about it.** The port takes D40's substitution — an `agency_admin` scoped to their own agency — for all three, and `services/authority-store/tests/contract-reference-writes.test.mjs` asserts the PREMISE rather than the conclusion: it parses the three `.jsonc` files and requires each of the nine declarations to be exactly `{"user_condition": {"role": "admin"}}`. If any of the three ever declares something else, the substitution stops being automatic and the test fails, so the port owes a decision at that moment instead of inheriting one silently. The test reads the schemas because that is where the rule is; a test that read the screens would reproduce the defect it exists to prevent.
+
+**Not asserted, and worth saying so.** Nothing here checks that a screen displaying a rule displays the RIGHT one, and nothing checks that a screen displaying no rule is harmless. Both browser checks are now redundant with the contract rather than load-bearing, and that redundancy is unmeasured.
+
 ## D37 — The first port that audits, and what one transaction replaces
 
 **Decision.** Port `acceptAiContentAgreement` and `getAiContentAgreementStatus`
@@ -11423,6 +11439,18 @@ Third, record the correction rather than overwriting it. The description now car
 
 This is what D177 costs when it comes due. A second copy of a fact is a defect under an upstream authority, and the alarm is what happens without one: here the authority was the migration directory, there were five copies of a claim about it, and nothing in the repository could notice that four had been fixed and one had not.
 
+### Addendum, 2026-09-29: copies of one kind, in the main-watch thread's own words
+
+**Addendum to D190, from the main-watch thread, first-person.** One clause, and it attaches to the producer's seat rather than to the widening: my copies were mine and I missed one, which is this entry's own shape and not the consumer's.
+
+D190's five copies are of different kinds — a spec comment, a plan document, a commit message, a pull request description, the messages that carried the claim onward. Mine were three memory files in one cluster, all the same kind, and **each was internally consistent after I corrected two of them.** A correction reversed a claim; it went into the two files the conversation had been about; the third was the one the index points at, and its `description:` line — which is what recall shows — went on asserting the reversed claim for several hours.
+
+The remedy is unchanged: enumerate the copies, fix the reader-facing one first. What changes is why it is hard to notice. **Copies of different kinds sit in different places and a reader moving between them has some occasion to compare; copies of one kind, each coherent on its own, offer no such occasion.** There was nothing to disagree with. No amount of re-reading any single file would have surfaced it, and every file I re-read told me the correction had landed.
+
+So the clause: **consistency within a copy says nothing about agreement across copies, and a set of same-kind copies is the case where nothing will ever tell you.** When the copies are alike, enumerating them is not a tidy first step that a careful reader could reconstruct later — it is the only thing that can find this at all.
+
+The distinction was flagged by the batch D thread, which declined to place it; the measurement and the instance are mine.
+
 ### D190, widened
 
 **A correction is only as good as its least-read copy, including a copy somebody else is checking against — so a published reference is dated, and gets re-read rather than trusted.**
@@ -12012,7 +12040,7 @@ Three things make this worth adding rather than leaving as a repetition of the f
 
 The general form, which is D204's first instance arriving from the other side: **an instrument that answers in the wrong unit returns a well-formed number, so the only cheap defence is a second instrument whose disagreement you can account for.** Count characters with something that decodes the encoding explicitly, and when two counts agree exactly on a file containing non-ASCII bytes, suspect that both are measuring bytes.
 
-### Second addendum, 2026-09-29, in the main-watch thread's own words
+### Second addendum, 2026-09-29: the heading-depth instance, in the main-watch thread's own words
 
 **Second addendum to D204, added after its collection closed.** Contributed by the main-watch thread, which wrote the entry and its first addendum. It is a fifth instance and it changes nothing already filed.
 
@@ -12086,7 +12114,7 @@ twice in one night.
 retractions; the green `Report the hosted staging migration gap` job of run 36555889513 for
 the surviving detection.*
 
-### Widening, 2026-09-29, in the main-watch thread's own words
+### Widening, 2026-09-29: the counter-example question, in the main-watch thread's own words
 
 D205 records that a negative in the alarming direction recruits action before it recruits checking, and it has since taken a clause about the reassuring direction doing the same thing more quietly. Both halves describe how a negative claim travels. Neither says what to do about it, and the reason is that the obvious remedy does not work: telling somebody to state the scope of their search is advice that the person who most needs it will believe they have already followed. A claim reported wider than its instrument does not feel wide from the inside. It feels finished.
 
@@ -12461,7 +12489,7 @@ The bound is not mine. I did not truncate my instructions and then forget having
 
 And the question to ask is about the transport, not the subject. Naming the population honestly would not have saved me -- I would have said "my instructions", which is correct. What had to be asked was: what carried this to me, and can that thing drop things silently? For a compacted context the answer is yes, and it drops without a marker.
 
-What the correction cost, since it decides which failure this was: the record now reads that #364 was merged under an instruction that exists and lacks the owner's authority behind it -- he declined "merge when green" by name on 2026-09-22 -- rather than under no instruction at all. A grant resting on a bad premise and a session inventing authority for itself are different failures with different remedies. I reported the second about myself, which was wrong in the direction that made me look worse and the instruction look better, and I think that is why nobody challenged it.
+What the correction cost, since it decides which failure this was: the record now reads that #364 was merged under an instruction that exists and lacks the owner's authority behind it -- ~~he declined "merge when green" by name on 2026-09-22~~ [Retracted: this entry's own false assertion, refuted in the next paragraph.] -- rather than under no instruction at all. A grant resting on a bad premise and a session inventing authority for itself are different failures with different remedies. I reported the second about myself, which was wrong in the direction that made me look worse and the instruction look better, and I think that is why nobody challenged it.
 
 The clause in that paragraph naming a refusal is false and is left standing as this entry's own worked example. He declined nothing. Measured afterwards by another thread from the project's own record: the rule was transcribed into this project from a prior session, he was asked the question directly in the project chat that evening and never answered, and the instruction change was disclosed to him the next night in a bullet he also never answered. Three silences, and "he declined it" assembled across four hops. I wrote that sentence here, in the first person, about the owner, having measured none of it -- inside the account of a report I made without measuring it. Read nothing about his position into the correction either: three silences authorize nothing and refuse nothing.
 
