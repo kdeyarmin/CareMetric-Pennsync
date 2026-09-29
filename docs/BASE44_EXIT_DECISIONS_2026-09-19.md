@@ -9322,6 +9322,59 @@ change to any fresh build. Running both builds answered in ten seconds what
 reading the migration got backwards. **A forward migration's effect on a store
 built from nothing is not readable off the migration.**
 
+## D143 — Fear the check that would still pass after its subject was destroyed
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`).
+
+### The rule
+
+Before believing an assertion, ask what would have to be true for it to fail. If you can destroy the thing it is supposed to be protecting and the assertion still passes, it is not a check — it is a sentence that happens to be true. A check earns its place by being **reachable from the defect**, not by being adjacent to the subject or by sounding like it.
+
+The test to apply is not "is this true?" but **"name the change that makes this red."** If you cannot name one, delete it or replace it. A test nobody can make fail is worse than no test, because it consumes the attention the real check would have got and it reads, in a diff, exactly like coverage.
+
+### The case that produced it
+
+Converting `activity-audit.test.mjs` from applying three record migrations **by constant** to applying the whole `record-migrations/` directory. What the conversion buys is exactly one property: *the `before` hook applies every record migration on disk, in apply order.* That property is the subject, and it needed an assertion.
+
+My first one was:
+
+```js
+assert.ok(applied.length > MEASURED.length);
+```
+
+Destroy the subject and it still passes. Have the walk silently skip a migration — passes, as long as more than three were applied. Delete a migration from disk — passes. Apply them in the wrong order — passes, because a length says nothing about order. Add a migration to the directory that the walk cannot see — passes, and *that is the exact defect the conversion exists to prevent*. The assertion's only real content is "the directory has more than three files in it," which was true before the conversion and will be true after every plausible break of it.
+
+It is also the shape **Copilot found on #327 the same evening**, which is why it is worth a number rather than a fix: two of us wrote the same non-check on the same night in two different suites.
+
+### The repair
+
+Compare against an **independently derived** answer, so that either side moving makes it red:
+
+```js
+const onDisk = (await readdir(new URL('../supabase/record-migrations/', import.meta.url)))
+  .filter(file => file.endsWith('.sql')).sort();
+assert.deepEqual(applied, onDisk,
+  'the walk must apply every record migration on disk, in apply order');
+assert.ok(onDisk.includes(AUDIT_MIGRATION),
+  'the migration the capability is derived from must be one the walk applied');
+```
+
+`deepEqual` against a `readdir` fails on a skip, on an addition, on a deletion and on a reorder. The second line names the one migration this capability is derived from, so the set can never be "complete" in a way that omits it.
+
+### The second half, which is D151's rule arriving from underneath
+
+Having added the strong assertion I left the weak one beside it, plus a `notDeepEqual` against `MEASURED`. Plan asked the right question — *does this line have a job at all?* — and it did not: the `deepEqual` neighbour carries the whole claim, and the weak pair's only remaining function was to make the block look more thorough than it was. Both went. **A weak assertion kept beside a strong one does not add safety; it launders the strong one's credibility onto itself and the reader cannot tell which line is load-bearing.** Name the line that carries the property, then delete the rest.
+
+### It applies to prose as much as to assertions
+
+A memory file's frontmatter description is what recall shows, so a description stating more than its body supports is a claim with nothing checking it, delivered to every future reader in preference to the hedged version underneath. `pennsync-unapplied-migration-signature` said in its body that one assertion "CAN pass while the other fails" and in its description that an unapplied migration fails "not as a short ledger"; both had in fact failed in the same run the note was written from, nine lines apart, in the same log its findings were copied out of. Read a description alone and name the change that would make it false.
+
+### Where else this bites
+
+Any figure that nothing compares (D139), any control whose population is a name pattern rather than the capability (D142, D148), and a difference report that `continue`s on an absent key and therefore compares none of that object's fields (D140) are all the same animal: the machinery runs, the output is green or unchanged, and the subject was never interrogated. The remedy is always the same and always costs one step — **break it on purpose and watch it go red before you believe it.**
+
+Related: D135, D139, D140, D142, D145, D148, D151.
+
 ## D144 — A base move that changes a test SCRIPT moves your gate's population, not its inputs
 
 **Added 2026-09-26.** Found on #327 while rebasing three times in twenty
@@ -9919,6 +9972,16 @@ both directions, and assert the blind spot so the gap is checked rather than
 promised. A documented gap with a test on it is a real answer. A wider pattern
 is not.
 
+## D160 — A wave whose reading comes back negative is a result
+
+**Decision.** A wave that crosses to nothing is reported as measured and closed. It is not re-scoped, not substituted for silently, and not held open while somebody looks for work in it.
+
+**Why it needs to be a decision rather than a habit.** A thread handed a named wave reads the name as a commitment that the wave contains work. When its own measurement comes back empty, the cheap resolution is to widen something until the wave is non-empty — and in this repository the nearest thing to widen is a contract's projection, which is a forward migration through the back door and lands on a store nobody can re-run (D88). So the pressure created by a named-but-empty wave points at exactly the change the migration discipline exists to prevent.
+
+**What it looks like in practice.** `credential-queues` resolved entirely into #293. `incident-queues` crossed to 0 of 15 sites, `compliance-audit-reads` to 0 of its 7 read sites, `PolicyAcknowledgment` to 0 of 1. Four negative readings, none of which is a thread failing to find work: each is the answer that the work is already declared somewhere else, which is the thing the cross exists to discover. A list of eleven waves that survives contact with measurement at eleven is a list nobody measured.
+
+**The instruction.** Cross a wave against the open pull requests BEFORE starting it, report the empty result in the same words a non-empty one would get, and draw the next wave from a rebuilt intersection rather than from the next name down the list.
+
 ## D165 — "CI does not gate it" and "nothing gates it" are different claims (2026-09-29)
 
 The sentence this project has been carrying about the integration runtime is
@@ -9999,6 +10062,16 @@ A stale "nothing is pending" HIDES work and reads as reassurance. `docs/RAILWAY_
 Date, instrument, tree. When an entry says "reshape into a dated finding", that sentence is what it means.
 
 Two corollaries. **Removing an assertion is safe in both directions; replacing it with a second unmeasured one is not** — where the current state cannot be measured from where you are, say what was true and when, name the command, and stop. And **report what you checked and left alone**: a sweep that lists only its findings cannot be told from a shallow one, which is why the AGENTS.md line-number citations and the two pinned blocks are recorded as verified rather than silently skipped.
+
+## D168 — The route gate proves the arguments and says nothing about the return
+
+**Decision.** A route is not landed without a test of its projection, and the gate's own headline is read as a statement about arguments only.
+
+**What the gate actually proves.** `check:entity-routes` takes each call site's arguments and runs them through the route's `request`. It never calls `response`. So a route counted SERVED and a route counted unserved are in **the same position** on what comes back: neither has been exercised. The consequence is that the figure means less than its name — a route can be reported as served, pass every gate, and hand its screen `undefined`.
+
+**How it was found.** A sabotage, not a reading. Changing `Task.create`'s projection key from `task` to `entries` passed the entire `independentEntityRoutes.spec.js` suite, because the operational family's projections are covered nowhere in it. Six sabotages had already bitten the assertions written for them; this one found the hole those assertions were not pointed at.
+
+**The rule.** A projection test rides the wave that lands the route, every time. This is not the test coverage that has been deferred behind the apply: a route that hands a screen the wrong object is a broken screen, and a broken screen is the transfer failing at the only thing it exists to do. The twelve routes landed before this decision stay uncovered and are a separate piece of work — retrofitting them inside a wave PR would hide a dozen fixes in a change about two.
 
 ## D169 — An index that names other containers' contents cannot be told from a container that holds them (2026-09-29)
 
