@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The roster report contract.
@@ -20,7 +20,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
-const ROSTER = `${MIGRATIONS}20260920030000_contract_roster.sql`;
 const REPORT = `${MIGRATIONS}20260920470000_contract_roster_report.sql`;
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -39,9 +38,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ROSTER, REPORT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // A `manager` in agency-a, so the gate has something to refuse that the
   // roster's own privileged projection admits.

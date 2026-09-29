@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The dashboard's five collections.
@@ -20,7 +20,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
-const SWEEP = `${MIGRATIONS}20260920340000_contract_credential_sweep.sql`;
 const DASHBOARD = `${MIGRATIONS}20260920500000_contract_dashboard.sql`;
 const ORIGINAL = 'base44/functions/getDashboardData/entry.ts';
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -38,11 +37,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // `agency_today()` is the credential sweep's, and the dashboard's day is the
-  // agency's wall clock for the same reason.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, SWEEP, DASHBOARD]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`update pennsync_private.membership set tenant_role = 'office_staff'
     where id = 'membership-3'`);

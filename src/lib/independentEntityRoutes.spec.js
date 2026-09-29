@@ -683,6 +683,15 @@ describe('the declared entity routes', () => {
    * handler is the boundary that refuses and one capability here —
    * `listBrokeredRecords` — has no contract entry at all. Driven by the gate's
    * own served set, so the arguments are each call site's real ones.
+   *
+   * THAT SERVED SET IS ALSO THE LIMIT OF WHAT THIS CAN SEE, and the direction
+   * is worth knowing: a route that breaks by REFUSING its call site leaves the
+   * served set entirely and is counted in the gate's own refusal line, not
+   * here. So this reads routes that break by SENDING the wrong thing, and the
+   * gate reads routes that break by sending nothing. The two readings partition
+   * the failures and neither sees the other's — measured by the thread that
+   * owns the route table, when a sabotage that emptied a route's `orderable`
+   * came back inert for exactly this reason. A zero here is not a clear class.
    */
   it('emits no key its capability has no parameter for', async () => {
     const { readFileSync } = await import('node:fs');
@@ -690,16 +699,95 @@ describe('the declared entity routes', () => {
     const { servedSites } = await import('../../tools-entity-routes.mjs');
     const { callArguments } = await import('../../tools-entity-call-arguments.mjs');
 
+    /*
+     * THE PARSE ANSWERS ABOUT ONE ALLOWLIST OR IT REFUSES.
+     *
+     * A handler that fences several ACTIONS carries several `exactObject` calls,
+     * and which one a request meets is decided at run time by the action. There
+     * is no single list to compare a route against, so taking the first would
+     * report confidently against a list the route may never meet. Six handlers
+     * are in that state and no route names one today — a property of the current
+     * route table that nothing guarded until this refusal, raised by the batch
+     * that owns `tools-handler-allowlist.mjs`, whose own tool excludes the same
+     * six for the same reason.
+     *
+     * The pattern tolerates whitespace, and that is not tidiness. A first version
+     * matched `exactObject(params, [` on one line, and `manageAgencyMembership`
+     * wraps its second list onto the next — so that version saw ONE list where
+     * there are two and would have trusted it. The failure was silent in the one
+     * direction that matters, and it is why the six are asserted by name below
+     * rather than counted: a count agrees with a parse that has stopped seeing
+     * half of what it reads.
+     */
+    const ALLOWLIST = /exactObject\(\s*params\s*,\s*\[([^\]]*)\]/g;
+    const NAMED = /exactObject\(\s*params\s*,\s*([A-Z][A-Z0-9_]*)\s*[,)]/g;
     const source = readFileSync('services/pennsync-api/handlers.mjs', 'utf8');
     const starts = [...source.matchAll(/^ {2}([A-Za-z0-9_]+): Object\.freeze\(\{/gm)];
     const allowed = new Map();
+    const dispatched = new Set();
+    const elsewhere = new Set();
+    const unfenced = new Set();
+    const fences = (block) => ({
+      lists: [...block.matchAll(ALLOWLIST)],
+      named: [...block.matchAll(NAMED)],
+    });
     starts.forEach((start, index) => {
       const next = index + 1 < starts.length ? starts[index + 1].index : source.length;
-      const list = /exactObject\(params, \[([^\]]*)\]/.exec(source.slice(start.index, next));
-      if (list) allowed.set(start[1], [...list[1].matchAll(/'([^']+)'/g)].map(([, key]) => key));
+      const { lists, named } = fences(source.slice(start.index, next));
+      if (lists.length + named.length > 1) dispatched.add(start[1]);
+      else if (lists.length === 1) {
+        allowed.set(start[1], [...lists[0][1].matchAll(/'([^']+)'/g)].map(([, key]) => key));
+      } else if (named.length === 1) elsewhere.add(`${start[1]} -> ${named[0][1]}`);
+      else unfenced.add(start[1]);
     });
-    // A parse that quietly read nothing would agree with every route.
+
+    // The refusal is proved to bite on the real tree before it is relied on: a
+    // parse that had stopped detecting several lists would leave this set empty
+    // and every route would sail past the check below.
+    expect([...dispatched].sort()).toEqual([
+      'listAuthorizedPatients', 'manageAgencyMembership', 'manageAuthorizedReferral',
+      'manageMyNotifications', 'manageVehicleMaintenance', 'updateIncident',
+    ]);
+
+    /*
+     * AN ALLOWLIST THIS FILE CANNOT READ IS NOT AN ABSENT ONE.
+     *
+     * Two handlers fence themselves with a constant declared in a sibling
+     * module, and four fence nothing here at all. The first shape is the one
+     * that matters: a literal list is what this parse reads, so a handler
+     * holding a literal AND a constant would have counted ONE list and been
+     * trusted -- the same shape as the wrapped-line defect above, in the half
+     * that was fixed by adding whitespace tolerance and not by asking what else
+     * a list can be spelled as. Counting both kinds into `dispatched` closes it.
+     *
+     * Neither population may be silently empty, so both are pinned by name. A
+     * route naming one of these six fails on `allowed.has` below -- the parse is
+     * fail-closed for a route -- but that refusal says nothing about the
+     * population GROWING, which is what these two lines are for.
+     */
+    expect([...elsewhere].sort()).toEqual([
+      'generateAIReport -> AI_REPORT_PARAMS',
+      'submitStateReportableIncident -> STATE_INCIDENT_FIELDS',
+    ]);
+    expect([...unfenced].sort()).toEqual([
+      'analyzeReferral', 'generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail',
+    ]);
+
+    // The mixed shape is not on the tree, so the pins above cannot prove the
+    // widened count bites. Driven through the same reader: one literal beside
+    // one constant is TWO fences, which is the case the old parse trusted.
+    const mixed = fences("exactObject(params, ['a'], 'X');\n"
+      + "      exactObject(params, SOME_FIELDS, 'X');");
+    expect(mixed.lists.length + mixed.named.length).toBe(2);
+    const single = fences("exactObject(params, ['a'], 'X');");
+    expect(single.lists.length + single.named.length).toBe(1);
+
+    // A parse that quietly read nothing would agree with every route, and one
+    // that read the wrong list of several would agree with it just as quietly.
     for (const route of Object.values(ENTITY_ROUTES)) {
+      expect(dispatched.has(route.function),
+        `${route.function} fences several allowlists; which applies is the action's, not this parse's`)
+        .toBe(false);
       expect(allowed.has(route.function), `no parameter list parsed for ${route.function}`).toBe(true);
     }
 
@@ -845,28 +933,85 @@ describe('the declared entity routes', () => {
    * `20260920620000` had to drop first, and leaving the old overload is the
    * safer-LOOKING choice, which is what makes it the likely next shape.
    *
-   * The gap is declared instead of closed on purpose. The wider pattern is one
-   * over `create function`, which fires on every migration in this directory
-   * and therefore says nothing — a loosening in the direction where nothing
-   * fails. A check that names what it cannot see is the stronger artefact, so
-   * the blind spot is ASSERTED below as a silence rather than promised here: an
-   * overload added with no drop must stay invisible to this pattern, and that
-   * assertion is what fails the day somebody widens it.
+   * The gap is declared instead of closed on purpose, and the reason is
+   * stronger than noise. The wider pattern is one over `create function`, which
+   * fires on every `create function` in this directory — `20260920660000` alone
+   * adds twelve names, not one of them an overload of anything — so it does not
+   * merely cost noise, it has NO SIGNAL at that granularity. An overload is
+   * visible only by comparing a created signature against the signatures that
+   * already exist for that name, which is a different instrument rather than a
+   * broader pattern. A check that names what it cannot see is the stronger
+   * artefact, so the blind spot is ASSERTED below as a silence rather than
+   * promised here, and that assertion is what fails the day somebody widens it.
+   *
+   * THE DISCRIMINATOR IS CONTROLLED, and the control lives outside this file.
+   * Four registry entries emit an order key: the roster, `listPhysicians`,
+   * `listAgencyTasks` and `listCarePlans`. Three carry that key in the signature
+   * their CREATING migration made and only the roster does not, so the rule
+   * separating the two cases is exercised on both sides rather than only where
+   * it fires. `contract_task_list` is the row that earns it: a forward migration
+   * DOES recreate it, at a byte-identical parameter list, so "was this recreated
+   * forward" mis-sorts it and "did a forward migration change its signature"
+   * does not. That control cannot be run against the deployment at all — three
+   * of the four functions are absent there, so every answer is identical and
+   * none of them is about ordering, and an instrument built there would have
+   * looked like it passed with no case proving it discriminates. Measured by the
+   * batch that owns the hosted reads; the row and the layer point are this
+   * file's.
+   *
+   * AND THE LAYER IS PART OF THE PATTERN, not an accident of it. That same
+   * forward recreation is of the INNER `pennsync_records` function, while the
+   * PUBLIC wrapper it matches here is never dropped or recreated — PostgREST
+   * resolves the wrapper, so the wrapper's arity is what decides which call
+   * shapes exist. A scan of the inner name would find that recreation and pin an
+   * occurrence that changes no call shape at all, which is worse than missing
+   * one: the wrong layer writes a false positive into its own expectation.
    */
   it('names every forward migration that changes a public wrapper\'s arity', async () => {
     const { readFileSync, readdirSync } = await import('node:fs');
     const DIRECTORY = 'services/authority-store/supabase/record-migrations';
     const WRAPPER_DROPPED = /drop function "public"\."(pennsync_contract_[a-z_]+)"\(([^)]*)\)/g;
 
+    /*
+     * Comments are stripped before matching, AT STATEMENT LEVEL and no further.
+     * Prose in this directory names these functions — `20260920620000:219` says
+     * `must be owner of function public.pennsync_contract_roster_list` in a
+     * comment, and a count over raw text reads it as an occurrence. The quoted
+     * identifier form happens to exclude that particular line, which is a
+     * property of the pattern rather than anything reasoned, and a measurement
+     * right for a reason nobody chose is indistinguishable from a considered one
+     * at the moment it is reported.
+     *
+     * Statement level is the whole of the claim. A whole-file strip would be
+     * WRONG here: `--` occurs inside dollar-quoted `$contract$` bodies all over
+     * this directory, so stripping to end of line everywhere rewrites text
+     * nobody wrote and then counts the result. The DDL this matches sits outside
+     * those bodies, which is what makes the strip safe for it and unsafe as a
+     * general habit. Name the level or do not strip.
+     */
+    const stripLineComments = (text) => text.replace(/^[^\n]*?--[^\n]*$/gm,
+      (line) => line.slice(0, line.indexOf('--')));
+    const dropsIn = (text) => [...stripLineComments(text).matchAll(WRAPPER_DROPPED)]
+      .map(([, name, args]) => `${name}(${args})`);
+
     // The extractor is shown to bite before it is believed: a synthetic text
     // with two occurrences must yield two. An expectation of "exactly one" that
     // a broken pattern satisfies with zero is the shape this whole exercise is
     // about.
-    const dropsIn = (text) => [...text.matchAll(WRAPPER_DROPPED)]
-      .map(([, name, args]) => `${name}(${args})`);
     expect(dropsIn('drop function "public"."pennsync_contract_a_list"(text);\n'
       + 'drop function "public"."pennsync_contract_b_list"(text,integer);'))
       .toEqual(['pennsync_contract_a_list(text)', 'pennsync_contract_b_list(text,integer)']);
+
+    // One text carrying BOTH forms, so the case proves the extractor is
+    // DISCRIMINATING rather than merely silent. A case where everything is
+    // ignored passes for an extractor that has stopped extracting, which is the
+    // blind-control shape arriving in a sabotage: a case that comes back empty
+    // is not evidence until the same run has been shown to bite on something.
+    // The tree has never contained a commented drop, so nothing here has ever
+    // tested what the pattern is accidentally protected from.
+    expect(dropsIn('-- drop function "public"."pennsync_contract_fake"(text)\n'
+      + 'drop function "public"."pennsync_contract_real"(text,integer);'))
+      .toEqual(['pennsync_contract_real(text,integer)']);
 
     // And the declared blind spot, asserted as a silence. An overload added with
     // no drop has the same effect on a deployment behind the tree, and this

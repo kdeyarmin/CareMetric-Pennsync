@@ -5,10 +5,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
-import { POLICY_SQL_FILES } from '../../../tools-read-purpose-policy.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { PATIENT_ACTION_POLICY, PATIENT_ACTIONS } from '../../pennsync-api/read-purpose-policy.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Mutating a patient (`contract_patient_update`).
@@ -31,7 +30,6 @@ import { PATIENT_ACTION_POLICY, PATIENT_ACTIONS } from '../../pennsync-api/read-
  * against the row as it was.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const READ = 'services/authority-store/supabase/record-migrations/20260920060000_contract_patient_read.sql';
 const UPDATE = 'services/authority-store/supabase/record-migrations/20260920130000_contract_patient_update.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -52,10 +50,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE,
-    POLICY_SQL_FILES.patient, READ, UPDATE]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // Agency-a gets an `office_staff` member. D24 gives that role no chart at
   // all, which is the whole of divergence 2 and is asserted below.

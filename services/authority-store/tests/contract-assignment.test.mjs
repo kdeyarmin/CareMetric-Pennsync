@@ -1,14 +1,13 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir, writeFile, unlink } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { transpileTs } from '../../../tools-transpile-ts.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The care-team assignment lifecycle (`contract_assignment_inspect` /
@@ -29,16 +28,8 @@ import { transpileTs } from '../../../tools-transpile-ts.mjs';
  * the assignment row it just wrote or the helper no caller may execute.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const CLAIM = 'services/authority-store/supabase/record-migrations/'
-  + '20260920110000_claim_new_chart.sql';
 // Loaded so the chart closure can be proved through a capability that is
 // already ported, rather than through the helper it calls.
-const PURPOSE = 'services/authority-store/supabase/record-migrations/'
-  + '20260920050000_patient_purpose_policy.sql';
-const PATIENT_READ = 'services/authority-store/supabase/record-migrations/'
-  + '20260920060000_contract_patient_read.sql';
-const ASSIGNMENT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920180000_contract_assignment.sql';
 const ORIGINAL = 'base44/functions/managePatientCareTeamAssignment/entry.ts';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -64,10 +55,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, PURPOSE, PATIENT_READ,
-    CLAIM, ASSIGNMENT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, agency, archived] of [
     [WALK, A, false], [OTHER, A, false], [ELSEWHERE, B, false],
