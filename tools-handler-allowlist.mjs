@@ -188,42 +188,85 @@ export function payloadKeys(text) {
 
 const stripBlockComments = source => source.replace(/\/\*[\s\S]*?\*\//g, '');
 
+/** One registry entry: a two-space property holding a frozen object. */
+const ENTRY = /^ {2}([A-Za-z_][\w]*): Object\.freeze\(\{/gm;
+
+/** An allowlist written inline, or NAMED by a constant declared elsewhere. */
+const ALLOWLIST = /exactObject\(\s*params\s*,\s*(\[[^\]]*\]|[A-Za-z_][\w]*)/g;
+
+const keyList = text => Object.freeze(
+  text.split(',').map(key => key.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean));
+
 /**
- * Each handler's single unconditional `exactObject` allowlist.
+ * The allowlists a handler may NAME instead of writing out.
  *
- * Handlers with more than one are reported under `dispatched` rather than
- * dropped, so a capability leaving the comparable population is visible instead
- * of simply going quiet.
+ * Read across the directory on purpose, which is the one cross-module read this
+ * module makes: `STATE_INCIDENT_FIELDS` and `AI_REPORT_PARAMS` are exported
+ * from `state-incident.mjs` and `ai-report.mjs`, so a reader confined to the
+ * registry could never resolve them. Resolving a CONSTANT elsewhere is not the
+ * same act as counting ENTRIES elsewhere -- the registry alone says which
+ * capabilities exist, while the list one of them admits is wherever it is
+ * declared.
  */
-export function handlerAllowlists(repository) {
-  const directory = resolve(repository, API_DIRECTORY);
-  const admits = new Map();
-  const dispatched = new Set();
-  let entries = 0;
+export function namedAllowlists(directory) {
+  const declared = new Map();
   for (const file of readdirSync(directory).sort()) {
     if (!file.endsWith('.mjs') || file.endsWith('.test.mjs')) continue;
     const source = readFileSync(join(directory, file), 'utf8');
-    const found = [...source.matchAll(/^ {2}([A-Za-z_][\w]*): Object\.freeze\(\{/gm)]
-      .map(match => ({ name: match[1], at: match.index }));
-    // Counted from the REGISTRY's own file. A first version summed the pattern
-    // over every module in the directory and reached 313, because a two-space
-    // frozen object is an ordinary shape and other modules are full of them.
-    // The sentinel below then held at 187 with `handlers.mjs` contributing
-    // nothing at all, so the one thing it exists to notice -- the registry
-    // ceasing to parse -- could not move it. Found by crossing these figures
-    // against a second thread's derivation rather than by reading the code.
-    if (file === REGISTRY_FILE) entries = found.length;
-    for (const [index, entry] of found.entries()) {
-      const body = stripBlockComments(
-        source.slice(entry.at, found[index + 1]?.at ?? source.length));
-      const lists = [...body.matchAll(/exactObject\(\s*params\s*,\s*\[([^\]]*)\]/g)];
-      if (lists.length === 0) continue;
-      if (lists.length > 1) { dispatched.add(entry.name); continue; }
-      admits.set(entry.name, Object.freeze(lists[0][1]
-        .split(',').map(key => key.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)));
+    for (const match of source.matchAll(
+      /^export const ([A-Z][A-Z0-9_]*)\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/gm)) {
+      declared.set(match[1], keyList(match[2]));
     }
   }
-  return { admits, dispatched, entries };
+  return declared;
+}
+
+/**
+ * Each handler's single unconditional `exactObject` allowlist.
+ *
+ * Every entry lands in exactly one of four buckets and the test asserts that
+ * they partition the registry, because a bucket nothing names is how a
+ * capability leaves the comparison without anyone deciding that it should.
+ * `dispatched` has more than one list, `parameterless` has none, `unresolved`
+ * names a constant this reader cannot find -- never counted clean, the same
+ * rule the call-site side already follows for a payload it cannot read.
+ *
+ * ## Both populations are the REGISTRY's, and neither used to be
+ *
+ * A first version walked every module in the directory for entries as well and
+ * reached 313, because a two-space frozen object is an ordinary shape and the
+ * other modules are full of them -- 187 of them, `standard`, `contact` and
+ * `large_print` among them, with 94 sharing a name with a real handler. Scoping
+ * the COUNT fixed the sentinel and left the allowlists reading that same wide
+ * population; they were right anyway, but only because no non-handler object
+ * happens to call `exactObject(params, ...)`. Correct by luck is not correct,
+ * and a Map keyed on a shared name would have taken whichever came last
+ * alphabetically. That is the same defect one level down from where it was
+ * found, which is the thing to expect rather than to be surprised by.
+ */
+export function handlerAllowlists(repository) {
+  const directory = resolve(repository, API_DIRECTORY);
+  const named = namedAllowlists(directory);
+  const source = readFileSync(join(directory, REGISTRY_FILE), 'utf8');
+  const found = [...source.matchAll(ENTRY)].map(match => ({ name: match[1], at: match.index }));
+
+  const admits = new Map();
+  const dispatched = new Set();
+  const parameterless = new Set();
+  const unresolved = new Set();
+  for (const [index, entry] of found.entries()) {
+    const body = stripBlockComments(
+      source.slice(entry.at, found[index + 1]?.at ?? source.length));
+    const lists = [...body.matchAll(ALLOWLIST)].map(match => match[1]);
+    if (lists.length === 0) { parameterless.add(entry.name); continue; }
+    if (lists.length > 1) { dispatched.add(entry.name); continue; }
+    const only = lists[0];
+    if (only.startsWith('[')) { admits.set(entry.name, keyList(only.slice(1, -1))); continue; }
+    const resolved = named.get(only);
+    if (resolved) admits.set(entry.name, resolved);
+    else unresolved.add(entry.name);
+  }
+  return { admits, dispatched, parameterless, unresolved, entries: found.length };
 }
 
 /**
