@@ -711,17 +711,25 @@ describe('the declared entity routes', () => {
      * half of what it reads.
      */
     const ALLOWLIST = /exactObject\(\s*params\s*,\s*\[([^\]]*)\]/g;
+    const NAMED = /exactObject\(\s*params\s*,\s*([A-Z][A-Z0-9_]*)\s*[,)]/g;
     const source = readFileSync('services/pennsync-api/handlers.mjs', 'utf8');
     const starts = [...source.matchAll(/^ {2}([A-Za-z0-9_]+): Object\.freeze\(\{/gm)];
     const allowed = new Map();
     const dispatched = new Set();
+    const elsewhere = new Set();
+    const unfenced = new Set();
+    const fences = (block) => ({
+      lists: [...block.matchAll(ALLOWLIST)],
+      named: [...block.matchAll(NAMED)],
+    });
     starts.forEach((start, index) => {
       const next = index + 1 < starts.length ? starts[index + 1].index : source.length;
-      const lists = [...source.slice(start.index, next).matchAll(ALLOWLIST)];
-      if (lists.length > 1) dispatched.add(start[1]);
+      const { lists, named } = fences(source.slice(start.index, next));
+      if (lists.length + named.length > 1) dispatched.add(start[1]);
       else if (lists.length === 1) {
         allowed.set(start[1], [...lists[0][1].matchAll(/'([^']+)'/g)].map(([, key]) => key));
-      }
+      } else if (named.length === 1) elsewhere.add(`${start[1]} -> ${named[0][1]}`);
+      else unfenced.add(start[1]);
     });
 
     // The refusal is proved to bite on the real tree before it is relied on: a
@@ -731,6 +739,39 @@ describe('the declared entity routes', () => {
       'listAuthorizedPatients', 'manageAgencyMembership', 'manageAuthorizedReferral',
       'manageMyNotifications', 'manageVehicleMaintenance', 'updateIncident',
     ]);
+
+    /*
+     * AN ALLOWLIST THIS FILE CANNOT READ IS NOT AN ABSENT ONE.
+     *
+     * Two handlers fence themselves with a constant declared in a sibling
+     * module, and four fence nothing here at all. The first shape is the one
+     * that matters: a literal list is what this parse reads, so a handler
+     * holding a literal AND a constant would have counted ONE list and been
+     * trusted -- the same shape as the wrapped-line defect above, in the half
+     * that was fixed by adding whitespace tolerance and not by asking what else
+     * a list can be spelled as. Counting both kinds into `dispatched` closes it.
+     *
+     * Neither population may be silently empty, so both are pinned by name. A
+     * route naming one of these six fails on `allowed.has` below -- the parse is
+     * fail-closed for a route -- but that refusal says nothing about the
+     * population GROWING, which is what these two lines are for.
+     */
+    expect([...elsewhere].sort()).toEqual([
+      'generateAIReport -> AI_REPORT_PARAMS',
+      'submitStateReportableIncident -> STATE_INCIDENT_FIELDS',
+    ]);
+    expect([...unfenced].sort()).toEqual([
+      'analyzeReferral', 'generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail',
+    ]);
+
+    // The mixed shape is not on the tree, so the pins above cannot prove the
+    // widened count bites. Driven through the same reader: one literal beside
+    // one constant is TWO fences, which is the case the old parse trusted.
+    const mixed = fences("exactObject(params, ['a'], 'X');\n"
+      + "      exactObject(params, SOME_FIELDS, 'X');");
+    expect(mixed.lists.length + mixed.named.length).toBe(2);
+    const single = fences("exactObject(params, ['a'], 'X');");
+    expect(single.lists.length + single.named.length).toBe(1);
 
     // A parse that quietly read nothing would agree with every route, and one
     // that read the wrong list of several would agree with it just as quietly.
