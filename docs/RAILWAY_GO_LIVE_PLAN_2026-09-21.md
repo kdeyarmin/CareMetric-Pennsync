@@ -3610,8 +3610,13 @@ wave.
 same set.** Seven contracts reach a write through `library_write` and through
 nothing else; each has no DML of its own once quoted text and both comment forms
 are removed, so the tightening would classify all seven read-only. #358's header
-read six, which was a defect in the header rather than in the check, fixed
-forward on #362. The other population is the EIGHT names the classifier guard
+read six, which was a defect in the header rather than in the check, and the
+way the six arose is the more useful half: they were assembled from the
+contracts the classifier reported silent when each was flipped read-only, so
+the set was drawn from the check's own blind spot — it measures the EXPOSURE
+and reads like the POPULATION. #362 corrects the header and takes its test's
+population from the bodies rather than the names; it was open, not merged, when
+this was written. The other population is the EIGHT names the classifier guard
 holds, and the difference is not arithmetic:
 `contract_sent_education_record` is in the second and not the first, because it
 carries its own DML and was probed here as a positive control. Two sessions
