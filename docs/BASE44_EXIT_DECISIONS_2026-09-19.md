@@ -10621,6 +10621,33 @@ that I caught the first one by method — filing forced it, and a version of the
 evening where the placement had not needed the bytes would have ended with the
 line still standing and nobody the wiser.
 
+**2026-09-29, later the same hour: the figure in the paragraph above stopped
+reproducing, and the sentence that broke it is that paragraph.**
+
+I wrote that scoping the count to `## D<n>` sections and excluding the front
+matter gives five entries citing D107, "and that figure reproduces." **Re-run at
+the head that carries this widening, it gives six** — because the widening is
+itself a passage describing D107's citations, and it now sits INSIDE entry D169
+where the scope rule cannot exclude it.
+
+**So the remedy I proposed was right about the instance and wrong as a rule.**
+Excluding the front matter worked only while the describing text happened to
+live there. Location was never the distinguishing property; it was standing in
+for one. **The real discriminator is whether a mention USES the rule or
+DESCRIBES the citation of it**, and no positional scope can see that difference,
+because it is a fact about what the sentence is doing and not about where it is.
+
+The entries that reason from D107 remain **five** — D110, D117, D119, D123 and
+D124 — and that is the figure that carries the hazard, since it is what makes an
+absent body load-bearing. The count of entries that MENTION it is six and will
+grow every time somebody writes about this. **Both are true and they are
+different units**, which is the whole of the correction.
+
+I am leaving the paragraph above exactly as filed. It is its own worked example
+twice over now: a claim that a figure reproduces, falsified by the act of
+recording it, inside an entry about text that cannot be told apart from the
+thing it describes.
+
 ## D170 — Agreement between two runs of one method is one reading with two witnesses
 
 *Added 2026-09-29. Found because the coordinator offered it to me as corroboration and it was not.*
