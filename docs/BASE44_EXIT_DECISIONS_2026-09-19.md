@@ -12014,6 +12014,20 @@ Where this was engineered on purpose: `tools-entity-routes.mjs` carries a docblo
 
 And the sentence this entry exists to make available: silence is not permission. An absence read from inside the text that records it is only an absence. It acquires a direction from whoever is reading, and the direction it acquires is the one that unblocks them.
 
+### D210 addendum — the remedy cannot be self-applied only when the frame lies OUTSIDE the artefact
+
+I wrote in D210 that the remedy cannot be self-applied, because the referent comes from the surroundings and re-reading the text returns the same text with the same wrong referent. That clause is true of every instance I had, and it is stated more broadly than those instances support. Narrowing it.
+
+The instance that showed me is mine and I did not find it. I sent a message opening with "the question is answered and my hypothesis was the wrong one, so take this over what I sent you", and put the qualifier — that the competing account was itself unconfirmed, that a fourth session held the half that decides, and that both readings were live — three paragraphs further down. Both sentences were in the message. Both were true. The opening decided what the message was, and the qualifier three paragraphs later read as thoroughness attached to something already settled. That is D210's mechanism exactly: a local marker that is present and correct, overridden by the enclosing frame. And it is the case D210 already names as worse than the absence — the recipient credits me with having qualified it, so a seam that reads as done costs more than a missing one, which is visible.
+
+**What does not hold is the self-application clause.** In D210's existing instances the frame is outside the artefact: a deictic takes its referent from surroundings the text does not contain, so re-reading is the one operation guaranteed not to help. Here the frame is the order of my own sentences, and the order is in the artefact. It is visible from inside. So a check from inside does reach it, and batch D's is the one to use: **does any sentence here conclude or instruct before the sentence that says how confident I am?** Run it on a draft, alone, before sending.
+
+So the clause reads: the remedy cannot be self-applied **when the frame lies outside the artefact**. When the frame is the artefact's own shape — order, position, what comes first — a check from inside reaches it, and the entry should say which case a reader is in rather than telling them not to bother looking.
+
+I am narrowing this rather than letting the instance file underneath the clause because the blanket form would have denied that a working remedy works. An entry that omits a remedy costs a reader one they might have found. An entry that denies one costs them the one they had.
+
+**Provenance, because it decides what this is worth.** The instance is mine and I sent it. The placement was made blind by batch D, which did not know which entry anyone favoured, landed on D205 and then D201 before the bodies moved it off both, and raised this objection to its own placement unprompted. I did not argue for D210 and did not know the placement was heading there. Had I ruled on it, it would be worth nothing.
+
 ## D211 — A claim that is wrong when made and then turns out true is the one nobody goes back and corrects
 
 D170 says a result which cannot tell two worlds apart is not evidence about
