@@ -9,7 +9,8 @@ import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor }
   from './src/lib/independentEntityRoutes.js';
 import { main, measureRoutes, servedSites, summaryLines } from './tools-entity-routes.mjs';
-import { measureDestinations } from './tools-frontend-destination.mjs';
+import { callArguments } from './tools-entity-call-arguments.mjs';
+import { SERVED, measureDestinations } from './tools-frontend-destination.mjs';
 import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
 import { buildPaths, readEntity } from './tools-tenant-path.mjs';
 
@@ -224,21 +225,71 @@ test('what a wider generic family could reach is reported and adds up', () => {
  * since the gate was rebuilt, and only reachable once a route existed over a
  * key one file calls twice.
  *
- * `src/pages/ReferralTriage.jsx` is that file: two `Task.create` calls, one
- * whose argument is readable and one whose is not. A route accepting anything
- * therefore serves exactly one of the two.
+ * The case needs a file that calls one operation twice with one argument
+ * readable and one not, so a route accepting anything serves exactly one of the
+ * two. `src/pages/ReferralTriage.jsx`'s two `Task.create` calls were that file,
+ * and the plant NAMED that key — which made the test a hostage of the route:
+ * declaring `Task.create` put it in the baseline, `routed_sites > baseline`
+ * stopped holding, and the hold was recorded in another batch's file with the
+ * remedy "name a key no batch declares". Repointing it moves that wall one
+ * route along and the next thread hits it with no record of why.
+ *
+ * So the plant is DERIVED, and the derivation is the point rather than a
+ * tidy-up: whatever undeclared landable pair the tree currently has in that
+ * shape supplies it, and a tree with none REFUSES rather than skipping — which
+ * is the honest failure, because the case would then be unreachable and a green
+ * test claiming to measure it would be measuring nothing.
+ *
+ * It also no longer carries the coverage alone. Declaring the clinical-library
+ * writes put two DECLARED pairs into this shape — both of
+ * `ClinicalLibraryManager.jsx`'s `update` calls — so the committed report
+ * exercises the multiset subtraction with no plant at all, and the bucket-sum
+ * assertion in `what a wider generic family could reach is reported and adds
+ * up` fails by exactly two if the Set comes back. That was measured by
+ * restoring the Set and watching THREE tests fail, not assumed: this one, that
+ * one, and the plan-document pin.
  */
 test('a served site is removed from the remainder once, not per key', () => {
   const baseline = measureRoutes(repository);
-  const routes = { ...ENTITY_ROUTES, 'Task.create': sound({ request: () => ({}) }) };
+  const landable = new Set(measureDestinations(repository).sites
+    .filter(site => SERVED.includes(site.destination))
+    .map(site => `${site.entity}.${site.operation}`));
+  const grouped = new Map();
+  for (const call of callArguments(repository)) {
+    const pair = `${call.file}\u0000${call.entity}.${call.operation}`;
+    if (!grouped.has(pair)) grouped.set(pair, []);
+    grouped.get(pair).push(call);
+  }
+  // Sorted so the chosen pair is a property of the tree and not of map order:
+  // a test that measures a different case on two runs of one commit is not one
+  // case proved, it is two cases each proved half the time.
+  const candidates = [...grouped]
+    .map(([pair, calls]) => {
+      const [file, key] = pair.split('\u0000');
+      return { file, key, readable: calls.filter(call => call.arguments !== null).length,
+        total: calls.length };
+    })
+    .filter(candidate => landable.has(candidate.key)
+      && !Object.hasOwn(ENTITY_ROUTES, candidate.key)
+      && candidate.readable === 1 && candidate.total > candidate.readable)
+    .sort((left, right) => (left.key + left.file).localeCompare(right.key + right.file));
+  assert.ok(candidates.length > 0,
+    'no undeclared landable key has one readable call and one unreadable one in a single\n'
+    + '  file, so the case this test exists for cannot be reached on this tree. It is a\n'
+    + '  REFUSAL rather than a skip: the multiset subtraction is still exercised by the\n'
+    + '  committed report, whose bucket sum falls short if a Set comes back, but the\n'
+    + '  planted half of the proof is gone and something has to say so.');
+  const chosen = candidates[0];
+
+  const routes = { ...ENTITY_ROUTES, [chosen.key]: sound({ request: () => ({}) }) };
   const report = measureRoutes(repository, routes);
   assert.deepEqual(report.problems, []);
 
   const calls = servedSites(repository, routes, measureDestinations(repository).sites.length);
-  const triage = calls.served.filter(call =>
-    call.file === 'src/pages/ReferralTriage.jsx' && call.key === 'Task.create');
-  assert.equal(triage.length, 1,
-    'the case only exists while that file has one served call and one unreadable one');
+  const doubled = calls.served.filter(call =>
+    call.file === chosen.file && call.key === chosen.key);
+  assert.equal(doubled.length, 1,
+    `${chosen.file} must have one served call and one unreadable one for ${chosen.key}`);
 
   // The arithmetic the Set broke. Both halves, because either alone passes
   // with the other wrong.

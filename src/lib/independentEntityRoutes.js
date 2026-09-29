@@ -615,18 +615,25 @@ function libraryWrite({ fn, reason, action }) {
  * eight. Repo-wide the unreadable writes are 84 of 91, so this disposition is
  * what lets any batch land a write seam at all.
  *
- * TWO ENTITY OPERATIONS OF THESE SEVEN STAY ON BASE44 although their
- * capabilities ship here, and `src/lib/operationalRoutes.test.js` holds each
- * reason as a check that fails when it lapses, rather than as a note here that
- * would not. `Task.create` is provable and was held first by the gate's
- * (file, key) subtraction, which #297 fixed; it is still held because that
- * fix's own regression test PLANTS `Task.create` as its route and asserts the
- * measurement rises, so declaring it here makes the baseline already contain
- * it and the test fails. The hold is now one line in another batch's test
- * file rather than anything about the route. `NoteConversion.filter` waits on
- * its own contract, which takes one of the five predicates its call site
- * narrows on while that caller requires exactly one row; dropping the other
- * four would turn a duplicate check into a read that can return two.
+ * ONE ENTITY OPERATION OF THESE SEVEN STAYS ON BASE44 although its capability
+ * ships here, and `src/lib/operationalRoutes.test.js` holds the reason as a
+ * check that fails when it lapses, rather than as a note here that would not.
+ * `NoteConversion.filter` waits on its own contract, which takes one of the
+ * five predicates its call site narrows on while that caller requires exactly
+ * one row; dropping the other four would turn a duplicate check into a read
+ * that can return two.
+ *
+ * `Task.create` was the second, and what held it was never the route. It is
+ * provable, its contract and handler shipped long ago, and it was held first
+ * by the gate's (file, key) subtraction — which #297 fixed — and then by that
+ * fix's own regression test, which PLANTED `Task.create` as its route and
+ * asserted the measurement rises, so declaring it here put the key in the
+ * baseline and the test failed. That plant is DERIVED now, from whatever
+ * undeclared pair the tree has in the shape the case needs, so the route is
+ * declared and no future batch inherits the wall. Two things are worth keeping
+ * from it: a capability can be complete at every layer and still unreachable
+ * for a reason that lives in a test file, and the remedy for a test held
+ * hostage by a name is to derive the name, not to move it to the next one.
  *
  * Every projection here is `operational_row`, which is the entity's own
  * columns less `source_app_id` and less whatever its contract withholds. Two
@@ -673,6 +680,10 @@ const operationalRoutes = Object.freeze({
       negatable: ['status'], filtered: true,
     }),
     reason: 'Four screens read an agency task list, three of them for one chart.',
+  }),
+  'Task.create': operationalCreate({
+    fn: 'createAgencyTask', key: 'task',
+    reason: 'Five screens file a task: referral intake and triage, the workflow engine, the regulatory monitor and the note assistant.',
   }),
   'PDFTemplate.list': Object.freeze({
     ...operationalRead({

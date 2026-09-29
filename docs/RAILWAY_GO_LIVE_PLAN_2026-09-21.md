@@ -2856,11 +2856,8 @@ descending, which is what the `User.list` sites that were refused on their sort
 were asking for, so the declared count did not move and every one of the 24 left
 the sort bucket.
 
-And the reading on THIS tree, after the four clinical-library write capabilities
-gained their routes. This one is `pnpm run check:entity-routes`'s own output and
-is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
-byte for byte, so paste what the tool prints and never retype, rewrap or
-re-indent it.
+And after the four clinical-library write capabilities gained their routes — a
+record of that head, not maintained either:
 
 ```
 entity routes: 64 declared, 102/237 landable call sites SERVED, 135 still to adopt
@@ -2869,27 +2866,53 @@ entity routes: 64 declared, 102/237 landable call sites SERVED, 135 still to ado
   of those 135, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 134 need a named capability
 ```
 
-**The move above is seven sites, and its cause is twelve routes over four
-capabilities that already shipped — no contract, no migration and no SQL.**
-`manageClinicalPathway`, `manageClinicalLibraryTemplate`, `manageClinicalLibraryFolder`
-and `manageEducationMaterial` each take an action beside the id and the payload,
-so each serves a `create`, an `update` and a `delete`, and the twelve
-declarations are the whole of the change. Five of the twelve are UNPROVED and
-seven are served, which is why the unproved line grows by five in the same merge
-the served count grows by seven: a route whose call sites all pass a variable is
-counted in the first and not the second. The unreadable line grows by twelve
-because every one of those sites GAINED a declared route the gate cannot run —
-the same reading #296's paragraph below records, arriving a second time, and the
-reason to state it is that a rising unreadable count beside a rising served
-count looks like a regression and is the opposite. The roster contract learned to answer `created_date` descending,
-which is what the `User.list` sites that were refused on their sort were asking
-for; the declared count does not move, because no route was added. Every one of
-the 24 leaves the sort bucket, which is why that line falls while the unreadable
-line holds. The figure this block reads off its predecessor is also the one
-place a reader should be most careful: the previous block's numerator and this
-tree's base reading are the same number for two unrelated reasons, and the two
-were told apart by running the printer on both trees rather than by reasoning
-about them.
+And the reading on THIS tree, after `Task.create` was declared. This one is
+`pnpm run check:entity-routes`'s own output and is **pinned**:
+`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
+so paste what the tool prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 65 declared, 104/237 landable call sites SERVED, 133 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 36 pass arguments this cannot read
+  13 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 133, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 132 need a named capability
+```
+
+**The move above is two sites, and its cause is ONE declaration that nothing in
+the store was ever holding.** `createAgencyTask` shipped complete — contract,
+wrapper, grant, handler — and what kept `Task.create` undeclared lived in a test
+file: #297's regression test planted that exact key as its own route and
+asserted the measurement rises against a baseline taken without it, so declaring
+it put the key in the baseline and the assertion failed. The plant is DERIVED
+now, from whatever undeclared pair the tree has in the shape that case needs,
+and it refuses rather than skips when there is none — so the wall is gone rather
+than moved one route along, which repointing the plant would have done. Read that
+as the general lesson rather than as one route's history: a capability can be
+complete at every layer and still unreachable for a reason that lives in a test,
+and the remedy for a check held hostage by a name is to derive the name.
+
+Two things about the merge before it are worth keeping here. Declaring the
+clinical-library writes put two DECLARED call sites into the double-call shape
+#297's case needs, so the committed report now exercises that multiset
+subtraction with no plant at all — measured by restoring the Set and watching
+three tests fail, one of which reads only the committed figures. And a test
+asserting `Task.create` was held on the gate was deleted rather than renamed:
+its assertions all still passed while its name and message said the opposite of
+the tree, which is the shape of a check whose subject is gone.
+
+The earlier move into the block above it was seven sites, and its cause was
+twelve routes over four capabilities that already shipped — no contract, no
+migration and no SQL. `manageClinicalPathway`, `manageClinicalLibraryTemplate`,
+`manageClinicalLibraryFolder` and `manageEducationMaterial` each take an action
+beside the id and the payload, so each serves a `create`, an `update` and a
+`delete`, and the twelve declarations were the whole of that change. Five of the
+twelve are UNPROVED and seven are served, which is why the unproved line grew by
+five in the same merge the served count grew by seven: a route whose call sites
+all pass a variable is counted in the first and not the second. The unreadable
+line grew by twelve because every one of those sites GAINED a declared route the
+gate cannot run — the same reading #296's paragraph below records, arriving a
+second time, and the reason to state it is that a rising unreadable count beside
+a rising served count looks like a regression and is the opposite.
 
 **What that block says, and why the prose below it names no total from it.**
 The numerator is the count of landable call sites a declared route actually

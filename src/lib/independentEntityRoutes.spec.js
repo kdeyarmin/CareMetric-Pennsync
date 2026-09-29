@@ -564,6 +564,43 @@ describe('the declared entity routes', () => {
     });
   });
 
+  it('files a task through the contract that already shipped, and hands back the row',
+    async () => {
+      const { fixture, adapter } = await signedIn();
+      // `Task.create` was the last route held by something other than its own
+      // capability: #297's regression test planted this exact key, so declaring
+      // it broke that test until its plant was derived. Nothing about the route
+      // was ever in doubt, which is precisely why it is asserted here — a route
+      // declared on the strength of "the capability exists" is a route whose
+      // request shape and projection nobody has run.
+      //
+      // Found by sabotage, not by reading: with `key` changed from `task` to
+      // `entries` the whole file passed, because the operational family's
+      // projections were covered nowhere in it.
+      const task = { id: 't-1', title: 'Reorder gauze', patient_id: 'p-1' };
+      fixture.apiResponse = () => new Response(
+        JSON.stringify({
+          success: true, result: { created: true, task },
+          execution: 'pennsync-api', base44ExecutionDependency: false,
+        }), { headers: { 'content-type': 'application/json' } });
+
+      expect(await adapter.raw.entities.Task.create({ title: 'Reorder gauze', patient_id: 'p-1' }))
+        .toEqual(task);
+      expect(fixture.apiCalls.at(-1).url)
+        .toBe(`${stagingApiUrl}/v1/functions/createAgencyTask`);
+      // The whole payload goes as `fields`: the contract decides which of them
+      // are writable and refuses the rest by name, and a route filtering here
+      // would lose a misspelling the contract would have reported.
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ fields: { title: 'Reorder gauze', patient_id: 'p-1' } });
+
+      // And a payload that is not a field object refuses before any request.
+      for (const fields of [null, [{ title: 'x' }], 'title']) {
+        await expect(adapter.raw.entities.Task.create(fields))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+    });
+
   it('does not make the namespace thenable', async () => {
     const { adapter } = await signedIn();
     expect(adapter.raw.entities.then).toBeUndefined();
