@@ -90,9 +90,25 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  assert.equal(applied.at(-1), READS_NAME,
-    'this contract must sort last in the directory, or `planMigration` refuses '
-    + 'MIGRATE_OUT_OF_ORDER once an earlier file has been applied to a store');
+  // This line used to read `assert.equal(applied.at(-1), READS_NAME)`, on the
+  // grounds that a file sorting before an already-applied one makes
+  // `planMigration` refuse MIGRATE_OUT_OF_ORDER. The hazard is real and the
+  // assertion was the wrong shape for it: "this contract sorts LAST" is true
+  // only until the next migration lands, whoever writes it, so it is a claim
+  // that every sibling branch falsifies by doing nothing wrong. It went red on
+  // `20260920690000_contract_physician_write.sql`, which sorts after this file
+  // and is exactly the case the rule permits — a NEW file appended to the end.
+  //
+  // What the hazard actually is: a new file sorting BEFORE one a deployment has
+  // already applied. A per-contract suite cannot see what a deployment has
+  // applied, so it cannot hold that claim at all. It is held where it can be:
+  // `planMigration` raises the refusal (`tools-pennsync-migrate.mjs:196`), a
+  // case in `tools-pennsync-migrate.test.mjs` drives it, and
+  // `tools-pennsync-apply-signal.mjs` says on the pull request which migrations
+  // are arriving. What this suite can hold is that the file is in the set a
+  // deployment would apply, which the equality above already proves whole.
+  assert.ok(applied.includes(READS_NAME),
+    'this contract is not in the record directory the store was built from');
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   await db.exec(`insert into auth.users(id,email,email_confirmed_at)

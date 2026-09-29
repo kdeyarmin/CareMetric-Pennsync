@@ -289,4 +289,23 @@ create function "public"."pennsync_contract_physician_delete"(
   select "pennsync_records".contract_physician_delete(p_agency, p_physician_id)
 $c$;
 
+-- A wrapper is `security invoker`, so it is the grant on IT that decides who
+-- may reach the contract at all -- and PostgreSQL grants EXECUTE to PUBLIC on
+-- every new function, which is why this block is a revoke before it is a grant.
+-- Without it these three were executable by `anon`: the inner functions above
+-- are locked down, but an anonymous caller never reaches them to be refused,
+-- it reaches the wrapper. `service-rpc-signatures.test.mjs` asks
+-- `has_function_privilege('anon', ...)` of every name the service calls, which
+-- is what caught it.
+revoke all on function
+  "public"."pennsync_contract_physician_create"(text, jsonb),
+  "public"."pennsync_contract_physician_update"(text, text, text, jsonb, date),
+  "public"."pennsync_contract_physician_delete"(text, text)
+  from public, anon, service_role;
+grant execute on function
+  "public"."pennsync_contract_physician_create"(text, jsonb),
+  "public"."pennsync_contract_physician_update"(text, text, text, jsonb, date),
+  "public"."pennsync_contract_physician_delete"(text, text)
+  to authenticated;
+
 commit;
