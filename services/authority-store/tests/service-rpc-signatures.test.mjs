@@ -47,6 +47,17 @@ const UNCALLED = Object.freeze({
 
 let db;
 const captured = new Map();
+/** The text of every migration the store below was built from, in apply order. */
+const applied = [];
+/**
+ * `create function "public"."pennsync_contract_…"` as the generator and the
+ * hand-written contracts both spell it. Quoted, because the first attempt at
+ * this matched an unquoted form and found ZERO declarations in a tree that has
+ * a hundred and thirty — which is why the set difference below is asserted in
+ * BOTH directions: a parser that reads nothing is indistinguishable from a
+ * store that exposes nothing unless something else names the functions.
+ */
+const DECLARATION = /create\s+(?:or\s+replace\s+)?function\s+"?public"?\.\s*"?(pennsync_contract_\w+)"?/gi;
 
 /** Records the one request a capability makes, then answers nothing usable. */
 const recorder = (label) => async (url, init) => {
@@ -65,7 +76,9 @@ before(async () => {
   for (const directory of ['../supabase/migrations/', '../supabase/record-migrations/']) {
     const dir = new URL(directory, import.meta.url);
     for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
-      await db.exec(await readFile(new URL(name, dir), 'utf8'));
+      const sql = await readFile(new URL(name, dir), 'utf8');
+      applied.push(sql);
+      await db.exec(sql);
     }
   }
 
@@ -141,7 +154,44 @@ test('every contract function the migrations expose has a caller, or a stated re
     select p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname like 'pennsync\\_contract\\_%' order by 1`);
   const exposed = rows.map(row => row.name);
-  assert.ok(exposed.length > 80, 'the migrations should expose the contract surface');
+
+  // This used to open with `exposed.length > 80` under the message "the
+  // migrations should expose the contract surface". A magnitude is not that
+  // claim: the tree declares a hundred and thirty, so the floor had fifty of
+  // slack and no reading of it says which surface is there. What it was
+  // actually load-bearing for is the case where the store came up without the
+  // contracts at all — then `exposed` is empty, the filter below filters
+  // nothing and passes, and the only line left is the loop after it, which
+  // runs zero times the moment `UNCALLED` is empty. `UNCALLED` holds ONE
+  // entry, so that is one port away: the count and the loop were each strong
+  // only while the other's precondition held, and neither states the property.
+  //
+  // The property is that the store exposes exactly the contract functions the
+  // migrations declare, so compare the sets. Each direction means something
+  // different and both are checked:
+  //   exposed \ declared — the store has a function no file here declares,
+  //     which is this harness's parser failing rather than the store drifting.
+  //   declared \ exposed — a file declares one the store does not have. Today
+  //     that is a defect. A forward migration that permanently DROPS a
+  //     contract would land here legitimately, and the remedy then is a named
+  //     list with a reason, the shape `UNCALLED` has. There is no such list
+  //     now, because pre-allowing a name for a case nobody has is a hint
+  //     rather than a control.
+  //
+  // Both of those sets come from the files this harness read, so a read that
+  // returned nothing empties BOTH and they agree with each other. The control
+  // is `captured`, which does not: it comes from driving the service's own
+  // capabilities, and they name their functions in `services/pennsync-api/`.
+  // A harness that built an empty store fails on it, by name.
+  const declared = [...new Set([...applied.join('\n').matchAll(DECLARATION)].map(match => match[1]))].sort();
+  assert.deepEqual([...captured.keys()].sort().filter(name =>
+    name.startsWith('pennsync_contract_') && !declared.includes(name)), [],
+  'the service calls a contract function no migration in this tree declares');
+  assert.deepEqual(declared.filter(name => !exposed.includes(name)), [],
+    'a migration declares a contract function the built store does not expose');
+  assert.deepEqual(exposed.filter(name => !declared.includes(name)), [],
+    'the store exposes a contract function no migration here declares; this harness reads the declarations wrong');
+
   assert.deepEqual(exposed.filter(name => !captured.has(name) && !Object.hasOwn(UNCALLED, name)), [],
     'a contract function no capability calls');
   // And the exemption list cannot rot: each entry is still exposed and still uncalled.
