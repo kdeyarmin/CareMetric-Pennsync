@@ -716,18 +716,31 @@ describe('the declared entity routes', () => {
     expect(checked).toBeGreaterThan(90);
 
     /*
-     * WHAT IS STILL BROKEN, PINNED RATHER THAN SKIPPED. Six landed routes in
-     * the OPERATIONAL family emit `order` while their contracts take no order
-     * parameter, so every call site that passes a sort is refused at the
-     * service. They belong to the batch that landed them and are being fixed
-     * there; pinning them here rather than excluding the family means this test
-     * FAILS when that fix lands and the exclusion has to go with it, which an
-     * exclusion by helper name would not.
+     * WHAT IS STILL BROKEN, PINNED RATHER THAN SKIPPED, WITH AN OWNER EACH.
      *
-     * Measured on 2026-09-29 against `main` at 36402f3. `libraryWrite` and
-     * `brokeredRead` are clean, and the second is clean by luck rather than by
-     * design — its contracts take no order parameter and its routes emit none —
-     * which is why this check is worth having around both.
+     * Measured on 2026-09-29 against `main` at 36402f3. `libraryWrite` is clean
+     * and `brokeredRead` is clean by luck rather than by design — its contracts
+     * take no order parameter and its routes emit none — which is why this check
+     * is worth having around both.
+     *
+     * Six belong to the OPERATIONAL family and to the batch that landed them,
+     * which is auditing them: `AgencySettings.list` and `.filter`,
+     * `PDFTemplate.list` and `.filter`, `DocumentRecord.filter` and
+     * `NoteConversion.list` each declare a field orderable where their contract
+     * takes no order parameter. The seventh, `User.list`, is the ROSTER batch's
+     * and is described below. Pinning them here rather than excluding a helper
+     * by name means this test FAILS as each fix lands and the pin has to go with
+     * it; an exclusion by helper name would stay quiet forever.
+     *
+     * THIS CHECK AND THE STATIC ONE ARE NOT THE SAME POPULATION, and neither is
+     * a superset. This one is driven by the gate's served set, so it reports a
+     * key only where a REAL call site emits the offending argument today. A
+     * check reading the route's declaration instead reports a key whose route
+     * COULD emit one, which is the latent half — `FaceToFaceEncounter.filter`
+     * is in that half and not here, because its single call site passes `null`
+     * for its sort and so emits no `order` at all. Keep both readings: this one
+     * says what is failing now, the other says what the next call site would
+     * break.
      */
     /*
      * `User.list:order` IS A SEPARATE DEFECT AND A WORSE ONE, which is why this
