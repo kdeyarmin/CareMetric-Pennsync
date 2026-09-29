@@ -9999,3 +9999,65 @@ A stale "nothing is pending" HIDES work and reads as reassurance. `docs/RAILWAY_
 Date, instrument, tree. When an entry says "reshape into a dated finding", that sentence is what it means.
 
 Two corollaries. **Removing an assertion is safe in both directions; replacing it with a second unmeasured one is not** — where the current state cannot be measured from where you are, say what was true and when, name the command, and stop. And **report what you checked and left alone**: a sweep that lists only its findings cannot be told from a shallow one, which is why the AGENTS.md line-number citations and the two pinned blocks are recorded as verified rather than silently skipped.
+
+## D169 — An index that names other containers' contents cannot be told from a container that holds them (2026-09-29)
+
+The coordinator's rules for this project now live in six memory files, each
+opening with a pointer that names its five siblings and says which decision
+numbers each of them carries. Splitting them that way was right. What it created
+is a file in which the decision numbers belonging to *other* files appear, in
+prose, above the ones belonging to this one.
+
+To report the split back, this thread derived each file's contents from the file
+itself rather than from what it had intended to write — the right instinct, and
+the instrument was wrong. The population was **"a parenthesised D-number
+anywhere in the body"**, and it reported `claim-vs-evidence` as carrying D153 and
+D157. It carries neither. Both are named in its header pointer, which is how a
+reader is meant to find `negative-result` and `order-and-anchor`.
+
+**The reason it read as obviously right is the reason it was wrong.** Every rule
+in these files is cited the same way — a bold heading, then `(D<n>, whose case
+it is)` — so a scan for parenthesised numbers is precisely the shape the
+contents take. It is also precisely the shape the pointer takes, because a
+pointer that did not name numbers would not be usable. The two are textually
+identical, and **no instrument that reads one container alone can separate
+them**: the distinguishing fact is not in the text, it is in which part of the
+file the text sits in.
+
+So the derivation has to be scoped, and — this is the half worth carrying —
+**the output has to say which line it scoped to.** An unstated scope is not a
+weaker claim than a stated one; it is an unreproducible one. The next reader
+cannot tell whether a number came from the body or the pointer, which is the
+exact question the derivation existed to answer. Here the scope is the paragraph
+beginning `**How to apply:**`, which every file in the series carries and which
+sits below the pointer and above the first rule.
+
+**The near miss is what makes this worth a number.** The coordinator was, at
+that moment, collapsing the index's own section onto these six files and had
+said it would not write a memory link it had guessed — it was waiting on this
+thread's table. Had the unscoped derivation gone out, two rules would have been
+indexed into a file that only mentions them, on the one page that routes
+everybody, and the error would have been discoverable only by opening the target
+— which is what an index exists to spare a reader. That is D155 from the
+other side: D155 is a pointer being wrong about its target, this is a pointer
+being *mistaken for* its target.
+
+What caught it was enumerating the derived set against each file's own bold
+headings. Re-reading the script did not, and would not have; the script does
+exactly what it says.
+
+**Corroboration from the same sitting, and the general remedy.** Three other
+population errors, all from defining a population by pattern: `check:[a-z-]+`
+truncates `check:base44-surface` at the digit, and `check:[a-z0-9-]+` matches
+*inside* `typecheck:signal` and `typecheck:utils` — inventing two gates that do
+not exist while losing one that does. Those were fixed by taking the population
+from an enumeration the system publishes about itself,
+`Object.keys(pkg.scripts).filter(k => k.startsWith('check:'))`. **Where such an
+enumeration exists, derive from it.** A memory file publishes no manifest of its
+own contents, so there was nothing to fall back to, and the substitute is the
+stated scope: cut the region deliberately, name the line you cut at, and let the
+next reader check the cut rather than the conclusion.
+
+This is the mechanical half of the coordinator's own rule that **the index is a
+representation too**. The index is not merely another thing that can go stale;
+it is a thing whose text is indistinguishable from what it describes.
