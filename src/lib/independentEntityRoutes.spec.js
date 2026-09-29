@@ -2010,4 +2010,59 @@ describe("what batch E's routes take on trust", () => {
     expect(crossed, 'the driver has stopped reaching routes rather than the routes having changed')
       .toBeGreaterThan(60);
   });
+  /*
+   * EVERY DECLARATION IS STILL IN THE TABLE IT WAS WRITTEN INTO.
+   *
+   * `ENTITY_ROUTES` is a JavaScript object, so two declarations of one key are
+   * not two -- the later silently replaces the earlier and nothing downstream
+   * can tell. `check:entity-routes` reports coverage over the SURVIVOR, which
+   * is the worst direction for a gate whose job is saying which calls have a
+   * route: it answers "declared" while a key is served by whichever
+   * declaration happened to come last, chosen by nobody.
+   *
+   * ESLint's `no-dupe-keys` catches the case that found this -- two literals
+   * in one literal -- and that is a real defence, in a different gate. It is
+   * NOT the whole class. `DECLARED_ROUTES` spreads `operationalRoutes`, and a
+   * literal colliding with a key that spread produces is invisible to that
+   * rule, because the two are not in the same object literal. Measured, not
+   * reasoned: planting `'Task.filter'` as a literal beside the spread that
+   * already declares it leaves lint SILENT, the gate reporting the same 81
+   * declared, and this suite green -- while the spread wins and a merged,
+   * reviewed route does nothing.
+   *
+   * So the comparison is the source's declarations against the table that came
+   * out of them. It fires on a collision within either block, on a collision
+   * ACROSS them, on a computed key this cannot read, and on a spread from
+   * somewhere this does not know about -- and it fails CLOSED, because a parse
+   * that stops seeing a block reports fewer keys than the table has rather
+   * than agreeing with it.
+   */
+  it('declares each route once, across every block the table is built from', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('src/lib/independentEntityRoutes.js', 'utf8');
+
+    const blockOf = (name) => {
+      const opened = source.indexOf(`const ${name} = Object.freeze({`);
+      expect(opened, `${name} is no longer declared the way this parse reads it`)
+        .toBeGreaterThan(-1);
+      const closed = source.indexOf('\n});', opened);
+      expect(closed).toBeGreaterThan(opened);
+      return source.slice(opened, closed);
+    };
+
+    const declared = ['operationalRoutes', 'DECLARED_ROUTES']
+      .flatMap((name) => [...blockOf(name).matchAll(/^ {2}'([^']+)':/gm)].map(([, key]) => key));
+
+    // The parse reaching the real blocks, proved before it is relied on: a
+    // pattern that matched nothing would report no duplicates just as happily.
+    expect(declared.length).toBeGreaterThan(70);
+
+    const duplicated = declared.filter((key, index) => declared.indexOf(key) !== index);
+    expect(duplicated, 'a route key is declared twice; the later one silently wins and the\n'
+      + '  gate reports coverage over whichever that is').toEqual([]);
+
+    expect([...declared].sort(), 'the source declarations and the built table disagree, so\n'
+      + '  either a key arrives by a route this parse cannot read, or one was lost')
+      .toEqual([...Object.keys(ENTITY_ROUTES)].sort());
+  });
 });
