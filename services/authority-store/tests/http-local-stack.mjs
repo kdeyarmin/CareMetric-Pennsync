@@ -54,6 +54,12 @@ export const MIGRATION_CODES = Object.freeze([
   // D45's notification contract needs D34's `caller_membership`, because the
   // authority envelope it filters on is THIS store's membership.
   'PENNSYNC_CALLER_MEMBERSHIP_REQUIRED',
+  // The three reference tables' writes need the record store's caller helpers
+  // AND the shared field checker the operational tables shipped, because they
+  // call it rather than carrying a fourth copy of it. Applying without it would
+  // create six contracts that fail on their first call instead of at migration
+  // time, which is the same reason every code above this one exists.
+  'PENNSYNC_REFERENCE_WRITES_REQUIRE_RECORD_STORE',
   // D110. Raised by an AUTHORITY migration rather than a record one, which is
   // why it sat outside this list while the scan above read one directory: the
   // deployment pin refuses an app id `known_app` does not carry, so an operator
