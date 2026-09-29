@@ -2846,11 +2846,40 @@ one is `pnpm run check:entity-routes`'s own output and is **pinned**:
 so paste what the tool prints and never retype, rewrap or re-indent it.
 
 ```
-entity routes: 52 declared, 95/237 landable call sites SERVED, 142 still to adopt
-  6 of those are sites a declared route REFUSES (User.list:sort), and 20 pass arguments this cannot read
+entity routes: 54 declared, 98/237 landable call sites SERVED, 139 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 21 pass arguments this cannot read
   8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
-  of those 142, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 141 need a named capability
+  of those 139, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 138 need a named capability
 ```
+
+**The move above is three sites across two routes, and its cause is a
+re-measurement rather than anything new being built.** Both capabilities have
+been shipped since the clinical library landed; what changed is that this
+file's own note calling their call sites unprovable was checked. It named
+`ClinicalLibraryTemplate.list` and `PatientEducationAssignment.filter`, and it
+was right about one site and wrong about three. The template list has TWO call
+sites, not the one the note assumed: the pager passes a computed skip and is
+still unreadable, while the top-templates widget passes two literals. And the
+education sites pass `patient?.id`, which #300 settled is READABLE — a row id's
+value decides nothing a route can be wrong about, where a sort or a limit is
+shape. The note predated that rule, so the reason for the exclusion expired and
+the exclusion did not, which is the same shape as a bucket keeping its name
+after the reason for it has gone.
+
+**Declaring them turned up a latent mis-order in the shared helper, and it is
+the more useful half of this change.** The library reads match a screen's sort
+against a list of FIELDS, and `contract_clinical_library_template_list` orders
+`usage_count DESC`. A screen asking for `+usage_count` would have passed the
+field check, been served the descending page, and had it re-sorted ascending in
+the browser — the most-used templates handed to the screen as the least-used,
+with every other part of the seam behaving correctly. Nothing was reading it
+that way today, so no screen was wrong; it was one ascending call site away.
+The helper's own comment already said what it needed — "the contract has to
+have done the ordering, which `sortable` is the list of" — and a field list is
+not that claim. Each of the seven library routes now names the exact sort
+STRING its contract implements, read off that contract's `order by`, and a
+direction no contract implements refuses. The re-measure was that none of the
+existing call sites passes one, so this narrows the seam and moves no total.
 
 **The move above is 24 sites, and its cause is one order rather than any new
 capability.** The roster contract learned to answer `created_date` descending,

@@ -249,6 +249,35 @@ function brokeredRead({ entity, sortable, filterable = [], filtered }) {
 export const LIBRARY_MAXIMUM = 1000;
 
 /**
+ * A library contract's own order, matched EXACTLY including its DIRECTION.
+ *
+ * `sortKey` admits either direction for a field it knows, which is right for
+ * the broker family: this file does that ordering itself, over a set it has
+ * proved complete. It is wrong here, and `libraryRead`'s own response comment
+ * says why without anything enforcing it — "the contract has to have done the
+ * ordering, which `sortable` is the list of". A field list is not that claim.
+ *
+ * `contract_clinical_library_template_list` orders `usage_count DESC`. A
+ * screen asking for `+usage_count` passes a field check, is served the
+ * DESCENDING page of five, and has it re-sorted ascending here — the five
+ * most-used templates presented as the five least-used. That is this file's
+ * own "sorting a page is a lie", arriving through the direction instead of
+ * through the page, and it is invisible because both halves look right.
+ *
+ * So `sortable` here is a list of sort STRINGS, each taken from its
+ * contract's own `order by`, and a direction no contract implements refuses.
+ * `+x` normalises to `x` because Base44's ascending form has both spellings;
+ * nothing else is normalised.
+ */
+function librarySort(sort, accepted) {
+  if (sort === undefined || sort === null || sort === '') return null;
+  if (typeof sort !== 'string') unsupported('sort');
+  const normalized = sort.startsWith('+') ? sort.slice(1) : sort;
+  if (!accepted.includes(normalized)) unsupported('sort');
+  return { field: normalized.replace(/^-/, ''), descending: normalized.startsWith('-') };
+}
+
+/**
  * A read served by a named contract that answers `{ entries, complete }`.
  *
  * `request` is the per-route part — which of the contract's own arguments the
@@ -274,7 +303,7 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
     request: (...args) => {
       const [query, sort, limit] = argumentsOf(args);
       predicate(query, filterable);
-      sortKey(sort, sortable);
+      librarySort(sort, sortable);
       const size = limit === undefined || limit === null
         ? LIBRARY_MAXIMUM : Math.min(pageSize(limit), LIBRARY_MAXIMUM);
       return { ...(request ? request(query) : {}), limit: size };
@@ -282,7 +311,7 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
     response: (answer, ...args) => {
       const [query, sort, limit] = argumentsOf(args);
       if (!answer || !Array.isArray(answer.entries)) unsupported('answer');
-      const key = sortKey(sort, sortable);
+      const key = librarySort(sort, sortable);
       const kept = answer.entries.filter(predicate(query, filterable));
       const rows = key ? ordered(kept, key.field, key.descending) : kept;
       // The contract measured completeness, so a short page is a fact rather
@@ -1338,20 +1367,32 @@ const DECLARED_ROUTES = Object.freeze({
    * expect to reach, and the contract saying it did not reach it is proof.
    *
    * Only the operations whose call sites pass arguments this file can READ are
-   * declared. `ClinicalLibraryTemplate.list`'s pager passes a computed skip and
-   * `PatientEducationAssignment.filter` passes `patient?.id`, so neither can be
-   * proved here and neither is claimed — the contract and handler exist either
-   * way, which is the half that has to be built whatever the browser seam
-   * turns out to be.
+   * declared, and that sentence used to name these two as examples of what
+   * could not be. **Re-measured, it was right about one of them and wrong
+   * about the other, for a reason that had already been written down.**
+   *
+   * `ClinicalLibraryTemplate.list` has TWO call sites, not one. The pager in
+   * `fetchAllClinicalTemplates.js` passes a computed skip and still cannot be
+   * proved; `TopTemplatesWidget.jsx` passes `('-usage_count', 5)`, every
+   * argument a literal. A route declared for the operation adopts the second
+   * and leaves the first unreadable — which is a route with a proved site, not
+   * an unproved route.
+   *
+   * `PatientEducationAssignment.filter` passes `patient?.id`, and #300 settled
+   * that a ROW ID passed as a variable is readable while a sort or a limit is
+   * not: the id's value decides nothing a route can be wrong about, where a
+   * sort and a limit are shape. Both of its sites are readable under that
+   * rule, and the sentence above predates it — the reason for the exclusion
+   * expired and the exclusion did not.
    */
   'ClinicalPathway.list': Object.freeze({
-    ...libraryRead({ capability: 'listClinicalPathways', sortable: ['created_date'] }),
+    ...libraryRead({ capability: 'listClinicalPathways', sortable: ['-created_date'] }),
     reason: 'The pathway manager reads every pathway, newest first.',
   }),
   'ClinicalPathway.filter': Object.freeze({
     ...libraryRead({
       capability: 'listClinicalPathways',
-      sortable: ['created_date'],
+      sortable: ['-created_date'],
       filterable: ['is_active'],
       filtered: true,
       request: (query) => ({ active_only: query?.is_active === true }),
@@ -1362,10 +1403,24 @@ const DECLARED_ROUTES = Object.freeze({
     ...libraryRead({ capability: 'listClinicalLibraryFolders', sortable: ['order'] }),
     reason: 'The library manager reads the agency-wide folders and the caller\'s own, in display order.',
   }),
+  'ClinicalLibraryTemplate.list': Object.freeze({
+    ...libraryRead({ capability: 'listClinicalLibraryTemplates', sortable: ['-usage_count'] }),
+    reason: 'The top-templates widget reads the most-used templates, which is the contract\'s own order.',
+  }),
+  'PatientEducationAssignment.filter': Object.freeze({
+    ...libraryRead({
+      capability: 'listPatientEducationAssignments',
+      sortable: ['-assigned_date'],
+      filterable: ['patient_id'],
+      filtered: true,
+      request: (query) => ({ patient_id: query?.patient_id }),
+    }),
+    reason: 'The education tracker and the recommender both read one chart\'s assignments, newest first.',
+  }),
   'EducationMaterial.filter': Object.freeze({
     ...libraryRead({
       capability: 'listEducationMaterials',
-      sortable: ['last_used_date'],
+      sortable: ['-last_used_date'],
       filterable: ['is_published'],
       filtered: true,
       request: (query) => ({ published_only: query?.is_published === true }),
@@ -1373,7 +1428,7 @@ const DECLARED_ROUTES = Object.freeze({
     reason: 'The education library and the care-plan engine both read the published materials.',
   }),
   'CustomValidationRule.list': Object.freeze({
-    ...libraryRead({ capability: 'listCustomValidationRules', sortable: ['created_date'] }),
+    ...libraryRead({ capability: 'listCustomValidationRules', sortable: ['-created_date'] }),
     reason: 'The validation rule manager is the only screen, and only an agency_admin reaches it.',
   }),
   'AIConfiguration.list': Object.freeze({
