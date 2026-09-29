@@ -11461,3 +11461,15 @@ One more thing, offered rather than proposed, because it is the same shape a thi
 The sharper half is plan's, and it is what makes this more than a contradiction. Hours after that commit, plan proposed crossing the entry count against a second parse, and I told plan that two parsers written to one convention over one file are not independent — a shape that defeats one defeats the other, and they agree while both being wrong. I was stating the rule to another session while my own comment asserted its opposite, and neither of us knew.
 
 The sentence is GONE: `f57e4dbd` was the last head carrying it and `8d5f74bf` removed it, with the pinned sentinel it sat above. It is written here in the past tense and without a line number on purpose — the file has moved and that reference now lands on an unrelated test, which is this entry's own subject arriving in the citation.
+
+## D197 — an intent question's only instrument is the respondent
+
+When I want to know what somebody MEANT, the only instrument that can answer is that person. The tree cannot answer it, and neither can a diff, a test, or a census — those answer what is there, which is a different question that happens to use some of the same nouns.
+
+The failure is not that I ask the wrong instrument. It is that I ask BOTH questions in one breath, and then read the artefact answer as though it had settled the intent one. An artefact question is cheap and returns immediately; an intent question has to wait for a person. So when the two travel together, the fast answer arrives first, it is well-formed, it is about the same subject, and nothing in it announces that it answered the other half. I never notice the intent question went unanswered, because a reply is sitting where its answer would go.
+
+My instance: I was asked what a capability was FOR, and I put that beside a question about what its module reaches. I measured the module, answered from the measurement, and the intent half was never put to anyone. Had nobody stopped me, you would have answered from the tree and called it an answer about intent.
+
+The remedy is separation rather than care. Ask the intent question on its own, to the respondent, and let it wait; ask the artefact question separately and answer it from the artefact. Where both must go out together, say in the message which half only the respondent can settle, so a reply covering the other half reads as incomplete rather than as an answer.
+
+A rule with only a dramatic instance reads as being about dramatic situations. Mine was not dramatic — it was an ordinary bundled question in an ordinary turn, and that is the shape to watch for, not a grand one.
