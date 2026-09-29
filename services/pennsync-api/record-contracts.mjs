@@ -1260,6 +1260,37 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_AI_AGREEMENT_VERSION_STALE',
     ]),
   }),
+  // The duty toggle, the scheduled window and the off-duty message, and the
+  // FIRST caller of D82's profile-write path -- `pennsync_records.user` had an
+  // update policy, a self-write trigger and no writer at all until this.
+  //
+  // The patch travels as JSONB rather than as six named parameters because the
+  // original distinguishes an ABSENT field from a null one throughout: a null
+  // `off_duty_message` clears it, a null window pair clears the window, and an
+  // absent key leaves the column alone. Six nullable parameters cannot carry
+  // that distinction, and PostgREST resolves an RPC by the names of the body's
+  // keys, so the shape the caller sends is the shape the contract reads.
+  setNurseDutyStatus: Object.freeze({
+    rpc: 'pennsync_contract_duty_status_set',
+    params: Object.freeze(['target_user_email', 'patch']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_target_user_email: args.target_user_email ?? null,
+      p_patch: args.patch ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_DUTY_STATUS_AGENCY_NOT_HELD',
+      'PENNSYNC_DUTY_STATUS_SUBJECT_INVALID',
+      'PENNSYNC_DUTY_STATUS_TARGET_UNSUPPORTED',
+      'PENNSYNC_DUTY_STATUS_PATCH_INVALID',
+      'PENNSYNC_DUTY_STATUS_FIELD_UNSUPPORTED',
+      'PENNSYNC_DUTY_STATUS_VALUE_INVALID',
+      'PENNSYNC_DUTY_STATUS_WINDOW_INCOMPLETE',
+      'PENNSYNC_DUTY_STATUS_WINDOW_INVALID',
+      'PENNSYNC_DUTY_STATUS_WINDOW_TOO_LONG',
+      'PENNSYNC_DUTY_STATUS_NOT_FOUND',
+    ]),
+  }),
   // Signing a policy acknowledgment: the THIRD partial port. `list` is refused
   // by name because its gate is `u.role === 'admin'`, the Base44 built-in
   // admin — the platform tier D14 and D22 removed, exactly as D31 found for

@@ -123,7 +123,7 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=5 records_schema=1 files=9 external_secret=2 none=81
+port queue: entity_authorization=5 files=9 external_secret=2 none=82
 ```
 
 98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 63 | 41 |
+  | `mutating` (derived) | 64 | 42 |
   | `integration` (derived) | 22 | 17 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
@@ -2898,6 +2898,53 @@ capabilities that are already there.
 
 **Exit:** `private_files` rehearsal receipt — source hash equals download hash,
 foreign and revoked denial, expiry and renewal.
+
+#### The duty toggle, and the first caller of D82's profile write
+
+`setNurseDutyStatus` is served by `20260920710000_contract_duty_status.sql`,
+and it is the first thing in the store that writes `pennsync_records.user`.
+D82 built that path — an update policy naming `caller_user_id()` and a trigger
+admitting only `PROFILE_SELF_WRITABLE` — and nothing had called it, so
+`contract-duty-status.test.mjs` is the first evidence either half works.
+
+It reached the queue's startable bucket and left it in the same change, on a
+correction rather than a decision: `writtenColumns` could not read a patch
+assembled into a local object before the call, so a capability whose six
+columns are all on the allowlist was reported as writing outside it.
+
+Four divergences from the original, each proved against it rather than
+described:
+
+* **The cross-user leg is refused by name.** Its only gate is
+  `isProtectedSuperAdmin`, the platform tier D14 and D22 removed, and
+  `user_update` would refuse the write anyway — as a row that did not update,
+  which reaches the caller as success.
+* **Membership is the only way in.** The original admits the platform owner
+  *instead of* an active membership. A narrowing, and not one D40 widens back:
+  there is no agency-scoped successor to "may set anyone's duty status".
+* **A caller holding two agencies is served, and in Base44 is not.**
+  `hasExactActiveAgencyMembership` refuses unless exactly one row comes back,
+  which is how a handler with no envelope establishes a tenant. The business
+  API's invariant is that every request names its tenant, so the compensation is
+  deleted (D68). Its whole blast radius is which agency's activity trail the
+  entry lands in, and the caller holds both.
+* **The change and its trail entry are one transaction.** The original writes
+  `UserActivity` with `.catch()`, so a failed audit leaves the change made and
+  unrecorded (D37).
+
+One detail cannot be ported and is recorded rather than approximated. The
+off-duty message is cut at 320 **UTF-16 code units**, and JavaScript's `slice`
+will cut between the halves of a surrogate pair. PostgreSQL text cannot hold a
+lone surrogate, so `duty_message_bounded` counts units the way D33's
+`bounded_reason` does and drops a character whose second unit would cross the
+bound rather than splitting it — identical for every message that does not cut
+mid-pair, one character shorter for one that does.
+
+The sanitizer is in SQL and not in the service, which is the one place this
+departs from D67's split. The original's own comment says why: the message is
+spoken to callers by TTS and sent as an SMS auto-reply, so stripping markup is a
+disclosure control rather than shaping, and **a control the service applies is a
+control a direct RPC call skips.**
 
 #### CROSS_SUBJECT_DOCUMENT_READ — a stored document is a second problem, and a port never clears it
 

@@ -89,5 +89,6 @@
   "record-migrations/20260920660000_contract_compliance_reads.sql": "d2cc381af88fe304d86fa867375ce74fd0605f177e34c1fdc9b36e22da6046ab",
   "record-migrations/20260920670000_contract_compliance_writes.sql": "a3b8ff5c778b7082b8eaf06f5def1bf4586734a0d73a110630e82eed879d20ab",
   "record-migrations/20260920690000_contract_physician_write.sql": "1723639f3be03a55488f78bd0082aa091aa0b9f819697ef358cc856a3286998f",
-  "record-migrations/20260920700000_contract_reference_writes.sql": "cb2916ff406987c12f77681a222a360bfaa8361e83cc2f98f4ea7ed8352a9976"
+  "record-migrations/20260920700000_contract_reference_writes.sql": "cb2916ff406987c12f77681a222a360bfaa8361e83cc2f98f4ea7ed8352a9976",
+  "record-migrations/20260920710000_contract_duty_status.sql": "ec935b3a3da149c3958a9b154645ebb0e799585f0e626baae0aeb25a6d79b3c9"
 }

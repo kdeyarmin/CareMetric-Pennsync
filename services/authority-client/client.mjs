@@ -173,6 +173,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   triageReferralWithAI: 'json',
   updateAuthorizedPatient: 'json',
   savePayrollProfile: 'json',
+  setNurseDutyStatus: 'json',
   searchPDFs: 'json',
   saveVisitPointConfig: 'json',
   sendAccountReadyEmail: 'json',

@@ -241,6 +241,16 @@ export function readExpectations(root) {
  * (D81), whose document reads nothing tenant-scoped, so which of a caller's
  * memberships authorizes it changes nothing on the page.
  *
+ * `setNurseDutyStatus` (`src/components/voice/DutyStatusCard.jsx`) is admitted
+ * on the sharpest reading yet, and it is one about the ORIGINAL rather than
+ * about the port: `hasExactActiveAgencyMembership` requires EXACTLY ONE active
+ * membership and refuses otherwise, so a caller who could have meant a
+ * different tenant cannot reach the capability at all today. The bound tenant
+ * therefore decides nothing for any caller the incumbent serves. What it does
+ * decide, for a caller the port newly admits, is which agency's activity trail
+ * the entry lands in -- and they hold both, and the row being written is their
+ * own profile, which carries no agency.
+ *
  * `extractPatientDataFromDocument` (`src/components/patient/OCRDocumentExtractor.jsx`,
  * through `src/lib/documentExtraction.js`) is the
  * second, admitted on the same reading and for a sharper reason: the capability

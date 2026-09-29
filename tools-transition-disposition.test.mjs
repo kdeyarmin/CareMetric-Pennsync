@@ -238,7 +238,7 @@ test('the pages carrying the port queue carry what the tool measures', () => {
   // three capabilities back in, and nothing failed. The bucket reached zero
   // again at D91 and is back at one, on a correction to `writtenColumns` rather
   // than on a decision.
-  assert.deepEqual(report.port_blockers.records_schema, ['setNurseDutyStatus'],
+  assert.deepEqual(report.port_blockers.records_schema, [],
     'the startable set changed; re-read what each entry now waits on and move AGENTS.md with it');
   for (const name of report.port_blockers.records_schema) {
     assert.ok(page.includes(name), `AGENTS.md should name ${name} as startable`);
@@ -921,8 +921,8 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // question of the same module, and one that was never blocked at all.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 1, files: 9, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 81 });
+    records_schema: 0, files: 9, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    external_secret: 2, none: 82 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -1010,15 +1010,16 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // It went to 3, back to 0, and is 1, and every direction is the queue
   // reading correctly: D84 moved three capabilities OUT of
   // `entity_not_carried` by settling their one uncarried leg, D89, D90 and D91
-  // then wrote all three, and `setNurseDutyStatus` arrived when
-  // `writtenColumns` learned to read a patch assembled before the call. A
+  // then wrote all three, and `setNurseDutyStatus` arrived and left in one
+  // change when `writtenColumns` learned to read a patch assembled before the
+  // call. A
   // bucket that only ever falls is a bucket nobody can move work into, and one
   // that never falls is a queue nobody is clearing.
   //
   // The entry it holds now is the one worth reading twice, because it arrived
   // from `entity_authorization` rather than from a decision or a port: the
   // capability was never blocked, and the reader said it was.
-  assert.deepEqual(report.port_blockers.records_schema, ['setNurseDutyStatus']);
+  assert.deepEqual(report.port_blockers.records_schema, []);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -1148,7 +1149,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'savePayrollProfile', 'saveVisitPointConfig', 'searchPDFs',
       'sendAccountReadyEmail', 'sendCredentialRenewalReminders',
       'sendExpirationNotifications', 'sendPersonnelExpirationNotifications',
-    'sendWelcomeEmail', 'splitReferralPDF',
+    'sendWelcomeEmail', 'setNurseDutyStatus', 'splitReferralPDF',
       'submitIncidentReport',
       'submitPersonnelCredential', 'submitStateReportableIncident',
       'submitTimeOffRequest', 'submitTimesheet',
@@ -1782,22 +1783,23 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // paused at source all along, went to 3 under D84 — which is the queue
   // working rather than failing, since those are carried capabilities whose
   // one uncarried leg now has a named successor — reached 0 again once D89,
-  // D90 and D91 wrote all three, and is back at 1. A count that only ever
-  // falls cannot represent work arriving, and one that only ever rises is a
-  // queue nobody is clearing.
+  // D90 and D91 wrote all three, and went to 1 and back inside one change. A
+  // count that only ever falls cannot represent work arriving, and one that
+  // only ever rises is a queue nobody is clearing.
   //
-  // The entry it holds now arrived on a correction to `writtenColumns` rather
-  // than on a decision: `setNurseDutyStatus` assembles its patch into a local
-  // object before the call, which the reader could not see, so a capability
-  // whose six columns are all on D82's allowlist was reported as writing
-  // something outside it.
+  // That last entry arrived on a correction to `writtenColumns` rather than on
+  // a decision: `setNurseDutyStatus` assembles its patch into a local object
+  // before the call, which the reader could not see, so a capability whose six
+  // columns are all on D82's allowlist was reported as writing something
+  // outside it. It was written the same day it became visible, so the measured
+  // line never carried it and only this comment records that it was there.
   //
   // The label on the last of them was wrong on this page until the module was
   // read. It was filed as carrying "two `Core.SendEmail` behind
   // `outboundDeliveryGate`"; it has ONE, and the branch it sits on is one the
   // module already refuses itself — D79's `generatePatientHandout` exactly, so
   // D81's partial shape served it. The other "SendEmail" was a docstring.
-  assert.deepEqual(report.port_blockers.records_schema, ['setNurseDutyStatus']);
+  assert.deepEqual(report.port_blockers.records_schema, []);
 });
 
 test('a flag pinned true pauses a handler exactly as one pinned false does', () => {

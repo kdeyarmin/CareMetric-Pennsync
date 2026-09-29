@@ -1171,6 +1171,29 @@ export const HANDLERS = Object.freeze({
         { agreement_version: params.agreement_version });
     },
   }),
+  setNurseDutyStatus: Object.freeze({
+    // Only the keys the caller actually sent reach the contract, because the
+    // original distinguishes absent from null on every one of them: a null
+    // message clears it, a null window pair clears the window, and an absent
+    // key leaves the column alone. Rebuilding the patch from `hasOwn` is what
+    // keeps that distinction, and `undefined` would not survive JSON anyway.
+    //
+    // `exactObject` refuses an unknown key where the original destructures and
+    // ignores it. A NARROWING, and the same one D39 argues for: a silent drop
+    // is what keeps a caller away from a field they must not set AND what
+    // loses a misspelled `scheduled_off_duty_recuring` without telling anyone.
+    handle({ params, contract }) {
+      const fields = ['duty_status', 'off_duty_message', 'scheduled_off_duty_start',
+        'scheduled_off_duty_end', 'scheduled_off_duty_recurring'];
+      exactObject(params, [...fields, 'target_user_email'], 'INVALID_PARAMS');
+      const patch = {};
+      for (const field of fields) {
+        if (Object.hasOwn(params, field)) patch[field] = params[field];
+      }
+      return contract('setNurseDutyStatus',
+        { target_user_email: params.target_user_email ?? null, patch });
+    },
+  }),
   policyAcknowledgment: Object.freeze({
     // The original defaults `action` to `acknowledge` when absent, and this
     // keeps that. `list` is refused HERE rather than at the contract, because
