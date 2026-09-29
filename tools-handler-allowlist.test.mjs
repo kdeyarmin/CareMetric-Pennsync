@@ -226,10 +226,18 @@ test('a key outside the allowlist is reported, by site and by name', () => {
 test('an action-dispatched handler is reported, not silently skipped', async () => {
   const { HANDLER_NAMES } = await import('./services/pennsync-api/handlers.mjs');
   const { admits, dispatched, parameterless, unresolved, entries } = handlerAllowlists(repository);
-  assert.equal(entries, HANDLER_NAMES.length,
+  // The NAMES, not the count. Two lengths agreeing is not the two populations
+  // agreeing: a regex that misses one real handler while matching one
+  // non-entry of the same shape keeps both at 131 and passes here with the
+  // wrong set -- the partial blindness this assertion exists to refuse,
+  // surviving inside the fix for it. Comparing the union subsumes the count.
+  assert.deepEqual(
+    [...admits.keys(), ...dispatched, ...parameterless, ...unresolved].sort(),
+    [...HANDLER_NAMES].sort(),
     'the registry parse and the registry disagree. This is a sentinel on the\n'
     + '  PARSE: it holds while capabilities are added or removed, and moves only\n'
     + '  when this module stops reading handlers.mjs the way handlers.mjs is written.');
+  assert.equal(entries, HANDLER_NAMES.length);
   assert.deepEqual([...dispatched].sort(), [
     'listAuthorizedPatients', 'manageAgencyMembership', 'manageAuthorizedReferral',
     'manageMyNotifications', 'managePatientCareTeamAssignment', 'manageVehicleMaintenance',

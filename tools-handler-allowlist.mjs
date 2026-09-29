@@ -198,7 +198,7 @@ const keyList = text => Object.freeze(
   text.split(',').map(key => key.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean));
 
 /**
- * The allowlists a handler may NAME instead of writing out.
+ * The allowlists a handler may NAME instead of writing out, BY MODULE.
  *
  * Read across the directory on purpose, which is the one cross-module read this
  * module makes: `STATE_INCIDENT_FIELDS` and `AI_REPORT_PARAMS` are exported
@@ -207,18 +207,45 @@ const keyList = text => Object.freeze(
  * same act as counting ENTRIES elsewhere -- the registry alone says which
  * capabilities exist, while the list one of them admits is wherever it is
  * declared.
+ *
+ * Keyed on (file, name) rather than on name alone. A flat map would make a
+ * duplicated export name last-file-wins under `Map.set`, so a second module
+ * declaring `AI_REPORT_PARAMS` would silently check a handler against an
+ * unrelated list while still reporting it RESOLVED -- a wrong answer wearing a
+ * clean one, which is the failure this whole module exists to refuse. No name
+ * is duplicated today; the point is that nothing said so.
  */
 export function namedAllowlists(directory) {
   const declared = new Map();
   for (const file of readdirSync(directory).sort()) {
     if (!file.endsWith('.mjs') || file.endsWith('.test.mjs')) continue;
     const source = readFileSync(join(directory, file), 'utf8');
+    const byName = new Map();
     for (const match of source.matchAll(
       /^export const ([A-Z][A-Z0-9_]*)\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/gm)) {
-      declared.set(match[1], keyList(match[2]));
+      byName.set(match[1], keyList(match[2]));
     }
+    declared.set(`./${file}`, byName);
   }
   return declared;
+}
+
+/**
+ * Which module the registry imports each name from.
+ *
+ * The binding is what decides the list, not the name: resolving by name across
+ * a directory answers a question nobody asked. A name the registry does not
+ * import cannot be resolved at all, which is the fail-closed direction.
+ */
+export function importedConstants(source) {
+  const from = new Map();
+  for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+    for (const part of match[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop().trim();
+      if (name) from.set(name, match[2]);
+    }
+  }
+  return from;
 }
 
 /**
@@ -248,6 +275,7 @@ export function handlerAllowlists(repository) {
   const directory = resolve(repository, API_DIRECTORY);
   const named = namedAllowlists(directory);
   const source = readFileSync(join(directory, REGISTRY_FILE), 'utf8');
+  const importedFrom = importedConstants(source);
   const found = [...source.matchAll(ENTRY)].map(match => ({ name: match[1], at: match.index }));
 
   const admits = new Map();
@@ -262,7 +290,7 @@ export function handlerAllowlists(repository) {
     if (lists.length > 1) { dispatched.add(entry.name); continue; }
     const only = lists[0];
     if (only.startsWith('[')) { admits.set(entry.name, keyList(only.slice(1, -1))); continue; }
-    const resolved = named.get(only);
+    const resolved = named.get(importedFrom.get(only))?.get(only);
     if (resolved) admits.set(entry.name, resolved);
     else unresolved.add(entry.name);
   }
