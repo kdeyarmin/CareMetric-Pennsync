@@ -18,8 +18,8 @@ AI, email and private-file adapters; it serves the two AI operations and,
 since 2026-09-25, `SendEmail`, with its browser route off and its browser
 operation list empty.
 `services/pennsync-api` is the home for backend handlers ported out of Base44
-and serves every name the release ladder emits, the two account-email senders
-included — **126 handlers over six waves when `node
+and implements every name the release ladder emits, the two account-email
+senders included — **126 handlers over six waves when `node
 tools-pennsync-release-ladder.mjs` was run on `3c94246c` on 2026-09-29, not the
 80 this line carried before then.** Re-run it rather than quoting either number.
 Outbound delivery was switched on on 2026-09-25, so those two can now send

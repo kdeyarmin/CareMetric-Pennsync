@@ -31,8 +31,13 @@ and had drifted by forty-six with nothing able to notice.
 outlived it.** This page used to say the two names absent from `operations`
 were `sendAccountReadyEmail` and `sendWelcomeEmail`, kept out of every emitted
 value by `OWNER_HELD` in `tools-pennsync-release-ladder.mjs`. The owner emptied
-that list on 2026-09-25 (#283, D100), so both senders are in every value the
-tool emits and `heldNames` is `[]`. The facility itself stays, empty, and every
+that list on 2026-09-25 (#283, D100), so `heldNames` is `[]` and the hold no
+longer filters either sender out of anything. That is **not** the same as both
+names being in every value the tool emits, which an earlier draft of this
+sentence said: the senders are members of the final `integration` wave, and a
+wave's value is cumulative, so every value before that one omits them whether
+the hold is empty or not. What the emptying changed is the filter, not the
+membership. The facility itself stays, empty, and every
 guard over it is driven from a synthetic hold in the tests, because a guard an
 empty list cannot fire has not been shown to work. **That is checkable from the
 tree** — `OWNER_HELD` is `Object.freeze({})` in that module — so nothing here
