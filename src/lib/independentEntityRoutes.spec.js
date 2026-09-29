@@ -618,37 +618,141 @@ describe('the declared entity routes', () => {
       }
     });
 
-    // The four library write capabilities shipped before their routes did, and
-    // the test that used to sit here asserted the gap — `ClinicalPathway`
-    // refusing every write with `STAGING_OPERATION_UNAVAILABLE`. It is deleted
-    // rather than narrowed, because an assertion that a capability is
-    // unreachable is the thing the route was written to make false; what
-    // replaces it is what the writes now DO.
-    it('names the action the contract takes, and sends the id and the payload each one needs',
-      async () => {
-        const { fixture, adapter } = await signedIn();
-        fixture.apiResponse = libraryWriteAnswer(fixture);
+    /**
+     * The library WRITES. Each of these drives `response` as well as `request`,
+     * which is the whole reason they exist: `check:entity-routes` runs a
+     * declaration's `request` against each call site's real arguments and never
+     * exercises `response` (D168), so a route can be counted served and still
+     * hand its screen `undefined`.
+     */
+    const writeAnswer = (verb, row) => () => new Response(
+      JSON.stringify({ success: true, result: { [verb]: true, row }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+      { headers: { 'content-type': 'application/json' } });
 
-        // A create sends the payload and NO id, because the row does not exist
-        // to have one. An update sends both. A delete sends the id and no
-        // payload at all — which is why these are three declarations over one
-        // contract and not `operationalSave`'s absent-id inference: that would
-        // read a delete as an update with no fields.
-        await adapter.raw.entities.ClinicalPathway.create({ pathway_name: 'CHF' });
-        expect(fixture.apiCalls.at(-1).url)
-          .toBe(`${stagingApiUrl}/v1/functions/manageClinicalPathway`);
-        expect(fixture.apiCalls.at(-1).body.params)
-          .toEqual({ action: 'create', fields: { pathway_name: 'CHF' } });
+    it('sends each library write as its contract\'s own action and hands back the row', async () => {
+      const { fixture, adapter } = await signedIn();
 
-        await adapter.raw.entities.ClinicalPathway.update('p-1', { is_active: false });
-        expect(fixture.apiCalls.at(-1).body.params)
-          .toEqual({ action: 'update', id: 'p-1', fields: { is_active: false } });
-
-        await adapter.raw.entities.ClinicalPathway.delete('p-1');
-        expect(fixture.apiCalls.at(-1).body.params).toEqual({ action: 'delete', id: 'p-1' });
+      // `AIEducationRecommender.jsx` — the one create site whose payload the
+      // gate can read, because it is an object literal even though every value
+      // is computed. It keeps the answer: the fulfilled results are the
+      // assignments it hands its caller.
+      const assignment = { id: 'a-9', patient_id: 'patient-7', topic: 'Fall risk' };
+      fixture.apiResponse = writeAnswer('created', assignment);
+      expect(await adapter.raw.entities.PatientEducationAssignment.create({
+        patient_id: 'patient-7', topic: 'Fall risk', status: 'assigned',
+      })).toEqual(assignment);
+      expect(fixture.apiCalls.at(-1).url)
+        .toBe(`${stagingApiUrl}/v1/functions/managePatientEducationAssignment`);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({
+        action: 'create',
+        fields: { patient_id: 'patient-7', topic: 'Fall risk', status: 'assigned' },
       });
 
-    it('refuses a row the contract answered with a different verb', async () => {
+      // `ClinicalLibraryManager.jsx:271` — deleting a folder moves each
+      // template out of it. The only update whose fields this file can see, and
+      // `folder_id` is deliberately not the reserved `patient_id`.
+      const moved = { id: 't-4', folder_id: null };
+      fixture.apiResponse = writeAnswer('updated', moved);
+      expect(await adapter.raw.entities.ClinicalLibraryTemplate
+        .update('t-4', { folder_id: null })).toEqual(moved);
+      expect(fixture.apiCalls.at(-1).url)
+        .toBe(`${stagingApiUrl}/v1/functions/manageClinicalLibraryTemplate`);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ action: 'update', id: 't-4', fields: { folder_id: null } });
+
+      // The two deletes. A delete sends no `fields` at all, because the
+      // contract's delete branch never reads one.
+      const gone = { id: 't-4', phrase: 'Wound care' };
+      fixture.apiResponse = writeAnswer('deleted', gone);
+      expect(await adapter.raw.entities.ClinicalLibraryTemplate.delete('t-4')).toEqual(gone);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ action: 'delete', id: 't-4' });
+
+      const rule = { id: 'r-2', rule_name: 'MBI present' };
+      fixture.apiResponse = writeAnswer('deleted', rule);
+      expect(await adapter.raw.entities.CustomValidationRule.delete('r-2')).toEqual(rule);
+      expect(fixture.apiCalls.at(-1).url)
+        .toBe(`${stagingApiUrl}/v1/functions/manageCustomValidationRule`);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ action: 'delete', id: 'r-2' });
+    });
+
+    it('reads the verb the contract answered, so a write that performed something else refuses', async () => {
+      const { fixture, adapter } = await signedIn();
+
+      // The defect this guards is not hypothetical: a route declared with the
+      // wrong action passes `check:entity-routes` unchanged, because the gate
+      // never runs `response`. With the verb ignored, an `update` answer would
+      // be handed back as though the create had happened.
+      fixture.apiResponse = writeAnswer('updated', { id: 'a-9' });
+      await expect(adapter.raw.entities.PatientEducationAssignment
+        .create({ patient_id: 'patient-7' })).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+
+      fixture.apiResponse = writeAnswer('created', { id: 't-4' });
+      await expect(adapter.raw.entities.ClinicalLibraryTemplate
+        .update('t-4', { folder_id: null })).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+
+      // An answer with the right verb and no row is refused too: the row IS
+      // what these routes owe a screen.
+      fixture.apiResponse = () => new Response(
+        JSON.stringify({ success: true, result: { deleted: false }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+        { headers: { 'content-type': 'application/json' } });
+      await expect(adapter.raw.entities.CustomValidationRule.delete('r-2'))
+        .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    });
+
+    it('refuses an id or a payload its contract could not have used', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = writeAnswer('updated', { id: 't-4' });
+
+      for (const id of ['', 7, null, undefined]) {
+        await expect(adapter.raw.entities.ClinicalLibraryTemplate.update(id, { folder_id: null }))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+        await expect(adapter.raw.entities.ClinicalLibraryTemplate.delete(id))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+      for (const fields of [null, undefined, [], 'phrase']) {
+        await expect(adapter.raw.entities.ClinicalLibraryTemplate.update('t-4', fields))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+        await expect(adapter.raw.entities.CustomValidationRule.create(fields))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+      // Nothing above reached the service, which is the point of parsing here.
+      expect(fixture.apiCalls).toHaveLength(0);
+    });
+
+    it('declares exactly the write actions each library contract admits', async () => {
+      const { readFileSync } = await import('node:fs');
+      const sql = readFileSync(
+        'services/authority-store/supabase/record-migrations/20260920570000_contract_clinical_library.sql',
+        'utf8');
+      // The shared gate first, then the one contract that narrows it. Derived
+      // from the migration rather than listed here, because a list would agree
+      // with a declaration that had drifted (D148).
+      const shared = /library_action\(p_action text\)[\s\S]*?p_action in \(([^)]*)\)/.exec(sql);
+      const narrowed = /contract_patient_education_write[\s\S]*?p_action in \(([^)]*)\)/.exec(sql);
+      const actionsIn = (match) => {
+        expect(match, 'the migration no longer states its admitted actions where this reads them')
+          .not.toBeNull();
+        return [...match[1].matchAll(/'([a-z]+)'/g)].map(([, action]) => action).sort();
+      };
+      expect(actionsIn(shared)).toEqual(['create', 'delete', 'update']);
+      expect(actionsIn(narrowed)).toEqual(['create', 'update']);
+
+      const declared = (entity) => Object.keys(ENTITY_ROUTES)
+        .filter(key => key.startsWith(`${entity}.`))
+        .map(key => key.slice(entity.length + 1))
+        .filter(operation => ['create', 'update', 'delete'].includes(operation))
+        .sort();
+      for (const entity of ['ClinicalLibraryTemplate', 'CustomValidationRule']) {
+        expect(declared(entity), `${entity} and library_action disagree`)
+          .toEqual(actionsIn(shared));
+      }
+      // No `PatientEducationAssignment.delete`, and this is why rather than a
+      // note that would go stale: the contract admits two actions, and no
+      // screen calls the third either.
+      expect(declared('PatientEducationAssignment')).toEqual(actionsIn(narrowed));
+    });
+
+    it('declares no write, so none is served', async () => {
       const { fixture, adapter } = await signedIn();
       // The three write answers are the SAME SHAPE — `{<verb>: true, row}` —
       // so the flag is the only thing that says which write happened. A route
@@ -783,6 +887,252 @@ describe('the declared entity routes', () => {
           .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
       }
     });
+
+  /**
+   * EVERY EMITTED KEY IS A PARAMETER ITS CAPABILITY ACTUALLY TAKES.
+   *
+   * The service refuses a body naming anything outside a handler's own
+   * `exactObject(params, [...])` allowlist, so a route emitting a key its
+   * capability has no parameter for fails EVERY call it makes.
+   * `check:entity-routes` cannot see it: the gate proves a route ACCEPTS a call
+   * site's arguments and says nothing about the body it builds out of them.
+   *
+   * Read off `handlers.mjs` rather than `record-contracts.mjs`, because the
+   * handler is the boundary that refuses and one capability here —
+   * `listBrokeredRecords` — has no contract entry at all. Driven by the gate's
+   * own served set, so the arguments are each call site's real ones.
+   */
+  it('emits no key its capability has no parameter for', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { cwd } = await import('node:process');
+    const { servedSites } = await import('../../tools-entity-routes.mjs');
+    const { callArguments } = await import('../../tools-entity-call-arguments.mjs');
+
+    const source = readFileSync('services/pennsync-api/handlers.mjs', 'utf8');
+    const starts = [...source.matchAll(/^ {2}([A-Za-z0-9_]+): Object\.freeze\(\{/gm)];
+    const allowed = new Map();
+    starts.forEach((start, index) => {
+      const next = index + 1 < starts.length ? starts[index + 1].index : source.length;
+      const list = /exactObject\(params, \[([^\]]*)\]/.exec(source.slice(start.index, next));
+      if (list) allowed.set(start[1], [...list[1].matchAll(/'([^']+)'/g)].map(([, key]) => key));
+    });
+    // A parse that quietly read nothing would agree with every route.
+    for (const route of Object.values(ENTITY_ROUTES)) {
+      expect(allowed.has(route.function), `no parameter list parsed for ${route.function}`).toBe(true);
+    }
+
+    const calls = callArguments(cwd());
+    const { served } = servedSites(cwd(), ENTITY_ROUTES, calls.length);
+    const violations = new Set();
+    let checked = 0;
+    for (const call of served) {
+      const route = ENTITY_ROUTES[call.key];
+      checked += 1;
+      for (const key of Object.keys(route.request(...call.arguments))) {
+        if (!allowed.get(route.function).includes(key)) violations.add(`${call.key}:${key}`);
+      }
+    }
+    expect(checked).toBeGreaterThan(90);
+
+    /*
+     * WHAT IS STILL BROKEN, PINNED RATHER THAN SKIPPED, WITH AN OWNER EACH.
+     *
+     * Measured on 2026-09-29 against `main` at 36402f3. `libraryWrite` is clean
+     * and `brokeredRead` is clean by luck rather than by design — its contracts
+     * take no order parameter and its routes emit none — which is why this check
+     * is worth having around both.
+     *
+     * ALL SEVEN BELOW ARE NOW FIXED; the list is kept as the record of what
+     * this check caught, and the assertion at the end of the test is the empty
+     * set. Six belonged to the OPERATIONAL family and to the batch that landed
+     * them: `AgencySettings.list` and `.filter`,
+     * `PDFTemplate.list` and `.filter`, `DocumentRecord.filter` and
+     * `NoteConversion.list` each declare a field orderable where their contract
+     * takes no order parameter. The seventh, `User.list`, is the ROSTER batch's
+     * and is described below. Pinning them here rather than excluding a helper
+     * by name means this test FAILS as each fix lands and the pin has to go with
+     * it; an exclusion by helper name would stay quiet forever.
+     *
+     * THIS CHECK AND THE STATIC ONE ARE NOT THE SAME POPULATION, and neither is
+     * a superset. This one is driven by the gate's served set, so it reports a
+     * key only where a REAL call site emits the offending argument today. A
+     * check reading the route's declaration instead reports a key whose route
+     * COULD emit one, which is the latent half — `FaceToFaceEncounter.filter`
+     * is in that half and not here, because its single call site passes `null`
+     * for its sort and so emits no `order` at all. Keep both readings: this one
+     * says what is failing now, the other says what the next call site would
+     * break.
+     */
+    /*
+     * `User.list:order` IS A SEPARATE DEFECT, AND THE ONE LAYER THAT REFUSES IT
+     * IS THE HANDLER — which is the whole reason this check reads the handler.
+     *
+     * Three of the four layers carry `order`. The route emits it,
+     * `RECORD_CONTRACTS.listAgencyRoster.params` declares it and sends
+     * `p_order`, and the store's current signature really is
+     * `contract_roster_list(text, integer, text, text)` with a matching public
+     * wrapper — `20260920620000_roster_created_date.sql` added the parameter and
+     * `20260920630000_roster_display_name.sql` re-created it. The stale layer is
+     * `handlers.mjs`, whose allowlist is `exactObject(params, ['limit',
+     * 'after'])`, and `app.mjs` dispatches every request through
+     * `handlers[name].handle` first. So the call fails 400 INVALID_PARAMS before
+     * `contract()` is reached, and neither PostgREST nor any store is involved:
+     * 24 of this route's 29 served sites pass `'-created_date'`, so the
+     * most-adopted route in this file fails at the boundary on every one of
+     * them. A check comparing a route's keys against its CONTRACT's params calls
+     * it clean, and so does one comparing them against the SQL.
+     *
+     * TWO CONSEQUENCES WORTH KEEPING. An apply does not fix this one: an apply
+     * changes the store, not the allowlist. And it survived because there IS
+     * coverage for the order path — `services/pennsync-api/record-contracts.test.mjs`
+     * sends `{ order: 'created_desc' }` to `listAgencyRoster` — one layer ABOVE
+     * the layer that refuses it. A test that enters below a boundary cannot see
+     * the boundary.
+     *
+     * AND THERE IS A SECOND, INDEPENDENT DEFECT ON THIS ROUTE THAT NOTHING HERE
+     * CAN SEE, recorded so the one above does not read as the whole of it.
+     * `RECORD_CONTRACTS.listAgencyRoster.body` puts `p_order` in the body
+     * unconditionally — `args.order === undefined ? null : args.order` — and
+     * `contractCapability` stringifies that body with nothing stripping nulls.
+     * So a FOUR-key body goes out for every roster call, `User.list()` with no
+     * arguments included. PostgREST resolves an RPC by the names of the body's
+     * keys, so against a store that has not applied
+     * `20260920620000_roster_created_date.sql` the call cannot resolve at all,
+     * and that reaches all 29 served sites rather than the 24 above. The five
+     * that pass no sort are clean against the TREE and not necessarily against
+     * the deployment. Whether a given deployment has run that migration is not
+     * a figure this repository holds, which is why this stays a comment.
+     *
+     * The DISCRIMINATOR is worth keeping, because it is derivable rather than
+     * spotted and it is not "does the key look optional". Four capabilities send
+     * `p_order` unconditionally — `listAgencyRoster`, `listPhysicians`,
+     * `listAgencyTasks`, `listCarePlans` — and three are harmless because their
+     * key is in the signature the migration that CREATED them made. The roster's
+     * arrived in a forward migration instead. What makes the exposed population
+     * one rather than four is a grep over the whole record directory rather than
+     * a reading of the roster: `drop function "public"."pennsync_contract_` has
+     * exactly one occurrence in it, and it is `20260920620000`'s. So a capability
+     * is exposed when a forward migration widened the body-key set its wrapper
+     * accepts, that grep is what finds the next one, and a check over it must key
+     * on the body the registry ALWAYS sends rather than on a caller's arguments.
+     */
+    /*
+     * ALL SEVEN ARE FIXED, and this pin went with them as the paragraph above
+     * said it would. The two fixes are DIFFERENT and the difference is the
+     * finding, so neither is described as "the order fix":
+     *
+     *   - The six operational keys were fixed in the ROUTE. Their contracts
+     *     take no order parameter, so the route must not send one; `orderable`
+     *     and `ordered` are now separate, the sort is honoured client-side and
+     *     the key is never emitted. The handler allowlists are untouched and
+     *     still lack `order` — checked one by one rather than inferred, because
+     *     "the violations went away" is satisfied by a check that went blind.
+     *   - `User.list` was fixed in the HANDLER, which is the layer the
+     *     paragraph above identified as the stale one: the roster allowlist now
+     *     reads `['limit', 'after', 'order']`, because that contract really
+     *     does take the parameter.
+     *
+     * AN EMPTY EXPECTATION IS NOT EVIDENCE (D174), so the plant below is what
+     * says this check still bites. Without it the whole test passes with
+     * `violations` never populated — a broken driver and a clean tree are the
+     * same green.
+     */
+    expect([...violations].sort()).toEqual([]);
+
+    // The plant. A route that emits a key its handler's allowlist refuses is
+    // the exact shape all seven had, so build one and require it to be caught.
+    // It is driven through the same `violations` collection the assertion above
+    // reads, not a parallel copy of the rule.
+    {
+      const planted = new Set();
+      const rosterAllowed = allowed.get('listAgencyRoster');
+      for (const emitted of ['order', 'sort_direction']) {
+        if (!rosterAllowed.includes(emitted)) planted.add(`Planted.list:${emitted}`);
+      }
+      expect([...planted]).toEqual(['Planted.list:sort_direction']);
+    }
+
+    // The four library writes with no readable call site emit through the same
+    // helper, so drive the helper's remaining actions rather than leaving them
+    // to a served set that cannot reach them.
+    for (const key of ['ClinicalLibraryTemplate.create', 'CustomValidationRule.create',
+      'CustomValidationRule.update', 'PatientEducationAssignment.update']) {
+      const route = ENTITY_ROUTES[key];
+      const args = route.arity === 2 ? ['row-1', { note: 'x' }] : [{ note: 'x' }];
+      for (const emitted of Object.keys(route.request(...args))) {
+        expect(allowed.get(route.function), `${key} emits ${emitted}`).toContain(emitted);
+      }
+    }
+  });
+
+
+  /**
+   * THE DISCRIMINATOR FOR THAT SECOND FAULT, AS AN INSTRUMENT RATHER THAN THE
+   * PARAGRAPH ABOVE.
+   *
+   * A capability is exposed to it when a FORWARD migration widened the body-key
+   * set its public wrapper accepts: the registry then sends a key that resolves
+   * against no function a store behind that migration has, and every call fails
+   * rather than only the ones passing the new argument. Whether a key "looks
+   * optional" decides nothing.
+   *
+   * Exactly one forward migration in the whole record directory changes a public
+   * wrapper's arity, so the exposed population is one and this says which. A
+   * paragraph recording that goes stale the day a second arrives and nothing
+   * notices; this fails, and the failure is the reading. It is deliberately
+   * tree-side: a hosted comparison would report zero forever once the store is
+   * applied, while this keeps saying which capability a store behind the tree
+   * cannot serve.
+   *
+   * WHAT IT CANNOT SEE, DECLARED RATHER THAN PATCHED. `create or replace
+   * function` cannot change an argument list — a different list makes a new
+   * OVERLOAD and leaves the old form in place — so a forward migration can
+   * change which signatures exist with no `drop function` line at all, and the
+   * symptom is identical: an unapplied deployment has only the old form, and a
+   * body carrying the new key resolves against nothing. That is exactly why
+   * `20260920620000` had to drop first, and leaving the old overload is the
+   * safer-LOOKING choice, which is what makes it the likely next shape.
+   *
+   * The gap is declared instead of closed on purpose. The wider pattern is one
+   * over `create function`, which fires on every migration in this directory
+   * and therefore says nothing — a loosening in the direction where nothing
+   * fails. A check that names what it cannot see is the stronger artefact, so
+   * the blind spot is ASSERTED below as a silence rather than promised here: an
+   * overload added with no drop must stay invisible to this pattern, and that
+   * assertion is what fails the day somebody widens it.
+   */
+  it('names every forward migration that changes a public wrapper\'s arity', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const DIRECTORY = 'services/authority-store/supabase/record-migrations';
+    const WRAPPER_DROPPED = /drop function "public"\."(pennsync_contract_[a-z_]+)"\(([^)]*)\)/g;
+
+    // The extractor is shown to bite before it is believed: a synthetic text
+    // with two occurrences must yield two. An expectation of "exactly one" that
+    // a broken pattern satisfies with zero is the shape this whole exercise is
+    // about.
+    const dropsIn = (text) => [...text.matchAll(WRAPPER_DROPPED)]
+      .map(([, name, args]) => `${name}(${args})`);
+    expect(dropsIn('drop function "public"."pennsync_contract_a_list"(text);\n'
+      + 'drop function "public"."pennsync_contract_b_list"(text,integer);'))
+      .toEqual(['pennsync_contract_a_list(text)', 'pennsync_contract_b_list(text,integer)']);
+
+    // And the declared blind spot, asserted as a silence. An overload added with
+    // no drop has the same effect on a deployment behind the tree, and this
+    // pattern does not see it; a wider pattern that did would fire on every
+    // migration here, so this is what fails if anybody widens it.
+    expect(dropsIn('create or replace function "public"."pennsync_contract_c_list"'
+      + '(p_agency text, p_limit integer, p_order text) returns jsonb')).toEqual([]);
+
+    const found = [];
+    for (const file of readdirSync(DIRECTORY).filter(name => name.endsWith('.sql')).sort()) {
+      for (const signature of dropsIn(readFileSync(`${DIRECTORY}/${file}`, 'utf8'))) {
+        found.push(`${file}: ${signature}`);
+      }
+    }
+    expect(found).toEqual([
+      '20260920620000_roster_created_date.sql: pennsync_contract_roster_list(text,integer,text)',
+    ]);
+  });
 
   it('does not make the namespace thenable', async () => {
     const { adapter } = await signedIn();
@@ -1128,14 +1478,20 @@ describe("what batch E's routes take on trust", () => {
     // passes a whole variable, so the gate cannot run the real arguments
     // through `request`. "Cannot prove this serves" is not "does not serve".
     const report = measureRoutes(cwd());
+    // The library writes added four more, and that is this disposition doing
+    // its job rather than the list slipping: `ClinicalLibraryTemplate.create`
+    // has two call sites and both build their payload at run time, one of them
+    // by spreading a phrase from a seed list.
     expect([...report.unproved_routes].sort()).toEqual([
       'AgencySettings.create', 'AgencySettings.update',
       'ClinicalLibraryFolder.create', 'ClinicalLibraryTemplate.create',
       'ClinicalPathway.create', 'ClinicalPathway.update',
+      'CustomValidationRule.create', 'CustomValidationRule.update',
       'EducationMaterial.create',
       'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
       'NoteConversion.create',
       'NotificationPreference.create', 'NotificationPreference.update',
+      'PatientEducationAssignment.update',
       'PatientRecommendation.create',
     ]);
     for (const key of report.unproved_routes) {

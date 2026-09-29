@@ -338,6 +338,77 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
   };
 }
 
+/**
+ * The verb each library action answers with, which is how the contract says
+ * WHICH write it performed: `library_write` returns
+ * `{ created: true, row }`, `{ updated: true, row }` or `{ deleted: true, row }`.
+ */
+const LIBRARY_VERBS = Object.freeze(Object.assign(Object.create(null), {
+  create: 'created', update: 'updated', delete: 'deleted',
+}));
+
+/**
+ * `Entity.create(fields)`, `.update(id, fields)` and `.delete(id)` onto one of
+ * the library contracts, which take `{ action, id, fields }`.
+ *
+ * THE ACTION IS THE ROUTE'S, NEVER THE CALLER'S, and that is the difference
+ * from `operationalSave` rather than a stylistic one. There an absent id means
+ * a create, because that contract's id parameter is the only thing telling the
+ * two apart and the screens it serves really do call one function for both.
+ * These contracts take the action as a parameter of their own and refuse an
+ * unknown one, so a route inferring the action from its argument count would be
+ * re-deriving something the declaration already knows — and a screen calling
+ * `.update(id, {})` would silently become a create.
+ *
+ * `verb` IS READ RATHER THAN IGNORED, which is D168 applied one turn earlier.
+ * The gate runs a declaration's `request` against each call site's real
+ * arguments and never exercises `response`, so a route declared with the wrong
+ * action passes the gate, asks for the wrong write, and — with a `response`
+ * that returned `row` unconditionally — hands the screen a plausible row for
+ * an operation it did not perform. Comparing the verb the contract answers
+ * against the one this route asked for makes that a refusal at the seam.
+ *
+ * There is no page and no ordering here, so nothing in this helper is about
+ * completeness. What it owes a screen is the ROW, because Base44's own
+ * `create` and `update` resolve to the written record and two of these call
+ * sites keep it: the education recommender collects the fulfilled assignments
+ * out of a `Promise.allSettled` and hands them to its caller.
+ */
+function libraryWrite({ capability, action }) {
+  const verb = LIBRARY_VERBS[action];
+  // An unknown action fails HERE, at declaration, rather than at the seam.
+  // Without this the route still loads, `result[undefined] !== true` is
+  // always satisfied, and every call of it refuses with `answer` — a
+  // declaration mistake wearing a contract disagreement. Carried across
+  // from #335's copy of this helper when the two were merged into one.
+  if (verb === undefined) throw new Error(`ENTITY_ROUTE_LIBRARY_ACTION_UNKNOWN:${action}`);
+  const withId = action !== 'create';
+  const withFields = action !== 'delete';
+  return {
+    function: capability,
+    projection: 'library_row',
+    // Declared for `brokeredRead`'s reason: a rest parameter hides the count.
+    arity: withId && withFields ? 2 : 1,
+    request: (...args) => {
+      const [id, fields] = withId ? args : [undefined, args[0]];
+      if (withId && (typeof id !== 'string' || id === '')) unsupported('id');
+      if (withFields
+        && (fields === null || typeof fields !== 'object' || Array.isArray(fields))) {
+        unsupported('fields');
+      }
+      return {
+        action,
+        ...(withId ? { id } : {}),
+        ...(withFields ? { fields } : {}),
+      };
+    },
+    response: (result) => {
+      if (!result || result[verb] !== true) unsupported('answer');
+      return result.row;
+    },
+  };
+}
+
 /** The roster contract's own ceiling (`least(greatest(limit, 1), 500)`). */
 export const ROSTER_MAXIMUM = 500;
 
@@ -600,70 +671,6 @@ function operationalSave({ fn, key, reason, withId }) {
       return withId ? { id, fields } : { fields };
     },
     response: (result) => result?.[key],
-  });
-}
-
-/**
- * `Entity.create(payload)`, `Entity.update(id, payload)` and
- * `Entity.delete(id)` onto ONE contract that takes an action beside the id and
- * the payload — the shape the four clinical-library writers share.
- *
- * It is deliberately not `operationalSave`. That helper reads an ABSENT id as
- * a create, which works where one contract has two shapes and no third; these
- * four have a `delete` whose id is present and whose payload is absent, so the
- * same inference would read a delete as an update with no fields. The action
- * is a parameter of the contract, so the route names it rather than deriving
- * it, and each of the three call shapes gets its own declaration.
- *
- * Every one of these contracts routes through `library_write`, which answers
- * `{created|updated|deleted: true, row}` — so the projection is `row` for all
- * three actions and for all four entities. Read that rather than inferring it
- * per entity: the shared body is why it is uniform.
- */
-// The flag `contract_library_write` sets for each action. Named rather than
-// derived from the action string, so an action added upstream fails here at
-// declaration instead of looking for a flag the contract never sets.
-const LIBRARY_VERB = Object.freeze(
-  Object.assign(Object.create(null),
-    { create: 'created', update: 'updated', delete: 'deleted' }));
-
-function libraryWrite({ fn, reason, action }) {
-  const verb = LIBRARY_VERB[action];
-  if (verb === undefined) throw new Error(`ENTITY_ROUTE_LIBRARY_ACTION_UNKNOWN:${action}`);
-  const withId = action !== 'create';
-  const withFields = action !== 'delete';
-  return Object.freeze({
-    function: fn,
-    projection: 'operational_row',
-    reason,
-    // Declared because the rest parameter hides the count, as the two helpers
-    // above it declare theirs.
-    arity: (withId ? 1 : 0) + (withFields ? 1 : 0),
-    request: (...args) => {
-      const [id, fields] = withId ? args : [undefined, args[0]];
-      if (withId && (typeof id !== 'string' || id === '')) unsupported('id');
-      if (withFields
-        && (fields === null || typeof fields !== 'object' || Array.isArray(fields))) {
-        unsupported('fields');
-      }
-      return {
-        action,
-        ...(withId ? { id } : {}),
-        ...(withFields ? { fields } : {}),
-      };
-    },
-    // The VERB is checked before the row is handed back, and this is not
-    // defensive tidiness. `contract_library_write` answers
-    // `{created|updated|deleted: true, row}`, so a route declared with the
-    // wrong action passes the gate, asks the store for the wrong write, and
-    // returns a perfectly plausible row for an operation it did not perform.
-    // Nothing downstream can tell the difference: the shape is identical and
-    // only the flag says which write happened. Proved by sabotage rather than
-    // reasoned about — swapping a declaration's action is silent without it.
-    response: (result) => {
-      if (result?.[verb] !== true) unsupported('answer');
-      return result.row;
-    },
   });
 }
 
@@ -1615,52 +1622,40 @@ const DECLARED_ROUTES = Object.freeze({
     }),
     reason: 'The OASIS recommender and the trigger both read the active pathways.',
   }),
-  'ClinicalPathway.create': libraryWrite({
-    fn: 'manageClinicalPathway', action: 'create',
+  'ClinicalPathway.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalPathway', action: 'create' }),
     reason: 'The pathway manager saves a new pathway, and the AI generator writes one it drafted.',
   }),
-  'ClinicalPathway.update': libraryWrite({
-    fn: 'manageClinicalPathway', action: 'update',
+  'ClinicalPathway.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalPathway', action: 'update' }),
     reason: 'The pathway manager edits a pathway, and the AI updater rewrites one in place.',
   }),
-  'ClinicalPathway.delete': libraryWrite({
-    fn: 'manageClinicalPathway', action: 'delete',
+  'ClinicalPathway.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalPathway', action: 'delete' }),
     reason: 'The pathway manager removes a pathway.',
   }),
-  'ClinicalLibraryTemplate.create': libraryWrite({
-    fn: 'manageClinicalLibraryTemplate', action: 'create',
-    reason: 'The library manager saves a new template, and the phrase seeder writes the starter set.',
-  }),
-  'ClinicalLibraryTemplate.update': libraryWrite({
-    fn: 'manageClinicalLibraryTemplate', action: 'update',
-    reason: 'The library manager edits a template and clears the folder of every template in a folder it deletes.',
-  }),
-  'ClinicalLibraryTemplate.delete': libraryWrite({
-    fn: 'manageClinicalLibraryTemplate', action: 'delete',
-    reason: 'The library manager removes a template.',
-  }),
-  'ClinicalLibraryFolder.create': libraryWrite({
-    fn: 'manageClinicalLibraryFolder', action: 'create',
+  'ClinicalLibraryFolder.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryFolder', action: 'create' }),
     reason: 'The library manager creates a folder.',
   }),
-  'ClinicalLibraryFolder.update': libraryWrite({
-    fn: 'manageClinicalLibraryFolder', action: 'update',
+  'ClinicalLibraryFolder.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryFolder', action: 'update' }),
     reason: 'The library manager renames a folder and reparents the children of one it deletes.',
   }),
-  'ClinicalLibraryFolder.delete': libraryWrite({
-    fn: 'manageClinicalLibraryFolder', action: 'delete',
+  'ClinicalLibraryFolder.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryFolder', action: 'delete' }),
     reason: 'The library manager removes a folder.',
   }),
-  'EducationMaterial.create': libraryWrite({
-    fn: 'manageEducationMaterial', action: 'create',
+  'EducationMaterial.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageEducationMaterial', action: 'create' }),
     reason: 'The material editor saves a new material and the library duplicates an existing one.',
   }),
-  'EducationMaterial.update': libraryWrite({
-    fn: 'manageEducationMaterial', action: 'update',
+  'EducationMaterial.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageEducationMaterial', action: 'update' }),
     reason: 'The material editor saves an edit, and the sender stamps the material it just sent.',
   }),
-  'EducationMaterial.delete': libraryWrite({
-    fn: 'manageEducationMaterial', action: 'delete',
+  'EducationMaterial.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageEducationMaterial', action: 'delete' }),
     reason: 'The education library removes a material.',
   }),
   'ClinicalLibraryFolder.list': Object.freeze({
@@ -1694,6 +1689,72 @@ const DECLARED_ROUTES = Object.freeze({
   'CustomValidationRule.list': Object.freeze({
     ...libraryRead({ capability: 'listCustomValidationRules', sortable: ['-created_date'] }),
     reason: 'The validation rule manager is the only screen, and only an agency_admin reaches it.',
+  }),
+  /**
+   * THE LIBRARY WRITES: eight route keys over ten call sites, and the two
+   * counts are not interchangeable. Four of the ten pass arguments this file
+   * can read and are PROVED by the gate; the other six pass a variable and are
+   * declared UNPROVED, which is the gate's third disposition rather than a gap.
+   * `ClinicalLibraryTemplate.update` is the clearest demonstration of why the
+   * two numbers have to be reported apart: it has one readable site and one
+   * unreadable one, so the route is proved and half its adoption is not.
+   *
+   * The four readable sites, each measured rather than assumed:
+   * `ClinicalLibraryManager.jsx` deletes a template by a variable id and, when
+   * a folder is deleted, moves each template out of it with
+   * `.update(t.id, { folder_id: null })`; `CustomValidationRuleManager.jsx`
+   * deletes a rule by id; and `AIEducationRecommender.jsx` builds its create
+   * payload as an object literal, so the gate reads its KEYS even though every
+   * value is computed.
+   *
+   * That payload is why this wave is worth landing rather than declaring.
+   * Every one of its nine fields is a real column on
+   * `patient_education_assignment`, none is in `library_reserved()`, it names
+   * the `patient_id` the contract requires on a create, and its `assigned_by`
+   * is the caller's own address — which the contract admits as a
+   * self-assertion and refuses for anybody else. A route over a payload that
+   * failed any of those would pass the gate and refuse every real call.
+   *
+   * Two absences are deliberate and belong here rather than in a note that
+   * would go stale. `PatientEducationAssignment.delete` is not declared
+   * because `contract_patient_education_write` admits `create` and `update`
+   * only, and no screen calls it either. And `patient_id` is RESERVED on a
+   * template update — the chart a patient-specific phrase names is chosen when
+   * it is written and never moved — so a screen that reassigned a template to
+   * another chart would be refused; the folder move is the only update whose
+   * fields this file can see, and `folder_id` is not that column.
+   */
+  'ClinicalLibraryTemplate.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryTemplate', action: 'create' }),
+    reason: 'The library manager and the starter-phrase seeder both file a new quick phrase.',
+  }),
+  'ClinicalLibraryTemplate.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryTemplate', action: 'update' }),
+    reason: 'The manager edits a phrase, and deleting a folder moves its templates out of it.',
+  }),
+  'ClinicalLibraryTemplate.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryTemplate', action: 'delete' }),
+    reason: 'The library manager removes a phrase the agency no longer wants offered.',
+  }),
+  'CustomValidationRule.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageCustomValidationRule', action: 'create' }),
+    reason: 'The rule manager files a new validation rule, which only an agency_admin reaches.',
+  }),
+  'CustomValidationRule.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageCustomValidationRule', action: 'update' }),
+    reason: 'The same screen edits a rule it has already listed.',
+  }),
+  'CustomValidationRule.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageCustomValidationRule', action: 'delete' }),
+    reason: 'The same screen removes a rule the agency has stopped enforcing.',
+  }),
+  'PatientEducationAssignment.create': Object.freeze({
+    ...libraryWrite({ capability: 'managePatientEducationAssignment', action: 'create' }),
+    reason: 'The recommender assigns the education topics a nurse selected for one chart.',
+  }),
+  'PatientEducationAssignment.update': Object.freeze({
+    ...libraryWrite({ capability: 'managePatientEducationAssignment', action: 'update' }),
+    reason: 'The education tracker records comprehension and completion on an assignment.',
   }),
   'AIConfiguration.list': Object.freeze({
     ...libraryRead({

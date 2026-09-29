@@ -3167,12 +3167,10 @@ available. What is left is roughly forty entities' worth of named contracts and
 handlers — the same shape as the 80 already built — rather than one design
 decision.
 
-**And the reading on THIS tree, after four patient-alert call sites adopted two
-routes and the five write capabilities that had shipped without routes gained
-them.** This one is `pnpm run check:entity-routes`'s own output and is
-**pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it byte
-for byte, so paste what the tool prints and never retype, rewrap or re-indent
-it.
+**The reading after four patient-alert call sites adopted two routes and the
+five write capabilities that had shipped without routes gained them.** A record
+of that head and no longer the tree: the library-write wave landed beside this
+one and the current reading is at the end of this section.
 
 ```
 entity routes: 69 declared, 111/237 landable call sites SERVED, 126 still to adopt
@@ -3220,6 +3218,67 @@ route whose `response` or `order` was written by copying a sibling. The claim
 that the gate is blind to this is demonstrated rather than asserted — with the
 key sabotaged back to the constant both projection tests fail and the gate
 reports its figures unchanged.
+
+**The reading after the library writes.** A record of that head and no longer
+the tree either: it was taken on a branch that did not yet carry the route and
+allowlist work, and the current reading is at the end of this section.
+
+```
+entity routes: 64 declared, 106/237 landable call sites SERVED, 131 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 27 pass arguments this cannot read
+  12 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryTemplate.create, CustomValidationRule.create, CustomValidationRule.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 131, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 130 need a named capability
+```
+
+**And the reading on THIS tree, with both waves merged.** This one is `pnpm run
+check:entity-routes`'s own output and is **pinned**: `tools-entity-routes.test.mjs`
+fails unless the page carries it byte for byte, so paste what the tool prints and
+never retype, rewrap or re-indent it.
+
+Read the arithmetic before reading the jump: **74 is 69 plus 8 less 3**, not 69
+plus 8. The two branches were open at once and both declared the three
+`ClinicalLibraryTemplate` write keys, which merged history could not show either
+of them — a collision that lives only between two open branches is invisible to a
+cross against `main` (D183). Resolving it dropped one copy of the three keys and
+one of the two `libraryWrite` helpers, keeping the landed one and carrying across
+the other's declaration-time refusal of an unknown action.
+
+```
+entity routes: 74 declared, 113/237 landable call sites SERVED, 124 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 40 pass arguments this cannot read
+  16 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 124, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 123 need a named capability
+```
+
+**The move above is four call sites over eight route keys, and the two counts
+are why the unrouted headline splits.** Ten write sites across three entities
+reached a capability for the first time; four of them pass arguments the gate
+can read and the other six pass a variable, so four routes are PROVED and four
+are declared UNPROVED. `ClinicalLibraryTemplate.update` is one route with one
+site of each, which is the cleanest demonstration that a route key and a call
+site are not interchangeable. Nothing was built: all three contracts and all
+three handlers shipped with the clinical library.
+
+**A route may be counted served and still refuse every call, and the instrument
+that sees it reads the HANDLER.** The gate proves a route accepts a call site's
+arguments and never looks at the body it builds out of them, so a route emitting
+a key its capability has no parameter for passes the gate and fails at the
+service — `exactObject(params, [...])` refuses an unknown key outright. Landing
+these routes added that comparison over the gate's own served set, and it found
+seven route keys already in that state on this tree. Six are one shape: an
+operational read declaring a field orderable where its contract takes no order
+parameter. The seventh is the roster, and it is the reason the check has to read
+the HANDLER rather than the contract or the SQL. Three of the four layers carry
+`order`: the route emits it, the contract entry declares it and sends `p_order`,
+and the store's current signature is `contract_roster_list(text, integer, text,
+text)` with a matching public wrapper. The stale layer is the handler, whose
+allowlist is `['limit', 'after']`, and every request is dispatched through it
+before `contract()` is reached — so the call fails 400 before PostgREST or any
+store is involved. **An apply does not fix this**, because an apply changes the
+store and not the allowlist, and it survived because the order path IS covered a
+layer above the one that refuses it. A test that enters below a boundary cannot
+see the boundary. The seven are pinned in the spec with each key's owning batch
+named, rather than excluded by helper name, so the fixes cannot land quietly.
 
 #### The destination gate, which measures a different population
 
