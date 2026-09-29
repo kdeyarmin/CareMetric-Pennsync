@@ -6,7 +6,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
+import {
+  applyRecordMigrations, recordMigrationNames, RECORD_MIGRATION_DIRECTORY,
+} from './record-migrations.mjs';
 import { OPERATIONAL_MAXIMUM } from '../../../src/lib/independentEntityRoutes.js';
 import { ALL_ROWS } from '../../../src/lib/queryLimits.js';
 
@@ -55,13 +57,6 @@ const CHART_AGENCY = 'services/authority-store/supabase/record-migrations/'
   + '20260920590000_chart_agency.sql';
 const HELPER_REVOKE = 'services/authority-store/supabase/record-migrations/'
   + '20260920650000_revoke_nonauthorizing_helpers.sql';
-/**
- * The assignment contract, read here for the same reason — it is the other
- * file whose closing `revoke` block missed a helper it declares, and the
- * population of that check is the two files, not the store.
- */
-const ASSIGNMENT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920180000_contract_assignment.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -1142,7 +1137,7 @@ const reachableOverloads = async name => {
   return { overloads: rows.length, reachable };
 };
 
-test('a function these two migrations declare is callable only where they grant it', async () => {
+test('a function is callable only where its own migration grants it', async () => {
   // The rule every contract file's closing `revoke` exists to enforce: a
   // helper that performs no authorization must not be a second entry point
   // past the contract that owns the decision. PostgreSQL grants EXECUTE to
@@ -1154,39 +1149,58 @@ test('a function these two migrations declare is callable only where they grant 
   // revokes 37 names — `operational_check_fields`, `operational_limit`,
   // `operational_locator` and `operational_new_id` among them — and misses
   // `operational_chart`, `operational_check_required` and all six
-  // `*_defaults()`. A long, plainly careful list reads as complete.
+  // `*_defaults()`. A long, plainly careful list reads as complete, which is
+  // why this is one class and not eight instances.
   //
-  // The population is these two files' OWN declarations and their OWN grants,
-  // not the whole store: a suite that asserted the store-wide set would red
-  // whenever anybody else added a contract, which is a control too wide (it
-  // fails loudly for the wrong reason) rather than too narrow.
-  const files = [OPERATIONAL, ASSIGNMENT].map(
-    file => readFileSync(resolve(repository, file), 'utf8'));
+  // The population is the WHOLE record directory, and that was a correction.
+  // The first version scoped it to those two files on the prediction that a
+  // store-wide assertion would red whenever anybody else added a contract.
+  // The prediction was wrong and the measurement says so: a contract file
+  // that declares helpers and revokes them passes, because the rule is
+  // derived per file from that file's own `grant … to authenticated`. Over
+  // all 70 record migrations the rule finds 349 declared names, 135 granted,
+  // and ZERO violations with this change in — and exactly the nine without
+  // it. A control too narrow passes quietly, and this one would have.
+  //
+  // The broker family is the case that would break a cruder rule and does not
+  // break this one: `entity_list`, `entity_get`, `entity_insert`,
+  // `entity_update` and `entity_delete` are reachable on purpose, and
+  // `20260919180000_record_brokers.sql` says so itself by granting exactly
+  // those five back after revoking nine. Their four siblings `brokered`,
+  // `broker_scope`, `broker_reserved` and `broker_check_payload` are in the
+  // same revoke and are not re-granted, and they are correctly unreachable.
+  // Nothing here reads a name.
+  const declared = new Map();
+  const granted = new Set();
+  for (const name of applied) {
+    const sql = readFileSync(new URL(name, RECORD_MIGRATION_DIRECTORY), 'utf8');
+    for (const fn of declaredFunctions(sql)) declared.set(fn, name);
+    for (const fn of grantedToAuthenticated(sql)) granted.add(fn);
+  }
+
+  // The known-positive controls, inside the same test rather than beside it.
+  // A derivation that found no grants reports every function as a violation;
+  // one that found no declarations reports none. Both are silent failures of
+  // the instrument rather than findings about the store, and the second is
+  // the one that produces the empty list this test asserts.
+  assert.ok(granted.size > 0, 'the grant derivation found nothing to admit');
+  assert.ok(declared.size > granted.size,
+    'the store declares more functions than it hands to a caller');
+  assert.ok(declared.has('bounded_reason') && declared.has('settings_defaults'),
+    'the declaration derivation missed a helper this change is about');
+  assert.ok(granted.has('entity_list') && !granted.has('broker_scope'),
+    'the grant derivation missed the broker family it must admit');
 
   const surprises = [];
-  let checked = 0;
-  for (const sql of files) {
-    const granted = grantedToAuthenticated(sql);
-    // The known-positive control, inside the same test rather than beside it:
-    // a derivation that found no grants would report every function as a
-    // violation, and a derivation that found no declarations would report
-    // none — both are silent failures of the instrument, not of the store.
-    assert.ok(granted.size > 0, 'the grant derivation found nothing to admit');
-    const declared = declaredFunctions(sql);
-    assert.ok(declared.size > granted.size,
-      'a contract file declares more functions than it hands to a caller');
-    for (const name of declared) {
-      const { reachable } = await reachableOverloads(name);
-      checked += 1;
-      if (granted.has(name)) {
-        assert.ok(reachable.length > 0,
-          `${name} is granted to authenticated and is not callable`);
-      } else if (reachable.length > 0) {
-        surprises.push(...reachable);
-      }
+  for (const name of declared.keys()) {
+    const { reachable } = await reachableOverloads(name);
+    if (granted.has(name)) {
+      assert.ok(reachable.length > 0,
+        `${name} is granted to authenticated and is not callable`);
+    } else if (reachable.length > 0) {
+      surprises.push(...reachable);
     }
   }
-  assert.ok(checked > 40, `the derivation checked only ${checked} functions`);
   assert.deepEqual(surprises.sort(), [],
     'these perform no authorization and must not be reachable');
 });
