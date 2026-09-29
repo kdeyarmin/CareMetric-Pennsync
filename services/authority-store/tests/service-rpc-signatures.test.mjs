@@ -126,7 +126,8 @@ test('every call the service makes resolves by name against the migrations', asy
       array(select a.name from unnest(p.proargnames) with ordinality as a(name, ord)
         where p.proargmodes is null or p.proargmodes[a.ord] in ('i', 'b', 'v') order by a.ord) as args,
       has_function_privilege('authenticated', p.oid, 'execute') as authenticated,
-      has_function_privilege('anon', p.oid, 'execute') as anon
+      has_function_privilege('anon', p.oid, 'execute') as anon,
+      has_function_privilege('service_role', p.oid, 'execute') as service_role
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = any($1::text[])`, [names]);
   const signatures = new Map();
@@ -146,6 +147,29 @@ test('every call the service makes resolves by name against the migrations', asy
     assert.deepEqual(required.filter(arg => !keys.includes(arg)), [], `${where} is not sent a parameter it requires`);
     assert.equal(signature.authenticated, true, `${where} is not executable by a signed-in caller`);
     assert.equal(signature.anon, false, `${where} is executable anonymously`);
+    // `service_role` is the third role the wrappers revoke, and until now this
+    // test read only `authenticated` and `anon` — a check reading two of the
+    // three roles it is granted over reports a clean surface while one could
+    // stay open. Measured before asserting: all 140 wrappers in the tree are
+    // already false here, so this pins a property that holds rather than
+    // announcing a defect, and granting `service_role` on one of them fails
+    // this line by name.
+    //
+    // What this does NOT establish, because a first version of this comment
+    // claimed it. A wrapper is `security invoker`, so for `anon` its own grant
+    // really is the whole control — the locked inner function never gets to
+    // refuse anybody. For `service_role` it is not: that role holds no `usage`
+    // on `pennsync_records`, so a service-role caller handed the wrapper grant
+    // is refused one layer earlier, `permission denied for schema
+    // pennsync_records`, measured in PGlite over the full migration directory.
+    // So this assertion is defence in depth and house consistency rather than
+    // the only thing standing there, and it becomes load-bearing the day
+    // anything grants that schema's usage more widely.
+    //
+    // One half is beyond this harness: `tests/bootstrap.sql` creates
+    // `service_role` with no `BYPASSRLS`, where the hosted platform's has it.
+    // Nothing here measures that, so nothing here should be read as having.
+    assert.equal(signature.service_role, false, `${where} is executable by the service role`);
   }
 });
 

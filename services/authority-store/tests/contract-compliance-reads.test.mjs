@@ -27,7 +27,6 @@ import { applyRecordMigrations } from './record-migrations.mjs';
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
-const READS_NAME = '20260920660000_contract_compliance_reads.sql';
 // `chart_not_elsewhere`'s own file, read only for its text: the sabotage below
 // restores the term from the migration that ships it rather than from a retyped
 // copy. It is APPLIED by the directory walk, not by name.
@@ -90,25 +89,22 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // This line used to read `assert.equal(applied.at(-1), READS_NAME)`, on the
-  // grounds that a file sorting before an already-applied one makes
-  // `planMigration` refuse MIGRATE_OUT_OF_ORDER. The hazard is real and the
-  // assertion was the wrong shape for it: "this contract sorts LAST" is true
-  // only until the next migration lands, whoever writes it, so it is a claim
-  // that every sibling branch falsifies by doing nothing wrong. It went red on
-  // `20260920690000_contract_physician_write.sql`, which sorts after this file
-  // and is exactly the case the rule permits — a NEW file appended to the end.
+  // The "this contract sorts last" guard that lived here is RETIRED rather than
+  // widened, and the reason is the rule it taught. It protected a PENDING file:
+  // `planMigration` refuses MIGRATE_OUT_OF_ORDER once an applied file sorts
+  // after a pending one, so while this migration was unmerged anything sorting
+  // after it was a base that had moved under it. It caught four such moves,
+  // two of them against files that tied this one's timestamp prefix exactly.
   //
-  // What the hazard actually is: a new file sorting BEFORE one a deployment has
-  // already applied. A per-contract suite cannot see what a deployment has
-  // applied, so it cannot hold that claim at all. It is held where it can be:
-  // `planMigration` raises the refusal (`tools-pennsync-migrate.mjs:196`), a
-  // case in `tools-pennsync-migrate.test.mjs` drives it, and
-  // `tools-pennsync-apply-signal.mjs` says on the pull request which migrations
-  // are arriving. What this suite can hold is that the file is in the set a
-  // deployment would apply, which the equality above already proves whole.
-  assert.ok(applied.includes(READS_NAME),
-    'this contract is not in the record directory the store was built from');
+  // This migration is merged now, so it is part of what a store already holds
+  // and the next change's file legitimately sorts after it — the assertion
+  // refused a correct tree the moment the write half arrived. Widening it with
+  // an exception list naming that file would keep a check whose population is
+  // "everything except the ones somebody remembered", which passes for reasons
+  // nobody can state. It moves instead: `assertNewestRecordMigration` is the
+  // same guard in `record-migrations.mjs`, and the newest PENDING migration
+  // calls it. What stays here is the set equality above, which is the
+  // assertion that actually says this store is the one a deployment gets.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   await db.exec(`insert into auth.users(id,email,email_confirmed_at)

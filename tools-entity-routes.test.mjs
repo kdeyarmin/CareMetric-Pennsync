@@ -251,8 +251,29 @@ test('what a wider generic family could reach is reported and adds up', () => {
  * restoring the Set and watching THREE tests fail, not assumed: this one, that
  * one, and the plan-document pin.
  */
+/**
+ * The fixture is HARVESTED from the tree, so the tree can run out of it.
+ *
+ * It did. This filtered to an UNDECLARED landable key, because the baseline it
+ * compares against was the committed routes and a key already in them cannot
+ * raise `routed_sites` by being declared again. Every key of the right shape
+ * has since been declared -- `AdrAuditCase.update` was the last, in the
+ * compliance write routes -- and the test refused rather than skipping, which
+ * is the behaviour that made this visible at all.
+ *
+ * The fix is to stop requiring the key to be undeclared and to build the
+ * BASELINE without it instead: the property under test is that a served site
+ * leaves the remainder once rather than once per key, and nothing in it cares
+ * whether the committed routes happen to declare that key today. A fixture
+ * whose availability depends on which ports have shipped is a test that goes
+ * quiet on a schedule nobody chose.
+ *
+ * What is NOT relaxed is landability. A route over a key with nowhere to land
+ * raises `ENTITY_ROUTE_UNSERVABLE`, which the assertion on `problems` below
+ * would catch -- and the two remaining candidates of this shape,
+ * `FaxTemplate.update` and `LearningPlanCourse.create`, are exactly that case.
+ */
 test('a served site is removed from the remainder once, not per key', () => {
-  const baseline = measureRoutes(repository);
   const landable = new Set(measureDestinations(repository).sites
     .filter(site => SERVED.includes(site.destination))
     .map(site => `${site.entity}.${site.operation}`));
@@ -272,18 +293,23 @@ test('a served site is removed from the remainder once, not per key', () => {
         total: calls.length };
     })
     .filter(candidate => landable.has(candidate.key)
-      && !Object.hasOwn(ENTITY_ROUTES, candidate.key)
       && candidate.readable === 1 && candidate.total > candidate.readable)
     .sort((left, right) => (left.key + left.file).localeCompare(right.key + right.file));
   assert.ok(candidates.length > 0,
-    'no undeclared landable key has one readable call and one unreadable one in a single\n'
+    'no landable key has one readable call and one unreadable one in a single\n'
     + '  file, so the case this test exists for cannot be reached on this tree. It is a\n'
     + '  REFUSAL rather than a skip: the multiset subtraction is still exercised by the\n'
     + '  committed report, whose bucket sum falls short if a Set comes back, but the\n'
     + '  planted half of the proof is gone and something has to say so.');
   const chosen = candidates[0];
 
-  const routes = { ...ENTITY_ROUTES, [chosen.key]: sound({ request: () => ({}) }) };
+  // Measured WITHOUT the chosen key, so declaring it below is a real change
+  // whether or not the committed routes already carry it.
+  const without = { ...ENTITY_ROUTES };
+  delete without[chosen.key];
+  const baseline = measureRoutes(repository, without);
+
+  const routes = { ...without, [chosen.key]: sound({ request: () => ({}) }) };
   const report = measureRoutes(repository, routes);
   assert.deepEqual(report.problems, []);
 
@@ -782,7 +808,7 @@ test('the landable sites partition exactly, and the audit prose carries the part
   assert.equal(landable.length, report.landable_sites);
 
   const page = readFileSync(resolve(repository, PLAN), 'utf8');
-  const spelled = { 9: 'Nine', 44: 'Forty-four', 45: 'Forty-five' };
+  const spelled = { 9: 'Nine', 30: 'Thirty', 52: 'Fifty-two' };
   for (const [count, word] of [[refused.length, spelled[refused.length]],
     [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
     assert.ok(word,
@@ -855,10 +881,10 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The PAIRS first. Each of these four is what the corresponding ratio below
   // is computed from, so a population that moved without moving its quotient
   // fails here rather than passing silently one line further down.
-  assert.deepEqual(servedSplit, { readSites: 127, readKeys: 49, writeSites: 20, writeKeys: 18 },
+  assert.deepEqual(servedSplit, { readSites: 127, readKeys: 49, writeSites: 27, writeKeys: 21 },
     'the served pool moved. Re-derive the WHOLE bullet — both of its ratios and\n'
     + '  the sentence about past waves — rather than editing the figure that moved.');
-  assert.deepEqual(remainder, { readSites: 15, readKeys: 12, writeSites: 29, writeKeys: 18 },
+  assert.deepEqual(remainder, { readSites: 15, readKeys: 12, writeSites: 15, writeKeys: 13 },
     'the unrouted remainder moved. Re-derive the WHOLE bullet; its ratios are\n'
     + '  over a remainder, so they move when anything LEAVES it too.');
 
@@ -881,7 +907,7 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
     ['the served pool\'s two ratios',
       `a read key there carries ${servedRead} call sites and a write key ${servedWrite},`],
     ['the remainder\'s two ratios',
-      `a write key covers ${poolWrite} sites against a read key's ${poolRead},`],
+      `a read key covers ${poolRead} sites and a write key ${poolWrite},`],
   ]) {
     assert.ok(page.includes(phrase),
       `${PLAN} no longer states ${label} as this tree measures them. Expected the\n`
@@ -893,8 +919,8 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The remainder's key total is stated too, and it is the sum of the two key
   // counts rather than a fifth measurement — asserted so it cannot drift away
   // from the pair it is built from.
-  assert.equal(remainder.readKeys + remainder.writeKeys, 30);
-  assert.ok(page.includes('over thirty entity and'),
+  assert.equal(remainder.readKeys + remainder.writeKeys, 25);
+  assert.ok(page.includes('over twenty-five entity and'),
     `${PLAN} no longer states the remainder's key total as thirty`);
 });
 

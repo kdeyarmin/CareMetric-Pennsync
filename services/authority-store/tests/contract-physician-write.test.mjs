@@ -2,7 +2,9 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { applyRecordMigrations } from './record-migrations.mjs';
+import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+
+const MIGRATION_NAME = '20260920690000_contract_physician_write.sql';
 
 /**
  * The referral directory's three writes, against the real migration.
@@ -99,7 +101,15 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  await applyRecordMigrations(db);
+  // This migration is the newest PENDING one, so the ordering guard is now
+  // this suite's. It was `contract-compliance-writes.test.mjs`'s until that
+  // file merged, and the read half's before that: the guard travels with the
+  // newest pending migration rather than accumulating, because a suite over a
+  // MERGED file asserting that nothing sorts after it refuses every correct
+  // tree the next change produces. Retire the call here when this merges —
+  // `assertNewestRecordMigration`'s own error text says so, and it is what it
+  // says to do rather than widening it with an exception list.
+  assertNewestRecordMigration(await applyRecordMigrations(db), MIGRATION_NAME);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`
     insert into pennsync_records.physician
