@@ -346,9 +346,56 @@ written.
    synthetic actors.
 5. **Create the production Supabase project** (D4) and provision it with
    `tools-pennsync-provision.mjs`, the one path that tool was written for.
-6. **Move the frontend.** 445 entity call sites, 366 client importers, 41 Core
-   integration sites, 83 function wrappers — untouched. This is now the largest
-   single body of remaining work in the migration and the least started.
+6. **Move the frontend.** Still the largest single body of remaining work in
+   the migration. **"Untouched" is what this item said, and it was reading one
+   instrument as though it answered a second question.** The surface ratchet's
+   `445/445`, `366/366`, `41/41` and `83/83` in section 0 are unchanged and
+   correctly so — that gate counts BASE44 COUPLING, and the SPA serves both
+   backends, so a call site can be served by an owned route today and still
+   import the Base44 client. It is not a statement that nothing has moved, and
+   routes have been declared and are serving call sites now.
+
+   It is also not one body of work. Crossing the same 445 against their
+   entities' dispositions splits them three ways: sites a route already serves,
+   sites that could be adopted against the owned store, and sites that **cannot
+   land at all** because the entity's domain was decided `hub` or
+   `preserved_paused` — those need a product answer, not an edit, and no amount
+   of frontend work reduces them. Sizing this item off the single number 445
+   overstates the editable part and understates the decisions.
+
+   **What makes this item tractable, and Stage G's seven not, is one
+   distinction that runs under both**: whether a capability exists, and whether
+   anything can call it. Here the capability exists and the gate PROVES
+   something can call it, by putting each site's own arguments through the
+   declared route rather than trusting the declaration — so what is left is
+   per-screen editing. Stage G's bucket is the mirror image and says so in its
+   own row.
+
+   The measured split, from `check:frontend-destination` and
+   `check:entity-routes`, is in **Stage J**, in pinned blocks carrying each
+   tool's own output. Read it there; it is deliberately not restated here,
+   because a second copy of a pinned reading is a second representation that
+   nothing keeps in step — and, measured on 2026-09-26, a verbatim duplicate of
+   that block earlier in this page **silently relocated the guard that reads
+   the prose beneath it**, so a restatement Stage J forbids became invisible
+   while the suite stayed green. The six-line fix for it — refusing a page that
+   carries the pinned block's first line more than once — was written, proved
+   both ways and handed to another thread rather than landed here.
+   **It is not in the tree, and the first sentence written here about it said
+   it would ride the next change to that block, which #338 then made without
+   it.** So the guard reading this region is still the blind one: read
+   `tools-entity-routes.test.mjs` for whether that is still true rather than
+   this paragraph, since a `copies` count appearing there is the whole of the
+   fix. Meanwhile this item's pointing instead of restating is what keeps the
+   region honest, and every earlier `entity routes:` reading in Stage J is safe
+   only because each records a different head and so differs from the current
+   block's first line by construction. **That clause carried a count until
+   2026-09-29, and the count was wrong the moment it was written** — there were
+   four earlier readings and it said five — then became right by accident when
+   #343 demoted the then-current block into the record. Nothing failed in
+   either state. So do not put a number on a population this page itself grows:
+   that is this item's own subject arriving inside the item, for the second
+   time in the paragraph above it.
 7. **Assemble the evidence packet** until `tools-pennsync-cutover.mjs` reports
    `evidence_coverage_complete`.
 
@@ -1617,7 +1664,22 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   tests rather than left vacuous.
   The send's own switch, separate from `PENNSYNC_API_RELEASE`, is
   `PENNSYNC_API_DELIVERY=enabled-v1`, read exactly and untrimmed; it was written
-  at `16:19Z` the same day, and `/readyz` reports `deliveryReleased: true`.
+  at `16:19Z` the same day. **What `/readyz` says about it is a reading, not a
+  property of this page**: on **2026-09-29 at 06:13:47Z**, by an unauthenticated
+  `GET https://pennsync-api-production.up.railway.app/readyz`, it answered
+  `deliveryReleased: true` with both senders among 80 `operations` and the
+  staging `appId`. Nothing here compares a document to a running service, so
+  take the reading again rather than quoting this one —
+  `curl <service>/readyz` is the whole instrument. **It reports the RUNNING
+  REVISION and not this tree**: at that reading the API was serving `d01359a3`
+  while `main` was `af4b3185`, eight commits of which touch
+  `services/pennsync-api`. "The service serves it" and "the repository contains
+  it" are two claims, and this page is beside the source, which is where they
+  get merged. And keep two things apart
+  that the field's name invites collapsing: **released means a call ATTEMPTS a
+  real send, not that mail arrives** — no delivery has been observed — and
+  **invitations are outside it entirely**, their `delivery_paused: true` being a
+  literal on an audit entry (D42) rather than anything this endpoint reports.
 
   Mail also needs the integration runtime's side, and **that side is now
   done**. The runtime was released 2026-09-25 `08:19:25Z` with the two AI
@@ -1770,8 +1832,11 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   second copies of that hold: `PENNSYNC_API_DELIVERY`, written at `16:19Z` on
   2026-09-25, and D98's refusal to report `ready` at all while a released set
   contains a sender and that variable stays unset — which is now the thing
-  CONFIRMING the switch from outside rather than guarding against it, since
-  `/readyz` answers `ready: true` with `deliveryReleased: true`. Read the three
+  CONFIRMING the switch from outside rather than guarding against it — it
+  answered `ready: true` with `deliveryReleased: true` when last read, on
+  2026-09-29 at 06:13:47Z, which is the same reading Stage D's delivery
+  paragraph carries and is a property of that moment and of the revision then
+  running, rather than of this sentence or of this tree. Read the three
   together anyway: one kept the name out, two kept a send from happening, and a
   future hold over a future name wants all three again rather than one.
   §4's `Core.SendEmail` row records the decision that governed the flip.
@@ -1857,16 +1922,29 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   The probe is opt-in and read-only; `check:release-ladder` still reaches no
   network.
 
-  **The store side of every wave is applied, measured rather than assumed.**
-  The union of `patient-read`, `patient-write` and `visit` is ten prerequisite
-  migrations, and all ten are in `caremetric-pennsync-staging`'s ledger — as is
-  everything the later waves need, because the ledger has nothing pending at
+  **The store side of every wave WAS applied when this was measured, and that
+  is a dated finding rather than a standing property.** The union of
+  `patient-read`, `patient-write` and `visit` is ten prerequisite migrations,
+  and all ten were in `caremetric-pennsync-staging`'s ledger — as was
+  everything the later waves need, because the ledger had nothing pending at
   all (`already_applied: 73`, read from the `hosted-gap` job on `b8e4e021`,
   2026-09-23). ~~**The store is no longer what holds any wave back; the running
-  revision is.**~~ **Neither does, as of 2026-09-25**: the ledger has nothing
-  pending and the running revision implements every name. What holds the waves
-  back is the owner's word on the two release variables, and — for every wave
-  after a future merge — the source repoint in stage B.
+  revision is.**~~ **Neither did, as of 2026-09-25**: the ledger had nothing
+  pending and the running revision implemented every name. What held the waves
+  back on that reading was the owner's word on the two release variables, and —
+  for every wave after a future merge — the source repoint in stage B.
+
+  **Do not carry either reading forward as the current answer.** What it
+  measures moves on every merge and this page does not: a migration merged
+  since is pending until an operator applies it (D93), which is exactly the
+  condition both readings happened to find absent. The answer today comes from
+  `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` with no
+  `--apply`, or from the `hosted-gap` job on a fresh `main` run — one command,
+  which is why this page states neither. Note the DIRECTION of this one: a
+  stale "nothing is pending" HIDES work, where AGENTS.md's stale `user_update`
+  sentence invented some. Same defect, and only one of the two reads as
+  alarming, which is why the one that reads as reassuring is the one to
+  distrust.
 
   The check took one correction to be
   usable: the ladder printed FILE names while
@@ -2697,6 +2775,36 @@ administrative write paths, and a vendor key.
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
 | ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
 | ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is a flag flip rather than a build, and it stayed the owner's until he flipped it on 2026-09-25 — the runtime half at `09:42Z`, the `OWNER_HELD` lift in #283, and the api's `PENNSYNC_API_DELIVERY` at `16:19Z`. All three are spent and both capabilities now send |
+
+**Where those readings come from, so the next person re-runs them rather than
+quoting this row.** The bucket and its seven names are `pnpm run
+check:transition-disposition`'s own `port queue` line, which this page pins in
+Stage B. The three-and-four split is `schedulerAuth` in each capability's
+module crossed against whether any file under `src/` names it: three carry the
+fence and are named nowhere, four are named by a screen. Both read on
+`6e867ff7`. The row's shape can move under a disposition ruling without any
+capability being written — `enforceStaffRoleIntegrity` is under one now — so
+re-measure before quoting the count.
+
+**And there is a third reading, which is the one that changes how this bucket
+should be planned.** None of the seven — the four ports included — can be
+written against a capability that already exists. All seven write `User`, and
+nothing under `services/authority-store/supabase/record-migrations/` writes
+`pennsync_records.user` at all, so D82's `user_update` policy and
+`user_self_write_guard` trigger are a permission with no performer: the store
+admits a write nothing in it makes.
+
+**That is the column this table and Stage J's both lack.** "A capability
+exists" and "something can call it" are two questions, and a migration list
+answers only the first. Stage G satisfies it and fails the second, which is
+invisible in any list of what shipped. Stage J is the same pair with the
+answers the other way round: its gate counts a call site as served only after
+running that site's own arguments through the declared route, so what it
+reports is reachability from the browser adapter through to the `grant
+execute`, and what is left there is per-screen editing rather than SQL. Read
+the two together and the difference is most of what remains — Stage G needs the
+capability built before anything can call it, Stage J needs callers pointed at
+capabilities that are already there.
 
 ### Stage H — Files (size M, can start once the production bucket exists)
 
