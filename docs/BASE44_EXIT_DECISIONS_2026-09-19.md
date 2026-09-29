@@ -5325,14 +5325,15 @@ for someone's time; each is a product decision about what the feature becomes,
 and a plan sizing the stage by the count is sizing the wrong thing.
 
 **CORRECTION, added 2026-09-29 by Plan and measured first-hand. The sentence
-above is left standing rather than replaced, because a figure that was wrong on
-the day it was written, with its own refutation printed above and below it, is
-this entry's worked example and deleting it destroys the evidence.** "203 of
-445 reach a domain the migration decided not to carry" was wrong when written.
-203 was the UNSERVED TOTAL, and the table directly above that sentence prints
-the refutation: `broker_is_read_only` 9 is a row of its own. 203 = 194 + those
-9 broker writes, which is arithmetic over the filed figures rather than a
-re-measurement of that head; nobody has re-run the tool there.
+quoted below is left standing rather than replaced, because a figure that was
+wrong on the day it was written, with its own refutation printed above and
+below it, is this entry's worked example and deleting it destroys the
+evidence.** "203 of 445 reach a domain the migration decided not to carry" was
+wrong when written. 203 was the UNSERVED TOTAL, and the table directly above
+that sentence prints the refutation: `broker_is_read_only` 9 is a row of its
+own. 203 = 194 + those 9 broker writes, which is arithmetic over the filed
+figures rather than a re-measurement of that head; nobody has re-run the tool
+there.
 
 **Measured on `36c828a0`, clean tree, with `measureDestinations` from
 `tools-frontend-destination.mjs` and the disposition sets from
@@ -12475,6 +12476,73 @@ transcript search and then go and look for a refusal.
 
 **And check before calling a provenance unrecoverable.** Mine was recoverable,
 and what it recovered was worse than an absence — twice over.
+
+**CORRECTION TO STAGE ONE, 2026-09-29, and it is this entry's own mechanism
+arriving inside this entry for the third time.** Stage one says "He was offered
+this exact rule by name and said no." I have now read the project's own record
+rather than the memory page that reports it, and the record does not support
+that sentence. What it holds, in order:
+
+**2026-09-22T16:58:48Z.** The setup thread proposes project instructions
+"drawn from what you set or corrected during the session", one of which reads
+"Ask before marking a PR ready for review and before merging, every time.
+There is no standing merge rule." The session it was drawn from is not this
+project's, and nobody here has read his own words stating it.
+
+**2026-09-22T18:56:34Z.** He is asked directly, in the project chat: "One
+thing I will not assume, since you turned down a standing merge rule this
+morning. Does this cover marking the open PRs ready and merging them? / Yes,
+merge each once it is green. / No, ask me per PR." **He never answered it.** At
+19:39:58Z the same session records "my question above about marking them ready
+and merging" as still waiting on him.
+
+**2026-09-22T21:38:17Z.** He writes "Ready for review", read at 21:40:39Z as
+"ready for review on all four PRs and not as merge approval, since merging
+stays your call per PR."
+
+**2026-09-22T22:07:39Z. He writes, in his own words, "Merge when green".** Two
+minutes and sixteen seconds later: "Merging #240, #241 and #242, each once its
+own thread confirms green on the current head, squash as usual. I am treating
+that as covering the three on the table rather than as a standing rule, since
+you turned that one down this morning."
+
+**2026-09-23T01:16:09Z.** In the post that set the instructions he is told, in
+a bullet flagged "One change you should see": "I replaced 'ask before every
+merge, there is no standing merge rule' with this delegation plus the four
+holds below, since it now contradicts you. Say the word if you meant tonight
+only." **He did not answer that either.**
+
+**The population is enumerable and I enumerated it rather than searching for a
+refusal and failing to find one.** Before 18:22Z on 2026-09-22 this project had
+exactly two surfaces, the project chat from its first message and the setup
+thread, and I read both in full: his only message in either is the 16:45:59Z
+request to propose a setup. He declined nothing that morning because he wrote
+nothing that morning. What happened in the prior session is unread and I do not
+claim otherwise; `list_events` on it is the instrument and nobody has paged it.
+
+**So stage one's sentence was manufactured by the mechanism stage three
+describes, in four hops.** A rule transcribed out of another session became
+"your own rule"; "your own rule" became "you turned down a standing merge rule
+this morning"; an unanswered card plus a "Ready for review" read as withholding
+became "declined it" on the memory page; and "declined it" became "offered this
+exact rule by name and said no" here. Every hop kept the conclusion and dropped
+the seam, and the end of it puts a refusal in his mouth that he never uttered.
+
+**What this changes, and what it does not.** The override did not run against a
+recorded no. It ran against three silences: a question he never answered, an
+instruction change he never answered, and a rule nobody here has observed him
+state. The memory page still says he declined and is wrong in the same way.
+Stage one's rule survives all of that with more force rather than less — **a
+general yes does not reach a specific rule, and where nobody holds his answer
+the only thing that produces one is asking him.**
+
+**And there is a trap in the record pointing the other way, which is the
+reverse of everything else in this entry.** His own handwriting says "Merge
+when green". The only thing scoping it to three named pull requests is a
+project-chat reply two minutes later, which is in no memory file and in no
+instruction. A cold successor who finds his words and not that reply concludes
+he granted the standing rule outright: **his words without our scoping, where
+the rest of this entry is our inference beside his words.**
 
 ## D213 — an absence takes its direction from the reader, and the direction is the one that unblocks them
 
