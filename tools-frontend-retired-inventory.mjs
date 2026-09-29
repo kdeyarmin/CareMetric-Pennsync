@@ -2,10 +2,11 @@
 /**
  * What each screen loses when the domains the migration did not carry go.
  *
- * `check:frontend-destination` says 203 of the frontend's 445 entity call
- * sites reach a domain with nowhere to land. That is the right number for
+ * `check:frontend-destination` says 208 of the frontend's 453 entity call
+ * sites have nowhere to land (read on `84718e6b`; both operands move, so
+ * re-run it rather than quoting this line). That is the right number for
  * sizing and the wrong shape for acting: hiding a feature is a per-SCREEN
- * decision, and nobody can take 203 of those from a count.
+ * decision, and nobody can take 208 of those from a count.
  *
  * So this inverts it. It reports, per file, which entities that file reads or
  * writes that will have no destination, what the migration decided about each

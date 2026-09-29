@@ -3767,13 +3767,22 @@ population, whose figures are prose here and are not pinned. A paragraph put on
 the wrong side of this line will read as a claim about the other gate.
 
 **What the dropped domains cost, and by which instrument.** `node
-tools-frontend-retired-inventory.mjs --summary`, re-measured on `main` after
-#291: **203 call sites across 84 files and 29 entities; 59 files lose
-everything they read** (reads 123, writes 79, subscriptions 1), leaving 25
-partially affected. Those are exact, and #291 writes them out per file and per
-entity as `docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md` — a file is the unit
-somebody edits and an entity is the unit somebody decided about, so that is the
-page to open when this work starts, rather than this count. The shape a person would notice — roughly 9 top-level destinations and
+tools-frontend-retired-inventory.mjs --summary`, first read on `main` after
+#291 and re-measured on `84718e6b` on 2026-09-29: **208 call sites across 86
+files and 32 entities; 59 files lose everything they read** (reads 123, writes
+84, subscriptions 1), leaving 27 partially affected. Those are exact, and #291
+writes them out per file and per entity as
+`docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md` — a file is the unit somebody
+edits and an entity is the unit somebody decided about, so that is the page to
+open when this work starts, rather than this count. **Its population IS the
+destination gate's 208 and cannot drift from it**, because `measureInventory`
+filters that gate's own `measureDestinations` output — the two report at
+different units and never from different readings. **So do not read the 203
+below as this paragraph's number.** When this sentence last said 203, that was
+the DROPPED TOTAL, numerically equal to the uncarried subset below and a
+different set from it; the total has since moved to 208 and the subset has not
+moved at all. Two quantities coincided, one of them changed, and nothing in
+either sentence could show it. The shape a person would notice — roughly 9 top-level destinations and
 about 33 hollowed-out pages — comes from a filename scan rather than that tool,
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
