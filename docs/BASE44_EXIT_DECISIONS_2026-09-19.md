@@ -50,6 +50,50 @@ reading is true of the tree it was taken from and goes stale by the next merge;
 re-measure before quoting one, and record the new reading somewhere it can be
 dated rather than editing the old one to match.
 
+## A number that is cited here and has no entry here
+
+**D107 has no entry in this document, and five entries reason from it.** That is
+worse than a gap, because a gap is silent: a reader who meets `D107` in the
+middle of an argument has no way to learn that the thing being appealed to is
+not here.
+
+What follows is what the five citing entries SAY, which is a measurement of this
+document's own prose. **It is not what D107 says, and nothing here should be
+read as its body.**
+
+- **D110** — `…which is what D107 asks a refusal test to rule out.`
+- **D117** — `…the same discipline as D107's refusal to accept a repair that
+  restores green and records nothing.`
+- **D119** — `…as D107's point that a repair which restores green and records
+  nothing has told you nothing.`
+- **D123** — `This is D120's rule about sabotage and D107's about a repair that
+  records nothing, arriving together.`
+- **D124** — lists it under `Related:` and reasons from it no further.
+
+**Nobody reconstructs it from those.** Four phrasings converging on one idea are
+more than enough to write something plausible, and plausible is exactly the
+danger: if the original turns up saying something adjacent, this document would
+hold a false entry that four others appear to corroborate. Whoever holds the
+original should file it under its own number; until then the absence stands
+stated rather than filled.
+
+**D177 is in the same condition and is less urgent, for a reason worth keeping.**
+It is cited three times — twice by D176, where its non-existence IS the worked
+example, and once by D190. An absence that documents itself costs a reader
+almost nothing; D107's does not.
+
+**What this document can and cannot answer about a missing number.** It can
+answer *has a body* and *is cited*, both by reading itself. It cannot answer
+*was issued*. Nineteen numbers up to the highest entry here have no body; six of
+them are cited somewhere in the prose and thirteen appear nowhere at all. **Zero
+mentions establishes nothing** — an issued-and-unwritten number that nobody has
+had occasion to cite is indistinguishable, from inside this file, from one that
+was never issued.
+
+Measured on 2026-09-29 by matching each absent number against the document with
+every heading line removed first, so that a hit is a citation and never a title.
+Re-measure before quoting any of these counts; the head moves.
+
 ## D1 — Ported business logic runs in a new Railway service
 
 `services/pennsync-api`, Node 24, deployed from this repository with the same
