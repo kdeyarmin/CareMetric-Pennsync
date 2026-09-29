@@ -549,17 +549,26 @@ describe('the declared entity routes', () => {
       // Every action of every one of the four answers
       // `{created|updated|deleted: true, row}` — one shared body, so one
       // projection. A route reading `entries` or the whole envelope would hand
-      // a screen an object it cannot render, and each verb is checked because
-      // the key beside `row` is the only thing that differs between them.
+      // a screen an object it cannot render.
+      //
+      // Each verb drives its OWN route. A first version varied only the
+      // marker key beside `row` and called `create` on every iteration, which
+      // proves one route three times: `update` and `delete` are separate
+      // declarations, and a projection typed wrong into either would have
+      // survived the loop with its comment still claiming all three.
       const row = { id: 'p-1', pathway_name: 'CHF' };
-      for (const verb of ['created', 'updated', 'deleted']) {
+      const calls = {
+        created: () => adapter.raw.entities.ClinicalPathway.create({ pathway_name: 'CHF' }),
+        updated: () => adapter.raw.entities.ClinicalPathway.update('p-1', { pathway_name: 'CHF' }),
+        deleted: () => adapter.raw.entities.ClinicalPathway.delete('p-1'),
+      };
+      for (const [verb, call] of Object.entries(calls)) {
         fixture.apiResponse = () => new Response(
           JSON.stringify({
             success: true, result: { [verb]: true, row },
             execution: 'pennsync-api', base44ExecutionDependency: false,
           }), { headers: { 'content-type': 'application/json' } });
-        expect(await adapter.raw.entities.ClinicalPathway.create({ pathway_name: 'CHF' }))
-          .toEqual(row);
+        expect(await call(), `${verb} projects the row`).toEqual(row);
       }
     });
   });
