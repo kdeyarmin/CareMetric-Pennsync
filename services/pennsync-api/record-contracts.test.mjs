@@ -257,8 +257,17 @@ test('the capability hands out a function, never the token that authorizes it', 
  * `listAgencyRoster` admitted `['limit','after']` while its contract took
  * `['limit','after','order']`. #309 added the order to the migration and to
  * the contract entry and did not touch the handler, so every roster read that
- * asked for creation order was refused `INVALID_PARAMS` at the service — on
- * twenty-four call sites, the busiest screen in the application.
+ * asked for creation order was refused `INVALID_PARAMS` at the service.
+ *
+ * Fixing that does NOT make the roster resolve, and the reason is worth
+ * carrying here. #309's migration has not been applied, so the deployed
+ * `pennsync_contract_roster_list` still takes three parameters; `body()` emits
+ * `p_order` unconditionally, as `null` when the caller sends none, and
+ * PostgREST resolves an RPC by the names of the body's keys. So a four-key
+ * body goes out for EVERY roster call, including one with no arguments, and
+ * the store has no such function to resolve. Two independent faults in one
+ * capability, in two different layers, and this check can only see the one
+ * that lives in the tree. A green run here is not the roster working.
  *
  * `policyAcknowledgment` admitted `action` and forwarded it to a contract
  * taking `['acknowledgment_id','signed_name']`, so the one action it serves

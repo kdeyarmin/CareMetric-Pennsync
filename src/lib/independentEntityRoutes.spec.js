@@ -1239,4 +1239,88 @@ describe("what batch E's routes take on trust", () => {
         .toBe('argument_count');
     }
   });
+
+  /**
+   * The third layer, and the one neither of the checks above can see.
+   *
+   * A route's arguments are read twice before anything runs: `handlers.mjs`
+   * refuses a key outside its `exactObject` allowlist with INVALID_PARAMS, and
+   * `record-contracts.mjs` refuses one outside the contract's `params` with
+   * CONTRACT_ARGUMENTS_INVALID. The test above crosses the route against the
+   * SECOND. This one crosses it against the FIRST, which is not the same list:
+   * four handlers translate rather than forward — packing a flat body into one
+   * `incident` or `timesheet` key — and for those the contract's `params` says
+   * nothing about what the handler will accept.
+   *
+   * `record-contracts.test.mjs` proves the two lists are equal for the
+   * handlers that forward verbatim. That is the pair; this is the third
+   * member, and a check across two of three is green by construction on the
+   * pair it compares.
+   *
+   * No disagreement today. This is a ratchet and is recorded as one: it found
+   * nothing, and it is here because the two defects that made the forwarding
+   * check worth writing were each invisible to every suite that existed.
+   */
+  it('never sends a capability an argument its handler refuses', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('services/pennsync-api/handlers.mjs', 'utf8');
+    const entries = [...source.matchAll(/^ {2}([A-Za-z_][A-Za-z0-9_]*): Object\.freeze\(\{/gm)]
+      .map(match => ({ name: match[1], at: match.index }));
+    expect(entries.length, 'handlers.mjs no longer parses as one entry per line')
+      .toBeGreaterThan(50);
+    const admits = {};
+    for (const [index, entry] of entries.entries()) {
+      const body = source.slice(entry.at, entries[index + 1]?.at ?? source.length);
+      const lists = [...body.matchAll(/exactObject\(\s*params\s*,\s*\[([^\]]*)\]/g)];
+      if (lists.length !== 1) continue;
+      admits[entry.name] = lists[0][1].split(',')
+        .map(key => key.trim().replace(/['"]/g, '')).filter(Boolean);
+    }
+
+    // Driven rather than read. A route's `request` is a function and the only
+    // way to learn what it emits is to run it, so each operation is driven
+    // through the argument shapes its call sites actually use. The limit is
+    // there because the brokered and operational lists refuse a call without
+    // one, and four routes crossed nothing until it was added — a driver that
+    // cannot reach a route reports it as clean.
+    const sorts = ['-created_date', 'created_date', '-updated_date', '-due_date',
+      '-event_date', '-sent_date', '-priority', '-severity', '-usage_count',
+      '-assigned_date', '-last_used_date', 'full_name', 'order', null, undefined];
+    const id = '11111111-1111-4111-8111-111111111111';
+    let crossed = 0;
+    for (const [key, route] of Object.entries(ENTITY_ROUTES)) {
+      const allowed = admits[route.function];
+      if (!allowed) continue;
+      const operation = key.split('.').pop();
+      const shapes = [];
+      if (operation === 'list') for (const sort of sorts) shapes.push([sort, undefined], [sort, 100]);
+      else if (operation === 'filter') {
+        for (const sort of sorts) {
+          shapes.push([{}, sort, undefined], [{}, sort, 100],
+            [{ patient_id: id }, sort, 100], [{ status: 'active' }, sort, 100]);
+        }
+      } else if (operation === 'create') shapes.push([{ title: 'x', name: 'x', patient_id: id }]);
+      else if (operation === 'update') shapes.push([id, { title: 'x', name: 'x' }]);
+      else if (operation === 'delete') shapes.push([id]);
+
+      let reached = false;
+      for (const args of shapes) {
+        let asked;
+        try { asked = route.request(...args); } catch { continue; }
+        if (asked === null || typeof asked !== 'object') continue;
+        reached = true;
+        for (const argument of Object.keys(asked)) {
+          expect(allowed, `${key} sends ${route.function} an argument its handler refuses`)
+            .toContain(argument);
+        }
+      }
+      if (reached) crossed += 1;
+    }
+
+    // The population is asserted so the check cannot pass by reaching nothing.
+    // Four filters need a query shape this driver does not guess and are
+    // deliberately uncrossed rather than silently counted as clean.
+    expect(crossed, 'the driver has stopped reaching routes rather than the routes having changed')
+      .toBeGreaterThan(60);
+  });
 });
