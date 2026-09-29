@@ -33,6 +33,14 @@
  * suites use, instead of through a second copy of the walk that could agree
  * with itself while disagreeing with this one.
  *
+ * What it does NOT establish is a migration's own transactionality, and that
+ * sentence is a trap rather than a caveat: `exec` discards the work of a failed
+ * multi-statement string either way, so a check reading only the rows left
+ * behind passes with a file's `begin; … commit;` deleted. The two are still
+ * distinguishable — by the session state a failure leaves — and both halves are
+ * proved in `record-migrations.test.mjs` rather than asserted here, because a
+ * paragraph making this claim is how the wrong half of it got believed once.
+ *
  * The order is the deployment's: sorted by file name within this directory, and
  * the authority directory applies whole before it — by CONSTRUCTION in
  * `tools-pennsync-migrate.mjs`, which walks the two directories in that order
