@@ -1938,7 +1938,9 @@ const DECLARED_ROUTES = Object.freeze({
     }),
     reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
   }),
-  ...operationalRoutes,
+  // `operationalRoutes` used to be SPREAD here and is now merged below by
+  // `withoutCollisions`, because a spread inside an object literal is the one
+  // place a duplicate route can be declared and do nothing. See that function.
 
   /**
    * The read half of five compliance domains the frontend already writes:
@@ -2120,7 +2122,45 @@ function guardingArity(routes) {
   })));
 }
 
-export const ENTITY_ROUTES = guardingArity(DECLARED_ROUTES);
+/**
+ * Merge the declaration blocks, REFUSING a key that two of them declare.
+ *
+ * A JS object literal silently keeps the LAST duplicate key, so
+ * `{ ...operationalRoutes, 'Task.filter': … }` compiles, reviews and merges
+ * with one of the two declarations doing nothing at all. Batch C planted
+ * exactly that and measured the result: lint silent, `check:entity-routes`
+ * silent and still reporting the same declared count, the spec suite green,
+ * and `ENTITY_ROUTES['Task.filter'].function` resolving to whichever
+ * declaration came last. **Every reader downstream sees the collapsed object,
+ * so the count can never be short and no figure anywhere can reveal it.**
+ *
+ * `no-dupe-keys` is not the fix and cannot be. It catches literal-vs-literal —
+ * batch C planted that case too and it fired — and structurally cannot catch
+ * literal-vs-spread, because the two keys are never inside one literal for the
+ * rule to compare. That is a class the rule does not reach rather than a rule
+ * left switched off.
+ *
+ * So the blocks are merged HERE, by a function that can see both and refuses.
+ * The cost is that a block must be listed below to be declared at all, which is
+ * the property that makes the refusal possible: a block nobody merges
+ * contributes no routes, and `check:entity-routes` reports a call site it would
+ * have served as unrouted, loudly, where a shadowed declaration reported
+ * nothing.
+ */
+function withoutCollisions(...blocks) {
+  const merged = new Map();
+  for (const block of blocks) {
+    for (const [key, route] of Object.entries(block)) {
+      if (merged.has(key)) throw new Error(`ENTITY_ROUTE_DUPLICATE_DECLARATION: ${key}`);
+      merged.set(key, route);
+    }
+  }
+  return Object.freeze(Object.fromEntries(merged));
+}
+
+export const ENTITY_ROUTES = guardingArity(
+  withoutCollisions(DECLARED_ROUTES, operationalRoutes),
+);
 
 export const ROUTED_OPERATIONS = Object.freeze(Object.keys(ENTITY_ROUTES).sort());
 
