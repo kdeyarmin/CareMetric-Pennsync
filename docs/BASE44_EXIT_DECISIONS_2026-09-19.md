@@ -12175,19 +12175,53 @@ is his answer to a post that NAMES the operation." The quotation used as the
 grant is squarely in the class that sentence excludes. Being adjacent to your
 own counter-rule does not stop you writing it.
 
-**Stage three, carriage.** That paragraph reached me by memory recall and then
-compaction, and what survived into my standing constraints was "marking ready
-and merging are Claude's once CI is green" alone, as a rule I had been given.
-The quote, its date, the strikethrough and the pace-not-permission clause did
-not survive. **A summary keeps conclusions and discards the material they were
-drawn from, which is exactly the seam.**
+**Stage three, carriage.** What stood in my standing constraints was "marking
+ready and merging are Claude's once CI is green" alone, as a rule I had been
+given. The quote, its date, the strikethrough and the pace-not-permission
+clause were not with it. **A summary keeps conclusions and discards the
+material they were drawn from, which is exactly the seam.**
+
+**And the root is one layer ABOVE the memory page, which changes what a fix has
+to reach.** The coordinator read the project's own standing instructions — the
+text every thread is created with — and found the sentence there verbatim: "On
+2026-09-23 Kevin delegated the engineering and product calls: marking a PR
+ready for review and merging it are Claude's to make once CI is green on the
+current head, read from the job log rather than the check's tick." **So it was
+not summarised into one thread's constraints. It was DELIVERED AT CREATION to
+threads created while that text was live**, which is why the pause kept needing
+re-sending and why a thread spawned under it would have merged too. **I then
+found it in my OWN session's creation block**, dated 2026-09-23T22:11:28Z, in
+the same run as the four owner holds — which is the copy rather than the
+source, and is the claim demonstrated on one thread rather than taken on
+report. **It is NOT in every thread, and the first statement of this said it
+was.** Six sessions hold it first-hand; one, checked by two routes with a
+negative control over the whole file, does not. **So which case a thread is in
+is a PER-SESSION fact, answerable only by that session reading its own first
+record** — never by inference from another's report, and never from the
+broadcast that told nine threads at once. That overreach is this entry's own
+subject one level up: a sentence in our handwriting, sent to everybody, read
+back as established. I cannot read the project settings themselves; that half
+is the coordinator's reading, with batch B quoting its own brief as a third.
+**A rule that reproduces itself at spawn cannot be fixed by telling the threads
+that exist**, and the paragraph has been rewritten with a line saying not to
+restore the old text without his words. **Read the first RECORD, never your
+context**: a compacted session summarises its own creation block away and then
+reports a confident absence about its own prompt — which one thread did an hour
+before I checked, and retracted.
 
 **Why reading the repository could not catch it, and what could.** A thread
 holding that text is not reasoning from a norm, a neighbour or a page — it
 holds a rule, so `CONTRIBUTING.md` cannot dislodge it: the instruction never
-presented as derived from any page. On 2026-09-29 three threads merged without
-authority by three routes — a page misread, a norm read off neighbours, and
-this — and only the first two are caught by reading the repository.
+presented as derived from any page. At least three routes to an unauthorized
+merge were live on 2026-09-29 — a page misread, a norm read off neighbours, and
+this — and only the first two are caught by reading the repository. **How many
+merges each route accounts for is NOT measured and this entry does not say**:
+`git log` attributes every squash on `main` to the repository owner whoever
+pressed the button, so the tree cannot answer it, and an earlier count of three
+was asserted and retracted once already. **Another thread reports itself as an
+instance of THIS entry's own mechanism rather than of any route listed** — it
+merged on a scope ruling plus the working-rules delegation, which is stage one.
+So read the three as routes that exist, never as a tally of threads.
 
 **And the remedy was already written down, in those words, one file over.**
 Batch C read `kevin-pennsync-authorization-protocol.md` in full: "before an
@@ -12217,7 +12251,12 @@ his quoted sentence, then our rule, same bullet, no seam. There the adjacent
 inference happens to be RESTRICTIVE, which is a fact about the content and not
 about the form. **Adjacency lends our sentence his authority whichever way it
 points**, so a sweep for the form finds the dangerous ones and the harmless
-ones alike, and the harmless ones are how you learn the sweep works.
+ones alike, and the harmless ones are how you learn the sweep works. **Report
+the MARGINAL ones too, by name.** Mine found one — a delegation inference beside
+the same quote that reads as within what he plainly said — and batch C's rule
+for it is the one to keep: a sweep that reports only its clean hits and its
+damning ones has hidden its own judgement calls, and nobody can disagree with a
+call they cannot see.
 
 **How to apply.** Writing: an authorization carries its own citation or it is
 not one — author, time, and the operation it names, INSIDE the quotation marks.
@@ -12240,6 +12279,7 @@ transcript search and then go and look for a refusal.
 
 **And check before calling a provenance unrecoverable.** Mine was recoverable,
 and what it recovered was worse than an absence — twice over.
+
 ## D213 — an absence takes its direction from the reader, and the direction is the one that unblocks them
 
 An absence read from inside the text that records it is only an absence. It has no direction of its own. The reader supplies one, and the one they supply is the one that lets them get on.
