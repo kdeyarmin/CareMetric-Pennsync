@@ -10572,3 +10572,876 @@ A partition with three free terms and one total is not self-checking: two wrong 
 The tell is the shape of the act: treating a partition as something to keep CONSISTENT rather than something to RE-DERIVE. Consistency is available to a wrong answer. The remedy is that a partition is re-derived from the instrument at every head, never adjusted to absorb a change, and a term is never carried across a head change on the grounds that the rest of the sum still works. Where a sum has more free terms than constraints, its closing tells you nothing and should not be reported as though it did.
 
 Both of tonight's slips have that shape, and the first is the cheaper illustration: I reported a figure as dropped at strict 15 by double-counting seven sites that had already been struck before the total they were subtracted from was formed.
+
+## D181 — A capability correct against the tree can be dead against a store behind it
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Hypothesis and
+the handler layer: the transfer thread. Instance and mechanism: measured here
+against hosted staging on 2026-09-29, tree head `d3a398cd`.
+
+### The rule
+
+Every check in this repository reads the tree. None of them can see the store a
+request actually reaches, so a capability can be correct in every file and still
+refuse every caller — and the tree-side check will be green, because the tree is
+right.
+
+The specific mechanism is a registry that emits an argument key
+**unconditionally**. PostgREST resolves `/rest/v1/rpc/<name>` by the names of
+the body's keys, so a body is only resolvable against a function whose
+parameters include every key present. A key emitted with a null value is still a
+key. Therefore:
+
+**A hosted signature check must key on the body the registry ALWAYS sends, never
+on the arguments a caller passes.** An allowlist over caller arguments is a
+different population and is silent about this.
+
+### The case
+
+`20260920620000_roster_created_date.sql` drops
+`public.pennsync_contract_roster_list(text,integer,text)` and creates a
+four-parameter form adding `p_order`. That migration is committed and **not
+applied**. Measured on the deployment:
+
+```
+pronargs        3
+identity_args   p_agency text, p_limit integer, p_after text
+
+to_regprocedure('…roster_list(text,integer,text,text)')  ->  null
+to_regprocedure('…roster_list(text,integer,text)')       ->  …roster_list(text,integer,text)
+```
+
+And the service emits four keys for every call —
+`services/pennsync-api/record-contracts.mjs:124` at `d3a398cd`, and the same
+statement at `:130` at `087857a`, the head the instrument below lives on — a line
+number without a head is not a reference:
+
+```js
+p_order: args.order === undefined ? null : args.order,
+```
+
+`:2573` is a bare `JSON.stringify(entry.body(...))` with no null-stripping
+before the POST at `:2577`. So a caller passing **nothing at all** sends a
+four-key body to a function that does not exist.
+
+Crossing all 128 registry entries the same way — each entry's own `body()`
+driven with `{}`, the worst case for resolution — gives the size of it:
+
+```
+present on the deployment    83      absent entirely   45
+of the 83, key mismatch       1
+```
+
+Forty-six of 128 entries cannot be served today. All 45 absent functions are
+declared in four files and the mismatch in a fifth, and all five are in the
+pending set, so every one resolves on the apply and nothing is dead for any
+other reason.
+
+### What is measured and what follows
+
+- **Measured**: the three-parameter signature; the non-existence of the
+  four-parameter form, by the database's own resolver; the unconditional
+  four-key body in the tree; the 83/45/1 split.
+- **Follows**: a call naming `p_order` cannot succeed, because no function
+  exists that accepts those four named arguments. This does not depend on
+  PostgREST's behaviour — PostgREST calls a function by name and there is none.
+- **Unmeasured, and not needed**: which status a caller sees. A 404 `PGRST202`,
+  or a 403 because the request arrives as `anon` against a grant to
+  `authenticated`, are the same failure. Closing it needs an authenticated call
+  and this container holds no anon key or test credentials.
+
+### Two counts, and they are not two readings of one number
+
+Batch C's instrument counts **one**. This entry counts **forty-six**. Neither is
+a subset of the other in any way worth writing down, and the body of this entry
+must never sum them, subtract one from the other, or present either as a
+refinement of the other.
+
+They answer different questions. Forty-six is "how many registry entries can a
+deployment not serve today", and most of it is unavailable for the ordinary
+reason that the function does not exist yet — a reader needs no instrument for
+that, and an entry implying one would be inventing a hazard. One is "how many
+wrapper argument lists have changed under a store", the narrow class that reads
+correct at every layer and still fails. The second is the only one that needed
+finding, and it is the only one worth a standing check.
+
+Two instruments that agree without needing each other is the strongest thing
+either of them has, and reconciling their totals would destroy precisely that:
+a single number would have to be derived from both, so neither would be a
+witness any more. Keep them apart, and if they ever appear in one sentence, let
+the sentence say which question each answers rather than which is larger.
+
+### How both halves were found, because neither of us had it alone
+
+Transfer proposed a tree-versus-deployment failure, then re-measured and
+retracted it: `exactObject` in `handlers.mjs` admits only `limit` and `after`,
+so #309 moved the migration and the registry and not the handler, and the roster
+fails in the tree as well. **That finding is correct and independent.** The
+retraction was right on the evidence it held — it had checked the handler layer.
+
+Transfer's own account of the scope is sharper than mine and is quoted rather
+than paraphrased: it had the right mechanism and the wrong layer, concluded from
+the wrong layer that the mechanism was absent, and retracted the category along
+with its instance of it. **Being right for the wrong reason is being wrong about
+the reason, and retracting on that basis is the same error pointed the other
+way.** It asked for the withdrawal to be recorded as its own rather than left
+ambiguous, and it is.
+
+But that sentence is about the retraction and must not be read as a judgement of
+it, so the order matters and transfer supplied it: **it withdrew on the evidence
+it held, and the measurement that would have told it otherwise had not been taken
+by either of us yet.** The store half arrived after the withdrawal, from a read
+neither of us had made. Leaving that unsaid flatters the half of this entry that
+is mine, by silence rather than by claim.
+
+What it had not checked was the store. The two defects are stacked and
+independent: transfer's fires for a caller who supplies `order`; this one fires
+for **every** caller, including one that supplies nothing. So transfer's fix
+cannot be described as making the roster work before the apply, and the check it
+is building — tree-internal, permanent, correct — must say in its own comment
+what a green allowlist-versus-registry comparison is silent about.
+
+### The instrument, which is tree-side and belongs to batch C
+
+Do not build a standing hosted signature check on the strength of this. The
+reading is a description of the gap before an apply that is already scheduled:
+afterwards it reports zero forever, and its only finding would be "somebody has
+not applied yet", which the ledger comparison already says **by name**.
+
+The category earns an instrument on the day a signature diverges with **no**
+pending migration explaining it. None does today: all forty-six trace to five
+named files.
+
+Batch C built the instrument, and it is a test in the tree rather than a hosted
+read. The discriminator is not whether a key looks optional but whether it was
+in the signature its **creating** migration made or was added by a **forward**
+one, so the instrument reads the record-migration directory, extracts every
+wrapper `drop function` line, and asserts the result is exactly the one naming
+`20260920620000_roster_created_date.sql`. It shipped on #346.
+
+Three things about how it was built are the reusable part. It was shown to bite
+on a synthetic two-occurrence text **before** the directory's own single-line
+result was believed, so "one" is a measurement and not a coincidence of the
+pattern. The whole assertion was then sabotaged with a planted file and restored
+clean. And the spelling was cross-checked: the narrow pattern and a
+case-insensitive `drop +function +("public"|public)\.` over the same directory
+return the same single line, which is what makes a one-row population examined
+rather than merely short.
+
+It is deliberately **tree-side**, and that is the load-bearing choice. A hosted
+comparison of the same thing reports zero forever once the store is applied — it
+measures a gap that closes — while this one keeps naming the capability a store
+behind the tree cannot serve, whatever any deployment has run. The category is
+about the distance between a tree and a store, so the check belongs where the
+distance is visible from.
+
+**The discriminator was then controlled, and where it could be controlled is
+itself a result.** Four registry entries emit an order key when driven with
+`{}`: `listAgencyRoster`, `listPhysicians`, `listAgencyTasks`, `listCarePlans`.
+Against the deployment all four answer the same way — not "the signature already
+accepts it" but no such function at all, since the other three are among the 45
+absent. So the hosted control does not merely fail, it CANNOT RUN: every answer
+is identical and none of them is about ordering, and an instrument built there
+would have had no case proving it can tell the two apart while looking like it
+passed. Transfer's wording for this is better than mine and is the part to carry:
+the hosted form could never have been shown to distinguish the two cases, only
+**to return the same answer for all four**. It does not fail, it agrees with
+itself — and agreement reads as corroboration, which is why that shape gets
+trusted. It is the same animal as a collector comparing its output against the
+array the output was built from. In the tree it controls cleanly:
+
+```
+physician_list   created 20260920570000_contract_reference_reads.sql:208     p_order in the creating signature
+care_plan_list   created 20260920580000_contract_operational_tables.sql:931  p_order in the creating signature
+task_list        created 20260920580000_contract_operational_tables.sql:668  p_order in the creating signature
+                 inner function RECREATED 20260920590000_chart_agency.sql:161, same seven parameters, no drop
+roster_list      created 20260920030000_contract_roster.sql                  p_order NOT in it
+                 wrapper dropped and recreated 20260920620000_roster_created_date.sql with p_order
+```
+
+`task_list` is the row that earns the control, and batch C supplied it. A forward
+migration DOES touch it — `create or replace` at a byte-identical parameter list,
+dropping nothing — so a weaker rule asking "was this recreated by a forward
+migration" would have put it beside the roster, and "did a forward migration
+change its signature" does not. It separates a third question too: that
+recreation is of the INNER `pennsync_records.contract_task_list`, while the
+public wrapper `pennsync_contract_task_list` is created once and never touched.
+PostgREST resolves the WRAPPER, so a rule that did not distinguish the layers
+would have mis-placed it twice over. **The discriminator is a question about the
+WRAPPER's arity across migrations; the inner function is a different population
+that can move without any call shape changing at all** — which is why batch C's
+pattern targets `drop function "public"."pennsync_contract_*"`, and why a scan of
+the inner name would have reported `chart_agency.sql:161` as a second occurrence
+and then pinned that false positive as an expectation. The structural
+difference, stated rather than counted: the wrapper `pennsync_contract_task_list`
+has exactly ONE declaration in the whole directory, at
+`contract_operational_tables.sql:1433`, with no drop and no re-grant, while the
+roster's wrapper is declared at `20260920030000:228` with its revoke and grant at
+three parameters and then dropped at `20260920620000:228` and re-declared at 230
+with revoke and grant re-issued at four. Do not reach for a count of name
+occurrences here at all, and the reason is a correction of an earlier draft of
+this very paragraph. It said two of us had got different totals for the roster
+and explained the difference by a comment at `20260920620000:219` that names the
+function in prose. The explanation reproduced the difference exactly and was
+about nothing: the two figures were never over the same population — one counts
+occurrences of the literal name in this directory's text, the other counts
+emitted keys across the gate's served set — so there was no gap for a comment to
+account for. **An explanation that reproduces a difference is not evidence that
+the difference is real**, which is D182 applied to totals rather than to bytes,
+and D192's shape arriving inside the entry that needed it. State the structure
+above; do not state a number for it.
+
+Three of four carry the key from the migration that created the function; the
+roster is the only one that does not. That is a third independent argument for
+the tree-side placement, it did not exist until the control was run, and it cost
+two minutes. The negative half is the finding: a case that comes back blind is
+not a control.
+
+**One blind spot it owes its own comment.** `create or replace function` cannot
+change an argument list; a different list makes a **new overload**. So a forward
+migration can change which signatures exist *without* a `drop function` line, by
+adding an overload and leaving the old one — and the symptom is identical, since
+an unapplied deployment has only the old form and the same body fails to
+resolve. The check is blind to that shape. It is not hypothetical arithmetic: it
+is why `20260920620000` has to drop first, and — the sharpest part — leaving the
+old overload is the safer-LOOKING choice, which is what makes it the likely next
+shape. A gap that looks like good practice is the one that arrives.
+
+So it is declared beside the assertion rather than patched, per the rule D159
+sets, and declared **as a silence**: the test asserts that a `create or replace`
+of a differing argument list yields no drop line. Batch C proved that silence
+bites before believing it — widening the pattern to
+`/(?:drop|create or replace) function …/` fails the assertion by name, then
+restored clean. Which is a better outcome than the wider pattern would have been:
+over `create function` it fires on every migration in the directory and says
+nothing, and now the day somebody widens it to catch this shape, the widening
+itself fails and they have to read why. **A guard that makes the wrong fix fail
+loudly is stronger than one that merely covers the case.**
+
+Related: D88, D93, D95, D159, D163, D168.
+
+## D182 — An explanation that reproduces the right number is not evidence
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Earlier form
+credited to the ladder thread; the worked case is three sessions in a row,
+including this entry's author, on 2026-09-29.
+
+### The rule
+
+The number is the one thing every wrong explanation was fitted to. So an account
+that arrives at it is not thereby supported — reproducing the target is the
+minimum bar for being *offered*, not evidence of being right.
+
+What does carry weight is an account that survives a check the number cannot
+supply: its **units**, its **population**, or an independent artefact. Absent
+one of those, publish the gap and say it is unresolved.
+
+### The case
+
+A 5,221-byte entry arrived at the collector measured as 5,202. Nineteen bytes.
+Three sessions produced three decompositions and **every one landed on
+nineteen**:
+
+```
+mine        18 whitespace + 1 trailing newline               = 19
+ladder's    whitespace + multibyte − N  =  18 + 20 − 19      = 19
+corrected   55 + 20 − 19                                     = 56   <- the same
+                                                                   formula with
+                                                                   the real figure
+```
+
+The 18 was **one paragraph's** share of collapsed whitespace, handed into a
+file-level equation. The file loses 55 characters. Ladder's formula was
+arithmetically honest and wrong, and it landed on 19 only because 18 happens to
+be `N + 1` — the most flattering coincidence available and the one least likely
+to make anybody look again.
+
+The real route is neither: 5,202 sits **one** away from the file's raw character
+count and **thirty-seven** from the collapsed closure, so the whitespace term
+never entered the gap at all.
+
+And the whole exercise was unnecessary. The texts had already been proved
+identical: nineteen paragraphs matching on collapsed characters, with the one
+paragraph whose length differed hashing to the same `5970a034` on both sides.
+The content was settled; only the arithmetic about it was not.
+
+### Why this is the hard kind
+
+A number is a strong-looking anchor and a weak constraint. Once an account
+reaches it, the reaching feels like confirmation, and the reader stops — which is
+exactly what three of us did in turn, one of us immediately after writing the
+warning. The tell was available throughout and was not a number: **a
+paragraph-level figure sitting in a file-level equation.** Units, not totals.
+
+Note also what made it durable: each wrong account was *usable*. It explained
+the observation, predicted nothing else, and could not be falsified by the only
+measurement anybody kept quoting.
+
+### How to apply
+
+1. Before believing an account that hits the target, ask what **else** it
+   predicts, and check that instead.
+2. Check the **units and the population** of every term. A figure that is a
+   share of one thing does not belong in an equation about another, however well
+   it fits.
+3. Prefer a different **artefact** to a better formula. Ladder declined to derive
+   a fourth formula from my figures on the ground that agreeing with a number is
+   not measuring it — that was the correct response to the shape, not merely
+   caution.
+4. When the gap will not close, **publish it unresolved beside what was
+   established.** "Nineteen unexplained, nineteen paragraph hashes matching" says
+   exactly what is known and what is not. A tidy sum that does not survive its
+   units reads like a result and is a liability.
+5. Compare hashes; treat lengths as a locator and never as evidence.
+
+### And one of the three reached a pull request
+
+The collector carried the first decomposition into #336's body and reported the
+gap "closed with the decomposition" — published, where it outlives every message
+that produced it, and struck only because the correction happened to cross it in
+flight. That is not a separate failure; it is this one arriving at its natural
+destination. A wrong account that reproduces the number reads as finished work,
+so it is exactly the kind that gets written down.
+
+Which sharpens the remedy from a habit into a rule about *where*: the place to
+apply this is the moment before publishing, not the moment of believing. Ask
+which of the account's terms a reader could check without the number, and if the
+answer is none, publish the gap unresolved instead.
+
+### The instrument defect underneath
+
+The length column is **post-collapse characters**, so it can never equal
+`wc -c`, and subtracting one from the other manufactures a gap. It diverges in
+two directions at once, which one identity states:
+
+```
+collapsed + whitespace + multibyte = bytes
+5146      + 55         + 20        = 5221
+```
+
+Hard-wrapping removes characters by design; every em-dash is three bytes and one
+character, so a multibyte change is invisible in that column by construction —
+proved by swapping one em-dash for a hyphen: collapsed length 72 → 72 unchanged,
+sha `0680ce0c` → `e06c14df`. Print the identity, label the column or emit bytes
+beside it, and the subtraction becomes impossible to make.
+
+Related: D129, D140, D143, D151, D170, D176.
+
+## D183 — A cross against merged history cannot see a collision that lives only between two open branches.
+
+I re-derived the library write population on transfer's own head, with transfer's own tools and its own `ENTITY_ROUTES`, because we had two numbers for one thing: my ten sites over eight route keys and transfer's five. Transfer's five is not a miscount. It is exactly the residual of its own unmerged branch — right as a residual and wrong as a population. Both of us had measured against `origin/main`, and `origin/main` is a representation that cannot see what lives only on two open branches at once.
+
+The instrument is one line per open pull request, run before a wave is assigned rather than after: `git diff --name-only origin/main...<head>`, crossed pairwise across the open heads. Where two heads touch the same file, read the diffs against each other and not against main.
+
+This instance carries three distinct failure modes, which is why it is worth writing down rather than merely noting:
+
+1. Three route keys declared on both branches. Merged history shows neither declaration as a duplicate, because neither exists on main.
+2. Two functions named `libraryWrite` in one file, which cannot merge. A textual merge does not refuse it — it produces a file where the second shadows the first, and the suite passes against whichever one won.
+3. An assertion present on main that transfer's head correctly removed. A textual merge silently keeps it, and it then fails for a reason that reads as a regression in the lander's own change rather than as a merge artefact.
+
+The third is the one to fear. The first two announce themselves at the first test run; the third arrives as a red that points at the wrong author.
+
+The rule that follows: a population is measured at the head it will land onto, and where two open branches touch one file, that head is the other branch, not main. And where two sessions disagree on a count of the same thing, neither takes the other's number — one of us re-derives on the other's head with the other's tools, so the reading cannot be a difference of instrument or head.
+
+The coordinator's ruling that rides with it: the verb check survives in whichever helper lands. A route declared with the wrong action passing the gate and handing a screen a plausible row for an operation it did not perform is a silent wrong answer. That was proved by sabotage, not by argument.
+
+## D185 — Prefer the shape that removes the tempting operation over the rule forbidding it
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Named by the
+coordinator out of a sentence of mine on 2026-09-29; the instance and its limits
+are measured here.
+
+### The rule
+
+Where a figure is prone to drift, change the DERIVATION so that no intermediate
+quantity exists to be carried forward. A derivation that yields a set of names
+has nothing in it to increment; a derivation that yields a count hands the next
+reader a term and asks them to remember not to reuse it.
+
+A rule forbidding the operation depends on whoever holds the figure remembering
+the rule at the moment they are least likely to — when the answer is nearly in
+hand and one step would finish it. A shape that offers no such step does not
+depend on anybody.
+
+### The case
+
+This project's pending-migration figure has three terms: what is pinned, what
+reaches a deployment (pinned minus `LOCAL_ONLY_MIGRATIONS`), and what a store has
+RUN. Subtraction gets you a number, and the number is right. What it also does is
+leave a term in somebody's hand, and the documented history of this figure is a
+history of that term travelling:
+
+- D106 exists because the count survived a change for an entirely different
+  reason while the sentence explaining it went stale, and nothing failed.
+- `AGENTS.md` carried "the ledger's 74 rows are 74 *because* one migration is
+  held back" — true while 74 was also everything reaching a deployment, false
+  the moment three migrations arrived unapplied, with 74 still correct and the
+  explanation no longer the reason for it.
+- The three-figures rule was then written and has to be enforced by hand, every
+  time, by whoever is holding the numbers.
+
+Deriving the set BY NAME instead — read the ledger's names, read the directory's
+names, report the difference as a list — answers the same question and produces
+no term at all. Main moved several times over one night, the last of them to a
+head touching one documentation file. At each one the honest report was "the set
+is unchanged, and these are its twelve names", and at no point was there a
+quantity sitting in front of me that one operation would have turned into a new
+figure.
+
+### What is measured, and what is not
+
+**Measured**: that the subtraction form has drifted in this project more than
+once, with the drift recorded in its own decision entries; and that the by-name
+form answers the same question — it found the same twelve, and separately
+established that no ledger row exists which the tree lacks, which a count cannot
+express at all.
+
+**Not measured**: that the by-name form would have RESISTED a temptation the
+subtraction form yielded to. Nothing arrived tonight, so nothing was tested.
+The claim is about the shape of the operation available, not about an occasion
+where the two forms diverged in practice. Say it that way; an entry claiming the
+stronger version would be D182's defect wearing this entry's clothes.
+
+There is also a real cost, and it belongs here rather than in a footnote: a set
+of names is longer, harder to put in a sentence, and useless as a trend. Where
+somebody genuinely needs the trend, they need the count — and then the rule
+applies rather than the shape, and it applies to them.
+
+### How to apply
+
+1. When a figure has drifted once, do not start by writing a rule about it. Ask
+   what derivation would not have produced the drifting term.
+2. Prefer a derivation whose output is a NAMED SET over one whose output is a
+   cardinality, wherever the consumer can use either. The set subsumes the count
+   and the count cannot be recovered wrongly from the set.
+3. Where the count is genuinely needed, keep the rule AND say which operation it
+   forbids. "Do not increment" is weaker than "these three figures are each
+   derived and never read off another", which is weaker again than having no
+   subtraction available.
+4. Do not present this as a reason to remove a count somebody depends on. The
+   rule is about which shape to reach for when building the derivation, not a
+   licence to narrow an existing instrument's output.
+
+### Why it generalises past figures
+
+The same asymmetry runs through the checks here. D143's rule is to fear a check
+that would still pass after its subject was destroyed — and the durable repairs
+to those checks were not "remember to compare against the right thing" but
+changes that made the wrong comparison unavailable: reading each source from
+disk, sharing one inventory definition between two suites, pinning the runtime's
+own reader model so the label cannot be supplied by an operator. D182's remedy
+is the same move one level up: print the identity so the subtraction that
+manufactured the gap becomes impossible to write, rather than warning readers not
+to make it.
+
+The pattern is: a guard that makes the wrong step fail, or not exist, outlives
+every guard that asks somebody to skip it.
+
+Related: D106, D129, D140, D143, D151, D163, D182.
+
+## D186 — A comparison that normalises one side reports its own normalisation as a difference
+
+Owner: redeploy thread (`claude/project-thread-35bfot`). **Added 2026-09-29**,
+from a defect in the tooling built to carry these entries.
+
+### The rule
+
+When two texts are compared through a normaliser — whitespace collapsed, markers
+stripped, case folded, a prefix removed — **the normaliser must be applied to
+both sides.** Applied to one, it does not weaken the comparison; it *inverts* it,
+because the shape it removes from one side is still present on the other and now
+reads as content that moved. The output is not a weaker result. It is a
+confident, specific, wrong one.
+
+The cost is set by where such a tool points. A normaliser is reached for when
+comparing something of yours against something of somebody else's — a copy
+against an original, a landed entry against a sent message. So the failure
+lands as **a confident negative about another party's work**, in a tool built to
+audit your own.
+
+### The case that produced it
+
+Thirty carried entries in this document had no anchor on the text their finders
+actually sent. The pull request carrying them said why: their sending messages
+were *"no longer extractable here."*
+
+**Nothing had measured that.** It was a claim about this session's own reach,
+written as a reason and published as one, and a single probe of the session
+transcript refuted it — the text was there. Publishing an unavailability as a
+reason forecloses the check that would have refuted it, and it does so while
+looking like diligence, because a stated reason reads as a thing somebody
+established.
+
+The probe that refuted it was then wrong in its own right, and that is the
+spine. It built each entry's body by dropping heading LINES from the landed copy
+and searched for that body inside the stored message, which still had its
+headings. So an entry's body stopped being contiguous wherever an internal
+heading sat, the search missed, and the tool printed `the body has since changed`
+— against entries sent by four other threads. It had no evidence for that. It
+had a mismatch between two text shapes and a label that named somebody else's
+revision as the cause.
+
+Stripping the marker and keeping the line, on both sides, took the probe from
+ten candidate matches to nineteen. Nine entries were being reported as altered
+because of a decision inside the comparison.
+
+Read that figure carefully, because it is not what it looks like and this entry
+would be dishonest without the caveat. Nineteen is the count of entries whose
+text was found SOMEWHERE in the transcript, and the transcript holds both
+directions. Eleven of them are anchored on something upstream of this hand. The
+rest matched text this session wrote, and the checked figure is eleven.
+
+### The pattern, which is what makes it worth a number
+
+This was the **second** confident false negative from this thread's verification
+tooling in two hours, both from a text-shape mismatch and neither findable by
+reading:
+
+- a check that a memory split still carried every hard gate reported four gates
+  LOST, because it matched fixed strings against a file that hard-wraps
+  mid-phrase; collapsing whitespace first put all four back;
+- this one.
+
+Same family, different surface. A third followed within the hour, in the probe
+that estimated how many entries were recoverable at all: two runs of it
+disagreed about which entries they found, for the same reason, which is why the
+figure was published as a floor rather than a count until the real check existed.
+
+The transferable form: **a verification tool's own text handling is a place
+defects hide, precisely because its output is a claim about somebody else and
+nobody audits the auditor.** Sabotage the comparison, not just the subject.
+
+### The remedy, and the check it produced
+
+Normalise both sides or neither, and say in the output which shapes the
+comparison is blind to, so a reader knows what a pass does not cover.
+
+The replacement — `anchor-transcript.mjs` — asks whether a landed entry's words
+occur, whole and in order, inside a message as the harness stored it on arrival.
+It declares itself blind to heading level and to whitespace and to nothing else,
+and **three of its eleven sabotage cases are controls that must PASS** — a
+re-wrap, a heading shift and a title this branch declares it authored — because a
+check that refused those would be measuring whitespace and reporting it as
+infidelity.
+
+Its first version also claimed that no file of this branch was on either side,
+and that claim was false for a third of the population it reported. A transcript
+records what a session SENT as well as what it received, including the heredocs
+that wrote the files under audit, and the check chose its anchors by searching
+everything without asking what it had found. Seven entries were counted as
+anchored against the command that created their own disk copies. The claim is
+withdrawn, the records are classified by the tool that produced them, and one
+that resolves to this session's own output is now refused rather than counted.
+That defect is not this entry's rule and is not claimed as one here; it is
+recorded because a remedy section that overstated its own remedy would be the
+thing this entry is about, one level up.
+
+One case earned its keep by failing. A deleted word landed in a title and the
+check passed, because the body comparison started at line two and the title was
+not compared at all. **A sabotage that finds a gap in coverage is worth more than
+nine that confirm an assertion**, and the title is now compared, with an
+exemption only where a claim *declares* that title authored here.
+
+Related: D150, D170, D174, D176, D178.
+
+## D189 — two readings do not conflict until both name the same endpoints.
+
+When two sessions report different values for what sounds like the same quantity, that is not a disagreement until each has said what it measured and over what; ask for the endpoints before routing it as a conflict, because a disagreement assumed before the endpoints are named is a disagreement invented. The instance is the library write population: the settled figure was ten call sites over eight route keys, transfer reported five, and I began routing that as a conflict. It was not one. Transfer's five were the residual of its own unmerged branch, so the two readings were taken over different trees and each was correct about what it measured. Nothing needed reconciling, and the reconciliation I had started would have produced a number wrong for both.
+
+A second instance, and it is the better one, because neither reading was wrong. Batch A and transfer reported different answers to what sounded like one question: how much arrived in an interval, and whether a migration was among it. Batch A read three commits and no migration added. Transfer read six and one added. I had both figures in front of me and treated them as a disagreement to resolve. They were not one. Their left endpoints differed — batch A's opens at the commit that added the file, transfer's before it — so the same migration is an arrival in transfer's frame and an existing member in batch A's, and each statement is true of what its author measured. Nothing was wrong except my assumption that two numbers answering to the same words answer the same question. The first thing to ask is therefore not which figure is right, but what each one measured and between which two points. That costs one message. Resolving an invented conflict costs several and can end in a number that is wrong for both sides.
+
+D189 is the reader's face and D192 is the asker's: D189 governs what I do when two figures arrive, D192 what I must not do before issuing a question about them. They name each other and stay two entries rather than one, because the register's rule governs issuance and not retroactive merging, and merging two published entries costs both their examples and their attribution to buy what a cross-reference gives free.
+
+## D190 — A correction is only as good as its least-read copy, so enumerate the copies before correcting and fix the reader-facing one first.
+
+I told two sessions that the owned store carried neither a `p_order` parameter on `contract_roster_list` nor the `PENNSYNC_ROSTER_ORDER_UNSUPPORTED` code that the registry entry declares. It carries both: `20260920620000_roster_created_date.sql` declares the parameter at line 99, coalesces it at 118, raises that code at 120, and recreates the public wrapper at four parameters at 232. My reading had grepped one file, `20260920030000_contract_roster.sql`, and I reported the result as a property of the directory.
+
+I corrected it in three places — the spec comment, the plan document, and a commit message naming the misreading rather than replacing it. Then I went to mark the pull request ready to merge, and the description still carried the false claim. Another session caught it in the minutes before the merge.
+
+The claim was not idle in that description. It was the whole argument for why the new check reads the HANDLER boundary rather than comparing a route's emitted keys against the contract's own parameters, and it argued that from a premise about the store that was false. The real argument is better: every layer a contract-side comparison can reach agrees, and what refuses the call is one `exactObject` allowlist in front of the contract — a layer that comparison cannot see. The correct argument had been available the whole time and the false premise had been doing its work.
+
+Three things to take from it.
+
+First, the copies are enumerable, so enumerate them before correcting rather than after. For a claim made in a pull request the list is: the code or comment that states it, the document that records it, the commit message, the pull request description, and whatever messages carried it to other sessions. I corrected in the order I happened to touch the files, which is why the one nothing re-reads was last and nearly not at all.
+
+Second, the reader-facing copy goes first. A comment is read by whoever next edits that file; a description is read by whoever reviews the change, at the moment they decide whether to trust it. That is the copy where a stale claim does its damage, and it is the one no test, gate or lint can see.
+
+Third, record the correction rather than overwriting it. The description now carries the retraction beside the corrected text, naming the misreading — one file grepped and reported as the directory — because someone had already read the wrong version, and a silently replaced sentence tells that reader nothing.
+
+This is what D177 costs when it comes due. A second copy of a fact is a defect under an upstream authority, and the alarm is what happens without one: here the authority was the migration directory, there were five copies of a claim about it, and nothing in the repository could notice that four had been fixed and one had not.
+
+## D191 — a listing bounded by a count I supplied reports my bound, not the population
+
+**2026-09-29.** Mine.
+
+I told the coordinator, batch A, batch C and redeploy that `main` had moved by four commits since the base my branch carried. It had moved by six. The number came from a `git log -4` whose output I read as the interval and reported as one.
+
+**The defect is not the miscount.** It is that a bounded listing looks exactly like an exhaustive one. Four lines of `git log -4` contain nothing that says "and there were two more" — no ellipsis, no count, no truncation marker — so the error has no tell at the moment it is made. Nobody caught it by reading my claim, in four threads over about an hour. It surfaced only when I went back and measured between NAMED endpoints because a different question had been put to me, and the interval came out at six.
+
+**Take the bound out of the instrument.** `git log <base>..<tip>` has no `-N` in it, so its output is the population by construction and there is no bound of mine for the result to be confused with. Where a limit is genuinely needed, ask for one more than you intend to show and say whether you got it — the extra row is the tell the listing does not have. This is D185's shape arriving from another direction: prefer the form that removes the tempting operation to a rule against performing it.
+
+**The general form, which is batch A's and sharper than the instance: an instrument that takes a limit should PRINT the limit, because a reader cannot recover it from the result.** That is what separates this from an ordinary miscount. The output of `git log -4` is byte-for-byte indistinguishable from the output of an interval that happens to hold four commits — the result carries no evidence of its own scope, so there is nothing for a careful reader to be careful about. It is the same remedy as printing the identity beside a length column, and it is a different animal from an explanation fitted to a number: here nothing was fitted, and the figure was simply unfalsifiable from its own output.
+
+**What kept the damage to the number itself is worth as much as the lesson.** Nothing else I sent depended on the count. The thing that actually mattered — that exactly one migration arrived in the interval, and which one — was measured with `git diff --name-status` over the same named endpoints, not read off the listing. So the bad figure was decoration on a result derived another way, and withdrawing it changed no conclusion anywhere. **A figure is safe when the listing is not the instrument**, and that is the property to check when a count turns out wrong: not "how far did the number travel" but "did anything rest on it".
+
+**It also supplied D189's second worked example.** Batch A read three commits and no migration added; I read six and one added. Both were true, because our left endpoints differed — theirs opens at the commit that added the file, mine before it, so the same migration is an arrival in my frame and an existing member in theirs. The two readings did not conflict and could not be shown not to conflict until both named their endpoints.
+
+## D192 — Say what each figure counts before asking which one is right
+
+A question of the form "is it X or Y?" carries a premise: that X and Y are two answers to one question. When they are answers to different questions the premise is false, and the question manufactures a disagreement neither side can resolve. Whichever number the answerer picks, they have assented to a comparison that was never valid, and the one they dropped was correct about its own subject. The damage is not that the asker was unsure — it is that the question forced an answer wrong for at least one side, and made it look settled.
+
+Three instances, and I was the target of the first.
+
+**One.** #336 splices thirty-five entries. Its body also reports thirty of them as disk-only, because its third check could anchor only five on the text their finders sent. My D178 paragraph reached into that body and came out with thirty as the splice count. When that was caught, the question that reached me was "is it thirty or thirty-five?" — and both figures were correct, about different populations. I settled it by dropping the count from the sentence rather than substituting the other, because D178's claim (a carrier is not an author) holds at any count.
+
+That turned out to matter, and in two ways I did not see when I wrote the sentence. The other figure had already moved by the time the sentence existed, and moved again afterwards. And the instrument producing it has since been found wrong in a way that read as green throughout — so a number taken from it at any head was never the safe half of the pair either.
+
+The deeper fault is the one the two figures conceal by sitting in one clause: they were never a subset relation. Mine counted entries spliced into a collection; the other partitions a directory of owed entries three ways, and that directory holds entries spliced nowhere. "N of the thirty-five anchored" is not a sentence either instrument can make true or false. That is D189 arriving inside D192 — the two readings do not conflict, because they never named the same endpoints — and it is why the remedy below is a sentence before the question rather than a better answer to it.
+
+**Two.** An hour after issuing me this number, its issuer did the same thing: "seven and eight" relayed to batch A and batch C as one disputed figure. It was three numbers — batch A counting text occurrences of a function name in a directory, batch C counting the same with a narrower pattern that excluded a comment line, and batch C's pinned count of emitted keys across the served set. Two of the three coincide by accident. Say this plainly rather than tactfully: the rule's author broke it twice within the hour of issuing it. A rule only its author remembers is not yet a rule, and this one was not yet even that.
+
+**Three.** Batch A supplied the mechanism, which is the part worth carrying forward. The tell was inside its own explaining sentence — "different totals because one includes the comment" only means anything if both totals are over the same text, and one of them was not — and the explanation reproduced the difference exactly. That is D182 arriving from the other side: an explanation that reproduces the right number is not evidence, because the number is what every wrong explanation was fitted to. A manufactured disagreement gets believed precisely when somebody finds a plausible account of the gap, and a plausible account is cheap when the gap is real but sits between two different things.
+
+The remedy is one sentence before the question, and it is the **asker's** to write, not the answerer's: what X counts, over what text, at what head — and the same for Y. Where those two sentences differ there is no question to ask; both figures stand and the work is to name them apart. Where they agree the question is real and its answer settles something.
+
+**D189 is this rule's other face, and the two point at each other.** D189 is the reader's: two readings do not conflict until both name the same endpoints, so ask each side what it measured and over what. D192 is the asker's: do not pose the choice until you have said what each counts. They are two entries rather than one because they arrived separately, each with its own worked examples and its own author. The register's rule — batch A's, adopted — is that a rule with two axes is one rule, and a candidate that turns out to be another axis of something already written should widen that entry rather than take next-free; had these two arrived together, one number would have covered both. That rule governs issuance and not retroactive merging: merging two published entries would cost both their examples and their attribution to buy what a cross-reference gives free.
+
+## D193 — Sabotage what a check assumes, not only what it compares
+
+Owner: redeploy thread (`claude/project-thread-35bfot`). **Added 2026-09-29**,
+from the check I built to satisfy D176 turning out to violate D176.
+
+### The rule
+
+A sabotage harness proves that a check is sensitive to the thing it COMPARES. It
+says nothing about whether the comparison means anything, because that rests on a
+premise the harness never touches — and a check whose premise is false produces
+exactly the output a correct one produces.
+
+**So plant a case in which the premise is false and the comparison still
+succeeds.** For an anchoring check the premise is *this record is upstream of the
+hand being audited*. For a comparison against a build it is *this build
+represents the tree*. For a parity test it is *this imported function is the
+original*. Name the premise in one sentence, then break that sentence rather than
+the data.
+
+The operational form, and the part that generalises furthest:
+
+> **An artefact is upstream of a check only if you can name the hand that
+> produced it.**
+
+Not "it was there before", not "I did not write it in this file", not "it came
+out of a tool". Name the hand. If the answer is your own, the artefact is your
+work wearing the costume of evidence.
+
+### The instance
+
+`anchor-transcript.mjs` checks that each decision entry the collector carries is
+faithful to the text its owner actually sent, by finding that text in the session
+transcript. It was written *because of* D176, whose whole content is that a
+faithfulness check must anchor upstream of the hand it audits.
+
+It anchored seven entries against this session's own
+`cat > owed-snapshot/D<n>.md` heredoc — the writing act itself. The transcript
+holds both directions: a session's own tool calls are recorded in it beside the
+messages it received, so **containment in the transcript proves nothing about
+provenance.** Those seven were, in substance, the check confirming that a file
+matched the command that wrote it.
+
+Nine sabotage cases were passing at the time: a changed word, a deleted word, a
+reordered pair of sentences, a wrong record id, and five more. Every one of them
+was real, and every one of them was downstream of an anchor that was not an
+anchor. That is the whole lesson in one line — **the harness was measuring the
+comparison while the premise underneath it was false, and a green harness is
+what that looks like.**
+
+### How it was found, because the route is reusable
+
+Not by reading. By asking successively narrower questions of each transcript
+record and checking the answer against a known case:
+
+1. **Direction** — user or assistant? Too coarse; the heredocs are assistant
+   records and so are the genuine deliveries' surrounding turns.
+2. **Kind** — a tool result or the session's own output? Closer, and still wrong:
+   a tool result can be a read of a file this session wrote a minute earlier.
+3. **The producing TOOL** — which is where it resolved. A `ReadNotifications`
+   result is genuinely upstream, because another session wrote it. A read of
+   `/mnt/project-files/...` is the finder's own file arriving through a tool. A
+   `cat >` heredoc is the writing act.
+
+The check now classifies every record by its producing tool and **refuses before
+comparing** when the class is `own`, naming the command in the refusal. The seven
+claims were withdrawn with their reasons rather than re-anchored, and the
+correction was posted publicly on the pull request that carried them.
+
+### What this asks of the other threads
+
+Every instrument in this project has a sabotage harness, and that is the good
+news. **As far as I know, not one of them plants a case against its own
+premise** — they all plant a case against their data. This is the instruction, not
+a note about my check:
+
+- Write the premise down. One sentence, in the tool, above the comparison.
+- Plant a case where the premise is false and the data is clean. If the tool
+  still passes, the harness has been proving the wrong thing.
+- Prefer a refusal to a result whenever the premise cannot be established. A
+  check that cannot tell whether a record is upstream should say so, not fall
+  back to comparing.
+
+**Related:** D176, whose rule this is a failure of, in the tool written to obey
+it; D174, on an expectation that agrees with itself; and the house defect, which
+this is an instance of — the transcript is one representation and the act of
+writing is another, and I read the first and stated a property of the second.
+
+## D194 — A blind spot named by the feature of one instance is worse than one left vague
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Offered as a
+number by the coordinator session; the statement narrowed and the instance
+measured here on 2026-09-29 at tree head `48f3feca`. The correction that produced
+it came from batch C.
+
+### The rule
+
+False precision stops the reader looking. Vagueness keeps them looking.
+
+So when a check's limit is written down, the name it is given has to cover the
+CLASS the check is blind to, not the feature of the one case that revealed it. A
+limit stated too narrowly does not merely under-describe: it hands the next
+reader a remedy that closes one instance and reads as though the class is shut.
+
+### The case
+
+I crossed a hosted ledger's applied set against the live catalog, keyed on object
+names, and reported the limit as: a name-keyed check cannot see **an arity
+change**. Two pending migrations report every object present, and that was my
+explanation of why.
+
+Measured, at the head I had taken the reading on,
+`20260920630000_roster_display_name.sql` has FOUR drop-and-recreate pairs and
+only ONE changes arity:
+
+```
+80  / 82   caller_roster(text)                          -> (p_agency text)             1 -> 1
+129 / 132  roster_entry(8 params)                       -> 9, gaining p_full_name      ARITY
+184 / 186  contract_roster_list(text,integer,text,text) -> same four, body changed      4 -> 4
+305 / 307  contract_roster_get(text,text)               -> (p_agency, p_user_id)        2 -> 2
+```
+
+The real limit is REDEFINITION: a name-keyed check cannot separate "this file has
+been applied" from "this file has not been applied and its objects predate it"
+for any redefinition at all — a changed body, return type, volatility or security
+setting as much as a changed argument list.
+
+**And the remedy the wrong word points at fails.** "Arity" sends the next person
+to a signature-keyed check. That closes `roster_entry` and stays blind to the
+other three, which are the ones my own paragraph was about. They would have
+built it, seen it pass, and believed the class shut.
+
+### Why it is not the house defect wearing another costume
+
+The generative error is the same family — an instance stated as the class, a
+property of one representation stated as a property of the thing — and that
+family is not this entry's contribution. What is new is the ASYMMETRY OF
+CONSEQUENCE.
+
+The house defect produces a wrong belief in the person who committed it, and the
+person who committed it is usually the person who can still check. This produces
+a wrong NEXT ACTION in somebody who never saw the original case, and it is
+invisible to them **because the statement they were handed was specific.** A
+vague limit ("this check can be fooled by a file that redefines things") leaves
+them reading the file. A precise wrong one ends the inquiry.
+
+That is why the two cannot be stated in one sentence without an "and also", and
+it is the whole of the test I applied before accepting the number.
+
+### How to apply
+
+1. When writing a limit, ask what the check is blind to, not what the case that
+   revealed it happened to do.
+2. Say the remedy you are pointing at, and check it against every instance you
+   know — not just the one in front of you. If the remedy closes some and not
+   others, the name is too narrow.
+3. Prefer the vague true statement to the precise false one, and say it is vague.
+   "Blind to redefinition, and I have measured four shapes of it" is usable;
+   "blind to arity" is a dead end that looks like a door.
+4. A limit that survives being stated broadly can always be sharpened later by
+   somebody with a new instance. A limit stated narrowly cannot be, because
+   nobody goes back to a question that reads as answered.
+
+### What is measured and what is not
+
+- **Measured**: the four pairs above and their parameter counts; that a
+  signature-keyed check distinguishes exactly one of them.
+- **Measured**: the consequence in this instance, because it nearly happened —
+  the narrow word had been sent to the coordinator and was about to be filed.
+- **Not measured**: that a reader WOULD have stopped. Nobody built the
+  signature-keyed check, because batch C caught the word first. The asymmetry is
+  an argument about what a specific statement does to inquiry, and the instance
+  shows the setup rather than the outcome.
+
+### The second instance, found inside the hour, by me, again
+
+While this entry was in flight I wrote a line into another instrument and named
+its class by the instance that had produced it, a second time.
+
+The line reports ledger names the tree lacks. I had just told the coordinator it
+was the only thing on either side of that derivation that can see a migration
+**renamed** after it was applied — true, and narrow. A migration file DELETED
+after the store has run it presents identically: a ledger name with no file. Same
+hazard, same line, and by far the more ordinary cause, since deleting a file is
+something anybody might do while renaming a timestamp stem is exotic. "Renamed"
+would have sent the next reader looking for the rarer thing and past the common
+one.
+
+Two details make it worth recording rather than just fixing. It happened **less
+than an hour after** I wrote the rule, in a message whose subject was the rule.
+And I caught it only because I was writing the sentence for a colleague rather
+than the code — prose forced me to say what the class was, and the code had only
+needed me to say what the case was. **Explaining a limit to somebody else is the
+cheapest instrument for this defect there is**, and it is available every time.
+
+### The half that is worth more than the rule
+
+The correction did not come from re-reading my own instrument. It came from
+another session measuring the file I had described and finding four pairs where I
+had said two, one of which was the shape I had named and three of which were not.
+**A limit is the part of an instrument least likely to be re-measured**, because
+it reads as humility rather than as a claim. It is a claim.
+
+Related: D88, D94, D159, D163, D170, D181, D192.
+
+## D195 — A fix that leaves the habit intact one layer down is not a fix
+
+Both instances are mine, from one pull request, in one document, on one night. Each correction was itself correct, and the second is a fix of the first that re-committed the same error at a different layer. That recursion is the whole claim.
+
+`AGENTS.md` said `services/pennsync-api` **serves** all 80 of its handler names. The number was four days stale, so I measured the release ladder — 126 handlers over six waves on `3c94246c` — and put the measured figure in, keeping the verb. The paragraph then carried a tree figure of 126 and a dated `/readyz` reading of 80 under one verb, inside the change written to stop sentences claiming what only a deployment can answer. The verb was the defect and I had been looking at the number. Copilot caught it; it reads `implements` now.
+
+Fixing that, I added a sentence saying the ladder's cumulative values on the tip are 2, 4, 8, 58, 107 and 126, that 80 is none of them, and that whoever next read `/readyz` should find out what value the running service was released with. Every clause of that is true. The paragraph pointed a reader at a release nobody could account for, and there was nothing to account for: a release value is stamped from the tree at the moment of the write, so it belongs beside the ladder run at the RUNNING revision rather than at the tip. At `d01359a3`, which was serving when that reading was taken, the ladder reads 2, 4, 8, 29, 61 and **80** — the final wave, with the service fully released against the tree it was built from. The difference between the two heads is 46 handlers, landing +29 in `read-only` and +17 in `mutating`, which is why the middle of the ladder moved and both ends did not: `patient-read`, `patient-write`, `visit` and `integration` are 2, 2, 4 and 19 at both. So the confusion had simply moved from a verb to a number, one layer down, inside the fix for the verb.
+
+**The discriminator: after a fix, ask what the reader is still being asked to REMEMBER.** A rule in prose is a reminder, and a reminder leaves the chance of the mistake intact — it only asks the reader to take it less often. Both of my repairs were correct sentences, and both left the habit in place, because the habit is reading a service figure and a tree figure as commensurable and no sentence can hold a habit.
+
+**The resolution is structural, and the observation is the ladder thread's rather than mine.** That thread pointed out that `node tools-pennsync-release-ladder.mjs --wave <name> --deployment <host>` takes both halves out of ONE payload — `releaseDelta` builds its implemented set from that payload's own `implemented`, the running revision's registry, and reports a name the revision lacks as `missing` — so a reader who runs it never holds the two bare numbers and has nowhere to make the mistake at all. The paragraph now ends in that invocation, with the rule kept as the command's explanation rather than as the thing relied on. That is what closes the recursion: not a third correct sentence, but a command that makes the error unavailable.
+
+Verification is on #348: `71540735` (the verb), `7149ec4f` (the number) and `aca5ef45` (the ending). The `d01359a3` figures I re-derived myself in a detached worktree rather than taking them from the thread that found the answer, and the +29 / +17 split is mine — which matters, because reproducing 80 is something several wrong accounts would also do, while the split explains the shape of the difference.
+
+### A second author, from the handler-allowlist sweep
+
+These two are mine rather than plan's, and that is the point of putting them here. Plan's instances are one thread, one document, one night, which a reader can put down to a bad night. Mine are a different session and a different artefact, and both sit INSIDE the fix written for this exact defect class, within the hour of the entry being drafted.
+
+**I fixed the staleness of a comparison and thought I had fixed the comparison.** The sweep's sentinel read `assert.equal(entries, 126)`. It failed at 131 when five handlers arrived, and I replaced the typed number with one derived from `HANDLER_NAMES` — the registry's own evaluated declaration. That fixed what had broken main, and it left the comparison one step short of the property the same assertion claimed to hold. Two LENGTHS agreeing is not two POPULATIONS agreeing. A regex that misses one real registry entry while matching one non-entry of the same shape keeps both sides at 131 and passes: the partial blindness the assertion exists to refuse, surviving inside the fix for it. A reviewer named it; I proved it by renaming one parsed entry and watching the length form stay green. It compares the sorted union of the four buckets against `HANDLER_NAMES` by NAME now, which subsumes the count rather than sitting beside it.
+
+**The second is the same move in the other operand, which is what makes the pair one observation rather than two bugs.** To read an allowlist declared as a named constant rather than written inline, I widened the resolver to scan every module in the service directory and keyed its map on the constant's NAME. Two modules may spell one name, and `Map.set` makes that collision silent — the ambiguity resolves to whichever file sorts later, and the reader then reports a handler's allowlist with full confidence and the wrong contents. I had widened what could be RESOLVED without asking which declaration was MEANT. It keys on (file, name) now and resolves through the binding `handlers.mjs` actually imports.
+
+Both were proved by planting, not by reading, and the first plant is worth having in the record because it is the failure mode of proving things this way. I planted the colliding constant in a module that sorts BEFORE the real one, where last-wins keeps the correct value — so the sabotage was green for a reason that had nothing to do with the defect, and I nearly filed it as "cannot reproduce". Re-planted in a module that sorts after, the flat map returns the wrong list immediately. A sabotage that comes back clean is not evidence until the harness has been shown to bite.
+
+What the pair says, in the sentence the coordinator asked me to put my name to: **fixing the staleness of a comparison is not the same as fixing the comparison.** Deriving the right-hand side felt like the whole answer because it solved what had just broken, and naming which operand got fixed and which did not is what "one layer down" only gestures at.
+
+---
+
+One more thing, offered rather than proposed, because it is the same shape a third time and three may be padding on an entry whose claim is the recursion rather than the count.
+
+`0581752c` — my own #350 — introduced two sentences about the same pair of figures, four hundred lines apart. The module said two parses of one tree corroborate nothing. The test file said the same two figures "were reached independently by the thread that measured the route side of this sweep… from its own parse of the same file". Both by one author, in one commit, and every suite green for the life of it, because prose cannot disagree with prose loudly. `git log -S` on each sentence puts both in that commit.
+
+The sharper half is plan's, and it is what makes this more than a contradiction. Hours after that commit, plan proposed crossing the entry count against a second parse, and I told plan that two parsers written to one convention over one file are not independent — a shape that defeats one defeats the other, and they agree while both being wrong. I was stating the rule to another session while my own comment asserted its opposite, and neither of us knew.
+
+The sentence is GONE: `f57e4dbd` was the last head carrying it and `8d5f74bf` removed it, with the pinned sentinel it sat above. It is written here in the past tense and without a line number on purpose — the file has moved and that reference now lands on an unrelated test, which is this entry's own subject arriving in the citation.
