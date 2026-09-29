@@ -761,13 +761,26 @@ describe('the declared entity routes', () => {
      * them. A check comparing a route's keys against its CONTRACT's params calls
      * it clean, and so does one comparing them against the SQL.
      *
-     * TWO CONSEQUENCES WORTH KEEPING. This is not the tree-right /
-     * deployment-behind case, and an apply does not fix it: an apply changes the
-     * store, not the allowlist. And it survived because there IS coverage for
-     * the order path — `services/pennsync-api/record-contracts.test.mjs` sends
-     * `{ order: 'created_desc' }` to `listAgencyRoster` — one layer ABOVE the
-     * layer that refuses it. A test that enters below a boundary cannot see the
-     * boundary.
+     * TWO CONSEQUENCES WORTH KEEPING. An apply does not fix this one: an apply
+     * changes the store, not the allowlist. And it survived because there IS
+     * coverage for the order path — `services/pennsync-api/record-contracts.test.mjs`
+     * sends `{ order: 'created_desc' }` to `listAgencyRoster` — one layer ABOVE
+     * the layer that refuses it. A test that enters below a boundary cannot see
+     * the boundary.
+     *
+     * AND THERE IS A SECOND, INDEPENDENT DEFECT ON THIS ROUTE THAT NOTHING HERE
+     * CAN SEE, recorded so the one above does not read as the whole of it.
+     * `RECORD_CONTRACTS.listAgencyRoster.body` puts `p_order` in the body
+     * unconditionally — `args.order === undefined ? null : args.order` — and
+     * `contractCapability` stringifies that body with nothing stripping nulls.
+     * So a FOUR-key body goes out for every roster call, `User.list()` with no
+     * arguments included. PostgREST resolves an RPC by the names of the body's
+     * keys, so against a store that has not applied
+     * `20260920620000_roster_created_date.sql` the call cannot resolve at all,
+     * and that reaches all 29 served sites rather than the 24 above. The five
+     * that pass no sort are clean against the TREE and not necessarily against
+     * the deployment. Whether a given deployment has run that migration is not
+     * a figure this repository holds, which is why this stays a comment.
      */
     expect([...violations].sort()).toEqual([
       'AgencySettings.filter:order', 'AgencySettings.list:order',
