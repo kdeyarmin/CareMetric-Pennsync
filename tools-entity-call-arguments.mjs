@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import { entityCalls, sourceFiles } from './tools-base44-surface.mjs';
+import { codeOnly } from './tools-ported-call-sites.mjs';
 
 /**
  * The file whose constants prove this scan is still working.
@@ -56,13 +57,23 @@ const limitsIn = text => [...text.matchAll(EXPORTED_LIMIT)]
  *
  * And the canary above keeps the empty-read refusal biting after the widening
  * made `found.size` unable to reach zero.
+ *
+ * Every file is read through `codeOnly` first, because both scans match raw
+ * text and neither regular expression knows what a binding is. Measured on
+ * 2026-09-29, all three shapes fired: `// Example: const ALL_ROWS = 50;` in a
+ * production module threw `ENTITY_ROUTE_LIMIT_SHADOWED`, and a line-anchored
+ * `export const FAKE_LIMIT = 7;` inside a block comment or a multi-line
+ * template populated the table with a name that binds nothing. The first turns
+ * a comment into a build failure; the second two hand a call site a number no
+ * import could ever resolve. Masking is shared with the call-site ratchet
+ * rather than rewritten here, and the planted controls below keep it biting.
  */
 export function limitConstants(repository) {
-  if (!limitsIn(readFileSync(join(repository, LIMIT_CONSTANTS_FILE), 'utf8')).length) {
+  if (!limitsIn(codeOnly(readFileSync(join(repository, LIMIT_CONSTANTS_FILE), 'utf8'))).length) {
     throw new Error(`ENTITY_ROUTE_LIMITS_UNREADABLE:${LIMIT_CONSTANTS_FILE}`);
   }
   const files = [...sourceFiles(join(repository, 'src'))]
-    .map(file => [relative(repository, file), readFileSync(file, 'utf8')]);
+    .map(file => [relative(repository, file), codeOnly(readFileSync(file, 'utf8'))]);
 
   const found = new Map();
   const declaredIn = new Map();
