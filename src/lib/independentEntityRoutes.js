@@ -1774,6 +1774,114 @@ const DECLARED_ROUTES = Object.freeze({
       servedPage(result.entries, limit, REFERENCE_MAXIMUM.OnCallShift, 'OnCallShift'),
   }),
   /**
+   * The writes for the same three tables. The saves take the id the screens
+   * already hold — an absent one is a create — which is how each screen's own
+   * create-or-update mutation is one route rather than two.
+   *
+   * `LibraryDocument.create` is deliberately NOT here. Its entity requires
+   * `file_url`, the contract refuses that column until D77's file copy has run,
+   * and the call site's first statement is `Core.UploadFile`, which the
+   * independent adapter refuses before the entity write is reached. Declaring a
+   * route that could only refuse would read as a capability rather than as the
+   * file layer's absence.
+   */
+  'OnCallShift.create': Object.freeze({
+    function: 'saveOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen assigns a shift an administrator has just filled in.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'OnCallShift.update': Object.freeze({
+    function: 'saveOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen reassigns a shift that already exists.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'OnCallShift.delete': Object.freeze({
+    function: 'deleteOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen clears a shift an administrator has emptied.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  'LibraryDocument.update': Object.freeze({
+    function: 'updateLibraryDocument',
+    projection: 'library_document_row',
+    reason: 'The template library retires or restores one of the agency\'s documents.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'LibraryDocument.delete': Object.freeze({
+    function: 'deleteLibraryDocument',
+    projection: 'library_document_row',
+    reason: 'The template library deletes a document an administrator has removed.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.create': Object.freeze({
+    function: 'saveDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management adds a document template for the agency.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.update': Object.freeze({
+    function: 'saveDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management edits an existing document template.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.delete': Object.freeze({
+    function: 'deleteDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management deletes a template an administrator has removed.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  /**
    * The visit point schedule. Both call sites live in one `queryFn`, and the
    * filtered one is D43's derived scope in miniature: it asks for the rows whose
    * `agency_name` string matches the caller's own profile field. The contract

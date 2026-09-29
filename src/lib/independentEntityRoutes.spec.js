@@ -1770,6 +1770,12 @@ describe("what batch E's routes take on trust", () => {
     // `buildAuditFields` returns. Both are covered by refusals raised against
     // the real migration in `contract-compliance-writes.test.mjs`, which the
     // block below reads.
+    // The reference writes added four, and the split is the informative part:
+    // both DELETES and `LibraryDocument.update` pass literals the gate can read,
+    // so they are ADOPTED, while the four saves pass one whole variable each
+    // (`payload` on the rota, `data` on template management). Same three
+    // screens, same three contracts, different answer per call site -- which is
+    // why the disposition is per ROUTE and not per capability.
     expect([...report.unproved_routes].sort()).toEqual([
       'AdrAuditCase.create',
       'AgencySettings.create', 'AgencySettings.update',
@@ -1777,10 +1783,12 @@ describe("what batch E's routes take on trust", () => {
       'ClinicalPathway.create', 'ClinicalPathway.update',
       'ComplianceAudit.update',
       'CustomValidationRule.create', 'CustomValidationRule.update',
+      'DocumentTemplate.create', 'DocumentTemplate.update',
       'EducationMaterial.create',
       'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
       'NoteConversion.create',
       'NotificationPreference.create', 'NotificationPreference.update',
+      'OnCallShift.create', 'OnCallShift.update',
       'PatientEducationAssignment.update',
       'PatientRecommendation.create',
       'Physician.create',
@@ -1836,6 +1844,21 @@ describe("what batch E's routes take on trust", () => {
       'PENNSYNC_F2F_FORBIDDEN', 'PENNSYNC_F2F_CHART_FORBIDDEN',
       'PENNSYNC_NOTE_CONVERSION_CHART_FORBIDDEN', 'PENNSYNC_TEMPLATE_NAME_REQUIRED']) {
       expect(operational, `${code} must be exercised by the contract suite`).toContain(code);
+    }
+
+    // The reference writes, a FOURTH family. Their four unproved saves lean on
+    // two refusals a screen cannot see coming and one that is a narrowing
+    // rather than a check: an unknown key is refused rather than filtered, a
+    // reserved one likewise, and `PENNSYNC_LIBRARY_FIELD_UNKNOWN` is what a
+    // caller sending `file_url` gets -- the file layer's absence, raised by the
+    // same machinery, so it cannot rot into a silent drop.
+    const reference = readFileSync(
+      'services/authority-store/tests/contract-reference-writes.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_REFERENCE_FORBIDDEN', 'PENNSYNC_REFERENCE_AGENCY_NOT_HELD',
+      'PENNSYNC_ON_CALL_FIELD_UNKNOWN', 'PENNSYNC_ON_CALL_FIELD_INVALID',
+      'PENNSYNC_DOC_TEMPLATE_FIELD_RESERVED', 'PENNSYNC_DOC_TEMPLATE_NOT_FOUND',
+      'PENNSYNC_LIBRARY_FIELD_UNKNOWN']) {
+      expect(reference, `${code} must be exercised by the contract suite`).toContain(code);
     }
 
     // The compliance writes, a THIRD family on the same standing. The two

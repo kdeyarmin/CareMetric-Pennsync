@@ -1454,6 +1454,7 @@ test('nothing in the queue is startable and unwritten', async () => {
   assert.deepEqual(facilities, [
     'createAdrAuditCase', 'createAgencyTask', 'createComplianceAudit',
     'createNoteConversion', 'createPhysician', 'deleteAdrAuditCase',
+    'deleteDocumentTemplate', 'deleteLibraryDocument', 'deleteOnCallShift',
     'deletePdfTemplate', 'deletePhysician', 'getAgencyRosterMember',
     'getAgencySettings', 'getMyNotificationPreferences',
     'listAdrAuditCases', 'listAgencyIncidents', 'listAgencyRoster',
@@ -1475,9 +1476,11 @@ test('nothing in the queue is startable and unwritten', async () => {
     'manageEducationMaterial', 'managePatientEducationAssignment',
     'readAiConfiguration', 'recordChartRecommendation',
     'recordSentEducationMaterial', 'saveAgencySettings',
-    'saveAiConfiguration', 'saveCarePlan', 'saveFaceToFaceEncounter',
-    'saveMyNotificationPreferences', 'savePdfTemplate',
-    'updateAdrAuditCase', 'updateComplianceAudit', 'updatePhysician',
+    'saveAiConfiguration', 'saveCarePlan', 'saveDocumentTemplate',
+    'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
+    'saveOnCallShift', 'savePdfTemplate',
+    'updateAdrAuditCase', 'updateComplianceAudit', 'updateLibraryDocument',
+    'updatePhysician',
   ]);
 });
 

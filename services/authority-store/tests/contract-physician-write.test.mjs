@@ -2,7 +2,7 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames }
+import { applyRecordMigrations, recordMigrationNames }
   from './record-migrations.mjs';
 
 const MIGRATION_NAME = '20260920690000_contract_physician_write.sql';
@@ -102,24 +102,25 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // This migration is the newest PENDING one, so the ordering guard is now
-  // this suite's. It was `contract-compliance-writes.test.mjs`'s until that
-  // file merged, and the read half's before that: the guard travels with the
-  // newest pending migration rather than accumulating, because a suite over a
-  // MERGED file asserting that nothing sorts after it refuses every correct
-  // tree the next change produces. Retire the call here when this merges —
-  // `assertNewestRecordMigration`'s own error text says so, and it is what it
-  // says to do rather than widening it with an exception list.
+  // The ordering guard is NOT here. It belongs to whichever migration is the
+  // newest PENDING one, and `20260920700000_contract_reference_writes.sql` now
+  // sorts after this file, so the call moved to that suite -- exactly as it
+  // moved here from `contract-compliance-writes.test.mjs`. The guard travels
+  // rather than accumulating, because a suite asserting that nothing sorts
+  // after ITS file refuses every correct tree the next change produces. That is
+  // what `assertNewestRecordMigration`'s own error text says to do instead of
+  // widening it with an exception list, and it has now been the right answer
+  // three times in this batch alone.
   //
-  // The whole-directory equality comes FIRST and is the assertion with the
-  // teeth: `assertNewestRecordMigration` reads only the last name, so an
-  // earlier forward migration silently missing from the applied set leaves an
-  // incomplete store and still satisfies the ordering guard. The suite would
-  // then be exercising this contract against a store no deployment gets.
+  // The whole-directory equality STAYS, and is the assertion with the teeth:
+  // the ordering guard reads only the last name, so an earlier forward
+  // migration silently missing from the applied set leaves an incomplete store
+  // and still satisfies it. The suite would then be exercising this contract
+  // against a store no deployment gets -- which is a property of THIS suite's
+  // store and does not travel anywhere.
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  assertNewestRecordMigration(applied, MIGRATION_NAME);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`
     insert into pennsync_records.physician

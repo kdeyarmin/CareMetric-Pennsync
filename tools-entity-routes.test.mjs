@@ -808,7 +808,7 @@ test('the landable sites partition exactly, and the audit prose carries the part
   assert.equal(landable.length, report.landable_sites);
 
   const page = readFileSync(resolve(repository, PLAN), 'utf8');
-  const spelled = { 9: 'Nine', 30: 'Thirty', 52: 'Fifty-two' };
+  const spelled = { 9: 'Nine', 22: 'Twenty-two', 56: 'Fifty-six' };
   for (const [count, word] of [[refused.length, spelled[refused.length]],
     [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
     assert.ok(word,
@@ -881,10 +881,10 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The PAIRS first. Each of these four is what the corresponding ratio below
   // is computed from, so a population that moved without moving its quotient
   // fails here rather than passing silently one line further down.
-  assert.deepEqual(servedSplit, { readSites: 127, readKeys: 49, writeSites: 27, writeKeys: 21 },
+  assert.deepEqual(servedSplit, { readSites: 127, readKeys: 49, writeSites: 31, writeKeys: 25 },
     'the served pool moved. Re-derive the WHOLE bullet — both of its ratios and\n'
     + '  the sentence about past waves — rather than editing the figure that moved.');
-  assert.deepEqual(remainder, { readSites: 15, readKeys: 12, writeSites: 15, writeKeys: 13 },
+  assert.deepEqual(remainder, { readSites: 15, readKeys: 12, writeSites: 7, writeKeys: 5 },
     'the unrouted remainder moved. Re-derive the WHOLE bullet; its ratios are\n'
     + '  over a remainder, so they move when anything LEAVES it too.');
 
@@ -919,9 +919,9 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The remainder's key total is stated too, and it is the sum of the two key
   // counts rather than a fifth measurement — asserted so it cannot drift away
   // from the pair it is built from.
-  assert.equal(remainder.readKeys + remainder.writeKeys, 25);
-  assert.ok(page.includes('over twenty-five entity and'),
-    `${PLAN} no longer states the remainder's key total as thirty`);
+  assert.equal(remainder.readKeys + remainder.writeKeys, 17);
+  assert.ok(page.includes('over seventeen entity and'),
+    `${PLAN} no longer states the remainder's key total as seventeen`);
 });
 
 test('every figure the tool reports says which way it moves, and nothing else does', () => {

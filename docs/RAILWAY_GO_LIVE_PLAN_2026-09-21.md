@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 57 | 40 |
+  | `mutating` (derived) | 63 | 41 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1609,6 +1609,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   with its own CI green throughout. The figures above already carry batch A's
   seven reference reads and batch C's fourteen library and configuration
   capabilities.
+
+  The three reference tables' writes then took `mutating` to 63 with one shared
+  migration, and moved neither `read-only` nor `integration`. Six capabilities
+  and not nine: `LibraryDocument` gets an update and a delete and no create,
+  because its entity requires the storage locator the contract refuses until the
+  file copy has run. All three entities were already read through capabilities
+  in `read-only`, so again no entity arrives in a wave it was not already in —
+  which is the shape to expect from a port that gives an existing read its
+  missing write half, and the reason the read row does not move.
 
   The `mutating` row's migrations rose by one with D108, and the derivation
   rather than the number: that entry's forward migration redefines
@@ -3438,17 +3447,18 @@ entity routes: 84 declared, 147/245 landable call sites SERVED, 98 still to adop
   of those 98, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 97 need a named capability
 ```
 
-**And the reading on THIS tree, with the compliance writes and the provider
-directory's three writes merged together.** This one is `pnpm run check:entity-routes`'s own output and
+**And the reading on THIS tree, with the compliance writes, the provider
+directory's three writes and the three reference tables' writes merged
+together.** This one is `pnpm run check:entity-routes`'s own output and
 is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
 byte for byte, so paste what the tool prints and never retype, rewrap or
 re-indent it.
 
 ```
-entity routes: 89 declared, 154/245 landable call sites SERVED, 91 still to adopt
-  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 52 pass arguments this cannot read
-  19 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
-  of those 91, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 90 need a named capability
+entity routes: 97 declared, 158/245 landable call sites SERVED, 87 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 56 pass arguments this cannot read
+  23 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 87, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 86 need a named capability
 ```
 
 **It is one printer run over one merged tree, so read it as a reading and not as
@@ -3587,34 +3597,42 @@ different kinds of work:
   expression. A refusal cannot be counted until a route exists to do the
   refusing, so plotting this bucket over time measures the audit's reach and not
   the product's health.
-- **Fifty-two pass arguments the scan cannot read**, because the call builds
+- **Fifty-six pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Thirty have no route declared at all**, over twenty-five entity and
-  operation keys: fifteen reads over twelve keys, and fifteen writes over
-  thirteen. **The two halves are level**, for the first time in this audit's
-  history. The reason the shape keeps moving is measurable on the sites already
-  served: a read key there carries 2.59 call sites and a write key 1.29, so a
+- **Twenty-two have no route declared at all**, over seventeen entity and
+  operation keys: fifteen reads over twelve keys, and seven writes over five.
+  The reason the shape keeps moving is measurable on the sites already served:
+  a read key there carries 2.59 call sites and a write key 1.24, so a
   read port has historically served many screens per route while a write port
   served the one form that calls it. **Do not carry that ratio into the
   remainder, though**: inside this pool a read key covers 1.25 sites and a write
-  key 1.15, which is nothing like the served spread and is barely a gap at all.
+  key 1.40, which is nothing like the served spread and points the other way.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at four consecutive heads and every one
-  of its six figures has moved, twice reversing a finding stated in its own
-  prose.** One head ago the remainder's write key covered 1.61 sites against a
-  read key's 1.25 and this paragraph called the inversion the finding; the head
-  before that it was 1.57, and two heads before that the writes were nearly
-  twice the reads. Now they are level and the write key is the THINNER of the
-  two. Nothing was wrong with any of those measurements. What would have been
+  **This bullet has now been re-derived at five consecutive heads and every one
+  of its six figures has moved, reversing a finding stated in its own prose
+  three times.** One head ago the two halves were level at fifteen sites each
+  and the write key was the THINNER, at 1.15 against 1.25; the head before that
+  the write key covered 1.61 and the paragraph called that inversion the
+  finding; before that 1.57, and before that the writes were nearly twice the
+  reads. Nothing was wrong with any of those measurements. What would have been
   wrong is carrying a sentence across a merge because it read well.
+
+  **This head is the cleanest demonstration the bullet has produced.** The three
+  reference tables' writes took eight sites out of the remainder and changed
+  nothing else about it — and the remainder's READ half did not move at all,
+  by either figure, while its write half fell from fifteen sites over thirteen
+  keys to seven over five and its ratio rose from 1.15 to 1.40. A pin on the
+  four quotients alone would have caught that; a pin on the read ratio alone
+  would have seen a stationary 1.25 and reported no change, in a head where a
+  third of the bucket left.
 
   **The mechanism is worth more than any of the numbers: a ratio over a
   REMAINDER is a property of what is LEFT.** It moves whenever anything leaves,

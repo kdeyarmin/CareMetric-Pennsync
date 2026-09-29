@@ -292,6 +292,58 @@ export const HANDLERS = Object.freeze({
       return contract('deletePhysician', params);
     },
   }),
+  // The three reference writes. `id` is OPTIONAL on a save and required on an
+  // update or a delete, so the save checks its TYPE where it is present and
+  // leaves the empty string to the contract: an empty id is a real refusal
+  // (`..._ID_INVALID`) rather than a malformed request, and answering 400 here
+  // would hide which of the two a screen sent.
+  saveOnCallShift: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (params.id !== undefined && params.id !== null
+        && typeof params.id !== 'string') fail(400, 'ID_REQUIRED');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('saveOnCallShift', params);
+    },
+  }),
+  deleteOnCallShift: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deleteOnCallShift', params);
+    },
+  }),
+  updateLibraryDocument: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('updateLibraryDocument', params);
+    },
+  }),
+  deleteLibraryDocument: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deleteLibraryDocument', params);
+    },
+  }),
+  saveDocumentTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (params.id !== undefined && params.id !== null
+        && typeof params.id !== 'string') fail(400, 'ID_REQUIRED');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('saveDocumentTemplate', params);
+    },
+  }),
+  deleteDocumentTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deleteDocumentTemplate', params);
+    },
+  }),
   saveAgencySettings: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
