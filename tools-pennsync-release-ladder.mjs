@@ -285,6 +285,27 @@ const refuse = (code, detail) => { throw new LadderError(code, detail); };
  * function whose whole body is four `update` statements — as read-only, which
  * would have put a write into the read wave. `mutationClassifierHolds` below
  * is the check that keeps that from going quiet again.
+ *
+ * It also matches INSIDE string literals, and that is deliberate rather than
+ * an oversight the next reader should tidy away. `library_write` builds its
+ * statements as dynamic SQL, so all three of its DML matches are in quoted
+ * text and it has NONE outside; six contracts reach their write through it and
+ * through nothing else — `contract_clinical_library_folder_write`,
+ * `..._template_write`, `contract_clinical_pathway_write`,
+ * `contract_education_material_write`, `contract_patient_education_write` and
+ * `contract_validation_rule_write`, whose own bodies contain no DML at all. A
+ * literal-aware matcher would classify all six read-only and put six writes
+ * into a read wave. Measured with a lexer that strips single-quoted strings,
+ * dollar-quoted blocks and both comment forms together, which is the only way
+ * to get the answer right: tracking quotes alone desynchronises on an
+ * apostrophe inside a `--` comment and reports the opposite with the same
+ * confidence.
+ *
+ * `write` is in `MUTATING_VERBS` precisely so that this cannot be undone
+ * quietly. Narrowing this pattern to skip literals now fails the classifier
+ * check by name, with all six contracts listed. When a check survives by an
+ * accident of how it is phrased, say so in its header, or the next careful
+ * person removes the accident.
  */
 const DML = /\b(?:insert\s+into|update\s+(?:only\s+)?"?pennsync|delete\s+from)/i;
 /**
@@ -325,10 +346,20 @@ const TABLE_POSITION = /\b(?:insert\s+into|into|from|join|update(?:\s+only)?|tab
  * and writes nothing — D64's pair "only READ, and says so" — so a verb list
  * that demanded a write from it would refuse a correct tree. A verb belongs
  * here only when the capability's whole point is the write.
+ *
+ * `write` earns its place for the opposite reason, and adding it changes no
+ * output today: all six `_write` contracts already classify as writing. What
+ * it changes is what happens when they stop. Their write is `library_write`'s
+ * dynamic SQL, which `DML` sees only because it matches into string literals,
+ * so a reader who narrows that pattern — the obvious tidy-up — silently moves
+ * six writes into a read wave. With `write` here that narrowing is refused by
+ * name instead. It is the same argument as `save` and `update`: the verb is
+ * the capability's whole point, so a read-only answer is the classifier
+ * failing rather than the store being odd.
  */
 const MUTATING_VERBS = Object.freeze([
   'accept', 'acknowledge', 'add', 'append', 'archive', 'create', 'import', 'mark_all',
-  'record', 'save', 'submit', 'sweep', 'transition', 'update', 'used',
+  'record', 'save', 'submit', 'sweep', 'transition', 'update', 'used', 'write',
 ]);
 
 const read = path => readFileSync(path, 'utf8');
