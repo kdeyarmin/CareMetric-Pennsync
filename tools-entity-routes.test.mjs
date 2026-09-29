@@ -747,3 +747,48 @@ test('every declared default sort is the one its contract runs', () => {
       + '  whole reason this is checked separately from the answer key.');
   }
 });
+
+/**
+ * The remainder is a PARTITION, and the page's prose about it carries numbers
+ * the pinned block does not.
+ *
+ * Those three counts describe three different kinds of work — a route that
+ * refuses, a site the scan cannot read, and a site nobody has routed — and the
+ * audit's whole argument is that they must not be added together. Prose stating
+ * them is prose that rots, so it is checked here: the identity first, because a
+ * partition that does not add up is a second answer to a question the gate
+ * already answers, and then the page.
+ */
+test('the landable sites partition exactly, and the audit prose carries the parts', () => {
+  const report = measureRoutes(repository);
+  const routes = ENTITY_ROUTES;
+  const destinations = measureDestinations(repository);
+  const { served, refused, unreadable } = servedSites(repository, routes, destinations.sites.length);
+
+  // Cross-checked against the tool's own figures BEFORE anything is read off
+  // them, so this cannot become a quietly different second measurement.
+  assert.equal(served.length, report.routed_sites);
+  assert.equal(refused.length, report.declared_but_refused);
+  assert.equal(unreadable.length, report.declared_but_unreadable);
+
+  const declared = new Set(Object.keys(routes));
+  const landable = destinations.sites.filter(site => SERVED.includes(site.destination));
+  const noRoute = landable.filter(site => !declared.has(`${site.entity}.${site.operation}`));
+  assert.equal(served.length + refused.length + unreadable.length + noRoute.length, landable.length,
+    'the four parts do not add to the landable total, so at least one site is in\n'
+    + '  two parts or in none. Fix the partition before reading any of its counts.');
+  assert.equal(landable.length, report.landable_sites);
+
+  const page = readFileSync(resolve(repository, PLAN), 'utf8');
+  const spelled = { 9: 'Nine', 43: 'Forty-three', 48: 'Forty-eight' };
+  for (const [count, word] of [[refused.length, spelled[refused.length]],
+    [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
+    assert.ok(word,
+      `the partition moved to ${count} and this test has no spelling for it.\n`
+      + '  Update the audit prose and this list together; a count the page states\n'
+      + '  and nothing checks is the defect this whole section is about.');
+    assert.ok(page.includes(word),
+      `${PLAN} does not say "${word}" — the audit prose states the partition in\n`
+      + `  words and this part is now ${count}. Update the prose.`);
+  }
+});

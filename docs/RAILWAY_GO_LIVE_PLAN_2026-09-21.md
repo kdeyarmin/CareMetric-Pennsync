@@ -3426,6 +3426,42 @@ pass-through wrappers, which is where ladder's two live. Two instruments, two
 populations, and a total that merged them would be the census defect arriving
 in the audit written to describe it.
 
+#### The route audit's partition: what the remainder is actually made of
+
+**The landable sites split four ways and the four add to the total exactly**,
+which is asserted rather than assumed: the derivation cross-checks its served,
+refused and unreadable counts against `measureRoutes`'s own before reading
+anything, and refuses rather than reporting if any disagrees. A partition that
+did not add up would be a second answer to a question the gate already answers,
+which is how a bucket comes to claim more than it measured.
+
+Beside the served sites, the remainder is three populations and they are three
+different kinds of work:
+
+- **Nine are REFUSED by a declared route.** Six are `User.list` asking for a
+  sort, across five files; three are the offline queue's, described above. These
+  are the front of the audit and the only ones where the Base44 fallback is
+  already gone.
+- **Forty-three pass arguments the scan cannot read**, because the call builds
+  its predicate in a variable. A route may serve them or may refuse them and
+  nothing here can say which; the contract's own refusals are what check them.
+  This population is neither work nor safety — it is the measurement declining
+  to answer, and it grows every time a route is declared over a site of that
+  shape, which is the check working rather than a regression.
+- **Forty-eight have no route declared at all**, over thirty-three entity and
+  operation keys: fifteen reads over twelve keys, and thirty-three writes over
+  twenty-one. **The writes are more than twice the reads**, which inverts the
+  shape every wave so far has had — a read port serves many screens per route
+  and a write port typically serves the one form that calls it, so this
+  remainder costs more per site than the served count suggests and a wave drawn
+  from it will look slow against the same effort spent earlier.
+
+**So "how many sites remain" is three questions with three answers, and the
+middle one is not a number of tasks at all.** A plan that sizes Stage J off the
+remainder as a single figure counts a measurement's silence as work, and counts
+a refusal — where the product is already worse off than before the route was
+declared — as the same as a site nobody has touched.
+
 #### The destination gate, which measures a different population
 
 Everything above this heading is the route gate's, and its measured figures
