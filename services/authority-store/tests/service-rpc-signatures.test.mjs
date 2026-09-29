@@ -183,15 +183,32 @@ test('no public function this store exposes is reachable anonymously, exempt or 
   assert.ok(population.length > captured.size,
     'this population is no wider than `captured`, so it re-runs the loop above and proves nothing');
 
+  //
+  // **Three roles, not two.** The loop above reads `authenticated` and `anon`;
+  // the house revoke block names `public, anon, service_role`, and a check that
+  // reads two of the three roles a wrapper is granted over reports a clean
+  // surface while one stays open. `service_role` is the one that was missing,
+  // and it is the one that matters most if it is ever wrong: it is the role a
+  // server-side key holds, and a wrapper reachable by it is reachable without
+  // a caller identity at all — so every `caller_*` helper under it answers
+  // null and the policies have nobody to scope to.
+  //
+  // Measured before asserting: all of these are already false, so this pins a
+  // property that holds rather than announcing a defect. Proved by granting
+  // `service_role` on one wrapper and watching it come back by name.
   const { rows } = await db.query(`
     select p.proname as name,
       has_function_privilege('authenticated', p.oid, 'execute') as authenticated,
-      has_function_privilege('anon', p.oid, 'execute') as anon
+      has_function_privilege('anon', p.oid, 'execute') as anon,
+      has_function_privilege('service_role', p.oid, 'execute') as service_role
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = any($1::text[])`, [population]);
   const open = rows.filter(row => row.anon).map(row => row.name).sort();
   assert.deepEqual(open, [],
     'a public function is executable anonymously; revoke on the WRAPPER, not only on the inner contract');
+  const serviceRole = rows.filter(row => row.service_role).map(row => row.name).sort();
+  assert.deepEqual(serviceRole, [],
+    'a public function is executable by the service role, which carries no caller identity');
   const shut = rows.filter(row => !row.authenticated).map(row => row.name).sort();
   assert.deepEqual(shut, [], 'a public function is not executable by a signed-in caller');
 });
