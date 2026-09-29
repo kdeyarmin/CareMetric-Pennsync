@@ -27,6 +27,16 @@ reproduced and so is only a rumour with a date. This paragraph
 said *78 of the 80 implemented names* until then, which was true when written
 and had drifted by forty-six with nothing able to notice.
 
+**Every reading on this page is stamped with the head it was taken on, and that
+is deliberate: do NOT refresh one in place.** "On `3c94246c` it read 126" is a
+record and stays true at every later head, which is exactly what the sentences
+it replaced were not — they asserted a present state and rotted where nothing
+could notice. Editing the number to whatever the tool prints today, and leaving
+the head where it is, turns the record straight back into the claim, and the
+rot is invisible again. When you want the current answer, run the tool; when
+you want to leave one here, add a reading with its own head beside the old one
+rather than overwriting it.
+
 **`OWNER_HELD` is empty, and the sentence that explained why it was not
 outlived it.** This page used to say the two names absent from `operations`
 were `sendAccountReadyEmail` and `sendWelcomeEmail`, kept out of every emitted
