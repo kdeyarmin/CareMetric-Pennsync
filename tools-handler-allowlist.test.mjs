@@ -176,33 +176,22 @@ test('a key outside the allowlist is reported, by site and by name', () => {
  * grow without anyone noticing. A handler gaining a second allowlist leaves the
  * comparison silently, and this is the line that makes that a decision.
  *
- * Both figures were first reached independently by the thread that measured the
- * route side of this sweep -- then 126 registry entries and 6 with more than one
+ * Both figures below were reached independently by the thread that measured
+ * the route side of this sweep -- 126 registry entries and 6 with more than one
  * allowlist -- from its own parse of the same file. Crossing them is what found
  * the sentinel counting 313.
- *
- * 126 became 131 and 114 became 119 when the five compliance reads landed, and
- * the pins did not move with them, so `main` went red on its own. That is the
- * cost of a sentinel pinned to a number a normal change moves: it fires on
- * every added capability and says nothing about the thing it exists to notice.
- * Re-pinning is the fix available today and it does not remove the cost --
- * whoever adds the next handler pays it again, and the useful version of this
- * check asserts that `entries` is the number of `export`ed registry names
- * rather than a figure typed here. Left as a finding rather than rewritten
- * inside a branch that adds no handler.
  */
 test('an action-dispatched handler is reported, not silently skipped', () => {
   const { admits, dispatched, entries } = handlerAllowlists(repository);
-  assert.equal(entries, 131,
+  assert.equal(entries, 126,
     'the registry entry count moved. This is a sentinel on the PARSE, not a pin\n'
     + '  on the API: if handlers.mjs stops matching one entry per line it goes to\n'
-    + '  zero rather than drifting by one, and the sets below go empty with it.\n'
-    + '  Adding a handler moves it by one and that is a re-pin, not a defect.');
+    + '  zero rather than drifting by one, and the sets below go empty with it.');
   assert.deepEqual([...dispatched].sort(), [
     'listAuthorizedPatients', 'manageAgencyMembership', 'manageAuthorizedReferral',
     'manageMyNotifications', 'manageVehicleMaintenance', 'updateIncident',
   ]);
-  assert.equal(admits.size, 119, 'entries with exactly one params allowlist');
+  assert.equal(admits.size, 114, 'entries with exactly one params allowlist');
   assert.equal(admits.has('manageAuthorizedReferral'), false);
   assert.deepEqual(measureWrapperCalls(repository).dispatched, ['manageAgencyMembership']);
 });
