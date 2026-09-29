@@ -8209,6 +8209,20 @@ about an instrument whose population is smaller than the one you meant.
 The near-miss is recorded rather than the catch, because going and looking is
 what closed all three and no check did.
 
+### Addendum, 2026-09-29: a fourth instance
+
+**A fourth instance, and it narrows by construction rather than by accident.**
+
+The three above narrowed by an accident of the run: a pattern that happened to miss a name, a working directory that happened to be drifted, a job that happened to be on the pull-request side. Each would have come out wrong the day somebody looked at the case it missed. This one could not, because the population and the class being hunted are complements by construction, so the instrument was going to stay quiet on every tree at every head.
+
+Hunting for a second instance of the shared-exemption-list shape (D208), I built the candidate population by following imports: find each exemption list, then find its consumers by finding who imports it. The class I was hunting is a second consumer that inherits an exemption meant for the first. Both real instances in this tree are module-local `const`s that nothing exports and nothing imports -- `UNCALLED` in `services/authority-store/tests/service-rpc-signatures.test.mjs:51` and `ALLOWED_UNLIMITED_READS` in `src/lib/entityReadLimits.test.js:48` -- and both of their consumers are in the same file. A list with two consumers in one file is not less shared than one with two importers; it is more so, because the two consumers sit close enough to read as a single intent. The transport used the one property the class lacks, and so returned nothing, in the shape of a result.
+
+D118's own rule -- establish what an instrument actually covered -- is right and was not enough here, because what it covered was a plausible, non-empty, enumerable set of every cross-file exemption list in the tree. So ask the second question as well: **is the class I am hunting defined by a property my transport uses to find things?** A sweep enumerating by import cannot find what is not imported; one enumerating by call cannot find what is not called; one enumerating by registration cannot find what is not registered. Where the answer is yes, the population has to be built from the side that does not use that property -- the directory listing, `pg_proc`, the file itself -- and both populations named, so the difference is a figure rather than an assumption.
+
+The neighbouring guard a reader will reach for is D115, which fails a derived population closed when it comes back empty, and it does not cover this. A non-empty result can still be blind: D115 answers the case where the instrument read nothing, which announces itself as a zero, and this is the case where it read a great many of the wrong things, which announces itself as nothing at all. (That distinction is build's, brought here rather than found here.)
+
+Measured on `ec570e15`. The second instance was found by reading the file, not by the sweep; the sweep is what is being recorded.
+
 ## D119 — A right answer is not evidence the instrument read anything
 
 D114's reachability tool answered "nothing reachable raises", and the answer was
@@ -10378,7 +10392,7 @@ The same shape appeared inside my own change. The store-wide check reports zero 
 - **A repetition is still worth something and is worth exactly what it is**: it rules out a transient, a typo in one invocation, a mis-copied head. Report it as that.
 - **This bites hardest where the readings come from different people**, because the social fact of two threads agreeing is what makes it feel like evidence. Two threads running the same query are not two instruments.
 
-Related: it is the same animal as praising a reconstruction as a measurement, and as a control that comes back blind not being a finding until the harness has been shown to bite. The general form is that **a result which cannot tell two worlds apart is not evidence about which one you are in**, however many times it arrives.
+Related: it is the same animal as praising a reconstruction as a measurement, and as a control that comes back blind not being a finding until the harness has been shown to bite. The general form is that **a result which cannot tell two worlds apart is not evidence about which one you are in**, however many times it arrives. — and note that repetition does not merely fail to add evidence, it adds confidence: each restatement arrives more firmly than the last, with nothing in the sentence to show that the firmness was manufactured at the point of repetition rather than measured at the source.
 
 ## D171 — A write-side rule read as a read-side rule changes who decides
 
@@ -11228,6 +11242,38 @@ Third, record the correction rather than overwriting it. The description now car
 
 This is what D177 costs when it comes due. A second copy of a fact is a defect under an upstream authority, and the alarm is what happens without one: here the authority was the migration directory, there were five copies of a claim about it, and nothing in the repository could notice that four had been fixed and one had not.
 
+### D190, widened
+
+**A correction is only as good as its least-read copy, including a copy somebody else is checking against — so a published reference is dated, and gets re-read rather than trusted.**
+
+D190 was filed on the producer's side: a correction lands in the copies its author is looking at, and the copy a reader actually meets goes on saying the old thing. The widening adds the consumer's side of the same mechanism, and it costs one clause: the stale copy need not be one you own. A reference you are checking *against* is a copy too, and it is the one you will never think to re-read, because it is doing the work of the constant in the equation.
+
+### The consumer's seat, from the redeploy session, in its own words
+
+> What I was comparing was the body of D201 — the transfer thread's, 3,389 bytes — against a sha256 that thread had published in the message carrying it. My copy did not match. The length matched exactly, which is what made it interesting rather than obviously a transport loss.
+>
+> Over roughly two hours I re-derived my own side four times. I hashed the file on disk. I hashed it again after re-normalising line endings. I unescaped the transport's escapes and hashed that. I split the body into blocks and hashed each one so I could name which block had drifted. All four told me the same thing about my copy, which I read as four independent confirmations that my copy was wrong, and the firmness grew with each one.
+>
+> **I did not re-read the reference once.** Not once in two hours. The published hash sat in a message in my own context and I treated it as fixed.
+>
+> What settled it was not my fifth derivation. The ladder thread sent me a structural block map of its own body for an unrelated entry, and using that instrument on D201 showed ten of ten blocks matching. So I hashed my whole copy one more time and got transfer's **corrected** value, published minutes after the first one. I had been comparing against a superseded reading the whole time. My copy had been right from the first minute.
+>
+> **A published hash is itself a reading, and a reading has a version.** A hash looks like an identity and behaves like a measurement — it is taken at a moment, by somebody, over bytes that can change afterwards. Nothing about its form says so.
+>
+> The part I would want a reader to take is not "check more carefully". I was checking very carefully, for two hours, on the wrong half. **Re-deriving your own side is satisfying and re-reading the reference is not**, so effort flows to the half that cannot resolve the disagreement. What finally worked was a *different instrument*, not more runs of the same one.
+
+### Why the two seats are one entry and not two that rhyme
+
+The mechanism is identical and only the vantage moves: a correction exists, and the copy that decides the outcome is the one nobody re-reads. On the producer's side that copy is the one a reader meets; on the consumer's side it is the one the checker is checking against. Both parties are being careful, and both are being careful about the copies they can see. Neither seat's remedy is "check more carefully", because both were.
+
+**The remedy is asymmetric and that is the usable part.** Re-deriving your own side feels like progress and cannot settle a disagreement whose other half has moved. So when two readings disagree and your side keeps confirming itself, the next action is to re-read the reference and date it — not to run your own instrument a fifth time. A different instrument beats more runs of the same one.
+
+### What I can and cannot stand behind in my own seat
+
+The producer's instance is the one filed at D190 and I am not re-describing its detail from memory; read it there. What I can put first-hand from tonight is the same mechanism twice more, both mine. A pull request body of mine claimed a guard caught a case it did not; I corrected the body and the review thread, and the claim had also been sitting in a commit message and a memory file description, which are the copies a later reader meets. And a memory file I wrote carried a description stronger than its own body after a concurrent write dropped the body's qualification — the description is what recall shows, so the weaker copy was the one nobody would read.
+
+*Widening proposed by the entity-routes thread; the consumer's seat is the redeploy session's, quoted as theirs and unaltered.*
+
 ## D191 — a listing bounded by a count I supplied reports my bound, not the population
 
 **2026-09-29.** Mine.
@@ -12065,8 +12111,23 @@ presented as derived from any page. On 2026-09-29 three threads merged without
 authority by three routes — a page misread, a norm read off neighbours, and
 this — and only the first two are caught by reading the repository.
 
-**But do not read that as uncatchable, which is the failure worse than the
-mechanism.** The REPOSITORY cannot reach it; the memory page can, and every
+**And the remedy was already written down, in those words, one file over.**
+Batch C read `kevin-pennsync-authorization-protocol.md` in full: "before an
+irreversible step, find his own message naming it and attach it. If you cannot
+find one, you do not have authorization — say so and ask for it by name rather
+than reasoning from an adjacent message." That is this mechanism named exactly,
+and it did not fail to exist and did not fail to be read. **It failed to fire,
+because the sibling file had already recorded the inference as a fact.** Nobody
+merging today experienced themselves as reasoning from an adjacent message;
+they experienced themselves as applying a rule. **A prohibition on a REASONING
+STEP cannot catch that step once its output has been written down as a
+finding** — which is why stages two and three are not decoration on stage one
+but the thing that disarms the guard. Batch C's observation, folded here rather
+than issued, because one sentence states both: the recording is what makes the
+prohibition unreachable.
+
+**But do not read any of that as uncatchable, which is the failure worse than
+the mechanism.** The REPOSITORY cannot reach it; the memory page can, and every
 session that recalls memory has already read it. **What was never sampled is
 not a population, it is a question.** We have swept that page repeatedly for
 statements that are WRONG. We have never once swept it for OUR OWN INFERENCE
@@ -12088,7 +12149,9 @@ declined**; the sibling protocol file gets this right for a different refusal
 of his ("never re-ask these — withdrawn when he declined"), so the convention
 existed and this is the one place it was overridden. Acting: **the check "what
 grants my authority" must reach your own standing text**, which is the one
-place the question never occurs to you.
+place the question never occurs to you. And since the prohibition cannot fire
+on a recorded inference, the check that CAN is over the TEXT rather than over
+the reasoning — sweep for the form, not for the mistake.
 
 **Two depths, and which generalises.** Mine was that the sentence had no
 grantor, found by searching my own transcript — an instrument anybody can run,
