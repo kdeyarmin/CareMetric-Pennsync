@@ -10436,6 +10436,33 @@ The same shape appeared inside my own change. The store-wide check reports zero 
 - **A repetition is still worth something and is worth exactly what it is**: it rules out a transient, a typo in one invocation, a mis-copied head. Report it as that.
 - **This bites hardest where the readings come from different people**, because the social fact of two threads agreeing is what makes it feel like evidence. Two threads running the same query are not two instruments.
 
+**And the third clause, which is the case where the two readings come from
+different people and different work, and still are not two instruments.** The
+bullet above says two threads running the same query are not two instruments.
+They need not be running a query at all. On 2026-09-29 three sessions
+separately reported that a control of theirs had been voided by a change they
+had just made, and it was the agreement of three unconnected cases that made
+the collected finding feel robust enough to file. Asked for their own bodies
+rather than their accounts, all three said the control had never been sound:
+one positive control was measuring the file's commit count and could not have
+discriminated any symbol in it, one planted control raised on the helper's
+first assertion so the second was never evaluated at any head, and one guard
+had exactly one hit in the tree before the change and that hit was its own
+source line. The agreement was real and carried nothing, because each of the
+three had consulted the same artefact — **their own description of their own
+work**, and a description written by somebody who expected the check to work
+says the check used to work.
+
+So three descriptions agreeing is one reading with three witnesses, in this
+entry's exact sense: what would have to be wrong for all three to be wrong is
+the method, and the method was "recall what my check does" rather than "run
+it". **The artefact that broke it was the body.** Note also which way the error
+leaned — a drift diagnosis says the check used to work, so nobody is
+responsible for a hollow one shipping, and it is therefore the account an
+author reaches for without choosing it. **Ask each author separately, ask for
+the body rather than the account, and where the claim is that a change broke a
+check, run the check's own defect at the head before the change.**
+
 Related: it is the same animal as praising a reconstruction as a measurement, and as a control that comes back blind not being a finding until the harness has been shown to bite. The general form is that **a result which cannot tell two worlds apart is not evidence about which one you are in**, however many times it arrives. — and note that repetition does not merely fail to add evidence, it adds confidence: each restatement arrives more firmly than the last, with nothing in the sentence to show that the firmness was manufactured at the point of repetition rather than measured at the source.
 
 ## D171 — A write-side rule read as a read-side rule changes who decides
