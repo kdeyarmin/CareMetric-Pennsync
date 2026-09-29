@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { validateFileUpload } from "@/components/utils/security";
+import { extractPatientDataFromDocument } from "@/lib/documentExtraction";
+import { usesIndependentBackend } from "@/lib/independentStagingSession";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -33,21 +35,20 @@ export default function OCRDocumentExtractor({ onDataExtracted }) {
     setExtractedData(null);
 
     try {
-      // Step 1: Upload file
+      // The two backends take the document differently and the difference is
+      // the shape of the call, not who may make it: Base44 stores the file and
+      // the function fetches the locator back, while the owned service is sent
+      // the bytes and mints the object under the subject that reads it.
       toast.info('Uploading document...');
-      const uploadResponse = await base44.integrations.Core.UploadFile({ file });
-      const fileUrl = uploadResponse.file_url;
-
-      // Step 2: Extract patient data using AI
-      setUploading(false);
-      setExtracting(true);
-      toast.info('Extracting patient information with AI...');
-
-      const extractionResponse = await base44.functions.invoke('extractPatientDataFromDocument', {
-        file_url: fileUrl
+      const data = await extractPatientDataFromDocument(base44, file, {
+        independent: usesIndependentBackend,
+        onUploaded: () => {
+          setUploading(false);
+          setExtracting(true);
+          toast.info('Extracting patient information with AI...');
+        },
       });
 
-      const data = extractionResponse?.data;
       if (data?.status === 'success') {
         setExtractedData(data.patient_data);
         toast.success('Patient data extracted successfully!');

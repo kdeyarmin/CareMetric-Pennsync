@@ -11,3 +11,14 @@ export const independentStagingAdapter = config
   ? createIndependentStagingAdapter(config, { boundTenant: getActiveTrustedTenantContext })
   : null;
 export const independentStagingAuth = independentStagingAdapter?.auth ?? null;
+/**
+ * Whether this build talks to the owned service rather than Base44.
+ *
+ * Exported for the one thing a screen legitimately has to know: which SHAPE a
+ * capability takes. `OCRDocumentExtractor` uploads a document and then reads
+ * it, and the two backends do that differently — Base44 stores the file and
+ * passes a locator, while the owned path sends the bytes to the handler, which
+ * mints the object under its own subject. It is not a permission and nothing
+ * branches on it to decide what a caller may do.
+ */
+export const usesIndependentBackend = !!independentStagingAdapter;

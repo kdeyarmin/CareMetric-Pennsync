@@ -240,6 +240,18 @@ export function readExpectations(root) {
  * grows: the first after the fallback existed was `generatePatientHandout`
  * (D81), whose document reads nothing tenant-scoped, so which of a caller's
  * memberships authorizes it changes nothing on the page.
+ *
+ * `extractPatientDataFromDocument` (`src/lib/documentExtraction.js`) is the
+ * second, admitted on the same reading and for a sharper reason: the capability
+ * reads NO row at all. It takes a document's bytes, brokers an upload and asks
+ * a model what is in it, so no tenant is consulted anywhere in the answer and a
+ * caller holding two memberships cannot have meant the other one. Note also
+ * what it is not: the site was already in `src/` before this port, calling the
+ * Base44 original from the screen; adopting it moved the call into a shared
+ * module and did NOT add a request to the frontend, which is why
+ * `check:base44-surface`'s invocation count is unchanged. One invocation with
+ * the branch deciding only what it carries — two would have read as growth
+ * there while the surface stood still.
  */
 /**
  * **A site is pinned by FILE AND LINE, so a moved site and a new one are the

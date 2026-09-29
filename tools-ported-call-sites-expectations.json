@@ -56,6 +56,7 @@
     "src/functions/updateAuthorizedVisit.js:8 updateAuthorizedVisit",
     "src/functions/updateAuthorizedVisit.js:9 updateAuthorizedVisit",
     "src/functions/updateIncident.js:11 updateIncident",
+    "src/lib/documentExtraction.js:99 extractPatientDataFromDocument",
     "src/lib/notify.js:59 createNotification",
     "src/lib/retiredOfflineQueue.js:484 appendPatientNoteHistory",
     "src/lib/retiredOfflineQueue.js:571 submitIncidentReport",
