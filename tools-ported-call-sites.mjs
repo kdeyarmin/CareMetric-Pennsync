@@ -241,7 +241,8 @@ export function readExpectations(root) {
  * (D81), whose document reads nothing tenant-scoped, so which of a caller's
  * memberships authorizes it changes nothing on the page.
  *
- * `extractPatientDataFromDocument` (`src/lib/documentExtraction.js`) is the
+ * `extractPatientDataFromDocument` (`src/components/patient/OCRDocumentExtractor.jsx`,
+ * through `src/lib/documentExtraction.js`) is the
  * second, admitted on the same reading and for a sharper reason: the capability
  * reads NO row at all. It takes a document's bytes, brokers an upload and asks
  * a model what is in it, so no tenant is consulted anywhere in the answer and a

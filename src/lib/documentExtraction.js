@@ -16,6 +16,20 @@
  *
  * Nothing here decides who may do this. Both backends authorize the call
  * themselves; this only picks the call shape.
+ *
+ * It is handed two bound functions rather than the SDK client. The client is a
+ * containment boundary — `patientVisitReadContainmentContract` refuses a bare
+ * `base44` passed as a call argument, and rightly: a module holding the client
+ * holds every entity, upload and auth path with it. Two functions are the whole
+ * of what this needs.
+ *
+ * `invoke` is bound to the capability NAME at the call site rather than taking
+ * one here, and that is deliberate. `tools-ported-call-sites.mjs` finds a
+ * ported call by its literal name, so passing the name in from a variable would
+ * take this site out of that census — the call would still rely on the
+ * adapter's bound tenant and nothing would count it any more. A refactor that
+ * makes a measurement stop seeing a member is the failure this project keeps
+ * recording; keep the literal where the census can read it.
  */
 
 /** The file ceiling the owned handler declares, which is the runtime's own. */
@@ -69,7 +83,8 @@ export function fileToBase64(file, FileReaderImpl = globalThis.FileReader) {
  * owned path there is no second step to wait for, so it fires once the bytes
  * are encoded and the request is about to go.
  */
-export async function extractPatientDataFromDocument(client, file, options = {}) {
+export async function extractPatientDataFromDocument(transport, file, options = {}) {
+  const { invoke, uploadFile } = transport;
   const { independent = false, readAsBase64 = fileToBase64, onUploaded = () => {} } = options;
   let params;
   if (independent) {
@@ -89,13 +104,13 @@ export async function extractPatientDataFromDocument(client, file, options = {})
     // trusted.
     params = { base64: await readAsBase64(file), content_type: runtimeContentType(file.type) };
   } else {
-    const upload = await client.integrations.Core.UploadFile({ file });
+    const upload = await uploadFile({ file });
     params = { file_url: upload.file_url };
   }
   // ONE invocation, with the branch deciding only what it carries. Two would
   // read as two capabilities to `check:base44-surface`'s function-invocation
   // ratchet, and the surface did not grow — the same call moved.
   onUploaded();
-  const response = await client.functions.invoke('extractPatientDataFromDocument', params);
+  const response = await invoke(params);
   return response?.data;
 }

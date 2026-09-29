@@ -22,19 +22,13 @@ const clientFor = (answer = ANSWER) => {
   return {
     invoked,
     uploaded,
-    integrations: {
-      Core: {
-        UploadFile: async (payload) => {
-          uploaded.push(payload);
-          return { file_url: 'https://qtrypzzcjebvfcihiynt.supabase.co/stored.pdf' };
-        },
-      },
+    uploadFile: async (payload) => {
+      uploaded.push(payload);
+      return { file_url: 'https://qtrypzzcjebvfcihiynt.supabase.co/stored.pdf' };
     },
-    functions: {
-      invoke: async (name, params) => {
-        invoked.push({ name, params });
-        return { data: answer };
-      },
+    invoke: async (params) => {
+      invoked.push({ name: 'extractPatientDataFromDocument', params });
+      return { data: answer };
     },
   };
 };

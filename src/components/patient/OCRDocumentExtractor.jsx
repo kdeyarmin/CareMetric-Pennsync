@@ -40,7 +40,10 @@ export default function OCRDocumentExtractor({ onDataExtracted }) {
       // the function fetches the locator back, while the owned service is sent
       // the bytes and mints the object under the subject that reads it.
       toast.info('Uploading document...');
-      const data = await extractPatientDataFromDocument(base44, file, {
+      const data = await extractPatientDataFromDocument({
+        invoke: (params) => base44.functions.invoke('extractPatientDataFromDocument', params),
+        uploadFile: (payload) => base44.integrations.Core.UploadFile(payload),
+      }, file, {
         independent: usesIndependentBackend,
         onUploaded: () => {
           setUploading(false);
