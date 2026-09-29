@@ -9676,6 +9676,32 @@ change, never to loosen the half that noticed.
 
 Related: D88, D127, D145, [[pennsync-forward-migration-coverage]].
 
+## D150 — Read your OWN comments on a pull request before merging it
+
+**Added 2026-09-26.** Found on #321 (the catalog-qualified-names gate) minutes before the squash merge, by the ladder thread.
+
+A pull request comment outlives the state it describes. **A stale one on a MERGED pull request reads as current to everyone who finds it later**, because nothing on a merged pull request is going to move again and a reader has no reason to suspect the text of being older than the diff beside it.
+
+The instance: partway through #321 I posted a comment saying CI would go red on that branch and that the red was the intended state, naming the file-scan failure that would produce it. Both halves then stopped being true — the rewrite replaced the file scan with a check over the built catalog, and the fix the comment said was still outstanding had landed. The comment was the only thing on the pull request still asserting a red, and it would have been preserved verbatim, above a green merge, as the most authoritative-looking account of why the branch was failing.
+
+**The rule, which is the reusable half: read your own comments on the pull request before merging, not only other people's, because yours are the ones nobody else will correct.** A reviewer's stale comment gets answered — that is what a review thread is for. Your own gets skimmed past by you, because you remember writing it and remember what you meant, and read the memory rather than the text.
+
+### The repair is an edit, never a deletion
+
+Deleting it destroys the record that the branch was ever expected to be red, which is a real fact about how the change was driven and the thing a later reader is most likely to need. What went on #321 instead, and what should go on the next one:
+
+- the claim struck through with `~~…~~`, so the shape of the original is still visible and unmistakably withdrawn,
+- an edit note carrying the time of the edit and what changed the state,
+- **the original kept intact inside a `<details>` block**, so nothing is lost and nothing is presented as current.
+
+That form survives being quoted: someone who copies the struck line copies the strike, and someone who opens the `<details>` has already been told they are reading history.
+
+### Where it sits beside the other rules here
+
+It is the comment-shaped case of the project's standing one about a second representation — a page describing a store is a second representation of it, and the one that fails nothing is the one that rots (the sentence D51's entry ends on, about `adr_audit_case`). A pull request comment fails nothing by construction: no gate reads it, no test asserts it, and merging does not re-evaluate it. So the only instrument pointed at it is a reader, and before the merge there is exactly one reader who both knows the current state and is looking at the comment.
+
+**A merge is therefore the last moment a pull request's prose can be corrected, and the check belongs there**: before merging, read the pull request's own comment list top to bottom and ask of each of yours whether it is still true at this head. It costs one read of a page already open.
+
 ## D151 — Two lines that lend each other standing, and neither has any
 
 A weak assertion beside a strong one is not a weak assertion. It reads as part
@@ -10063,6 +10089,10 @@ Date, instrument, tree. When an entry says "reshape into a dated finding", that 
 
 Two corollaries. **Removing an assertion is safe in both directions; replacing it with a second unmeasured one is not** — where the current state cannot be measured from where you are, say what was true and when, name the command, and stop. And **report what you checked and left alone**: a sweep that lists only its findings cannot be told from a shallow one, which is why the AGENTS.md line-number citations and the two pinned blocks are recorded as verified rather than silently skipped.
 
+> The invented-hazard direction does not only show up in warnings. It shows up in WORK LISTS, where it is easier to miss because a backlog nobody has measured against the store reads exactly like a backlog. Stage G's `entity_authorization` row said "Ports to write, not decisions" over seven capabilities, and measured, none of the seven could be built against anything that exists and three of them were not build work at all. A table describing seven pieces of work waiting to be picked up is a hazard invented loudly — which is the half that at least announces itself — and it survived because nothing compares a work list against the store it claims work is waiting on. When a page names work, ask what would fail if the work were already impossible.
+
+And one more, because it happened inside the sweep written for it: my own item 6 said the `proseAfterPinnedBlock` fix "is handed to the change that next updates that block", and the very next change to that block — #338, mine — landed without it. **A sentence that names a future event as the thing which will close a gap starts rotting the moment that event happens without closing it**, and it reads as closed rather than open, which is the reassuring direction again. Say what is in the tree and name the file to check, not what some later change will do.
+
 ## D168 — The route gate proves the arguments and says nothing about the return
 
 **Decision.** A route is not landed without a test of its projection, and the gate's own headline is read as a statement about arguments only.
@@ -10135,6 +10165,39 @@ This is the mechanical half of the coordinator's own rule that **the index is a
 representation too**. The index is not merely another thing that can go stale;
 it is a thing whose text is indistinguishable from what it describes.
 
+## D170 — Agreement between two runs of one method is one reading with two witnesses
+
+*Added 2026-09-29. Found because the coordinator offered it to me as corroboration and it was not.*
+
+Two threads measured which `pennsync_records` functions are reachable by a caller. Batch C reported fourteen names without a `contract_` prefix; I reported fourteen before my change and five after. The coordinator read the agreement as two independent readings of the store converging, and told batch C so.
+
+They are not independent. Both are `has_function_privilege(role, …, 'execute')` asked of a PGlite build of the same tree. That is **one method run twice**. Everything the method cannot see, it cannot see in either run: if `has_function_privilege` answered the wrong question, if the PGlite build diverged from a real cluster, if the directory walk skipped a file, both readings would be wrong together and would still agree. **Two witnesses to one reading feel like corroboration and carry none.** The count is a predicate over a population, and running the same predicate twice over the same population tells you the predicate is deterministic.
+
+**What corroborates is a different ARTEFACT, not a second run.** The load-bearing question about those fourteen was whether the five `entity_*` broker entry points are reachable by decision or by accident. No amount of reachability measurement answers it: the store says they are reachable, and says nothing about whether anybody meant it. The answer is in `20260919180000_record_brokers.sql`, which revokes nine names in one statement and grants exactly five back to `authenticated` on the next line, leaving `brokered`, `broker_scope`, `broker_reserved` and `broker_check_payload` unreachable. **The prefix is not the evidence; the re-grant statement is.** Neither reachability run would have surfaced it, and a third run would not have either.
+
+The same shape appeared inside my own change. The store-wide check reports zero violations, and zero is also what a derivation that read nothing reports. Re-running it does not distinguish the two. What distinguishes them is removing the forward migration and watching the same code report exactly the nine — a different state of the world, not a second look at the same one.
+
+### What to do
+
+- **Before calling two readings independent, name what would have to be wrong for both to be wrong.** If the answer is "the method", they are one reading. Write down the method beside each figure, not just the tree.
+- **Prefer an artefact to a repetition.** A grant statement, a migration's own text, a call site, a policy — something that was written by a different act than the one you are checking. That is what can contradict you.
+- **A repetition is still worth something and is worth exactly what it is**: it rules out a transient, a typo in one invocation, a mis-copied head. Report it as that.
+- **This bites hardest where the readings come from different people**, because the social fact of two threads agreeing is what makes it feel like evidence. Two threads running the same query are not two instruments.
+
+Related: it is the same animal as praising a reconstruction as a measurement, and as a control that comes back blind not being a finding until the harness has been shown to bite. The general form is that **a result which cannot tell two worlds apart is not evidence about which one you are in**, however many times it arrives.
+
+## D171 — A write-side rule read as a read-side rule changes who decides
+
+**Decision.** Before routing a question to the owner on a decision's authority, quote the decision.
+
+**What happened.** D44 restricts who may WRITE `severity`, `state_reportable` and `ai_tags` on an incident, because those three are the inputs to `incidentNeedsCorrectiveAction` and a reporter who could soften them would defeat the resolve gate. Cited as "D44's reviewer-decided fields", it reads as a rule about who may SEE them — and a question about what a contract may PROJECT then reads as an authorization question, which is a product call, which parks on the owner. Two per-patient incident sites sat there for hours on that reading.
+
+**The tell was in the text, and it is one sentence.** D44 says: *"The rule is about mutation, not about authorship."* Nobody read it until somebody was asked to quote the decision verbatim rather than cite it. The rule that actually governs a projection into a model prompt is D64's — *"every column that reaches a prompt is named"* — which is a contract shape and needs nobody's permission.
+
+**Why it generalises.** A decision's label is a second representation of the decision, and it rots in one direction: toward sounding broader than the text. A write rule sounds like a disclosure rule, a narrowing sounds like a prohibition, a reviewer's field sounds like a secret. Each drift moves a question one step up the chain to somebody who cannot answer it, and the cost is measured in the owner's attention rather than in a failing test — so nothing catches it. The remedy is cheap and specific: when a decision is the reason a question is not yours, open the decision and read the paragraph.
+
+**Related:** this is the same failure mode as the coordinator's own rule about deciding from one representation, arriving through a document rather than through a tree.
+
 ## D172 — A precondition stated over a pair is a property of one member at one moment (2026-09-29)
 
 The rule this project has carried about Railway release writes is: *a variable
@@ -10190,3 +10253,33 @@ tree hash — so **re-take it per member at the moment of acting**, and never
 quote the figures in this entry as current. They are a reading at `faecd40f` and
 they were already at risk of being wrong while this was being written: main
 moved once during the same sitting.
+
+## D173 — A fail-closed READ is an unwritten constraint on the WRITE
+
+**Added 2026-09-29.** Found on `adr-cases` by the ladder thread, while measuring whether `contract_adr_deadlines` serves the ADR screens. It does not, and this is what the measurement turned up on the way.
+
+When a read contract refuses a class of value **by name** — because returning it would do something the store must not do — that refusal is a statement about the **class**, not about the direction. The write side inherits it silently. Nothing in the tree pairs the two halves and no gate compares them, so **a contract pair built read-first will accept what its own read cannot return**, and nobody finds out until a screen reads back something it just wrote and gets nothing.
+
+### The instance
+
+`contract_adr_case_list` (#293) refuses `letter_file_url`, `packet_file_url` and `final_packet_url` by name. Its own header gives the reason: a carried `file_url` points at Base44's storage, D77's resolver **fails closed** on exactly those rather than handing one back, and returning one would give a caller a URL it would then fetch. That is a decision about a class of value — **a Base44 storage locator may not leave the owned store.**
+
+The ADR screens **write** two of those three. `src/pages/ADRCenter.jsx`'s create writes `letter_file_url`; `src/components/adr/AdrPacketVerifier.jsx`'s packet-upload update writes `packet_file_url`. So a write capability serving those sites would take a Base44 storage URL from a browser and put one **in** — the same value the read refuses to hand out, arriving through the door nobody was watching.
+
+### Why it is invisible
+
+The read's refusal is enforced by its own projection and proved by its own suite; both are green and both are right. The write does not exist yet, so there is nothing to be red. **The asymmetry only becomes reachable at the moment somebody writes the second half — which is exactly when the read's reasoning is least likely to be re-read, because it is settled, tested and merged.** A reader writing the write half starts from the entity's columns and the screens' payloads, and neither of those carries the refusal.
+
+### The rule
+
+Before writing the write half of a contract pair, read the read half's refusals and ask of each whether the write can supply the thing refused. **A refusal phrased about projection ("this is not returned") is usually a statement about the value ("this may not cross this boundary"), and only the first one is enforced.**
+
+### The corollary, which is what decided the ADR case
+
+**A pair cannot be split down the middle of such a refusal.** Six of the eight ADR write sites carry no locator and could ship today; two cannot. Shipping the six would leave the screens behaving differently depending on which side they touch — a field the write accepts and the read will never return. So the whole write half is held on the file layer rather than partially served.
+
+That is a **narrower** rule than the partial ports D31, D35, D36, D59, D73 and D81 follow, and the distinction is the reusable part. Those split on an **action** or an **input source**, where each served half is complete in itself and the refused half is refused in the answer. A split across a **value-class refusal** is not complete in itself, because both halves are talking about the same field and they disagree about it.
+
+### What closing it would take, said rather than claimed
+
+Nothing enforces this pairing today. The check that would is writable now: cross each contract's writable field set against its sibling read's withheld set and refuse an intersection. Both sides are already extracted for other reasons — `WRITE_POLICIES` in `tools-read-purpose-policy.mjs` names a create capability's writable declaration, and a read's withheld fields are enumerated with a reason each in its own suite. **It is not written, and this entry is the argument for writing it rather than a claim that it exists.** Stated the way D96 asks: the gap is named, the instrument is named, and the cost of closing it is one comparison over pairs that already exist.
