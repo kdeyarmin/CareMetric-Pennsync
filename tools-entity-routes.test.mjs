@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -542,4 +542,99 @@ test('the prose after that block points at it and restates none of its figures',
           + '  page does. If it is the figure, move it inside the block.\n'
         : ''));
   }
+});
+
+/**
+ * Every `screenRead` route's declared answer key against the SQL its contract
+ * actually returns — the one layer the gate cannot see.
+ *
+ * The gate runs a declaration's `request` against each call site's arguments
+ * and never exercises `response`, which the page beside this file records as a
+ * live defect once already: a route declared over `contract_alert_list` passed
+ * the gate and would have refused every real call, because the helper read
+ * `result.entries` as a constant and that contract answers `alerts`. Making the
+ * key a parameter stopped the constant being inherited by copying. It does not
+ * stop the parameter being WRONG, and nothing between the route and the store
+ * renames anything: the handler returns `contract(...)` untouched.
+ *
+ * THE FAILURE MODE THIS TEST IS SHAPED AROUND IS ITS OWN. A first version
+ * extracted each contract's body with a non-greedy match to `$contract$;` and
+ * reported `contract_clinical_event_list` as declaring `events` where the SQL
+ * answered `entries` — a live refusal on every chart-timeline read, apparently.
+ * It was the extractor: that body was never isolated at all, and the keys the
+ * comparison saw belonged to another function. The corrected extractor says the
+ * SQL answers `events` and the route is right.
+ *
+ * So a body that cannot be found FAILS rather than being skipped, which is the
+ * assertion that would have caught it. D95's rule arriving from the other side:
+ * a case that comes back BLIND is not a finding, and a case that comes back
+ * POSITIVE from an unvalidated extractor is not one either.
+ */
+const RECORD_MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
+
+function contractBodies() {
+  const directory = resolve(repository, RECORD_MIGRATIONS);
+  const sql = readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
+    .map(name => readFileSync(resolve(directory, name), 'utf8')).join('\n');
+  const bodies = new Map();
+  const marks = [...sql.matchAll(/create (?:or replace )?function "pennsync_records"\.([a-z_]+)\(/g)];
+  for (const [index, mark] of marks.entries()) {
+    bodies.set(mark[1], sql.slice(mark.index, marks[index + 1]?.index ?? sql.length));
+  }
+  return bodies;
+}
+
+/** The keys a contract's own `return jsonb_build_object(...)` statements name. */
+function answeredKeys(body) {
+  return new Set([...body.matchAll(/return jsonb_build_object\(([\s\S]{0,400}?)\);/g)]
+    .flatMap(match => [...match[1].matchAll(/'([a-z_]+)'\s*,/g)].map(key => key[1])));
+}
+
+/** Each screen read's declared answer key, beside the contract it reaches. */
+function declaredAnswerKeys() {
+  const routes = readFileSync(resolve(repository, 'src/lib/independentEntityRoutes.js'), 'utf8');
+  const contracts = readFileSync(resolve(repository, 'services/pennsync-api/record-contracts.mjs'), 'utf8');
+  const declared = [];
+  for (const match of routes.matchAll(
+    /answerKey:\s*'([a-z_]+)',\s*\n\s*entity:\s*'([A-Za-z]+)',\s*\n\s*function:\s*'([A-Za-z]+)'/g)) {
+    const [, answerKey, entity, capability] = match;
+    const rpc = contracts.match(
+      new RegExp(`\\n  ${capability}: Object\\.freeze\\(\\{[\\s\\S]{0,400}?rpc: '([a-z_]+)'`));
+    declared.push({ answerKey, entity, capability, rpc: rpc?.[1]?.replace(/^pennsync_/, '') ?? null });
+  }
+  return declared;
+}
+
+test('every declared answer key is one its contract actually returns', () => {
+  const bodies = contractBodies();
+  const declared = declaredAnswerKeys();
+  // Not a floor. If the extraction above stops matching, this goes to zero and
+  // every assertion below becomes vacuously true at once.
+  assert.ok(declared.length >= 7,
+    `only ${declared.length} screen reads were extracted; the declaration shape moved`);
+
+  for (const route of declared) {
+    assert.ok(route.rpc,
+      `${route.entity}.${route.capability} reaches no contract entry in record-contracts.mjs`);
+    const body = bodies.get(route.rpc);
+    // A MISSING body fails. It does not skip, and it is not "no disagreement
+    // found" — that reading is what made the first version of this test report
+    // a defect that was not there.
+    assert.ok(body,
+      `no SQL body found for \`${route.rpc}\` (${route.entity}.${route.capability}).\n`
+      + '  This is a failure of the extractor above, not evidence about the route.\n'
+      + '  Fix the extraction before reading anything else this test says.');
+    const answered = answeredKeys(body);
+    assert.ok(answered.has(route.answerKey),
+      `${route.entity}.${route.capability} declares answerKey \`${route.answerKey}\`,\n`
+      + `  but \`${route.rpc}\` returns ${JSON.stringify([...answered])}.\n`
+      + '  Nothing renames it in between — the handler returns `contract(...)` untouched —\n'
+      + '  so this route is counted SERVED and refuses the store\'s real answer on every call.');
+  }
+
+  // AN EMPTY DISAGREEMENT SET IS NOT EVIDENCE (D174). Drive a key the contract
+  // does not answer through the same comparison and require it to be caught.
+  const sample = bodies.get(declared[0].rpc);
+  assert.ok(sample, 'the plant needs a body the extractor found');
+  assert.equal(answeredKeys(sample).has('rows_that_no_contract_answers'), false);
 });
