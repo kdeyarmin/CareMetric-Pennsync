@@ -9244,6 +9244,8 @@ Related: D95, D135, D118, D122.
 
 Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Shipped as #328.
 
+**Scope note.** An earlier draft of this entry carried a third rule, about the *order* of the branches. That half is **D157** and lives there alone — it is a rule about precedence between two orderings and applies well beyond a classifier. Nothing about ordering is repeated here, deliberately: the second copy is the one that goes stale.
+
 ### What happened
 
 `classifyToolFailure` in `services/authority-store/tests/http-local-stack.mjs` named nine categories for a failed `supabase start` or `docker` call; anything else answered `LOCAL_CLI_START_FAILED_OUTPUT_REDACTED`. #324 had just split that from `FAILED_NO_OUTPUT`, so for the first time the two readings could be told apart — and one arrived on a head carrying #324: the CLI printed something no branch named.
@@ -9254,25 +9256,25 @@ Three classes a local start demonstrably fails with had no name, and #328 gives 
 - `IMAGE_UNAVAILABLE` — an image the runner could not obtain (registry rate limit, missing manifest, pull denied).
 - `SERVICE_UNHEALTHY` — a container the daemon started and then judged unhealthy.
 
-### The three rules
+### The two rules
 
 **1. The fall-through is a queue, not the answer.** D123 settled that a classifier's fall-through must not also be its empty case. The corollary is that once it is *only* the fall-through, every arrival in it is a class waiting for a name. Add the name; do not widen the fall-through's comment.
 
 **2. Claim nothing about an occurrence whose evidence is unrecoverable.** Nothing captures the child's output, so the text of the occurrence that prompted this is gone by design. No branch can be offered as its cause, and the code's comment says so. What the change buys is that the *next* one names itself. A branch offered as an explanation of an unrecoverable event is a story, not a category.
 
-**3. Order expresses precedence, and nothing else does.** Codex found the regression I introduced: the three new branches ran *before* the migration-code and SQL branches. A named `PENNSYNC_*` refusal is normally followed by its **consequence** — the container the refusal killed exits, and the CLI prints both — so asking about the consequence first answered `SERVICE_UNHEALTHY` and hid the one fact the module exists to preserve. A fact about our own migrations outranks an infrastructure heuristic about the run, and the chain's order is the only thing that says so. I had reasoned carefully about local ordering (image before unhealthy) and not at all about global ordering.
+### The pattern width, which is the other half of rule 1
 
-Copilot found the other half: a bare `bind: ` alternative matches `bind: permission denied` and `bind: cannot assign requested address`, so those were reported as a taken port. Too wide fails loudly, too narrow passes quietly (D142, D148) — and this one failed loudly to a reviewer rather than in CI.
+Copilot found it: a bare `bind: ` alternative matches `bind: permission denied` and `bind: cannot assign requested address`, so those were reported as a taken port. Naming a class is not the same as bounding it. **Too wide fails loudly, too narrow passes quietly** (D142, D148) — and this one failed loudly to a reviewer rather than in CI, which is the cheap direction to be wrong in and still a finding.
 
 ### How it was proved
 
 Each pattern is planted in `http-boundary.test.mjs` **as the tool actually prints it**, not as the pattern spelled backwards: a branch nothing has been shown to reach is indistinguishable from a branch that cannot be, which matters more than usual for branches added on evidence that cannot be recovered.
 
-Both fixes were verified by *restoring the defect* — putting each over-broad pattern back and watching the assertions fail with `PORT_TAKEN_DURING_START` as actual; moving the three branches back above the migration check and watching them fail with `SERVICE_UNHEALTHY` as actual — rather than by trusting the edit.
+Both fixes were verified by *restoring the defect* — putting each over-broad pattern back and watching the assertions fail with `PORT_TAKEN_DURING_START` as actual — rather than by trusting the edit.
 
 `emittable` admits the three new codes without an edit, and that is asserted, so the no-forwarding rule still holds: nothing but a literal is emitted.
 
-Related: D123, D124, D142, D148, D151.
+Related: D123, D124, D142, D148, D151, D157.
 
 ## D142 — A control's population is the capability, not the name it shares with its neighbours
 
@@ -9374,6 +9376,18 @@ A memory file's frontmatter description is what recall shows, so a description s
 Any figure that nothing compares (D139), any control whose population is a name pattern rather than the capability (D142, D148), and a difference report that `continue`s on an absent key and therefore compares none of that object's fields (D140) are all the same animal: the machinery runs, the output is green or unchanged, and the subject was never interrogated. The remedy is always the same and always costs one step — **break it on purpose and watch it go red before you believe it.**
 
 Related: D135, D139, D140, D142, D145, D148, D151.
+
+### The same animal in the test *inventory*, not the test body
+
+Found while shipping #328 and worth keeping on its own, because it survives intact the correction that the shallow-clone hazard it sat next to is local-only and not currently firing.
+
+`services/authority-store/tests/http-boundary.test.mjs` — the suite that carries every known-positive for #328's three new branches — **runs in no `test:*` script at all**. Measured on `af4b3185`: it appears nowhere in `package.json`, and `test:authority-store` enumerates its seventy-odd files by name without it. It runs in exactly one place, `.github/workflows/pennsync-authority.yml:158`, as its own step, before the local stack starts.
+
+Nothing is broken and nothing needs fixing: `src/testRegistryContract.test.js` requires a suite to run in a `test:*` script **or** a workflow, and the workflow step satisfies it. The defect is in what a reader concludes. Run `pnpm run test:authority-store`, see 766 green, and you have *not* run the assertions for the change you are about to ship — and the script's name is the only thing that suggested you had.
+
+**A script name that sounds like it covers a suite is not evidence that it does.** This is the same animal as a population derived from a name pattern rather than from the capability (D142, D148), and as a helper's comment describing a response the helper does not produce: in all three the *proxy* for the thing is read in place of the thing, and the proxy is green. The remedy is the same one step — name the file you need run and run it by name, then check the workflow to see where else it runs.
+
+The reason it is worth a paragraph rather than a fix is that the two suites in #328 sit on opposite sides of the line. `activity-audit.test.mjs` **is** in `test:authority-store`; `http-boundary.test.mjs` is not; both are in the same directory with the same extension and no local signal distinguishing them. So the habit cannot be "suites in this directory are covered by that script." It has to be: **read the script, or read the workflow.**
 
 ## D144 — A base move that changes a test SCRIPT moves your gate's population, not its inputs
 
@@ -9912,6 +9926,45 @@ moment the conversion was committed, so the blind arm was measuring the sighted
 one. It now names that revision by construction, as the newest revision of the
 file whose content does not yet call `applyRecordMigrations`.
 
+## D157 — When two orderings compete, the chain's order is the only thing that expresses which wins
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Found on #328 by Codex, in a regression I had introduced in the same change.
+
+### The rule
+
+A chain of `else if` branches over one piece of evidence encodes a **precedence**, not just a set of cases. Where two branches can both match the same output, the earlier one wins, and **no comment, name or test can express that** — only the position. So whenever branches are added to such a chain, the question is not "is each pattern right?" but "what else can match this text, and which answer do we want when both do?"
+
+The specific precedence this case settles, and the one to reach for:
+
+> **A fact about our own artefacts outranks an infrastructure heuristic about the run in which they were observed.**
+
+Our own migrations, refusals, contracts and named error codes are things we authored and can act on. A port collision, an image pull, a container health verdict are properties of the machine. When both are visible in one blob of output, reporting the machine's is reporting the *consequence* and discarding the *cause*.
+
+### The case
+
+`classifyToolFailure` in `services/authority-store/tests/http-local-stack.mjs` classifies the output of a failed `supabase start`. #328 added three infrastructure branches (`PORT_TAKEN_DURING_START`, `IMAGE_UNAVAILABLE`, `SERVICE_UNHEALTHY`) and I placed them **before** the existing migration-code and SQL branches.
+
+That is wrong, and wrong in a way that is invisible in isolation. A named `PENNSYNC_*` refusal raised by one of our own migrations is normally followed by its consequence: the refusal kills the container, the container exits, and the CLI prints **both** in one blob. Asking about the consequence first answers `SERVICE_UNHEALTHY` — true, useless, and it hides the one fact the module exists to preserve. Every new branch was individually correct. I had reasoned carefully about *local* ordering (image before unhealthy, because a pull failure also leaves a container not running) and not at all about *global* ordering, because the three branches looked like a self-contained block and were reviewed as one.
+
+The repair is one line of movement: the three go **after** the migration and SQL branches.
+
+### Why it needs a number rather than a fix
+
+Two reasons.
+
+**It is not detectable by the tests that cover the new branches.** Each of the three has a known-positive planted as the tool actually prints it, and all three passed in the wrong position, because each plant contains only its own signal. A chain's precedence is only observable on input that matches **two** branches, and nothing had such an input. The proof had to be constructed: plant a blob carrying a `PENNSYNC_*` refusal *and* an unhealthy-container line, assert the migration code. Verified by moving the branches back up and watching it fail with `SERVICE_UNHEALTHY` as actual.
+
+**The shape recurs wherever a block of cases is added to an existing chain.** A new block reads as additive and is not: inserting at the top silently re-decides every ambiguous input the chain already handled. The habit to build is that adding a branch to a chain is a change to the branches **above and below it**, so the diff to review is the whole chain, not the inserted lines.
+
+### How to apply
+
+1. For each branch you add, ask what *other* branch could match the same output.
+2. If any can, name which answer is wanted and place accordingly — the position is the specification.
+3. Prove it with an input that matches both, not with one that matches only the new branch.
+4. Then break it: swap the order back and watch the assertion go red (D143).
+
+Related: D123, D141 (the classifier's own rules, which no longer carry this), D142, D143, D148.
+
 ## D158 — A pinned block is a LOCATION as well as a value, so copying it moves whatever is anchored to it
 
 `tools-entity-routes.test.mjs` pins the `entity routes:` reading in the go-live plan two ways: the block must be byte-identical to what the printer emits, and the prose after it must restate none of its figures. The second check finds its region with `lines.indexOf(firstLine)` — the FIRST line equal to the block's first line.
@@ -10190,13 +10243,31 @@ Related: it is the same animal as praising a reconstruction as a measurement, an
 
 **Decision.** Before routing a question to the owner on a decision's authority, quote the decision.
 
-**What happened.** D44 restricts who may WRITE `severity`, `state_reportable` and `ai_tags` on an incident, because those three are the inputs to `incidentNeedsCorrectiveAction` and a reporter who could soften them would defeat the resolve gate. Cited as "D44's reviewer-decided fields", it reads as a rule about who may SEE them — and a question about what a contract may PROJECT then reads as an authorization question, which is a product call, which parks on the owner. Two per-patient incident sites sat there for hours on that reading.
+**What happened.** Two per-patient incident call sites feed `severity` and free-text `details` into a model prompt. They were held, and the reason given for holding them was D44 — cited as "D44's reviewer-decided fields", which sounds like a rule about who may SEE those fields. Read that way, the question becomes an authorization question, and an authorization question is a product call, and a product call parks on the owner. It sat there for most of the night.
 
-**The tell was in the text, and it is one sentence.** D44 says: *"The rule is about mutation, not about authorship."* Nobody read it until somebody was asked to quote the decision verbatim rather than cite it. The rule that actually governs a projection into a model prompt is D64's — *"every column that reaches a prompt is named"* — which is a contract shape and needs nobody's permission.
+**What D44 actually says.** Its field rule is about writing, and it explains why:
 
-**Why it generalises.** A decision's label is a second representation of the decision, and it rots in one direction: toward sounding broader than the text. A write rule sounds like a disclosure rule, a narrowing sounds like a prohibition, a reviewer's field sounds like a secret. Each drift moves a question one step up the chain to somebody who cannot answer it, and the cost is measured in the owner's attention rather than in a failing test — so nothing catches it. The remedy is cheap and specific: when a decision is the reason a question is not yours, open the decision and read the paragraph.
+> **The original's field split is a security control and says so.** `severity`, `state_reportable` and `ai_tags` are patchable by a reviewer only, because they are the inputs to `incidentNeedsCorrectiveAction`, which is what the resolve gate reads:
+>
+> > *"if the reporter could write them, they could downgrade their own high-severity incident and clear the state-reportable flag, after which the resolve gate reads the softened values and lets it close with no corrective action -- defeating the control this function exists to enforce."*
 
-**Related:** this is the same failure mode as the coordinator's own rule about deciding from one representation, arriving through a document rather than through a tree.
+And then, settling it in one sentence, in the paragraph on the direction of the split:
+
+> **The severity split has a direction, and reading it as "reviewer-only" breaks the control it protects.** The reporter NAMES the severity when filing, exactly as the original does, defaulting to `medium`. They may not soften it afterwards. A first draft of this contract floored severity at submission on the theory that a reviewer's field is a reviewer's field throughout — which would have recorded a nurse's high-severity fall as low, and the gate reads the STORED value, so the control would never fire. **The rule is about mutation, not about authorship.**
+
+So D44 governs who may CHANGE those three columns and says nothing whatever about who may read them. A screen or a contract reading `severity` is not touching D44.
+
+**What does govern the question.** D64 — *"every column that reaches a prompt is named"* — which exists because `clinical_event.source_text` is the raw note an event was extracted from, and a contract returning the whole row would hand that note to a model asked for a structured summary. Naming the columns is a contract shape. It needs nobody's permission and it was available the whole time.
+
+D44 does carry one disclosure rule, and it is worth reading beside D64 because it is the same instinct in a different place:
+
+> **The alert names no patient, and that is a narrowing this store requires.** `notification_read` is agency-WIDE while D24 narrows a chart to its care team, so a patient name on a notification would be readable by an `office_staff` member who opens no chart.
+
+That is about what a notification may carry, not about what a reader may see, and reading it as the latter is how the confusion started.
+
+**The tell was in the text.** "The rule is about mutation, not about authorship" is one sentence in the decision, and nobody read it until somebody was asked to quote the decision verbatim rather than cite it.
+
+**Why it generalises.** A decision's label is a second representation of the decision, and it rots in one direction: toward sounding broader than the text. A write rule sounds like a disclosure rule; a narrowing sounds like a prohibition; a reviewer's field sounds like a secret. Each drift moves a question one step up the chain to somebody who cannot answer it, and the cost is paid in the owner's attention rather than in a failing test — so nothing catches it. The remedy is cheap and specific: when a decision is the reason a question is not yours, open the decision and read the paragraph.
 
 ## D172 — A precondition stated over a pair is a property of one member at one moment (2026-09-29)
 
