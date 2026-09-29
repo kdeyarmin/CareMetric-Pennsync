@@ -8905,6 +8905,37 @@ figure when a term is unreadable. This says what to do when you are not refusing
 same in spirit: publish what the instrument can support and name the instrument,
 never the answer you expect the measurement to give.
 
+### Addendum, 2026-09-29: the worked case in the ladder thread's own words
+
+**The entry above stands as written.** What follows was added later, and is the
+refusal the rule was drawn from, at `00ae087`, supplied verbatim by the session
+that made it. It is quoted rather than summarised because both halves of the
+rule live in specific clauses, and a paraphrase keeps only one.
+
+Posted with the reading itself:
+
+> **What I am NOT claiming**: that all eight are reachable with a non-null limit. I counted functions whose body contains a call, by splitting on `create function` boundaries; whether each call sits on a live branch needs reading the bodies, and batch C has executed the defect where I have only read it. Their reading beats mine on reachability. Mine is an upper bound on the population and a correction to its kind.
+
+Posted a turn later, correcting its own earlier wording:
+
+> **One correction to your note, on my own wording.** I said eight callers as a figure I had READ — eight distinct functions whose bodies name `operational_limit` — and I should have said plainly at the time that reading gives an upper bound on what a caller can reach, not a count of what does. Your routing of it is right and I have nothing to add from here: I cannot answer whether `contract_note_conversion_create`'s call is on a live branch without executing it, and I am not the session that should. If batch C's gate end comes back saying that function sits on its pinned side, that is the answer I would want before anyone calls the number seven.
+
+The two halves sit in different sentences, so a trim that keeps one loses the
+rule. The bound's DIRECTION is "an upper bound on the population", together with
+the instrument that makes it one — "I counted functions whose body contains a
+call, by splitting on `create function` boundaries". WHO COULD CLOSE IT is
+"batch C has executed the defect where I have only read it. Their reading beats
+mine on reachability", and then the close condition itself: "If batch C's gate
+end comes back saying that function sits on its pinned side, that is the answer
+I would want before anyone calls the number seven."
+
+One thing about the case is in neither quotation, and it is the part a reader is
+most likely to recognise in their own work: **the second passage exists because
+the first was not enough.** The figure of eight had already been published
+before its direction was, so the correction is part of the case rather than a
+tidy-up of it — a bound that arrives after somebody else has read the number is
+a different event from one published alongside it.
+
 ## D134 — Measure in the unit the limit is stated in
 
 **Added 2026-09-26.** A threshold and the check that enforces it can be stated in
@@ -10354,3 +10385,63 @@ That is a **narrower** rule than the partial ports D31, D35, D36, D59, D73 and D
 ### What closing it would take, said rather than claimed
 
 Nothing enforces this pairing today. The check that would is writable now: cross each contract's writable field set against its sibling read's withheld set and refuse an intersection. Both sides are already extracted for other reasons — `WRITE_POLICIES` in `tools-read-purpose-policy.mjs` names a create capability's writable declaration, and a read's withheld fields are enumerated with a reason each in its own suite. **It is not written, and this entry is the argument for writing it rather than a claim that it exists.** Stated the way D96 asks: the gap is named, the instrument is named, and the cost of closing it is one comparison over pairs that already exist.
+
+## D174 — An empty or self-agreeing expectation needs a positive control inside the check
+
+An assertion whose expected value is an empty list is satisfied by a derivation
+that read nothing at all. `assert.deepEqual(surprises, [])` passes identically
+when the store is clean and when the code that was supposed to examine it looked
+at zero rows, and the two are indistinguishable from the outside. So the control
+cannot live beside the check as a separate test that might itself be wrong; it
+lives inside it.
+
+In #337 that is five guards in the same test as the empty assertion: the grant
+derivation found something to admit; the declaration set is strictly larger than
+the grant set; the declaration derivation still sees `bounded_reason` and
+`settings_defaults`, the helpers the change is about; the grant derivation still
+admits `entity_list` and still does not admit `broker_scope`, the two sides of
+the one legitimate exception. Plus a separate planted-helper test that creates a
+function with no revoke, proves it reachable, revokes it and proves it not — so
+the reading is about the privilege rather than about the function existing.
+
+The general shape: **of every step in a protocol, say whether it proves the
+instrument WORKS or measures the property it is ABOUT.** An empty result proves
+neither on its own. A check whose subject could be destroyed without changing
+its output is not a check, and the cheapest way to know which kind you have is
+to plant the defect and watch it fail.
+
+Related: the nine were found because a name pattern could not see them —
+`%credential%` does not match `bounded_reason`, an operational pattern does not
+match `settings_defaults`, and build reports `%activity_%` matching exactly the
+right four today. A wrong instrument that is green is the one nobody
+investigates.
+
+### A fourth occurrence, found independently while this entry was being carried
+
+**Added 2026-09-29 by the session that collected this entry, not by its finder.**
+The rule above is stated about an EMPTY expectation. The same defect arrives
+when the expectation is non-empty but comes from the same place as the thing it
+is checking, and the two shapes are worth naming together.
+
+The collector that carries these entries into this document ends with a check
+that each carried entry's region in the output is byte-identical to its source.
+Its first version compared the output against the in-memory array the splice had
+been built from — so a collector that mangled an entry on the way IN agreed with
+itself, and the check passed in silence. The fix is one word: re-read each
+source from disk, so the two sides are two representations rather than one seen
+twice.
+
+Two things make this worth recording rather than filing as a bug. The file's own
+docblock already stated the rule — it says a first version "compared the split's
+output against the split's input and both sides went through the same lossy
+lens" — and the defect was then rebuilt eleven lines below that sentence, by the
+same hand. And reading the code did not find it: planting a dropped line inside
+a carried entry did, which is this entry's own closing instruction arriving from
+the other direction.
+
+The shared blind spot is why the sibling check could not cover it. Stripping the
+carried entries back out and comparing with the base proves the BASE survived,
+never that each ENTRY did — it removes regions by heading position, so a region
+holding mangled text strips exactly as cleanly as one holding the right text. An
+empty expectation and a self-agreeing one fail the same way: **the check's
+subject could be destroyed without changing its output.**
