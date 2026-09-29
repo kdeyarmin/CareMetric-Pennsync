@@ -244,3 +244,83 @@ test('the capability hands out a function, never the token that authorizes it', 
   assert.ok(!JSON.stringify(Object.getOwnPropertyDescriptors(contract)).includes('synthetic.caller.token'));
   assert.ok(!String(contract).includes(KEY));
 });
+
+/**
+ * A handler that forwards the caller's own `params` object to its contract has
+ * TWO declarations of what that capability accepts — its `exactObject`
+ * allowlist and the contract entry's `params` — and they are enforced in
+ * different places by different code. When they disagree the capability is
+ * dead in one direction or the other, and every suite stays green.
+ *
+ * Both directions are real and both were live when this was written.
+ *
+ * `listAgencyRoster` admitted `['limit','after']` while its contract took
+ * `['limit','after','order']`. #309 added the order to the migration and to
+ * the contract entry and did not touch the handler, so every roster read that
+ * asked for creation order was refused `INVALID_PARAMS` at the service.
+ *
+ * Fixing that does NOT make the roster resolve, and the reason is worth
+ * carrying here. #309's migration has not been applied, so the deployed
+ * `pennsync_contract_roster_list` still takes three parameters; `body()` emits
+ * `p_order` unconditionally, as `null` when the caller sends none, and
+ * PostgREST resolves an RPC by the names of the body's keys. So a four-key
+ * body goes out for EVERY roster call, including one with no arguments, and
+ * the store has no such function to resolve. Two independent faults in one
+ * capability, in two different layers, and this check can only see the one
+ * that lives in the tree. A green run here is not the roster working.
+ *
+ * `policyAcknowledgment` admitted `action` and forwarded it to a contract
+ * taking `['acknowledgment_id','signed_name']`, so the one action it serves
+ * came back `CONTRACT_ARGUMENTS_INVALID`. Its only caller sends
+ * `{action: 'acknowledge', …}` explicitly.
+ *
+ * Neither is visible to the suite that looks like it should catch them.
+ * `service-rpc-signatures.test.mjs` compares each capability's real request
+ * body against `pg_proc` over every migration — two layers that AGREE here, so
+ * it is right to pass. Where three layers must agree, a check across two of
+ * them is green by construction on that pair and silent on the third.
+ *
+ * Scoped to handlers that forward `params` VERBATIM, because that is the shape
+ * in which the two lists have to be equal. A handler that builds its contract
+ * arguments — packing a flat body into one `incident` or `timesheet` key, or
+ * supplying a bound itself — is making a translation, and its allowlist is not
+ * a second copy of anything. Four such handlers exist and a check that did not
+ * make this distinction reported all four, which is a check nobody would keep.
+ */
+test('a handler forwarding its params admits exactly what its contract takes', () => {
+  const source = readFileSync(new URL('./handlers.mjs', import.meta.url), 'utf8');
+  const entries = [...source.matchAll(/^ {2}([A-Za-z_][A-Za-z0-9_]*): Object\.freeze\(\{/gm)]
+    .map(match => ({ name: match[1], at: match.index }));
+  assert.ok(entries.length > 50, 'handlers.mjs no longer parses as one entry per line');
+
+  let forwarders = 0;
+  for (const [index, entry] of entries.entries()) {
+    const body = source.slice(entry.at, entries[index + 1]?.at ?? source.length);
+    const forwarded = [...body.matchAll(/contract\('([A-Za-z_][A-Za-z0-9_]*)'\s*,\s*params\s*\)/g)];
+    const allowlists = [...body.matchAll(/exactObject\(\s*params\s*,\s*\[([^\]]*)\]/g)];
+    if (forwarded.length !== 1 || allowlists.length !== 1) continue;
+    const declared = RECORD_CONTRACTS[forwarded[0][1]];
+    if (!declared) continue;
+    forwarders += 1;
+    const admits = allowlists[0][1].split(',')
+      .map(key => key.trim().replace(/['"]/g, '')).filter(Boolean);
+    assert.deepEqual([...admits].sort(), [...declared.params].sort(),
+      `${entry.name} forwards its caller's params to ${forwarded[0][1]}, so the two lists`
+      + ' must be the same list.\n'
+      + `  handler admits  [${admits.join(', ')}]\n`
+      + `  contract takes  [${declared.params.join(', ')}]\n`
+      + '  A key the handler admits and the contract does not is refused'
+      + ' CONTRACT_ARGUMENTS_INVALID;\n'
+      + '  a key the contract takes and the handler does not is refused INVALID_PARAMS.'
+      + ' Either way\n  the capability is dead on that argument and nothing else says so.');
+  }
+
+  // The population is asserted, not assumed: if this ever reads zero — a
+  // rename, a reformat, a helper that stops being called `exactObject` — it
+  // would pass by finding nothing, which is the failure this whole file keeps
+  // finding elsewhere.
+  assert.ok(forwarders > 40,
+    `only ${forwarders} handlers were recognised as forwarding their params verbatim.`
+    + ' That is too few to be the real population, so the scan has stopped'
+    + ' matching rather than the tree having changed.');
+});

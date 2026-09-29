@@ -88,16 +88,22 @@ test('the activity trail succeeds a retired LOG table and nothing else', () => {
 
 test('the measured frontend is two populations, and the smaller one is the surprise', () => {
   const report = compare(measureDestinations(repository), JSON.parse(baseline(208)));
-  assert.equal(report.total, 445);
-  assert.equal(report.served, 237);
-  // 208 of 445. Stage J reads as "replace call sites tier by tier", which is a
-  // refactor whose size is the count; 47% of them reach a domain the migration
+  assert.equal(report.total, 453);
+  assert.equal(report.served, 245);
+  // 208 of 453. Stage J reads as "replace call sites tier by tier", which is a
+  // refactor whose size is the count; 46% of them reach a domain the migration
   // has DECIDED not to carry, and each one needs a product answer rather than
   // an edit.
+  //
+  // 445 became 453 when the shared matcher learned to read a namespace bound
+  // into an object literal, and every one of the eight is LANDABLE: `unserved`
+  // did not move, and `record_store` absorbed all of them. So the blind spot
+  // was hiding work rather than hiding decisions, which is the better of the
+  // two ways for a census to be wrong and is not a reason to trust the next one.
   assert.equal(report.unserved, 208);
   assert.equal(report.served + report.unserved, report.total);
   assert.deepEqual(report.by_destination, {
-    record_store: 227, broker_family: 7, activity_trail: 3,
+    record_store: 235, broker_family: 7, activity_trail: 3,
     no_table: 193, broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
   });
@@ -203,7 +209,7 @@ test('the command line refuses an unknown argument and an unavailable baseline',
 test('the summary names what cannot land and stays quiet about what can', () => {
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
-  assert.match(lines[0], /445 call sites, 237 can land, 208\/208 cannot/);
+  assert.match(lines[0], /453 call sites, 245 can land, 208\/208 cannot/);
   assert.ok(lines.some(line => /no_table: 193/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));
   assert.ok(!lines.some(line => /record_store/.test(line)), 'the served destinations are not the finding');

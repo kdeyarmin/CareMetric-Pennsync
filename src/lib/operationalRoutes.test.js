@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { callArguments } from '../../tools-entity-call-arguments.mjs';
 import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS }
   from './independentEntityRoutes.js';
 
@@ -25,18 +24,24 @@ const REPOSITORY = fileURLToPath(new URL('../..', import.meta.url));
  */
 
 /**
- * `Task.create` is provable — one of its two call sites in
- * `src/pages/ReferralTriage.jsx` passes a literal — and was held first by
- * `measureRoutes` subtracting served sites by (file, key) PAIR while counting
- * them individually, which made its three dispositions stop summing. #297
- * fixed that arithmetic and the hold survived it for a second reason worth
- * distinguishing: the regression test #297 shipped PLANTS `Task.create` as its
- * own route and asserts the measurement rises against a baseline taken
- * without it, so a declaration here puts that key in the baseline and the
- * assertion fails. That test is another batch's file. The route is one line
- * once its plant names a key no batch declares.
+ * EMPTY, and kept rather than deleted, because the group is the question this
+ * file asks and not a list of today's answers: a route held by the gate rather
+ * than by its capability is a state this repository has been in twice, and the
+ * check below is what would catch a third without anybody reading for it.
+ *
+ * `Task.create` was its only member and is now declared. It was provable
+ * throughout — one of its two call sites in `src/pages/ReferralTriage.jsx`
+ * passes a literal — and was held first by `measureRoutes` subtracting served
+ * sites by (file, key) PAIR while counting them individually, which #297 fixed,
+ * and then by #297's own regression test, which PLANTED `Task.create` as its
+ * route and asserted the measurement rises against a baseline taken without it.
+ * A declaration put the key in that baseline and the assertion failed. The
+ * remedy recorded here was "name a key no batch declares", which moves the wall
+ * one route along; what shipped instead DERIVES the plant from whatever
+ * undeclared pair the tree has in the shape that case needs, and refuses rather
+ * than skips when there is none.
  */
-const HELD_ON_THE_GATE = Object.freeze(['Task.create']);
+const HELD_ON_THE_GATE = Object.freeze([]);
 
 /**
  * `NoteConversion.filter` is held on the CONTRACT, and this one is a real gap
@@ -60,20 +65,16 @@ test('every held operational operation is held, and none is quietly declared', (
   }
 });
 
-test('Task.create is held on the gate rather than on the argument reader', () => {
-  const sites = callArguments(REPOSITORY)
-    .filter(site => site.entity === 'Task' && site.operation === 'create');
-  const readable = sites.filter(site => site.arguments !== null);
-  // The reason it is separate: it IS readable, so the reader is not what holds
-  // it. If that stops being true, the group it belongs in has changed.
-  assert.ok(readable.length > 0 && readable.length < sites.length,
-    'Task.create is no longer a partly readable key — re-read why it is held');
-  const files = new Set(readable.map(site => site.file));
-  const mixed = [...files].filter(file =>
-    sites.some(site => site.file === file && site.arguments === null));
-  assert.deepEqual(mixed, ['src/pages/ReferralTriage.jsx'],
-    'the mixed file this waits on is no longer the one named above');
-});
+// `Task.create is held on the gate rather than on the argument reader` stood
+// here and is DELETED rather than renamed. It asserted that the key is partly
+// readable and that `src/pages/ReferralTriage.jsx` is the mixed file — both
+// still true — under a name and a message saying the key is held, which it is
+// not. It would have gone on passing forever while telling a reader the
+// opposite of the tree: a check whose subject is gone and whose assertions
+// survive it. The property it measured is not lost, because the derived plant
+// in `tools-entity-routes.test.mjs` now asserts exactly that shape about the
+// pair it chooses, and reproducing it here would be a second copy of one
+// reading — which is the failure this file exists to avoid.
 
 test('NoteConversion.filter is held on what its contract cannot express', async () => {
   const { RECORD_CONTRACTS } = await import('../../services/pennsync-api/record-contracts.mjs');

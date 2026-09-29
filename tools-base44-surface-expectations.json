@@ -3,7 +3,7 @@
   "version": 1,
   "maximum": {
     "client_importers": 366,
-    "entity_call_sites": 445,
+    "entity_call_sites": 453,
     "entity_types": 69,
     "function_invocations": 198,
     "function_wrappers": 83,
