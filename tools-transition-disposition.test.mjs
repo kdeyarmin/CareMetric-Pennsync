@@ -15,6 +15,7 @@ import {
   invokedFunctions, classifyWithoutInvocations, discoverInvocationFreeBlockers,
   portQueueLine,
 } from './tools-transition-disposition.mjs';
+import { PROFILE_SELF_WRITABLE, RECORD_MIGRATION_FILE } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const manifest = (patch = {}) => ({
@@ -887,8 +888,17 @@ test('the port queue is work that cannot start yet, and says why', async () => {
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
     discoverEvidence(repository),
   );
+  // Then D153, which moves a count DOWN without writing anything, and is the
+  // first here to do so for this reason: `enforceStaffRoleIntegrity` was never
+  // a port waiting to be written, it is a capability the owned store made
+  // unnecessary, so it retires rather than shipping. `entity_authorization`
+  // 7 → 6 and nothing moves to `none`, because nothing was written — the pair
+  // of counts says "one fewer capability to carry", not "one more carried".
+  // Read it beside D83, which took `MedicareGuideline`'s two writers out of
+  // this same bucket the same way: a blocked port and a capability that is not
+  // being carried are not the same thing, however alike they look in a count.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 7, patient_access_model: 0,
+  assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 6, patient_access_model: 0,
     records_schema: 0, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
     external_secret: 2, none: 78 });
   // The correction this distribution records: `records_schema` had come to mean
@@ -947,8 +957,15 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // one of them writes somebody else's row, a column outside that set, or a
   // payload nothing can read. `offboardUser` joined them: it was held by
   // `entity_not_carried` first, and D84 settled that leg.
+  //
+  // D153 then took a THIRD out the same way D83 took its two, and the reason
+  // generalises past this bucket: `enforceStaffRoleIntegrity` reverted a
+  // spoofed `User.staff_role`, and in this store the column is constrained on
+  // both tables and writable by nobody, so the sweep has no work left rather
+  // than no permission. Six remain that write somebody else's row, a column
+  // outside D82's set, or a payload nothing can read.
   assert.deepEqual(report.port_blockers.entity_authorization,
-    ['autoApproveInvitedUser', 'autoEndDutyDay', 'enforceStaffRoleIntegrity', 'offboardUser',
+    ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
       'setNurseDutyStatus', 'userManagement', 'userManagementV2']);
   // ZERO. That is how many of the hundred are still waiting on the record
   // store, and it reached zero on a CORRECTION rather than on a port: D75
@@ -1199,14 +1216,47 @@ test('what holds each member of `entity_authorization` is measured, not describe
   for (const name of ['fetchMedicareGuideline', 'scheduledGuidelineSync']) {
     assert.equal(declaredNow[name], 'retire', `${name} is not carried (D83)`);
   }
-  // All seven are in the bucket now. `offboardUser` was held by
-  // `entity_not_carried` first until D84 settled that leg, so it arrives here
-  // where the measurement always said it belonged.
+  // `enforceStaffRoleIntegrity` leaves the same way, and for the same kind of
+  // reason: it is not a port somebody has yet to write, it is a capability the
+  // owned store has made unnecessary. Its whole job was reverting a spoofed
+  // `User.staff_role` to the accepted invitation's value, and its own comment
+  // says why -- `account_type` is "a self-mutable custom User field and must
+  // not let a user preserve a spoofed staff_role indefinitely". Both halves of
+  // that job are now structural, which is what the two assertions below
+  // measure rather than assert in prose:
+  //
+  //   - its validity check is a CHECK constraint. It counts a
+  //     `skipped_invalid_invitation` for any staff_role outside its four, and
+  //     `user_staff_role_allowed` / `user_invitation_staff_role_allowed`
+  //     constrain the column to exactly those four on BOTH tables.
+  //   - its revert can have no subject. `staff_role` is not in
+  //     `PROFILE_SELF_WRITABLE`, so D82's guard refuses it, and no capability
+  //     in the store writes `pennsync_records.user` at all -- the write path
+  //     is built and has no caller. A column nothing can write cannot drift.
+  //
+  // So `preserved_paused` would be wrong here, not merely weaker: it asserts a
+  // future in which we resume this, and resuming means re-introducing the
+  // defect the constraint and the allowlist now prevent. That is this file's
+  // own recurring finding -- a bucket keeping its name after the reason for it
+  // has gone -- committed one level up, in the act of fixing an instance of it.
+  assert.equal(declaredNow.enforceStaffRoleIntegrity, 'retire',
+    'the store made this unnecessary rather than merely blocked');
+  const recordStore = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
+  for (const constraint of ['user_staff_role_allowed', 'user_invitation_staff_role_allowed']) {
+    assert.ok(recordStore.includes(constraint),
+      `${constraint} replaces its validity scan, so the store refuses at write `
+      + 'what the sweep detected afterwards');
+  }
+  assert.ok(!PROFILE_SELF_WRITABLE.includes('staff_role'),
+    'and the column it reverted is one nobody may write, so it cannot drift');
+  // Six now. `offboardUser` was held by `entity_not_carried` first until D84
+  // settled that leg, so it arrives here where the measurement always said it
+  // belonged.
   assert.deepEqual(Object.keys(held).filter(name => held[name].includes('User')).sort(),
-    ['autoApproveInvitedUser', 'autoEndDutyDay', 'enforceStaffRoleIntegrity', 'offboardUser',
+    ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
       'setNurseDutyStatus', 'userManagement', 'userManagementV2'],
     'the administrative write path D82 leaves open');
-  assert.equal(Object.keys(held).filter(name => held[name].includes('User')).length, 7);
+  assert.equal(Object.keys(held).filter(name => held[name].includes('User')).length, 6);
   assert.deepEqual(report.port_blockers.entity_authorization.filter(name => !held[name]), [],
     'every member is held by a write this measured');
   // And what holds each of the seven, named, so a later widening of the

@@ -121,7 +121,7 @@
     "duplicateInService": "hub",
     "embedAnnotationsToPDF": "preserved_paused",
     "enforceDataCompleteness": "preserved_paused",
-    "enforceStaffRoleIntegrity": "port",
+    "enforceStaffRoleIntegrity": "retire",
     "ensureSuperAdmin": "retire",
     "expandClinicalPhrase": "port",
     "exportLearningReportCSV": "hub",
