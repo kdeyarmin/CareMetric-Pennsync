@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DECLARED_WAVES, LADDER_CONTRACT, LadderError, checkLadder, closureOf, dollarQuotedBody,
+  DECLARED_WAVES, LADDER_CONTRACT, LadderError, checkLadder, closureOf, contractOrigins,
+  dollarQuotedBody,
   functionBodies, handlerReach, importedNames, integrationDependents, integrationReach,
   OWNER_HELD, cumulativeValue, heldLeaks, heldNames, probeDeployment, readinessOf,
   releasable, releaseDelta, releaseLadder, releaseFacts, reportDelta,
@@ -1404,4 +1405,122 @@ test('the gate says what it does not prove, without listing the other service\'s
   // and changed once already, so this no longer describes its pass condition.
   assert.match(source, /INTEGRATIONS_PREFLIGHT=read-only/);
   assert.ok(!/401\/403/.test(source), 'the gate states the preflight\'s pass condition again');
+});
+
+/**
+ * Strip what SQL does not execute: single-quoted strings, dollar-quoted
+ * blocks, `--` line comments and `/* *\/` blocks, in ONE pass.
+ *
+ * Written out here rather than imported because the module deliberately has no
+ * such function — the point of the test below is that `DML` matches the raw
+ * text. All four forms are handled TOGETHER because handling fewer inverts the
+ * answer with the same confidence: a scanner that tracks only quotes flips
+ * state on the apostrophe in a `-- doesn't` comment and then reports literal
+ * contents as executable code, which is the opposite verdict.
+ */
+function strippedOfLiterals(sql) {
+  let out = '';
+  for (let i = 0; i < sql.length;) {
+    if (sql[i] === '-' && sql[i + 1] === '-') {
+      const end = sql.indexOf('\n', i);
+      i = end === -1 ? sql.length : end;
+      continue;
+    }
+    if (sql[i] === '/' && sql[i + 1] === '*') {
+      let depth = 1;
+      i += 2;
+      while (i < sql.length && depth) {
+        if (sql[i] === '/' && sql[i + 1] === '*') { depth += 1; i += 2; } else if (sql[i] === '*' && sql[i + 1] === '/') { depth -= 1; i += 2; } else i += 1;
+      }
+      continue;
+    }
+    if (sql[i] === "'") {
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === "'" && sql[i + 1] === "'") { i += 2; continue; }
+        if (sql[i] === "'") { i += 1; break; }
+        i += 1;
+      }
+      out += ' ';
+      continue;
+    }
+    const tag = /^\$[A-Za-z0-9_]*\$/.exec(sql.slice(i));
+    if (tag) {
+      const end = sql.indexOf(tag[0], i + tag[0].length);
+      i = end === -1 ? sql.length : end + tag[0].length;
+      out += ' ';
+      continue;
+    }
+    out += sql[i];
+    i += 1;
+  }
+  return out;
+}
+
+test('the six _write contracts write only through library_write\'s dynamic SQL', () => {
+  /*
+   * The accident `DML`'s header now names, asserted so the header cannot rot
+   * into describing a tree that has moved.
+   *
+   * `library_write` builds its statements as text and executes them, so every
+   * DML token in it is inside a quoted literal. `DML` sees them because it
+   * matches the raw body, and that is the ONLY reason these six classify as
+   * writing. Narrow the pattern to skip literals and six writes move into a
+   * read wave.
+   *
+   * Two halves, and the second is the one worth keeping: that the writer's
+   * DML is all inside literals, and that the six callers have none of their
+   * own. Either alone is satisfiable by a tree where the accident does not
+   * matter.
+   */
+  const bodies = functionBodies(REPOSITORY);
+  const writer = bodies.get('pennsync_records.library_write');
+  assert.ok(writer, 'library_write is no longer in the record migrations');
+  const dml = /\b(?:insert\s+into|update\s+(?:only\s+)?"?pennsync|delete\s+from)/gi;
+  const raw = writer.body.match(dml) ?? [];
+  const executable = strippedOfLiterals(writer.body).match(dml) ?? [];
+  assert.ok(raw.length > 0, 'library_write no longer looks like a write at all');
+  assert.equal(executable.length, 0,
+    `library_write now has DML outside its literals (${executable.join(', ')}),`
+    + ' so the six below no longer depend on the raw match and this test is'
+    + ' asserting an accident that has stopped being one.');
+
+  const origins = contractOrigins(REPOSITORY);
+  const named = [...origins.values()].filter(origin => origin.rpc.endsWith('_write'));
+  assert.equal(named.length, 6, `expected six _write contracts, got ${named.length}`);
+  for (const origin of named) {
+    assert.equal(origin.mutates, true, `${origin.contract} classifies read-only`);
+    const inner = bodies.get(`pennsync_records.${origin.rpc.replace(/^pennsync_/, '')}`);
+    assert.ok(inner, `${origin.rpc} has no inner function`);
+    assert.deepEqual(inner.body.match(dml) ?? [], [],
+      `${origin.contract} writes on its own now, so it no longer depends on library_write`
+      + ' and this test no longer measures what it says it measures.');
+  }
+});
+
+test('a contract named as writing that classifies read-only is refused by name', (t) => {
+  /*
+   * The guard `write` was added to `MUTATING_VERBS` for. Without the verb
+   * this tree passes, which is the state the classifier was in: a
+   * literal-aware `DML` would have moved six writes into a read wave and
+   * nothing would have said so.
+   */
+  const tree = intactTree(t);
+  fixture(tree, { contracts: "  quietWrite: Object.freeze({ rpc: 'pennsync_contract_thing_write' })," });
+  const path = join(tree.records, '0100_contracts.sql');
+  writeFileSync(path, `${readFileSync(path, 'utf8')}\n\n${contractSql('thing_write', 'select 1')}\n`);
+
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_MUTATION_CLASSIFIER_BROKEN');
+  assert.deepEqual(failure.detail.read_only_but_named_as_writing,
+    ['quietWrite (pennsync_contract_thing_write)']);
+
+  // And it is the NAME that refuses it, not the shape of the fixture: give the
+  // same contract a write and the tree is accepted again.
+  writeFileSync(path, `${readFileSync(path, 'utf8')}\n\n${
+    contractSql('thing_write', 'insert into "pennsync_records"."thing" ("id") values (1); select 1')
+      .replaceAll('create function', 'create or replace function')}\n`);
+  assert.ok(checkLadder(tree.root).waves.length > 0);
 });
