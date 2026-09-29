@@ -10561,6 +10561,29 @@ The remedy: take the key from the **artefact under test** rather than from the t
 
 A second occurrence in the same family makes it general rather than a fixture habit: the check that reads each route's key off the contract was itself scoped to ONE migration file — the file its author was working in. Scoped that way it could not see any contract outside that family, so its silence on a new family would have read exactly like agreement. It now reads the directory. **A check scoped to where its author happened to be standing goes quiet precisely when something new arrives**, which is the same defect as a fixture that agrees with itself.
 
+### A seventh occurrence — two empty expectations and one plant
+
+**Found by Copilot on #365, measured and fixed by the ladder thread on 2026-09-29 at `cc304b3a`; my words.** It is the same mechanism in a different domain from the six above — a shared test helper rather than a collector, a parser, a fixture or a tool's sabotage suite — and the domain is the reason to carry it in rather than a reason to hesitate.
+
+`assertClosedToAnon(rows)` in `services/authority-store/tests/public-wrapper-execution.mjs` is the production helper that decides whether the owned store's public surface is correctly granted. It makes two assertions over the caller-privilege rows of every `public` function, read from `pg_proc`:
+
+```js
+assert.deepEqual(rows.filter(row => row.anon).map(row => row.name), [], …)
+assert.deepEqual(rows.filter(row => !row.authenticated).map(row => row.name), [], …)
+```
+
+**Both expectations are empty lists, and I wrote one plant.** The control grants an existing wrapper to `anon`, runs the production helper, and requires it to throw naming that function. It does. Node abandons a test body at the first throw, so the plant raises assertion one and assertion two is never evaluated — not on that run, not on any run, at no head. There was no moment at which it was covered.
+
+**Proved by sabotage rather than by reading.** Delete the `authenticated` assertion from the helper outright and *both* callers stay green: the real-store test, because a correct build has nothing for it to catch, and the control, because it never reaches the line. A production assertion with no coverage at all, in a suite reporting itself as proving the helper. The fix is the second plant in the opposite direction — `revoke execute … from authenticated` on the same wrapper — which reaches the second assertion because the first has nothing to report on that build.
+
+**Why it belongs here and not at its two nearer-looking neighbours**, because I argued both before I found this entry and the arguments are the useful part.
+
+It is not D120. That rule is about which code a sabotage raises, and this control satisfies it: it calls the production helper, not a re-implementation, and it goes red the moment the helper is weakened. **D120 was satisfied and the assertion was still uncovered**, which is the whole reason a reader needs this occurrence.
+
+It is not D163, and D163's own applied test is what clears it. That rule is conditioned on one assertion being strictly more informative than the other — ask which a reader would rather have on a failure. These two are disjoint failure modes in opposite directions and neither subsumes the other: a wrapper open to `anon` is a disclosure, one closed to `authenticated` refuses every real caller at release time. So D163 returns "no ordering problem here" and the gap survives it. I also checked the remedy: reorder the helper and the same plant passes the first line and throws on the second, which proves exactly one assertion and leaves the other deletable with everything green. **Reordering swaps which half is unproved. It closes nothing.**
+
+What reaches it is this entry's own sharpened form — an empty expectation needs a plant — applied per assertion rather than per helper. **A helper is not a unit of coverage. Each empty expectation inside it is.**
+
 ## D176 — A faithfulness check must anchor UPSTREAM of the hand it audits
 
 Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Found on #336's D143, one level underneath D143 itself.
