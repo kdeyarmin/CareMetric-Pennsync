@@ -10092,6 +10092,58 @@ is not.
 
 **The instruction.** Cross a wave against the open pull requests BEFORE starting it, report the empty result in the same words a non-empty one would get, and draw the next wave from a rebuilt intersection rather than from the next name down the list.
 
+## D163 — A stronger assertion placed after a weaker one is unreachable exactly when it would be most informative
+
+### The rule
+
+When two assertions in one test speak about the same subject and one of them is strictly more informative than the other, **the more informative one must run first**, or it never runs in the state that needed it. Node's test runner abandons a test body at the first throw, so an ordering that looks like "check the cheap thing, then the detailed thing" is really "in every failing case, report the cheap thing and discard the detailed one."
+
+Ordering is not a style question here. It decides what a failure is allowed to say.
+
+### The case that produced it
+
+`services/authority-store/tests/hosted-store.test.mjs`, measured at head `36402f33`, in `the ledger holds one row per committed migration`:
+
+```js
+assert.equal(ledger.rows, committed.length,           // :487
+  `the ledger holds ${ledger.rows} rows for ${committed.length} committed migrations`);
+// ...
+assert.deepEqual(ledger.names, committed.map(ledgerName).sort());   // :494
+```
+
+The count at :487 says *how many* migrations the hosted store has not run. The name comparison at :494 says *which ones*. The second answer contains the first and is the one an operator actually needs, because the remedy is an apply of named files and the count alone does not identify them.
+
+And the count is the assertion that fails in the D93 state — a merged, unapplied migration. So the name-level comparison is dead code in precisely the situation it was written for: whenever the store is short, :487 throws and :494 is never evaluated. Every run I have read reports `74 !== 85` and no names.
+
+That is the whole defect. Nothing is wrong with either assertion. What is wrong is that the weaker one is in front.
+
+### Why it survived
+
+Because it passes. On an applied store both assertions hold, so the suite is green and the ordering costs nothing observable. The ordering only bites on failure, and on failure everybody reads the message that *did* print and stops. Nine consecutive reds on this job printed a bare pair of integers and nobody noticed that a list of names was sitting two lines below, unreachable.
+
+This is D151's rule arriving from a different direction. D151 says a weak assertion beside a strong one launders the strong one's credibility — the reader credits the pair with the strong one's force. Here the weak assertion does something worse than launder: it **consumes the failure**, so the strong one contributes nothing at all, ever, and the suite still reports itself as carrying both.
+
+### The repair
+
+Put the name comparison first. `deepEqual` over two sorted arrays already reports a count mismatch as part of its diff, so the count assertion is redundant once the order is fixed — but it is cheap and its message is readable, so keep it *after*, as the fallback for the case where the names agree and the rows do not (a duplicate `version`, which `distinct_versions` also covers).
+
+Concretely: `names` first, then `distinct_versions`, then `rows`. Most informative to least.
+
+**This repair does not belong in #328 or #339.** Both of those are conversions of a suite's *population*, and folding an assertion reorder into either one would mean a green run no longer tells you which change bought what. It is its own change, against its own before-and-after: run it in the D93 state and prove the failure now names the eleven migrations.
+
+### How to apply
+
+1. In any test body with more than one assertion about one subject, ask which assertion a reader would rather have on a failure. If it is not first, it is not really there.
+2. Prefer one assertion that reports structure over two that report a scalar and then the structure. A `deepEqual` over named collections subsumes a length check and says more when it fails.
+3. Do not judge the ordering by reading the green run. Force the failure and read what it prints. The ordering defect is invisible from a pass by construction — it has no effect on a pass.
+4. When you find one, check its siblings. An ordering habit is a file-level habit, not a line-level accident.
+
+### Scope
+
+This is about two assertions **in one test body**, where a throw ends the body. It is not about ordering across `test()` calls, which the runner isolates: a failing test does not prevent a later one from running, and splitting the two assertions into two tests is a legitimate alternative repair — it makes both reachable at the cost of two failures instead of one.
+
+Nothing here is about the ordering of *checks in a chain* of scripts. That is D157, and it is a different rule about a different mechanism; the two are deliberately not merged.
+
 ## D165 — "CI does not gate it" and "nothing gates it" are different claims (2026-09-29)
 
 The sentence this project has been carrying about the integration runtime is
@@ -10403,7 +10455,9 @@ Sharpened, the rule reads: an empty expectation needs a plant; a self-agreeing o
 
 ### Occurrence 3 in full, from the session that carried this entry
 
-**Added 2026-09-29 by the collector's author at this entry's finder's request, and not by the finder.** Occurrence 3 above is this document's own collector. Its byte-identity check compared each carried entry's region in the output against the in-memory array the splice had been built from, so a collector that mangled an entry on the way IN agreed with itself and printed `byte-identical` twenty times. The file's own docblock states the rule eleven lines above where the defect was rebuilt, by the same hand. Reading the code did not find it; planting a dropped line in a carried entry did.
+**Added 2026-09-29 by the collector's author at this entry's finder's request, and not by the finder.** The count of four above is its finder's, as of when the entry was written; two further occurrences arrived from other threads within the hour and are the two sections below this one. That the count moved twice in an evening is not a defect in the entry — it is the entry's own argument, which is that the rule is only convincing at its count.
+
+Occurrence 3 above is this document's own collector. Its byte-identity check compared each carried entry's region in the output against the in-memory array the splice had been built from, so a collector that mangled an entry on the way IN agreed with itself and printed `byte-identical` twenty times. The file's own docblock states the rule eleven lines above where the defect was rebuilt, by the same hand. Reading the code did not find it; planting a dropped line in a carried entry did.
 
 Two further instances arrived inside the tooling that carries this entry, and they are the best witnesses here because both were caught **before** they shipped rather than after.
 
@@ -10412,6 +10466,28 @@ Two further instances arrived inside the tooling that carries this entry, and th
 **A gate that fires first has never been shown to bite.** Four of that amender's five sabotage cases tripped a size comparison before the strip check ever ran, so the strip — the check the whole tool is built around — had no case proving it works. A size-preserving edit outside the entry now refuses with `645217 vs 645217 bytes`, which is the plainest available statement that it compares content and not length. A check standing behind another check is untested, however many cases the suite has.
 
 And the amendment above is right about what occurrence 3 needed. Re-reading each source from disk made the two sides two artefacts and the check able to fail. It did not make them the right two: a disk copy is still the collector's own, so the repaired check answers "was my copy carried faithfully" rather than "did the finder's words land". That is a separate decision, D176, and this entry's fix is not that one.
+
+### A fifth occurrence, and an exemption list that launders
+
+**Found by the plan thread, carried here at its request; its words.** Occurrence 2 above is this one's second half. Its first half is not in the entry yet and is a different shape.
+
+`services/authority-store/tests/service-rpc-signatures.test.mjs` opens with `assert.ok(exposed.length > 80, 'the migrations should expose the contract surface')` over a tree declaring a hundred and thirty contract functions, so the floor carried fifty of slack — but that is the ordinary weakness, not the finding. The finding is what happens when a function is created by the test's **own `bootstrap.sql`** rather than by a migration, and is then named in `UNCALLED`. It is exposed, so nothing complains it is missing. It is exempt, so nothing complains it is uncalled. **The harness gives itself part of the surface it then proves, and no deployment ever gets it.** Planted, the file reads 4 pass / 0 fail. A contract declared by one migration, dropped by a later one, called by nobody and exempt by nobody is invisible in the same way, and also reads 4 pass / 0 fail.
+
+The transferable part is the interlock: the count and the exemption loop were each strong **only while the other's precondition held**. The floor protected against an empty store; the loop protected against an unused function; neither stated the property, and `UNCALLED` holding exactly one entry is what kept the loop from running zero times. **Two weak checks reading as one strong one.**
+
+Its remedy is the amendment above, arrived at independently: the shipped version carries a control that does not come from reading the files — `captured`, built by driving the service's own capabilities, which name their functions in `services/pennsync-api/`. Blinding the declaration pattern back to the unquoted form now fails by name and reports 129 of them rather than passing quietly.
+
+### A sixth occurrence, with a remedy stronger than the one this entry shipped with
+
+**Found by the transfer thread, carried here at its request; its words, and it supersedes nothing above so much as sharpens it.**
+
+A spec fixture built the contract's answer envelope using the key the route under test assumes. The route reads `result.entries`; the fixture wrote `{ entries: [...] }`. The two cannot disagree by construction, so the test passed identically whether the contract answers that key or not — and one contract, `contract_clinical_event_list`, answers `events`, so the route it covered returned `undefined` on every real call while its test was green.
+
+The remedy: take the key from the **artefact under test** rather than from the test, then drive the route with **both** keys and require it to reject the wrong one. In that spec, `answerOf(routeKey, rows, key = ENTITY_ROUTES[routeKey].answerKey)`, plus a case feeding the route the other family's key and asserting a refusal.
+
+**The distinction is worth stating and it is this entry's sharpest form.** Plant-and-remove proves the check CAN fail. Driving both values proves it fails for the RIGHT REASON. An empty expectation with a positive control still passes if the check is looking at the wrong thing and happens to find nothing; a check that must reject a specific wrong value cannot.
+
+A second occurrence in the same family makes it general rather than a fixture habit: the check that reads each route's key off the contract was itself scoped to ONE migration file — the file its author was working in. Scoped that way it could not see any contract outside that family, so its silence on a new family would have read exactly like agreement. It now reads the directory. **A check scoped to where its author happened to be standing goes quiet precisely when something new arrives**, which is the same defect as a fixture that agrees with itself.
 
 ## D176 — A faithfulness check must anchor UPSTREAM of the hand it audits
 
@@ -10453,3 +10529,11 @@ The rule holds whichever of the three it turns out to be. If it was my own earli
 And the added words are **true**: the paragraph is a correct statement of the `pennsync-unapplied-migration-signature` correction, and the bolding improves the entry's key line. That is the point worth keeping. The failure a provenance check prevents is an entry reading as the finder's words while carrying someone else's, and it is a failure **even when the borrowed words are better than the original**. Correct content is what makes this kind of drift survive.
 
 Related: D140, D143, D145, D147, D148, D170.
+
+## D179 — A total that closes is not evidence
+
+A partition with three free terms and one total is not self-checking: two wrong terms close as readily as two right ones. The occurrence is mine, tonight. I was carrying "unrouted = keyless + unreadable + refused" and its sub-split, and when main moved under me the headline fell by three. I kept the keyless term where it was and moved the unreadable term by three so the sum still closed. Both terms were wrong, and the tool's own second line had been printing the right unreadable figure the whole time — I had a correct reading in front of me and preferred the one that preserved the arithmetic.
+
+The tell is the shape of the act: treating a partition as something to keep CONSISTENT rather than something to RE-DERIVE. Consistency is available to a wrong answer. The remedy is that a partition is re-derived from the instrument at every head, never adjusted to absorb a change, and a term is never carried across a head change on the grounds that the rest of the sum still works. Where a sum has more free terms than constraints, its closing tells you nothing and should not be reported as though it did.
+
+Both of tonight's slips have that shape, and the first is the cheaper illustration: I reported a figure as dropped at strict 15 by double-counting seven sites that had already been struck before the total they were subtracted from was formed.
