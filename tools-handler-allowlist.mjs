@@ -61,17 +61,19 @@
  * - A key regex requiring `:` read `importProvidersCsv({ csv_text })` as a call
  *   with NO keys and passed it. A shorthand key outside the allowlist would
  *   never have been seen.
- * - An import matcher accepting single quotes only found TWO call sites where
- *   there are eighteen, and reported clean. A check that reaches a ninth of its
- *   population and a check that reaches all of it are the same green.
+ * - An import matcher accepting single quotes only found TWO call sites out of
+ *   the whole readable population, and reported clean. A check that reaches a
+ *   fraction of its population and a check that reaches all of it are the same
+ *   green.
  * - Splitting the argument text without removing comments first made
  *   `src/pages/IncidentReportingModule.jsx` unreadable, because two of its
  *   thirteen keys carry an explanation beside them. Safe, and still wrong about
  *   the population.
  *
  * Three of the four were silent, which is the argument for asserting the
- * population as a SET rather than against a floor. A floor near eighteen would
- * have caught the third and passed the other two -- and the set is load-bearing
+ * population as a SET rather than against a floor. A floor at whatever the
+ * population measured that day would have caught the third and passed the other
+ * two -- and the set is load-bearing
  * rather than tidy, which was PROVED rather than argued: narrow the import
  * matcher back to one quote style and `no screen sends a ported capability a
  * key its handler refuses` stays GREEN, with only the population assertions
@@ -90,12 +92,29 @@
  *
  * ## Where the figures come from
  *
- * The seventeen wrappers and eighteen readable sites were measured twice, by
- * two threads, through DIFFERENT derivations -- #335 measured them from its own
- * side of the sweep and this module was written without reading its code. Two
- * routes to one pair is a second artefact and is worth recording as such; two
- * runs of one function over one tree would be repetition with two authors, and
- * corroborates nothing.
+ * They are not written here. `summaryLines` prints them and
+ * `tools-handler-allowlist.test.mjs` pins every population as a NAMED SET, so a
+ * figure in this docblock would be a second representation of something one
+ * command answers. The sentence this replaces is the worked example: it said
+ * "seventeen wrappers and eighteen readable sites", which was measured and true
+ * when it was written; resolving a NAMED allowlist to the binding `handlers.mjs`
+ * imports moved BOTH figures, the prose stayed, and nothing failed. Naming the
+ * new pair here would only restart the clock.
+ *
+ * That sentence also recorded #335 as having reached the same pair from its own
+ * side of the sweep, through a derivation written without reading this code,
+ * and offered it as a second artefact rather than a second run of one function.
+ * The distinction is real and the conclusion was still too strong. Both
+ * derivations are static parses of ONE tree at one head, so their agreeing is
+ * evidence that two parsers agree and never that either read the tree
+ * correctly -- D170, arriving in the file that states it. This change is the
+ * proof rather than the argument: the agreed pair moved the moment this side
+ * stopped scanning the whole directory for registry entries, which it had been
+ * doing throughout the agreement, and a shared subject is exactly where a
+ * shared blind spot sits. What caught it was not a second reading but a cross
+ * against a declaration no parser here produces -- `HANDLER_NAMES`, evaluated
+ * from the registry itself -- and a failure that reproduced from separate
+ * checkouts.
  *
  * Anything this cannot read statically — a spread, a computed key, a payload
  * that is a variable rather than a literal — is UNREADABLE and is reported as
@@ -188,42 +207,113 @@ export function payloadKeys(text) {
 
 const stripBlockComments = source => source.replace(/\/\*[\s\S]*?\*\//g, '');
 
+/** One registry entry: a two-space property holding a frozen object. */
+const ENTRY = /^ {2}([A-Za-z_][\w]*): Object\.freeze\(\{/gm;
+
+/** An allowlist written inline, or NAMED by a constant declared elsewhere. */
+const ALLOWLIST = /exactObject\(\s*params\s*,\s*(\[[^\]]*\]|[A-Za-z_][\w]*)/g;
+
+const keyList = text => Object.freeze(
+  text.split(',').map(key => key.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean));
+
 /**
- * Each handler's single unconditional `exactObject` allowlist.
+ * The allowlists a handler may NAME instead of writing out, BY MODULE.
  *
- * Handlers with more than one are reported under `dispatched` rather than
- * dropped, so a capability leaving the comparable population is visible instead
- * of simply going quiet.
+ * Read across the directory on purpose, which is the one cross-module read this
+ * module makes: `STATE_INCIDENT_FIELDS` and `AI_REPORT_PARAMS` are exported
+ * from `state-incident.mjs` and `ai-report.mjs`, so a reader confined to the
+ * registry could never resolve them. Resolving a CONSTANT elsewhere is not the
+ * same act as counting ENTRIES elsewhere -- the registry alone says which
+ * capabilities exist, while the list one of them admits is wherever it is
+ * declared.
+ *
+ * Keyed on (file, name) rather than on name alone. A flat map would make a
+ * duplicated export name last-file-wins under `Map.set`, so a second module
+ * declaring `AI_REPORT_PARAMS` would silently check a handler against an
+ * unrelated list while still reporting it RESOLVED -- a wrong answer wearing a
+ * clean one, which is the failure this whole module exists to refuse. No name
+ * is duplicated today; the point is that nothing said so.
  */
-export function handlerAllowlists(repository) {
-  const directory = resolve(repository, API_DIRECTORY);
-  const admits = new Map();
-  const dispatched = new Set();
-  let entries = 0;
+export function namedAllowlists(directory) {
+  const declared = new Map();
   for (const file of readdirSync(directory).sort()) {
     if (!file.endsWith('.mjs') || file.endsWith('.test.mjs')) continue;
     const source = readFileSync(join(directory, file), 'utf8');
-    const found = [...source.matchAll(/^ {2}([A-Za-z_][\w]*): Object\.freeze\(\{/gm)]
-      .map(match => ({ name: match[1], at: match.index }));
-    // Counted from the REGISTRY's own file. A first version summed the pattern
-    // over every module in the directory and reached 313, because a two-space
-    // frozen object is an ordinary shape and other modules are full of them.
-    // The sentinel below then held at 187 with `handlers.mjs` contributing
-    // nothing at all, so the one thing it exists to notice -- the registry
-    // ceasing to parse -- could not move it. Found by crossing these figures
-    // against a second thread's derivation rather than by reading the code.
-    if (file === REGISTRY_FILE) entries = found.length;
-    for (const [index, entry] of found.entries()) {
-      const body = stripBlockComments(
-        source.slice(entry.at, found[index + 1]?.at ?? source.length));
-      const lists = [...body.matchAll(/exactObject\(\s*params\s*,\s*\[([^\]]*)\]/g)];
-      if (lists.length === 0) continue;
-      if (lists.length > 1) { dispatched.add(entry.name); continue; }
-      admits.set(entry.name, Object.freeze(lists[0][1]
-        .split(',').map(key => key.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)));
+    const byName = new Map();
+    for (const match of source.matchAll(
+      /^export const ([A-Z][A-Z0-9_]*)\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/gm)) {
+      byName.set(match[1], keyList(match[2]));
+    }
+    declared.set(`./${file}`, byName);
+  }
+  return declared;
+}
+
+/**
+ * Which module the registry imports each name from.
+ *
+ * The binding is what decides the list, not the name: resolving by name across
+ * a directory answers a question nobody asked. A name the registry does not
+ * import cannot be resolved at all, which is the fail-closed direction.
+ */
+export function importedConstants(source) {
+  const from = new Map();
+  for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+    for (const part of match[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop().trim();
+      if (name) from.set(name, match[2]);
     }
   }
-  return { admits, dispatched, entries };
+  return from;
+}
+
+/**
+ * Each handler's single unconditional `exactObject` allowlist.
+ *
+ * Every entry lands in exactly one of four buckets and the test asserts that
+ * they partition the registry, because a bucket nothing names is how a
+ * capability leaves the comparison without anyone deciding that it should.
+ * `dispatched` has more than one list, `parameterless` has none, `unresolved`
+ * names a constant this reader cannot find -- never counted clean, the same
+ * rule the call-site side already follows for a payload it cannot read.
+ *
+ * ## Both populations are the REGISTRY's, and neither used to be
+ *
+ * A first version walked every module in the directory for entries as well and
+ * reached 313, because a two-space frozen object is an ordinary shape and the
+ * other modules are full of them -- 187 of them, `standard`, `contact` and
+ * `large_print` among them, with 94 sharing a name with a real handler. Scoping
+ * the COUNT fixed the sentinel and left the allowlists reading that same wide
+ * population; they were right anyway, but only because no non-handler object
+ * happens to call `exactObject(params, ...)`. Correct by luck is not correct,
+ * and a Map keyed on a shared name would have taken whichever came last
+ * alphabetically. That is the same defect one level down from where it was
+ * found, which is the thing to expect rather than to be surprised by.
+ */
+export function handlerAllowlists(repository) {
+  const directory = resolve(repository, API_DIRECTORY);
+  const named = namedAllowlists(directory);
+  const source = readFileSync(join(directory, REGISTRY_FILE), 'utf8');
+  const importedFrom = importedConstants(source);
+  const found = [...source.matchAll(ENTRY)].map(match => ({ name: match[1], at: match.index }));
+
+  const admits = new Map();
+  const dispatched = new Set();
+  const parameterless = new Set();
+  const unresolved = new Set();
+  for (const [index, entry] of found.entries()) {
+    const body = stripBlockComments(
+      source.slice(entry.at, found[index + 1]?.at ?? source.length));
+    const lists = [...body.matchAll(ALLOWLIST)].map(match => match[1]);
+    if (lists.length === 0) { parameterless.add(entry.name); continue; }
+    if (lists.length > 1) { dispatched.add(entry.name); continue; }
+    const only = lists[0];
+    if (only.startsWith('[')) { admits.set(entry.name, keyList(only.slice(1, -1))); continue; }
+    const resolved = named.get(importedFrom.get(only))?.get(only);
+    if (resolved) admits.set(entry.name, resolved);
+    else unresolved.add(entry.name);
+  }
+  return { admits, dispatched, parameterless, unresolved, entries: found.length };
 }
 
 /**
@@ -274,9 +364,9 @@ const sourceFiles = (repository) => {
 export function importedWrappers(source, wrappers) {
   const bound = new Map();
   // Both quote styles. A first draft matched single quotes only and found two
-  // call sites where there are eighteen -- green, and blind to all but two of
-  // the population it claims to measure. The declared set below is what turns
-  // that into a failure rather than a quiet pass.
+  // call sites out of a population many times that -- green, and blind to all
+  // but two of the sites it claims to measure. The declared set below is what
+  // turns that into a failure rather than a quiet pass.
   for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]@\/functions\/[\w-]+['"]/g)) {
     for (const clause of match[1].split(',')) {
       const parts = clause.trim().split(/\s+as\s+/);
