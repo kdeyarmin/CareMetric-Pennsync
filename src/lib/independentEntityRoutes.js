@@ -409,6 +409,72 @@ function libraryWrite({ capability, action }) {
   };
 }
 
+/**
+ * `AIConfiguration.create(fields)` and `.update(id, fields)` onto
+ * `saveAiConfiguration`, which takes `{ scope, id, fields }`.
+ *
+ * It is not `libraryWrite` because the contract takes no action — the presence
+ * of an id is what decides create from update in SQL — and because it takes a
+ * SCOPE this file has to supply. That scope is the whole of the declaration's
+ * difficulty and is worth reading twice.
+ *
+ * `ENTITY_ROUTES` is keyed on the entity and the operation, so ONE
+ * `AIConfiguration.create` route serves both screens that create one, and the
+ * two screens mean different things. `AIConfigurationManager.jsx` writes the
+ * agency's settings; `UserSettings.jsx` writes the caller's own preferences.
+ * The reads already split the same way and could BIND their scope, because
+ * each is called from one screen: `.list` is bound `agency` and `.filter` is
+ * bound `mine`. A write cannot, so the scope is derived from the payload —
+ * `user_email` is the column that DEFINES a personal row, an agency row is
+ * defined by its absence, and the two screens have always sent exactly that.
+ *
+ * **What makes deriving it safe is that a wrong answer cannot write the wrong
+ * row.** The contract re-decides the same question against the stored row and
+ * refuses a mismatch by name: a `mine` save landing on an agency setting and
+ * an `agency` save landing on somebody's preferences both raise
+ * `PENNSYNC_AI_CONFIG_OWNER_FORBIDDEN`, and on the create path an `agency`
+ * scope refuses a payload naming `user_email` at all. So the worst case of a
+ * mis-derived scope is a refusal the screen reports, never a write somewhere
+ * the caller did not mean. A derivation that failed OPEN would not belong
+ * here whatever its accuracy.
+ *
+ * One narrowing, recorded rather than worked around: the `agency` branch
+ * admits an `agency_admin` only, where the Base44 entity write had no role
+ * gate of its own. That is D40's successor to `role === 'admin'`, and the
+ * admin manager is an administrator's screen, but a `manager` who could write
+ * an agency setting in Base44 is refused here.
+ */
+function aiConfigurationWrite({ action }) {
+  const verb = LIBRARY_VERBS[action];
+  // `libraryWrite`'s reason: an unknown action fails at DECLARATION, because
+  // `result[undefined] !== true` is satisfied by every answer and the route
+  // would refuse every call with `answer` instead.
+  if (verb === undefined) throw new Error(`ENTITY_ROUTE_LIBRARY_ACTION_UNKNOWN:${action}`);
+  const withId = action !== 'create';
+  return {
+    function: 'saveAiConfiguration',
+    projection: 'library_row',
+    // Declared for `brokeredRead`'s reason: a rest parameter hides the count.
+    arity: withId ? 2 : 1,
+    request: (...args) => {
+      const [id, fields] = withId ? args : [undefined, args[0]];
+      if (withId && (typeof id !== 'string' || id === '')) unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return {
+        scope: Object.hasOwn(fields, 'user_email') ? 'mine' : 'agency',
+        ...(withId ? { id } : {}),
+        fields,
+      };
+    },
+    response: (result) => {
+      if (!result || result[verb] !== true) unsupported('answer');
+      return result.row;
+    },
+  };
+}
+
 /** The compliance read contracts' own ceilings (`least(greatest(limit, 1), N)`). */
 export const COMPLIANCE_MAXIMUM = Object.freeze({
   listAgencyIncidents: 5000,
@@ -1937,6 +2003,14 @@ const DECLARED_ROUTES = Object.freeze({
       request: () => ({ scope: 'mine' }),
     }),
     reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
+  }),
+  'AIConfiguration.create': Object.freeze({
+    ...aiConfigurationWrite({ action: 'create' }),
+    reason: 'Both screens file a new configuration; the payload says whose, and the contract re-checks it.',
+  }),
+  'AIConfiguration.update': Object.freeze({
+    ...aiConfigurationWrite({ action: 'update' }),
+    reason: 'Both screens save over an existing row, and a scope that disagrees with it is refused.',
   }),
   // `operationalRoutes` used to be SPREAD here and is now merged below by
   // `withoutCollisions`, because a spread inside an object literal is the one
