@@ -320,51 +320,232 @@ export function entitiesTouched(source, known = null) {
 }
 
 /**
- * The column names a module passes to a mutating call on one entity, or `null`
- * when any of those calls hands over something this cannot read.
+ * The source with every string literal, template literal, comment and regular
+ * expression body replaced by spaces of the same length, so that an index into
+ * the result is an index into the original.
  *
- * Deliberately shallow: it takes the top-level keys of an object literal and
- * refuses anything else — a spread, an identifier, a call. A nested object is
- * a column holding JSON, so its own keys are not columns and are not walked.
+ * It exists because of one line. `setNurseDutyStatus` refuses an empty patch
+ * with `'Nothing to update'`, and the payload it assembles is called `update`,
+ * so a scan for that identifier found it inside a message to the caller and
+ * answered that the module does something it cannot account for. The identifier
+ * was correct, the occurrence was real, and it was in prose.
+ *
+ * That is D73's rule — a comment is not the code — arriving at a string
+ * literal, and it is worth naming as the wider claim: **a scan for a NAME reads
+ * everything that spells the name, and the parts of a module that spell things
+ * without meaning them are strings, comments and regular expressions.** Mask
+ * them once rather than excluding them case by case; every exclusion written
+ * for one shape is the next shape's blind spot.
+ *
+ * The `/` disambiguation is the usual approximation: a slash opens a regular
+ * expression unless the previous meaningful character could end a value.
  */
-export function writtenColumns(source, escaped) {
-  const found = new Set();
-  const call = new RegExp(`\\b${escaped}\\s*\\.\\s*(?:${MUTATING.join('|')})\\s*\\(`, 'g');
-  for (const match of source.matchAll(call)) {
-    const open = source.indexOf('{', match.index + match[0].length - 1);
-    const stop = source.indexOf(')', match.index + match[0].length - 1);
-    // A mutating call with no object literal before its closing paren is
-    // passing a variable, a spread or nothing readable.
-    if (open < 0 || (stop >= 0 && stop < open)) return null;
-    let depth = 0; let end = -1;
-    for (let i = open; i < source.length; i += 1) {
-      if (source[i] === '{') depth += 1;
-      else if (source[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+export function maskLiteralsAndComments(source) {
+  const out = source.split('');
+  const blank = (from, to) => {
+    for (let i = from; i < to && i < out.length; i += 1) {
+      if (out[i] !== '\n') out[i] = ' ';
     }
-    if (end < 0) return null;
-    const body = source.slice(open + 1, end);
-    // Top level only: strip nested braces, brackets and parentheses so a JSON
-    // column's own keys and a helper call's arguments are not mistaken for
-    // columns of this table.
-    let level = 0; let flat = '';
-    for (const character of body) {
-      if ('{[('.includes(character)) level += 1;
-      else if (')]}'.includes(character)) level -= 1;
-      else if (level === 0) flat += character;
-      if (level === 0 && ')]}'.includes(character)) flat += ' ';
+  };
+  let i = 0; let previous = '';
+  while (i < source.length) {
+    const character = source[i];
+    if (character === '/' && source[i + 1] === '/') {
+      let end = source.indexOf('\n', i);
+      if (end < 0) end = source.length;
+      blank(i, end); i = end; continue;
     }
-    for (const part of flat.split(',')) {
-      const key = part.split(':')[0].trim();
-      if (!key) continue;
-      // A spread, a shorthand or a computed key: the payload is not fully
-      // readable, so the whole call is unknown rather than partly known.
-      if (!/^[A-Za-z_$][\w$]*$/.test(key) && !/^'[a-z_][a-z0-9_]*'$/.test(key)) return null;
-      found.add(key.replace(/'/g, ''));
+    if (character === '/' && source[i + 1] === '*') {
+      let end = source.indexOf('*/', i + 2);
+      end = end < 0 ? source.length : end + 2;
+      blank(i, end); i = end; continue;
     }
+    if (character === '"' || character === "'" || character === '`') {
+      let j = i + 1;
+      while (j < source.length) {
+        if (source[j] === '\\') { j += 2; continue; }
+        if (source[j] === character) break;
+        j += 1;
+      }
+      blank(i + 1, j); i = Math.min(j + 1, source.length); previous = character; continue;
+    }
+    if (character === '/' && !/[A-Za-z0-9_$)\]]/.test(previous)) {
+      let j = i + 1; let inClass = false;
+      while (j < source.length && source[j] !== '\n') {
+        if (source[j] === '\\') { j += 2; continue; }
+        if (source[j] === '[') inClass = true;
+        else if (source[j] === ']') inClass = false;
+        else if (source[j] === '/' && !inClass) break;
+        j += 1;
+      }
+      if (j < source.length && source[j] === '/') {
+        blank(i + 1, j); i = j + 1; previous = '/'; continue;
+      }
+    }
+    if (!/\s/.test(character)) previous = character;
+    i += 1;
+  }
+  return out.join('');
+}
+
+/**
+ * The top-level keys of an object literal starting at `open`, with the index
+ * just past its closing brace, or `null` when the literal is not fully
+ * readable.
+ *
+ * Deliberately shallow: a nested object is a column holding JSON, so its own
+ * keys are not columns and are not walked.
+ */
+export function objectLiteralKeys(source, open) {
+  if (source[open] !== '{') return null;
+  let depth = 0; let end = -1;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+  }
+  if (end < 0) return null;
+  const body = source.slice(open + 1, end);
+  // Top level only: strip nested braces, brackets and parentheses so a JSON
+  // column's own keys and a helper call's arguments are not mistaken for
+  // columns of this table.
+  let level = 0; let flat = '';
+  for (const character of body) {
+    if ('{[('.includes(character)) level += 1;
+    else if (')]}'.includes(character)) level -= 1;
+    else if (level === 0) flat += character;
+    if (level === 0 && ')]}'.includes(character)) flat += ' ';
+  }
+  const keys = [];
+  for (const part of flat.split(',')) {
+    const key = part.split(':')[0].trim();
+    if (!key) continue;
+    // A spread, a shorthand or a computed key: the payload is not fully
+    // readable, so the whole literal is unknown rather than partly known.
+    if (!/^[A-Za-z_$][\w$]*$/.test(key) && !/^'[a-z_][a-z0-9_]*'$/.test(key)) return null;
+    keys.push(key.replace(/'/g, ''));
+  }
+  return { keys, end };
+}
+
+/**
+ * The last argument of a call whose opening parenthesis has just been consumed,
+ * as `{ name, index }` when it is a bare identifier and `null` otherwise.
+ */
+export function lastCallArgument(source, afterOpenParen) {
+  let depth = 1; let end = -1;
+  const commas = [];
+  for (let i = afterOpenParen; i < source.length; i += 1) {
+    const character = source[i];
+    if ('([{'.includes(character)) depth += 1;
+    else if (')]}'.includes(character)) { depth -= 1; if (depth === 0) { end = i; break; } }
+    else if (character === ',' && depth === 1) commas.push(i);
+  }
+  if (end < 0) return null;
+  const from = commas.length ? commas[commas.length - 1] + 1 : afterOpenParen;
+  const text = source.slice(from, end);
+  const match = /^(\s*)([A-Za-z_$][\w$]*)\s*$/.exec(text);
+  return match ? { name: match[2], index: from + match[1].length } : null;
+}
+
+/** Call forms that read a payload object without being able to add to it. */
+export const PAYLOAD_SAFE_READS = Object.freeze(['Object.keys', 'Object.entries',
+  'Object.values', 'JSON.stringify']);
+
+/**
+ * The columns of a payload ASSEMBLED into a local object before the call, which
+ * is the second shape a write takes and the one this could not read.
+ *
+ * `setNurseDutyStatus` declares `const update = {}` and then assigns six
+ * members before handing it over. Every one of those columns is on D82's
+ * allowlist, so the store permits the write — but `writtenColumns` saw an
+ * identifier, answered `null`, and the classifier reads unknown as outside the
+ * narrowing. The capability sat in `entity_authorization` on a fact about the
+ * READER rather than about the module.
+ *
+ * That is D7, D47 and D75's lesson in a fourth place — when a check exists to
+ * stop a class of mistake, re-derive the shapes from the tree rather than from
+ * the check — and it differs from those three in the DIRECTION it failed, which
+ * is the part worth keeping. Those three ADMITTED something they should have
+ * refused, so each one was a wrong answer somebody could act on. This one
+ * REFUSED something it should have admitted: nothing was ever wrong, and one
+ * capability was merely reported unstartable. **A fail-closed blind spot costs
+ * work rather than correctness, which is exactly why it survives longer —
+ * nothing it does looks like a defect, and the queue it distorts is the thing
+ * a reader consults instead of re-measuring.**
+ *
+ * So the widening stays fail-closed itself. It answers only when EVERY bare
+ * occurrence of the identifier is accounted for, and **a READ counts as a
+ * write**: over-reporting a column can only push a capability back toward
+ * `entity_authorization`, which is the safe direction, while missing one would
+ * admit a write nobody had seen. Anything unaccounted for — a computed key, an
+ * `Object.assign` into it, the identifier handed to anything but the mutating
+ * call — answers `null` exactly as before.
+ */
+export function assembledPayloadColumns(source, identifier, accounted) {
+  if (!/^[A-Za-z_$][\w$]*$/.test(identifier)) return null;
+  const escaped = identifier.replace(/[$]/g, '\\$&');
+  const declarations = [...source.matchAll(
+    new RegExp(`(?:const|let|var)\\s+${escaped}\\s*=\\s*`, 'g'))];
+  // Exactly one, or two names in two scopes are being read as one object.
+  if (declarations.length !== 1) return null;
+  const opens = declarations[0].index + declarations[0][0].length;
+  const literal = objectLiteralKeys(source, opens);
+  if (!literal) return null;
+  const found = new Set(literal.keys);
+  const declared = declarations[0].index
+    + declarations[0][0].search(new RegExp(`(?<![.\\w$])${escaped}\\b`));
+  const masked = maskLiteralsAndComments(source);
+  for (const use of masked.matchAll(new RegExp(`(?<![.\\w$])${escaped}\\b`, 'g'))) {
+    if (use.index === declared || accounted.has(use.index)) continue;
+    const after = masked.slice(use.index + identifier.length);
+    const member = /^\s*\.\s*([A-Za-z_$][\w$]*)/.exec(after);
+    if (member) { found.add(member[1]); continue; }
+    // A spread READ of the payload takes keys out of it and cannot put any in.
+    if (/^\s*[,}\])]/.test(after) && /\.\.\.\s*$/.test(masked.slice(0, use.index))) continue;
+    const before = masked.slice(0, use.index).replace(/\s+$/, '');
+    if (/^\s*\)/.test(after)
+      && PAYLOAD_SAFE_READS.some(read => before.endsWith(`${read}(`))) continue;
+    return null;
   }
   return [...found].sort();
 }
 
+/**
+ * The column names a module passes to a mutating call on one entity, or `null`
+ * when any of those calls hands over something this cannot read.
+ *
+ * Two shapes: an object literal at the call, and a local object assembled
+ * before it. A DELETE is neither — it names a row, so its payload is not a
+ * narrowed write but the absence of one, and it is never resolved.
+ */
+export function writtenColumns(source, escaped) {
+  const found = new Set();
+  const call = new RegExp(`\\b${escaped}\\s*\\.\\s*(${MUTATING.join('|')})\\s*\\(`, 'g');
+  const assembled = new Map();
+  const accounted = new Set();
+  for (const match of source.matchAll(call)) {
+    const afterOpenParen = match.index + match[0].length;
+    const open = source.indexOf('{', afterOpenParen - 1);
+    const stop = source.indexOf(')', afterOpenParen - 1);
+    if (open < 0 || (stop >= 0 && stop < open)) {
+      if (match[1].startsWith('delete')) return null;
+      const argument = lastCallArgument(source, afterOpenParen);
+      if (!argument) return null;
+      accounted.add(argument.index);
+      assembled.set(argument.name, true);
+      continue;
+    }
+    const literal = objectLiteralKeys(source, open);
+    if (!literal) return null;
+    for (const key of literal.keys) found.add(key);
+  }
+  for (const identifier of assembled.keys()) {
+    const columns = assembledPayloadColumns(source, identifier, accounted);
+    if (columns === null) return null;
+    for (const key of columns) found.add(key);
+  }
+  return [...found].sort();
+}
 export function discoverEntityReach(repository, known = null) {
   const root = join(repository, 'base44/functions');
   const reach = {};
