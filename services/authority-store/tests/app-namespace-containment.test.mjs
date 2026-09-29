@@ -213,7 +213,20 @@ async function assertAppScopedColumns(db, expected) {
     'the set of app-scoped columns changed');
   // Exactly one per table: no table carries a second, separately typed app id.
   assert.equal(new Set(scoped.rows.map(r => r.table_name)).size, scoped.rows.length);
-  // Nothing else in the schema names an app id without going through the domain.
+  // Nothing else in the schema names an app id *under that name* without going
+  // through the domain. Read this as what it cannot see rather than as what it
+  // does: the population is a NAME, so it catches a column somebody called
+  // `app_id` and forgot to type, and it is blind to the same escape called
+  // `source_app` or `owning_tenant`. That blind spot is asserted rather than
+  // described, in the pair of planted tests at the end of this file, and D159
+  // records why it is not closed — the set this query wants is the columns that
+  // hold an app id and ESCAPED the domain, which by construction is the one set
+  // in the schema with no declaration to derive it from. The 22 domain-typed
+  // columns declare themselves; nothing in the tree says a future `source_app`
+  // is an app id at all. Widening the pattern would move the gap and look like
+  // a fix, so if you come to close this, close it by making the escape
+  // impossible rather than by guessing at more names.
+  //
   // The two exceptions are the tables that *define* the namespace: they cannot be
   // typed by the domain whose admitted value they are.
   const loose = await db.query(`select table_name, column_name from information_schema.columns
@@ -442,6 +455,66 @@ test('a plain-text app id planted in the record tier is caught by the widened bu
     await assertAppScopedColumns(narrow, AUTHORITY_APP_SCOPED);
   } finally {
     await wide?.close(); await narrow?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * D159's second half, and the reason the paragraph above is a test rather than
+ * a comment: this guard's population is a NAME, and here is the escape it
+ * cannot see.
+ *
+ * The plant is the same shape as D113's above — an app-scoped column typed
+ * plain `text`, in its own directory so the fifty-three suites that walk
+ * `record-migrations/` never read it — with ONE difference: the column is
+ * called `source_app` instead of `app_id`. The guard is SILENT on it, and this
+ * test asserts that silence.
+ *
+ * Asserting a blind spot looks backwards, so the reason is worth stating. A
+ * sentence saying "this check is name-based" ages into wallpaper; nothing fails
+ * when it stops being true, and nothing fails when somebody half-closes it
+ * either. This test fails the day `source_app` becomes catchable — which is the
+ * day somebody widened the pattern — and the failure says what to do: move this
+ * case to the caught side deliberately, and say in the same change which names
+ * are still outside the new pattern, because there will be some.
+ *
+ * It is a PAIR with the test above it and neither is a reading alone. That one
+ * proves the guard bites (a column named `app_id` is refused); this one proves
+ * where it stops. A blind-spot assertion with no positive control beside it
+ * passes just as well when the guard has been deleted.
+ */
+test('the same escape under another name is NOT caught, which is this guard\'s measured blind spot', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pennsync-d159-'));
+  let wide;
+  try {
+    await writeFile(join(root, '20260920990001_planted_blind_spot.sql'), `
+      create table pennsync_private.planted_blind_spot (
+        source_app text not null,
+        id text primary key
+      );
+      alter table pennsync_private.planted_blind_spot enable row level security;
+      alter table pennsync_private.planted_blind_spot force row level security;
+    `);
+    const planted = pathToFileURL(root + '/').href;
+    wide = await deploy(STAGING_APP, { directories: [...MIGRATION_DIRECTORIES, planted] });
+
+    // The column really is there, so this is a blind spot and not an absent
+    // plant -- the failure mode that would make the assertion below vacuous.
+    const present = await wide.query(`select data_type, domain_name from information_schema.columns
+      where table_schema = 'pennsync_private' and table_name = 'planted_blind_spot'
+        and column_name = 'source_app'`);
+    assert.deepEqual(present.rows, [{ data_type: 'text', domain_name: null }],
+      'the plant must exist and be untyped, or this test proves nothing');
+
+    // And the guard passes anyway. Its own function, not a recomputed
+    // predicate, so a guard that was widened or weakened fails here too.
+    await assertAppScopedColumns(wide, [...AUTHORITY_APP_SCOPED, ...RECORD_APP_SCOPED]);
+
+    // Named, so the failure above reads as an instruction rather than a puzzle.
+    console.log('# blind spot: pennsync_private.planted_blind_spot.source_app is an untyped '
+      + 'app id the name-based containment query does not see (D159)');
+  } finally {
+    await wide?.close();
     await rm(root, { recursive: true, force: true });
   }
 });

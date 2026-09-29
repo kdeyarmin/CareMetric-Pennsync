@@ -109,6 +109,55 @@ export function classifyToolFailure(binary, args, error) {
   // Otherwise say at least whether the database rejected something, which
   // separates a SQL fault from a daemon or image fault without quoting either.
   else if (/^\s*ERROR:\s/mi.test(output) || /\bSQLSTATE\b/i.test(output)) reason = 'SQL_REJECTED';
+  // THE THREE BELOW SIT AFTER THE MIGRATION AND SQL BRANCHES, NOT BEFORE THEM, on
+  // Codex's finding against this change. A named `PENNSYNC_*` refusal is usually
+  // followed by its CONSEQUENCE -- the container the refusal killed exits -- so
+  // placed earlier these branches reported `SERVICE_UNHEALTHY` and hid the
+  // precise refusal the classifier exists to preserve. Same for a SQL fault whose
+  // text happens to carry `rate limit`. The rule is that a fact about OUR OWN
+  // migrations outranks an infrastructure heuristic about the run, and the chain's
+  // order is the only thing that expresses it.
+  // D141. THE FALL-THROUGH IS A QUEUE, AND THESE THREE WERE IN IT. D123 split
+  // `FAILED_OUTPUT_REDACTED` from `FAILED_NO_OUTPUT` and said in as many words
+  // that an unrecognised diagnostic is "a category to add here"; the plan
+  // thread's `2e430717` then produced one, on a head that carries D123, so the
+  // reading is trustworthy for the first time: the CLI printed something none
+  // of the branches above name. What it printed is NOT recoverable -- the
+  // no-forwarding rule means nothing captured it -- so these branches claim
+  // nothing about THAT occurrence and are not offered as its cause. They are
+  // the classes a `supabase start` demonstrably fails with that had no name,
+  // so the NEXT one says which rather than falling through. Each pattern is
+  // planted in `http-boundary.test.mjs`, because a branch nothing has been
+  // shown to reach is indistinguishable from a branch that cannot be.
+  //
+  // A port taken between the pre-flight and the start is the one worth calling
+  // out: the port series exists precisely because that window is real, and it
+  // is attached to the error as `observed` at pre-flight time, which cannot
+  // fire for a port that was free when it looked. Docker reports it from the
+  // daemon, so it arrives HERE, and it read as unrecognised until now.
+  // A bare `bind: ` alternative was here and is REMOVED, on Copilot's finding:
+  // it matches `bind: permission denied` and `bind: cannot assign requested
+  // address`, neither of which is a taken port, and naming a wrong cause
+  // confidently is worse than falling through to the redacted verdict. That is
+  // this branch's own asymmetry biting the branch that wrote it down — too wide
+  // fails loudly, and this one failed loudly to a reviewer rather than in CI.
+  else if (/port is already allocated|address already in use/i.test(output)) reason = 'PORT_TAKEN_DURING_START';
+  // An image the runner could not obtain is not this repository's fault and is
+  // worth separating from one it obtained and could not run: a registry rate
+  // limit is the common shape on a shared runner and resolves itself, where a
+  // missing manifest is a pin nobody can satisfy.
+  else if (/toomanyrequests|rate limit|failed to pull|manifest unknown|manifest for .* not found|pull access denied/i.test(output)) reason = 'IMAGE_UNAVAILABLE';
+  // And a container the daemon started and then judged unhealthy, which is the
+  // shape a start takes when it gets far enough to wait on a service. It sits
+  // after the two above because an unobtainable image also leaves a service
+  // unstarted, and the earlier cause is the one to report.
+  // Same narrowing here, for the same reason. A bare `unhealthy` alternative
+  // matched the word anywhere in any diagnostic; `is unhealthy` is the shape
+  // docker actually prints (`dependency failed to start: container X is
+  // unhealthy`), and the container alternative takes one token rather than a
+  // greedy `.*` that could span an unrelated clause on the same line.
+  else if (/is not healthy|is unhealthy|service not healthy|health check failed|container [^\s]+ (?:exited|is not running)/i
+    .test(output)) reason = 'SERVICE_UNHEALTHY';
   return `LOCAL_${phase}_${reason}`;
 }
 async function captured(binary, args, timeout = 120000) {
