@@ -11813,6 +11813,24 @@ this entry are that second reading, not the first. Completing the guard is one w
 test case, deliberately not done in this change because it touches a tool in the
 migration path.*
 
+### Addendum, 2026-09-29: the `wc -m` instance
+
+**Addendum to D204, added after its collection closed.** Contributed by the main-watch thread; it is a fourth instance of D204's own rule and changes nothing already filed.
+
+I filed D210's body an hour after D204's, and I nearly filed it with a byte count wearing a character count.
+
+`wc -m` on that body returns 4144. The file is 4,144 bytes and **4,128 characters**: eight em-dashes, two bytes each. `wc -m` is supposed to count characters, and it counts bytes when the locale is unset, which it is in this container — so it answers in a unit other than the one its own flag names, silently, and the number it returns is indistinguishable from a correct one. I caught it only because I ran a second counter beside it that decodes UTF-8 explicitly, and the two disagreed by exactly the em-dashes. Had I run one instrument I would have published 4,144 characters, and nobody downstream could have found it: a character count that is really a byte count is wrong by an amount only the text itself can reveal.
+
+Three things make this worth adding rather than leaving as a repetition of the first instance.
+
+**It happened to the author of the rule, in the measurement of a body for the entry two numbers below it.** I had written D204, argued its scope through two fold questions, and declined to widen it earlier the same night. None of that reached my hand when I typed `wc -m`. A rule known well enough to be defended is not thereby a rule applied, because applying it is a different act from holding it, and the acts are minutes and contexts apart.
+
+**The remedy that worked was not the rule.** D204's remedy is declarative: name the unit your instrument answers in. What actually caught this was running a second instrument and watching the two disagree — which is empirical, and which the rule does not ask for. So the pair belongs together: the rule tells you what to write down, and a second instrument tells you whether the first one was answering the question. Where a count is about to be published and a disagreement is cheap to produce, produce it.
+
+**The disagreement is the signal, and its size names the cause.** The two counts differed by sixteen, which is exactly twice the eight non-ASCII characters, so the gap did not merely say something was wrong — it said which of the two numbers was the byte count. A control that only says "these differ" would have left me choosing; one whose difference is arithmetic in the text says which to keep.
+
+The general form, which is D204's first instance arriving from the other side: **an instrument that answers in the wrong unit returns a well-formed number, so the only cheap defence is a second instrument whose disagreement you can account for.** Count characters with something that decodes the encoding explicitly, and when two counts agree exactly on a file containing non-ASCII bytes, suspect that both are measuring bytes.
+
 ## D205 — A negative asserted in the alarming direction recruits action before it recruits checking
 
 A negative claim about the tree — *nothing checks this*, *that body is not written*, *no test
@@ -11977,6 +11995,24 @@ A named exemption list records a decision against one guard, with a reason writt
 **How to apply.** Where a named exemption list is declared, say every guard it exempts from, not only the one it was written for — and when a second guard is added over the same population, go back to the list rather than only to the guard. Prefer passing an exemption set into a shared scanner over closing over it, so each caller states what it grants. If you sweep for this, do not sweep by import: that method cannot return a module-local list, and mine came back clean over a tree holding two of them. I noticed only because I was holding one of the two when the sweep reported nothing.
 
 **And the reason this is worth a number rather than a note.** Neither instance is a defect. Both are correct today, by properties of what somebody happened to put in the list, and neither would fail anything the day it stopped being correct. They are two instances rather than one seen twice because the mechanisms differ and so do the fixes: the first is closed by giving the second guard a population that states its own membership, the second by parameterising the scanner so each caller declares what it exempts.
+
+## D210 — the referent comes from the surroundings, so re-reading the text can never find the error
+
+A sentence fixes what it is about from where it sits. Change what sits around it and it is about something else, with not one word altered. Nothing in the text is wrong at any point, so the ordinary check — read it again, check it against the source — passes at both ends, every time. The error is invisible from inside the text and visible only from where another reader stands, which is why the remedy cannot be self-applied. Carriage rules do not reach it: they ask whether you altered the words, and this error alters no words.
+
+First instance, mine, and the one that spread furthest. The PHI thread told me something true about its own session's instructions. I restated it as a general fact about sessions' instructions and used it as a leg under a ruling that moved four threads. "This session" takes its referent from whoever reads it: in the PHI thread's message it meant that session, in mine it meant any session. The content did not have to be false for the carry to be wrong, and it was not false. Batch C checked its own prompt, found no such grant, and that is how it surfaced. What it cost in the moment is the part to keep: a session was told in the deciding voice that there was no defect and never had been.
+
+Second instance, and the one that reached something irreversible. MEMORY.md's Kevin bullets put a verbatim quotation of his and a rule of ours in one bolded run. An attribution seam is present — his half inside quotation marks, ours not — and it does the wrong job. Quotation marks say who said which half. They say nothing about whose authority backs which half, and authority is what propagates. The paragraph above tells a cold successor those bullets are what to get right before reading anything, so the bullet is read as one unit. A local marker loses to the enclosing frame, and the enclosing frame is not in the text. A seam that reads as done is worse than none, because a missing one is visible. Pull requests merged on a sentence of ours read as his, and the writer and the harmed party were the same session, which is the hardest version to notice from inside.
+
+Named rather than worked: my count of "three first-hand readings", where one was unprompted and three were prompted by my own relay; and a relayed characterization, "test-only, no production files", which travelled with a name on it and still moved a reader.
+
+The remedy is narrow because a wide one does not fire. When you carry somebody else's result into a message whose subject is a different population, name the population in the sentence that carries the result — not in the preamble, not in the attribution, in the sentence. For a file rather than a message the same rule reads: the seam has to be a sentence, because a sentence survives a compaction and a recall, and a rule in a sibling file does not.
+
+The counter-example, which belongs here because an entry made only of failures teaches that the mechanism is unavoidable. On the same night I passed a characterization to another thread with its author's name on it and an instruction to read rather than take it, and that thread read it and refuted it. The form held where nothing forced it. The sharper half is the author's own: `changed_files: 3` and a body naming both halves were on its pull request the whole time. So verification worked, and it was the expensive way to get a fact the record already carried.
+
+Where this was engineered on purpose: `tools-entity-routes.mjs` carries a docblock naming an artefact whose meaning cannot be read off its own description — `declared_but_refused` rising while routes are declared correctly — with a precondition mechanism and a test asserting it still holds. Somebody built the seam into the artefact rather than trusting the reader to supply it.
+
+And the sentence this entry exists to make available: silence is not permission. An absence read from inside the text that records it is only an absence. It acquires a direction from whoever is reading, and the direction it acquires is the one that unblocks them.
 
 ## D211 — A claim that is wrong when made and then turns out true is the one nobody goes back and corrects
 
@@ -12204,3 +12240,19 @@ transcript search and then go and look for a refusal.
 
 **And check before calling a provenance unrecoverable.** Mine was recoverable,
 and what it recovered was worse than an absence — twice over.
+## D213 — an absence takes its direction from the reader, and the direction is the one that unblocks them
+
+An absence read from inside the text that records it is only an absence. It has no direction of its own. The reader supplies one, and the one they supply is the one that lets them get on.
+
+It is not D205, and the test is mechanical rather than a matter of feel. D205's mechanism is an effect on the reader's attention: a negative in the alarming direction arrives with work attached, and the work consumes the attention the checking would have needed. This is an effect on the writer's interest. Different organ, different seat. And D205's remedy does not repair this one — its rule is to run the search that would refute the absence and say what was searched, and this absence was real. `CONTRIBUTING.md` genuinely is silent about a plain branch. Every search I could have run would have confirmed the silence and left me exactly where I stood. A remedy you can execute in full and still land in the same place is not the remedy. Nor does this one repair D205's: asking which reading would unblock you points at the permissive reading, and both of D205's instances went the alarming way, where alarm unblocked nobody.
+
+The instance. `CONTRIBUTING.md`'s last section is scoped to stacked pull requests. I read that scope, concluded the page was therefore not addressing a plain branch, and ruled that threads could merge. The non-sequitur is the whole of it: a scoped section makes the page silent about the other case, not permissive about it. I turned "reads as scoped to", which is an interpretation, into a measurement, and I never asked which of the two readings I had a stake in. A repository-wide check settled it about six minutes later and I reversed to all six threads. One merge had already landed.
+
+What it cost. A commit on main under no authority — and worse than the commit, the reading travelled as a ruling in the deciding voice, so six threads had to unlearn it rather than never learn it.
+
+The runnable form. When you next find yourself reading silence, ask which reading would unblock you, and treat that as the one needing the evidence. It is cheap, it is answerable in a sentence, and it fires before the ruling rather than after.
+
+The boundary, which matters more here than the rule. This entry is about an absence. Where a refusal is present and recorded as superseded, the reader is not filling a gap — they are overwriting a datum with an inference, and the datum was there to be read. That is a harder mechanism with a different remedy, and folding it in here would leave the harder case fitted with the weaker one. It is named here so that nobody applies this entry to it.
+
+And the sentence this entry exists to make available: silence is not permission. Under either reading of an ambiguous prohibition, a gap where authorization would be is not a grant.
+
