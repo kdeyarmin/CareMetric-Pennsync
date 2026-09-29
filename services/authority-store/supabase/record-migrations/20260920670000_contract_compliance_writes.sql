@@ -760,15 +760,15 @@ create function "public"."pennsync_contract_adr_case_delete"(
 $wrapper$;
 
 revoke all on function "public"."pennsync_contract_compliance_audit_create"(text,jsonb)
-  from public, anon;
+  from public, anon, authenticated, service_role;
 revoke all on function "public"."pennsync_contract_compliance_audit_update"(text,text,jsonb)
-  from public, anon;
+  from public, anon, authenticated, service_role;
 revoke all on function "public"."pennsync_contract_adr_case_create"(text,jsonb)
-  from public, anon;
+  from public, anon, authenticated, service_role;
 revoke all on function "public"."pennsync_contract_adr_case_update"(text,text,jsonb)
-  from public, anon;
+  from public, anon, authenticated, service_role;
 revoke all on function "public"."pennsync_contract_adr_case_delete"(text,text)
-  from public, anon;
+  from public, anon, authenticated, service_role;
 
 grant execute on function "public"."pennsync_contract_compliance_audit_create"(text,jsonb)
   to authenticated;
