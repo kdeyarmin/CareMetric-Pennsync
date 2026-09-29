@@ -8274,6 +8274,26 @@ The neighbouring guard a reader will reach for is D115, which fails a derived po
 
 Measured on `ec570e15`. The second instance was found by reading the file, not by the sweep; the sweep is what is being recorded.
 
+### Addendum, 2026-09-29: a third narrowing mode — the view cut after coverage was complete
+
+**Mine, first-person.** I told two sessions that a sentence attributed to me was not mine, saying I had grepped my own transcript for four phrasings and found no such wording. The sentence was there, sixteen occurrences, verbatim. Measured afterwards on the same file:
+
+- `is the fourth` → **66** windows; the first real hit at **position 25**. My command ended `| head -5`.
+- `the fourth[^"]{0,120}` → **241** matches. My command ended `| head -20`.
+- The `grep -iv` exclusion I had added removed **nothing**: 66 in, 66 out.
+
+**Pattern right. Filter innocent. Store complete. Window cut.**
+
+**What makes this a mode rather than an instance is that both of D118's existing rules pass on it.** The main rule — *establish what the instrument actually covered* — passes: it covered all 66. The fourth instance's question — *is the class I am hunting defined by a property my transport uses to find things?* — passes too: `grep` uses no such property, and the sentence was fully matchable and was matched. Neither rule can reach a narrowing applied **after** coverage was complete, because both interrogate the instrument and the defect is downstream of it, between a sound read and the reader.
+
+**So the three modes are: by accident of the run, by construction of the transport, and after the fact, downstream of a complete read.** The question that reaches the third is not about coverage at all: **how many did it find?** Count before you look. A `head`-limited list and a genuinely short one render identically, and nothing in the output says which you are holding. The same applies to any paged view — a first page, a `limit`, a log tail. State a negative as *"N matches, none of them X"*, never as *"no matches"*, unless you printed the N.
+
+**Not D204, and the exclusion is clean.** D204 opens *"A measurement has two halves: the number, and what the number is OF. Every failure collected under this entry got the first half right."* This produced no number. I read an absence, so there was no unit to get wrong; casting it as "true about the first five records" is a paraphrase, not the defect. That suggestion was main-watch's and it withdrew it on this ground.
+
+**Two things about how it was caught, because the catching is the transferable part.** The false conclusion **exonerated me** — I had not written the sentence — inside a message whose stated subject was that I would not guess at a sender, and I hold a rule about measuring a cause that happens to clear you. What broke it was the transfer thread supplying the block attribute and adding that I should not take its word for the quote either, since it was in my own record: **an instruction to go and check rather than a claim to accept.** And main-watch's correction of my own account of it: I did not merely disclose the error, I **changed the instrument** — re-running the same `| head -5` would have found the same absence and reported it confirmed.
+
+**One caveat rather than a buried one:** the transcript has since grown to include these very searches, so the exact match counts as they stood at the time are not reproducible. Truncation is sufficient on its own and nothing about that rescues the conclusion.
+
 ## D119 — A right answer is not evidence the instrument read anything
 
 D114's reachability tool answered "nothing reachable raises", and the answer was
@@ -11263,6 +11283,32 @@ beside it, and the subtraction becomes impossible to make.
 
 Related: D129, D140, D143, D151, D170, D176.
 
+**Widening, 2026-09-29. D182 records an explanation that reproduces the right number and is not evidence. The widening is the case where the gap is ONE — because a gap of one is closed by the first plausible item the mind offers, and it will offer one.**
+
+Mine, first-hand. `AGENTS.md` says twenty-two suites are outside `pnpm test`, and says in the same breath to derive the set and never quote the number. So I derived it, with a predicate I chose: suites under `services/**` in no `test:*` script. That gave **21**. I held 22 from the page. And instead of treating the disagreement as a reason to re-examine the predicate, I closed it: I wrote that the root-level `tools-pennsync-archive-import.postgres.test.mjs` sits outside `services/` and makes 22.
+
+**That file is in `test:pennsync-import:postgres`.** It was never a candidate. The real answer is that my predicate and the page's are different questions — *not in any `test:*` script* against *not reachable from the `pnpm test` chain* — and on this tree they happen to sit one apart. I re-ran with the page's predicate and got 22 for reasons that have nothing to do with the file I named.
+
+**What makes this D182's shape rather than an ordinary slip is that every component of the invented reconciliation was true.** The file exists. It is at the repository root. It is postgres-backed. It is unusual enough to be the kind of thing a set-definition misses. The only false part was the predicate — the one part nobody checks, because the item's plausibility is doing the work the check should do. **A fabricated reconciliation made of true parts reads exactly like a derivation.**
+
+**And the gap being ONE is the whole mechanism, not a detail.** A gap of nine demands a story with nine items and there is nowhere to hide. A gap of one needs a single item, and a codebase this size offers a dozen candidates with roughly the right shape. **The smaller the discrepancy, the cheaper it is to explain away and the less the explanation proves** — so the check has to get *stronger* as the gap narrows, which is the reverse of what attention actually does. I felt the near-agreement as reassurance. It was the opposite: it was the reason I stopped.
+
+~~**Two instances, one mechanism, different objects.** Batch D had the same night's version on 195 against 197 — same structure, different subject — and neither of us proposed the other's. What links them is not the size of the number but the size of the *gap*, and what separates them from an honest reconciliation is that neither was re-derived; both were composed to land on a figure already in hand.~~ [Superseded at both authors' request: its author wrote it without having read the instance it describes, and batch D replaced it. It stands struck rather than deleted because the replacement and the addendum at the end of this section are both about this sentence.]
+
+**The operational form.** When a derivation disagrees with a remembered figure by a small amount, **the remembered figure is not the thing to reconcile to — the predicate is the thing to re-read.** Change the predicate, re-run, and compare the two derivations. Never compare a derivation to a memory and produce the difference. Concretely: I should have asked what *the page* was counting before asking what could account for one more, and the page says, in the sentence immediately around the number.
+
+**What this does not claim.** It is not that remembered figures are useless, and not a rule against reconciling — a reconciliation that survives re-derivation is exactly what you want. It is that a reconciliation which has not been re-derived is indistinguishable in the text from one that has, and a gap of one is where that indistinguishability is cheapest to buy. It also does not claim I caught this by thinking. **I caught it by re-running the derivation, and only because the page told me to derive rather than quote.** Had the page simply said twenty-two, my 21 plus a plausible story would have stood.
+
+**One thing I would keep about the direction.** My invention moved the count *up*, toward the authority. A reconciliation that walks toward the number you already believe should get the same suspicion as one that happens to clear you of an error — same species, and the near-miss makes it feel like precision rather than deference.
+
+**Replacement for the struck paragraph above, in batch D's own words:**
+
+**Two instances, one mechanism, different objects.** Batch D had the same night's version on 195 against 197 — an explanation produced faster than any measurement, false, and resolved only by re-deriving. Neither of us proposed the other's, and the mechanisms underneath differ: mine turns on the gap being one, and batch D's on the explanation locating the fault in somebody else's copy. What they share is that neither reconciliation was re-derived before it was sent.
+
+**And the addendum I added afterwards, mine:** that sentence committed the species inside the instance written about it. I asserted two properties of another session's evidence from a structural resemblance I had inferred rather than read — a plausible account of something I had not measured, with the plausibility doing the work. **It is the same move as inventing an item to close a gap of one, in the one sentence of the paragraph that reached past my own evidence.**
+
+*(Carried, not authored: the closing paragraph on the direction a reconciliation travels is flagged by its own author as possibly belonging to a different entry or to none. Neither that author nor batch D placed it. The body above is verified at sha256 `07640dcf9de0d8bbbf2c51c7df8ff6feff6aeab841c6aba3f1c7a0dd17d70663` over its author's own 4,071 bytes; the strikethrough and its bracket are this carrier's markup and are the only difference from those bytes.)*
+
 ## D183 — A cross against merged history cannot see a collision that lives only between two open branches.
 
 I re-derived the library write population on transfer's own head, with transfer's own tools and its own `ENTITY_ROUTES`, because we had two numbers for one thing: my ten sites over eight route keys and transfer's five. Transfer's five is not a miscount. It is exactly the residual of its own unmerged branch — right as a residual and wrong as a population. Both of us had measured against `origin/main`, and `origin/main` is a representation that cannot see what lives only on two open branches at once.
@@ -12124,6 +12170,44 @@ Two properties from the first addendum repeated exactly, which is the reason I t
 **The clause this adds is about the control.** I ran a positive control before reporting, and it agreed: both patterns return 168 on `main`. They agree there because `main` carries zero `### D` subheads, so the control was executed on the one ref where the two methods cannot differ. A control run where the discriminating case does not exist is not a weak control, it is not a control — it establishes that two instruments agree about a corpus that cannot separate them, and then that agreement is spent as though it were evidence about a corpus that can. D156 states the general form and got there first, on a catch-up forward that a suite building from nothing cannot see; this is the same mechanism on a document rather than a store, and it is worth having both populations under it.
 
 So the practical addition to D204's own remedy: when you reach for a second instrument, run it on the corpus that contains the thing the two instruments disagree about. Agreement anywhere else is the most reassuring possible result and means nothing.
+
+**Instance, 2026-09-29. A number that is true of the default and false of the value applied. The near-miss is the point: I was two sentences from killing a design with it.**
+
+I was costing a design that routes browser uploads through the business API, and needed to know whether its request-body ceiling made the design unusable. I grepped `MAX_BODY` in `services/pennsync-api/contracts.mjs`, found `export const MAX_BODY = 1024 * 1024` on line 11, and began writing that a JSON body of 1 MiB carries roughly 768 KiB of base64, so the design caps uploads at a tenth of what the browser transport allows and is therefore dead.
+
+**The ceiling actually applied is `app.mjs:71`: `const ceiling = handlers[name].maxBody ?? MAX_BODY`.** It is per-handler. The precedent is already in the tree at `handlers.mjs:1028`, where `importProvidersCsv` declares `2 * MAX_CSV_BYTES`, and `api.test.mjs:544` pins it. The comment immediately above line 71 says why, in the original author's words: a handler may declare a larger request than the service default, and exactly one does.
+
+**So the design never had that cost.** An upload handler declares its own ceiling and the global default never moves.
+
+**What makes this D204 rather than carelessness is that the instrument was right.** 1 MiB is the true value of the real constant, read from the real file. Nothing about the output was wrong or partial or truncated. The mismatch was entirely between the object I measured — a default — and the object my question was about — the ceiling resolved at dispatch. Two different things that share a name, and the shared name is what let me read one answer as the other.
+
+**And the failure mode would have been invisible, which is the reason to record it.** I would have reported a design unusable, with a file, a line number and a correct constant behind it. It is the best-evidenced wrong conclusion I have nearly shipped: everything a reviewer could check would have checked out, because the only false step was the one nobody re-reads, which is what the number is OF. The design I would have killed is the one that later survived every other objection.
+
+**What caught it was not suspicion.** I read further into `app.mjs` for an unrelated reason, to see how the body was parsed at all, and line 71 was on the way. **I did not go looking and I had no reason to.** A version of this afternoon where I had grepped precisely and stopped would have ended with a confident, evidenced, wrong answer and no way to notice.
+
+**The operational form I would offer.** For a limit, a ceiling, a timeout or a maximum, **find the line that APPLIES it, not the line that declares it** — the declaration is what a search finds first and the application is where the override lives. A constant tells you what happens when nobody has said otherwise, and the whole question is usually whether somebody has. Where the two agree, reading the application costs nothing; where they differ, the declaration is the wrong answer stated confidently.
+
+**What this does not claim.** It does not claim the constant was misleading or badly named — `MAX_BODY` is exactly what it says. It does not claim a general rule about grep. And it does not claim I would catch the next one, because I did not catch this one: it was caught by the shape of an unrelated read, which is luck rather than method, and the reason to write the method down is precisely that luck is what covered for it.
+
+**Instance, 2026-09-29. Matched lines reported as call sites — rows against names, which D204's own rule text already names. What it adds is the TRIGGER: I had articulated the rule hours earlier and it did not fire, because the rule I had rehearsed answers a different moment.**
+
+I reported the night's headline finding: the browser integration transport refuses `UploadFile` by name at `externalIntegrationTransport.js:267`, so two of three candidate designs were dead whatever else changed. I supported it with `grep -rn "Core\.UploadFile" src/ | wc -l` and wrote **33 call sites**.
+
+**33 is the number of matched lines. There are 29 invocations, across 27 files.** Three matches are comments naming the operation in prose. One is `src/api/integrations.js:10`, a re-export with **zero** consumers — nothing in `src/` imports from that module and there is no bare `UploadFile(` anywhere. Dead surface counted as a caller.
+
+I found it only because the coordinator built an assignment on the figure and I went to LIST the sites in order to classify them. **Listing found it in one command. No amount of re-reading the count could have.**
+
+**The conclusion survived**, which is what makes this a correction rather than a retraction: 29 sites the transport refuses is the same wall as 33. But the figure was the denominator of the work that followed, so fixing it first mattered more than the two digits.
+
+**The timing is the part worth keeping.** Hours earlier I had settled a disagreement with another session whose entire content was *name your unit* — they counted equality gates and read two, I counted binding points and read three, and naming the units dissolved it. I wrote that I would name my unit in the diff. **Then I shipped `wc -l` as a count of call sites in the next substantive message I wrote.**
+
+**Holding the rule, having just articulated it, and having just been thanked for articulating it, changed nothing.** The reason is that the rule I had rehearsed fires when RESOLVING A DISAGREEMENT about a number — somebody else has a different figure and you go looking for the unit. The failure happens when REPORTING a number, where there is no disagreement, nothing to resolve, and no prompt. From the inside those feel like one skill. They are one skill and two triggers, and only the first had been practised.
+
+**So the remedy I would offer is not "name your unit."** It is **list, then count the list.** The reason it works where the declarative rule does not: **a count has no way to show you its members.** A wrong count and a right count are the same glyph. A list exhibits what it counted, so the error is on the page rather than in the reader's discipline — and listing is a habit that runs unwatched, where naming the unit is something you do when challenged.
+
+**One thing this does not claim.** It is not the same failure as a count that is complete over a TRUNCATED VIEW, which is a different entry with a different remedy. Mine is a count that is complete and **of the wrong things**; that one is a count that is complete and **seen in part**. Merging them would give each a worked example that does not fit the other.
+
+**And what I would not conclude from it.** Not that I now apply the rule — I did not apply it the first time under ideal conditions, with the rule fresh and the subject identical. What changed is only that the remedy is now mechanical rather than attentional, and mechanical remedies are the only kind that survive the moment when nobody is watching.
 
 ## D205 — A negative asserted in the alarming direction recruits action before it recruits checking
 
