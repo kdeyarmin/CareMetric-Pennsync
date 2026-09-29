@@ -89,7 +89,7 @@ export function assessDocumentationReadiness({
 } = {}) {
   // A dataset the caller did not SUPPLY is different from one that is EMPTY.
   // Defaulting every parameter to [] made a caller that passes three datasets
-  // look like it had checked all eight, so a patient with unresolved drafts,
+  // look like it had checked all TEN, so a patient with unresolved drafts,
   // audits, OASIS findings or ADR cases could read as "No PennSync issues
   // detected" — the exact "we found nothing" / "we did not look" confusion this
   // module exists to prevent. Undefined means not supplied; [] means checked.
