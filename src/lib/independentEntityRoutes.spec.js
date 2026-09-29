@@ -834,6 +834,23 @@ describe('the declared entity routes', () => {
    * tree-side: a hosted comparison would report zero forever once the store is
    * applied, while this keeps saying which capability a store behind the tree
    * cannot serve.
+   *
+   * WHAT IT CANNOT SEE, DECLARED RATHER THAN PATCHED. `create or replace
+   * function` cannot change an argument list — a different list makes a new
+   * OVERLOAD and leaves the old form in place — so a forward migration can
+   * change which signatures exist with no `drop function` line at all, and the
+   * symptom is identical: an unapplied deployment has only the old form, and a
+   * body carrying the new key resolves against nothing. That is exactly why
+   * `20260920620000` had to drop first, and leaving the old overload is the
+   * safer-LOOKING choice, which is what makes it the likely next shape.
+   *
+   * The gap is declared instead of closed on purpose. The wider pattern is one
+   * over `create function`, which fires on every migration in this directory
+   * and therefore says nothing — a loosening in the direction where nothing
+   * fails. A check that names what it cannot see is the stronger artefact, so
+   * the blind spot is ASSERTED below as a silence rather than promised here: an
+   * overload added with no drop must stay invisible to this pattern, and that
+   * assertion is what fails the day somebody widens it.
    */
   it('names every forward migration that changes a public wrapper\'s arity', async () => {
     const { readFileSync, readdirSync } = await import('node:fs');
@@ -849,6 +866,13 @@ describe('the declared entity routes', () => {
     expect(dropsIn('drop function "public"."pennsync_contract_a_list"(text);\n'
       + 'drop function "public"."pennsync_contract_b_list"(text,integer);'))
       .toEqual(['pennsync_contract_a_list(text)', 'pennsync_contract_b_list(text,integer)']);
+
+    // And the declared blind spot, asserted as a silence. An overload added with
+    // no drop has the same effect on a deployment behind the tree, and this
+    // pattern does not see it; a wider pattern that did would fire on every
+    // migration here, so this is what fails if anybody widens it.
+    expect(dropsIn('create or replace function "public"."pennsync_contract_c_list"'
+      + '(p_agency text, p_limit integer, p_order text) returns jsonb')).toEqual([]);
 
     const found = [];
     for (const file of readdirSync(DIRECTORY).filter(name => name.endsWith('.sql')).sort()) {
