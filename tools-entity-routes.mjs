@@ -291,6 +291,200 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
  * first: the three below it are the ones a reader would draw the first
  * version of this tool's wrong conclusion from.
  */
+/**
+ * What a RISE in each printed figure means.
+ *
+ * Every figure here moves under more than one cause, and the causes do not
+ * agree about whether the news is good. `declared_but_refused` went from six
+ * to nine while three routes were being declared correctly, and a reader
+ * meeting that number cold would have read three new broken screens. The
+ * reason this is worth a structure rather than a paragraph is the eventual
+ * reader: a figure that moves the wrong way is the one that gets quoted to an
+ * owner as a health number, and it would be read backwards.
+ *
+ * The class of claim this fixes, so a later figure's author can tell whether
+ * theirs needs a line: an ARTEFACT WHOSE MEANING CANNOT BE READ OFF ITS OWN
+ * DESCRIPTION. `declared_but_refused` is named accurately and still misleads,
+ * because the name says what the figure counts and not which way it moves when
+ * the work goes well. The sibling case is a suite whose titles name a rule it
+ * checks on one entry point of three — every description agreeing, and the
+ * agreement being the thing that hides it. If a new figure's name tells a
+ * reader what it counts but not what a rise means, it needs a line here.
+ *
+ * `progress` is what a rise means when the repository got better, `regression`
+ * when it got worse, and `instrument` when nothing in the product moved and
+ * only this tool's reach changed. A figure whose `instrument` is not `null`
+ * cannot be compared across two heads without checking that the scan is the
+ * same on both.
+ *
+ * A third case exists beside those three and is the sharpest of them: a figure
+ * whose direction is readable only while something else is true. `progress`
+ * here may carry a `precondition` naming that condition, because a cause that
+ * has quietly stopped being possible is a direction note asserting something
+ * false about every future reading. Three entries below carry one, and all
+ * three say the same thing — a rise can be a route arriving only while keys
+ * with call sites remain undeclared. When Stage J finishes there are none, and
+ * on that day a rise in `declared_but_refused` becomes unambiguously a
+ * regression with nothing in the figure to show that its meaning changed. A
+ * test asserts each precondition still HOLDS on this tree, so the day it stops
+ * holding is a red rather than a quiet reinterpretation.
+ *
+ * The shape came from a sibling case outside this tool, where a printed total
+ * can only rise while a store is behind and starts being ambiguous the moment
+ * it is not. Same species: the world makes one of the causes unavailable, and
+ * nothing in the number says so.
+ *
+ * MEASURED, not reasoned, wherever it says so: the entries marked `measured`
+ * were established by running `measureRoutes` with a planted route object —
+ * which is what that parameter exists for — and reading which figures moved.
+ * The entries marked `derived` are read off the code path named in the text
+ * and have no planted case, because the cause is a change to another tool.
+ */
+export const FIGURE_DIRECTIONS = Object.freeze({
+  routes: Object.freeze({
+    evidence: 'measured',
+    progress: 'a route was declared. This is the only figure that counts the '
+      + 'route table rather than the frontend, so nothing a screen does moves it.',
+    regression: null,
+    instrument: null,
+  }),
+  landable_sites: Object.freeze({
+    evidence: 'derived',
+    progress: 'an entity\'s disposition changed so its call sites now have '
+      + 'somewhere to land. A rise here RAISES `unrouted_sites` by the same '
+      + 'amount until routes catch up, so adoption looks further away because '
+      + 'more of the work became possible.',
+    regression: 'a screen added entity calls nobody has routed.',
+    instrument: 'the shared walker or matcher in tools-frontend-destination.mjs '
+      + 'started seeing sites it did not see before. `servedSites` refuses '
+      + 'outright when the two scans disagree, so this cannot drift quietly — '
+      + 'but it CAN move for an instrument reason on a single head.',
+  }),
+  routed_sites: Object.freeze({
+    evidence: 'measured',
+    progress: 'a declared route now serves call sites it did not serve. '
+      + 'Measured: declaring one route whose request accepts the arguments took '
+      + 'this from 145 to 157 and `unrouted_sites` from 100 to 88.',
+    regression: 'a route stopped accepting arguments a screen still passes, or '
+      + 'the screen changed what it passes.',
+    instrument: 'a call site became readable that was not, moving it out of '
+      + '`declared_but_unreadable`. Nothing in the product changed.',
+  }),
+  unrouted_sites: Object.freeze({
+    evidence: 'measured',
+    progress: null,
+    regression: 'sites that could land still have no route serving them. But '
+      + 'read `landable_sites` first: this is a SUBTRACTION, so it also rises '
+      + 'whenever more sites become landable, which is progress.',
+    instrument: 'inherited whole from `landable_sites` and `routed_sites`.',
+  }),
+  declared_but_refused: Object.freeze({
+    evidence: 'measured',
+    progress: 'a key that was previously SKIPPED became declared. `servedSites` '
+      + 'passes over an undeclared key entirely, so a site is invisible until a '
+      + 'route claims it and only then can be counted as refused. Measured: '
+      + 'declaring one refusing route over an undeclared key took this from 9 '
+      + 'to 21 with `landable_sites`, `routed_sites` and `unrouted_sites` all '
+      + 'unchanged. A rise here is usually a route arriving, not a screen '
+      + 'breaking.',
+    precondition: 'keys with landable call sites remain undeclared',
+    regression: 'a route already serving a key stopped accepting some of its '
+      + 'sites. A route that refuses ALL of a key\'s readable sites does not '
+      + 'reach this figure at all — it fails the build as '
+      + 'ENTITY_ROUTE_SERVES_NO_CALL — so what lands here is always a partial.',
+    instrument: 'a site became readable and its declared route refuses it; it '
+      + 'moves out of `declared_but_unreadable` into this.',
+  }),
+  declared_but_unreadable: Object.freeze({
+    evidence: 'derived',
+    progress: 'a key became declared whose call sites pass variables. Same '
+      + 'skipping rule as `declared_but_refused`: undeclared keys are not '
+      + 'counted anywhere.',
+    precondition: 'keys with landable call sites remain undeclared',
+    regression: 'a screen replaced literal arguments with a variable. Not a '
+      + 'defect — the contract\'s own refusals check those calls — but this '
+      + 'tool can no longer say anything about them.',
+    instrument: 'this FALLS when tools-entity-call-arguments.mjs learns to '
+      + 'resolve an argument it could not, which moves the site into '
+      + '`routed_sites` or `declared_but_refused`. So a fall here is not '
+      + 'adoption and the rise it causes elsewhere is not either.',
+  }),
+  unproved_routes: Object.freeze({
+    evidence: 'derived',
+    progress: 'a route was declared whose every call site passes a variable. '
+      + 'Declared and permitted, never counted as adopted.',
+    precondition: 'keys with landable call sites remain undeclared',
+    regression: null,
+    instrument: 'falls when the argument reader resolves one of that key\'s '
+      + 'sites, which decides the route either way without anybody editing it.',
+  }),
+  refusals: Object.freeze({
+    evidence: 'derived',
+    progress: 'a new DISTINCT reason appeared, so this counts kinds of refusal '
+      + 'and not sites. It can stay flat while `declared_but_refused` moves by '
+      + 'twelve, and it can rise while that figure falls.',
+    regression: 'same, from the other side.',
+    instrument: null,
+  }),
+  unrouted_entities: Object.freeze({
+    evidence: 'derived',
+    progress: null,
+    regression: 'entities with unserved sites. Moves with `unrouted_sites` and '
+      + 'carries its ambiguity: a disposition that makes an entity landable '
+      + 'raises this.',
+    instrument: 'inherited from `landable_sites`.',
+  }),
+  generic_family_entities: Object.freeze({
+    evidence: 'derived',
+    progress: null,
+    regression: null,
+    instrument: 'this and the three figures below it answer what a WIDER '
+      + 'family could reach, so they move when an entity SCHEMA changes — '
+      + 'neither progress nor regression in this tool\'s terms, and a rise is '
+      + 'an input to a decision rather than a result.',
+  }),
+  generic_family_reads: Object.freeze({
+    evidence: 'derived',
+    progress: null,
+    regression: null,
+    instrument: 'an `rls` block started plainly permitting a read, or the '
+      + 'ceiling audit changed. Never a statement that anything was built.',
+  }),
+  generic_family_writes: Object.freeze({
+    evidence: 'derived',
+    progress: null,
+    regression: null,
+    instrument: 'as above. It has been 0 since D16\'s ceiling was applied '
+      + 'whole, and a rise wants reading against the ceiling rather than '
+      + 'celebrating.',
+  }),
+  needs_named_capability: Object.freeze({
+    evidence: 'derived',
+    progress: null,
+    regression: 'the remainder that no widening can serve. Rises with '
+      + '`unrouted_sites` and inherits its ambiguity exactly.',
+    instrument: 'inherited from `landable_sites`.',
+  }),
+  problems: Object.freeze({
+    evidence: 'measured',
+    progress: null,
+    regression: 'the gate failed. This is the one figure with no benign cause: '
+      + 'non-zero is non-zero, and `ok` is its restatement.',
+    instrument: null,
+  }),
+});
+
+/**
+ * The figures that are NOT measurements, named rather than pattern-matched.
+ *
+ * A test crosses `FIGURE_DIRECTIONS` against the report in both directions and
+ * fails on a figure with no direction, so a figure added later cannot arrive
+ * undocumented. That check needs to know what is deliberately exempt, and a
+ * rule like "skip anything not a number" would silently exempt the next
+ * figure that happens to be a string.
+ */
+export const NOT_A_MEASUREMENT = Object.freeze(['format', 'schema_version', 'ok']);
+
 export function summaryLines(report) {
   const lines = [
     `entity routes: ${report.routes} declared, `
@@ -300,6 +494,15 @@ export function summaryLines(report) {
     // written for and cannot serve, which is the number the tool used to
     // report as adoption. A reader who sees only the first line would draw the
     // same wrong conclusion the first version of this tool did.
+    // The parenthesis holds `refusals`, which is the only figure in
+    // FIGURE_DIRECTIONS whose count is never printed as a number: what a
+    // reader meets is the LIST, sitting immediately after a total it does not
+    // decompose. Four reasons beside nine sites reads as four of the nine,
+    // and it is neither — one reason can account for every site or for one.
+    // Its direction entry says they move independently; this is where a
+    // reader would need to know it. `unproved_routes` is the same kind of
+    // value and is NOT in that position: its own `.length` prints directly in
+    // front of its list, so the number and the names are one quantity.
     `  ${report.declared_but_refused} of those are sites a declared route REFUSES`
       + `${report.refusals.length ? ` (${report.refusals.join(', ')})` : ''}`
       + `, and ${report.declared_but_unreadable} pass arguments this cannot read`,
@@ -315,6 +518,38 @@ export function summaryLines(report) {
     + `a wider generic family could serve ${report.generic_family_reads} reads and `
     + `${report.generic_family_writes} writes above D16's ceiling; `
     + `${report.needs_named_capability} need a named capability`);
+  return lines;
+}
+
+/**
+ * The direction notes as lines. Exported and deliberately NOT wired to a flag.
+ *
+ * This tool prints exactly what it printed before: AGENTS.md carries one of
+ * those lines verbatim and a test compares the page against `summaryLines`, so
+ * putting a direction into a printed line would break the pin that exists to
+ * stop the page drifting — a second copy of the wording, which is the house
+ * defect this whole structure is against. An audit that introduced one would
+ * be an odd audit.
+ *
+ * So the printer exists, is tested, and has no caller in `main`. Giving the
+ * terminal reader the direction is a SECOND change: it has to move AGENTS.md's
+ * pin and the plan's reflowed paraphrase together, and whether it is worth
+ * doing is answerable only once somebody knows how many figures there are and
+ * how many of them actually move the wrong way. Derived from this structure
+ * rather than counted by hand: fourteen figures, nine where a rise has more
+ * than one cause, seven where a rise can be progress, and five where one rise
+ * can be either progress or regression depending on what moved. A test pins
+ * those four counts, so the sentence cannot go stale while the structure does
+ * not.
+ */
+export function directionLines(directions = FIGURE_DIRECTIONS) {
+  const lines = ['what a RISE in each figure means:'];
+  for (const [figure, note] of Object.entries(directions)) {
+    lines.push(`  ${figure} (${note.evidence})`);
+    for (const cause of ['progress', 'regression', 'instrument']) {
+      if (note[cause]) lines.push(`    ${cause}: ${note[cause]}`);
+    }
+  }
   return lines;
 }
 
