@@ -897,10 +897,21 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // Read it beside D83, which took `MedicareGuideline`'s two writers out of
   // this same bucket the same way: a blocked port and a capability that is not
   // being carried are not the same thing, however alike they look in a count.
+  // Then the first movement out of `files`, and it is a PORT rather than a
+  // correction: `extractPatientDataFromDocument` ships, 12 → 11 and 78 → 79.
+  // What unblocked it was not the byte copy. The bucket's name says "reads or
+  // writes an uploaded file", and the discriminator is where the LOCATOR comes
+  // from: a copy repoints carried rows, and nine of the ten guarded readers
+  // take theirs from the request body seconds after a browser upload, so there
+  // is no carried row to repoint. The port takes the bytes and brokers the
+  // upload itself, which puts one subject on both sides of the runtime's
+  // uploader-ownership fence. Read it beside the two entries above: one count
+  // moved down because a capability was not being carried, this one because a
+  // capability was carried by asking a different question of the same module.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 6, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 78 });
+    records_schema: 0, files: 11, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    external_secret: 2, none: 79 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -1060,8 +1071,12 @@ test('the port queue is work that cannot start yet, and says why', async () => {
     assert.ok(report.port_blockers.none.includes(name), `${name} is written`);
   }
   // Named, because porting one of these verbatim would carry Base44's storage
-  // host into the service, and the `cmfile:` handles that replace those URLs do
-  // not exist yet. They wait on the file layer, not on the runtime.
+  // host into the service. The `cmfile:` handles that replace those URLs DO
+  // exist; what these wait on is the data copy that repoints carried `file_url`
+  // rows at them — and `extractPatientDataFromDocument` left this list by not
+  // needing one, because its locator came from the request body rather than
+  // from a carried row, so the port takes the bytes and brokers the upload
+  // itself.
   // `mergePDFs` and `reorderDeletePDFPages` join them by the refinement: each
   // touches `UserActivity` and nothing else, so the record store is not what
   // either is waiting for.
@@ -1072,7 +1087,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // migration and thirty-one call sites. `records_schema` reads as "startable
   // today", and for these six it was not true.
   assert.deepEqual(report.port_blockers.files, ['createAuthorizedDocument',
-    'extractClinicalDocument', 'extractPatientDataFromDocument', 'generateAdrPacket',
+    'extractClinicalDocument', 'generateAdrPacket',
     'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
     'preparePDFWithPatientInfo', 'processPatientFileUpdate', 'reorderDeletePDFPages',
     'splitReferralPDF']);
@@ -1087,6 +1102,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'distributePolicyAcknowledgment',
       'expandClinicalPhrase',
       'extractClinicalEvents',
+      'extractPatientDataFromDocument',
       'extractReferralDataForSmartNote',
       'generateAIReport', 'generateBagTechniquePDF', 'generateFollowUpTasks',
       'generatePatientChartPDF', 'generatePatientHandout', 'generateReferralTasks',

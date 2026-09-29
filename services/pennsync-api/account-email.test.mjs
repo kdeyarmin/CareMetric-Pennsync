@@ -96,7 +96,8 @@ test('the gate reads exactly one string, untrimmed', () => {
 test('SendEmail is brokered only while delivery is released', () => {
   // The ratchet is untouched: a reader of `BROKERED_OPERATIONS` still sees exactly
   // what an unreleased deployment may ask the runtime for, which is D56's point.
-  assert.deepEqual([...BROKERED_OPERATIONS], ['InvokeLLM', 'ExtractDataFromUploadedFile']);
+  assert.deepEqual([...BROKERED_OPERATIONS],
+    ['InvokeLLM', 'ExtractDataFromUploadedFile', 'UploadFile']);
   assert.deepEqual([...DELIVERY_OPERATIONS], ['SendEmail']);
   assert.equal(brokeredOperations({ deliveryReleased: false }).includes('SendEmail'), false);
   assert.equal(brokeredOperations({}).includes('SendEmail'), false);
@@ -104,7 +105,7 @@ test('SendEmail is brokered only while delivery is released', () => {
   assert.equal(brokeredOperations({ deliveryReleased: true }).includes('SendEmail'), true);
   // And nothing else arrives with it.
   assert.deepEqual(brokeredOperations({ deliveryReleased: true }),
-    ['InvokeLLM', 'ExtractDataFromUploadedFile', 'SendEmail']);
+    ['InvokeLLM', 'ExtractDataFromUploadedFile', 'UploadFile', 'SendEmail']);
 });
 
 test('releasing delivery is refused without a runtime, and is published when it holds', () => {

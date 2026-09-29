@@ -123,7 +123,7 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=6 files=12 external_secret=2 none=78
+port queue: entity_authorization=6 files=11 external_secret=2 none=79
 ```
 
 98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
@@ -1555,7 +1555,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   document is where such a judgement belongs; each is then re-checked against
   the tree, so a declared name that stops being a handler, or a read wave that
   gains a write, fails the build. "The rest by blast radius" is derived:
-  read-only, then mutating, then the nineteen that reach the paused runtime.
+  read-only, then mutating, then the twenty that reach the runtime.
 
   | Wave | Handlers | Migrations |
   | --- | ---: | ---: |
@@ -1564,7 +1564,21 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
   | `mutating` (derived) | 63 | 41 |
-  | `integration` (derived) | 19 | 17 |
+  | `integration` (derived) | 20 | 17 |
+
+  **The twentieth is `extractPatientDataFromDocument`, and it carries an
+  operator cost the other nineteen do not.** It is the first port out of the
+  `files` bucket, and it gets there by taking the document's BYTES rather than
+  a locator, so it brokers `UploadFile` under its own subject — which put that
+  name into `BROKERED_OPERATIONS`. `node tools-pennsync-release-ladder.mjs
+  --wave integration --integration-deployment https://<runtime-host>` now
+  requires it, so **a runtime serving only the two AI operations and
+  `SendEmail` does not hold this wave**: `UploadFile` has to join
+  `INTEGRATIONS_ALLOWED_OPERATIONS` on the integration runtime in the same
+  release. That is a release-variable write and belongs to whoever holds that
+  connector; nothing here performs it, and the gate refusing is the check doing
+  its job rather than a defect. Read the runtime's own `/readyz` for what it is
+  serving — this page does not say.
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven

@@ -35,8 +35,17 @@ export const INTEGRATION_TARGETS = Object.freeze([
  * What a ported handler may ask for. The runtime brokers more than this; this
  * is the subset the ports in this service actually use, so releasing a handler
  * cannot widen the surface by accident.
+ *
+ * `UploadFile` joined it with `extractPatientDataFromDocument`, which is the
+ * ratchet working as intended rather than a loosening: the capability takes a
+ * document's bytes and must mint the handle under its OWN subject, because an
+ * object the browser uploaded is not readable by this service. Growing the list
+ * per port is what the paragraph above describes; what it forbids is a name
+ * added ahead of the port that needs it.
  */
-export const BROKERED_OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFile']);
+export const BROKERED_OPERATIONS = Object.freeze([
+  'InvokeLLM', 'ExtractDataFromUploadedFile', 'UploadFile',
+]);
 /**
  * What THIS deployment may ask for. `BROKERED_OPERATIONS` is the unconditional
  * set and stays the ratchet D56 made it; `DELIVERY_OPERATIONS` is added only

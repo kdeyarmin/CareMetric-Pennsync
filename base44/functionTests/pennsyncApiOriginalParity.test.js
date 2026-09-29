@@ -20,6 +20,9 @@ import {
   AUDIT_CODES, AUDIT_LIST_CODES, SUBJECT_KINDS,
 } from '../../services/pennsync-api/audit.mjs';
 import { RECORD_CONTRACTS } from '../../services/pennsync-api/record-contracts.mjs';
+import {
+  PATIENT_EXTRACTION_SCHEMA,
+} from '../../services/pennsync-api/patient-extraction.mjs';
 import { insightPrompt } from '../../services/pennsync-api/ai-report.mjs';
 import { reportMetrics, reportTrend } from '../../services/pennsync-api/report-metrics.mjs';
 import {
@@ -1247,4 +1250,34 @@ test('each account email s message is the original s, byte for byte', async () =
     assert.equal(answer.success, true, relative);
     assert.equal(answer.message, expected, relative);
   }
+});
+
+test('the patient extraction schema is the original s, field for field', async () => {
+  /*
+   * Every `description` here is a sentence the model reads, so a rephrasing
+   * changes what comes back from a document about a real person. Evaluated out
+   * of the original rather than transcribed — D12's rule, and the reason
+   * `patient-extraction.mjs` says it is copied rather than reworded.
+   */
+  const relative = 'base44/functions/extractPatientDataFromDocument/entry.ts';
+  const original = await readFile(resolve(repository, relative), 'utf8');
+  const start = original.indexOf('const PATIENT_SCHEMA = {');
+  assert.ok(start > 0, 'the original still carries the schema');
+  const end = original.indexOf('\n};', start);
+  assert.ok(end > start, 'and it still ends where it did');
+  const block = `export ${original.slice(start, end + 3)}`;
+  const file = join(tmpdir(), `schema_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(block).outputText);
+  let PATIENT_SCHEMA;
+  try { ({ PATIENT_SCHEMA } = await import(pathToFileURL(file).href)); }
+  finally { await unlink(file).catch(() => {}); }
+
+  // Sanity on the extraction itself, so a block that failed to parse into
+  // something empty cannot pass as agreement.
+  assert.equal(PATIENT_SCHEMA.type, 'object');
+  assert.ok(Object.keys(PATIENT_SCHEMA.properties).length > 15);
+  assert.deepEqual(PATIENT_EXTRACTION_SCHEMA, PATIENT_SCHEMA);
+  // Order too: a model reads the fields in the order it is given them.
+  assert.deepEqual(Object.keys(PATIENT_EXTRACTION_SCHEMA.properties),
+    Object.keys(PATIENT_SCHEMA.properties));
 });

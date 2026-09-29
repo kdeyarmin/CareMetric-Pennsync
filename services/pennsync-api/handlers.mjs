@@ -13,6 +13,7 @@ import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { MAX_CSV_BYTES, importProviders } from './provider-import.mjs';
+import { EXTRACTION_MAX_BODY, PATIENT_EXTRACTION_SCHEMA } from './patient-extraction.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
 import { AI_REPORT_PARAMS, generateAiReport } from './ai-report.mjs';
@@ -1343,6 +1344,78 @@ export const HANDLERS = Object.freeze({
         generatedOn: documentDate(now), year: now.getFullYear(),
       }).output('arraybuffer');
       return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
+    },
+  }),
+  extractPatientDataFromDocument: Object.freeze({
+    needsIntegration: true,
+    // The bytes arrive in the request rather than as a locator, so this
+    // capability declares its own ceiling. See `patient-extraction.mjs` for why
+    // the figure is the runtime's `MAX_FILE` encoded rather than a policy of
+    // this service's own.
+    maxBody: EXTRACTION_MAX_BODY,
+    /*
+     * The first port out of the `files` bucket, and the shape is the finding
+     * rather than the code.
+     *
+     * The original takes a `file_url` the browser uploaded to Base44's storage
+     * a moment earlier, checks it against an SSRF allowlist naming that
+     * storage host, and hands it to `ExtractDataFromUploadedFile`. Carrying
+     * that verbatim would carry a Base44 dependency into the service the exit
+     * exists to remove, and repointing the locator at the owned runtime does
+     * not work either: an object there is readable only by the subject that
+     * uploaded it, and a browser and this service are different subjects.
+     *
+     * So the browser sends the BYTES and this handler brokers the upload
+     * itself. One subject writes and reads, which is what
+     * `providers.mjs` already requires — no change to the runtime's
+     * authorization model, and nothing here holds a credential either way.
+     * Measured against what the product does TODAY, it is tighter and not
+     * looser: a stored `file_url` has no expiry and is readable by anyone who
+     * holds the string, while the handle this mints belongs to one subject.
+     *
+     * Two narrowings, both recorded rather than worked around:
+     *
+     * 1. The size ceiling, in `patient-extraction.mjs`.
+     * 2. The failure detail. The original returns the integration's own
+     *    `details` to the caller; this service never lets the runtime's words
+     *    cross back (`integrations.mjs`), so the message is fixed. The caller's
+     *    branch is unchanged, because the SPA switches on `status` and shows
+     *    `details` only as text.
+     */
+    async handle({ params, integration }) {
+      exactObject(params, ['base64', 'content_type'], 'INVALID_PARAMS');
+      // Refused here rather than left to the runtime so the caller is told it
+      // sent the wrong shape, not that an upload failed.
+      if (typeof params.base64 !== 'string' || !params.base64
+        || typeof params.content_type !== 'string' || !params.content_type) {
+        fail(400, 'INVALID_PARAMS');
+      }
+      const upload = await integration('UploadFile', {
+        base64: params.base64, content_type: params.content_type,
+      });
+      if (!isObject(upload) || typeof upload.file_uri !== 'string' || !upload.file_uri) {
+        fail(502, 'DOCUMENT_UPLOAD_FAILED');
+      }
+      const extraction = await integration('ExtractDataFromUploadedFile', {
+        file_uri: upload.file_uri,
+        // Cloned per call: the runtime is handed this object, and a frozen
+        // shared one is not something to hand across a boundary.
+        json_schema: structuredClone(PATIENT_EXTRACTION_SCHEMA),
+      });
+      // The runtime raises rather than answering a failure status, so this
+      // branch is the original's shape kept for a provider that answers one.
+      if (!isObject(extraction) || extraction.status !== 'success') {
+        return {
+          status: 'error',
+          details: 'Failed to extract patient data from document',
+          patient_data: null,
+        };
+      }
+      return {
+        status: 'success',
+        patient_data: extraction.output || {},
+        message: 'Patient data extracted successfully',
+      };
     },
   }),
   submitStateReportableIncident: Object.freeze({
