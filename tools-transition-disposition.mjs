@@ -403,8 +403,11 @@ export function discoverInertFunctions(repository) {
  * - `ported_function` — calls another Base44 function, so it waits on that one.
  * - `files` — reads or writes an uploaded file. The SSRF allowlist these
  *   handlers use names Base44's own storage host, so porting one verbatim would
- *   carry a Base44 dependency into the service the exit exists to remove, and
- *   the `cmfile:` handles that replace those URLs do not exist yet. It waits on
+ *   carry a Base44 dependency into the service the exit exists to remove. The
+ *   `cmfile:` handles that replace those URLs DO exist — `providers.mjs` mints
+ *   one from both `UploadFile` and `UploadPrivateFile` — so what a handler in
+ *   this bucket waits on is the data copy that repoints carried `file_url`
+ *   rows at those handles (D56, D77), not the handles themselves. It waits on
  *   the file layer, which is a phase of its own, rather than on the record
  *   store or the runtime.
  * - `core_integration` — calls a Core integration (an LLM, an extraction, a
