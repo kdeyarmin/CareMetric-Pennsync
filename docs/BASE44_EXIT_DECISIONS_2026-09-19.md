@@ -10530,6 +10530,39 @@ And the added words are **true**: the paragraph is a correct statement of the `p
 
 Related: D140, D143, D145, D147, D148, D170.
 
+## D178 — An issuance question is settled by the delivery record, never by the index
+
+**Added 2026-09-29.** Found while refusing to merge #341, which used a decision number six times across two documents that a reviewer said might already be issued elsewhere.
+
+### The problem
+
+"Who owns D-n?" and "was D-n ever issued?" are answered today by reading an index — the coordinator's memory page, or a thread's measured table of the rules files. **Both are the coordinator's own writing.** Two of them agreeing is one source with two witnesses, which is the thing D170 says is not corroboration. And the index is precisely the artefact under suspicion when the question is asked at all: if it were reliable, nobody would be asking.
+
+So an issuance question read off an index has no way to come back "the index is wrong." It can only come back "the index says X," which is the answer you already had.
+
+### The instrument
+
+**The delivery record in the receiving thread's transcript.** One grep of that thread for the number returns the turn in which it was awarded, with the reasoning attached and a timestamp — the wire record of the award, not a later recollection of it. That separates two claims an index cannot:
+
+- **was issued** — the turn exists, and it says what the number was for;
+- **is remembered as issued** — someone's list has a row.
+
+On D153 it cost under a minute and returned the award turn at `2026-09-28T17:14:47Z` with its argument intact. That is what unblocked a merge that had been held on a question nobody could settle from their own copy.
+
+### The worked case for why it must be first rather than last
+
+Within the same hour, the same index produced a wrong ownership for **D157**: stated as one thread's, corrected to another's, then the correction retracted because the two names resolved to the same session. Three statements, two contradictions, and the thing that finally settled it was the author's own first-hand claim about its own work. **A grep of the receiving thread would have returned the right answer before the first contradiction existed.** The cost of the index route was not a wrong answer that stood — it was three rounds of correction, each of which had to be noticed by someone.
+
+There is a near miss in the same window worth recording, because it is the failure this rule prevents in its other direction: ownership was briefly read off *which pull request an entry appears in*. **#336 is a collection: it splices thirty entries in byte-for-byte and refuses to author.** Its carrier is not their author. Carriage and authorship are different claims about one artefact, and an entry's location is evidence it was written, never evidence of whose it is.
+
+### The rule
+
+**When an issuance is in question, go to the receiving thread's transcript first, not to any list.** The index stays useful for everything else — it is how anyone finds the number to ask about. It simply cannot be the witness to its own error, and neither can a second list written by the same hand.
+
+### What it does not settle, said rather than claimed
+
+The grep proves a number was awarded in that thread at that time. It does not prove the award was not later withdrawn, and it cannot find an issuance made in a thread nobody thought to search. Both are real limits. Neither was reachable by the index either, so this is strictly more than what it replaces — and the honest form of the answer is "the award turn exists, here it is," not "the number is settled."
+
 ## D179 — A total that closes is not evidence
 
 A partition with three free terms and one total is not self-checking: two wrong terms close as readily as two right ones. The occurrence is mine, tonight. I was carrying "unrouted = keyless + unreadable + refused" and its sub-split, and when main moved under me the headline fell by three. I kept the keyless term where it was and moved the unreadable term by three so the sum still closed. Both terms were wrong, and the tool's own second line had been printing the right unreadable figure the whole time — I had a correct reading in front of me and preferred the one that preserved the arithmetic.
