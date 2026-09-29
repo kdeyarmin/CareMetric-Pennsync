@@ -442,9 +442,18 @@ test('the whole directory is applied, and it leaves this capability the surface 
       await build(probe);
       // `proname` alone is not the signature: PostgREST resolves an RPC by the
       // NAMES of the body's keys, so a parameter renamed consistently in SQL is
-      // a different call shape and identical here without the identity args.
+      // a different call shape and identical here without the arguments.
+      // `pg_get_function_ARGUMENTS`, not `..._identity_arguments`, on Copilot's
+      // finding against this change and for the reason the store inventory
+      // already records (D95, `store-inventory.mjs`): the identity form omits
+      // argument DEFAULTS by definition, and a default is what decides whether a
+      // request body may leave that key out — so a forward that added or removed
+      // one would change the call shapes this capability accepts and deparse
+      // identically here. The two differ in nothing else that matters to us, so
+      // the wider form is strictly better and there was no reason to pick the
+      // narrower one beyond having read the wrong helper's name first.
       const { rows } = await probe.query(`
-        select n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) as args
+        select n.nspname, p.proname, pg_get_function_arguments(p.oid) as args
         from pg_catalog.pg_proc p
         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
         where n.nspname || '.' || p.proname = any($1::text[])`, [declared]);
@@ -502,4 +511,31 @@ test('the whole directory is applied, and it leaves this capability the surface 
   });
   assert.deepEqual(beside, named,
     'a matching function outside the capability must not read as a change to it');
+
+  // C. An ARGUMENT DEFAULT added, which changes which request bodies are accepted
+  // and nothing else. This case is here on Copilot's finding against this change:
+  // with `pg_get_function_identity_arguments` the comparison stayed green through
+  // it, because that form omits defaults BY DEFINITION, so a caller could begin
+  // omitting `p_detail` — an audit entry's whole payload — with every suite
+  // passing. Written as a control rather than as a comment, because the failure it
+  // describes is precisely the kind a comment cannot catch.
+  //
+  // The direction is ADDING one, and that is a PostgreSQL constraint rather than a
+  // preference: `create or replace` refuses to REMOVE a parameter default
+  // (`42P13`, "cannot remove parameter defaults from existing function", which
+  // wants a DROP first), so the removal case cannot be planted this way at all.
+  // Either direction exercises the same blind spot in the comparison.
+  const defaulted = await surface(async probe => {
+    await applyRecordMigrations(probe);
+    await probe.exec(`create or replace function "public"."pennsync_contract_activity_append"(
+      p_agency text, p_action text, p_subject_kind text, p_subject_id text,
+      p_detail jsonb default null) returns text
+      language sql security invoker set search_path = '' as $contract$
+      select "${SCHEMA}".contract_activity_append(p_agency, p_action, p_subject_kind, p_subject_id, p_detail)
+    $contract$`);
+  });
+  assert.notDeepEqual(defaulted, named,
+    'an added argument default changes the accepted call shapes and must be seen');
+  assert.equal(defaulted.length, named.length,
+    'and it is the same four functions, so only an argument list may have moved');
 });
