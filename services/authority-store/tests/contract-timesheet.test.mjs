@@ -385,6 +385,23 @@ test('the swap widened the store and left this contract reachable unchanged', as
   assert.deepEqual(applied, names,
     'the applied set is the record directory, sorted, and nothing else');
 
+  // The surface is matched by NAME, and the population stays the STORE rather
+  // than being derived from the declarations in this contract's own migration.
+  //
+  // Measured 2026-09-29: all TEN `%timesheet%` functions are declared in
+  // `20260920360000_contract_timesheet.sql` and nowhere else, so a derivation
+  // here is a true no-op today — and that is the argument against making it,
+  // not for it. Pattern and declaration agree by COINCIDENCE, not by
+  // construction. D88 makes a forward file the only legal way to change an
+  // applied store, so the first timesheet-named function to arrive in one
+  // would silently leave a derived population while this comparison stayed
+  // green: the whole surface this test guards would stop being the surface.
+  // `contract-roster.test.mjs` is that future already arrived — `caller_roster`
+  // is declared in the record store migration and `contract_roster_report` in a
+  // file of its own, and its narrowed population would have lost both.
+  //
+  // A no-op conversion that installs a trap is worse than no change, because
+  // the diff reads as tidying and nothing fails on the day it matters.
   const timesheetSurface = async client => (await client.query(
     // Both argument renderings: `pg_get_function_identity_arguments` omits
     // argument DEFAULTS by definition (D95), and a default decides which
