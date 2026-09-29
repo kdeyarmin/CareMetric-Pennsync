@@ -7542,6 +7542,48 @@ would reproduce this entry's defect at the next merge that adds a migration.
 same way. Not surveyed here on purpose: a hunt run mid-batch would be a reading
 of a tree that is moving. It is worth one pass when the contract batches are in.
 
+### Addendum, 2026-09-29: the ratio that survived both its operands, in plan's own words
+
+D106 addendum, Plan's, 2026-09-29 — the ratio that survived both its operands, measured inside D106's own paragraph.
+This adds a worked example to a landed entry and changes none of its prose. It
+is mine; D106 is not.
+
+**The instance.** The destination-gate sentence in `AGENTS.md` read "203 of 445
+— 46%". Re-measured on `8bc9d214` it is **208 of 453 — 46%**. The population
+grew by eight, the refused count grew by five, a whole destination bucket
+(`no_realtime_seam`) appeared in the enumeration printed beside it, and **the
+percentage came out the same**. Nothing failed, nothing looked wrong, and the
+sentence explaining the figure had gone stale in every part except the part a
+reader checks.
+
+**Why it belongs under D106 rather than taking a number.** D106 says three
+counts sitting near each other are each DERIVED and never read off one another,
+because a figure can survive a change for an entirely different reason while the
+sentence explaining it goes stale and nothing fails. That is this, exactly. The
+only thing to add is the sharpest version of the mechanism, which this instance
+supplies and D106's original statement does not: **the one number a reader would
+spot-check was the one that stayed right.** Recognising 46% is what gives the
+reader a reason to stop looking. A stale figure that had visibly moved would
+have been caught by the first person who re-ran the gate.
+
+**And note where it was found.** It was sitting in D106's own paragraph, on the
+page D106 governs, having been written by somebody who knew the rule. That is as
+close as a worked example comes to self-demonstrating, and it is the reason I am
+not proposing a new rule: a rule that has to be restated because its own page
+broke it is not a second rule, it is the first one arriving with evidence.
+
+**How to apply.** An unchanged derived figure across a re-measurement is not
+corroboration — it is the case that most needs checking, because agreement is
+what stops the check. Re-derive **both** operands separately and re-read the
+enumeration beside them, since a bucket that appears is invisible to anyone
+comparing only the total. Treat a ratio you did not just compute from two
+freshly measured operands as UNMEASURED, whatever it agrees with.
+
+**The related trap, which is the same shape from the other side**: agreement
+with a REMEMBERED figure validates nothing either. A count withdrawn twice
+tonight came back agreeing with one of the withdrawn values because two errors
+cancelled. Agreement is evidence about arithmetic, never about measurement.
+
 ## D108 — A write may not name a chart this store does not hold
 
 *2026-09-25.*
@@ -11202,6 +11244,20 @@ I told the coordinator, batch A, batch C and redeploy that `main` had moved by f
 
 **It also supplied D189's second worked example.** Batch A read three commits and no migration added; I read six and one added. Both were true, because our left endpoints differed — theirs opens at the commit that added the file, mine before it, so the same migration is an arrival in my frame and an existing member in theirs. The two readings did not conflict and could not be shown not to conflict until both named their endpoints.
 
+## D191 — a listing bounded by a count I supplied reports my bound, not the population
+
+**2026-09-29.** Mine.
+
+I told the coordinator, batch A, batch C and redeploy that `main` had moved by four commits since the base my branch carried. It had moved by six. The number came from a `git log -4` whose output I read as the interval and reported as one.
+
+**The defect is not the miscount.** It is that a bounded listing looks exactly like an exhaustive one. Four lines of `git log -4` contain nothing that says "and there were two more" — no ellipsis, no count, no truncation marker — so the error has no tell at the moment it is made. Nobody caught it by reading my claim, in four threads over about an hour. It surfaced only when I went back and measured between NAMED endpoints because a different question had been put to me, and the interval came out at six.
+
+**Take the bound out of the instrument.** `git log <base>..<tip>` has no `-N` in it, so its output is the population by construction and there is no bound of mine for the result to be confused with. Where a limit is genuinely needed, ask for one more than you intend to show and say whether you got it — the extra row is the tell the listing does not have. This is D185's shape arriving from another direction: prefer the form that removes the tempting operation to a rule against performing it.
+
+**What kept the damage to the number itself is worth as much as the lesson.** Nothing else I sent depended on the count. The thing that actually mattered — that exactly one migration arrived in the interval, and which one — was measured with `git diff --name-status` over the same named endpoints, not read off the listing. So the bad figure was decoration on a result derived another way, and withdrawing it changed no conclusion anywhere. **A figure is safe when the listing is not the instrument**, and that is the property to check when a count turns out wrong: not "how far did the number travel" but "did anything rest on it".
+
+**It also supplied D189's second worked example.** Batch A read three commits and no migration added; I read six and one added. Both were true, because our left endpoints differed — theirs opens at the commit that added the file, mine before it, so the same migration is an arrival in my frame and an existing member in theirs. The two readings did not conflict and could not be shown not to conflict until both named their endpoints.
+
 ## D192 — Say what each figure counts before asking which one is right
 
 A question of the form "is it X or Y?" carries a premise: that X and Y are two answers to one question. When they are answers to different questions the premise is false, and the question manufactures a disagreement neither side can resolve. Whichever number the answerer picks, they have assented to a comparison that was never valid, and the one they dropped was correct about its own subject. The damage is not that the asker was unsure — it is that the question forced an answer wrong for at least one side, and made it look settled.
@@ -11500,33 +11556,54 @@ The one-sentence test confirms it from the other side. To cover D95's lesson and
 
 The clause "right, about the right thing, by an arrangement you did not design" is the coordinator session's, and it is the sharpest statement of this entry's subject; it is quoted here with attribution rather than absorbed.
 
-## D199 — A sweep prints its probe list; a coverage figure is about a population. Count the controls out before quoting an N-of-M.
+## D199 — A sweep's output is a fact about the probe and the checker, not about the population.
+Plan's, 2026-09-29, with a second instance from the ladder thread. Measured on
+`03a92329` and settled against that thread's independent reproduction.
 
-Plan's, measured
-on `03a92329` and settled against the ladder thread's independent
-reproduction.
+**The rule.** An instrument prints the set it touched. A coverage claim is about
+a population. These are different sets, and everything between them is where a
+quotable number goes wrong. **The probe list departs from the population for
+more than one reason, and two are now measured.**
 
-I swept eight contract names to find out which ones `mutationClassifierHolds`
-protected: six of them members of the family that reaches its write through
-`library_write`, plus two deliberate positive controls. The guard refused for
-two and stayed silent for six, so my transcript read "two of eight". The
-protection was "one of seven" — one family member held, out of a family of
+**First reason, controls, which are in the list precisely because they are not
+in the population.** I swept eight contract names to find which ones
+`mutationClassifierHolds` protected: six members of the family that reaches its
+write through `library_write`, plus two deliberate positive controls. The guard
+refused for two and stayed silent for six, so my transcript read "two of eight".
+The protection was "one of seven" — one family member held, out of a family of
 seven. I reported the transcript while describing the protection, and produced
-three candidate figures for one population inside a single message: two of
-eight, one of seven, and "exactly the one ending in `_save`". All three read as
-answers to the same question.
+three candidate figures for one population in a single message: two of eight,
+one of seven, and "exactly the one ending in `_save`". All three read as answers
+to the same question. The reason the controls are there is the reason they
+pollute the count: a sweep with no control cannot tell "the guard refused for
+nobody" from "the checker read nothing", so they have to be probed — and then
+they sit in the output looking exactly like members, because the output is a
+list of names and a name does not say why it was probed.
+`contract_sent_education_record` is in the guard's population and not in the
+family at all: it carries its own DML.
 
-The reason the controls are there is the reason they pollute the count. A sweep
-with no control cannot tell "the guard refused for nobody" from "the checker
-read nothing", so the controls have to be probed — and then they sit in the
-output looking exactly like members, because the output is a list of names and
-a name does not say why it was probed. `contract_sent_education_record` is in
-the guard's population and not in the family at all: it carries its own DML.
+**Second reason, the checker's own reach, which bounds what can appear at all.**
+The ladder thread's instance, in its words to me: it wrote a header claiming SIX
+contracts reach their write through that dynamic SQL, having assembled the six
+from the contracts a classifier reported SILENT when each was flipped read-only.
+`contract_ai_configuration_save` was never silent, because `save` was already a
+known verb. So the set was bounded by what that check could see — **it measured
+the check's EXPOSURE and read like the POPULATION** — and six is the right
+answer to "how many did adding `write` newly catch" and the wrong answer to "how
+many depend on the raw match". It is seven.
+
+**Note that the two causes are opposite in direction and identical in effect.**
+Controls ADD names the population does not contain; a blind spot WITHHOLDS names
+it does. Neither is visible in the output, because an output is a list of names
+and a name carries no account of why it is there or what else might have been.
 
 **How to apply.** Before quoting any N-of-M from a sweep, write the population
-down separately and by its defining property — here, contracts reaching their
-write through one helper — and check each probed name against it. Say the
-denominator in the same breath as the numerator, because "one of seven" and
+down separately and by its DEFINING PROPERTY — here, contracts reaching their
+write through one helper — and check each probed name against it. That single
+step fixes both causes, and it is what the ladder thread actually did: it
+re-derived the seven from the function bodies (`library_write` present, zero DML
+after stripping) rather than from what the classifier had failed to report. Say
+the denominator in the same breath as the numerator, because "one of seven" and
 "two of eight" are both defensible sentences and only one answers the question.
 Better, have the harness print the two sets apart: members swept, and controls
 swept. And note which figure your reader will repeat, because whichever number
@@ -11535,7 +11612,11 @@ before the write.
 
 **The response to copy is the ladder thread's**: handed three numbers, it
 refused to pick the reconciliation that made them agree and asked which set I
-had actually swept.
+had actually swept. It has since told me it asked that while the same mistake
+sat live in a merged header of its own, and offered to have the sentence cut.
+It stays, and the disclosure is why: **the quality of a challenge does not
+depend on the innocence of the challenger**, and a project where only the clean
+may ask that question is one where it stops being asked.
 
 **This does not widen the existing population rule**, which is about how a
 population is DERIVED — from the enumerable transport rather than the subject.
@@ -11613,6 +11694,95 @@ Three of the fourteen have a fourth thing, and it is the entry. `declared_but_re
 
 The observation that started it came from the build session, about a figure of theirs: the world makes one of the causes unavailable, and nothing in the number says so. I did not take it as a fact about my table; I ran it against the table and it found three. That is the whole distance between a note and a fix.
 
+## D204 — Go and measure, and name the unit your instrument answers in
+
+A measurement has two halves: the number, and what the number is OF. Every
+failure collected under this entry got the first half right. Each instrument was
+working, each returned a true value, and each was believed to answer a question
+it was not answering.
+
+**My own instance.** I reported a memory body to another session as "3,113 bytes
+/ 3,113 characters, pure ASCII, measured not eyeballed". `LANG`, `LC_ALL` and
+`LC_CTYPE` were all unset, so `wc -m` ran in the C locale and returned bytes;
+the file had always held em-dashes. The number was right. What it was OF was not
+what I said. I had also read GNU `wc`'s columns in the order I gave the flags
+rather than the order it prints them, which is characters before bytes
+regardless. Nothing was wrong with `wc`.
+
+**And on my own tooling, within the hour of writing this.** I called
+`ListAgents`, got "No reachable agents — no other Claude session is running on
+this machine right now", and published that a sibling session was unreachable.
+`ListAgents` enumerates sessions on this machine; that session is in a different
+container and reachable through the account-scoped `send_message` transport, and
+its session id was in my own carried state. The tool answered its question
+correctly. I had asked a different one.
+
+Three further instances belong to other sessions and are theirs to state
+first-hand: a sha256 taken over hard-wrapped bytes while unwrapped bytes
+travelled, a lexer returning clean for every contract, and a direct-DML pattern
+returning zero for all seven. Four sessions, each finding its own before this
+sentence existed.
+
+**And a third, in the body of this entry as I published it.** The paragraph
+above was measured, correctly, and then dated to a commit I had not measured at.
+I had run `git fetch origin main`, read `origin/main` as `bd28cddb`, and gone on
+reading files out of a working tree still at `a48bb3bc`, ten commits behind. The
+grep, the byte counts and the guard sites were all real; the head named beside
+them was not the head they came from. `git fetch` updates a remote ref and
+changes no file, which is exactly what it says it does.
+
+What makes this one worth keeping rather than quietly fixing: I checked
+afterwards at the real head and **every figure held identically** — 88 files, 73
+diverging, the same widest file at 74 bytes, the guard unchanged at the same
+line. So the false provenance was vindicated by the tree, and a claim that is
+wrong and then turns out true is the one nobody ever goes back and corrects. It
+was only caught because a sibling session's figure disagreed with mine by one
+verb, and chasing that disagreement is what showed me which tree I was standing
+in.
+
+**Why it is a rule and not a summary: it predicts.** Applied cold to this tree it
+names exactly one incomplete guard and clears six complete ones.
+
+`withinStatementBudget` (`tools-pennsync-ledger-statements.mjs:173`) reads
+`String(sql).length <= LEDGER_STATEMENT_BUDGET`, where the budget is 262144 —
+2^18, 256 KiB — and its own docblock argues for it entirely in bytes: the
+largest committed migration is "about 463 KiB, which already works; at about
+926 KiB it is untested". What it protects is one HTTPS request body, which is
+UTF-8 bytes on the wire. What it measures is UTF-16 code units. Nothing in the
+module or its test names the unit. The two genuinely diverge in this corpus —
+73 of the 88 committed migrations have more bytes than code units, widest
+`20260920580000_contract_operational_tables.sql` at 80,024 against 79,950 — from
+nothing more exotic than em-dashes in comment headers.
+
+Meanwhile every guard where caller-supplied text meets a byte ceiling already
+names its unit and measures it: `audit.mjs:81`, `patient-handout.mjs:165`,
+`provider-import.mjs:152`, `client.mjs:300-322`, and
+`visit-documentation.mjs`. Six complete, one incomplete, and the incomplete one
+is the guard whose input is the repository's own SQL rather than a caller's —
+which is exactly where nobody was thinking about encoding.
+
+**Two caveats, and neither is shaved.** This is a latent incompleteness and not
+a live defect: every file's verdict is the same under both units today, only
+`record_store.sql` exceeds the budget and it exceeds by both, and nothing else
+is within 180 KB of the boundary. A reader dismissing it on the 74-byte margin
+would be right about the margin and wrong about the mechanism. And the budget is
+a bound chosen rather than a limit measured, so being over it by 74 bytes
+carries no known consequence — the harm is that the guard does not measure the
+thing its own reasoning is about.
+
+**The rule.** When you report a measurement, say what the instrument answers in:
+bytes or characters or code units, rows or files or names, the population it
+walked. When you write a guard, name the unit in the constant's own docblock and
+give it a test case where the two candidate units disagree. A guard nobody has
+asked in a form where the units differ has not been shown to measure either one.
+
+*Measured 2026-09-29. The migration corpus, the guard and the six complete
+guards were re-measured at `bd28cddb` after the head error above; the figures in
+this entry are that second reading, not the first. Completing the guard is one word —
+`Buffer.byteLength(String(sql), 'utf8')` — plus a docblock line and a non-ASCII
+test case, deliberately not done in this change because it touches a tool in the
+migration path.*
+
 ## D205 — A negative asserted in the alarming direction recruits action before it recruits checking
 
 A negative claim about the tree — *nothing checks this*, *that body is not written*, *no test
@@ -11688,3 +11858,176 @@ Note what the remedy is not. "Think harder about the downside" would not have wo
 **Why this is not D167, since it comes close.** One sentence does state both — *an outcome that produces no complaint is under-weighted, whether it is a stale reassurance nobody investigates or a cost nobody is there to object to* — and on the strict form of the widening test that is a hit. It fails the test that matters because it is vaguer than either half: it states the observation the two share and drops both remedies, and the remedies are different operations. D167's is about how a recorded sentence is written down — date it, name the instrument, name the tree, assert nothing about now. This one is a question asked before a decision is taken, and it has nothing to date, because a cost is not a reading. Two errors that rhyme are not one instance when the mechanisms differ and the fixes differ.
 
 The nearest sibling in the document is not D167's heading but a line buried in the publication work: a dedicated test is kept rather than folded into the comparison because *silence is also what a reading that never happened looks like*, so the test asserts the reading happened and prints what it found, and the next person reads the state rather than inferring it from the absence of a complaint. That is this entry one layer down, in an instrument rather than in a judgement. The same correction applies in both places: do not read an absent complaint as an absent cost.
+
+## D207 — A count measured over one population gets restated over another that nearly corresponds, and care is not the remedy.
+Plan's, 2026-09-29. Three measured instances, all mine, none of them caught by
+me. Ordered on build's argument, hardest case first: meet the easy ones first
+and you file the whole thing under "count more carefully" and stop reading.
+
+**The rule.** A count taken over population X gets restated over population Y
+whenever X and Y nearly correspond. The sentence stays grammatical, because both
+units are plausible subjects of the same verb, and the near-correspondence is
+what carries it past review: the figure is right somewhere, just not where it is
+written. **The exception to the correspondence is exactly where the error
+lives.**
+
+**First, the case that shows care is not the remedy — sites against entities.**
+`check:frontend-destination` publishes two views of one measurement: a per-SITE
+tally, `by_destination`, and a per-ENTITY rollup, `unserved_entities`. I took
+the by-disposition split off the rollup. That view reports ONE destination per
+entity, so it sums to 194 where the site count is 193 — `FaxLog` carries six
+`no_table` sites and the one `no_realtime_seam` site, and a per-entity view has
+to pick. **Neither representation is wrong, neither is stale, and they disagree
+BY CONSTRUCTION.** The entire fault is in reading one off the other. No amount
+of care with a single number reaches this, which is why it is first: it is the
+whole argument of the entry.
+
+**Second, tables against contracts, where the qualifier was never measured at
+all.** Seven CONTRACTS reach their write through `library_write` and through
+nothing else. I wrote "seven TABLES are written ONLY that way". It is six:
+`clinical_library_template` also takes a direct `update` in
+`contract_clinical_phrase`, so that table is perfectly visible to a static
+reader and only that contract's write is hidden. **What dynamic SQL hides is a
+CONTRACT's write, never a table.** Two faults in one sentence, not one: the
+seven was measured at the contract unit and stated at the table unit, and the
+word "only" was measured at neither — it is a claim about the OTHER population,
+and nothing had gone looking for it.
+
+**Third, sites, files and screens.** Nine refused call sites live in six FILES,
+five of which are screens; the sixth is a lib module nothing imports. I wrote
+"nine refusals are six SCREENS" — counted at the file unit, stated at the screen
+unit — in the same sentence that explains why the sixth is not a screen. The
+transfer thread caught it. It now reads nine sites, six files, five screens:
+three counts, because there are three units and no two of them are the same
+number.
+
+**How to apply.** Write the unit into the sentence that carries the count, and
+make it the unit the instrument actually counted. Where two units nearly
+correspond, print BOTH counts rather than the one that reads better — if they
+differ, the difference is the finding; if they agree, you have PROVED the
+correspondence instead of assuming it. Be most careful with "only", "just" and
+"every": each is a claim about the population you did not measure, and it almost
+never travelled with the figure.
+
+**Its neighbour is D204, and they are deliberately NOT merged.** D204 closes the
+gap at the INSTRUMENT — name what the instrument answers in, one measurement,
+one sentence. This closes it in the NEXT sentence and needs two measurements to
+do so. **The test that decided it is the remedy test, not a description of where
+the two errors happen**: read-side against write-side would have been a fact
+about the instances we happened to hold rather than something anybody can run on
+a new case. Ask instead whether one rule's fix repairs the other's instances. It
+does not, in either direction, and the reason is that D204's remedy is a single
+measurement stated once, where this one only makes sense when BOTH populations
+are real and publishable. And the confirming question was the one that could
+have gone the other way: does D204 have a case where both representations are
+correct? All three of its instances have exactly one correct representation and
+one misreading of it, and even the nearest neighbour is an unstated unit rather
+than two stated units crossed. A rule whose remedy cannot be applied to the
+other's instances is not one rule.
+
+Related: D199, which is about a sweep's OUTPUT being read as its population —
+adjacent and separate, since there the unit is not in dispute at all.
+
+## D208 — A shared exemption is most dangerous where it is most local. Name every guard a list exempts from, where the list is declared.
+
+Ladder thread's, measured on `bb899289` and on `84718e6b`.
+
+A named exemption list records a decision against one guard, with a reason written about that guard. A second guard acquires the exemption by either of two routes, and nothing at the declaration says so, because the declaration was written about the first. It may run over the SAME population, so a name the list removes is a name the second guard never sees. Or it may run over a DIFFERENT population through the SAME scanner, and the scanner closes over the list. Both routes over-exempt, and that direction is structural rather than incidental: a skip-list can only ever make a consumer look at less, never at more. A list read in the inverted sense — a roster of things that MUST be checked — fails the other way, so read which kind you are holding before assuming the direction.
+
+**`UNCALLED`, in `services/authority-store/tests/service-rpc-signatures.test.mjs`. The same-population route.** Its stated purpose is the caller requirement: a `pennsync_contract_*` function with no caller is dead SQL, so a new one must be wired or named here with a reason. Two guards in that file ran over `captured`, the names the service builds a request for, and the second asserted the grants — `authenticated` true, `anon` false. An uncalled function is not in `captured`, so an `UNCALLED` entry removed a name from the grant assertion as well. I proved it rather than argued it: granting `pennsync_contract_activity_list` to `anon` and re-running that suite passes all four of its tests.
+
+**`ALLOWED_UNLIMITED_READS`, in `src/lib/entityReadLimits.test.js`. The shared-scanner route.** Its declaration states one claim — an entry is a claim that the query cannot return more rows than the server's default page. One scanner reads it, and two tests call that scanner over two disjoint populations: `src/` for the frontend, `base44/functions/` for the backend. The backend test is deliberately stricter and says so in its own comment, that backend functions get no single-record exemption at all, because requiring a limit everywhere means no reviewer has to re-derive whether a key is unique. It turns that exemption off. Then it honours this list anyway, through the shared scanner, without mentioning it. A test that refuses one exemption family in writing inherits another in silence.
+
+**Measured, not argued: no gap today.** The list holds 8 entries, all under `src/`, none under `base44/functions/`, so nothing is exempted into the strict scan. That is a property of the entries somebody happened to add, not of the design. An entry added tomorrow for the stated reason, on a backend file, passes the strict test silently.
+
+**The structural half is the entry, and the two examples are why.** I swept every named exemption list that crosses a module boundary first — `LOCAL_ONLY_MIGRATIONS` at seven importers, `BROKERED_OPERATIONS`, `KEYED_PARTS`, `WHOLE_PARTS`, `BROWSER_FORBIDDEN_OPERATIONS`, `CONTRACT_UNIQUE`, `OWNER_HELD`, `BINDING_TENANCY`, `DECLARED_UNIQUE`, `DECLARED_IMMUTABLE`, `PROTECTED_PATIENT_FIELDS`. Not one has the shape. Every consumer of `LOCAL_ONLY_MIGRATIONS` uses its declared meaning and two say so in their own docblocks; `BROKERED_OPERATIONS` is `deepEqual`'d against a literal in both consumers, so adding to it fails loudly twice.
+
+**That is because crossing a module boundary forces an `import` line, and an import line names the consumer.** Both instances are module-local and neither has an importer. The import graph is what makes a second consumer visible; a list declared and read inside one file has no import graph, and its second reader is a line of code with nothing pointing at it.
+
+**How to apply.** Where a named exemption list is declared, say every guard it exempts from, not only the one it was written for — and when a second guard is added over the same population, go back to the list rather than only to the guard. Prefer passing an exemption set into a shared scanner over closing over it, so each caller states what it grants. If you sweep for this, do not sweep by import: that method cannot return a module-local list, and mine came back clean over a tree holding two of them. I noticed only because I was holding one of the two when the sweep reported nothing.
+
+**And the reason this is worth a number rather than a note.** Neither instance is a defect. Both are correct today, by properties of what somebody happened to put in the list, and neither would fail anything the day it stopped being correct. They are two instances rather than one seen twice because the mechanisms differ and so do the fixes: the first is closed by giving the second guard a population that states its own membership, the second by parameterising the scanner so each caller declares what it exempts.
+
+## D211 — A claim that is wrong when made and then turns out true is the one nobody goes back and corrects
+
+D170 says a result which cannot tell two worlds apart is not evidence about
+which one you are in. This entry is the case where the result *can* tell them
+apart, does, and comes back agreeing with you anyway — so the check that would
+have found the error is the one thing the correct answer guarantees nobody runs.
+
+**My own instance.** My main-watch routine ran `git fetch origin main`, read the
+sha off `origin/main`, and then measured files out of the working tree. A fetch
+updates a remote ref and touches no file, so the tree sat at `a48bb3bc` while I
+reported every tree-side figure at `bd28cddb`, ten commits ahead. Byte counts,
+grep populations, guard sites, line numbers: all measured, all labelled with a
+head they had not been measured at. I wrote that provenance into a decision body
+and delivered it.
+
+Then I fast-forwarded and re-measured, and **every figure held identically** —
+88 files, 73 diverging, the same widest file at the same margin, the guard at
+the same line. The migration-path diff between the two commits happened to be
+empty. So the world supplied the case that distinguishes "measured here" from
+"measured ten commits back", and answered the same either way.
+
+**What that costs is not a belief.** A wrong belief is corrected when it meets
+the world. This met the world and was confirmed. What it cost is the record: a
+false attribution with evidence behind it. A reader who later resolves
+`bd28cddb` finds the figures correct, and there is nothing left in the artefact
+to show they were never measured there. Had nobody disagreed with me, the
+vindication would have been the end of it.
+
+It was caught because a sibling session reported sixteen verbs where I had
+fifteen, and chasing one verb is what showed me which tree I was standing in.
+Not review, not the figures being wrong, and nothing in my own method.
+
+**The same mechanism reached an assertion, where it is easier to act on.**
+The paragraph below is another session's, in its words:
+
+> `contract-compliance-reads.test.mjs` asserted `applied.at(-1) === READS_NAME`
+> — that its own contract sorts last in the record migration directory — and
+> gave its reason in the message: `planMigration` refuses `MIGRATE_OUT_OF_ORDER`
+> once an earlier file has been applied to a store. It passed on every run for
+> months. It passed because no later migration existed, which is a fact about
+> the directory at one moment; it did not pass because of the rule it named,
+> which forbids a new file sorting BEFORE an applied one and is silent about
+> sorting last. The two reasons agree on every tree where nothing has been
+> appended, and that was every tree until a sibling branch appended one. It went
+> red there on a file doing exactly what the rule permits.
+>
+> The contrast with the instance above is the useful part. There, the world
+> supplied the case that would have distinguished the two reasons — a
+> ten-commit gap between the tree measured and the tree named — and answered
+> the same anyway, because the migration-path diff happened to be empty. Here
+> the distinguishing case simply never arrived, so the assertion was never even
+> tested against its own stated reason. **Both passed for a reason their author
+> had not established, and in neither case was there anything in the passing to
+> say so.** One had survived a discriminating test and the other had not met
+> one, and from inside, on the day, they look identical: a green check and a
+> correct number.
+
+**The predictive form, which is the part that transfers.** Anywhere a check
+passes for a reason its author did not establish, the passing is what removes
+the scrutiny. That tells you where to look tomorrow, which neither instance does
+on its own.
+
+**The remedy, and it is narrow on purpose.** When a check's message states the
+rule it is enforcing, ask whether the assertion could fail for the reason given,
+or only for a different one that happens to coincide. For that assertion, no
+tree that existed could have distinguished them, which is exactly the shape
+worth flagging at review. For a claim rather than a check, the equivalent is one
+line: assert that the thing you are about to name is the thing you measured —
+`git rev-parse --short HEAD` against the head in the sentence — before measuring
+rather than after reporting.
+
+**And a limit, because leaving it out would make this entry the shape it is
+warning about.** Neither instance supports "a careful reader catches this."
+Mine was found by a disagreement about one verb; the other by a red check on
+somebody else's branch. Both authors were looking straight at their own work and
+saw nothing, because there was nothing to see: the text was right, the number
+was right, and the reason was the only thing missing. What found both was
+somebody else's result failing to match — which is an argument for cheap
+disagreement between sessions, not for reading harder.
+
+*Written 2026-09-29. The second instance is the physician-write thread's, quoted
+as sent and unedited. The discriminator that separates this from D170 — that its
+failure costs the record rather than a belief — is that thread's too.*
