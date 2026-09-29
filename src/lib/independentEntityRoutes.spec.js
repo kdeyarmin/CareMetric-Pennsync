@@ -2050,8 +2050,69 @@ describe("what batch E's routes take on trust", () => {
       return source.slice(opened, closed);
     };
 
-    const declared = ['operationalRoutes', 'DECLARED_ROUTES']
-      .flatMap((name) => [...blockOf(name).matchAll(/^ {2}'([^']+)':/gm)].map(([, key]) => key));
+    // Every top-level line of a block, with comments dropped rather than
+    // pattern-matched away: a comment's own text can start in column three.
+    const topLevelLines = (block) => {
+      const kept = [];
+      let inComment = false;
+      for (const line of block.split('\n')) {
+        const trimmed = line.trim();
+        if (inComment) {
+          if (trimmed.includes('*/')) inComment = false;
+          continue;
+        }
+        if (trimmed.startsWith('/*')) {
+          if (!trimmed.includes('*/')) inComment = true;
+          continue;
+        }
+        if (trimmed.startsWith('//')) continue;
+        if (/^ {2}\S/.test(line)) kept.push(line);
+      }
+      return kept;
+    };
+
+    // The key-set comparison below is blind to a declaration it cannot read
+    // that OVERWRITES a key some other declaration already supplies: the
+    // object holds the same keys either way, so the sets agree while the
+    // later declaration silently decides the route. Measured, not reasoned —
+    // `[['Task', 'filter'].join('.')]: operationalRoutes['Task.create']`
+    // planted after the spread leaves this suite at 60/60 green while
+    // `ENTITY_ROUTES['Task.filter'].function` is `createAgencyTask`.
+    //
+    // So the shapes a top-level line may take are enumerated, and anything
+    // else REFUSES rather than being skipped. That is the fail-closed half:
+    // the key comparison catches what the parse can read, and this catches
+    // the parse being handed something it cannot.
+    const KEY_LINE = /^ {2}'([^']+)': /;
+    const NESTED_CLOSE = /^ {2}\}\),?$/;
+    const SPREAD = /^ {2}\.\.\.([A-Za-z_$][\w$]*),$/;
+    const PARSED_BLOCKS = ['operationalRoutes', 'DECLARED_ROUTES'];
+
+    const unreadable = [];
+    const spreadsFound = [];
+    const declared = PARSED_BLOCKS.flatMap((name) => {
+      const keys = [];
+      for (const line of topLevelLines(blockOf(name))) {
+        const key = KEY_LINE.exec(line);
+        if (key) { keys.push(key[1]); continue; }
+        const spread = SPREAD.exec(line);
+        if (spread) { spreadsFound.push(spread[1]); continue; }
+        if (NESTED_CLOSE.test(line)) continue;
+        unreadable.push(`${name}: ${line.trim()}`);
+      }
+      return keys;
+    });
+
+    expect(unreadable, 'a top-level declaration this parse cannot read. If it names a key\n'
+      + '  that already exists, it overwrites it and the key comparison below stays\n'
+      + '  green — so it is refused here rather than skipped')
+      .toEqual([]);
+
+    // A spread from somewhere this parse does not read is the same hazard
+    // wearing different syntax: its keys arrive in the table unexamined.
+    expect([...new Set(spreadsFound)].sort(), 'a block is spread in that this parse does\n'
+      + '  not read, so its declarations are not compared against anything')
+      .toEqual(['operationalRoutes']);
 
     // The parse reaching the real blocks, proved before it is relied on: a
     // pattern that matched nothing would report no duplicates just as happily.
