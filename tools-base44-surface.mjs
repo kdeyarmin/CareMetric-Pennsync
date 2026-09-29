@@ -31,6 +31,83 @@ const CLIENT_IMPORT = /api\/base44Client/;
 const SDK_IMPORT = /@base44\/sdk/;
 // Exported for the reason `sourceFiles` is: one matcher, so one count.
 export const ENTITY_CALL = /\bbase44\s*\.\s*entities\s*\.\s*([A-Z][A-Za-z0-9_]*)\s*\./g;
+/**
+ * Three ways a module binds the namespace before calling through it, each
+ * requiring its binding IN THE SAME FILE so the extra names are bounded by
+ * something readable rather than by a guess.
+ *
+ * `ENTITY_CALL` alone matches a literal `base44.entities.Name.`, and
+ * `src/lib/retiredOfflineQueue.js` binds the four entities into an object
+ * literal and then calls through the identifier that carries it, so eight real
+ * call sites were invisible to this ratchet AND to the destination census at
+ * once — the two tools share the matcher, which is what made one fix move both.
+ * The backend classifier in `tools-transition-disposition.mjs` has read
+ * aliasing since it was written, so the two halves of one question disagreed
+ * and the later half was right; this is the earlier half catching up.
+ *
+ * A repo-wide scan bounded it before it was fixed: one module of the map shape,
+ * not a class of them. The bound is the useful part — a finding that names its
+ * population is actionable and one that does not is only alarming.
+ */
+const NAMESPACE_ALIAS = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*base44\s*\.\s*entities\s*[;\n]/g;
+const NAMESPACE_DESTRUCTURE = /\{([^{}]*)\}\s*=\s*base44\s*\.\s*entities\b/g;
+const ENTITY_MAP_BINDING = /\b([A-Z][A-Za-z0-9_]*)\s*:\s*base44\s*\.\s*entities\s*\.\s*\1\b/g;
+
+/**
+ * Every entity call site in one file, as `{ entity, end }` where `end` is the
+ * offset of the operation identifier — the shape all three consumers already
+ * read out of `ENTITY_CALL`, so they keep one definition and one total.
+ *
+ * Sites are yielded in source order and deduplicated by offset, because a
+ * literal call and an aliased one can name the same characters: counting it
+ * twice would inflate the ratchet and the census together and look like
+ * agreement.
+ */
+export function* entityCalls(text) {
+  const found = new Map();
+  for (const match of text.matchAll(ENTITY_CALL)) {
+    found.set(match.index + match[0].length, match[1]);
+  }
+  // The two forms are NOT one pass: a map is reached through the identifier
+  // carrying it (`q.Incident.filter`) and a destructured binding is the
+  // identifier (`Task.create`). Writing them as one cost a test that drove both
+  // and got nothing for the second, which is why each is driven with the
+  // binding present AND absent rather than once.
+  const carried = new Set();
+  for (const match of text.matchAll(ENTITY_MAP_BINDING)) carried.add(match[1]);
+  for (const name of carried) {
+    // The lookbehind is NOT what stops a literal call being counted twice --
+    // `found` is keyed on the operation's OFFSET, so the literal pass and this
+    // one write the same entry. What it does is refuse a deeper chain
+    // (`a.b.Incident.filter`), which the binding says nothing about. A
+    // sabotage removing it left every test green, and the comment that used to
+    // sit here claimed the dedup: it was describing the Map's work.
+    for (const use of text.matchAll(new RegExp(`(?<![.?\\w$])[A-Za-z_$][\\w$]*\\s*\\.\\s*${name}\\s*\\.\\s*`, 'g'))) {
+      found.set(use.index + use[0].length, name);
+    }
+  }
+  const bound = new Set();
+  for (const match of text.matchAll(NAMESPACE_DESTRUCTURE)) {
+    for (const part of match[1].split(',')) {
+      const name = part.split(':').pop().trim();
+      if (/^[A-Z][A-Za-z0-9_]*$/.test(name)) bound.add(name);
+    }
+  }
+  for (const name of bound) {
+    for (const use of text.matchAll(new RegExp(`(?<![.?\\w$])${name}\\s*\\.\\s*`, 'g'))) {
+      found.set(use.index + use[0].length, name);
+    }
+  }
+  for (const match of text.matchAll(NAMESPACE_ALIAS)) {
+    const alias = match[1].replace(/[$]/g, '\\$&');
+    for (const use of text.matchAll(new RegExp(`\\b${alias}\\s*\\.\\s*([A-Z][A-Za-z0-9_]*)\\s*\\.\\s*`, 'g'))) {
+      found.set(use.index + use[0].length, use[1]);
+    }
+  }
+  for (const end of [...found.keys()].sort((a, b) => a - b)) {
+    yield { entity: found.get(end), end };
+  }
+}
 const FUNCTION_INVOKE = /\bfunctions\s*\.\s*invoke\s*\(/g;
 const CORE_INTEGRATION = /\bintegrations\s*\.\s*Core\s*\.\s*[A-Za-z][A-Za-z0-9_]*/g;
 
@@ -67,9 +144,9 @@ export function measureSurface(repository) {
     if (SDK_IMPORT.test(text)) counts.sdk_importers += 1;
     counts.function_invocations += countMatches(text, FUNCTION_INVOKE);
     counts.core_integration_sites += countMatches(text, CORE_INTEGRATION);
-    for (const match of text.matchAll(ENTITY_CALL)) {
+    for (const site of entityCalls(text)) {
       counts.entity_call_sites += 1;
-      entityTypes.add(match[1]);
+      entityTypes.add(site.entity);
     }
   }
   counts.entity_types = entityTypes.size;

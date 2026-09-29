@@ -50,7 +50,7 @@ Probed 2026-09-21:
 | Supabase account project list | `CM Train`, `caremetric-pennsync-staging`, `PennPaps`, `CareMetric Support Hub`, `bolt-native-database-62871816` | **No production project** |
 | `caremetric-pennsync-staging` migration list | 9 versions, newest `20260918204105` | Five authority migrations behind; **no record store at all**. **Closed later the same day: 59 applied, 68 recorded — see stage A. Re-read 2026-09-23 from the `hosted-gap` job on `b8e4e021`: `already_applied: 73`, `pending: []`, one skipped by name.** **And read again on 2026-09-25 after the owner applied #279's migration from his own machine at about `18:18Z`: 74 rows, the new `20260920600000_locally_verified_identity` newest, nothing pending, the same one still skipped by name.** That last reading is the applying session's, taken from the database rather than from CI, and the arithmetic agrees from here: 75 migrations are pinned (16 authority, 59 record) and `LOCAL_ONLY_MIGRATIONS` holds exactly one back |
 | `node tools-pennsync-cutover.mjs --check` | `status: blocked`, `PINNED_INPUTS_REQUIRED`, `release_authorized:false` | None of the 15 gates has a receipt |
-| `pnpm run check:base44-surface` | `client_importers=366/366 entity_call_sites=445/445 core_integration_sites=41/41 function_wrappers=83/83` | The frontend has not moved one call site |
+| `pnpm run check:base44-surface` | `client_importers=366/366 entity_call_sites=453/453 core_integration_sites=41/41 function_wrappers=83/83` | The frontend has not moved one call site |
 
 The deployed runtime revision `cffe376` is two commits behind `origin/main`
 (`4f73ec6`) — it predates PR #228 and PR #229 entirely.
@@ -74,7 +74,7 @@ plan's status table reads as progress without saying where the progress lives.
 | Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds ~~73 of the 74~~ **74 of the 75** committed migrations with nothing pending — 73 read from the `hosted-gap` job on `b8e4e021` 2026-09-23, and the 74th after the owner applied D99's migration 2026-09-25. The count that moved is authority, not record: this row is unchanged at 59 |
 | Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; waves 1 to 3 released 2026-09-25, 8 operations serving as at 05:43Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin — **or until the next variable change, which rebuilds from `main` regardless of the pin** (measured 2026-09-25 05:41Z). See stage B |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ ~~2 deployed, paused — 2026-09-22~~ **2 deployed and RELEASED — 2026-09-25**: `pennsync-api` serving all 80 names, `pennsync-integrations` serving the two AI operations and `SendEmail`. Outbound delivery ON since `16:19Z`; the runtime's browser route still off |
-| Frontend call sites moved off Base44 | 0 of 445 | 0 |
+| Frontend call sites moved off Base44 | 0 of 453 | 0 |
 
 Everything merged in PRs #227, #228 and #229 — the record store, the care-team
 narrowing, the audit trail and seventy-two ported capabilities — has been proved
@@ -349,18 +349,18 @@ written.
 6. **Move the frontend.** Still the largest single body of remaining work in
    the migration. **"Untouched" is what this item said, and it was reading one
    instrument as though it answered a second question.** The surface ratchet's
-   `445/445`, `366/366`, `41/41` and `83/83` in section 0 are unchanged and
+   `453/453`, `366/366`, `41/41` and `83/83` in section 0 are unchanged and
    correctly so — that gate counts BASE44 COUPLING, and the SPA serves both
    backends, so a call site can be served by an owned route today and still
    import the Base44 client. It is not a statement that nothing has moved, and
    routes have been declared and are serving call sites now.
 
-   It is also not one body of work. Crossing the same 445 against their
+   It is also not one body of work. Crossing the same 453 against their
    entities' dispositions splits them three ways: sites a route already serves,
    sites that could be adopted against the owned store, and sites that **cannot
    land at all** because the entity's domain was decided `hub` or
    `preserved_paused` — those need a product answer, not an edit, and no amount
-   of frontend work reduces them. Sizing this item off the single number 445
+   of frontend work reduces them. Sizing this item off the single number 453
    overstates the editable part and understates the decisions.
 
    **What makes this item tractable, and Stage G's seven not, is one
@@ -1562,7 +1562,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 50 | 26 |
+  | `read-only` (derived) | 55 | 27 |
   | `mutating` (derived) | 49 | 37 |
   | `integration` (derived) | 19 | 17 |
 
@@ -1578,10 +1578,16 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   arrived, and the write half of that defect was closed in the batch before
   it. The `operational_limit` repair then added one more to `read-only` and
   nothing else, for the same reason: it replaces one helper the seven paged
-  reads already call. Every other movement since batch D belongs to a sibling
-  batch rather than to this one — which is what the paragraph below means
-  about the figures being global, and why the row is re-derived on the merged
-  tree instead of being added to.
+  reads already call. The five compliance reads then took `read-only` to 55
+  with one shared migration, and moved neither `mutating` nor `integration` —
+  which is what a read-only port should look like: five capabilities that
+  create nothing, over five entities the frontend already writes through
+  Base44. Every other movement since batch D belongs to a sibling batch rather
+  than to this one — which is what the paragraph below means about the figures
+  being global, and why the row is re-derived on the merged tree instead of
+  being added to. This row was re-derived on seven bases over the life of one
+  pull request; the number above is a reading of the tree it merges onto and of
+  no other.
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
@@ -2856,12 +2862,16 @@ conflicts.
 ### Stage J — Frontend (size L to XL; the largest untouched surface)
 
 This is the stage the status tables consistently understate. Nothing has moved:
-445 entity call sites across 69 entity types, 366 files importing the Base44
+453 entity call sites across 69 entity types, 366 files importing the Base44
 client, 198 function invocations through 83 wrappers, 41 Core integration sites,
-4 SDK importers — all at ratchet baseline.
+4 SDK importers — all at ratchet baseline. **445 became 453 on 2026-09-29 with
+no call site added**: the shared matcher could not read a namespace bound into
+an object literal, and eight sites in `src/lib/retiredOfflineQueue.js` were
+invisible to this ratchet and the destination census at once. An instrument
+gained sight; the coupling did not grow.
 
 **And the count understates it a second way (D80).** "Replace call sites tier
-by tier" reads as a refactor whose size is the count. Crossing all 445 against
+by tier" reads as a refactor whose size is the count. Crossing all 453 against
 their entity dispositions — `pnpm run check:frontend-destination`, added
 2026-09-22 — says otherwise:
 
@@ -3230,6 +3240,46 @@ entity routes: 64 declared, 106/237 landable call sites SERVED, 131 still to ado
   of those 131, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 130 need a named capability
 ```
 
+**The reading after the five compliance reads.** A record of that head, and no
+longer the tree: it was pinned when it was written and the route and allowlist
+work below has since moved every line of it. The pinned reading is the last
+block in this section.
+
+```
+entity routes: 71 declared, 138/237 landable call sites SERVED, 99 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 28 pass arguments this cannot read
+  12 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryTemplate.create, CustomValidationRule.create, CustomValidationRule.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 99, across 28 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 98 need a named capability
+```
+
+**Seven routes moved the served line by a multiple of themselves, and the
+multiple is the finding rather than the total.** These five entities are read
+from far more screens than they are declared for — compliance audits and
+incidents are listed by dashboards, exports and detail panels alike — so one
+route per entity method reaches many call sites at once. That is the shape to
+expect from a READ port and not from a write one, where a create route typically
+serves the one form that calls it. Three entities left the remaining line
+entirely, which is the part that shortens the queue rather than the served count.
+
+**The attribution was measured rather than subtracted.** These figures are
+global, so a delta between two heads cannot say which change caused it: a
+sibling merging in the same span moves the same line. What was run instead is
+the printer TWICE ON ONE MERGED TREE, once with `main`'s
+`independentEntityRoutes.js` and once with this branch's, which is the only
+reading that isolates one file's effect. Under `main`'s file this tree prints
+the block above; under this branch's, the block here. The same pair was run on
+two different bases a day apart and gave the same deltas both times, which is
+what makes them a property of these seven routes rather than of a moment.
+
+**One site moved the wrong way, and it is named rather than netted off.** The
+sites passing arguments this cannot read went up by one:
+`ComplianceAudit.filter` in `src/components/smartNote/persistVisitNote.js`
+builds its predicate in a variable, so the scan cannot see what it asks for.
+Declaring a route made that site visible as unreadable where before it was not
+counted at all, which is the check working — the call is made and is not proved
+served. It is the recovery read of the SmartNote write path and belongs with the
+write half of these domains.
+
 **The move above is four call sites over eight route keys, and the two counts
 are why the unrouted headline splits.** Ten write sites across three entities
 reached a capability for the first time; four of them pass arguments the gate
@@ -3274,19 +3324,45 @@ check:entity-routes`'s own output and is **pinned**: `tools-entity-routes.test.m
 fails unless the page carries it byte for byte, so paste what the tool prints and
 never retype, rewrap or re-indent it.
 
-Read the arithmetic before reading the jump: **74 is 69 plus 8 less 3**, not 69
-plus 8. The two branches were open at once and both declared the three
-`ClinicalLibraryTemplate` write keys, which merged history could not show either
-of them — a collision that lives only between two open branches is invisible to a
-cross against `main` (D183). Resolving it dropped one copy of the three keys and
-one of the two `libraryWrite` helpers, keeping the landed one and carrying across
-the other's declaration-time refusal of an unknown action.
+**The denominator moved too, and that is the more important half.** 237 became
+245 because the shared entity-call matcher was blind to one shape and is not any
+more. It matched a literal `base44.entities.Name.`, and
+`src/lib/retiredOfflineQueue.js` binds its four entities into an object literal
+and calls through the identifier carrying it, so eight real call sites were
+counted by neither the coupling ratchet nor the destination census. The matcher
+is `entityCalls` now and reads three binding forms, each required to appear in
+the same file; the ratchet's `entity_call_sites` baseline moves 445 to 453 in
+the same change, which records an instrument gaining sight rather than coupling
+growing. A repo-wide scan bounded it first: **one module of that shape, not a
+class of them.** The backend classifier has read aliasing since it was written,
+so this was two halves of one question disagreeing, with the later half right.
+
+**Three of the eight are sites a declared route REFUSES, and that is the finding
+rather than the count.** `ComplianceAudit.filter` and `Incident.filter` ask
+without a limit where the route requires one, and `Task.filter` filters on a
+field the route does not carry — so the refusing line goes 6 to 9. A site nobody
+has routed still reaches Base44; a site a route refuses has had its fallback
+taken away, which is why these three belong at the front of the route audit and
+not in its total. They were invisible until the matcher could see them, so the
+audit is now measuring two blindnesses rather than one and neither is a separate
+bug from it.
+
+Read the arithmetic before reading the jump: **81 is 69 plus 8 less 3 plus 7**,
+and the subtraction is the part worth keeping. Two branches were open at once and
+both declared the three `ClinicalLibraryTemplate` write keys, which merged history
+could not show either of them — a collision that lives only between two open
+branches is invisible to a cross against `main` (D183). Resolving it dropped one
+copy of the three keys and one of the two `libraryWrite` helpers, keeping the
+landed one and carrying across the other's declaration-time refusal of an unknown
+action. The seven are the compliance reads, which merged cleanly and are counted
+here rather than re-measured: this block is one printer run over one tree, so no
+line in it is a sum of two readings.
 
 ```
-entity routes: 74 declared, 113/237 landable call sites SERVED, 124 still to adopt
-  6 of those are sites a declared route REFUSES (User.list:sort), and 40 pass arguments this cannot read
+entity routes: 81 declared, 145/245 landable call sites SERVED, 100 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 43 pass arguments this cannot read
   16 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
-  of those 124, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 123 need a named capability
+  of those 100, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 99 need a named capability
 ```
 
 #### The destination gate, which measures a different population
@@ -3309,7 +3385,7 @@ about 33 hollowed-out pages — comes from a filename scan rather than that tool
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
-**208 of 445 — 47% — have no destination in the owned store, and 203 of those
+**208 of 453 — 46% — have no destination in the owned store, and 203 of those
 reach a domain the migration has decided not to carry.** The other five are the
 D83 writes above, whose tables ARE carried, for reads: what has no destination
 there is the operation rather than the domain, and conflating the two is how

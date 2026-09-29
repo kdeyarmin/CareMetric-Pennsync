@@ -36,6 +36,7 @@ import {
  */
 const ANSWERS = Object.freeze([
   'pennsync_contract_activity_list',
+  'pennsync_contract_adr_case_list',
   'pennsync_contract_adr_deadline_sweep',
   'pennsync_contract_agency_settings_read',
   'pennsync_contract_ai_agreement_status',
@@ -46,6 +47,7 @@ const ANSWERS = Object.freeze([
   'pennsync_contract_clinical_library_folder_list',
   'pennsync_contract_clinical_library_template_list',
   'pennsync_contract_clinical_pathway_list',
+  'pennsync_contract_compliance_audit_list',
   'pennsync_contract_compliance_rule_lookup',
   'pennsync_contract_credential_expiration_sweep',
   'pennsync_contract_credential_renewal_sweep',
@@ -57,6 +59,7 @@ const ANSWERS = Object.freeze([
   'pennsync_contract_expiration_notice_sweep',
   'pennsync_contract_face_to_face_list',
   'pennsync_contract_fleet_vehicles',
+  'pennsync_contract_incident_list',
   'pennsync_contract_invitation_sweep',
   'pennsync_contract_library_document_list',
   'pennsync_contract_medicare_compliance_rule_list',
@@ -73,7 +76,9 @@ const ANSWERS = Object.freeze([
   'pennsync_contract_patient_recommendation_list',
   'pennsync_contract_pdf_search_corpus',
   'pennsync_contract_pdf_template_list',
+  'pennsync_contract_personnel_credential_list',
   'pennsync_contract_physician_list',
+  'pennsync_contract_policy_acknowledgment_list',
   'pennsync_contract_referral_assignees',
   'pennsync_contract_referral_list',
   'pennsync_contract_roster_list',
@@ -84,7 +89,8 @@ const ANSWERS = Object.freeze([
   'pennsync_contract_tenant_memberships',
   'pennsync_contract_time_off_approved',
   'pennsync_contract_validation_rule_list',
-  'pennsync_contract_visit_point_config_list',]);
+  'pennsync_contract_visit_point_config_list',
+]);
 
 /**
  * The wrappers these arguments do not get past, and where each stops.
@@ -260,12 +266,19 @@ const DRIVEN = Object.freeze({
  * What it is still good for is the direction of travel. A PINNED wrapper stops
  * at its refusal, so nothing below that line can run, and the helpers are
  * exactly where a shared defect lives — `operational_limit` is one, and a pin
- * over any of the seven it killed would have hidden all of them. 122 of the
- * 344 helpers reachable from a public wrapper are reachable from an ANSWERING
- * one, so at most a little over a third of them run, and paying down a pin is
- * what moves that ceiling. The set is pinned rather than the count, for the
- * reason D113 settled: a count holds while one name leaves and another
- * arrives.
+ * over any of the seven it killed would have hidden all of them. Only a
+ * fraction of the helpers reachable from a public wrapper are reachable from an
+ * ANSWERING one, and paying down a pin is what moves that ceiling. The set is
+ * pinned rather than the count, for the reason D113 settled: a count holds while
+ * one name leaves and another arrives.
+ *
+ * Two figures stood here — a numerator and a denominator — and both were stale
+ * within one port, because five contracts arriving moved each of them without
+ * touching the assertion. Prose beside a pinned set may not restate what the set
+ * measures: the set fails when it is wrong and the sentence never does, so the
+ * sentence is the half that rots, and it rots into a reader's premise. Read
+ * `REACHED_HELPERS.length` below if you want the number; it is true by
+ * construction on whatever head you are on.
  */
 const REACHED_HELPERS = Object.freeze([
   'adr_reminder_message',
@@ -283,7 +296,10 @@ const REACHED_HELPERS = Object.freeze([
   'caller_user_id',
   'care_plan_projected',
   'chart_not_elsewhere',
+  'compliance_read_limit',
+  'compliance_read_order',
   'contract_activity_list',
+  'contract_adr_case_list',
   'contract_adr_deadline_sweep',
   'contract_agency_settings_read',
   'contract_ai_agreement_status',
@@ -294,6 +310,7 @@ const REACHED_HELPERS = Object.freeze([
   'contract_clinical_library_folder_list',
   'contract_clinical_library_template_list',
   'contract_clinical_pathway_list',
+  'contract_compliance_audit_list',
   'contract_compliance_rule_lookup',
   'contract_credential_expiration_sweep',
   'contract_credential_renewal_sweep',
@@ -305,6 +322,7 @@ const REACHED_HELPERS = Object.freeze([
   'contract_expiration_notice_sweep',
   'contract_face_to_face_list',
   'contract_fleet_vehicles',
+  'contract_incident_list',
   'contract_invitation_sweep',
   'contract_library_document_list',
   'contract_medicare_compliance_rule_list',
@@ -321,7 +339,9 @@ const REACHED_HELPERS = Object.freeze([
   'contract_patient_recommendation_list',
   'contract_pdf_search_corpus',
   'contract_pdf_template_list',
+  'contract_personnel_credential_list',
   'contract_physician_list',
+  'contract_policy_acknowledgment_list',
   'contract_referral_assignees',
   'contract_referral_list',
   'contract_roster_list',
