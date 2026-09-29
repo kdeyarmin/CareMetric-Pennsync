@@ -683,6 +683,15 @@ describe('the declared entity routes', () => {
    * handler is the boundary that refuses and one capability here —
    * `listBrokeredRecords` — has no contract entry at all. Driven by the gate's
    * own served set, so the arguments are each call site's real ones.
+   *
+   * THAT SERVED SET IS ALSO THE LIMIT OF WHAT THIS CAN SEE, and the direction
+   * is worth knowing: a route that breaks by REFUSING its call site leaves the
+   * served set entirely and is counted in the gate's own refusal line, not
+   * here. So this reads routes that break by SENDING the wrong thing, and the
+   * gate reads routes that break by sending nothing. The two readings partition
+   * the failures and neither sees the other's — measured by the thread that
+   * owns the route table, when a sabotage that emptied a route's `orderable`
+   * came back inert for exactly this reason. A zero here is not a clear class.
    */
   it('emits no key its capability has no parameter for', async () => {
     const { readFileSync } = await import('node:fs');
