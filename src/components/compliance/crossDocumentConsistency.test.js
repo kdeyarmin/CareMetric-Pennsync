@@ -44,7 +44,21 @@ test("nothing conflicting produces no findings, and the checks run are listed", 
     patient: { functional_status: { fall_risk: "high" } },
   });
   assert.deepEqual(r.findings, []);
-  assert.ok(r.checked.length >= 6, "the checks that ran are reported even when clean");
+  // The exact set, not a floor. `checked` is not an instrument reading: the panel
+  // renders these strings verbatim under "What PennSync compared", count included
+  // (CrossDocumentReviewPanel.jsx:182). So the strings ARE the artefact and there is
+  // no upstream authority for a test to read them from — which makes this second copy
+  // an alarm rather than a duplicate. It goes red when the copy changes, which is the
+  // point: a reworded or dropped line is a change to what a nurse reads, and
+  // `>= 6` let one through silently while its own message named the checks.
+  assert.deepEqual(r.checked, [
+    "High fall risk with a fall-prevention intervention",
+    "Functional limitation consistent with the narrative",
+    "Medication-management deficit with a medication intervention",
+    "Documented wound with wound care in the note or care plan",
+    "Documented decline with a care-plan response",
+    "Discharge documentation against active care-plan goals",
+  ], "the checks that ran are reported, in order and word for word, even when clean");
 });
 
 // ── Individual checks ──────────────────────────────────────────────────────
