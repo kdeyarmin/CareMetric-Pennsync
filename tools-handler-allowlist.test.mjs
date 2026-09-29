@@ -177,13 +177,30 @@ test('a key outside the allowlist is reported, by site and by name', () => {
  * comparison silently, and this is the line that makes that a decision.
  *
  * Both figures below were reached independently by the thread that measured
- * the route side of this sweep -- 126 registry entries and 6 with more than one
- * allowlist -- from its own parse of the same file. Crossing them is what found
- * the sentinel counting 313.
+ * the route side of this sweep -- then 126 registry entries and 6 with more
+ * than one allowlist -- from its own parse of the same file. Crossing them is
+ * what found the sentinel counting 313.
+ *
+ * **BOTH NUMBERS ARE A READING OF A TREE, AND MAIN WENT RED PROVING IT.** This
+ * sweep and the five compliance read handlers were two pull requests open at
+ * once. Each was green on its own base, because this pin was measured on a
+ * tree the other's handlers had not reached yet, and merging both took the
+ * count to 131 against a pin of 126 -- so `main` failed `test:utils` for a
+ * reason neither pull request could see, discoverable only after the second
+ * merge. Nothing here is wrong with either change: a sentinel over a
+ * repository-wide count is a pin on the TREE, so it belongs to whichever
+ * change lands next and has to be re-measured on the merged tree rather than
+ * carried across a rebase.
+ *
+ * Which is why the number below is not simply bumped: it is re-read on the
+ * base this change merges onto, and the DIFFERENCE is attributed by running
+ * the same parse over a worktree at `origin/main` and over this tree. That
+ * pair says 131 against 136 -- five entries, the five compliance write
+ * handlers this change adds -- rather than asserting it from what was edited.
  */
 test('an action-dispatched handler is reported, not silently skipped', () => {
   const { admits, dispatched, entries } = handlerAllowlists(repository);
-  assert.equal(entries, 126,
+  assert.equal(entries, 136,
     'the registry entry count moved. This is a sentinel on the PARSE, not a pin\n'
     + '  on the API: if handlers.mjs stops matching one entry per line it goes to\n'
     + '  zero rather than drifting by one, and the sets below go empty with it.');
@@ -191,7 +208,7 @@ test('an action-dispatched handler is reported, not silently skipped', () => {
     'listAuthorizedPatients', 'manageAgencyMembership', 'manageAuthorizedReferral',
     'manageMyNotifications', 'manageVehicleMaintenance', 'updateIncident',
   ]);
-  assert.equal(admits.size, 114, 'entries with exactly one params allowlist');
+  assert.equal(admits.size, 124, 'entries with exactly one params allowlist');
   assert.equal(admits.has('manageAuthorizedReferral'), false);
   assert.deepEqual(measureWrapperCalls(repository).dispatched, ['manageAgencyMembership']);
 });
