@@ -1927,13 +1927,30 @@ const DECLARED_ROUTES = Object.freeze({
    * `AdrAuditCase.list` is deliberately NOT declared, and the reason is worth
    * writing down because it is not about the contract. `listAdrAuditCases`
    * exists, is reachable and is tested; its only call site
-   * (`src/pages/ADRCenter.jsx`) passes `ADR_CASE_READ_LIMIT`, imported from
-   * `src/components/adr/adrCaseRead.js`, and `check:entity-routes` cannot
-   * resolve a constant across modules — so it reads the site as unserved and
-   * a declaration here would be a route that moves no screen, which is the
-   * exact thing that gate was rebuilt to refuse. Declaring it when the gate
-   * says zero would be arguing with the instrument. It lands when the reader
-   * can follow that import, or when the screen passes a literal.
+   * (`src/pages/ADRCenter.jsx`) passes `ADR_CASE_READ_LIMIT`, and the argument
+   * reader cannot evaluate it — so it reads the site as unserved, and a
+   * declaration here would be a route that moves no screen, which is the exact
+   * thing that gate was rebuilt to refuse.
+   *
+   * **The earlier version of this comment named the wrong cause, and the wrong
+   * cause was the broader one.** It said `check:entity-routes` "cannot resolve
+   * a constant across modules". It does: `LIMIT_CONSTANTS_FILE` in
+   * `tools-entity-call-arguments.mjs` is `src/lib/queryLimits.js`, and
+   * `src/components/admin/QuickHealthOverview.jsx` passes `PATIENT_HISTORY_ROWS`
+   * imported from there, which the reader resolves to 1000 at that site and at
+   * three others. What it cannot do is resolve a constant declared ANYWHERE
+   * ELSE: `limitConstants()` reads one file, its table is exactly
+   * `ALL_ROWS, PATIENT_HISTORY_ROWS`, and `ADR_CASE_READ_LIMIT` is declared in
+   * `src/components/adr/adrCaseRead.js`. Feeding the same argument text a table
+   * widened by that one name reads it as `["-created_date", 200]`; the table as
+   * it stands reads INDETERMINATE, which makes the whole call unreadable and
+   * the site unserved. So the limit is the SOURCE MODULE, not the module
+   * boundary — a distinction that decides what would fix it.
+   *
+   * It lands when `ADR_CASE_READ_LIMIT` moves into `src/lib/queryLimits.js`,
+   * when that reader takes more than one declaring module, or when the screen
+   * passes a literal. Declaring it while the gate says zero would be arguing
+   * with the instrument.
    */
   'PersonnelCredential.list': Object.freeze({
     ...contractRead({
