@@ -231,8 +231,33 @@ const keyList = text => Object.freeze(
  * duplicated export name last-file-wins under `Map.set`, so a second module
  * declaring `AI_REPORT_PARAMS` would silently check a handler against an
  * unrelated list while still reporting it RESOLVED -- a wrong answer wearing a
- * clean one, which is the failure this whole module exists to refuse. No name
- * is duplicated today; the point is that nothing said so.
+ * clean one, which is the failure this whole module exists to refuse.
+ *
+ * Read the claim underneath that narrowly. The 47 modules here declare 30 list
+ * names and none of them twice, which is a MEASUREMENT OF TODAY and not a
+ * property: nothing forbids a second module from exporting a name this one
+ * already uses, no gate would report it, and the names are not disjoint by
+ * construction. So the keying is not a precaution against a hypothetical -- it
+ * is the only thing standing between that ordinary edit and a silent wrong
+ * answer, and until this comment nothing said so. `importedConstants` is the
+ * other half: the registry's own import decides WHICH module's list a handler
+ * is checked against, so a name the registry does not import is unresolvable
+ * rather than resolved from wherever it was found.
+ *
+ * Proved rather than asserted. `tools-handler-allowlist.test.mjs` plants two
+ * modules exporting one name with different lists, in an order where a
+ * name-keyed map would end up holding the wrong one, and drives the real
+ * `handlerAllowlists` at it -- flattening this map to a name-only key fails it
+ * by exactly that substitution. A comment claiming a keying matters, with no
+ * test that fails when the keying goes, is the shape it is warning about.
+ *
+ * The adjacent corner -- a handler carrying SEVERAL allowlists, where which one
+ * a request meets is decided at run time -- is excluded here as `dispatched`
+ * and refused on the route side too, in `src/lib/independentEntityRoutes.spec.js`
+ * as of `d954506`: a route naming such a handler fails by name rather than
+ * being compared against whichever list was parsed first. That check's own
+ * header states what it cannot see; read it there rather than here, because two
+ * copies of one argument is how the copy nobody runs goes stale.
  */
 export function namedAllowlists(directory) {
   const declared = new Map();
