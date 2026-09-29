@@ -2840,10 +2840,8 @@ entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adop
   of those 166, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 165 need a named capability
 ```
 
-And the reading on THIS tree, after the roster gained a creation order. This
-one is `pnpm run check:entity-routes`'s own output and is **pinned**:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what the tool prints and never retype, rewrap or re-indent it.
+And after the roster gained a creation order — a record of that head, not
+maintained either:
 
 ```
 entity routes: 54 declared, 98/237 landable call sites SERVED, 139 still to adopt
@@ -3004,6 +3002,58 @@ contracts are not an expensive approach chosen over a cheap one that was
 available. What is left is roughly forty entities' worth of named contracts and
 handlers — the same shape as the 80 already built — rather than one design
 decision.
+
+**And the reading on THIS tree, after four patient-alert call sites adopted two
+routes.** This one is `pnpm run check:entity-routes`'s own output and is
+**pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it byte
+for byte, so paste what the tool prints and never retype, rewrap or re-indent
+it.
+
+```
+entity routes: 56 declared, 102/237 landable call sites SERVED, 135 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 21 pass arguments this cannot read
+  8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 135, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 134 need a named capability
+```
+
+**The move above is four sites across two routes, and its cause is capabilities
+that had been shipped for weeks reaching a screen for the first time.**
+`getScopedPatientAlerts` and `contract_alert_list` have existed since D21;
+nothing was built here. What the reading needed was the strict question asked
+per call site rather than per entity — does a contract answer the statement this
+site makes, given its parameters, its ordering, its limit and its gate — and
+four of the five `PatientAlert` sites answer yes. The fifth is a `create`, and
+it is a permanent negative rather than a queue item: exactly one migration in
+the record directory inserts `patient_alert`, and that insert derives every
+column from an extracted clinical event and takes no caller payload, so serving
+it needs a create contract rather than a route.
+
+**A first reading of the same five got three of them wrong, and the reason is
+worth more than the correction.** It called them unservable because
+`contract_alert_list` clamps rows at a ceiling two of the sites ask past and one
+asks ten times past. That is what the contract and the call site say together,
+and it is not what happens: `independentEntityRoutes.js` had already settled it,
+because a screen naming a large bound is naming one it does not expect to reach,
+so the route asks for one row more up to the ceiling and a short page is the
+proof it did not reach it. The reading had both ends and not the artefact in the
+middle that consumes the declaration. **There are three things to read in a
+question like this, not two.**
+
+**Declaring them turned up a latent defect in the shared read helper, which is
+the more useful half of this change — and it is the second one in a day.**
+`screenRead`'s response read `result.entries` as a constant, because every batch
+E contract answers `entries`; `contract_alert_list` answers `alerts`. A route
+declared over it with the helper as it stood passed the route gate and would
+have refused every real call, because the gate runs a declaration's `request`
+against each call site's arguments and never exercises `response`. The answer
+key is a parameter now rather than a copied response function, so the next
+contract outside that family cannot inherit it by copying. The library sort
+mis-order above is the same shape in the same file within the hour, which puts
+the population plainly: it is not routes over unusual contracts, it is every
+route whose `response` or `order` was written by copying a sibling. The claim
+that the gate is blind to this is demonstrated rather than asserted — with the
+key sabotaged back to the constant both projection tests fail and the gate
+reports its figures unchanged.
 
 #### The destination gate, which measures a different population
 
