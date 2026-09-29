@@ -11541,3 +11541,23 @@ had actually swept.
 population is DERIVED — from the enumerable transport rather than the subject.
 This one is about a sweep's OUTPUT being read as its population. Different
 mechanism, different fix, and joining them needs an "and also".
+
+## D201 — A correction arrives with the momentum of the thing it corrects
+
+On 2026-09-29 I corrected a wrong count in a header I had merged an hour earlier: `DML`'s docblock in `tools-pennsync-release-ladder.mjs` said six contracts reach their write through `library_write` and through nothing else, and the answer is seven. That correction was right, measured on a separate harness, and independently confirmed by the plan thread to the digit.
+
+While making it I "found" a second defect and it did not exist.
+
+The test beside that header uses a helper, `strippedOfLiterals`, to decide whether `library_write`'s DML is all inside quoted text. I read it, saw that it DISCARDS a dollar-quoted block, and reasoned: a plpgsql function IS a dollar-quoted string, so this throws away the body and the assertion holds over nothing — a green produced by an instrument that can see nothing, identical to a green produced by a clean tree. I changed it to UNWRAP the block instead, wrote a comment about the hour the assertion had been vacuous, and ran the suite. It passed.
+
+Then I measured, and every step of that was wrong. `functionBodies` already returns each body with its `$contract$` wrapper removed, so that branch never fires on real input and the original assertion was sound. Worse, my fix was wrong in the opposite direction: a dollar-quote tag REMAINING inside a body is a dollar-quoted STRING — `execute $sql$…$sql$` — so unwrapping it would report literal text as executable code, which inverts exactly the answer the helper exists to get right. I reverted it. No body in the tree carries one today, which the test now states rather than leaves to be inferred from a green.
+
+I checked the NUMBER before publishing it and I did not check the DEFECT. Both were confident claims about the same file written in the same half hour, and only one of them got measured.
+
+The reason is not carelessness, it is momentum. I had just proved one confident sentence wrong. That put me in a frame where finding another confident sentence wrong was the expected shape of the work, and the second finding inherited the credibility the first had earned. **A correction feels like more of what you have just established, so it gets the benefit of the doubt you have just stopped extending to everything else.** The standard I was enforcing on the header — do not state it unless you measured it — was suspended for the sentence enforcing it.
+
+**The operational half: measure a correction before publishing it, at the same standard as the thing it corrects, and be most suspicious of the second finding in a row. The first one earned its confidence. The second is borrowing it.**
+
+Measured and merged at `028fb7b6` (#362, squashed to `bd28cddb`), where the comment now says what is actually true about that branch, including that it is unexercised on real input.
+
+**This is NOT the lexer trap, and the two must not be folded together.** The plan thread really did hit that one — its first lexer stripped the body and every contract came back clean, caught by a control requiring the lexer to keep text inside a `$tag$` body. That instance is plan's and its body should be plan's. I did not hit it; I imagined I had. Counting my retraction beside plan's real instance would manufacture a second draw out of a withdrawal, which is the same error as quoting a positive control as coverage.
