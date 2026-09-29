@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 import { OPERATIONAL_MAXIMUM } from '../../../src/lib/independentEntityRoutes.js';
 import { ALL_ROWS } from '../../../src/lib/queryLimits.js';
 
@@ -27,36 +27,41 @@ import { ALL_ROWS } from '../../../src/lib/queryLimits.js';
  * `rls` block asked in the owned store's terms.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const LOCATORS = 'services/authority-store/supabase/record-migrations/'
-  + '20260920520000_file_locator_map.sql';
+/**
+ * The migration files these tests read as SOURCE TEXT.
+ *
+ * They no longer decide what is applied — the build below is the whole record
+ * directory, so a forward migration over anything in this file reaches this
+ * store whether or not anybody remembers to add its name here. That was the
+ * defect: `20260920640000_operational_limit.sql` had to be added by hand two
+ * days ago, and the next one would have had to be too.
+ *
+ * What survives is a different question. Four tests read a migration's own
+ * text to derive what they assert — the chart term, the page ceiling, the
+ * nine revoked helpers — because a claim retyped from a file drifts from it
+ * in the one direction nothing measures. A name that stops being a file now
+ * fails here rather than being skipped.
+ */
 const OPERATIONAL = 'services/authority-store/supabase/record-migrations/'
   + '20260920580000_contract_operational_tables.sql';
 /**
- * The forward migration over the four reads below, applied because a suite
- * that omits it builds bodies the store does not run.
- *
- * It was measured rather than assumed, in both directions. Adding it left all
- * 29 tests here green, and so did neutralising its term to one that answers
- * true — so this file had, and has, no coverage of the term itself. A change
- * that makes a suite faithful while leaving it green either way is the repair
- * that restores green and records nothing, so the last test in this file is
- * the assertion that reds when the term is gone.
+ * The forward migration whose term hides a chart filed against another
+ * agency. Read below because adding it left all 29 tests here green, and so
+ * did neutralising its term to one that answers true — a change that makes a
+ * suite faithful while leaving it green either way is the repair that records
+ * nothing, so the third test from the end reds when the term is gone.
  */
 const CHART_AGENCY = 'services/authority-store/supabase/record-migrations/'
   + '20260920590000_chart_agency.sql';
+const HELPER_REVOKE = 'services/authority-store/supabase/record-migrations/'
+  + '20260920650000_revoke_nonauthorizing_helpers.sql';
 /**
- * The forward migration that makes `operational_limit` executable.
- *
- * Applied here because the test below is the one that found it: nothing in
- * this file had ever passed a limit the helper accepts, so the single line
- * every frontend call reaches was the one line no test ran.
- *
- * Both of these are still hand-kept names, which is the defect #316 removed
- * for a converted suite. Converting THIS one is its own change; until then a
- * forward migration over anything in this file has to be added here by hand.
+ * The assignment contract, read here for the same reason — it is the other
+ * file whose closing `revoke` block missed a helper it declares, and the
+ * population of that check is the two files, not the store.
  */
-const OPERATIONAL_LIMIT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920640000_operational_limit.sql';
+const ASSIGNMENT = 'services/authority-store/supabase/record-migrations/'
+  + '20260920180000_contract_assignment.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -94,6 +99,7 @@ const CONVERSION_LIST = 'select "public"."pennsync_contract_note_conversion_list
 const CONVERSION_CREATE = 'select "public"."pennsync_contract_note_conversion_create"($1,$2) as result';
 
 let db;
+let applied;
 
 before(async () => {
   db = new PGlite();
@@ -102,13 +108,11 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The broker family's migration is where `grant usage on schema
-  // pennsync_records to authenticated` lives, so the public wrappers are
-  // unreachable without it.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, LOCATORS,
-    OPERATIONAL, CHART_AGENCY, OPERATIONAL_LIMIT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies it. The
+  // broker family's migration is where `grant usage on schema pennsync_records
+  // to authenticated` lives, so the public wrappers are unreachable without it,
+  // and the six files this suite used to name are all still in here.
+  applied = await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   // The charts of record. `patient-a1` is the one the shared fixtures put
@@ -1073,4 +1077,167 @@ test('the forward migration this file applies is the one that hides a crossed ch
     'the term must remove the crossed row and nothing else');
 
   await db.query(`delete from ${SCHEMA}."task" where "id" = $1`, [crossed]);
+});
+
+test('the build is the whole record directory, in its apply order', async () => {
+  // #316's walk rather than the six names this file used to carry. The
+  // conversion is not tidying: D88 makes a forward `create or replace` the
+  // only legal way to change a store that has already applied the original,
+  // so every future change to these contracts arrives as a file a hand-kept
+  // list does not name — and `20260920640000_operational_limit.sql`, which
+  // this suite had to add by hand two days ago, is the worked example.
+  //
+  // `recordMigrationNames` sorts, so the apply ORDER is pinned in the same
+  // line, and the relation is the assertion rather than a count: a count is
+  // satisfied by a build that omits any one file and applies a different one.
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the build must be the whole record directory, in its apply order');
+});
+
+/**
+ * Which `pennsync_records` functions a migration DECLARES, and which it hands
+ * to `authenticated`, read out of the migration's own text.
+ *
+ * Derived from the file rather than matched against a name, because a name
+ * pattern is the instrument this whole test exists to distrust. `%credential%`
+ * cannot see `bounded_reason`; an `%operational%` one cannot see
+ * `settings_defaults`; `%activity_%` matches exactly the right four today and
+ * would go green on a store that had gained a fifth. A wrong instrument that
+ * is green is the one nobody investigates.
+ */
+const declaredFunctions = sql => {
+  const names = new Set();
+  const declaration = /create\s+(?:or\s+replace\s+)?function\s+"?pennsync_records"?\s*\.\s*"?([a-z0-9_]+)"?\s*\(/gi;
+  for (const match of sql.matchAll(declaration)) names.add(match[1]);
+  return names;
+};
+
+const grantedToAuthenticated = sql => {
+  const names = new Set();
+  // Each `grant execute on function … to authenticated;` statement, then every
+  // `pennsync_records`-qualified name inside that statement alone — so a name
+  // revoked in one statement and granted in another is read from the grant.
+  const statement = /grant\s+execute\s+on\s+function([\s\S]*?)to\s+([^;]*);/gi;
+  for (const match of sql.matchAll(statement)) {
+    if (!/\bauthenticated\b/.test(match[2])) continue;
+    for (const named of match[1].matchAll(/"?pennsync_records"?\s*\.\s*"?([a-z0-9_]+)"?\s*\(/gi)) {
+      names.add(named[1]);
+    }
+  }
+  return names;
+};
+
+const reachableOverloads = async name => {
+  const { rows } = await db.query(`
+    select pg_catalog.oidvectortypes(p.proargtypes) as args
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = $1 and p.proname = $2`, [SCHEMA, name]);
+  const reachable = [];
+  for (const row of rows) {
+    const { rows: allowed } = await db.query(
+      'select has_function_privilege($1, $2, \'execute\') as allowed',
+      ['authenticated', `${SCHEMA}.${name}(${row.args})`]);
+    if (allowed[0].allowed) reachable.push(`${name}(${row.args})`);
+  }
+  return { overloads: rows.length, reachable };
+};
+
+test('a function these two migrations declare is callable only where they grant it', async () => {
+  // The rule every contract file's closing `revoke` exists to enforce: a
+  // helper that performs no authorization must not be a second entry point
+  // past the contract that owns the decision. PostgreSQL grants EXECUTE to
+  // PUBLIC on a new function, so the rule holds only where a revoke says so.
+  //
+  // Two blocks did not. `20260920180000_contract_assignment.sql` creates
+  // `bounded_reason` and `care_team_row` after its `set local role` and
+  // revokes only the second. `20260920580000_contract_operational_tables.sql`
+  // revokes 37 names — `operational_check_fields`, `operational_limit`,
+  // `operational_locator` and `operational_new_id` among them — and misses
+  // `operational_chart`, `operational_check_required` and all six
+  // `*_defaults()`. A long, plainly careful list reads as complete.
+  //
+  // The population is these two files' OWN declarations and their OWN grants,
+  // not the whole store: a suite that asserted the store-wide set would red
+  // whenever anybody else added a contract, which is a control too wide (it
+  // fails loudly for the wrong reason) rather than too narrow.
+  const files = [OPERATIONAL, ASSIGNMENT].map(
+    file => readFileSync(resolve(repository, file), 'utf8'));
+
+  const surprises = [];
+  let checked = 0;
+  for (const sql of files) {
+    const granted = grantedToAuthenticated(sql);
+    // The known-positive control, inside the same test rather than beside it:
+    // a derivation that found no grants would report every function as a
+    // violation, and a derivation that found no declarations would report
+    // none — both are silent failures of the instrument, not of the store.
+    assert.ok(granted.size > 0, 'the grant derivation found nothing to admit');
+    const declared = declaredFunctions(sql);
+    assert.ok(declared.size > granted.size,
+      'a contract file declares more functions than it hands to a caller');
+    for (const name of declared) {
+      const { reachable } = await reachableOverloads(name);
+      checked += 1;
+      if (granted.has(name)) {
+        assert.ok(reachable.length > 0,
+          `${name} is granted to authenticated and is not callable`);
+      } else if (reachable.length > 0) {
+        surprises.push(...reachable);
+      }
+    }
+  }
+  assert.ok(checked > 40, `the derivation checked only ${checked} functions`);
+  assert.deepEqual(surprises.sort(), [],
+    'these perform no authorization and must not be reachable');
+});
+
+test('the check bites: a helper left un-revoked is reported', async () => {
+  // FEAR THE CHECK THAT WOULD STILL PASS AFTER ITS SUBJECT WAS DESTROYED. The
+  // test above asserts an EMPTY list, and an empty list is what a derivation
+  // that reads nothing also produces. So plant exactly the defect it is about
+  // — a helper created with no revoke, which PostgreSQL hands to PUBLIC — and
+  // prove the same code reports it.
+  await db.exec(`set local role "pennsync_records_owner";
+    create function ${SCHEMA}.planted_helper(p text) returns text
+      language sql immutable set search_path = '' as $planted$ select p $planted$;
+    reset role;`);
+  try {
+    const { reachable } = await reachableOverloads('planted_helper');
+    assert.deepEqual(reachable, ['planted_helper(text)'],
+      'a helper with no revoke must read as reachable, or the check is blind');
+
+    // And the other direction on the same object, so the reading is about the
+    // privilege rather than about the function existing at all.
+    await db.exec(`set local role "pennsync_records_owner";
+      revoke all on function ${SCHEMA}.planted_helper(text)
+        from public, anon, authenticated, service_role;
+      reset role;`);
+    const after = await reachableOverloads('planted_helper');
+    assert.equal(after.overloads, 1, 'the planted helper must still exist');
+    assert.deepEqual(after.reachable, [], 'the revoke must be what the check sees');
+  } finally {
+    await db.exec(`set local role "pennsync_records_owner";
+      drop function if exists ${SCHEMA}.planted_helper(text); reset role;`);
+  }
+});
+
+test('the forward revoke names every helper it claims, and only reachable ones', async () => {
+  // The migration's own text against the store it builds. Read as source
+  // rather than asserted from memory, so a name dropped from the file fails
+  // here instead of being quietly not revoked.
+  const sql = readFileSync(resolve(repository, HELPER_REVOKE), 'utf8');
+  const revoked = [...sql.matchAll(
+    /"pennsync_records"\s*\.\s*([a-z0-9_]+)\s*\(/gi)].map(match => match[1]);
+  const named = [...new Set(revoked)].sort();
+  assert.deepEqual(named, [
+    'bounded_reason', 'care_plan_defaults', 'f2f_defaults',
+    'note_conversion_defaults', 'operational_chart',
+    'operational_check_required', 'settings_defaults', 'task_defaults',
+    'template_defaults',
+  ], 'the nine this change is about');
+  for (const name of named) {
+    const { overloads, reachable } = await reachableOverloads(name);
+    assert.ok(overloads > 0, `${name} is not in the store any more`);
+    assert.deepEqual(reachable, [], `${name} must not be callable`);
+  }
 });

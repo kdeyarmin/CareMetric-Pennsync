@@ -452,37 +452,44 @@ test('every credential capability authorizes, and no helper beside them is calla
   }
 });
 
-test('bounded_reason is reachable, which it should not be — a pin on a known gap', async () => {
-  // `20260920180000_contract_assignment.sql` creates two pure helpers after its
-  // `set local role`: `bounded_reason` at line 284 and `care_team_row` at 301.
-  // Its revoke block names `care_team_row` and the two contracts and NOT
-  // `bounded_reason`, and PostgreSQL grants execute to PUBLIC by default, so
-  // the omission leaves it callable. The revoked sibling beside it is what
-  // makes this an omission rather than a decision.
+test('bounded_reason is refused, which is what closed the pin', async () => {
+  // This test was INVERTED until `20260920650000_revoke_nonauthorizing_helpers.sql`
+  // landed. `20260920180000_contract_assignment.sql` creates two pure helpers
+  // after its `set local role` — `bounded_reason` and `care_team_row` — and
+  // revokes only the second, so PostgreSQL's default grant to PUBLIC left the
+  // first callable. The pin asserted that, so the state was recorded rather
+  // than merely described and the fix could not land quietly.
   //
-  // It is DISCIPLINE and not disclosure, measured in both directions. The
-  // function is `language sql immutable`, text in and text out, reads no table
-  // and calls nothing, so a caller learns nothing they did not send. And all
-  // four of its callers — the assignment and membership transitions, the
-  // credential review, the clinical phrase lookup — recompute it inside their
-  // own definer from the caller's own parameter and use it only to refuse, so
-  // nothing anywhere consumes its result where the caller's privilege matters.
-  // No policy calls it either.
+  // It flipped in the same change as the revoke, and it had to. Once this
+  // suite builds from the whole record directory, a pinned state and the
+  // migration that changes it are one fact about the store: landing the
+  // revoke alone reds `main` until this line is updated, and landing this
+  // line alone reds it until the revoke arrives (D149).
   //
-  // What it breaks is the rule the test above enforces: nothing that does no
-  // authorization may be reachable. The fix is a forward `revoke` — the file
-  // is merged, so it may never be edited in place (D88) — and it is not taken
-  // here because a migration deepens the batch already waiting on an operator
-  // for no disclosure control. It should ride the next forward migration over
-  // that contract.
+  // What it was never about is disclosure. The function is `language sql
+  // immutable`, text in and text out, and its four callers recompute it
+  // inside their own definer from the caller's own parameter. What it broke
+  // is the rule the test above enforces: nothing that performs no
+  // authorization may be reachable, because a reachable helper is a second
+  // entry point past the contract that owns the decision.
   //
-  // THIS ASSERTION IS INVERTED ON PURPOSE. It pins the defect so the state is
-  // recorded rather than merely described, and so the fix cannot land quietly:
-  // whoever writes that revoke will see this fail and must turn it into the
-  // refusal the helpers above get. Do not "fix" it by deleting it.
+  // The whole class is measured in `contract-operational-tables.test.mjs`,
+  // which derives the population from each migration's own `create function`
+  // declarations and grants. Eight more were found the same way, and a name
+  // pattern could not have seen any of them — `%credential%` does not match
+  // `bounded_reason`, which is why this needed a test of its own at all.
   const { rows } = await db.query(
     'select has_function_privilege($1, $2, \'execute\') as allowed',
     ['authenticated', `${SCHEMA}.bounded_reason(text)`]);
-  assert.equal(rows[0].allowed, true,
-    'if this fails the revoke has landed — replace this test with the refusal');
+  assert.equal(rows[0].allowed, false,
+    'bounded_reason performs no authorization and must not be callable');
+
+  // And the function is still THERE, so the refusal is the privilege rather
+  // than a helper that quietly stopped existing — the two are the same answer
+  // from `has_function_privilege` only if you never ask.
+  const { rows: present } = await db.query(`
+    select pg_catalog.count(*)::int as n
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = $1 and p.proname = 'bounded_reason'`, [SCHEMA]);
+  assert.equal(present[0].n, 1, 'bounded_reason must still be in the store');
 });
