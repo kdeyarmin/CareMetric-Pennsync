@@ -1259,7 +1259,7 @@ test('what holds each member of `entity_authorization` is measured, not describe
   assert.equal(Object.keys(held).filter(name => held[name].includes('User')).length, 6);
   assert.deepEqual(report.port_blockers.entity_authorization.filter(name => !held[name]), [],
     'every member is held by a write this measured');
-  // And what holds each of the seven, named, so a later widening of the
+  // And what holds each of the six, named, so a later widening of the
   // allowlist has to come past this list rather than past a count.
   //
   // `autoEndDutyDay` is the one worth reading twice: both columns it writes
@@ -1285,6 +1285,61 @@ test('what holds each member of `entity_authorization` is measured, not describe
   for (const handler of ['listAgencyRoster', 'getAgencyRosterMember']) {
     assert.ok(HANDLER_NAMES.includes(handler), `${handler} is the roster RPC the bucket said it was waiting for`);
   }
+});
+
+test('a retention basis is refused for a retired FUNCTION, not merely unnecessary', () => {
+  // The scope of the retention check, pinned rather than left to a comment.
+  //
+  // `RETIRING_DISPOSITIONS`' own header says "every retired ENTITY also carries
+  // a retention basis", which is exact and reads narrower than a skimming
+  // reader takes it: the loop that enforces it is inside `if (family ===
+  // 'entities')`, so a retired FUNCTION owes none. `enforceStaffRoleIntegrity`
+  // is the first retired function this repository has, so this is the first
+  // time the distinction has been reachable at all, and the next person to
+  // retire one will read that header and believe they owe a basis.
+  //
+  // What makes this worth a test rather than a comment beside the comment: the
+  // two statements differ in strength and only one of them is checkable.
+  // "No entry is needed" is satisfied by a gate that never looks. "An entry is
+  // REFUSED, by name" is satisfied only by a gate whose scope is real. So the
+  // entry is planted and the refusal is read back — which is how this was
+  // established in the first place, rather than by reading the `if`.
+  const manifest = parseManifest(
+    readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
+  assert.equal(manifest.functions.enforceStaffRoleIntegrity, 'retire',
+    'this test is about a retired function, so it needs one to exist');
+  assert.ok(!Object.hasOwn(manifest.retention, 'enforceStaffRoleIntegrity'),
+    'the committed manifest carries no basis for it');
+
+  // A WELL-FORMED entry, so what the gate objects to is the family and not the
+  // shape. A malformed one would be rejected for the wrong reason and would
+  // prove nothing about scope.
+  const planted = {
+    ...manifest,
+    retention: {
+      ...manifest.retention,
+      enforceStaffRoleIntegrity: { basis: 'none', reason: 'operational rows only, planted by a test' },
+    },
+  };
+  const report = checkCoverage(discoverCapabilities(repository), planted, discoverEvidence(repository));
+  assert.ok(report.retention_unused.includes('entities:enforceStaffRoleIntegrity'),
+    'a basis for a retired function is reported as unused, which is the gate saying '
+    + 'the retention question is the entities family\'s and not every family\'s');
+  assert.equal(report.retention_settled, false,
+    'and it is blocking rather than advisory, so nobody can add one quietly');
+
+  // The control, because a gate that rejected EVERY planted entry would satisfy
+  // the assertions above while having no scope at all. A retired ENTITY's basis
+  // is accepted, so the refusal above is about the family and not about the act
+  // of planting.
+  const [entity] = Object.keys(manifest.entities)
+    .filter(name => manifest.entities[name] === 'retire').sort();
+  assert.ok(entity, 'the control needs a retired entity to exist');
+  assert.ok(Object.hasOwn(manifest.retention, entity),
+    `${entity} is retired and carries a basis, which is the accepted case`);
+  const settled = checkCoverage(discoverCapabilities(repository), manifest, discoverEvidence(repository));
+  assert.deepEqual(settled.retention_unused, [],
+    'the committed manifest has no unused basis, so the planted one above is the difference');
 });
 
 test('what `core_integration` blocks is measured per module, not assumed from the reach', () => {
