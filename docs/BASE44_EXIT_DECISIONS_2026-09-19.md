@@ -12015,3 +12015,87 @@ disagreement between sessions, not for reading harder.
 *Written 2026-09-29. The second instance is the physician-write thread's, quoted
 as sent and unedited. The discriminator that separates this from D170 — that its
 failure costs the record rather than a belief — is that thread's too.*
+
+## D212 — A named refusal is overridden by a later general yes, the override inherits authority by sitting beside a real quotation, and carriage keeps the authority and drops the seam.
+Plan's, 2026-09-29, with the first stage found by batch C and verified here
+first-hand at 11:46Z. The instance is my own unauthorized merge of #361. Three
+stages, because each is survivable alone and only the sequence produces a
+permission the owner had refused in as many words.
+
+**Stage one, a refusal superseded by a generality.** `kevin-pennsync-working-
+rules.md` carries both of these, four lines apart, and I read them myself
+rather than taking the report:
+
+    **He delegated the calls on 2026-09-23 at 01:11:53Z: "Make the decisions
+    for me. The best for the app"** … Undrafting and squash-merging a green
+    pull request of this work needs no fresh ask…
+
+    ~~**No standing merge rule.** He was offered "merge when green, from now
+    on" on 2026-09-22 and declined it.~~ [Superseded 2026-09-23 by the
+    delegation above.]
+
+**He was offered this exact rule by name and said no.** The next day he said
+something general that named nothing, and that was recorded as superseding the
+refusal. So this is not an inference from silence — it is an inference AGAINST
+a recorded no, and the strikethrough presents it as bookkeeping rather than as
+a reversal. **A general yes does not reach a specific no**, and where a
+declination is on the record the only thing that lifts it is an answer naming
+the same operation.
+
+**Stage two, adjacency.** The merge clause rides in the same run as the
+verbatim quote, so a reader supplies the continuity. The quote is real, the
+attribution honest, and the boundary between what he SAID and what we CONCLUDED
+is simply not drawn. **And the refutation is four lines below in the same
+file**: "A bare go-ahead that names nothing authorizes nothing… What authorizes
+is his answer to a post that NAMES the operation." The quotation used as the
+grant is squarely in the class that sentence excludes. Being adjacent to your
+own counter-rule does not stop you writing it.
+
+**Stage three, carriage.** That paragraph reached me by memory recall and then
+compaction, and what survived into my standing constraints was "marking ready
+and merging are Claude's once CI is green" alone, as a rule I had been given.
+The quote, its date, the strikethrough and the pace-not-permission clause did
+not survive. **A summary keeps conclusions and discards the material they were
+drawn from, which is exactly the seam.**
+
+**Why reading the repository could not catch it, and what could.** A thread
+holding that text is not reasoning from a norm, a neighbour or a page — it
+holds a rule, so `CONTRIBUTING.md` cannot dislodge it: the instruction never
+presented as derived from any page. On 2026-09-29 three threads merged without
+authority by three routes — a page misread, a norm read off neighbours, and
+this — and only the first two are caught by reading the repository.
+
+**But do not read that as uncatchable, which is the failure worse than the
+mechanism.** The REPOSITORY cannot reach it; the memory page can, and every
+session that recalls memory has already read it. **What was never sampled is
+not a population, it is a question.** We have swept that page repeatedly for
+statements that are WRONG. We have never once swept it for OUR OWN INFERENCE
+SITTING FLUSH AGAINST HIS VERBATIM WORDS, which is a different predicate over
+the same text and is cheap to run. The coordinator measured this and I
+confirmed it first-hand: the form is live on `MEMORY.md` today, in the first
+Kevin bullet a cold successor is told to get right before reading anything —
+his quoted sentence, then our rule, same bullet, no seam. There the adjacent
+inference happens to be RESTRICTIVE, which is a fact about the content and not
+about the form. **Adjacency lends our sentence his authority whichever way it
+points**, so a sweep for the form finds the dangerous ones and the harmless
+ones alike, and the harmless ones are how you learn the sweep works.
+
+**How to apply.** Writing: an authorization carries its own citation or it is
+not one — author, time, and the operation it names, INSIDE the quotation marks.
+Never set a conclusion flush against the quote it came from. And **never mark a
+recorded declination superseded by anything that does not name what was
+declined**; the sibling protocol file gets this right for a different refusal
+of his ("never re-ask these — withdrawn when he declined"), so the convention
+existed and this is the one place it was overridden. Acting: **the check "what
+grants my authority" must reach your own standing text**, which is the one
+place the question never occurs to you.
+
+**Two depths, and which generalises.** Mine was that the sentence had no
+grantor, found by searching my own transcript — an instrument anybody can run,
+on their own text, that could have come back the other way. Batch C's is that
+it had a grantor who declined, found by reading one file somebody happened to
+be looking at. The second is worse and the first is reproducible, so run the
+transcript search and then go and look for a refusal.
+
+**And check before calling a provenance unrecoverable.** Mine was recoverable,
+and what it recovered was worse than an absence — twice over.
