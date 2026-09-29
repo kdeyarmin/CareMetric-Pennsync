@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,8 @@ import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor }
   from './src/lib/independentEntityRoutes.js';
 import { main, measureRoutes, servedSites, summaryLines } from './tools-entity-routes.mjs';
-import { measureDestinations } from './tools-frontend-destination.mjs';
+import { callArguments } from './tools-entity-call-arguments.mjs';
+import { SERVED, measureDestinations } from './tools-frontend-destination.mjs';
 import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
 import { buildPaths, readEntity } from './tools-tenant-path.mjs';
 
@@ -224,21 +225,71 @@ test('what a wider generic family could reach is reported and adds up', () => {
  * since the gate was rebuilt, and only reachable once a route existed over a
  * key one file calls twice.
  *
- * `src/pages/ReferralTriage.jsx` is that file: two `Task.create` calls, one
- * whose argument is readable and one whose is not. A route accepting anything
- * therefore serves exactly one of the two.
+ * The case needs a file that calls one operation twice with one argument
+ * readable and one not, so a route accepting anything serves exactly one of the
+ * two. `src/pages/ReferralTriage.jsx`'s two `Task.create` calls were that file,
+ * and the plant NAMED that key — which made the test a hostage of the route:
+ * declaring `Task.create` put it in the baseline, `routed_sites > baseline`
+ * stopped holding, and the hold was recorded in another batch's file with the
+ * remedy "name a key no batch declares". Repointing it moves that wall one
+ * route along and the next thread hits it with no record of why.
+ *
+ * So the plant is DERIVED, and the derivation is the point rather than a
+ * tidy-up: whatever undeclared landable pair the tree currently has in that
+ * shape supplies it, and a tree with none REFUSES rather than skipping — which
+ * is the honest failure, because the case would then be unreachable and a green
+ * test claiming to measure it would be measuring nothing.
+ *
+ * It also no longer carries the coverage alone. Declaring the clinical-library
+ * writes put two DECLARED pairs into this shape — both of
+ * `ClinicalLibraryManager.jsx`'s `update` calls — so the committed report
+ * exercises the multiset subtraction with no plant at all, and the bucket-sum
+ * assertion in `what a wider generic family could reach is reported and adds
+ * up` fails by exactly two if the Set comes back. That was measured by
+ * restoring the Set and watching THREE tests fail, not assumed: this one, that
+ * one, and the plan-document pin.
  */
 test('a served site is removed from the remainder once, not per key', () => {
   const baseline = measureRoutes(repository);
-  const routes = { ...ENTITY_ROUTES, 'Task.create': sound({ request: () => ({}) }) };
+  const landable = new Set(measureDestinations(repository).sites
+    .filter(site => SERVED.includes(site.destination))
+    .map(site => `${site.entity}.${site.operation}`));
+  const grouped = new Map();
+  for (const call of callArguments(repository)) {
+    const pair = `${call.file}\u0000${call.entity}.${call.operation}`;
+    if (!grouped.has(pair)) grouped.set(pair, []);
+    grouped.get(pair).push(call);
+  }
+  // Sorted so the chosen pair is a property of the tree and not of map order:
+  // a test that measures a different case on two runs of one commit is not one
+  // case proved, it is two cases each proved half the time.
+  const candidates = [...grouped]
+    .map(([pair, calls]) => {
+      const [file, key] = pair.split('\u0000');
+      return { file, key, readable: calls.filter(call => call.arguments !== null).length,
+        total: calls.length };
+    })
+    .filter(candidate => landable.has(candidate.key)
+      && !Object.hasOwn(ENTITY_ROUTES, candidate.key)
+      && candidate.readable === 1 && candidate.total > candidate.readable)
+    .sort((left, right) => (left.key + left.file).localeCompare(right.key + right.file));
+  assert.ok(candidates.length > 0,
+    'no undeclared landable key has one readable call and one unreadable one in a single\n'
+    + '  file, so the case this test exists for cannot be reached on this tree. It is a\n'
+    + '  REFUSAL rather than a skip: the multiset subtraction is still exercised by the\n'
+    + '  committed report, whose bucket sum falls short if a Set comes back, but the\n'
+    + '  planted half of the proof is gone and something has to say so.');
+  const chosen = candidates[0];
+
+  const routes = { ...ENTITY_ROUTES, [chosen.key]: sound({ request: () => ({}) }) };
   const report = measureRoutes(repository, routes);
   assert.deepEqual(report.problems, []);
 
   const calls = servedSites(repository, routes, measureDestinations(repository).sites.length);
-  const triage = calls.served.filter(call =>
-    call.file === 'src/pages/ReferralTriage.jsx' && call.key === 'Task.create');
-  assert.equal(triage.length, 1,
-    'the case only exists while that file has one served call and one unreadable one');
+  const doubled = calls.served.filter(call =>
+    call.file === chosen.file && call.key === chosen.key);
+  assert.equal(doubled.length, 1,
+    `${chosen.file} must have one served call and one unreadable one for ${chosen.key}`);
 
   // The arithmetic the Set broke. Both halves, because either alone passes
   // with the other wrong.
@@ -390,10 +441,76 @@ test('the go-live plan carries this tree\'s entity-route reading verbatim', () =
  * that happens to equal a pinned total — the coincident-figures trap — and the
  * remedy is the one already in the message below: spell it as a word.
  */
+test('no earlier reading sits below the measured one', () => {
+  const page = readFileSync(resolve(repository, PLAN), 'utf8');
+  const report = measureRoutes(repository);
+  const firstLine = summaryLines(report)[0];
+
+  /*
+   * WHAT THIS CHECKS, AND — MORE IMPORTANTLY — WHAT IT DOES NOT.
+   *
+   * It checks one ordering: the measured reading is the last `entity routes:`
+   * fence on the page, so a record of an earlier head never sits below the
+   * current one. That is a real mistake and worth holding.
+   *
+   * IT DOES NOT CATCH THE DEFECT IT WAS WRITTEN FOR, and saying so here is the
+   * point of the comment. Twice in one day, in this section, an inserted block
+   * landed between an EARLIER block and the prose explaining it, leaving a
+   * paragraph that opens "The move above ..." describing the block above the
+   * block above it — a paragraph reporting another paragraph's numbers, which
+   * is worse than a missing explanation because it reads like an explanation.
+   * Both times every assertion in this file passed.
+   *
+   * This assertion was written to close that and was then PLANTED with the
+   * real broken layout, which it passed: in both the broken and the fixed page
+   * the fences run 69, 64, 74, because only the PROSE moved. An assertion true
+   * of both cannot distinguish them. It is kept, with its claim cut back to
+   * what it measures, rather than deleted — but nothing here covers the
+   * orphaned-prose defect, and a reader must not take a green run as evidence
+   * that the section reads coherently.
+   *
+   * The sibling check below cannot cover it either: it reads the prose AFTER
+   * the measured block, and prose orphaned BEHIND an inserted block is not in
+   * that region. Closing this properly needs an assertion about which fence a
+   * backward-referencing paragraph describes, which is a claim about meaning
+   * rather than about order, and nobody has built one. Until then the control
+   * is reading the rendered section after any edit that moves a block — which
+   * is what found it both times, and is not something to rely on a third.
+   */
+  const fences = [...page.matchAll(/^entity routes: .*$/gm)].map(match => match[0]);
+  assert.ok(fences.length > 0, `${PLAN} carries no entity-route reading at all`);
+  assert.equal(fences.at(-1), firstLine,
+    `${PLAN}: an earlier reading sits below the measured one.\n`
+    + `  last on the page: ${fences.at(-1)}\n`
+    + `  measured now:     ${firstLine}\n`
+    + '  Earlier readings are RECORDS of a head and belong ABOVE the current one.\n'
+    + '  Append a new reading at the end of the section and demote the previous\n'
+    + '  one in place. NOTE: passing this says nothing about whether each block\n'
+    + '  still sits with its own prose — see this test\'s comment.');
+});
+
 test('the prose after that block points at it and restates none of its figures', () => {
   const page = readFileSync(resolve(repository, PLAN), 'utf8');
   const report = measureRoutes(repository);
-  const prose = proseAfterPinnedBlock(page, summaryLines(report)[0]);
+  const firstLine = summaryLines(report)[0];
+
+  // The region below is found by the FIRST line equal to the block's first
+  // line, so a verbatim duplicate of that line anywhere EARLIER in the page
+  // moves this check onto prose it was not written for — prose which restates
+  // none of these figures, so it passes. Planted, that reads fifteen green and
+  // a blind check, which is indistinguishable from a page that is fine. The
+  // absence case is the assertion below and keeps its own message, because a
+  // duplicated block and a missing one are different mistakes with different
+  // remedies and one message cannot name both.
+  const copies = page.split('\n').filter(line => line === firstLine).length;
+  assert.ok(copies <= 1,
+    `${PLAN} carries the pinned block's first line ${copies} times.\n`
+    + '  The prose region checked below starts at the FIRST one, so a second copy\n'
+    + '  silently relocates this check to some other part of the page and it stops\n'
+    + '  reading Stage J at all. Keep exactly one copy of the measured block; a\n'
+    + '  reading of an earlier head is a record and must differ from it.');
+
+  const prose = proseAfterPinnedBlock(page, firstLine);
   assert.ok(prose !== null, `${PLAN} does not carry the pinned block's first line`);
 
   for (const figure of PINNED_FIGURES) {
@@ -424,5 +541,254 @@ test('the prose after that block points at it and restates none of its figures',
           + '  than a restated figure, spell the number as a word, as the rest of this\n'
           + '  page does. If it is the figure, move it inside the block.\n'
         : ''));
+  }
+});
+
+/**
+ * Every `screenRead` route's declared answer key against the SQL its contract
+ * actually returns — the one layer the gate cannot see.
+ *
+ * The gate runs a declaration's `request` against each call site's arguments
+ * and never exercises `response`, which the page beside this file records as a
+ * live defect once already: a route declared over `contract_alert_list` passed
+ * the gate and would have refused every real call, because the helper read
+ * `result.entries` as a constant and that contract answers `alerts`. Making the
+ * key a parameter stopped the constant being inherited by copying. It does not
+ * stop the parameter being WRONG, and nothing between the route and the store
+ * renames anything: the handler returns `contract(...)` untouched.
+ *
+ * THE FAILURE MODE THIS TEST IS SHAPED AROUND IS ITS OWN. A first version
+ * extracted each contract's body with a non-greedy match to `$contract$;` and
+ * reported `contract_clinical_event_list` as declaring `events` where the SQL
+ * answered `entries` — a live refusal on every chart-timeline read, apparently.
+ * It was the extractor: that body was never isolated at all, and the keys the
+ * comparison saw belonged to another function. The corrected extractor says the
+ * SQL answers `events` and the route is right.
+ *
+ * So a body that cannot be found FAILS rather than being skipped, which is the
+ * assertion that would have caught it. D95's rule arriving from the other side:
+ * a case that comes back BLIND is not a finding, and a case that comes back
+ * POSITIVE from an unvalidated extractor is not one either.
+ */
+const RECORD_MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
+
+function contractBodies() {
+  const directory = resolve(repository, RECORD_MIGRATIONS);
+  const sql = readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
+    .map(name => readFileSync(resolve(directory, name), 'utf8')).join('\n');
+  const bodies = new Map();
+  const marks = [...sql.matchAll(/create (?:or replace )?function "pennsync_records"\.([a-z_]+)\(/g)];
+  for (const [index, mark] of marks.entries()) {
+    bodies.set(mark[1], sql.slice(mark.index, marks[index + 1]?.index ?? sql.length));
+  }
+  return bodies;
+}
+
+/**
+ * The keys a contract's own `return jsonb_build_object(...)` statements name.
+ *
+ * Parenthesis-counted rather than window-matched. A version bounding the
+ * argument list to 400 characters found nothing at all in `contract_alert_list`
+ * — whose answer wraps a `coalesce((select …))` far longer than that — and
+ * reported an EMPTY key set, which the comparison then read as "this route's
+ * key is not among the ones returned". That is the same extractor failure
+ * twice in one afternoon, and the second time it accused the very route the
+ * check was written for.
+ *
+ * Keys are taken at depth one only, so a nested `jsonb_build_object` inside a
+ * projection does not contribute its fields to the outer answer.
+ */
+function answeredKeys(body) {
+  const keys = new Set();
+  const opener = /return jsonb_build_object\(/g;
+  for (let start = opener.exec(body); start; start = opener.exec(body)) {
+    let depth = 1;
+    let index = start.index + start[0].length;
+    let head = index;
+    for (; index < body.length && depth > 0; index += 1) {
+      const character = body[index];
+      if (character === '(') depth += 1;
+      else if (character === ')') depth -= 1;
+      else if (character === ',' && depth === 1) {
+        const argument = body.slice(head, index).trim();
+        const literal = argument.match(/^'([a-z_]+)'$/);
+        if (literal) keys.add(literal[1]);
+        head = index + 1;
+      }
+    }
+  }
+  return keys;
+}
+
+/**
+ * Each screen read's declared answer key, default sort and contract.
+ *
+ * Read per `screenRead(` CALL rather than by a fixed property order. A first
+ * version matched `answerKey` followed by `entity` followed by `function` on
+ * consecutive lines, which is the shape seven of the nine calls happen to use —
+ * and the two it missed are both `PatientAlert`, which is the pair the whole
+ * check exists for, because `contract_alert_list` answering `alerts` is the
+ * live defect that made the key a parameter in the first place. It passed a
+ * floor of seven while blind to the two routes that motivated it.
+ *
+ * So the count is DERIVED from the file's own `answerKey:` occurrences rather
+ * than typed, for the same reason a registry sentinel should count exported
+ * names rather than carry a number: a check whose population is a literal
+ * cannot notice its population changing.
+ */
+function declaredAnswerKeys() {
+  const routes = readFileSync(resolve(repository, 'src/lib/independentEntityRoutes.js'), 'utf8');
+  const contracts = readFileSync(resolve(repository, 'services/pennsync-api/record-contracts.mjs'), 'utf8');
+  const declared = [];
+  const calls = [...routes.matchAll(/screenRead\(\{/g)];
+  for (const [index, call] of calls.entries()) {
+    const body = routes.slice(call.index, calls[index + 1]?.index ?? routes.length);
+    const field = name => body.match(new RegExp(`\\n\\s*${name}:\\s*'(-?[A-Za-z_]+)'`))?.[1] ?? null;
+    const answerKey = field('answerKey');
+    if (answerKey === null) continue;
+    const capability = field('function');
+    const rpc = capability && contracts.match(
+      new RegExp(`\\n  ${capability}: Object\\.freeze\\(\\{[\\s\\S]{0,400}?rpc: '([a-z_]+)'`));
+    declared.push({
+      answerKey,
+      entity: field('entity'),
+      capability,
+      order: field('order'),
+      rpc: rpc ? rpc[1].replace(/^pennsync_/, '') : null,
+    });
+  }
+  return { declared, answerKeyCount: [...routes.matchAll(/\n\s*answerKey:/g)].length };
+}
+
+test('every declared answer key is one its contract actually returns', () => {
+  const bodies = contractBodies();
+  const { declared, answerKeyCount } = declaredAnswerKeys();
+  // NOT a floor, and not a number typed here. Every `answerKey:` in the route
+  // file must have been extracted, so a declaration this reader cannot parse
+  // fails instead of quietly leaving its route unmeasured. A floor of seven
+  // passed while the two `PatientAlert` routes were invisible.
+  assert.equal(declared.length, answerKeyCount,
+    `the route file declares ${answerKeyCount} answer keys and this reader found `
+    + `${declared.length}.\n  A route it cannot parse is a route it does not check, `
+    + 'which is indistinguishable\n  from a route that agrees.');
+
+  for (const route of declared) {
+    assert.ok(route.rpc,
+      `${route.entity}.${route.capability} reaches no contract entry in record-contracts.mjs`);
+    const body = bodies.get(route.rpc);
+    // A MISSING body fails. It does not skip, and it is not "no disagreement
+    // found" — that reading is what made the first version of this test report
+    // a defect that was not there.
+    assert.ok(body,
+      `no SQL body found for \`${route.rpc}\` (${route.entity}.${route.capability}).\n`
+      + '  This is a failure of the extractor above, not evidence about the route.\n'
+      + '  Fix the extraction before reading anything else this test says.');
+    const answered = answeredKeys(body);
+    assert.ok(answered.has(route.answerKey),
+      `${route.entity}.${route.capability} declares answerKey \`${route.answerKey}\`,\n`
+      + `  but \`${route.rpc}\` returns ${JSON.stringify([...answered])}.\n`
+      + '  Nothing renames it in between — the handler returns `contract(...)` untouched —\n'
+      + '  so this route is counted SERVED and refuses the store\'s real answer on every call.');
+  }
+
+  // AN EMPTY DISAGREEMENT SET IS NOT EVIDENCE (D174). Drive a key the contract
+  // does not answer through the same comparison and require it to be caught.
+  const sample = bodies.get(declared[0].rpc);
+  assert.ok(sample, 'the plant needs a body the extractor found');
+  assert.equal(answeredKeys(sample).has('rows_that_no_contract_answers'), false);
+});
+
+/**
+ * Every screen read's declared default sort against the `order by` its
+ * contract actually runs.
+ *
+ * The route's `order` is what the SPA believes it is getting, and the contract
+ * decides what it gets. A disagreement is silent in a way the answer-key one is
+ * not: a wrong key REFUSES and somebody notices, while a wrong sort returns the
+ * right rows in the wrong order and looks like data. That asymmetry is why this
+ * is worth a check of its own rather than a line in the one above.
+ *
+ * The FIRST `order by` in the body is the one compared, because that is the
+ * query whose rows become the answer; a later one belongs to a sibling
+ * function's projection. A body with none FAILS rather than skipping, for the
+ * reason the extractor above now fails on a missing body: not-found is a
+ * statement about the instrument, never about the route.
+ */
+test('every declared default sort is the one its contract runs', () => {
+  const bodies = contractBodies();
+  const { declared } = declaredAnswerKeys();
+  const sorted = declared.filter(route => route.order !== null);
+  // Derived, not typed, for the reason the count above is: a route dropping its
+  // `order` should shrink this population visibly rather than quietly.
+  assert.equal(sorted.length, declared.length - 1,
+    `${declared.length - sorted.length} screen reads declare no default sort.\n`
+    + '  Exactly one is expected to (the unfiltered OCR list). If that changed,\n'
+    + '  say so here rather than letting the population move silently.');
+
+  for (const route of sorted) {
+    const body = bodies.get(route.rpc);
+    assert.ok(body, `no SQL body for \`${route.rpc}\`; fix the extractor, not the route`);
+    const clause = body.match(/order by ([^\n]+)/i);
+    assert.ok(clause,
+      `\`${route.rpc}\` runs no \`order by\` at all, yet `
+      + `${route.entity}.${route.capability} declares \`${route.order}\`.\n`
+      + '  Read the SQL before believing this: an absent clause here has twice been\n'
+      + '  the extractor rather than the contract.');
+    const field = route.order.replace(/^-/, '');
+    const descending = route.order.startsWith('-');
+    assert.ok(clause[1].includes(`"${field}"`),
+      `${route.entity}.${route.capability} declares \`${route.order}\`, but `
+      + `\`${route.rpc}\` orders by:\n    ${clause[1]}`);
+    assert.equal(/\bdesc\b/i.test(clause[1]), descending,
+      `${route.entity}.${route.capability} declares \`${route.order}\` `
+      + `(${descending ? 'descending' : 'ascending'}), but \`${route.rpc}\` orders by:\n`
+      + `    ${clause[1]}\n`
+      + '  Rows come back in the opposite order and nothing refuses, which is the\n'
+      + '  whole reason this is checked separately from the answer key.');
+  }
+});
+
+/**
+ * The remainder is a PARTITION, and the page's prose about it carries numbers
+ * the pinned block does not.
+ *
+ * Those three counts describe three different kinds of work — a route that
+ * refuses, a site the scan cannot read, and a site nobody has routed — and the
+ * audit's whole argument is that they must not be added together. Prose stating
+ * them is prose that rots, so it is checked here: the identity first, because a
+ * partition that does not add up is a second answer to a question the gate
+ * already answers, and then the page.
+ */
+test('the landable sites partition exactly, and the audit prose carries the parts', () => {
+  const report = measureRoutes(repository);
+  const routes = ENTITY_ROUTES;
+  const destinations = measureDestinations(repository);
+  const { served, refused, unreadable } = servedSites(repository, routes, destinations.sites.length);
+
+  // Cross-checked against the tool's own figures BEFORE anything is read off
+  // them, so this cannot become a quietly different second measurement.
+  assert.equal(served.length, report.routed_sites);
+  assert.equal(refused.length, report.declared_but_refused);
+  assert.equal(unreadable.length, report.declared_but_unreadable);
+
+  const declared = new Set(Object.keys(routes));
+  const landable = destinations.sites.filter(site => SERVED.includes(site.destination));
+  const noRoute = landable.filter(site => !declared.has(`${site.entity}.${site.operation}`));
+  assert.equal(served.length + refused.length + unreadable.length + noRoute.length, landable.length,
+    'the four parts do not add to the landable total, so at least one site is in\n'
+    + '  two parts or in none. Fix the partition before reading any of its counts.');
+  assert.equal(landable.length, report.landable_sites);
+
+  const page = readFileSync(resolve(repository, PLAN), 'utf8');
+  const spelled = { 9: 'Nine', 43: 'Forty-three', 48: 'Forty-eight' };
+  for (const [count, word] of [[refused.length, spelled[refused.length]],
+    [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
+    assert.ok(word,
+      `the partition moved to ${count} and this test has no spelling for it.\n`
+      + '  Update the audit prose and this list together; a count the page states\n'
+      + '  and nothing checks is the defect this whole section is about.');
+    assert.ok(page.includes(word),
+      `${PLAN} does not say "${word}" — the audit prose states the partition in\n`
+      + `  words and this part is now ${count}. Update the prose.`);
   }
 });

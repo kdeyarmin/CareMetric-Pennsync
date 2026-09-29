@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { ENTITY_CALL, sourceFiles } from './tools-base44-surface.mjs';
+import { entityCalls, sourceFiles } from './tools-base44-surface.mjs';
 
 /** Named row limits the screens pass instead of a literal. */
 export const LIMIT_CONSTANTS_FILE = 'src/lib/queryLimits.js';
@@ -184,8 +184,8 @@ export function callArguments(repository) {
   const sites = [];
   for (const file of sourceFiles(join(repository, 'src'))) {
     const text = readFileSync(file, 'utf8');
-    for (const match of text.matchAll(ENTITY_CALL)) {
-      const after = match.index + match[0].length;
+    for (const site of entityCalls(text)) {
+      const after = site.end;
       const tail = text.slice(after).match(/^\s*([a-zA-Z][A-Za-z0-9_]*)/);
       const operation = tail ? tail[1] : '';
       const raw = tail ? argumentText(text, after + tail[0].length) : null;
@@ -196,7 +196,7 @@ export function callArguments(repository) {
       });
       sites.push(Object.freeze({
         file: relative(repository, file),
-        entity: match[1],
+        entity: site.entity,
         operation,
         arguments: values === null || values.some(value => !value.known)
           ? null : Object.freeze(values.map(value => value.value)),

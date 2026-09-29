@@ -22,6 +22,31 @@ const libraryAnswer = (entries, complete = true) => () => new Response(
   JSON.stringify({ success: true, result: { entries, complete }, execution: 'pennsync-api', base44ExecutionDependency: false }),
   { headers: { 'content-type': 'application/json' } });
 
+/**
+ * A library WRITE's answer shape, which is not the read's.
+ * `contract_library_write` answers `{created|updated|deleted: true, row}`, and
+ * the flag is the only thing in it that says which write happened. The fixture
+ * takes the verb from the REQUEST so an ordinary case behaves as the store
+ * does; `libraryVerbAnswer` fixes a wrong one on purpose, because a fixture
+ * that can only agree with the route proves nothing about the route.
+ */
+const libraryWriteAnswer = (fixture, row = { id: 'row-1' }) => () => {
+  const action = fixture.apiCalls.at(-1)?.body?.params?.action;
+  const verb = { create: 'created', update: 'updated', delete: 'deleted' }[action];
+  return new Response(
+    JSON.stringify({
+      success: true,
+      result: { ...(verb ? { [verb]: true } : {}), row },
+      execution: 'pennsync-api',
+      base44ExecutionDependency: false,
+    }),
+    { headers: { 'content-type': 'application/json' } });
+};
+
+const libraryVerbAnswer = (verb, row = { id: 'row-1' }) => () => new Response(
+  JSON.stringify({ success: true, result: { [verb]: true, row }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+  { headers: { 'content-type': 'application/json' } });
+
 /** The roster contract's own answer shape: entries, plus a keyset cursor. */
 const rosterAnswer = (entries, next = null) => () => new Response(
   JSON.stringify({ success: true, result: { entries, next }, execution: 'pennsync-api', base44ExecutionDependency: false }),
@@ -328,6 +353,75 @@ describe('the declared entity routes', () => {
           .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
       }
       expect(fixture.apiCalls).toHaveLength(0);
+    });
+
+    it('sorts and filters only on columns the record store actually has', async () => {
+      const { readFileSync } = await import('node:fs');
+      const { BROKERED_ENTITIES, READ_ONLY_MODES } =
+        await import('../../services/pennsync-api/brokered-entities.mjs');
+      // This family is the one place the browser orders and filters rows
+      // ITSELF, over a page it has proved complete. That is sound, and it is
+      // sound for a reason nothing here was checking: a field it sorts on has
+      // to BE a column, or `ordered` compares `undefined` with `undefined`,
+      // every row ties, and the screen is served the store's own order under
+      // the name of the one it asked for. No refusal, no empty page, nothing
+      // to notice — the same silence as a response key that is never sent.
+      //
+      // Both sides are generated. The entities come from the file
+      // `tools-record-brokers.mjs` writes beside the family's SQL, and the
+      // columns from the record-store migration `tools-entity-schema-plan.mjs`
+      // writes. Neither is typed here, so a column renamed in the generator
+      // fails this rather than surviving in a second copy.
+      const migration = readFileSync(
+        'services/authority-store/supabase/record-migrations/20260919170000_record_store.sql', 'utf8');
+      const columnsOf = (entity) => {
+        const table = entity.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+        const start = migration.indexOf(`create table "pennsync_records"."${table}" (`);
+        expect(start, `${table} is not in the record store`).toBeGreaterThan(-1);
+        const body = migration.slice(start, migration.indexOf('\n);', start));
+        return new Set([...body.matchAll(/^\s+"([a-z_]+)"\s/gm)].map(m => m[1]));
+      };
+
+      // A name no table here carries, in the shape a real field has, so the
+      // probe below is a discriminator rather than a syntax check.
+      const NOT_A_COLUMN = 'sort_order';
+
+      const brokered = Object.entries(ENTITY_ROUTES)
+        .filter(([, route]) => route.function === 'listBrokeredRecords');
+      expect(brokered.length, 'no brokered route is declared').toBeGreaterThan(0);
+
+      for (const [key, route] of brokered) {
+        const filtered = key.endsWith('.filter');
+        const asked = route.request(...(filtered ? [{}, undefined, 10] : [undefined, 10]));
+        const entity = asked.entity;
+        expect(BROKERED_ENTITIES[entity], `${key} reaches an entity the family does not serve`)
+          .toBeDefined();
+        expect(READ_ONLY_MODES, `${key} reads an entity the family does not serve read-only`)
+          .toContain(BROKERED_ENTITIES[entity]);
+
+        const columns = columnsOf(entity);
+        expect(columns.has(NOT_A_COLUMN), 'the probe name is a real column after all').toBe(false);
+
+        // Acceptance implies column, in both directions of the sort and for
+        // every filter field, probed over the table's own columns plus the one
+        // name that is not there.
+        const accepts = (call) => { try { call(); return true; } catch { return false; } };
+        for (const field of [...columns, NOT_A_COLUMN]) {
+          for (const sort of [field, `-${field}`]) {
+            const taken = accepts(() => (filtered
+              ? route.request({}, sort, 10)
+              : route.request(sort, 10)));
+            if (taken) {
+              expect(columns.has(field), `${key} sorts on ${field}, which is not a column`).toBe(true);
+            }
+          }
+          if (!filtered) continue;
+          const taken = accepts(() => route.request({ [field]: 'x' }, undefined, 10));
+          if (taken) {
+            expect(columns.has(field), `${key} filters on ${field}, which is not a column`).toBe(true);
+          }
+        }
+      }
     });
   });
 
@@ -661,14 +755,139 @@ describe('the declared entity routes', () => {
 
     it('declares no write, so none is served', async () => {
       const { fixture, adapter } = await signedIn();
-      for (const operation of ['create', 'update', 'delete']) {
-        await expect(adapter.raw.entities.ClinicalPathway[operation]({}))
-          .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
+      // The three write answers are the SAME SHAPE — `{<verb>: true, row}` —
+      // so the flag is the only thing that says which write happened. A route
+      // declared with the wrong action passes the gate, asks for the wrong
+      // write and hands the screen a plausible row for an operation it did not
+      // perform. Both values are driven rather than one planted: an answer
+      // with the right verb must come back, and the same row behind a wrong
+      // verb must be refused. A fixture that could only agree with the route
+      // would pass with the check deleted.
+      fixture.apiResponse = libraryVerbAnswer('updated');
+      await expect(adapter.raw.entities.ClinicalPathway.update('p-1', { is_active: false }))
+        .resolves.toEqual({ id: 'row-1' });
+
+      fixture.apiResponse = libraryVerbAnswer('created');
+      await expect(adapter.raw.entities.ClinicalPathway.update('p-1', { is_active: false }))
+        .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+
+      fixture.apiResponse = libraryVerbAnswer('updated');
+      await expect(adapter.raw.entities.ClinicalPathway.delete('p-1'))
+        .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    });
+
+    it('sends each of the four its own capability, and never a neighbour\'s', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryWriteAnswer(fixture);
+      // One shared `library_write` body serves all four, which is exactly why
+      // this is worth asserting: the four contracts differ only in the name
+      // they are reached by, so a copied declaration pointing at the wrong one
+      // would write a template into the folder table and nothing in the shape
+      // of the request would look wrong.
+      const expected = [
+        ['ClinicalPathway', 'manageClinicalPathway'],
+        ['ClinicalLibraryTemplate', 'manageClinicalLibraryTemplate'],
+        ['ClinicalLibraryFolder', 'manageClinicalLibraryFolder'],
+        ['EducationMaterial', 'manageEducationMaterial'],
+      ];
+      for (const [entity, capability] of expected) {
+        for (const [operation, args] of [
+          ['create', [{ title: 'x' }]], ['update', ['row-1', { title: 'x' }]],
+          ['delete', ['row-1']],
+        ]) {
+          await adapter.raw.entities[entity][operation](...args);
+          expect(fixture.apiCalls.at(-1).url)
+            .toBe(`${stagingApiUrl}/v1/functions/${capability}`);
+          expect(fixture.apiCalls.at(-1).body.params.action).toBe(operation);
+        }
+      }
+      expect(fixture.apiCalls).toHaveLength(expected.length * 3);
+    });
+
+    it('refuses an argument shape the contract cannot mean, before any request', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([]);
+      // An empty id is not an id, and an array is not a field object. These
+      // refuse HERE rather than at the contract because a request built from
+      // them would name a row nobody meant.
+      for (const call of [
+        () => adapter.raw.entities.ClinicalPathway.update('', { a: 1 }),
+        () => adapter.raw.entities.ClinicalPathway.update(undefined, { a: 1 }),
+        () => adapter.raw.entities.ClinicalPathway.delete(''),
+        () => adapter.raw.entities.ClinicalPathway.create([{ a: 1 }]),
+        () => adapter.raw.entities.ClinicalPathway.create(null),
+        () => adapter.raw.entities.ClinicalLibraryFolder.update('f-1', 'name'),
+      ]) {
+        await expect(call()).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
       }
       expect(fixture.apiCalls).toHaveLength(0);
     });
+
+    it('hands back the row the contract wrote, not the envelope around it', async () => {
+      const { fixture, adapter } = await signedIn();
+      // Every action of every one of the four answers
+      // `{created|updated|deleted: true, row}` — one shared body, so one
+      // projection. A route reading `entries` or the whole envelope would hand
+      // a screen an object it cannot render.
+      //
+      // Each verb drives its OWN route. A first version varied only the
+      // marker key beside `row` and called `create` on every iteration, which
+      // proves one route three times: `update` and `delete` are separate
+      // declarations, and a projection typed wrong into either would have
+      // survived the loop with its comment still claiming all three.
+      const row = { id: 'p-1', pathway_name: 'CHF' };
+      const calls = {
+        created: () => adapter.raw.entities.ClinicalPathway.create({ pathway_name: 'CHF' }),
+        updated: () => adapter.raw.entities.ClinicalPathway.update('p-1', { pathway_name: 'CHF' }),
+        deleted: () => adapter.raw.entities.ClinicalPathway.delete('p-1'),
+      };
+      for (const [verb, call] of Object.entries(calls)) {
+        fixture.apiResponse = () => new Response(
+          JSON.stringify({
+            success: true, result: { [verb]: true, row },
+            execution: 'pennsync-api', base44ExecutionDependency: false,
+          }), { headers: { 'content-type': 'application/json' } });
+        expect(await call(), `${verb} projects the row`).toEqual(row);
+      }
+    });
   });
 
+  it('files a task through the contract that already shipped, and hands back the row',
+    async () => {
+      const { fixture, adapter } = await signedIn();
+      // `Task.create` was the last route held by something other than its own
+      // capability: #297's regression test planted this exact key, so declaring
+      // it broke that test until its plant was derived. Nothing about the route
+      // was ever in doubt, which is precisely why it is asserted here — a route
+      // declared on the strength of "the capability exists" is a route whose
+      // request shape and projection nobody has run.
+      //
+      // Found by sabotage, not by reading: with `key` changed from `task` to
+      // `entries` the whole file passed, because the operational family's
+      // projections were covered nowhere in it.
+      const task = { id: 't-1', title: 'Reorder gauze', patient_id: 'p-1' };
+      fixture.apiResponse = () => new Response(
+        JSON.stringify({
+          success: true, result: { created: true, task },
+          execution: 'pennsync-api', base44ExecutionDependency: false,
+        }), { headers: { 'content-type': 'application/json' } });
+
+      expect(await adapter.raw.entities.Task.create({ title: 'Reorder gauze', patient_id: 'p-1' }))
+        .toEqual(task);
+      expect(fixture.apiCalls.at(-1).url)
+        .toBe(`${stagingApiUrl}/v1/functions/createAgencyTask`);
+      // The whole payload goes as `fields`: the contract decides which of them
+      // are writable and refuses the rest by name, and a route filtering here
+      // would lose a misspelling the contract would have reported.
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ fields: { title: 'Reorder gauze', patient_id: 'p-1' } });
+
+      // And a payload that is not a field object refuses before any request.
+      for (const fields of [null, [{ title: 'x' }], 'title']) {
+        await expect(adapter.raw.entities.Task.create(fields))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+    });
 
   /**
    * EVERY EMITTED KEY IS A PARAMETER ITS CAPABILITY ACTUALLY TAKES.
@@ -812,8 +1031,10 @@ describe('the declared entity routes', () => {
      * take no order parameter and its routes emit none — which is why this check
      * is worth having around both.
      *
-     * Six belong to the OPERATIONAL family and to the batch that landed them,
-     * which is auditing them: `AgencySettings.list` and `.filter`,
+     * ALL SEVEN BELOW ARE NOW FIXED; the list is kept as the record of what
+     * this check caught, and the assertion at the end of the test is the empty
+     * set. Six belonged to the OPERATIONAL family and to the batch that landed
+     * them: `AgencySettings.list` and `.filter`,
      * `PDFTemplate.list` and `.filter`, `DocumentRecord.filter` and
      * `NoteConversion.list` each declare a field orderable where their contract
      * takes no order parameter. The seventh, `User.list`, is the ROSTER batch's
@@ -840,15 +1061,22 @@ describe('the declared entity routes', () => {
      * `p_order`, and the store's current signature really is
      * `contract_roster_list(text, integer, text, text)` with a matching public
      * wrapper — `20260920620000_roster_created_date.sql` added the parameter and
-     * `20260920630000_roster_display_name.sql` re-created it. The stale layer is
-     * `handlers.mjs`, whose allowlist is `exactObject(params, ['limit',
+     * `20260920630000_roster_display_name.sql` re-created it. The stale layer WAS
+     * `handlers.mjs`, whose allowlist read `exactObject(params, ['limit',
      * 'after'])`, and `app.mjs` dispatches every request through
-     * `handlers[name].handle` first. So the call fails 400 INVALID_PARAMS before
-     * `contract()` is reached, and neither PostgREST nor any store is involved:
-     * 24 of this route's 29 served sites pass `'-created_date'`, so the
-     * most-adopted route in this file fails at the boundary on every one of
-     * them. A check comparing a route's keys against its CONTRACT's params calls
-     * it clean, and so does one comparing them against the SQL.
+     * `handlers[name].handle` first. So the call failed 400 INVALID_PARAMS
+     * before `contract()` was reached, and neither PostgREST nor any store was
+     * involved: most of this route's served sites pass `'-created_date'`, so
+     * the most-adopted route in this file failed at the boundary on nearly all
+     * of them. A check comparing a route's keys against its CONTRACT's params
+     * called it clean, and so did one comparing them against the SQL.
+     *
+     * **The allowlist reads `['limit', 'after', 'order']` now and this paragraph
+     * is the record of why the check reads the HANDLER, which is an argument
+     * that outlives its own worked example.** It is written in the past tense
+     * deliberately rather than deleted: a reader who finds only the fix cannot
+     * reconstruct which of four agreeing layers was the liar. The second defect
+     * below is NOT fixed by it and is still live.
      *
      * TWO CONSEQUENCES WORTH KEEPING. An apply does not fix this one: an apply
      * changes the store, not the allowlist. And it survived because there IS
@@ -884,13 +1112,58 @@ describe('the declared entity routes', () => {
      * accepts, that grep is what finds the next one, and a check over it must key
      * on the body the registry ALWAYS sends rather than on a caller's arguments.
      */
-    expect([...violations].sort()).toEqual([
-      'AgencySettings.filter:order', 'AgencySettings.list:order',
-      'DocumentRecord.filter:order',
-      'NoteConversion.list:order',
-      'PDFTemplate.filter:order', 'PDFTemplate.list:order',
-      'User.list:order',
-    ]);
+    /*
+     * ALL SEVEN ARE FIXED, and this pin went with them as the paragraph above
+     * said it would. The two fixes are DIFFERENT and the difference is the
+     * finding, so neither is described as "the order fix":
+     *
+     *   - The six operational keys were fixed in the ROUTE. Their contracts
+     *     take no order parameter, so the route must not send one; `orderable`
+     *     and `ordered` are now separate, the sort is honoured client-side and
+     *     the key is never emitted. The handler allowlists are untouched and
+     *     still lack `order` — checked one by one rather than inferred, because
+     *     "the violations went away" is satisfied by a check that went blind.
+     *   - `User.list` was fixed in the HANDLER, which is the layer the
+     *     paragraph above identified as the stale one: the roster allowlist now
+     *     reads `['limit', 'after', 'order']`, because that contract really
+     *     does take the parameter.
+     *
+     * TWO SABOTAGES FAILED BEFORE ONE BIT, and both failures are findings
+     * rather than fumbles, so they are recorded rather than quietly retried.
+     *
+     *   - Re-adding `orderable: ['-created_date']` changed nothing, because
+     *     `orderKey` strips the leading dash before the lookup and compares the
+     *     FIELD. A plant written in the declaration's own vocabulary was
+     *     therefore inert, and an inert plant is indistinguishable from a
+     *     working check with nothing to find. `orderable` takes `created_date`.
+     *   - Deleting `orderKey`'s `ordered` short-circuit — the apparent inverse
+     *     of the six route fixes — also changed nothing, and that one is a real
+     *     property of this check. With `orderable` empty the fall-through
+     *     raises `unsupported('sort')`, so the site leaves the SERVED set
+     *     entirely and becomes one of the gate's REFUSALS. This check reads
+     *     served sites, so a route that breaks by refusing is invisible here
+     *     and is counted in the gate's own line instead. The two readings
+     *     partition the failures; neither sees the other's.
+     *
+     * AN EMPTY EXPECTATION IS NOT EVIDENCE (D174), so the plant below is what
+     * says this check still bites. Without it the whole test passes with
+     * `violations` never populated — a broken driver and a clean tree are the
+     * same green.
+     */
+    expect([...violations].sort()).toEqual([]);
+
+    // The plant. A route that emits a key its handler's allowlist refuses is
+    // the exact shape all seven had, so build one and require it to be caught.
+    // It is driven through the same `violations` collection the assertion above
+    // reads, not a parallel copy of the rule.
+    {
+      const planted = new Set();
+      const rosterAllowed = allowed.get('listAgencyRoster');
+      for (const emitted of ['order', 'sort_direction']) {
+        if (!rosterAllowed.includes(emitted)) planted.add(`Planted.list:${emitted}`);
+      }
+      expect([...planted]).toEqual(['Planted.list:sort_direction']);
+    }
 
     // The four library writes with no readable call site emit through the same
     // helper, so drive the helper's remaining actions rather than leaving them
@@ -1158,27 +1431,71 @@ describe("batch E's screen contracts", () => {
     await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
     return { fixture, adapter };
   };
-  const entries = (rows) => () => new Response(
-    JSON.stringify({ success: true, result: { success: true, entries: rows }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+  // The envelope a screen contract sends. `key` is the route's OWN declared
+  // answer key by default, because a fixture that always says `entries` is a
+  // second copy of the assumption the route makes — which is exactly what let
+  // `ClinicalEvent.filter` read a key `contract_clinical_event_list` never
+  // answers while every test in this block passed.
+  const answerOf = (routeKey, rows, key = ENTITY_ROUTES[routeKey].answerKey) => () => new Response(
+    JSON.stringify({ success: true, result: { success: true, [key]: rows }, execution: 'pennsync-api', base44ExecutionDependency: false }),
     { headers: { 'content-type': 'application/json' } });
+  const entries = (rows) => answerOf('OCRFeedback.filter', rows);
 
   beforeEach(() => bindTrustedTenantContext(boundUser, boundContext));
   afterEach(() => clearTrustedTenantContext());
 
   it('sends each screen its own contract, with the arguments the contract takes', async () => {
     const { fixture, adapter } = await signedIn();
-    fixture.apiResponse = entries([{ id: 'event-1' }]);
+    fixture.apiResponse = answerOf('ClinicalEvent.filter', [{ id: 'event-1' }]);
     await adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p1' }, '-event_date', 200);
     expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/listChartClinicalEvents`);
     expect(fixture.apiCalls.at(-1).body.params).toEqual({ patient_id: 'p1', limit: 200 });
 
+    // Each call gets the envelope ITS contract sends, which is why the fixture
+    // is re-set per entity: they do not all answer under the same key.
+    fixture.apiResponse = answerOf('OCRFeedback.filter', []);
     await adapter.raw.entities.OCRFeedback.filter({ applied_to_training: false }, undefined, 5000);
     expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/listOcrCorrections`);
     expect(fixture.apiCalls.at(-1).body.params).toEqual({ applied_to_training: false, limit: 500 });
 
+    fixture.apiResponse = answerOf('ComplianceRule.filter', []);
     await adapter.raw.entities.ComplianceRule.filter({ rule_code: 'CMS-TF-1' }, '-created_date', 2);
     expect(fixture.apiCalls.at(-1).body.params).toEqual({ rule_code: 'CMS-TF-1', limit: 2 });
   });
+
+  it('reads the chart event list under the key its contract actually answers', async () => {
+    const { fixture, adapter } = await signedIn();
+    const rows = [{ id: 'ce-1', event_type: 'fall' }];
+    // What the contract sends, with the key read off the route's declaration.
+    fixture.apiResponse = answerOf('ClinicalEvent.filter', rows);
+    expect(await adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p-1' })).toEqual(rows);
+
+    // And what six of its siblings send, which this route must NOT accept —
+    // an assertion that only one of the two keys works is what tells a real
+    // reader from one that happens to agree with the fixture. Every other test
+    // in this file builds its response with `entries` hard-coded, so the
+    // fixture was a second copy of the assumption the route got wrong.
+    fixture.apiResponse = answerOf('ClinicalEvent.filter', rows, 'entries');
+    await expect(adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p-1' }))
+      .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+  });
+
+  it('hands back the id its delete contract answers, not its save sibling\'s row',
+    async () => {
+      const { fixture, adapter } = await signedIn();
+      // `contract_pdf_template_delete` answers `{deleted, id}`; the SAVE
+      // contract beside it answers `{created, template}`. The route was
+      // written next to the save and read `template`, so every delete
+      // resolved to `undefined`.
+      fixture.apiResponse = () => new Response(
+        JSON.stringify({
+          success: true, result: { deleted: true, id: 'tpl-1' },
+          execution: 'pennsync-api', base44ExecutionDependency: false,
+        }), { headers: { 'content-type': 'application/json' } });
+      expect(await adapter.raw.entities.PDFTemplate.delete('tpl-1')).toEqual({ id: 'tpl-1' });
+      expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/deletePdfTemplate`);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ id: 'tpl-1' });
+    });
 
   it('refuses an order it cannot produce rather than quietly swapping one in', async () => {
     const { fixture, adapter } = await signedIn();
@@ -1251,11 +1568,17 @@ describe("batch E's screen contracts", () => {
  */
 describe("what batch E's routes take on trust", () => {
   it('takes every page ceiling from the contract that enforces it', async () => {
-    const { readFileSync } = await import('node:fs');
+    const { readdirSync, readFileSync } = await import('node:fs');
     const { RECORD_CONTRACTS } = await import('../../services/pennsync-api/record-contracts.mjs');
-    const sql = readFileSync(
-      'services/authority-store/supabase/record-migrations/20260920580000_contract_screen_records.sql',
-      'utf8');
+    // Every record migration, not batch E's own file. A first version read
+    // that one file, and the first route declared outside the family — the
+    // alert pair, whose contract lives in `…160000_contract_alert.sql` — made
+    // it fail by name rather than pass over a contract it could not see. A
+    // check scoped to the file its author happened to be working in is a check
+    // that goes quiet exactly when a new family arrives.
+    const dir = 'services/authority-store/supabase/record-migrations';
+    const sql = readdirSync(dir).filter(name => name.endsWith('.sql')).sort()
+      .map(name => readFileSync(`${dir}/${name}`, 'utf8')).join('\n');
     for (const [handler, ceiling] of Object.entries(SCREEN_CEILINGS)) {
       const rpc = RECORD_CONTRACTS[handler].rpc.replace(/^pennsync_/, '');
       // The contract's body, from its own `create function` to the next one.
@@ -1266,6 +1589,87 @@ describe("what batch E's routes take on trust", () => {
       const enforced = [...body.matchAll(/screen_limit\(p_limit,\s*(\d+)\)/g)].map(m => Number(m[1]));
       expect(enforced, `${rpc} passes no ceiling to screen_limit`).toHaveLength(1);
       expect(enforced[0], `${handler}'s route and its contract disagree`).toBe(ceiling);
+    }
+  });
+
+  it('takes every answer key from the contract that returns it', async () => {
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const { RECORD_CONTRACTS } = await import('../../services/pennsync-api/record-contracts.mjs');
+    // Every record migration, not batch E's own file. A first version read
+    // that one file, and the first route declared outside the family — the
+    // alert pair, whose contract lives in `…160000_contract_alert.sql` — made
+    // it fail by name rather than pass over a contract it could not see. A
+    // check scoped to the file its author happened to be working in is a check
+    // that goes quiet exactly when a new family arrives.
+    const dir = 'services/authority-store/supabase/record-migrations';
+    const sql = readdirSync(dir).filter(name => name.endsWith('.sql')).sort()
+      .map(name => readFileSync(`${dir}/${name}`, 'utf8')).join('\n');
+    // The sibling of the ceiling check above, and it exists because the gate
+    // cannot stand in for it: `check:entity-routes` runs a call's arguments
+    // through `request` and never touches `response`, so a route reading a key
+    // its contract does not answer passes every check and hands its screen
+    // `undefined` on every call. `contract_clinical_event_list` answers
+    // `events` where its six siblings answer `entries`, and the route read
+    // `entries`.
+    const declared = Object.values(ENTITY_ROUTES).filter(route => route.answerKey);
+    expect(declared.length, 'no route declares an answer key').toBeGreaterThan(0);
+    for (const route of declared) {
+      const rpc = RECORD_CONTRACTS[route.function].rpc.replace(/^pennsync_/, '');
+      const start = sql.indexOf(`create function "pennsync_records".${rpc}(`);
+      expect(start, `${rpc} is not in the migration`).toBeGreaterThan(-1);
+      const next = sql.indexOf('create function', start + 20);
+      const body = sql.slice(start, next === -1 ? sql.length : next);
+      // The payload key in what the contract RETURNS, read from the migration
+      // rather than from a list kept here, because a list kept here is the
+      // second copy that drifts. Two shapes exist and neither is the family's
+      // to assume: batch E wraps its rows behind `'success', true`, and the
+      // alert pair, written before that convention, returns the key alone.
+      // A failure return (`'success', false, …`) is dropped BY ITS OWN SHAPE
+      // and counted, so a contract with nothing but failure returns fails here
+      // instead of quietly matching none.
+      const returns = [...body.matchAll(
+        /return jsonb_build_object\(\s*('success',\s*(?:true|false),\s*)?'([a-z_]+)'/g)];
+      const returned = [...new Set(returns
+        .filter(m => !(m[1] && m[1].includes('false')))
+        .map(m => m[2]))];
+      expect(returns.length, `${rpc} returns no jsonb object at all`).toBeGreaterThan(0);
+      expect(returned, `${rpc} does not answer under one key`).toHaveLength(1);
+      expect(route.answerKey, `${route.function}'s route and its contract disagree`)
+        .toBe(returned[0]);
+    }
+  });
+
+  it('never sends a capability an argument its contract does not take', async () => {
+    const { RECORD_CONTRACTS } = await import('../../services/pennsync-api/record-contracts.mjs');
+    // `record-contracts.mjs` refuses any argument outside a capability's own
+    // `params` with CONTRACT_ARGUMENTS_INVALID, so a route that emits one gets
+    // a 400 on every call that produces it. Seven routes did: they declared
+    // `created_date` as ORDERABLE when their contracts take no order parameter
+    // and already order `created_date desc` unconditionally, so the one sort
+    // every one of their call sites asks for was the one that failed.
+    //
+    // The gate cannot stand in for this either. It runs `request` and asks
+    // only that it does not throw; what comes out of it is never compared with
+    // anything. So the allowlist is read from the contract registry and the
+    // arguments are read from the route, and neither side is typed here.
+    const sorts = ['-created_date', 'created_date', '-updated_date', '-due_date',
+      '-event_date', '-sent_date', '-priority', '-severity', '-usage_count',
+      '-assigned_date', '-last_used_date', 'full_name', 'order', null, undefined];
+    for (const [key, route] of Object.entries(ENTITY_ROUTES)) {
+      const contract = RECORD_CONTRACTS[route.function];
+      if (!contract) continue;
+      const filtered = key.endsWith('.filter');
+      for (const sort of sorts) {
+        let asked;
+        try {
+          asked = route.request(...(filtered ? [{}, sort, undefined] : [sort, undefined]));
+        } catch { continue; }
+        if (asked === null || typeof asked !== 'object') continue;
+        for (const argument of Object.keys(asked)) {
+          expect(contract.params, `${key} sends ${route.function} an argument it refuses`)
+            .toContain(argument);
+        }
+      }
     }
   });
 
@@ -1360,8 +1764,10 @@ describe("what batch E's routes take on trust", () => {
     // by spreading a phrase from a seed list.
     expect([...report.unproved_routes].sort()).toEqual([
       'AgencySettings.create', 'AgencySettings.update',
-      'ClinicalLibraryTemplate.create',
+      'ClinicalLibraryFolder.create', 'ClinicalLibraryTemplate.create',
+      'ClinicalPathway.create', 'ClinicalPathway.update',
       'CustomValidationRule.create', 'CustomValidationRule.update',
+      'EducationMaterial.create',
       'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
       'NoteConversion.create',
       'NotificationPreference.create', 'NotificationPreference.update',
@@ -1385,6 +1791,28 @@ describe("what batch E's routes take on trust", () => {
       // write and a junk row that answered `success: true`.
       'PENNSYNC_SCREEN_FIELD_REQUIRED', 'PENNSYNC_SCREEN_FIELD_VALUE_INVALID']) {
       expect(suite, `${code} must be exercised by the contract suite`).toContain(code);
+    }
+
+    // The same standard for the five clinical-library writes, whose suite is a
+    // different file. All four capabilities route through ONE `library_write`
+    // body, so the two halves are asserted separately and mean different
+    // things: the pathway codes are the BODY's refusals — the payload checks,
+    // the required and reserved fields, the missing row — and cover the shared
+    // machinery once, while each entity's own `_FORBIDDEN` is the gate that
+    // contract puts in front of it, which is the half a copied declaration
+    // would get wrong. Asserting only the first would leave three capabilities
+    // resting on a fourth's proof.
+    const library = readFileSync(
+      'services/authority-store/tests/contract-clinical-library.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_PATHWAY_ACTION_INVALID', 'PENNSYNC_PATHWAY_AGENCY_NOT_HELD',
+      'PENNSYNC_PATHWAY_FIELDS_INVALID', 'PENNSYNC_PATHWAY_FIELDS_EMPTY',
+      'PENNSYNC_PATHWAY_FIELD_UNKNOWN', 'PENNSYNC_PATHWAY_FIELD_RESERVED',
+      'PENNSYNC_PATHWAY_FIELD_REQUIRED', 'PENNSYNC_PATHWAY_ID_INVALID',
+      'PENNSYNC_PATHWAY_NOT_FOUND',
+      'PENNSYNC_PATHWAY_FORBIDDEN', 'PENNSYNC_LIBRARY_TEMPLATE_FORBIDDEN',
+      'PENNSYNC_LIBRARY_FOLDER_FORBIDDEN', 'PENNSYNC_EDUCATION_MATERIAL_FORBIDDEN']) {
+      expect(library, `${code} must be exercised by the library contract suite`)
+        .toContain(code);
     }
 
     // Batch D's five, the same standing on their own suite. A second family of
@@ -1497,5 +1925,89 @@ describe("what batch E's routes take on trust", () => {
       expect(thrown.detail, `${key} refused for its own reason, not the count`)
         .toBe('argument_count');
     }
+  });
+
+  /**
+   * The third layer, and the one neither of the checks above can see.
+   *
+   * A route's arguments are read twice before anything runs: `handlers.mjs`
+   * refuses a key outside its `exactObject` allowlist with INVALID_PARAMS, and
+   * `record-contracts.mjs` refuses one outside the contract's `params` with
+   * CONTRACT_ARGUMENTS_INVALID. The test above crosses the route against the
+   * SECOND. This one crosses it against the FIRST, which is not the same list:
+   * four handlers translate rather than forward — packing a flat body into one
+   * `incident` or `timesheet` key — and for those the contract's `params` says
+   * nothing about what the handler will accept.
+   *
+   * `record-contracts.test.mjs` proves the two lists are equal for the
+   * handlers that forward verbatim. That is the pair; this is the third
+   * member, and a check across two of three is green by construction on the
+   * pair it compares.
+   *
+   * No disagreement today. This is a ratchet and is recorded as one: it found
+   * nothing, and it is here because the two defects that made the forwarding
+   * check worth writing were each invisible to every suite that existed.
+   */
+  it('never sends a capability an argument its handler refuses', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('services/pennsync-api/handlers.mjs', 'utf8');
+    const entries = [...source.matchAll(/^ {2}([A-Za-z_][A-Za-z0-9_]*): Object\.freeze\(\{/gm)]
+      .map(match => ({ name: match[1], at: match.index }));
+    expect(entries.length, 'handlers.mjs no longer parses as one entry per line')
+      .toBeGreaterThan(50);
+    const admits = {};
+    for (const [index, entry] of entries.entries()) {
+      const body = source.slice(entry.at, entries[index + 1]?.at ?? source.length);
+      const lists = [...body.matchAll(/exactObject\(\s*params\s*,\s*\[([^\]]*)\]/g)];
+      if (lists.length !== 1) continue;
+      admits[entry.name] = lists[0][1].split(',')
+        .map(key => key.trim().replace(/['"]/g, '')).filter(Boolean);
+    }
+
+    // Driven rather than read. A route's `request` is a function and the only
+    // way to learn what it emits is to run it, so each operation is driven
+    // through the argument shapes its call sites actually use. The limit is
+    // there because the brokered and operational lists refuse a call without
+    // one, and four routes crossed nothing until it was added — a driver that
+    // cannot reach a route reports it as clean.
+    const sorts = ['-created_date', 'created_date', '-updated_date', '-due_date',
+      '-event_date', '-sent_date', '-priority', '-severity', '-usage_count',
+      '-assigned_date', '-last_used_date', 'full_name', 'order', null, undefined];
+    const id = '11111111-1111-4111-8111-111111111111';
+    let crossed = 0;
+    for (const [key, route] of Object.entries(ENTITY_ROUTES)) {
+      const allowed = admits[route.function];
+      if (!allowed) continue;
+      const operation = key.split('.').pop();
+      const shapes = [];
+      if (operation === 'list') for (const sort of sorts) shapes.push([sort, undefined], [sort, 100]);
+      else if (operation === 'filter') {
+        for (const sort of sorts) {
+          shapes.push([{}, sort, undefined], [{}, sort, 100],
+            [{ patient_id: id }, sort, 100], [{ status: 'active' }, sort, 100]);
+        }
+      } else if (operation === 'create') shapes.push([{ title: 'x', name: 'x', patient_id: id }]);
+      else if (operation === 'update') shapes.push([id, { title: 'x', name: 'x' }]);
+      else if (operation === 'delete') shapes.push([id]);
+
+      let reached = false;
+      for (const args of shapes) {
+        let asked;
+        try { asked = route.request(...args); } catch { continue; }
+        if (asked === null || typeof asked !== 'object') continue;
+        reached = true;
+        for (const argument of Object.keys(asked)) {
+          expect(allowed, `${key} sends ${route.function} an argument its handler refuses`)
+            .toContain(argument);
+        }
+      }
+      if (reached) crossed += 1;
+    }
+
+    // The population is asserted so the check cannot pass by reaching nothing.
+    // Four filters need a query shape this driver does not guess and are
+    // deliberately uncrossed rather than silently counted as clean.
+    expect(crossed, 'the driver has stopped reaching routes rather than the routes having changed')
+      .toBeGreaterThan(60);
   });
 });

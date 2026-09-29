@@ -242,8 +242,16 @@ export const HANDLERS = Object.freeze({
     // a colleague's telephone number and credentials is decided by the
     // authoritative tenant role in the database, not by this handler and not
     // by the self-editable `is_manager` flag on the carried row.
+    //
+    // `order` is admitted because the contract takes it. #309 added
+    // `p_order` to `contract_roster_list` and to this capability's contract
+    // entry and did not widen this list, so every roster read asking for
+    // creation order was refused INVALID_PARAMS here — before the request,
+    // on twenty-four call sites. Nothing said so: the migration and the
+    // request body agreed with each other, which is the pair
+    // `service-rpc-signatures.test.mjs` compares.
     handle({ params, contract }) {
-      exactObject(params, ['limit', 'after'], 'INVALID_PARAMS');
+      exactObject(params, ['limit', 'after', 'order'], 'INVALID_PARAMS');
       return contract('listAgencyRoster', params);
     },
   }),
@@ -1049,7 +1057,15 @@ export const HANDLERS = Object.freeze({
       if (action === 'list') fail(403, 'PENNSYNC_POLICY_ACK_ACTION_UNPORTED');
       if (action !== 'acknowledge') fail(400, 'INVALID_PARAMS');
       exactObject(params, ['action', 'acknowledgment_id', 'signed_name'], 'INVALID_PARAMS');
-      return contract('acknowledgePolicy', params);
+      // `action` is this handler's own and the contract does not take it, so
+      // the arguments are BUILT rather than forwarded. Passing `params`
+      // straight through refused every call with CONTRACT_ARGUMENTS_INVALID,
+      // including the one action this serves, whose only caller sends
+      // `{action: 'acknowledge', …}` explicitly.
+      return contract('acknowledgePolicy', {
+        acknowledgment_id: params.acknowledgment_id,
+        signed_name: params.signed_name,
+      });
     },
   }),
   distributePolicyAcknowledgment: Object.freeze({
