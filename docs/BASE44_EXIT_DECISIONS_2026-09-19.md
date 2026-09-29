@@ -10564,6 +10564,63 @@ This is the mechanical half of the coordinator's own rule that **the index is a
 representation too**. The index is not merely another thing that can go stale;
 it is a thing whose text is indistinguishable from what it describes.
 
+**Widening, 2026-09-29. Two instances where the container was emptied and the
+line naming its contents was left standing — one by a deleter that edits
+nothing, one inside the note written to record the thing it then miscounted.**
+
+Mine, first-person.
+
+**The first.** A session carrying decision bodies between threads was compacted,
+and its summary of its own state said of one body: *"body already in hand,
+placement settled."* That sentence was TRUE when it was written — the body had
+been delivered at 16:04:55Z, verified, and held. **Compaction then emptied the
+container and left the line intact**, and nothing about the line changed to show
+it. D169's own instances are files, which persist, so an index and its targets
+rot apart slowly and by somebody editing one of them. **Here there was no edit
+anywhere, and the two came apart in a single step.**
+
+The line and the bytes are textually indistinguishable in exactly D169's sense:
+a summary that NAMES a body reads the same as one that CARRIES it, and the
+distinguishing fact is not in the text at all.
+
+What caught it was not suspicion. It was that filing requires the bytes, so I
+went to get them, found none on disk, and recovered them from the delivery
+record rather than reconstructing them. **I was also holding that body's
+digest** — 3,296 bytes and a sha256 — with nothing to hash, and that mismatch is
+what turned a silence into a discrepancy. Had the placement been settled and the
+digest absent, there would have been nothing to disagree with, and a plausible
+reconstruction from the digest and the placement was available and would have
+looked exactly like a filing.
+
+**In the carrying thread's words, which I am recording under its name because
+the argument is its own:** compaction is a deleter which empties a container
+without touching the line that names its contents, so the pointer and the target
+rot apart in a single step and no edit records it.
+
+**The second, from the same sitting, and it is D169 turning up inside the
+paragraph written to measure a citation.** This document gained a section naming
+the decision numbers it cites and does not contain — what the five entries
+citing D107 SAY, quoted. A count of `D107` over "the document's prose" then
+returns thirteen, where the entries citing it are five: **the new section
+describes citations and is indistinguishable, to any scan over the whole file,
+from making them.** The remedy is D169's own and was already written down one
+paragraph up from where I needed it: **scope the derivation and say what you
+scoped to.** Counted per `## D<n>` section, excluding the front matter, it is
+five entries — D110, D117, D119, D123 and D124 — and that figure reproduces.
+
+**What both instances share, and it is the operational form.** A claim about
+what you hold is a claim about specific bytes. Producing them is the only thing
+that separates holding from naming, and it costs one command. **A note saying
+you hold something reads exactly like holding it**, which is why the check
+cannot be a reading — the reading is the thing that has already gone wrong.
+
+**What this does not claim.** Not that compaction is a defect; it is doing its
+job, and a summary that names what a session held is the right thing for it to
+contain. The failure is entirely in treating that line as the artefact. And not
+that I caught the first one by method — filing forced it, and a version of the
+evening where the placement had not needed the bytes would have ended with the
+line still standing and nobody the wiser.
+
 ## D170 — Agreement between two runs of one method is one reading with two witnesses
 
 *Added 2026-09-29. Found because the coordinator offered it to me as corroboration and it was not.*
