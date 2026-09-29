@@ -71,7 +71,31 @@
  *
  * Three of the four were silent, which is the argument for asserting the
  * population as a SET rather than against a floor. A floor near eighteen would
- * have caught the third and passed the other two.
+ * have caught the third and passed the other two -- and the set is load-bearing
+ * rather than tidy, which was PROVED rather than argued: narrow the import
+ * matcher back to one quote style and `no screen sends a ported capability a
+ * key its handler refuses` stays GREEN, with only the population assertions
+ * firing. The check that looks like the point of this file cannot tell a clean
+ * tree from a blind reader. The set can.
+ *
+ * ## An unreadable site is named, never counted clean
+ *
+ * Three call sites build their payload as a variable and hand the whole object
+ * over, so nothing static can say what they send. They are listed by name. A
+ * site moving from compared to unreadable is a COMPARISON GOING QUIET, and a
+ * population that shrinks without its list reads as the thing getting smaller
+ * rather than as the instrument getting blinder -- which is the same mistake as
+ * the three silent defects above, arriving from the direction of the data
+ * instead of the direction of the parser.
+ *
+ * ## Where the figures come from
+ *
+ * The seventeen wrappers and eighteen readable sites were measured twice, by
+ * two threads, through DIFFERENT derivations -- #335 measured them from its own
+ * side of the sweep and this module was written without reading its code. Two
+ * routes to one pair is a second artefact and is worth recording as such; two
+ * runs of one function over one tree would be repetition with two authors, and
+ * corroborates nothing.
  *
  * Anything this cannot read statically — a spread, a computed key, a payload
  * that is a variable rather than a literal — is UNREADABLE and is reported as
