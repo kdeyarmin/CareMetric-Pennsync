@@ -13,19 +13,43 @@ the CareMetric Train Railway project at
 committed `Dockerfile`, healthcheck `/healthz`, configuration in service
 settings rather than a `railway.toml`.
 
-**78 of the 80 implemented names are released**, in six waves between
-2026-09-24 and 2026-09-25, each on the owner's own words naming that wave.
-`/readyz` answers 200 with `released: true`, and the two names absent from
-`operations` are exactly `sendAccountReadyEmail` and `sendWelcomeEmail` —
-`OWNER_HELD` in `tools-pennsync-release-ladder.mjs` keeps them out of every
-value the tool emits, and sending to real people is the owner's decision.
+The ladder emits six waves, each released on the owner's own words naming that
+wave. The dates this page gave for them — 2026-09-24 to 2026-09-25 — are a
+property of the deployment rather than of the tree, so they are not restated
+here; `/readyz` answers which names a deployment is actually serving.
+**How many names the ladder emits is a property of this tree and not of this
+sentence**: `node
+tools-pennsync-release-ladder.mjs` prints `handlers` and the waves' own lists,
+and on 2026-09-29 it read **126 handlers over six waves, with the union of the
+waves covering all 126 and nothing withheld in any of them** — on `b0ee56a0`
+and again on `3c94246c`, since a reading with no head on it cannot be
+reproduced and so is only a rumour with a date. This paragraph
+said *78 of the 80 implemented names* until then, which was true when written
+and had drifted by forty-six with nothing able to notice.
 
-**Outbound delivery is a separate switch and it is off.** `PENNSYNC_API_DELIVERY`
-is unset, so `/readyz` reports `deliveryReleased: false` and every sender
-answers `OUTBOUND_DELIVERY_RELEASE_PAUSED`. It is read exactly and untrimmed
-against `enabled-v1`, and setting it without a valid
-`PENNSYNC_API_INTEGRATIONS_URL` throws `INCOMPLETE_DELIVERY_CONFIGURATION` at
-startup and takes the service **down**.
+**`OWNER_HELD` is empty, and the sentence that explained why it was not
+outlived it.** This page used to say the two names absent from `operations`
+were `sendAccountReadyEmail` and `sendWelcomeEmail`, kept out of every emitted
+value by `OWNER_HELD` in `tools-pennsync-release-ladder.mjs`. The owner emptied
+that list on 2026-09-25 (#283, D100), so both senders are in every value the
+tool emits and `heldNames` is `[]`. The facility itself stays, empty, and every
+guard over it is driven from a synthetic hold in the tests, because a guard an
+empty list cannot fire has not been shown to work. **That is checkable from the
+tree** — `OWNER_HELD` is `Object.freeze({})` in that module — so nothing here
+needs a deployment to settle it.
+
+**Outbound delivery is a separate switch, and whether it is on is not this
+file's to say.** `PENNSYNC_API_DELIVERY` is read exactly and untrimmed against
+`enabled-v1`, and setting it without a valid `PENNSYNC_API_INTEGRATIONS_URL`
+throws `INCOMPLETE_DELIVERY_CONFIGURATION` at startup and takes the service
+**down**. Those two are properties of the code. Whether the variable is SET is
+a property of the deployment, and this page asserted it was unset — so a reader
+asking the one question this section exists to answer, *can this service send
+mail to a real person*, was told no. Ask `/readyz` for `deliveryReleased`, or
+`node tools-pennsync-release-ladder.mjs --wave <name> --deployment
+https://<service-host>`. Released means a send is **attempted**, not that mail
+arrives, and invitations are not covered by it: their `delivery_paused: true`
+is a literal on an audit entry (D42), not a switch.
 
 **Do not read the release state from this file.** A variable change here is a
 deploy that rebuilds from `main`'s tip, so both the running code and the
