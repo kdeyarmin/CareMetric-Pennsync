@@ -376,6 +376,12 @@ const LIBRARY_VERBS = Object.freeze(Object.assign(Object.create(null), {
  */
 function libraryWrite({ capability, action }) {
   const verb = LIBRARY_VERBS[action];
+  // An unknown action fails HERE, at declaration, rather than at the seam.
+  // Without this the route still loads, `result[undefined] !== true` is
+  // always satisfied, and every call of it refuses with `answer` — a
+  // declaration mistake wearing a contract disagreement. Carried across
+  // from #335's copy of this helper when the two were merged into one.
+  if (verb === undefined) throw new Error(`ENTITY_ROUTE_LIBRARY_ACTION_UNKNOWN:${action}`);
   const withId = action !== 'create';
   const withFields = action !== 'delete';
   return {
@@ -695,10 +701,27 @@ function shiftWindow(query) {
  */
 export const OPERATIONAL_MAXIMUM = 5000;
 
-/** The order parameter for a sort argument, against what the contract orders by. */
-function orderKey(sort, orderable) {
+/**
+ * The order parameter for a sort argument, against what the contract orders by.
+ *
+ * TWO declarations, because a contract answers a sort in two different ways and
+ * conflating them sends a key the contract does not take. `orderable` is the
+ * fields it takes an `order` PARAMETER for; `ordered` is the sort strings its
+ * own `order by` already implements, which are accepted and sent nothing.
+ *
+ * Seven routes had the second kind declared as the first. Every one of their
+ * contracts orders `created_date desc` unconditionally and takes no order
+ * parameter at all, and `record-contracts.mjs` refuses an argument outside a
+ * capability's `params` with `CONTRACT_ARGUMENTS_INVALID` — so a screen asking
+ * for `-created_date`, which is what they all ask for, got a 400 for the one
+ * order its contract was already giving it. The gate could not see it: it runs
+ * `request` and asks only that it does not throw.
+ */
+function orderKey(sort, orderable, ordered = []) {
   if (sort === undefined || sort === null || sort === '') return undefined;
-  if (typeof sort !== 'string' || !sort.startsWith('-')) unsupported('sort');
+  if (typeof sort !== 'string') unsupported('sort');
+  if (ordered.includes(sort)) return undefined;
+  if (!sort.startsWith('-')) unsupported('sort');
   const field = sort.slice(1);
   if (!orderable.includes(field)) unsupported('sort');
   return field;
@@ -746,7 +769,9 @@ function wholePage(entries, limit, entity) {
  * A read over one operational table: the filter as named parameters, the sort
  * as the contract's order parameter, the limit passed through.
  */
-function operationalRead({ entity, fn, orderable, filterable = [], negatable = [], filtered }) {
+function operationalRead({
+  entity, fn, orderable, ordered = [], filterable = [], negatable = [], filtered,
+}) {
   return {
     function: fn,
     projection: 'operational_row',
@@ -755,7 +780,7 @@ function operationalRead({ entity, fn, orderable, filterable = [], negatable = [
     arity: filtered ? 3 : 2,
     request: (...args) => {
       const [query, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
-      const order = orderKey(sort, orderable);
+      const order = orderKey(sort, orderable, ordered);
       return {
         ...namedFilters(query, filterable, negatable),
         ...(order === undefined ? {} : { order }),
@@ -830,18 +855,25 @@ function operationalSave({ fn, key, reason, withId }) {
  * eight. Repo-wide the unreadable writes are 84 of 91, so this disposition is
  * what lets any batch land a write seam at all.
  *
- * TWO ENTITY OPERATIONS OF THESE SEVEN STAY ON BASE44 although their
- * capabilities ship here, and `src/lib/operationalRoutes.test.js` holds each
- * reason as a check that fails when it lapses, rather than as a note here that
- * would not. `Task.create` is provable and was held first by the gate's
- * (file, key) subtraction, which #297 fixed; it is still held because that
- * fix's own regression test PLANTS `Task.create` as its route and asserts the
- * measurement rises, so declaring it here makes the baseline already contain
- * it and the test fails. The hold is now one line in another batch's test
- * file rather than anything about the route. `NoteConversion.filter` waits on
- * its own contract, which takes one of the five predicates its call site
- * narrows on while that caller requires exactly one row; dropping the other
- * four would turn a duplicate check into a read that can return two.
+ * ONE ENTITY OPERATION OF THESE SEVEN STAYS ON BASE44 although its capability
+ * ships here, and `src/lib/operationalRoutes.test.js` holds the reason as a
+ * check that fails when it lapses, rather than as a note here that would not.
+ * `NoteConversion.filter` waits on its own contract, which takes one of the
+ * five predicates its call site narrows on while that caller requires exactly
+ * one row; dropping the other four would turn a duplicate check into a read
+ * that can return two.
+ *
+ * `Task.create` was the second, and what held it was never the route. It is
+ * provable, its contract and handler shipped long ago, and it was held first
+ * by the gate's (file, key) subtraction — which #297 fixed — and then by that
+ * fix's own regression test, which PLANTED `Task.create` as its route and
+ * asserted the measurement rises, so declaring it here put the key in the
+ * baseline and the test failed. That plant is DERIVED now, from whatever
+ * undeclared pair the tree has in the shape the case needs, so the route is
+ * declared and no future batch inherits the wall. Two things are worth keeping
+ * from it: a capability can be complete at every layer and still unreachable
+ * for a reason that lives in a test file, and the remedy for a test held
+ * hostage by a name is to derive the name, not to move it to the next one.
  *
  * Every projection here is `operational_row`, which is the entity's own
  * columns less `source_app_id` and less whatever its contract withholds. Two
@@ -865,14 +897,14 @@ const operationalRoutes = Object.freeze({
   'AgencySettings.list': Object.freeze({
     ...operationalRead({
       entity: 'AgencySettings', fn: 'getAgencySettings',
-      orderable: ['created_date'], filtered: false,
+      orderable: [], ordered: ['-created_date'], filtered: false,
     }),
     reason: 'The settings loader reads the agency configuration newest first.',
   }),
   'AgencySettings.filter': Object.freeze({
     ...operationalRead({
       entity: 'AgencySettings', fn: 'getAgencySettings',
-      orderable: ['created_date'], filterable: ['agency_code', 'office_name'],
+      orderable: [], ordered: ['-created_date'], filterable: ['agency_code', 'office_name'],
       filtered: true,
     }),
     // The lookup stays and the tenancy behind it goes: the agency is the
@@ -889,17 +921,22 @@ const operationalRoutes = Object.freeze({
     }),
     reason: 'Four screens read an agency task list, three of them for one chart.',
   }),
+  'Task.create': operationalCreate({
+    fn: 'createAgencyTask', key: 'task',
+    reason: 'Five screens file a task: referral intake and triage, the workflow engine, the regulatory monitor and the note assistant.',
+  }),
   'PDFTemplate.list': Object.freeze({
     ...operationalRead({
       entity: 'PDFTemplate', fn: 'listPdfTemplates',
-      orderable: ['created_date'], filtered: false,
+      orderable: [], ordered: ['-created_date'], filtered: false,
     }),
     reason: 'The template manager and the library both read every template, newest first.',
   }),
   'PDFTemplate.filter': Object.freeze({
     ...operationalRead({
       entity: 'PDFTemplate', fn: 'listPdfTemplates',
-      orderable: ['created_date'], filterable: ['parent_template_id'], filtered: true,
+      orderable: [], ordered: ['-created_date'],
+      filterable: ['parent_template_id'], filtered: true,
     }),
     reason: 'The version history reads the revisions of one parent template.',
   }),
@@ -937,7 +974,8 @@ const operationalRoutes = Object.freeze({
   'FaceToFaceEncounter.filter': Object.freeze({
     ...operationalRead({
       entity: 'FaceToFaceEncounter', fn: 'listFaceToFaceEncounters',
-      orderable: ['created_date'], filterable: ['referral_id'], filtered: true,
+      orderable: [], ordered: ['-created_date'],
+      filterable: ['referral_id'], filtered: true,
     }),
     reason: 'Referral intake reads the encounter already recorded against a referral.',
   }),
@@ -945,7 +983,8 @@ const operationalRoutes = Object.freeze({
   'DocumentRecord.filter': Object.freeze({
     ...operationalRead({
       entity: 'DocumentRecord', fn: 'listPatientDocumentRecords',
-      orderable: ['created_date'], filterable: ['patient_id'], filtered: true,
+      orderable: [], ordered: ['-created_date'],
+      filterable: ['patient_id'], filtered: true,
     }),
     // Its contract keeps the original's ownership rule, so this answers with
     // the caller's own uploads for that chart unless they are an agency_admin.
@@ -988,13 +1027,18 @@ const operationalRoutes = Object.freeze({
       if (typeof id !== 'string' || id === '') unsupported('id');
       return { id };
     },
-    response: (result) => result?.template,
+    // `contract_pdf_template_delete` answers `{deleted, id}` — not the
+    // `template` its SAVE sibling answers. This route was written beside that
+    // sibling and read `result.template`, so it handed the manager `undefined`
+    // on every delete. Read off the contract's own `return`, not off the
+    // neighbour it was copied from.
+    response: (result) => ({ id: result?.id }),
   }),
 
   'NoteConversion.list': Object.freeze({
     ...operationalRead({
       entity: 'NoteConversion', fn: 'listNoteConversions',
-      orderable: ['created_date'], filtered: false,
+      orderable: [], ordered: ['-created_date'], filtered: false,
     }),
     reason: 'Three reports read the agency’s note conversions newest first.',
   }),
@@ -1060,8 +1104,19 @@ export const SCREEN_CEILINGS = Object.freeze({
  * runs under the policies, and one applied after the page would narrow a set
  * the store had already decided.
  */
-function screenRead({ entity, function: handler, projection, order, ceiling, query = {}, filtered, build,
-  answerKey = 'entries' }) {
+function screenRead({
+  entity, function: handler, projection, order, ceiling, query = {}, filtered, build, answerKey,
+}) {
+  // REQUIRED, and deliberately without a default. `entries` is the key six of
+  // the seven screen contracts answer with, and a default of it is exactly how
+  // `contract_clinical_event_list` — which answers `events` — was routed with
+  // a reader that could never find its rows. The gate cannot catch that: it
+  // runs `request` and never `response`, so a route that returns `undefined`
+  // on every call passes every check. Naming the key at each call site makes
+  // the odd one out a decision somebody had to write down.
+  if (typeof answerKey !== 'string' || answerKey === '') {
+    throw new Error(`ENTITY_ROUTE_ANSWER_KEY_REQUIRED:${entity}`);
+  }
   const read = (args) => {
     const [rawQuery, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
     if (sort !== undefined && sort !== null && sort !== order) unsupported('sort');
@@ -1077,6 +1132,10 @@ function screenRead({ entity, function: handler, projection, order, ceiling, que
   return {
     function: handler,
     projection,
+    // Carried on the route rather than kept in the closure, so a test can
+    // compare it against the contract's own `return` and a reviewer can see it
+    // in the diff.
+    answerKey,
     // DECLARED, because `request` takes a rest parameter and so reveals a
     // `length` of 0. `read` above destructures `(query, sort, limit)` for a
     // filtered read and `(sort, limit)` for a list, which is the entity
@@ -1222,6 +1281,7 @@ const DECLARED_ROUTES = Object.freeze({
    */
   'ClinicalEvent.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'events',
       entity: 'ClinicalEvent',
       function: 'listChartClinicalEvents',
       projection: 'chart_clinical_event',
@@ -1235,6 +1295,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'PatientRecommendation.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'PatientRecommendation',
       function: 'listChartRecommendations',
       projection: 'chart_recommendation_status',
@@ -1319,6 +1380,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'OCRFeedback.list': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'OCRFeedback',
       function: 'listOcrCorrections',
       projection: 'ocr_correction',
@@ -1331,6 +1393,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'OCRFeedback.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'OCRFeedback',
       function: 'listOcrCorrections',
       projection: 'ocr_correction',
@@ -1349,6 +1412,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'OCRTrainingSession.list': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'OCRTrainingSession',
       function: 'listOcrTrainingRuns',
       projection: 'ocr_training_run',
@@ -1361,6 +1425,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'SentEducationMaterial.list': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'SentEducationMaterial',
       function: 'listSentEducationMaterials',
       projection: 'sent_education_material',
@@ -1412,6 +1477,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'ComplianceRule.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'ComplianceRule',
       function: 'lookupComplianceRule',
       projection: 'compliance_rule',
@@ -1720,6 +1786,42 @@ const DECLARED_ROUTES = Object.freeze({
       request: (query) => ({ active_only: query?.is_active === true }),
     }),
     reason: 'The OASIS recommender and the trigger both read the active pathways.',
+  }),
+  'ClinicalPathway.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalPathway', action: 'create' }),
+    reason: 'The pathway manager saves a new pathway, and the AI generator writes one it drafted.',
+  }),
+  'ClinicalPathway.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalPathway', action: 'update' }),
+    reason: 'The pathway manager edits a pathway, and the AI updater rewrites one in place.',
+  }),
+  'ClinicalPathway.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalPathway', action: 'delete' }),
+    reason: 'The pathway manager removes a pathway.',
+  }),
+  'ClinicalLibraryFolder.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryFolder', action: 'create' }),
+    reason: 'The library manager creates a folder.',
+  }),
+  'ClinicalLibraryFolder.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryFolder', action: 'update' }),
+    reason: 'The library manager renames a folder and reparents the children of one it deletes.',
+  }),
+  'ClinicalLibraryFolder.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageClinicalLibraryFolder', action: 'delete' }),
+    reason: 'The library manager removes a folder.',
+  }),
+  'EducationMaterial.create': Object.freeze({
+    ...libraryWrite({ capability: 'manageEducationMaterial', action: 'create' }),
+    reason: 'The material editor saves a new material and the library duplicates an existing one.',
+  }),
+  'EducationMaterial.update': Object.freeze({
+    ...libraryWrite({ capability: 'manageEducationMaterial', action: 'update' }),
+    reason: 'The material editor saves an edit, and the sender stamps the material it just sent.',
+  }),
+  'EducationMaterial.delete': Object.freeze({
+    ...libraryWrite({ capability: 'manageEducationMaterial', action: 'delete' }),
+    reason: 'The education library removes a material.',
   }),
   'ClinicalLibraryFolder.list': Object.freeze({
     ...libraryRead({ capability: 'listClinicalLibraryFolders', sortable: ['order'] }),

@@ -10,6 +10,42 @@ import { retireLegacyBrowserCaches } from '@/lib/retiredBrowserCacheCleanup';
 /**
  * ONE-TIME migration for the retired offline feature. DELETE AFTER ONE RELEASE.
  *
+ * **NOTHING INVOKES THIS MODULE, measured 2026-09-29 on `c90ad9ae`.** Read this
+ * before spending anything on a report that names it — it has now started two
+ * investigations from scratch, because everything below describes what the
+ * module WOULD do and a route or census report names it as though it ran.
+ *
+ * What was measured, and over what population, since "no caller found" is only
+ * worth as much as the search behind it. Every file in the repository
+ * mentioning `retiredOfflineQueue` or `flushAndRetireOfflineQueue`, outside
+ * `node_modules` and `.git`: this module, its own spec, five other test files,
+ * three tooling pins, three documents, and four production modules —
+ * `offlineMigration.js`, `localPhiKeys.js`, `phiStorage.js` and
+ * `functions/updateAuthorizedVisit.js`. **Every mention in those four is a
+ * comment.** The only importer of `flushAndRetireOfflineQueue` anywhere is this
+ * module's own spec. The one browser entry point is the module script in
+ * `index.html`, and all three `import.meta.glob` calls in `src/` match
+ * `./pages/*.jsx`, so none can sweep `src/lib`. Nothing in `package.json` or
+ * `vite.config.js` names it. Note the direction of the one real dependency:
+ * this module imports `offlineMigration`, not the other way round.
+ *
+ * `src/lib/hostedPaths.spec.js` pins the import half and is NOT what
+ * establishes this: its list is production source files under `src/`, so a
+ * script, a CLI entry point or an operator running the file by hand would leave
+ * it green. It is true and it does not carry the claim.
+ *
+ * The line that does not go through the import graph at all: `OFFLINE_RETIRED_FLAG`
+ * is written in exactly one place, line 72 below. `phiStorage.js` reads it in
+ * `retirementCompleted()`. Nothing calls the only writer, so that helper returns
+ * false in production always — and `clearCachedPHI` therefore never purges
+ * `PURGE_AFTER_RETIREMENT_KEYS`. Stranded offline PHI is retained rather than
+ * dropped, which is safe for the documentation and adverse for local PHI
+ * hygiene, and it is a separate finding from anything about routes.
+ *
+ * So a declared route REFUSING one of the calls below takes no fallback away,
+ * because no screen reaches them. Two do today. That is housekeeping and not
+ * the stranded-work hazard the rest of this header describes.
+ *
  * Offline mode (the `/OfflineMode` page, the IndexedDB mutation queue, the
  * offline service worker) has been removed. A device that ran the previous
  * version may still hold UNSYNCED clinical documentation — visit notes and

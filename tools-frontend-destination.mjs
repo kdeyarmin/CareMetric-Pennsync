@@ -26,7 +26,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENTITY_CALL, sourceFiles } from './tools-base44-surface.mjs';
+import { entityCalls, sourceFiles } from './tools-base44-surface.mjs';
 
 export const FORMAT = 'pennsync-frontend-destination';
 export const FORMAT_VERSION = 1;
@@ -145,8 +145,8 @@ export function measureDestinations(repository) {
   const undeclared = new Set();
   for (const file of sourceFiles(join(repository, 'src'))) {
     const text = readFileSync(file, 'utf8');
-    for (const match of text.matchAll(ENTITY_CALL)) {
-      const entity = match[1];
+    for (const site of entityCalls(text)) {
+      const entity = site.entity;
       // The shared matcher ends at the dot, so the operation is the identifier
       // straight after it. Every call site the matcher counted is accounted
       // for, so this tool's total cannot disagree with the ratchet's: a site
@@ -154,7 +154,7 @@ export function measureDestinations(repository) {
       // (and fails the gate), and one whose operation is unknown — including
       // no identifier at all — fails the whole measurement in `destinationFor`
       // rather than being skipped.
-      const tail = text.slice(match.index + match[0].length).match(/^\s*([a-zA-Z][A-Za-z0-9_]*)/);
+      const tail = text.slice(site.end).match(/^\s*([a-zA-Z][A-Za-z0-9_]*)/);
       const operation = tail ? tail[1] : '';
       const disposition = entities[entity] ?? null;
       if (!disposition) undeclared.add(entity);

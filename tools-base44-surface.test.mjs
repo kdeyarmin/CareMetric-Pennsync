@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BASELINE_FILE, FORMAT, FORMAT_VERSION, METRICS,
-  compareSurface, main, measureSurface, parseBaseline,
+  compareSurface, entityCalls, main, measureSurface, parseBaseline, sourceFiles,
 } from './tools-base44-surface.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -88,4 +88,62 @@ test('the command line refuses unknown arguments and an unavailable baseline', (
   lines.length = 0;
   assert.equal(main([], { repository: resolve(repository, 'src'), log: value => lines.push(value) }), 2);
   assert.ok(JSON.parse(lines[0]).error);
+});
+
+/**
+ * The matcher's three binding forms, each driven with the alias PRESENT and
+ * ABSENT. Only the pair proves anything: a case that reports sites with the
+ * binding removed would be matching on the call shape alone, which is what a
+ * first version of this would have done, and a case that reports none with the
+ * binding present is the blind spot this closed.
+ */
+test('an entity call through a binding is counted, and only where the binding is', () => {
+  const calls = text => [...entityCalls(text)].map(site =>
+    `${site.entity}.${text.slice(site.end).match(/^\s*([a-zA-Z][A-Za-z0-9_]*)/)[1]}`).sort();
+
+  const map = 'const Q = { Incident: base44.entities.Incident };\n';
+  assert.deepEqual(calls(`${map}await q.Incident.filter(x);`), ['Incident.filter']);
+  assert.deepEqual(calls('await q.Incident.filter(x);'), [],
+    'without the binding in the same file there is nothing to read the alias from');
+
+  const destructured = 'const { Task } = base44.entities;\n';
+  assert.deepEqual(calls(`${destructured}await Task.create(x);`), ['Task.create']);
+  assert.deepEqual(calls('await Task.create(x);'), []);
+
+  const namespace = 'const ns = base44.entities;\n';
+  assert.deepEqual(calls(`${namespace}await ns.Patient.list();`), ['Patient.list']);
+  assert.deepEqual(calls('await ns.Patient.list();'), []);
+
+  // One call, not two. Both passes match these characters; what makes it one
+  // is that `entityCalls` keys on the OPERATION'S OFFSET, not that either pass
+  // declines. Double counting would raise the ratchet and the census together
+  // in a way that reads as two instruments agreeing.
+  assert.deepEqual(calls(`${map}await base44.entities.Incident.filter(x);`), ['Incident.filter']);
+
+  // A deeper chain is not the binding, and this is what the lookbehind is for
+  // -- driven here because removing it left every other case in this file
+  // green, so without this line the guard would be untested.
+  assert.deepEqual(calls(`${map}await a.b.Incident.filter(x);`), []);
+
+  // A typeof guard through optional chaining is not a call, which is what keeps
+  // `retiredOfflineQueue.js` at eight rather than ten.
+  assert.deepEqual(calls(`${map}if (typeof q?.Incident?.filter !== 'function') return;`), []);
+});
+
+test('the module that defeated the old matcher is measured, and it is one module', () => {
+  const text = readFileSync(resolve(repository, 'src/lib/retiredOfflineQueue.js'), 'utf8');
+  const sites = [...entityCalls(text)];
+  assert.equal(sites.length, 8, 'the eight aliased call sites in the offline queue');
+  assert.deepEqual([...new Set(sites.map(site => site.entity))].sort(),
+    ['ComplianceAudit', 'Incident', 'NoteConversion', 'Task']);
+  // The BOUND, asserted rather than remembered: a second module binding the
+  // namespace this way is a finding for whoever adds it, not a silent change
+  // of population. Measured across the same files the ratchet walks.
+  const bound = [];
+  for (const file of sourceFiles(resolve(repository, 'src'))) {
+    const body = readFileSync(file, 'utf8');
+    const literal = [...body.matchAll(/\bbase44\s*\.\s*entities\s*\.\s*([A-Z][A-Za-z0-9_]*)\s*\./g)].length;
+    if ([...entityCalls(body)].length > literal) bound.push(relative(repository, file));
+  }
+  assert.deepEqual(bound, ['src/lib/retiredOfflineQueue.js']);
 });
