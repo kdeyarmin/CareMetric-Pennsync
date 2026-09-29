@@ -10463,7 +10463,7 @@ author reaches for without choosing it. **Ask each author separately, ask for
 the body rather than the account, and where the claim is that a change broke a
 check, run the check's own defect at the head before the change.**
 
-Related: it is the same animal as praising a reconstruction as a measurement, and as a control that comes back blind not being a finding until the harness has been shown to bite. The general form is that **a result which cannot tell two worlds apart is not evidence about which one you are in**, however many times it arrives. — and note that repetition does not merely fail to add evidence, it adds confidence: each restatement arrives more firmly than the last, with nothing in the sentence to show that the firmness was manufactured at the point of repetition rather than measured at the source.
+Related: it is the same animal as praising a reconstruction as a measurement, and as a control that comes back blind not being a finding until the harness has been shown to bite. The general form is that **a result which cannot tell two worlds apart is not evidence about which one you are in**, however many times it arrives. And note that repetition does not merely fail to add evidence, it adds confidence: each restatement arrives more firmly than the last, with nothing in the sentence to show that the firmness was manufactured at the point of repetition rather than measured at the source.
 
 ## D171 — A write-side rule read as a read-side rule changes who decides
 
@@ -12012,6 +12012,24 @@ Three things make this worth adding rather than leaving as a repetition of the f
 
 The general form, which is D204's first instance arriving from the other side: **an instrument that answers in the wrong unit returns a well-formed number, so the only cheap defence is a second instrument whose disagreement you can account for.** Count characters with something that decodes the encoding explicitly, and when two counts agree exactly on a file containing non-ASCII bytes, suspect that both are measuring bytes.
 
+### Second addendum, 2026-09-29, in the main-watch thread's own words
+
+**Second addendum to D204, added after its collection closed.** Contributed by the main-watch thread, which wrote the entry and its first addendum. It is a fifth instance and it changes nothing already filed.
+
+Tonight I ran the same instrument over the same file twice, an hour apart, and got it wrong in opposite directions both times.
+
+Checking whether a decision entry existed, I grepped `^### D190` and reported the answer. The house heading form is `## D<n>`, and `### D` matches two of the document's 195 entries — the widenings. It found D190 only because D190 happens to have been widened. Had it not been, the identical probe would have returned zero at both refs I was comparing, and I would have told another session that its correctly filed entry did not exist.
+
+An hour later, counting entries across two refs, I ran `^#+ +D[0-9]+` and published the result as "197 `## D` headings". The pattern matches every heading depth. The document has 195 entries and two `### D` subheads. The number was true of what I measured and false of what I named it.
+
+Same instrument, same corpus, one hour apart, once too narrow and once too wide. The first error reports about the instrument and not the register; the second reports a number whose unit is `#+ D` under a label that says `## D`. Both are this entry's rule, and having the pair on one file is what makes them worth adding: the failure is not a tendency to overcount or to undercount, it is not asking what the pattern ranges over at all.
+
+Two properties from the first addendum repeated exactly, which is the reason I trust the diagnosis rather than merely accepting it. What caught it was a second instrument — another session counting the same sha with `^## D` and getting 195 — and not the declarative rule. And the size of the disagreement named the cause: 197 against 195 is a gap of two, and the document holds exactly two `### D` subheads. As with the sixteen-byte gap over eight em-dashes, the number did not merely say something was wrong; it said what.
+
+**The clause this adds is about the control.** I ran a positive control before reporting, and it agreed: both patterns return 168 on `main`. They agree there because `main` carries zero `### D` subheads, so the control was executed on the one ref where the two methods cannot differ. A control run where the discriminating case does not exist is not a weak control, it is not a control — it establishes that two instruments agree about a corpus that cannot separate them, and then that agreement is spent as though it were evidence about a corpus that can. D156 states the general form and got there first, on a catch-up forward that a suite building from nothing cannot see; this is the same mechanism on a document rather than a store, and it is worth having both populations under it.
+
+So the practical addition to D204's own remedy: when you reach for a second instrument, run it on the corpus that contains the thing the two instruments disagree about. Agreement anywhere else is the most reassuring possible result and means nothing.
+
 ## D205 — A negative asserted in the alarming direction recruits action before it recruits checking
 
 A negative claim about the tree — *nothing checks this*, *that body is not written*, *no test
@@ -12067,6 +12085,22 @@ twice in one night.
 *Measured 2026-09-29. Instruments: `grep` over the repository at `bd28cddb` for both
 retractions; the green `Report the hosted staging migration gap` job of run 36555889513 for
 the surviving detection.*
+
+### Widening, 2026-09-29, in the main-watch thread's own words
+
+D205 records that a negative in the alarming direction recruits action before it recruits checking, and it has since taken a clause about the reassuring direction doing the same thing more quietly. Both halves describe how a negative claim travels. Neither says what to do about it, and the reason is that the obvious remedy does not work: telling somebody to state the scope of their search is advice that the person who most needs it will believe they have already followed. A claim reported wider than its instrument does not feel wide from the inside. It feels finished.
+
+What closes it is a question with three properties, and it is the properties rather than the wording that matter. It must be askable by somebody who knows nothing about the search, so that the reader can ask it without first understanding the work. It must be answerable in one sentence, so that asking it is cheaper than resenting it. And it must be unanswerable without naming the surfaces that were actually read, so that a claim which is wider than its instrument cannot produce an answer at all.
+
+**What would a counter-example have looked like, and where would it have been?**
+
+The value is that the claim exposes itself in the claimant's own answer rather than waiting for a challenge. A reader who asks "are you sure?" gets reassurance, because certainty is what the claimant already has. A reader who asks where the counter-example would have lived gets a location, and the claimant is then the first person to notice whether they looked there.
+
+The worked example is mine and it is the reason this is filed rather than proposed. At 13:50Z I reported that Kevin had never declined a standing merge rule, having measured the project timeline and all four threads that existed on the day. The measurement was correct and every figure in it still stands. Asked the question above, the answer is immediate: a counter-example would have been a message of his on the morning of 09-22. The next true sentence available to me is that this project has no such morning — its first message of any kind is 16:45:58Z, and the work before that lives in a Claude Code session the project was built out of, which no instrument here can read. So the supportable claim was "not in this project", and what I had said was "he never said it". The question would have produced that correction from me, unprompted, before the claim left the thread, out of facts I already held and had not put next to each other.
+
+Two things about that are worth stating plainly, because they are what makes this a remedy rather than a slogan. The question did not require me to suspect myself, which is the property every self-check needs and almost none has. And it did not require a second reader, though a second reader is what actually caught it — the point is that the same catch was available to me for the cost of one sentence.
+
+The failure mode to name is asking it rhetorically. "Where would a counter-example have been?" answered with "there wouldn't be one, that's the point" is the claim restated, and it is the answer a wide claim produces most naturally. The answer has to be a place. If it cannot be a place, the claim is not about a search and D205 does not apply to it.
 
 ## D206 — A cost that falls on nobody has no advocate in the comparison
 
