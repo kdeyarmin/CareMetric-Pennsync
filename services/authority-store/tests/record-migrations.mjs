@@ -90,3 +90,48 @@ export async function applyRecordMigrations(db, options = {}) {
   }
   return applied;
 }
+
+/**
+ * Assert that `name` sorts last in the record directory.
+ *
+ * `planMigration` sorts each directory's filenames and refuses
+ * `MIGRATE_OUT_OF_ORDER` the moment an APPLIED file sorts after a PENDING one,
+ * so a migration a change ADDS has to sort after everything a store may
+ * already hold. The read half of the compliance contracts moved FIVE times
+ * inside one pull request for that reason, twice against files that tied its
+ * timestamp prefix EXACTLY and sorted after it on the alphabet — a shared
+ * prefix is not a collision and is not safety either, because sorting is over
+ * the whole filename and a prefix only ties.
+ *
+ * **This is a guard on a PENDING change, and it retires when that change
+ * merges.** While a file is unmerged, anything sorting after it is a base that
+ * moved under it and the refusal is the point. Once it is merged it is part of
+ * what a store already holds, so the next change's file legitimately sorts
+ * after it and the same assertion would refuse a correct tree — which is
+ * exactly what it did the moment the write half arrived. So the check moves to
+ * the newest pending file rather than accumulating, and a suite whose
+ * migration has merged drops the call rather than widening it with an
+ * exception list.
+ *
+ * It is deliberately NOT the whole property: "nothing sorts after me" is what
+ * a suite with no git can see, while the real question is whether every file
+ * this CHANGE adds sorts after every file on the base. That comparison is
+ * `tools-pennsync-apply-signal.mjs`'s, which reads the base by name through
+ * `git ls-tree`, and merging the two answers is how a prediction gets read as
+ * a measurement.
+ *
+ * @param {string[]} applied the names `applyRecordMigrations` returned.
+ * @param {string} name the pending migration that must sort last.
+ * @returns {void}
+ */
+export function assertNewestRecordMigration(applied, name) {
+  const last = applied.at(-1);
+  if (last !== name) {
+    throw new Error('PENNSYNC_TEST_RECORD_MIGRATION_NOT_NEWEST: '
+      + `${name} must sort last in the record directory, and ${last} sorts `
+      + 'after it. `planMigration` refuses MIGRATE_OUT_OF_ORDER once an '
+      + 'earlier file has been applied to a store, so rename this migration '
+      + 'past the newest name — or, if this migration has MERGED, retire the '
+      + 'call rather than widening it.');
+  }
+}

@@ -10,6 +10,83 @@ import { retireLegacyBrowserCaches } from '@/lib/retiredBrowserCacheCleanup';
 /**
  * ONE-TIME migration for the retired offline feature. DELETE AFTER ONE RELEASE.
  *
+ * **NOTHING INVOKES THIS MODULE, measured 2026-09-29 on `c90ad9ae`.** Read this
+ * before spending anything on a report that names it — it has now started two
+ * investigations from scratch, because everything below describes what the
+ * module WOULD do and a route or census report names it as though it ran.
+ *
+ * What was measured, and over what population, since "no caller found" is only
+ * worth as much as the search behind it. Every file in the repository
+ * mentioning `retiredOfflineQueue` or `flushAndRetireOfflineQueue`, outside
+ * `node_modules` and `.git`: this module, its own spec, five other test files,
+ * three tooling pins, three documents, and four production modules —
+ * `offlineMigration.js`, `localPhiKeys.js`, `phiStorage.js` and
+ * `functions/updateAuthorizedVisit.js`. **Every mention in those four is a
+ * comment.** The only importer of `flushAndRetireOfflineQueue` anywhere is this
+ * module's own spec. The one browser entry point is the module script in
+ * `index.html`, and all three `import.meta.glob` calls in `src/` match
+ * `./pages/*.jsx`, so none can sweep `src/lib`. Nothing in `package.json` or
+ * `vite.config.js` names it. Note the direction of the one real dependency:
+ * this module imports `offlineMigration`, not the other way round.
+ *
+ * `src/lib/hostedPaths.spec.js` pins the import half and is NOT what
+ * establishes this: its list is production source files under `src/`, so a
+ * script, a CLI entry point or an operator running the file by hand would leave
+ * it green. It is true and it does not carry the claim.
+ *
+ * The line that does not go through the import graph at all: `OFFLINE_RETIRED_FLAG`
+ * is written in exactly one place, line 72 below. `phiStorage.js` reads it in
+ * `retirementCompleted()`. Nothing calls the only writer, so that helper returns
+ * false in production always — and `clearCachedPHI` therefore never purges
+ * `PURGE_AFTER_RETIREMENT_KEYS`. Stranded offline PHI is retained rather than
+ * dropped, which is safe for the documentation and adverse for local PHI
+ * hygiene, and it is a separate finding from anything about routes.
+ *
+ * **That paragraph was true and stopped one link short, in the direction that
+ * makes the defect look smaller; corrected 2026-09-29 on `065ddc1`.** The gate
+ * is dead AND so is the function holding it: `clearCachedPHI` (`phiStorage.js`
+ * :735) has no production caller at all. Every mention of it under `src/`
+ * outside its own definition, its own spec and `localPhiKeys.test.js` is a
+ * COMMENT — `localPhiKeys.js:4` and `UserNotRegisteredError.jsx:14`, and the
+ * second asserts the purge happens. `AuthContext.jsx` `logout()` (line 1120)
+ * calls `purgeAuthorityBoundDrafts`,
+ * `purgeRefetchablePhiForAuthorityTransition` and `purgeTenantAuthority`, and
+ * that middle one purges `PURGE_FULL_PREFIXES` only (`phiStorage.js:714`), so
+ * the retirement keys survive logout on the path that DOES run.
+ *
+ * The outcome is the same and the REMEDY is not, which is why the correction
+ * matters: giving the flag a writer would still purge nothing, because the
+ * reader is unreachable. Fixing either link alone leaves the PHI on the device.
+ *
+ * Two things about that paragraph will age and are dated rather than left to
+ * read as current. `UserNotRegisteredError.jsx`'s comment is being corrected in
+ * a change of its own, so check the file rather than this sentence. And a
+ * separate change makes `purgeSyncedOfflineEntries` reachable from the purge
+ * logout DOES call — which does NOT close what is described here: that pass
+ * removes entries a queue's own marker says the server already acknowledged,
+ * while `PURGE_AFTER_RETIREMENT_KEYS` stays behind both dead links above.
+ *
+ * A FOURTH key is in neither of those two states, and it is worth knowing
+ * before anybody writes "the retired offline data is never purged" as one
+ * sentence: `offline_conflicts` is not in `PURGE_AFTER_RETIREMENT_KEYS` at all.
+ * It is `QUARANTINED_OFFLINE_KEYS` (`localPhiKeys.js:114`), and no production
+ * code reads that list — every reference is the constants file and its own
+ * test. So the three above have a purge that cannot be reached, while this one
+ * has no purge written for it, deliberately: it holds a nurse's manual conflict
+ * resolution beside the server copy it disagreed with. Measured here on
+ * `4db1e55` after the PHI thread reported it; the per-key form is the only one
+ * that survives careful reading, and the flat version is not supportable.
+ *
+ * Note the shape rather than the instance. The question asked here was whether
+ * anything invokes THIS module; that was answered exactly, and the flag chain
+ * was a second independent line supporting it. Nobody asked whether the
+ * function reading the flag was itself reached, and a correct answer to the
+ * question asked survives every check the question suggests.
+ *
+ * So a declared route REFUSING one of the calls below takes no fallback away,
+ * because no screen reaches them. Two do today. That is housekeeping and not
+ * the stranded-work hazard the rest of this header describes.
+ *
  * Offline mode (the `/OfflineMode` page, the IndexedDB mutation queue, the
  * offline service worker) has been removed. A device that ran the previous
  * version may still hold UNSYNCED clinical documentation — visit notes and

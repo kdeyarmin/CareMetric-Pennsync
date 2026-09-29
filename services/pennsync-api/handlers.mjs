@@ -454,6 +454,46 @@ export const HANDLERS = Object.freeze({
       return contract('listPolicyAcknowledgments', params);
     },
   }),
+  // The write half. Each takes the payload as ONE object and hands it
+  // straight to the contract, which refuses an unknown key and names the
+  // reserved ones by refusal code — so the field set is decided once, in SQL,
+  // where it is tested against the real migration.
+  //
+  // `exactObject` refuses an unknown key and does NOT require a known one, so
+  // `{}` reaches the contract with a null payload. That is deliberate and the
+  // contract raises the refusal, because a refusal a handler depends on needs
+  // a test on the side that RAISES it — which is the hole the referral port
+  // found in its own suite.
+  createComplianceAudit: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['audit'], 'INVALID_PARAMS');
+      return contract('createComplianceAudit', params);
+    },
+  }),
+  updateComplianceAudit: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['audit_id', 'patch'], 'INVALID_PARAMS');
+      return contract('updateComplianceAudit', params);
+    },
+  }),
+  createAdrAuditCase: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['case'], 'INVALID_PARAMS');
+      return contract('createAdrAuditCase', params);
+    },
+  }),
+  updateAdrAuditCase: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['case_id', 'patch'], 'INVALID_PARAMS');
+      return contract('updateAdrAuditCase', params);
+    },
+  }),
+  deleteAdrAuditCase: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['case_id'], 'INVALID_PARAMS');
+      return contract('deleteAdrAuditCase', params);
+    },
+  }),
   listBrokeredRecords: Object.freeze({
     // D16's ceiling, given a caller at last.
     //
