@@ -21,6 +21,31 @@ const libraryAnswer = (entries, complete = true) => () => new Response(
   JSON.stringify({ success: true, result: { entries, complete }, execution: 'pennsync-api', base44ExecutionDependency: false }),
   { headers: { 'content-type': 'application/json' } });
 
+/**
+ * A library WRITE's answer shape, which is not the read's.
+ * `contract_library_write` answers `{created|updated|deleted: true, row}`, and
+ * the flag is the only thing in it that says which write happened. The fixture
+ * takes the verb from the REQUEST so an ordinary case behaves as the store
+ * does; `libraryVerbAnswer` fixes a wrong one on purpose, because a fixture
+ * that can only agree with the route proves nothing about the route.
+ */
+const libraryWriteAnswer = (fixture, row = { id: 'row-1' }) => () => {
+  const action = fixture.apiCalls.at(-1)?.body?.params?.action;
+  const verb = { create: 'created', update: 'updated', delete: 'deleted' }[action];
+  return new Response(
+    JSON.stringify({
+      success: true,
+      result: { ...(verb ? { [verb]: true } : {}), row },
+      execution: 'pennsync-api',
+      base44ExecutionDependency: false,
+    }),
+    { headers: { 'content-type': 'application/json' } });
+};
+
+const libraryVerbAnswer = (verb, row = { id: 'row-1' }) => () => new Response(
+  JSON.stringify({ success: true, result: { [verb]: true, row }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+  { headers: { 'content-type': 'application/json' } });
+
 /** The roster contract's own answer shape: entries, plus a keyset cursor. */
 const rosterAnswer = (entries, next = null) => () => new Response(
   JSON.stringify({ success: true, result: { entries, next }, execution: 'pennsync-api', base44ExecutionDependency: false }),
@@ -602,7 +627,7 @@ describe('the declared entity routes', () => {
     it('names the action the contract takes, and sends the id and the payload each one needs',
       async () => {
         const { fixture, adapter } = await signedIn();
-        fixture.apiResponse = libraryAnswer([]);
+        fixture.apiResponse = libraryWriteAnswer(fixture);
 
         // A create sends the payload and NO id, because the row does not exist
         // to have one. An update sends both. A delete sends the id and no
@@ -623,9 +648,32 @@ describe('the declared entity routes', () => {
         expect(fixture.apiCalls.at(-1).body.params).toEqual({ action: 'delete', id: 'p-1' });
       });
 
+    it('refuses a row the contract answered with a different verb', async () => {
+      const { fixture, adapter } = await signedIn();
+      // The three write answers are the SAME SHAPE — `{<verb>: true, row}` —
+      // so the flag is the only thing that says which write happened. A route
+      // declared with the wrong action passes the gate, asks for the wrong
+      // write and hands the screen a plausible row for an operation it did not
+      // perform. Both values are driven rather than one planted: an answer
+      // with the right verb must come back, and the same row behind a wrong
+      // verb must be refused. A fixture that could only agree with the route
+      // would pass with the check deleted.
+      fixture.apiResponse = libraryVerbAnswer('updated');
+      await expect(adapter.raw.entities.ClinicalPathway.update('p-1', { is_active: false }))
+        .resolves.toEqual({ id: 'row-1' });
+
+      fixture.apiResponse = libraryVerbAnswer('created');
+      await expect(adapter.raw.entities.ClinicalPathway.update('p-1', { is_active: false }))
+        .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+
+      fixture.apiResponse = libraryVerbAnswer('updated');
+      await expect(adapter.raw.entities.ClinicalPathway.delete('p-1'))
+        .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    });
+
     it('sends each of the four its own capability, and never a neighbour\'s', async () => {
       const { fixture, adapter } = await signedIn();
-      fixture.apiResponse = libraryAnswer([]);
+      fixture.apiResponse = libraryWriteAnswer(fixture);
       // One shared `library_write` body serves all four, which is exactly why
       // this is worth asserting: the four contracts differ only in the name
       // they are reached by, so a copied declaration pointing at the wrong one

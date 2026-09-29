@@ -620,7 +620,16 @@ function operationalSave({ fn, key, reason, withId }) {
  * three actions and for all four entities. Read that rather than inferring it
  * per entity: the shared body is why it is uniform.
  */
+// The flag `contract_library_write` sets for each action. Named rather than
+// derived from the action string, so an action added upstream fails here at
+// declaration instead of looking for a flag the contract never sets.
+const LIBRARY_VERB = Object.freeze(
+  Object.assign(Object.create(null),
+    { create: 'created', update: 'updated', delete: 'deleted' }));
+
 function libraryWrite({ fn, reason, action }) {
+  const verb = LIBRARY_VERB[action];
+  if (verb === undefined) throw new Error(`ENTITY_ROUTE_LIBRARY_ACTION_UNKNOWN:${action}`);
   const withId = action !== 'create';
   const withFields = action !== 'delete';
   return Object.freeze({
@@ -643,7 +652,18 @@ function libraryWrite({ fn, reason, action }) {
         ...(withFields ? { fields } : {}),
       };
     },
-    response: (result) => result?.row,
+    // The VERB is checked before the row is handed back, and this is not
+    // defensive tidiness. `contract_library_write` answers
+    // `{created|updated|deleted: true, row}`, so a route declared with the
+    // wrong action passes the gate, asks the store for the wrong write, and
+    // returns a perfectly plausible row for an operation it did not perform.
+    // Nothing downstream can tell the difference: the shape is identical and
+    // only the flag says which write happened. Proved by sabotage rather than
+    // reasoned about — swapping a declaration's action is silent without it.
+    response: (result) => {
+      if (result?.[verb] !== true) unsupported('answer');
+      return result.row;
+    },
   });
 }
 
