@@ -734,6 +734,90 @@ describe('authority-bound live draft storage', () => {
     expect(localStorage.getItem('penn_sync_offline_pending_updates')).toBe('{"not":"an array"}');
   });
 
+  // The verification, not just the removal. A regression that deleted the read-back or
+  // stopped returning its failure would leave every case above green, because on a working
+  // store the unverified code does exactly the same thing.
+  it('refuses the transition when a retired queue silently survives its own removal', async () => {
+    const legacyDb = createLegacyPatientDbHarness([]);
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: legacyDb.indexedDB,
+    });
+    const acknowledged = JSON.stringify([{ visitId: 'v1', synced: true }]);
+    localStorage.setItem('penn_sync_offline_pending_updates', acknowledged);
+    // A store that reports success and keeps the bytes — the case a bare removeItem cannot
+    // distinguish from a real purge.
+    const realRemoveItem = Storage.prototype.removeItem;
+    const removeItem = vi
+      .spyOn(Storage.prototype, 'removeItem')
+      .mockImplementation(function stubbed(key) {
+        if (key === 'penn_sync_offline_pending_updates') return;
+        return realRemoveItem.call(this, key);
+      });
+
+    try {
+      await expect(purgeRefetchablePhiForAuthorityTransition()).rejects.toThrow(
+        'Refetchable PHI purge failed',
+      );
+    } finally {
+      removeItem.mockRestore();
+    }
+
+    expect(localStorage.getItem('penn_sync_offline_pending_updates')).toBe(acknowledged);
+  });
+
+  it('refuses the transition when a partial rewrite fails, leaving the pending entry intact', async () => {
+    const legacyDb = createLegacyPatientDbHarness([]);
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: legacyDb.indexedDB,
+    });
+    const mixed = JSON.stringify([
+      { id: 'offline_1', synced: true, data: { nurse_notes: 'reached the server' } },
+      { id: 'offline_2', synced: false, data: { nurse_notes: 'only on this device' } },
+    ]);
+    localStorage.setItem('penn_sync_offline_pending_visits', mixed);
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(function stubbed(key, value) {
+        if (key === 'penn_sync_offline_pending_visits') throw new Error('quota exceeded');
+        return realSetItem.call(this, key, value);
+      });
+
+    try {
+      await expect(purgeRefetchablePhiForAuthorityTransition()).rejects.toThrow(
+        'Refetchable PHI purge failed',
+      );
+    } finally {
+      setItem.mockRestore();
+    }
+
+    // The failure costs the hygiene pass and never the field work: the queue is left no
+    // shorter than what reached the server.
+    expect(localStorage.getItem('penn_sync_offline_pending_visits')).toBe(mixed);
+  });
+
+  // The marker is the literal boolean and nothing else. `{ synced: 'false' }` is an
+  // unexpectedly shaped entry, so it is preserved like any other value this function
+  // cannot interpret — a truthiness check would delete it while claiming not to.
+  it('does not read a non-boolean marker as an acknowledgement', async () => {
+    const legacyDb = createLegacyPatientDbHarness([]);
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: legacyDb.indexedDB,
+    });
+    const odd = JSON.stringify([
+      { id: 'offline_1', synced: 'false', data: { nurse_notes: 'shape nobody wrote' } },
+      { id: 'offline_2', synced: 1, data: { nurse_notes: 'nor this one' } },
+    ]);
+    localStorage.setItem('penn_sync_offline_pending_visits', odd);
+
+    await purgeRefetchablePhiForAuthorityTransition();
+
+    expect(localStorage.getItem('penn_sync_offline_pending_visits')).toBe(odd);
+  });
+
   it('starts the authoritative legacy patient clear without awaiting database enumeration', async () => {
     const legacyDb = createLegacyPatientDbHarness([
       { id: 'patient-1', first_name: 'Sensitive' },

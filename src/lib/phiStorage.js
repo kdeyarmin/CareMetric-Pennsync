@@ -552,7 +552,9 @@ function purgeSyncedOfflineEntries() {
       continue; // malformed — leave as-is, and never fail a transition over it
     }
     if (!Array.isArray(items)) continue;
-    const pending = items.filter((item) => !item?.synced);
+    // Strictly the literal marker: `{ synced: 'false' }` is an unexpected shape, not an
+    // acknowledgement, and the paragraph above promises not to interpret one.
+    const pending = items.filter((item) => item?.synced !== true);
     try {
       if (pending.length === 0) {
         localStorage.removeItem(key);
