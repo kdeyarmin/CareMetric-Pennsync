@@ -441,6 +441,54 @@ test('the go-live plan carries this tree\'s entity-route reading verbatim', () =
  * that happens to equal a pinned total — the coincident-figures trap — and the
  * remedy is the one already in the message below: spell it as a word.
  */
+test('no earlier reading sits below the measured one', () => {
+  const page = readFileSync(resolve(repository, PLAN), 'utf8');
+  const report = measureRoutes(repository);
+  const firstLine = summaryLines(report)[0];
+
+  /*
+   * WHAT THIS CHECKS, AND — MORE IMPORTANTLY — WHAT IT DOES NOT.
+   *
+   * It checks one ordering: the measured reading is the last `entity routes:`
+   * fence on the page, so a record of an earlier head never sits below the
+   * current one. That is a real mistake and worth holding.
+   *
+   * IT DOES NOT CATCH THE DEFECT IT WAS WRITTEN FOR, and saying so here is the
+   * point of the comment. Twice in one day, in this section, an inserted block
+   * landed between an EARLIER block and the prose explaining it, leaving a
+   * paragraph that opens "The move above ..." describing the block above the
+   * block above it — a paragraph reporting another paragraph's numbers, which
+   * is worse than a missing explanation because it reads like an explanation.
+   * Both times every assertion in this file passed.
+   *
+   * This assertion was written to close that and was then PLANTED with the
+   * real broken layout, which it passed: in both the broken and the fixed page
+   * the fences run 69, 64, 74, because only the PROSE moved. An assertion true
+   * of both cannot distinguish them. It is kept, with its claim cut back to
+   * what it measures, rather than deleted — but nothing here covers the
+   * orphaned-prose defect, and a reader must not take a green run as evidence
+   * that the section reads coherently.
+   *
+   * The sibling check below cannot cover it either: it reads the prose AFTER
+   * the measured block, and prose orphaned BEHIND an inserted block is not in
+   * that region. Closing this properly needs an assertion about which fence a
+   * backward-referencing paragraph describes, which is a claim about meaning
+   * rather than about order, and nobody has built one. Until then the control
+   * is reading the rendered section after any edit that moves a block — which
+   * is what found it both times, and is not something to rely on a third.
+   */
+  const fences = [...page.matchAll(/^entity routes: .*$/gm)].map(match => match[0]);
+  assert.ok(fences.length > 0, `${PLAN} carries no entity-route reading at all`);
+  assert.equal(fences.at(-1), firstLine,
+    `${PLAN}: an earlier reading sits below the measured one.\n`
+    + `  last on the page: ${fences.at(-1)}\n`
+    + `  measured now:     ${firstLine}\n`
+    + '  Earlier readings are RECORDS of a head and belong ABOVE the current one.\n'
+    + '  Append a new reading at the end of the section and demote the previous\n'
+    + '  one in place. NOTE: passing this says nothing about whether each block\n'
+    + '  still sits with its own prose — see this test\'s comment.');
+});
+
 test('the prose after that block points at it and restates none of its figures', () => {
   const page = readFileSync(resolve(repository, PLAN), 'utf8');
   const report = measureRoutes(repository);
