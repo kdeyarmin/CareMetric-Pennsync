@@ -781,6 +781,19 @@ describe('the declared entity routes', () => {
      * that pass no sort are clean against the TREE and not necessarily against
      * the deployment. Whether a given deployment has run that migration is not
      * a figure this repository holds, which is why this stays a comment.
+     *
+     * The DISCRIMINATOR is worth keeping, because it is derivable rather than
+     * spotted and it is not "does the key look optional". Four capabilities send
+     * `p_order` unconditionally — `listAgencyRoster`, `listPhysicians`,
+     * `listAgencyTasks`, `listCarePlans` — and three are harmless because their
+     * key is in the signature the migration that CREATED them made. The roster's
+     * arrived in a forward migration instead. What makes the exposed population
+     * one rather than four is a grep over the whole record directory rather than
+     * a reading of the roster: `drop function "public"."pennsync_contract_` has
+     * exactly one occurrence in it, and it is `20260920620000`'s. So a capability
+     * is exposed when a forward migration widened the body-key set its wrapper
+     * accepts, that grep is what finds the next one, and a check over it must key
+     * on the body the registry ALWAYS sends rather than on a caller's arguments.
      */
     expect([...violations].sort()).toEqual([
       'AgencySettings.filter:order', 'AgencySettings.list:order',
