@@ -249,6 +249,35 @@ function brokeredRead({ entity, sortable, filterable = [], filtered }) {
 export const LIBRARY_MAXIMUM = 1000;
 
 /**
+ * A library contract's own order, matched EXACTLY including its DIRECTION.
+ *
+ * `sortKey` admits either direction for a field it knows, which is right for
+ * the broker family: this file does that ordering itself, over a set it has
+ * proved complete. It is wrong here, and `libraryRead`'s own response comment
+ * says why without anything enforcing it — "the contract has to have done the
+ * ordering, which `sortable` is the list of". A field list is not that claim.
+ *
+ * `contract_clinical_library_template_list` orders `usage_count DESC`. A
+ * screen asking for `+usage_count` passes a field check, is served the
+ * DESCENDING page of five, and has it re-sorted ascending here — the five
+ * most-used templates presented as the five least-used. That is this file's
+ * own "sorting a page is a lie", arriving through the direction instead of
+ * through the page, and it is invisible because both halves look right.
+ *
+ * So `sortable` here is a list of sort STRINGS, each taken from its
+ * contract's own `order by`, and a direction no contract implements refuses.
+ * `+x` normalises to `x` because Base44's ascending form has both spellings;
+ * nothing else is normalised.
+ */
+function librarySort(sort, accepted) {
+  if (sort === undefined || sort === null || sort === '') return null;
+  if (typeof sort !== 'string') unsupported('sort');
+  const normalized = sort.startsWith('+') ? sort.slice(1) : sort;
+  if (!accepted.includes(normalized)) unsupported('sort');
+  return { field: normalized.replace(/^-/, ''), descending: normalized.startsWith('-') };
+}
+
+/**
  * A read served by a named contract that answers `{ entries, complete }`.
  *
  * `request` is the per-route part — which of the contract's own arguments the
@@ -274,7 +303,7 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
     request: (...args) => {
       const [query, sort, limit] = argumentsOf(args);
       predicate(query, filterable);
-      sortKey(sort, sortable);
+      librarySort(sort, sortable);
       const size = limit === undefined || limit === null
         ? LIBRARY_MAXIMUM : Math.min(pageSize(limit), LIBRARY_MAXIMUM);
       return { ...(request ? request(query) : {}), limit: size };
@@ -282,7 +311,7 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
     response: (answer, ...args) => {
       const [query, sort, limit] = argumentsOf(args);
       if (!answer || !Array.isArray(answer.entries)) unsupported('answer');
-      const key = sortKey(sort, sortable);
+      const key = librarySort(sort, sortable);
       const kept = answer.entries.filter(predicate(query, filterable));
       const rows = key ? ordered(kept, key.field, key.descending) : kept;
       // The contract measured completeness, so a short page is a fact rather
@@ -760,6 +789,17 @@ const operationalRoutes = Object.freeze({
  * migration and fails if any of them disagrees with this table, rather than a
  * comment here claiming they match.
  */
+/**
+ * `contract_alert_list`'s own row ceiling, as `least(p_limit, 500)` in
+ * `20260920160000_contract_alert.sql`.
+ *
+ * Separate from `SCREEN_CEILINGS` because it is enforced differently: batch E's
+ * contracts pass their bound to a shared `screen_limit`, and this one clamps
+ * inline. The spec reads BOTH back out of their own migrations, so neither is a
+ * number this file is trusted on.
+ */
+export const ALERT_CEILING = 500;
+
 export const SCREEN_CEILINGS = Object.freeze({
   listChartClinicalEvents: 200,
   listChartRecommendations: 200,
@@ -790,7 +830,8 @@ export const SCREEN_CEILINGS = Object.freeze({
  * runs under the policies, and one applied after the page would narrow a set
  * the store had already decided.
  */
-function screenRead({ entity, function: handler, projection, order, ceiling, query = {}, filtered, build }) {
+function screenRead({ entity, function: handler, projection, order, ceiling, query = {}, filtered, build,
+  answerKey = 'entries' }) {
   const read = (args) => {
     const [rawQuery, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
     if (sort !== undefined && sort !== null && sort !== order) unsupported('sort');
@@ -816,8 +857,20 @@ function screenRead({ entity, function: handler, projection, order, ceiling, que
       const { query: asked, size } = read(args);
       return build(asked, size === undefined ? undefined : Math.min(size, ceiling));
     },
+    /**
+     * `answerKey` is not a convenience. Every batch E contract answers
+     * `entries`, so this read the key as a constant — and the FIRST route
+     * declared over a contract outside that family answers `alerts`
+     * (`contract_alert_list` builds `jsonb_build_object('alerts', …)`). A
+     * route that took `entries` from it would pass `check:entity-routes` and
+     * refuse every real call, because the gate runs a declaration's `request`
+     * against each call site's arguments and never exercises `response`
+     * (D168). So the key is declared per route and
+     * `independentEntityRoutes.spec.js` drives this function with the
+     * contract's own answer shape rather than asserting the name.
+     */
     response: (result, ...args) => {
-      const entries = result?.entries;
+      const entries = result?.[answerKey];
       if (!Array.isArray(entries)) unsupported('answer');
       const { size } = read(args);
       // Only a caller who asked for MORE than the contract can give needs the
@@ -965,6 +1018,74 @@ const DECLARED_ROUTES = Object.freeze({
     // contract returns the id and the status ONLY (D64), so a screen reading
     // a title here gets `undefined` rather than a row that rode into a prompt.
     reason: 'The outcomes analyser counts a chart\'s recommendations by status and reads no other field.',
+  }),
+  /**
+   * Patient alerts: four of the five `PatientAlert` call sites, over
+   * `getScopedPatientAlerts` and D21/D24's `contract_alert_list`.
+   *
+   * The strict reading behind these two, because the block does NOT land whole
+   * and the one that fails is worth naming. `WorkflowExecutionEngine.jsx:113`
+   * calls `PatientAlert.create(data)` with a payload its workflow rule builds,
+   * and there is no route for it: exactly ONE migration in the record
+   * directory inserts `patient_alert`, `contract_clinical_extract`, and that
+   * insert derives every column from an extracted clinical event inside its own
+   * loop and takes no caller payload at all. There is no parameter to widen, so
+   * serving that site needs a create contract, which is a forward migration and
+   * a decision about the store rather than a screen.
+   *
+   * The other four are answered clause for clause. `patient_id` and `status`
+   * are parameters; `-created_date` IS the contract's own SQL order
+   * (`created_date desc nulls last, id desc`), so nothing here re-sorts a page;
+   * and the two sites passing `PATIENT_HISTORY_ROWS` (1000) plus the one
+   * passing 5000 are above the ceiling, which is served with the completeness
+   * proof rather than refused — `contract_alert_list` clamps SILENTLY with
+   * `least(p_limit, 500)`, so without that proof a screen would render 500
+   * alerts as though they were every alert.
+   *
+   * `severity` is a contract parameter and is deliberately NOT declared here,
+   * because no call site filters on it; a site that started to would refuse
+   * rather than have the filter dropped.
+   *
+   * The projection is the whole row — `alert_row` builds twenty-five fields —
+   * and the two screens over the filter read `status` and `severity` only. One
+   * of them builds a model prompt, so this was checked rather than assumed:
+   * only a COUNT of active alerts reaches it, no alert text and no severity
+   * string, so nothing here puts a subject or a clinical detail in a prompt.
+   */
+  'PatientAlert.filter': Object.freeze({
+    ...screenRead({
+      entity: 'PatientAlert',
+      function: 'getScopedPatientAlerts',
+      projection: 'patient_alert_row',
+      order: '-created_date',
+      ceiling: ALERT_CEILING,
+      answerKey: 'alerts',
+      query: { patient_id: true, status: true },
+      filtered: true,
+      build: (query, limit) => ({
+        ...(query.patient_id === undefined ? {} : { patient_id: query.patient_id }),
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(limit === undefined ? {} : { limit }),
+      }),
+    }),
+    reason: 'Two analysers count one chart\'s alerts by status and severity, which D24 narrows to the care team.',
+  }),
+  'PatientAlert.list': Object.freeze({
+    ...screenRead({
+      entity: 'PatientAlert',
+      function: 'getScopedPatientAlerts',
+      projection: 'patient_alert_row',
+      order: '-created_date',
+      ceiling: ALERT_CEILING,
+      answerKey: 'alerts',
+      filtered: false,
+      build: (_query, limit) => (limit === undefined ? {} : { limit }),
+    }),
+    // The unfiltered read is the agency's alerts, which is what the contract
+    // answers when `p_patient_id` is null — and D24 still decides which charts
+    // are in it, so an `office_staff` caller gets an empty list rather than a
+    // refusal. The screen already gates itself on `isAdmin`.
+    reason: 'The patient overview lists the agency\'s alerts newest first, bounded and proved complete.',
   }),
   'OCRFeedback.list': Object.freeze({
     ...screenRead({
@@ -1338,20 +1459,32 @@ const DECLARED_ROUTES = Object.freeze({
    * expect to reach, and the contract saying it did not reach it is proof.
    *
    * Only the operations whose call sites pass arguments this file can READ are
-   * declared. `ClinicalLibraryTemplate.list`'s pager passes a computed skip and
-   * `PatientEducationAssignment.filter` passes `patient?.id`, so neither can be
-   * proved here and neither is claimed — the contract and handler exist either
-   * way, which is the half that has to be built whatever the browser seam
-   * turns out to be.
+   * declared, and that sentence used to name these two as examples of what
+   * could not be. **Re-measured, it was right about one of them and wrong
+   * about the other, for a reason that had already been written down.**
+   *
+   * `ClinicalLibraryTemplate.list` has TWO call sites, not one. The pager in
+   * `fetchAllClinicalTemplates.js` passes a computed skip and still cannot be
+   * proved; `TopTemplatesWidget.jsx` passes `('-usage_count', 5)`, every
+   * argument a literal. A route declared for the operation adopts the second
+   * and leaves the first unreadable — which is a route with a proved site, not
+   * an unproved route.
+   *
+   * `PatientEducationAssignment.filter` passes `patient?.id`, and #300 settled
+   * that a ROW ID passed as a variable is readable while a sort or a limit is
+   * not: the id's value decides nothing a route can be wrong about, where a
+   * sort and a limit are shape. Both of its sites are readable under that
+   * rule, and the sentence above predates it — the reason for the exclusion
+   * expired and the exclusion did not.
    */
   'ClinicalPathway.list': Object.freeze({
-    ...libraryRead({ capability: 'listClinicalPathways', sortable: ['created_date'] }),
+    ...libraryRead({ capability: 'listClinicalPathways', sortable: ['-created_date'] }),
     reason: 'The pathway manager reads every pathway, newest first.',
   }),
   'ClinicalPathway.filter': Object.freeze({
     ...libraryRead({
       capability: 'listClinicalPathways',
-      sortable: ['created_date'],
+      sortable: ['-created_date'],
       filterable: ['is_active'],
       filtered: true,
       request: (query) => ({ active_only: query?.is_active === true }),
@@ -1362,10 +1495,24 @@ const DECLARED_ROUTES = Object.freeze({
     ...libraryRead({ capability: 'listClinicalLibraryFolders', sortable: ['order'] }),
     reason: 'The library manager reads the agency-wide folders and the caller\'s own, in display order.',
   }),
+  'ClinicalLibraryTemplate.list': Object.freeze({
+    ...libraryRead({ capability: 'listClinicalLibraryTemplates', sortable: ['-usage_count'] }),
+    reason: 'The top-templates widget reads the most-used templates, which is the contract\'s own order.',
+  }),
+  'PatientEducationAssignment.filter': Object.freeze({
+    ...libraryRead({
+      capability: 'listPatientEducationAssignments',
+      sortable: ['-assigned_date'],
+      filterable: ['patient_id'],
+      filtered: true,
+      request: (query) => ({ patient_id: query?.patient_id }),
+    }),
+    reason: 'The education tracker and the recommender both read one chart\'s assignments, newest first.',
+  }),
   'EducationMaterial.filter': Object.freeze({
     ...libraryRead({
       capability: 'listEducationMaterials',
-      sortable: ['last_used_date'],
+      sortable: ['-last_used_date'],
       filterable: ['is_published'],
       filtered: true,
       request: (query) => ({ published_only: query?.is_published === true }),
@@ -1373,7 +1520,7 @@ const DECLARED_ROUTES = Object.freeze({
     reason: 'The education library and the care-plan engine both read the published materials.',
   }),
   'CustomValidationRule.list': Object.freeze({
-    ...libraryRead({ capability: 'listCustomValidationRules', sortable: ['created_date'] }),
+    ...libraryRead({ capability: 'listCustomValidationRules', sortable: ['-created_date'] }),
     reason: 'The validation rule manager is the only screen, and only an agency_admin reaches it.',
   }),
   'AIConfiguration.list': Object.freeze({

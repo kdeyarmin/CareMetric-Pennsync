@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS } from './independentEntityRoutes';
+import { ALERT_CEILING, ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS } from './independentEntityRoutes';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
 
@@ -408,6 +408,63 @@ describe('the declared entity routes', () => {
       }
     });
 
+    it('serves the two library reads whose sites were once called unprovable', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([{ id: 't-1', usage_count: 9 }]);
+
+      // `TopTemplatesWidget` passes `('-usage_count', 5)` — every argument a
+      // literal. Its sibling pager passes a computed skip and stays unreadable,
+      // which is a route with one proved site rather than an unproved route.
+      await adapter.raw.entities.ClinicalLibraryTemplate.list('-usage_count', 5);
+      expect(fixture.apiCalls.at(-1).url)
+        .toBe(`${stagingApiUrl}/v1/functions/listClinicalLibraryTemplates`);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: 5 });
+
+      // Both education sites pass `patient?.id`, which is a ROW ID and so
+      // readable, where a sort or a limit would be shape.
+      fixture.apiResponse = libraryAnswer([{ id: 'a-1', patient_id: 'patient-7' }]);
+      await adapter.raw.entities.PatientEducationAssignment
+        .filter({ patient_id: 'patient-7' }, '-assigned_date', 1000);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ patient_id: 'patient-7', limit: 1000 });
+      await adapter.raw.entities.PatientEducationAssignment
+        .filter({ patient_id: 'patient-7' }, undefined, 1000);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ patient_id: 'patient-7', limit: 1000 });
+
+      // A chart this route cannot express is refused rather than widened to
+      // the agency, which is the whole reason the predicate is parsed here.
+      await expect(adapter.raw.entities.PatientEducationAssignment
+        .filter({ status: 'assigned' }, undefined, 1000)).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    });
+
+    it('refuses a sort direction the contract does not implement, and the re-sort that would have applied is real', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([]);
+
+      // `contract_clinical_library_template_list` orders `usage_count DESC`,
+      // and that direction is what the route accepts.
+      await adapter.raw.entities.ClinicalLibraryTemplate.list('-usage_count', 5);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: 5 });
+      for (const sort of ['usage_count', '+usage_count', '-created_date', 'id']) {
+        await expect(adapter.raw.entities.ClinicalLibraryTemplate.list(sort, 5))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+
+      // The known-positive, because a refusal on its own only shows the
+      // refusal works. The route really does re-order the rows it was handed
+      // rather than trusting the page's order — here, against a page served
+      // in the wrong order on purpose. So a direction check that matched only
+      // the FIELD would have admitted `+usage_count`, been handed the five
+      // most-used templates, and re-sorted them ascending: the five most-used
+      // presented to the screen as the five least-used, with every other part
+      // of this file behaving correctly.
+      fixture.apiResponse = libraryAnswer([
+        { id: 't-low', usage_count: 1 }, { id: 't-high', usage_count: 9 }]);
+      expect(await adapter.raw.entities.ClinicalLibraryTemplate.list('-usage_count', 5))
+        .toEqual([{ id: 't-high', usage_count: 9 }, { id: 't-low', usage_count: 1 }]);
+    });
+
     it('turns the flag a screen filters on into the contract argument that means it', async () => {
       const { fixture, adapter } = await signedIn();
       fixture.apiResponse = libraryAnswer([{ id: 'm-1', is_published: true }]);
@@ -605,6 +662,81 @@ describe("what batch E's routes take on trust", () => {
     }
   });
 
+  it("takes the alert route's ceiling from the contract that clamps it", async () => {
+    const { readFileSync } = await import('node:fs');
+    // Its own migration, and its own enforcement: batch E passes a bound to a
+    // shared `screen_limit` and this one clamps inline, so the derivation
+    // cannot be shared with the test above. What IS shared is the reason for
+    // having it — the number in the route file is a second copy of a number
+    // that lives in SQL.
+    const sql = readFileSync(
+      'services/authority-store/supabase/record-migrations/20260920160000_contract_alert.sql', 'utf8');
+    const start = sql.indexOf('create function "pennsync_records".contract_alert_list(');
+    expect(start, 'contract_alert_list is not in the migration').toBeGreaterThan(-1);
+    const next = sql.indexOf('create function', start + 20);
+    const body = sql.slice(start, next === -1 ? sql.length : next);
+    const clamped = [...body.matchAll(/least\(p_limit,\s*(\d+)\)/g)].map(m => Number(m[1]));
+    expect(clamped, 'contract_alert_list clamps p_limit exactly once').toHaveLength(1);
+    expect(clamped[0], "the alert route and its contract disagree about the ceiling").toBe(ALERT_CEILING);
+  });
+
+  /**
+   * D168 says the gate runs a declaration's `request` against each call site's
+   * real arguments and never exercises `response`, so a route can be counted
+   * served while handing its screen `undefined`. These two drive `response`.
+   *
+   * The alert route is the case that made the rule concrete rather than a
+   * worry: every batch E contract answers `entries` and `contract_alert_list`
+   * answers `alerts`, so the first route declared outside that family would
+   * have passed the gate and refused every real call. The second assertion is
+   * the control — it fails if `answerKey` is ever dropped back to the constant,
+   * which is the only way this defect returns.
+   */
+  it("delivers the alert contract's own answer shape, not batch E's", () => {
+    const rows = (n) => ({ alerts: Array.from({ length: n }, (_, i) => ({ id: `a${i}`, status: 'active' })) });
+    const filter = ENTITY_ROUTES['PatientAlert.filter'];
+    const list = ENTITY_ROUTES['PatientAlert.list'];
+    expect(filter.response(rows(3), { patient_id: 'p1' }, '-created_date', 30))
+      .toEqual(rows(3).alerts);
+    expect(list.response(rows(2), '-created_date', 5000)).toEqual(rows(2).alerts);
+    // Batch E's key must NOT be read, or the route is reading a field this
+    // contract never sends and every real answer becomes a refusal.
+    expect(() => filter.response({ entries: [{ id: 'a0' }] }, { patient_id: 'p1' }, '-created_date', 30))
+      .toThrow(ARGUMENTS_UNSUPPORTED);
+  });
+
+  it('serves the four alert call sites and proves the two over the ceiling', () => {
+    const filter = ENTITY_ROUTES['PatientAlert.filter'];
+    const list = ENTITY_ROUTES['PatientAlert.list'];
+    // The four real call shapes, from the call sites themselves.
+    expect(filter.request({ patient_id: 'p1' }, '-created_date', 30))
+      .toEqual({ patient_id: 'p1', limit: 30 });
+    expect(filter.request({ patient_id: 'p1', status: 'active' }, undefined, 1000))
+      .toEqual({ patient_id: 'p1', status: 'active', limit: ALERT_CEILING });
+    expect(filter.request({ status: 'active' }, undefined, 1000))
+      .toEqual({ status: 'active', limit: ALERT_CEILING });
+    expect(list.request('-created_date', 5000)).toEqual({ limit: ALERT_CEILING });
+
+    // A caller under the ceiling got what it asked for; one above it only gets
+    // an answer when the page proves there were no more rows. The contract
+    // clamps silently, so without this a screen renders 500 alerts as every
+    // alert.
+    const rows = (n) => ({ alerts: Array.from({ length: n }, (_, i) => ({ id: `a${i}` })) });
+    expect(filter.response(rows(30), { patient_id: 'p1' }, '-created_date', 30)).toHaveLength(30);
+    expect(filter.response(rows(499), { status: 'active' }, undefined, 1000)).toHaveLength(499);
+    expect(() => filter.response(rows(ALERT_CEILING), { status: 'active' }, undefined, 1000))
+      .toThrow(PAGE_INCOMPLETE);
+    expect(() => list.response(rows(ALERT_CEILING), '-created_date', 5000)).toThrow(PAGE_INCOMPLETE);
+
+    // And what these routes refuse rather than silently dropping: a filter the
+    // contract takes a parameter for but no call site passes, and the other
+    // direction of the one order it implements.
+    expect(() => filter.request({ patient_id: 'p1', severity: ['high'] }, undefined, 10))
+      .toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(() => filter.request({ patient_id: 'p1' }, 'created_date', 10))
+      .toThrow(ARGUMENTS_UNSUPPORTED);
+  });
+
   it('leaves each unproved write to the refusals its own contract raises', async () => {
     const { readFileSync } = await import('node:fs');
     const { cwd } = await import('node:process');
@@ -730,8 +862,12 @@ describe("what batch E's routes take on trust", () => {
       .filter(key => key.endsWith('.list') || key.endsWith('.filter'));
     // Not an allowlist: every route keyed for a read is covered, and a new one
     // joins this set by existing — which is why the number GREW rather than
-    // being relaxed when batch D's nine paged operational reads arrived.
-    expect(paged.length).toBe(38);
+    // being relaxed when batch D's nine paged operational reads arrived, again
+    // for the two library reads whose call sites were once called unprovable,
+    // and again for the two `PatientAlert` reads. That growth is the point: the
+    // loop below reaches each new route by construction, so a route cannot land
+    // without its argument count being checked.
+    expect(paged.length).toBe(42);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;

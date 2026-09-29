@@ -1,12 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { OWNER_ROLE, RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { OWNER_ROLE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The general activity trail (D25).
@@ -21,8 +18,24 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * the test tries to supply one and checks the stored row rather than the
  * return value.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const AUDIT_MIGRATION = 'services/authority-store/supabase/record-migrations/20260920010000_activity_audit.sql';
+// The migration this capability is declared in. It is named because the
+// comparison below derives the capability's functions from this file's own
+// `create function` headers (D148) — not to decide what gets applied, which is
+// `applyRecordMigrations`'s job reading the directory. A hand-kept build is what
+// left a forward migration over this contract unapplied unless somebody
+// remembered to add it (D88), and the audit trail is the worst place for that
+// gap: what it proves is that the table REFUSES a rewrite to everyone including
+// its owner, and a forward granting an update policy is exactly the shape that
+// would slip past a three-file build.
+const AUDIT_MIGRATION = '20260920010000_activity_audit.sql';
+/**
+ * Every `schema.function` the audit migration DECLARES, read out of its own
+ * `create function` headers (D148). Two tests need it and neither may keep a
+ * second copy: a hand-written list of the four is the same transcription a
+ * `proname like '%activity_%'` pattern is, one step further from the source.
+ */
+let declared;
+let applied;
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -41,9 +54,12 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  await db.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, BROKER_MIGRATION_FILE), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, AUDIT_MIGRATION), 'utf8'));
+  applied = await applyRecordMigrations(db);
+  const auditSql = await readFile(
+    new URL(`../supabase/record-migrations/${AUDIT_MIGRATION}`, import.meta.url), 'utf8');
+  declared = [...auditSql.matchAll(
+    /^create (?:or replace )?function\s+"?([a-z_]+)"?\.\s*"?([a-z_]+)"?\s*\(/gmi)]
+    .map(([, schema, name]) => `${schema}.${name}`).sort();
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 });
 after(async () => db?.close());
@@ -317,14 +333,209 @@ test('no caller role reaches the table, only the two contracts', async () => {
     [role, `${SCHEMA}.activity_audit`]);
     assert.equal(rows[0].reachable, false, `${role} must not reach the audit table directly`);
   }
-  const { rows } = await db.query(`
-    select n.nspname, p.proname
+  // TWO CLAIMS, TWO POPULATIONS, and which line carries which is written down
+  // (D151). This block used to make both with one `proname like '%activity_%'`
+  // query compared against a hand-written list of the four names, which reads as
+  // a single strong assertion and is two weak ones: the pattern decided what the
+  // capability IS, and the literal list was a third copy of the migration's own
+  // headers. The pattern matches exactly those four in today's directory, so it
+  // passed — that is the trap rather than the justification (D148).
+  //
+  // 1. THE CAPABILITY IS REACHABLE. Population derived from the migration's own
+  //    `create function` headers, so a function added to this capability upstream
+  //    joins the claim with nobody widening anything, and a rename fails here.
+  const reachable = async names => {
+    const { rows } = await db.query(`
+      select n.nspname || '.' || p.proname as name
+      from pg_catalog.pg_proc p
+      join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+      where n.nspname || '.' || p.proname = any($1::text[])
+        and has_function_privilege('authenticated', p.oid, 'EXECUTE')`, [names]);
+    return rows.map(row => row.name).sort();
+  };
+  assert.deepEqual(await reachable(declared), declared,
+    'every function the audit migration declares must be callable by a caller');
+
+  // 2. NOTHING ELSE IN THE NEIGHBOURHOOD IS. Here a pattern is the RIGHT
+  //    instrument, because the question genuinely is about the neighbourhood
+  //    rather than about this capability — so it is asserted as a set DIFFERENCE
+  //    against the derived set, never against a literal. A later migration that
+  //    adds a reachable `activity_` function fails this line and not the one
+  //    above, which is the point of splitting them.
+  const { rows: neighbourhood } = await db.query(`
+    select n.nspname || '.' || p.proname as name
     from pg_catalog.pg_proc p
     join pg_catalog.pg_namespace n on n.oid = p.pronamespace
     where n.nspname = any(array['pennsync_records', 'public'])
-      and p.proname like '%activity_%' and has_function_privilege('authenticated', p.oid, 'EXECUTE')`);
-  assert.deepEqual(rows.map(row => `${row.nspname}.${row.proname}`).sort(), [
-    'pennsync_records.contract_activity_append', 'pennsync_records.contract_activity_list',
-    'public.pennsync_contract_activity_append', 'public.pennsync_contract_activity_list',
-  ]);
+      and p.proname like '%activity_%'
+      and has_function_privilege('authenticated', p.oid, 'EXECUTE')`);
+  assert.deepEqual(
+    neighbourhood.map(row => row.name).sort().filter(name => !declared.includes(name)), [],
+    'no function beyond the ones this migration declares may be reachable');
+});
+
+test('the whole directory is applied, and it leaves this capability the surface the named build gave it', async () => {
+  // D141's sibling and the reason this suite was converted. It used to build the
+  // record store, the broker family and its own migration BY NAME, so a forward
+  // migration over the audit trail reached it only if somebody remembered to add
+  // the file — and what this suite proves is that the table refuses a rewrite to
+  // everyone including its owner, which is exactly the kind of property a later
+  // forward could relax with every suite green (D88).
+  // PIN THE SET, NOT A LENGTH. `applied` is what the before hook really applied
+  // to this database, compared against an independent `readdir` of the same
+  // directory — not against `recordMigrationNames` again, which would be the
+  // helper agreeing with itself. An inequality here (`applied.length >
+  // MEASURED.length`) is the obvious way to write this and the wrong one: it is
+  // satisfied by any build of four or more files, including one that silently
+  // omits a migration this suite does not name, which is the whole defect the
+  // conversion exists to close.
+  const onDisk = (await readdir(new URL('../supabase/record-migrations/', import.meta.url)))
+    .filter(file => file.endsWith('.sql')).sort();
+  assert.deepEqual(applied, onDisk,
+    'the walk must apply every record migration on disk, in apply order');
+  // THAT LINE CARRIES THE WHOLE CLAIM, so the two that used to sit here are gone
+  // rather than strengthened: a loop asserting each MEASURED name was applied,
+  // and a `notDeepEqual` against MEASURED. Both are implied by the equality
+  // above, so neither was doing anything except lending the reader confidence,
+  // and keeping them would be one more thing that has to stay true. Ask whether a
+  // line has a job before giving it teeth.
+  //
+  // This one does have a job, and it is not implied: the declaration derivation
+  // below READS a migration file, and nothing otherwise says that file is one the
+  // walk applied. Without it the comparison could faithfully describe a
+  // capability declared in a file that never ran.
+  assert.ok(onDisk.includes(AUDIT_MIGRATION),
+    'the migration the capability is derived from must be one the walk applied');
+
+  // D127's case here is NEITHER strong nor absorbing, measured rather than
+  // assumed: of the five other record migrations naming `activity_audit` or
+  // `contract_activity_append`, every one is a CALLER or a precondition guard
+  // (`to_regprocedure(...) is null then` refuse) and not one creates, alters,
+  // drops or re-policies the table or either function. So the swap changes
+  // nothing observable today, which makes this an UNCHANGED figure — and an
+  // unchanged figure needs a known-positive control as much as a zero does.
+  // The comparison below is that control's subject, and the planted function is
+  // the control: without it, an assertion that the surface did not widen passes
+  // whether or not the comparison can see a widening at all.
+  // D148. DERIVE THE COMPARED POPULATION FROM THE CAPABILITY'S OWN DECLARATIONS,
+  // which removes the too-wide-or-too-narrow question rather than answering it. A
+  // `proname like '%activity_%'` pattern matches exactly these four in today's
+  // directory, so it would pass — and that is the trap, not a reason to keep it:
+  // a pattern answers a question about the NEIGHBOURHOOD, and the asymmetry is
+  // what makes it dangerous. Too wide fails loudly when a later migration adds a
+  // matching function and somebody looks; too narrow passes quietly and nobody
+  // does. Reading the migration's own `create function` headers means a function
+  // added to this capability upstream joins the comparison with nobody widening
+  // anything, and a renamed one fails here rather than vanishing from it.
+  assert.equal(declared.length, 4,
+    'the audit migration declares the two contracts and their two public wrappers');
+  assert.ok(new Set(declared).size === declared.length, 'no declaration counted twice');
+
+  const surface = async build => {
+    const probe = new PGlite();
+    try {
+      await probe.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+      const dir = new URL('../supabase/migrations/', import.meta.url);
+      for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
+        await probe.exec(await readFile(new URL(name, dir), 'utf8'));
+      }
+      await build(probe);
+      // `proname` alone is not the signature: PostgREST resolves an RPC by the
+      // NAMES of the body's keys, so a parameter renamed consistently in SQL is
+      // a different call shape and identical here without the arguments.
+      // `pg_get_function_ARGUMENTS`, not `..._identity_arguments`, on Copilot's
+      // finding against this change and for the reason the store inventory
+      // already records (D95, `store-inventory.mjs`): the identity form omits
+      // argument DEFAULTS by definition, and a default is what decides whether a
+      // request body may leave that key out — so a forward that added or removed
+      // one would change the call shapes this capability accepts and deparse
+      // identically here. The two differ in nothing else that matters to us, so
+      // the wider form is strictly better and there was no reason to pick the
+      // narrower one beyond having read the wrong helper's name first.
+      const { rows } = await probe.query(`
+        select n.nspname, p.proname, pg_get_function_arguments(p.oid) as args
+        from pg_catalog.pg_proc p
+        join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+        where n.nspname || '.' || p.proname = any($1::text[])`, [declared]);
+      return rows.map(row => `${row.nspname}.${row.proname}(${row.args})`).sort();
+    } finally { await probe.close(); }
+  };
+  // The pre-conversion build, reproduced here as the comparison's other side: the
+  // three files this suite used to name by hand. They are listed HERE, inside the
+  // control, rather than as a module constant — the only thing that still needs
+  // them is this comparison, and a constant at the top would read as a build list.
+  const handKept = ['20260919170000_record_store.sql', '20260919180000_record_brokers.sql',
+    AUDIT_MIGRATION];
+  const named = await surface(async probe => {
+    for (const name of handKept) {
+      await probe.exec(await readFile(new URL(`../supabase/record-migrations/${name}`, import.meta.url), 'utf8'));
+    }
+  });
+  const whole = await surface(probe => applyRecordMigrations(probe));
+  assert.deepEqual(whole, named,
+    'the directory walk must not widen or narrow the audit capability against the named build');
+  assert.ok(named.length >= 4, 'the named build must actually produce the capability');
+
+  // The control. A planted migration that adds one `activity_` function must
+  // make that comparison fail; if it does not, the equality above is vacuous and
+  // says nothing about the swap. Planted through the SAME code path the suites
+  // use rather than by a second walk, so the two cannot agree with each other
+  // while disagreeing with the helper.
+  // The comparison is scoped to the capability's FOUR functions by name, not by a
+  // `proname like '%activity_%'` pattern. The pattern happens to match exactly
+  // those four in today's directory, so a pattern-scoped test would pass — and
+  // that is the trap rather than a reason to keep it: a pattern answers a
+  // question about the NEIGHBOURHOOD, and the asymmetry is what makes it
+  // dangerous. Too wide fails loudly when a later migration adds a matching
+  // function and somebody looks; too narrow passes quietly and nobody does.
+  // Two known-positives below, because a scoped comparison and a comparison that
+  // simply cannot see anything are the same green.
+  //
+  // A. A function added INSIDE the capability must be seen.
+  const inside = await surface(async probe => {
+    await applyRecordMigrations(probe);
+    await probe.exec(`create function "${SCHEMA}"."contract_activity_list"(p_planted text)
+      returns integer language sql immutable as $$ select 1 $$`);
+  });
+  assert.notDeepEqual(inside, named, 'the surface comparison must see an added overload');
+  assert.equal(inside.length, named.length + 1);
+
+  // B. The neighbourhood move. A function matching what a pattern would have
+  // swept in, but NOT one of the four, must be INVISIBLE here — otherwise the
+  // scoping is a comment rather than a control, and this comparison would report
+  // a later migration's unrelated addition as a change to this capability.
+  const beside = await surface(async probe => {
+    await applyRecordMigrations(probe);
+    await probe.exec(`create function "${SCHEMA}"."contract_activity_neighbour"(p_agency text)
+      returns integer language sql immutable as $$ select 1 $$`);
+  });
+  assert.deepEqual(beside, named,
+    'a matching function outside the capability must not read as a change to it');
+
+  // C. An ARGUMENT DEFAULT added, which changes which request bodies are accepted
+  // and nothing else. This case is here on Copilot's finding against this change:
+  // with `pg_get_function_identity_arguments` the comparison stayed green through
+  // it, because that form omits defaults BY DEFINITION, so a caller could begin
+  // omitting `p_detail` — an audit entry's whole payload — with every suite
+  // passing. Written as a control rather than as a comment, because the failure it
+  // describes is precisely the kind a comment cannot catch.
+  //
+  // The direction is ADDING one, and that is a PostgreSQL constraint rather than a
+  // preference: `create or replace` refuses to REMOVE a parameter default
+  // (`42P13`, "cannot remove parameter defaults from existing function", which
+  // wants a DROP first), so the removal case cannot be planted this way at all.
+  // Either direction exercises the same blind spot in the comparison.
+  const defaulted = await surface(async probe => {
+    await applyRecordMigrations(probe);
+    await probe.exec(`create or replace function "public"."pennsync_contract_activity_append"(
+      p_agency text, p_action text, p_subject_kind text, p_subject_id text,
+      p_detail jsonb default null) returns text
+      language sql security invoker set search_path = '' as $contract$
+      select "${SCHEMA}".contract_activity_append(p_agency, p_action, p_subject_kind, p_subject_id, p_detail)
+    $contract$`);
+  });
+  assert.notDeepEqual(defaulted, named,
+    'an added argument default changes the accepted call shapes and must be seen');
+  assert.equal(defaulted.length, named.length,
+    'and it is the same four functions, so only an argument list may have moved');
 });
