@@ -6,7 +6,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA, PROFILE_SELF_WRITABLE } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations } from './record-migrations.mjs';
+import {
+  applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames,
+} from './record-migrations.mjs';
 
 /**
  * The duty toggle, the scheduled window and the off-duty message —
@@ -40,10 +42,23 @@ before(async () => {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
   // The whole record directory in the deployment's own order, so a forward
-  // migration that lands on this contract is applied by this suite too.
+  // migration that lands on this contract is applied by this suite too, and
+  // then both halves of the check: that what was applied IS the directory, so
+  // a file added beside this one cannot be silently skipped, and that this
+  // migration sorts LAST, so `planMigration` will not refuse
+  // MIGRATE_OUT_OF_ORDER on a store that has already applied an earlier one.
+  //
+  // The ordering guard belongs to whichever migration is the newest PENDING
+  // one and is never held by two suites at once. It arrived here from
+  // `contract-reference-writes.test.mjs`, which is still unmerged — so the
+  // move was not that suite's migration merging, the usual reason, but this
+  // one overtaking it inside the same change. A held guard whose file has been
+  // overtaken asserts a tree that the overtaking change makes false, which is
+  // exactly the red it produced.
   const applied = await applyRecordMigrations(db);
-  assert.ok(applied.includes('20260920710000_contract_duty_status.sql'),
-    'this suite measures that migration; applying it is the point');
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the record directory and what was applied to this store disagree');
+  assertNewestRecordMigration(applied, '20260920710000_contract_duty_status.sql');
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // Carried profile rows for three people in two agencies. Every authority
   // label on them is a lie, as everywhere else here, because D23's whole point

@@ -139,6 +139,12 @@ const STOPS = Object.freeze({
   pennsync_contract_compliance_audit_update: 'PENNSYNC_AUDIT_WRITE_ID_INVALID',
   pennsync_contract_document_get: 'PENNSYNC_DOCUMENT_PURPOSE_INVALID',
   pennsync_contract_document_list: 'PENNSYNC_DOCUMENT_PURPOSE_INVALID',
+  // The sweep sends no patch, and an absent patch is this contract's first
+  // refusal after the two authorization gates — so what this pin records is
+  // that an AUTHORIZED caller reaches the body and is stopped by its own
+  // argument validation, not by the gates. It is argument debt like the rest:
+  // drive it with a field on D82's allowlist and it answers.
+  pennsync_contract_duty_status_set: 'PENNSYNC_DUTY_STATUS_PATCH_INVALID',
   pennsync_contract_education_material_write: 'PENNSYNC_EDUCATION_MATERIAL_ACTION_INVALID',
   pennsync_contract_face_to_face_save: 'PENNSYNC_F2F_FIELDS_INVALID',
   pennsync_contract_fleet_entry_add: 'PENNSYNC_FLEET_REQUEST_INVALID',

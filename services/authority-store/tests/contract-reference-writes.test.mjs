@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import {
-  applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames,
+  applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
 
 /**
@@ -51,16 +51,19 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The WHOLE record directory, in the order a deployment applies it, and then
-  // both halves of the check: that what was applied is the directory (so a file
-  // added beside this one cannot be silently skipped), and that this migration
-  // is the newest of them (so `planMigration` will not refuse MIGRATE_OUT_OF_
-  // ORDER on a store that has already applied an earlier one). The guard belongs
-  // to whichever migration is the newest PENDING one and moves when this merges.
+  // The WHOLE record directory, in the order a deployment applies it, and the
+  // half of the check this suite still holds: that what was applied is the
+  // directory, so a file added beside this one cannot be silently skipped.
+  //
+  // The ORDERING half was here and has moved to `contract-duty-status.test.mjs`.
+  // It belongs to whichever migration is the newest PENDING one, and this file
+  // stopped being that the moment a newer one arrived in the same change — the
+  // guard is never held by two suites at once, because the second holder is a
+  // check asserting a tree the first one's own change makes false. Merging is
+  // the usual reason it moves and is not the rule; being overtaken is the rule.
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  assertNewestRecordMigration(applied, MIGRATION);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await seed();
 });
