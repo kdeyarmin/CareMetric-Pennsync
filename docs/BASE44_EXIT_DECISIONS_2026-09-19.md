@@ -8431,7 +8431,6 @@ mechanical, state the property you are relying on as an assertion in the
 resolution itself, and pick a property whose violation is cheap to detect.
 "Nothing was removed" is one integer. "Everything that should be here is here"
 is a reading, and a reading is what you were trying to avoid.
-
 ## D126 — A name that resolves and a name that parses are not the same kind
 
 Every function in the record store is created `set search_path = ''`, so nothing
@@ -8505,7 +8504,6 @@ And repairing that instrument did not repair what had already been published
 with it — the site count went on being quoted at a figure the blind class had
 produced. That is D130, which came out of this guard and is written up in its
 own right because it is not about `pg_catalog` at all.
-
 ## D127 — An idempotent catch-up is undetectable by its own effect
 
 **Added 2026-09-26.** A forward migration written so that a fresh build and a
@@ -8557,6 +8555,105 @@ assertion that did not are both findings, and reporting only the first leaves th
 next reader with a shape that reads as proved. The replaced assertion is quoted
 in the suite's own comment for the same reason.
 
+## D128 — A conflict's location tells you which hunks two sides both touched, never what is in the base
+
+*2026-09-26.*
+
+**The rule.** A merge conflict reports that two branches changed overlapping
+lines. It reports nothing about what a third change put in the base. So
+"my entry did not conflict, therefore it is not in `main` yet" and its mirror
+"their entry conflicted, therefore mine has not landed" are both invalid,
+whatever answer they happen to give. The base is read, not inferred, and
+`git show origin/main:<path>` reads it in one command with no branch checked
+out and nothing merged.
+
+**The instance.** Two pull requests were in flight over
+`docs/BASE44_EXIT_DECISIONS_2026-09-19.md` on the night of 2026-09-26: this
+thread's, carrying D113, D120 and D121, and another carrying D115. A third,
+#316, had already merged and put its own D115 into `main`. The second thread
+then hit a conflict on D115 and none on D120 or D121, and that was read as
+evidence that the first thread's change had not merged yet.
+
+It had not. The conclusion was true.
+
+It was also unsupported by the thing offered for it. D115 conflicted because
+that branch's D115 met #316's D115 in the base, which happens whether or not
+D113, D120 and D121 are in the file; D120 and D121 append at a different point
+and merge cleanly either way. The same reasoning, applied the next time that
+hunk conflicts, returns the same answer and is wrong.
+
+**Why it is worth a number rather than a note.** An invalid inference that
+produces the wrong answer corrects itself: something downstream fails and
+somebody goes looking. An invalid inference that produces the RIGHT answer is
+never revisited — it is filed as a thing that worked, and the reasoning is
+reused. That is the combination that survives, and it is why a right answer is
+not evidence about the instrument that produced it (D119, from the other
+direction: there, an instrument that read nothing still printed the right
+figure). Judge the derivation, and judge it hardest when the answer is the one
+you expected.
+
+**How to apply.** Ask what is in the base by reading the base. Where a resolution
+needs to prove it kept both sides, prove it by what it did NOT lose — a removed
+line count of zero, or the other side's entry compared byte for byte against
+`git show origin/main:<path>` — rather than by reading over what it kept, which
+is the same measurement the union readings settled on tonight.
+
+## D129 — A behavioural sweep's argument values are part of its population
+
+*2026-09-26.*
+
+**The rule.** A sweep that calls every capability to see which ones work is
+only as complete as the arguments it calls them with. A capability that refuses
+early — on a missing order, an absent subject, an unrecognised scope — never
+reaches the rest of its body, and from outside that is indistinguishable from
+one that ran to the end. So the values are not test scaffolding. They are half
+of what the sweep measures, and a sweep that does not say which capabilities it
+actually drove to completion is reporting on a population it has not described.
+
+**Why this is not just "execute it and see".** Executing beats reading, and
+that much was already settled: `services/authority-store/tests/service-rpc-signatures.test.mjs`
+resolves all 152 public wrappers against `pg_proc` by name and by parameter
+name, and `pennsync_records.operational_limit` still shipped calling
+`pg_catalog.least`, which is not a function in any PostgreSQL because `LEAST`
+is an SQL construct that cannot be schema-qualified. A plpgsql body does not
+resolve names at creation, so it applied cleanly and seven capabilities refused
+every non-null limit with every suite green.
+
+But an executing sweep fails the SAME silent way when its values stop short.
+
+**The evidence.** Thirty-seven public wrappers take `p_limit`. Swept as an
+`agency_admin` who holds the agency, with `p_limit = 25` and null elsewhere,
+**five** came back `42883 undefined_function`. Seven reach `operational_limit`.
+The two missing were `contract_task_list` and `contract_care_plan_list`, which
+refuse first with `PENNSYNC_TASK_ORDER_INVALID` and
+`PENNSYNC_CARE_PLAN_ORDER_INVALID` under a null order — so a 29% under-report,
+announced as nothing, in a sweep whose whole purpose was to find these. Supply
+`p_order = 'created_date'` for both, derived from the migration that declares
+the accepted values, and all seven appear.
+
+Four of the thirty-seven still do not reach their body and are not argument
+debt: `pennsync_records_list` needs a brokered entity the sweep does not name,
+and the three `pennsync_staging_*` reads are bound to an app id this store does
+not admit. That is the difference between 37 and the 33 measured elsewhere, and
+naming it keeps two predicates from reading as a disagreement.
+
+**The second example, which is the one that will catch you.** This rule reads
+as being about test design, and it is not. Four minutes after writing the
+paragraphs above, the author of this entry sent the project owner a sentence
+that said seven list capabilities were broken and that a new check "calls all
+152 of these" — handing one population's count to another population in the
+only message a person was going to read. The suite it describes had the rule
+applied correctly throughout. So the place this bites next is a status line, a
+pull request body or a note to somebody who cannot check, not a sweep: any
+sentence carrying two counts of different things owes each of them its noun.
+
+**How to apply.** Declare each capability as one that ANSWERS under stated
+arguments, or as one PINNED to the refusal it stops at, and make the two sets
+equal the real surface. Then a pin is a visible debt instead of silent
+coverage, paying one down fails as loudly as one changing, and the sweep's
+reach is a number somebody can read rather than an assumption. And keep a
+positive control: a sweep whose finding count is zero and whose detector has
+never fired are the same reading (D119).
 
 ## D130 — Fixing an instrument does not fix the readings already taken with it
 
@@ -8602,8 +8699,6 @@ coordinator holds no counts in project memory by rule, so the stale figure lived
 only in relays and was dropped by construction. That is the lucky case, not the
 rule.
 
-
-
 ## D131 — D88's silence is a property of the apply, not of the pull request
 
 **The belief this corrects, which was written down and acted on.** "A modified
@@ -8647,6 +8742,61 @@ reports it, and reading the job log is what contradicted it. A conclusion drawn
 from a decision's text is a prediction about an instrument, which is D116's
 distinction and the reason the log is quoted above rather than summarised.
 
+## D132 — An instrument can silently cover MORE than its author assumed, not only less
+
+*2026-09-26.*
+
+**The rule.** D118 records that an instrument which quietly covered less than
+you assumed is reporting about itself rather than about the tree. The other
+half was missing: an instrument can just as quietly cover MORE, by taking in
+text or rows that belong to nothing it is measuring. The two are one family
+with opposite signs, and the over-capture is the more dangerous of them —
+truncation reads like completeness, which is merely uninformative, while
+over-capture reads like a FINDING, and a finding gets acted on.
+
+**The worked example.** A reading of `services/authority-store/supabase/record-migrations/`
+split both files on `create function` boundaries and counted the bodies
+containing a call to `pennsync_records.operational_limit`. It reported eight,
+against seven measured by execution, and the extra one was
+`contract_note_conversion_create` — a WRITE path, which would have changed what
+the defect's blast radius was called rather than merely its size.
+
+The body has no such call.
+`20260920580000_contract_operational_tables.sql` ends each group of functions
+with a `revoke`/`grant` block that names every signature in the file, including
+`operational_limit(integer, text)` at line 1366. A split on `create function`
+puts that block inside the chunk of whatever function precedes it. The text was
+never in the body; it belonged to no body at all.
+
+Note what the splitter did NOT do. It did not mis-parse, drop a file, or fail.
+It produced a larger number, from real text, in the file it was pointed at —
+which is exactly what a real finding looks like. The instrument's author had
+already caught themselves once and corrected the claim from "eight bodies call
+it" to "eight is an upper bound from reading, not reachability", and that
+correction was right and still left the artefact in place, because the artefact
+is not about reachability.
+
+**What settled it, and the discipline that matters.** Three readings, each with
+its own instrument: the wrapper driven with valid fields ANSWERED on the tree
+where the other seven were dying; its body in `pg_proc.prosrc` contained
+neither `operational_limit` nor `least`; and a closure over the function bodies
+in the built store returned seven.
+
+Then the part worth copying. Seven was the answer the reader expected, so the
+crosser was CONTROLLED before the result was reported: a call to the helper was
+planted inside that very function in a scratch build, and the crosser had to
+report eight and name the plant. A crosser that agreed by reading nothing would
+have stayed at seven and looked like confirmation (D119). **Controlling the
+answer you expect is harder than controlling the one that surprises you, and it
+is the one that is usually skipped.**
+
+**How to apply.** When an instrument splits a corpus into units, ask what lives
+BETWEEN the units, because it lands in one of them. Prefer the built artefact
+over the source text where one exists — `pg_proc.prosrc` has no trailing grant
+block and no `create or replace` ambiguity. And where two instruments disagree
+by one, do not average them or prefer the larger: the difference has a cause,
+and it is usually in the cheaper instrument's boundaries.
+
 ## D133 — A bound with its direction survives being wrong about the mechanism
 
 Where you can bound a figure but not measure it, **publish the bound, say which
@@ -8689,7 +8839,6 @@ figure when a term is unreadable. This says what to do when you are not refusing
 — when the figure is readable but only approximately — and the answer is the
 same in spirit: publish what the instrument can support and name the instrument,
 never the answer you expect the measurement to give.
-
 
 ## D136 — Gate what will RUN, not what was written
 
@@ -8753,3 +8902,216 @@ survives where `pg_proc` says it does not, because a superseded definition
 belongs to no store. Twice in one evening the catalog was right and the text was
 not, for unrelated reasons — which is the argument for reaching for the catalog
 first rather than for a better parser.
+
+## D147 — An entry can survive a merge intact and stop being an entry
+
+*2026-09-26.*
+
+**The rule.** D125 says a union is verified by what it REMOVED, because reading
+"both sides are present" asks for attention on a file you have already stopped
+attending to, and because a removed-line count of zero is blind to dropping your
+own entry — the diff merely gets shorter. One level below that there is a second
+blind spot, and it is blind to the count AND to the reading: an entry can come
+through with **every byte present** and still stop being an entry, because what
+makes it one is not its bytes but its POSITION. A heading is a heading because it
+starts a line. Lose the newline in front of it and the text is all there, the
+count is zero, the diff reads correctly, and every instrument keyed on
+`^## D<nn>` has silently lost an entry.
+
+**The worked example.** Resolving #323 against `main`, both sides of the
+decisions-doc conflict were pure additions — `main` contributed D125 and D131,
+the branch D128, D129 and D132 — and the resolution interleaved them in numeric
+order. `main`'s side ended without a trailing newline, so the concatenation
+produced `…summarised.## D132 — An instrument can silently cover MORE…`. Nothing
+was lost. Nothing was invented. The removed-line count was zero and the diff
+showed both entries in full. D132 had simply ceased to exist as far as any
+heading-keyed reader was concerned, including the next merge's resolver, which
+would have carried it as part of D131's body and been right by its own lights.
+
+**What caught it, which is the reusable half.** Not the reading and not the
+count. Two checks, and they catch different things:
+
+1. Compare the result's ENTRY SET against the union of both parents **in both
+   directions** — nothing in the union missing from the result, nothing in the
+   result present in neither parent. This is what fired: the union held 126 and
+   the result parsed 125, naming D132.
+2. Require every entry the result carries to be **byte-identical to the parent
+   it came from**. This is what confirmed the repair rather than the repair
+   merely looking right, and it is the check that would catch the opposite
+   failure — a heading surviving while a paragraph is lost to a hunk boundary.
+
+Run the first to find it and the second to believe the fix. Neither is a reading.
+
+**The root cause is more general than this file.** A missing trailing newline
+broke two unrelated instruments in one evening, in two shapes that share nothing
+on the surface: here it glued a heading onto a paragraph, and elsewhere it made
+`wc -l` report a set file one element short. Text joined at a boundary is where
+an instrument's notion of a UNIT and the file's bytes come apart, and the
+symptom is always local to whatever the instrument keys on — so it never looks
+like the same bug twice. When concatenating text that anything downstream
+parses positionally, normalise the boundary rather than trusting the parts, and
+assert the unit count on the result rather than on the inputs.
+
+## D151 — Two lines that lend each other standing, and neither has any
+
+A weak assertion beside a strong one is not a weak assertion. It reads as part
+of what the strong one establishes, and the strong one reads as though the weak
+one were another of its terms. **The loan runs in both directions, and which
+direction it runs in decides the repair.** Both directions turned up in one
+evening, in different files, and neither was found by reading the line on its
+own — a line's weakness is only visible once you ask what, exactly, it carries
+that its neighbour does not.
+
+**Direction one: the weak line borrows from the strong.** The plan thread's
+case. A membership test sat beside an equality that already fixed the whole
+population, so the membership test could not fail without the equality failing
+first. It was not wrong; it was inert, and it made the block look like it was
+checking two things. The repair is to DELETE it. Nothing is lost, because
+nothing about the property depended on it.
+
+**Direction two: the strong sentence borrows from the weak line.** This
+branch's case, at `contract-notification-create.test.mjs`. The comment said the
+population "is the record directory now, read through the same walk that builds
+this suite's store, so the file list and the store cannot disagree" — a true
+and load-bearing sentence — and the assertion under it was
+`assert.ok(names.length > 4)`, satisfied by any list of five. The walk really
+did read the directory, so the file list was right; what nothing established
+was that the STORE was built from the same set. `applyRecordMigrations` was
+called and only `applied.includes(name)` was asserted over its result, which is
+the #327 shape and is satisfied by any superset — and by any subset containing
+the three. The sentence was true of the code as written and would have stayed
+on the page had a later change applied a subset, at which point it would have
+been false and nothing would have said so.
+
+**The repair is the one that is easy to get backwards.** The obvious edit is to
+soften the comment to match the line — "the file list is read from the
+directory" — which is true, passes review, and throws the property away.
+**Never soften a true sentence to fit a weak line.** Add the assertion that
+makes it true: `assert.deepEqual(applied, await recordMigrationNames())`. That
+is the shape the build thread used for the same class and it is the general
+one — where an overclaiming message sits over a weaker assertion, move the
+assertion up to the message rather than the message down to the assertion.
+
+**The rule, for either direction:** name which line carries the property. Then
+delete the other, or make it carry its own weight. Do not leave two lines where
+one is standing on the other. Here the `deepEqual` carries the population and
+the `includes` loop was KEPT, because under the equality it carries something
+else the equality cannot: it names the three files by name, so a rename that
+leaves directory and store in perfect agreement still fails, and the failure
+says which file this suite lost.
+
+**Both repairs landed, independently, within the hour.** This branch wrote the
+`deepEqual` into the `before` hook; #330 wrote it into the test that owns the
+directory walk, and reached `contract-roster.test.mjs` and
+`contract-timesheet.test.mjs` the same way. The merge resolved to #330's,
+because a second equality over the same two sets is not a second check. Worth
+recording that two readers found one shape from opposite ends on the same
+evening: the shape is common enough that finding one instance is not evidence
+the rest are sound, which is the argument for sweeping rather than fixing what
+turns up. #330's timesheet note is the better half of the rule in practice —
+where the weak line and the line carrying the property sit in different
+`test()` bodies, BOTH say so, because deleting or skipping the far one returns
+the suite to the unpinned shape with nothing failing.
+
+**One instrument cannot tell you whether the weak line is gone, and it is the
+one a reader will reach for.** After both repairs landed, a text scan of these
+three files reads MORE mentions of `names.length > 4` and `names.length > 6`
+than before, because each deletion left a comment explaining what was deleted
+and why. A grep reads as unfixed and is not. This project already holds that
+rule from the other direction — the `least` repair is forward-only, so a scan
+at the tip finds more occurrences of the broken call than before and that is
+correct — and this is the second occurrence, arriving from a deletion rather
+than a forward fix and landing in the same place. Both times the instrument was
+a substring over the tip and both times it answered about the text rather than
+about the behaviour. Verify a deletion by reading the file at the head you care
+about, or by running the suite, never by counting matches; and verify somebody
+else's repair the same way rather than from their pull request, because the PR
+body is not the tree.
+
+**And the instrument that found it committed the same defect.** The sweep
+written to hunt this shape flags a weak line as probably-sound when a
+`deepEqual` or a length equality sits within six lines of it. That proximity
+flag is the credibility loan, mechanised, and it was wrong in BOTH directions:
+it cleared weak lines whose nearby strong assertion measured something else
+entirely, and it flagged lines whose real carrier was twenty lines up in a
+`before` hook. Proximity is not an argument. A neighbour lends nothing; only
+the question "what does this line establish that the other does not" resolves
+it, and that question has to be asked of every pair, one at a time.
+
+**What that sweep cannot see, stated because an unstated blind spot is a
+promise.** It reads LINES. An assertion split across lines is invisible to it;
+so is one built from a variable assigned somewhere else, and so is a helper
+that asserts on its caller's behalf — which is most of the shared fixtures. Its
+comment detector over-captures badly (225 hits, nearly all ordinary prose), so
+the claim half is a reading list and not a result. And it cannot tell a sound
+membership test from an unsound one at all: `includes` over a set the file
+itself built is fine, `includes` over a set something else built is the #327
+shape, and the two are the same characters. Every line it prints is a thing to
+READ. **A sweep of this kind produces candidates, never findings, and saying so
+is part of the result** — a candidate list quoted as a count of defects is the
+house defect arriving in the instrument built to catch it.
+
+## D159 — Some populations have no declaration to derive from, by construction
+
+D148 says derive a population from declarations rather than from a pattern, and
+it is right about nearly every case. `app-namespace-containment.test.mjs` is the
+case where it cannot be followed, and saying so is the result rather than a
+failure to find the derivation.
+
+**The shape.** `pennsync_private` pins its app id by typing every app-scoped
+column with the `deployment_app` domain. Two assertions guard that. The first
+compares the set of domain-typed columns against a declared list — 22 columns,
+declaration-derived, exactly D148's shape, and sound. The second asks whether
+anything in the schema names an app id and escaped the domain, and its
+population is `column_name like '%app_id%'`.
+
+**Why the second cannot be derived.** The 22 columns declare themselves: they
+carry the domain, so the catalogue states the fact. The set the second query
+wants is the columns that hold an app id and are NOT typed by it — and a column
+escapes precisely by carrying no declaration. There is nothing in the tree that
+says a future `source_app` is an app id. The escape and the absence of a
+declaration are the same event, so the population D148 asks for does not exist
+to be read. That is a different situation from a pattern standing in for a
+declaration somebody wrote down elsewhere, which is what D148 is about.
+
+**Measured, not argued.** `pennsync_private` holds 220 columns; 22 carry the
+domain. The loose query returns 0 rows on the current tree, and widening the
+pattern from `app_id` to `app` also returns 0 — the only two `app`-named columns
+outside the domain are `deployment.app_id` and `known_app.app_id`, the query's
+own declared exemptions. So nothing was owed a fix, and no forward migration was
+in question.
+
+**Two controls, and the pair is the reading.** A planted
+`pennsync_private.planted_escape.app_id text` is REFUSED: the guard bites. The
+same escape planted as `planted_blind_spot.source_app text` is passed in
+silence: the blind spot is exactly a name. A 0 with no control is not a reading,
+and a blind-spot assertion with no positive control beside it passes just as
+well when the guard has been deleted.
+
+**What was refused and why, because the rejected options are the argument.**
+Widening the pattern to `~app` was refused: it moves the gap from `source_app`
+to `owning_tenant` while producing the appearance of a fix, which is worse than
+a documented gap. Pinning the COMPLEMENT — asserting that the 198 non-domain
+columns equal a declared list, so a new column of any name fails until somebody
+declares it — was refused for a reason worth keeping: a gate with a maintenance
+tax is a gate the next person weakens rather than feeds, so it buys less safety
+than its shape suggests.
+
+**The condition that makes the remaining option more than a comment.** The blind
+spot is PLANTED AS A TEST. A sentence saying "this check is name-based" ages
+into wallpaper: nothing fails when it stops being true, and nothing fails when
+somebody half-closes it. The test fails the day `source_app` becomes catchable,
+which is the day somebody widened the pattern, and the failure names what to do
+next — move the case to the caught side deliberately, and say in the same change
+which names are still outside the new pattern, because there will be some.
+Proved by sabotage: widening the query to `%app%` fails that test and leaves the
+other thirteen in the file passing, so nothing else in the suite would have
+noticed.
+
+**The general rule.** Before concluding a population must stay a pattern, do
+what D148 says and look for the declaration. But when the set you want is
+defined by the ABSENCE of the declaration you would read, stop: write down that
+it cannot be derived, measure the population both ways, control the guard in
+both directions, and assert the blind spot so the gap is checked rather than
+promised. A documented gap with a test on it is a real answer. A wider pattern
+is not.
