@@ -1562,7 +1562,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 50 | 26 |
+  | `read-only` (derived) | 55 | 27 |
   | `mutating` (derived) | 49 | 37 |
   | `integration` (derived) | 19 | 17 |
 
@@ -1578,10 +1578,16 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   arrived, and the write half of that defect was closed in the batch before
   it. The `operational_limit` repair then added one more to `read-only` and
   nothing else, for the same reason: it replaces one helper the seven paged
-  reads already call. Every other movement since batch D belongs to a sibling
-  batch rather than to this one — which is what the paragraph below means
-  about the figures being global, and why the row is re-derived on the merged
-  tree instead of being added to.
+  reads already call. The five compliance reads then took `read-only` to 55
+  with one shared migration, and moved neither `mutating` nor `integration` —
+  which is what a read-only port should look like: five capabilities that
+  create nothing, over five entities the frontend already writes through
+  Base44. Every other movement since batch D belongs to a sibling batch rather
+  than to this one — which is what the paragraph below means about the figures
+  being global, and why the row is re-derived on the merged tree instead of
+  being added to. This row was re-derived on seven bases over the life of one
+  pull request; the number above is a reading of the tree it merges onto and of
+  no other.
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
@@ -3167,10 +3173,7 @@ that the gate is blind to this is demonstrated rather than asserted — with the
 key sabotaged back to the constant both projection tests fail and the gate
 reports its figures unchanged.
 
-**And the reading on THIS tree, after the library writes.** This one is `pnpm
-run check:entity-routes`'s own output and is **pinned**:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what the tool prints and never retype, rewrap or re-indent it.
+And after the library writes — a record of that head, not maintained either:
 
 ```
 entity routes: 64 declared, 106/237 landable call sites SERVED, 131 still to adopt
@@ -3178,6 +3181,46 @@ entity routes: 64 declared, 106/237 landable call sites SERVED, 131 still to ado
   12 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryTemplate.create, CustomValidationRule.create, CustomValidationRule.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
   of those 131, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 130 need a named capability
 ```
+
+**And the reading on THIS tree, after the five compliance reads.** This one is
+`pnpm run check:entity-routes`'s own output and is **pinned**:
+`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
+so paste what the tool prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 71 declared, 138/237 landable call sites SERVED, 99 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 28 pass arguments this cannot read
+  12 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryTemplate.create, CustomValidationRule.create, CustomValidationRule.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 99, across 28 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 98 need a named capability
+```
+
+**Seven routes moved the served line by a multiple of themselves, and the
+multiple is the finding rather than the total.** These five entities are read
+from far more screens than they are declared for — compliance audits and
+incidents are listed by dashboards, exports and detail panels alike — so one
+route per entity method reaches many call sites at once. That is the shape to
+expect from a READ port and not from a write one, where a create route typically
+serves the one form that calls it. Three entities left the remaining line
+entirely, which is the part that shortens the queue rather than the served count.
+
+**The attribution was measured rather than subtracted.** These figures are
+global, so a delta between two heads cannot say which change caused it: a
+sibling merging in the same span moves the same line. What was run instead is
+the printer TWICE ON ONE MERGED TREE, once with `main`'s
+`independentEntityRoutes.js` and once with this branch's, which is the only
+reading that isolates one file's effect. Under `main`'s file this tree prints
+the block above; under this branch's, the block here. The same pair was run on
+two different bases a day apart and gave the same deltas both times, which is
+what makes them a property of these seven routes rather than of a moment.
+
+**One site moved the wrong way, and it is named rather than netted off.** The
+sites passing arguments this cannot read went up by one:
+`ComplianceAudit.filter` in `src/components/smartNote/persistVisitNote.js`
+builds its predicate in a variable, so the scan cannot see what it asks for.
+Declaring a route made that site visible as unreadable where before it was not
+counted at all, which is the check working — the call is made and is not proved
+served. It is the recovery read of the SmartNote write path and belongs with the
+write half of these domains.
 
 **The move above is four call sites over eight route keys, and the two counts
 are why the unrouted headline splits.** Ten write sites across three entities

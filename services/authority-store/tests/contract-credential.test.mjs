@@ -413,8 +413,18 @@ test('every credential capability authorizes, and no helper beside them is calla
   // Re-DERIVED against the converted build rather than carried over from the
   // hand-kept one, because the roster conversion found a third roster contract
   // the old build had made invisible and carrying its assertion forward would
-  // have preserved exactly that blindness. Here nothing new appeared: the same
+  // have preserved exactly that blindness. Nothing new appeared then: the same
   // four capabilities, in both spellings, and no fifth.
+  //
+  // A fifth arrived later, and it is NOT a credential capability: this query
+  // matches on the NAME, and `contract_personnel_credential_list` is the read
+  // half of the compliance screens, which lives in its own migration and its own
+  // suite. It is here because the converted build applies the whole directory,
+  // which is the conversion working — a capability matching this pattern can no
+  // longer land unseen by this file, whoever wrote it. Do not read this list as
+  // the credential family's membership; read it as everything named `credential`
+  // that an authenticated caller can execute, which is the property that matters
+  // for a name nobody has audited.
   //
   // The `public` wrapper exists so a caller reaches the contract without a
   // Supabase project setting naming another schema; both spellings are the
@@ -424,10 +434,12 @@ test('every credential capability authorizes, and no helper beside them is calla
     'pennsync_records.contract_credential_renewal_sweep',
     'pennsync_records.contract_credential_review',
     'pennsync_records.contract_credential_submit',
+    'pennsync_records.contract_personnel_credential_list',
     'public.pennsync_contract_credential_expiration_sweep',
     'public.pennsync_contract_credential_renewal_sweep',
     'public.pennsync_contract_credential_review',
     'public.pennsync_contract_credential_submit',
+    'public.pennsync_contract_personnel_credential_list',
   ]);
   // The exact set is the assertion rather than membership of it, because
   // `includes` is satisfied by a wrong answer as well as the right one: a

@@ -407,6 +407,45 @@ export const HANDLERS = Object.freeze({
       return contract('listVisitPointConfigs', params);
     },
   }),
+  /*
+   * The read half of five compliance domains (D45, D40).
+   *
+   * Five handlers rather than one, because the five are five capabilities with
+   * five authorizations, and a single "read a compliance entity" endpoint
+   * taking a name would be the generic entity route this service deliberately
+   * does not have. They take no agency: the caller's is already resolved, as
+   * every handler here.
+   */
+  listAgencyIncidents: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'client_request_id', 'order', 'limit'], 'INVALID_PARAMS');
+      return contract('listAgencyIncidents', params);
+    },
+  }),
+  listComplianceAudits: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'visit_id', 'order', 'limit'], 'INVALID_PARAMS');
+      return contract('listComplianceAudits', params);
+    },
+  }),
+  listAdrAuditCases: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['order', 'limit'], 'INVALID_PARAMS');
+      return contract('listAdrAuditCases', params);
+    },
+  }),
+  listPersonnelCredentials: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['user_id', 'status', 'order', 'limit'], 'INVALID_PARAMS');
+      return contract('listPersonnelCredentials', params);
+    },
+  }),
+  listPolicyAcknowledgments: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['user_id', 'order', 'limit'], 'INVALID_PARAMS');
+      return contract('listPolicyAcknowledgments', params);
+    },
+  }),
   listBrokeredRecords: Object.freeze({
     // D16's ceiling, given a caller at last.
     //
