@@ -149,6 +149,53 @@ test('every call the service makes resolves by name against the migrations', asy
   }
 });
 
+test('no public function this store exposes is reachable anonymously, exempt or not', async () => {
+  // **The privilege pair in the test above runs over `captured` — the names the
+  // SERVICE calls — and that is not the whole population.** `UNCALLED` exempts a
+  // contract from needing a caller, which is what its docblock says it buys. It
+  // also, silently, buys exemption from `has_function_privilege('anon', ...)`,
+  // because an exempt name is exposed and not captured and so never enters that
+  // loop at all. So the one sanctioned way to sit outside the checked population
+  // is also the one place a hand-written revoke is load-bearing and unwatched.
+  //
+  // There is no defect today and this is an unasserted property rather than a
+  // fix: `pennsync_contract_activity_list` is revoked correctly in
+  // `20260920010000_activity_audit.sql`. The point is that nothing would have
+  // noticed if it were not, and the next entry is written by somebody who has
+  // not read this comment.
+  //
+  // It is worth stating why the omission was easy. A wrapper is `security
+  // invoker`, so locking the inner `pennsync_records.contract_*` function
+  // protects nothing — an anonymous caller reaches the WRAPPER and never the
+  // function it would have been refused by. Revoking on the inner function
+  // reads like the whole job. That is how the three `physician` wrappers in
+  // `20260920690000_contract_physician_write.sql` shipped open, and the loop
+  // above caught them only because the service calls them.
+  //
+  // The population here is every `public.pennsync_contract_*` the store
+  // exposes, union the names the service calls — the first covers the exempt,
+  // the second covers the authority, audit and broker RPCs, which carry no
+  // contract prefix.
+  const { rows: exposedRows } = await db.query(`
+    select p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname like 'pennsync\\_contract\\_%'`);
+  const population = [...new Set([...exposedRows.map(row => row.name), ...captured.keys()])].sort();
+  assert.ok(population.length > captured.size,
+    'this population is no wider than `captured`, so it re-runs the loop above and proves nothing');
+
+  const { rows } = await db.query(`
+    select p.proname as name,
+      has_function_privilege('authenticated', p.oid, 'execute') as authenticated,
+      has_function_privilege('anon', p.oid, 'execute') as anon
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = any($1::text[])`, [population]);
+  const open = rows.filter(row => row.anon).map(row => row.name).sort();
+  assert.deepEqual(open, [],
+    'a public function is executable anonymously; revoke on the WRAPPER, not only on the inner contract');
+  const shut = rows.filter(row => !row.authenticated).map(row => row.name).sort();
+  assert.deepEqual(shut, [], 'a public function is not executable by a signed-in caller');
+});
+
 test('every contract function the migrations expose has a caller, or a stated reason', async () => {
   const { rows } = await db.query(`
     select p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace
