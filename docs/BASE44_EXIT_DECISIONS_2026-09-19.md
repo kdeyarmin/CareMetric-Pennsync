@@ -10134,3 +10134,59 @@ next reader check the cut rather than the conclusion.
 This is the mechanical half of the coordinator's own rule that **the index is a
 representation too**. The index is not merely another thing that can go stale;
 it is a thing whose text is indistinguishable from what it describes.
+
+## D172 — A precondition stated over a pair is a property of one member at one moment (2026-09-29)
+
+The rule this project has carried about Railway release writes is: *a variable
+write rebuilds the service from main's unpinned tip, so it is safe only while
+that directory's tree hash matches the running revision.* The rule is right. The
+way it was written down was not, and the difference is who has to re-evaluate it
+and how often.
+
+It was phrased about **the services**, as though it described a state the pair
+was in. It describes one directory, against one running revision, at one head.
+Two services, two directories, two running revisions: three of those move
+independently and the fourth — main's head — moves under both. So there is no
+moment at which "the tree hash matches" is a fact about the system. There is only
+a fact about a member, taken now.
+
+**Measured 2026-09-29 at main `faecd40f`, running revisions read from each
+service's own `/readyz`:**
+
+- `services/integration-runtime` — tree `f3940f6d` at the running revision
+  `720d1401`, tree `f3940f6d` at main. 44 commits between, **zero** touching that
+  path. The precondition HOLDS.
+- `services/pennsync-api` — tree `cc1ed981` at the running revision `d01359a3`,
+  tree `39dca753` at main. 50 commits between, **eight** touching that path. The
+  precondition has FAILED.
+
+Same rule, same instrument, same minute, opposite answers. A reader carrying the
+pair version would have taken the runtime's answer for the API's, and the API is
+the one where being wrong costs something.
+
+**What the API's write would actually deploy**, which is the reason this is a
+gate and not a caveat. Twelve migration files were added to the tree between the
+running revision and main, and the eight commits touching the service are the
+handlers that call the contracts those files create. So a release-variable write
+to `pennsync-api` before an operator has applied them puts capabilities live
+against a database that does not have them. A grep found no boot-time
+contract-existence check in that service — an absence reading rather than a
+proof, so the honest statement is that it would fail at **call time** rather than
+refuse at boot. That is worse, not better: a service that refuses to start is
+noticed in a minute, and one that starts and fails on a caregiver's click is
+noticed by the caregiver.
+
+**The general form.** When a rule is phrased about a plural — "the services",
+"the tree", "the branches", "the suites" — ask which member it is actually a
+property of, and whether that member is the one you are about to act on. A rule
+stated over a set reads as satisfiable once. It is satisfiable once **per
+member**, and it expires per member too. The day the members' answers diverge is
+the day somebody acts on the remembered one, because until then the plural
+phrasing cost nothing and so nothing corrected it.
+
+The remedy is not a longer rule. It is that the instrument is two lines —
+`/readyz` gives each running revision, `git rev-parse <rev>:<dir>` gives each
+tree hash — so **re-take it per member at the moment of acting**, and never
+quote the figures in this entry as current. They are a reading at `faecd40f` and
+they were already at risk of being wrong while this was being written: main
+moved once during the same sitting.
