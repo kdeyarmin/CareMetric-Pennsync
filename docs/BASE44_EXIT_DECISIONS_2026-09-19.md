@@ -9660,6 +9660,73 @@ claims nothing else checks.**
 with beats naming what they fail to measure: **the protocol's two steps cannot
 distinguish a conversion that WORKED from one that did NOTHING.**
 
+**Widened 2026-09-29: the same defect in a check nobody wrote down.** D145's
+subject is a written sequence of steps. The defect also occurs in a single
+check composed at the point of use, and that form is worse in one specific way:
+there is no step list for anybody to read afterwards, so the structural tell
+this entry ends on is unavailable. Two occurrences, both mine, both from the
+entity-route work on #368.
+
+**The first.** I widened a limit reader to scan every production module, and to
+stop comments and string literals counting as declarations I imported the
+masker the call-site ratchet already uses. Masking turned out to lose a real
+declaration: the masker had no regex-literal handling, so a backtick inside a
+character class read as opening a template literal and blanked twelve lines,
+taking an `export const` with it. I reported that to the coordinator as "a main
+defect, not a #368 defect", fixed inside my pull request because my pull request
+made it load-bearing. The check I ran was "did this defect come from main". It
+is answerable, I answered it correctly, and it was not the question. The
+question was "what does this change make reachable", and my change is what made
+a lost declaration reachable, so the defect was mine the moment I imported the
+masker. **Ownership follows reachability, not origin.**
+
+**The second.** I posted a reply ending "Neither is merged. That still waits on
+your answer about who merges." Before posting I checked it against the rule I
+hold, which is that merging is not mine to raise with the owner. The check I ran
+was "does this sentence ask him to merge". It came back false, and it was true
+that it came back false: the sentence asks nothing and adds no pressure of its
+own. It was not the property at issue. The property was "does this put his open
+question back in front of him", and it did, from a second voice, attached to
+work he can see is parked. The rule that governs there already stands in a
+sharper form than mine; what this occurrence adds is the mechanism, not the rule.
+
+**These are one instance with two occurrences, not two.** Both are "I chose the
+wrong proposition and then tested it honestly". The mechanism is identical and
+counting them twice would overstate the evidence.
+
+**Two things in D145 do not transfer, and naming them is the point of the
+widening.** The tell this entry gives is structural — every step running against
+the post-change artefact, with the pre-change one appearing nowhere, visible by
+reading the step list. A check composed in the moment has no step list, no
+artefacts on either side, and leaves nothing behind for a reviewer; the step I
+did not write is the one that would have caught me. And D145 ends on re-reading
+your own wording as the instrument that finds this. Neither of my occurrences
+was self-caught. Both were caught by another reader, at the point where I
+reported the conclusion rather than the check, which is the only moment the
+chosen proposition becomes visible to anybody else.
+
+**What replaces the tell, at this scale.** Name the property the change is about
+before choosing what to test, rather than checking the test against the property
+afterwards — afterwards the test has already returned a true answer, and a true
+answer is the thing that stops you looking. Reporting the check alongside the
+conclusion is the cheap version: say which proposition you tested, not only what
+it returned, so a reader who holds the property can see the substitution.
+
+**What this is NOT, and the boundary is worth keeping.** It is not the
+instrument genus, where an apparatus answers a question adjacent to the one
+asked and the misalignment is mechanical. The discriminator is whether a
+decision stands between the question and the instrument. In an instrument case
+nobody chose wrongly and no judgement sits in between; in both of mine the
+instrument was flawless and the proposition was chosen badly. It is not D143
+either: a sentence that did ask him to merge would have turned my check red, so
+these were falsifiable, and just about the wrong proposition.
+
+**One property of the evidence, reported by batch D rather than measured by me.**
+An unplaced case of main-watch's has the same mechanism from an independent
+source — it asked which files were linked when the question was which files
+carry the claim. Neither session was hunting the other's shape. I can attest
+only to my own two.
+
 ## D146 — An undo whose failure mode is indistinguishable from never having worked (2026-09-26)
 
 `git checkout <path>` restores a file from the index, so using it to remove a
