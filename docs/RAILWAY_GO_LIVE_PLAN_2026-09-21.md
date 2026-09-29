@@ -123,7 +123,7 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=6 files=11 external_secret=2 none=79
+port queue: entity_authorization=6 files=10 external_secret=2 none=80
 ```
 
 98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
@@ -1564,13 +1564,17 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
   | `mutating` (derived) | 63 | 41 |
-  | `integration` (derived) | 20 | 17 |
+  | `integration` (derived) | 21 | 17 |
 
-  **The twentieth is `extractPatientDataFromDocument`, and it carries an
-  operator cost the other nineteen do not.** It is the first port out of the
-  `files` bucket, and it gets there by taking the document's BYTES rather than
-  a locator, so it brokers `UploadFile` under its own subject — which put that
-  name into `BROKERED_OPERATIONS`. `node tools-pennsync-release-ladder.mjs
+  **The twentieth and twenty-first are `extractPatientDataFromDocument` and
+  `extractClinicalDocument`, and they carry an operator cost the other
+  nineteen do not.** They are the first two ports out of the `files` bucket,
+  and they get there by taking the document's BYTES rather than a locator, so
+  each brokers `UploadFile` under its own subject — which put that name into
+  `BROKERED_OPERATIONS`. The second added no operator cost the first had not
+  already added, and no migration: it is the same shape over a different
+  integration, `InvokeLLM` with the document attached rather than
+  `ExtractDataFromUploadedFile`. `node tools-pennsync-release-ladder.mjs
   --wave integration --integration-deployment https://<runtime-host>` now
   requires it, so **a runtime serving only the two AI operations and
   `SendEmail` does not hold this wave**: `UploadFile` has to join

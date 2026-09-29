@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  OWNED_DOCUMENT_MAX_BYTES, extractPatientDataFromDocument, fileToBase64,
-  runtimeContentType,
+  OWNED_DOCUMENT_MAX_BYTES, extractClinicalDocument, extractPatientDataFromDocument,
+  fileToBase64, runtimeContentType,
 } from './documentExtraction';
 
 /**
@@ -107,6 +107,58 @@ describe('extractPatientDataFromDocument', () => {
       await extractPatientDataFromDocument(client, file(),
         { independent, onUploaded, readAsBase64: async () => 'QkFTRTY0' });
       expect(onUploaded).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
+describe('extractClinicalDocument', () => {
+  const CLINICAL = { success: true, extracted_data: { patient: { first_name: 'Synthetic' } } };
+
+  it('sends the bytes and never a locator on the owned path', async () => {
+    const client = clientFor(CLINICAL);
+    const answer = await extractClinicalDocument(client, file(), {
+      independent: true, readAsBase64: async () => 'QkFTRTY0',
+    });
+    expect(answer).toEqual(CLINICAL);
+    expect(client.uploaded).toHaveLength(0);
+    expect(client.invoked[0].params).toEqual({ base64: 'QkFTRTY0', content_type: 'application/pdf' });
+  });
+
+  it('uploads first and passes the locator on the Base44 path', async () => {
+    const client = clientFor(CLINICAL);
+    await extractClinicalDocument(client, file());
+    expect(client.uploaded).toHaveLength(1);
+    expect(client.invoked[0].params).toEqual({
+      file_url: 'https://qtrypzzcjebvfcihiynt.supabase.co/stored.pdf',
+    });
+  });
+
+  it('refuses a document past the ceiling in ITS OWN envelope, not its sibling s', async () => {
+    // The two capabilities do not share an answer shape, so a refusal shaped
+    // like the other one would be read by this screen as an extraction that
+    // simply found nothing.
+    const client = clientFor(CLINICAL);
+    const answer = await extractClinicalDocument(
+      client, file({ size: OWNED_DOCUMENT_MAX_BYTES + 1 }),
+      { independent: true, readAsBase64: async () => { throw new Error('read'); } },
+    );
+    expect(answer.success).toBe(false);
+    expect(answer.error).toMatch(/too large/i);
+    expect(answer).not.toHaveProperty('patient_data');
+    expect(client.invoked).toHaveLength(0);
+  });
+
+  it('reports the stored locator on the Base44 path and null on the owned one', async () => {
+    // The screen keeps it in state. There is no stored object on the owned
+    // path, so it must be null rather than a stale or invented string.
+    for (const [independent, expected] of [
+      [false, 'https://qtrypzzcjebvfcihiynt.supabase.co/stored.pdf'], [true, null],
+    ]) {
+      const seen = [];
+      await extractClinicalDocument(clientFor(CLINICAL), file(), {
+        independent, onUploaded: (url) => seen.push(url), readAsBase64: async () => 'QkFTRTY0',
+      });
+      expect(seen).toEqual([expected]);
     }
   });
 });

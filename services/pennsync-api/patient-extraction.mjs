@@ -63,11 +63,16 @@ export const PATIENT_EXTRACTION_SCHEMA = Object.freeze({
  * same 8 MiB plus room for the envelope, and NOT a second policy: raising it
  * would buy nothing, because the runtime refuses first.
  *
- * This is a NARROWING against the original, and a real one. The browser
- * validates at 50 MiB (`OCRDocumentExtractor.jsx`), so a document between 8 and
- * 50 MiB is accepted by the SPA today and refused here. It is recorded rather
- * than worked around: widening it means widening `MAX_FILE`, which is the
- * runtime's decision and not this capability's.
+ * This is a NARROWING against the original, and a real one. Both screens that
+ * scan a document validate at 50 MiB (`OCRDocumentExtractor.jsx` and
+ * `DocumentIngestionUploader.jsx`), so a document between 8 and 50 MiB is
+ * accepted by the SPA today and refused here. It is recorded rather than
+ * worked around: widening it means widening `MAX_FILE`, which is the runtime's
+ * decision and not this capability's.
+ *
+ * It is ONE ceiling for both document capabilities on purpose. They are bound
+ * by the same runtime limit, so two constants could only ever disagree, and a
+ * bound enforced in two places moves in one of them.
  */
 export const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
 export const EXTRACTION_MAX_BODY = Math.ceil(MAX_DOCUMENT_BYTES / 3) * 4 + 64 * 1024;

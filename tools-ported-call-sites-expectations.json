@@ -8,6 +8,7 @@
     "src/components/alerts/RiskAlertWidget.jsx:52 updateScopedPatientAlert",
     "src/components/alerts/RiskAlertWidget.jsx:66 updateScopedPatientAlert",
     "src/components/dashboard/HighRiskPatientsWidget.jsx:26 getScopedPatientAlerts",
+    "src/components/documents/DocumentIngestionUploader.jsx:82 extractClinicalDocument",
     "src/components/documents/PDFSearchInterface.jsx:42 searchPDFs",
     "src/components/documents/PDFSearchInterface.jsx:62 searchPDFs",
     "src/components/patient/OCRDocumentExtractor.jsx:44 extractPatientDataFromDocument",

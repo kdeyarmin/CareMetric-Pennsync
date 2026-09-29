@@ -14,6 +14,9 @@ import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { MAX_CSV_BYTES, importProviders } from './provider-import.mjs';
 import { EXTRACTION_MAX_BODY, PATIENT_EXTRACTION_SCHEMA } from './patient-extraction.mjs';
+import {
+  CLINICAL_DOCUMENT_MODEL, CLINICAL_DOCUMENT_PROMPT, CLINICAL_DOCUMENT_SCHEMA,
+} from './clinical-document.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
 import { AI_REPORT_PARAMS, generateAiReport } from './ai-report.mjs';
@@ -1415,6 +1418,69 @@ export const HANDLERS = Object.freeze({
         status: 'success',
         patient_data: extraction.output || {},
         message: 'Patient data extracted successfully',
+      };
+    },
+  }),
+  extractClinicalDocument: Object.freeze({
+    needsIntegration: true,
+    // The same ceiling as `extractPatientDataFromDocument`, and the same
+    // reason: both send the document's bytes, and both are bounded by the
+    // runtime's `MAX_FILE` rather than by anything this service chooses.
+    maxBody: EXTRACTION_MAX_BODY,
+    /*
+     * The second capability out of the `files` bucket, on the shape the first
+     * one established: the browser sends the BYTES, this handler brokers the
+     * upload, and the subject that mints the object is the subject that reads
+     * it.
+     *
+     * The difference from its sibling is which integration reads the document.
+     * `extractPatientDataFromDocument` brokers `ExtractDataFromUploadedFile`,
+     * which supplies its own prompt; this original calls `InvokeLLM` with a
+     * prompt of its own and the document attached, so the port does the same
+     * and the prompt is the original's text rather than a rewording of it.
+     *
+     * Two narrowings, both recorded rather than worked around:
+     *
+     * 1. The size ceiling, in `patient-extraction.mjs`.
+     * 2. The eight vitals are not schema-checked, in `clinical-document.mjs`.
+     *    That one is forced by the runtime's schema contract and declaring
+     *    them otherwise would fail every document with a missing vital.
+     */
+    async handle({ params, integration }) {
+      exactObject(params, ['base64', 'content_type'], 'INVALID_PARAMS');
+      if (typeof params.base64 !== 'string' || !params.base64
+        || typeof params.content_type !== 'string' || !params.content_type) {
+        fail(400, 'INVALID_PARAMS');
+      }
+      const upload = await integration('UploadFile', {
+        base64: params.base64, content_type: params.content_type,
+      });
+      if (!isObject(upload) || typeof upload.file_uri !== 'string' || !upload.file_uri) {
+        fail(502, 'DOCUMENT_UPLOAD_FAILED');
+      }
+      const extracted = await integration('InvokeLLM', {
+        model: CLINICAL_DOCUMENT_MODEL,
+        prompt: CLINICAL_DOCUMENT_PROMPT,
+        // The runtime's key is `file_uris`; the original's was `file_urls`,
+        // naming a stored object rather than an owned handle. One item,
+        // because one document is what this capability is about.
+        file_uris: [upload.file_uri],
+        // Cloned per call: the runtime is handed this object, and a shared
+        // frozen one is not something to hand across a boundary.
+        response_json_schema: structuredClone(CLINICAL_DOCUMENT_SCHEMA),
+      });
+      // The original returns whatever `InvokeLLM` answered, unchecked. The
+      // runtime has already checked it against the schema above and raises
+      // rather than answering a failure, so an answer that is not an object
+      // here means the shape changed underneath and is refused rather than
+      // handed to the screen as an extraction.
+      if (!isObject(extracted)) fail(502, 'DOCUMENT_EXTRACTION_FAILED');
+      return {
+        success: true,
+        extracted_data: extracted,
+        // The original stamps the answer, and the screen does not read it —
+        // kept because a caller outside this repository might.
+        timestamp: new Date().toISOString(),
       };
     },
   }),

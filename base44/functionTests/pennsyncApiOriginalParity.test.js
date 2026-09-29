@@ -23,6 +23,10 @@ import { RECORD_CONTRACTS } from '../../services/pennsync-api/record-contracts.m
 import {
   PATIENT_EXTRACTION_SCHEMA,
 } from '../../services/pennsync-api/patient-extraction.mjs';
+import {
+  CLINICAL_DOCUMENT_MODEL, CLINICAL_DOCUMENT_PROMPT, CLINICAL_DOCUMENT_SCHEMA,
+} from '../../services/pennsync-api/clinical-document.mjs';
+import { validateSchema } from '../../services/integration-runtime/contracts.mjs';
 import { insightPrompt } from '../../services/pennsync-api/ai-report.mjs';
 import { reportMetrics, reportTrend } from '../../services/pennsync-api/report-metrics.mjs';
 import {
@@ -1280,4 +1284,58 @@ test('the patient extraction schema is the original s, field for field', async (
   // Order too: a model reads the fields in the order it is given them.
   assert.deepEqual(Object.keys(PATIENT_EXTRACTION_SCHEMA.properties),
     Object.keys(PATIENT_SCHEMA.properties));
+});
+
+test('the clinical document prompt and schema are the original s', async () => {
+  /*
+   * Lifted as ONE object rather than two, because the prompt, the model and
+   * the schema are the original's single `InvokeLLM` argument and pulling them
+   * out separately is three chances to pick up the wrong block. The argument
+   * closes over `file_url`, so it is wrapped in a function over that name —
+   * D57's trick for a block that was never a named export.
+   */
+  const relative = 'base44/functions/extractClinicalDocument/entry.ts';
+  const original = await readFile(resolve(repository, relative), 'utf8');
+  const open = original.indexOf('await base44.integrations.Core.InvokeLLM({');
+  assert.ok(open > 0, 'the original still calls InvokeLLM');
+  const start = original.indexOf('{', open);
+  const end = original.indexOf('\n    });', start);
+  assert.ok(end > start, 'and its argument still ends where it did');
+  const block = `export const CALL = (file_url) => (${original.slice(start, end + 6)});`;
+  const file = join(tmpdir(), `clinical_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(block).outputText);
+  let CALL;
+  try { ({ CALL } = await import(pathToFileURL(file).href)); }
+  finally { await unlink(file).catch(() => {}); }
+  const call = CALL('https://qtrypzzcjebvfcihiynt.supabase.co/original.pdf');
+
+  // Sanity first, so a block that parsed into something empty cannot pass as
+  // agreement.
+  assert.equal(Object.keys(call.response_json_schema.properties).length, 5);
+  assert.ok(call.prompt.length > 1000);
+
+  assert.equal(CLINICAL_DOCUMENT_MODEL, call.model);
+  assert.equal(CLINICAL_DOCUMENT_PROMPT, call.prompt);
+  // The original names the document with `file_urls`; the port uses the
+  // runtime's `file_uris` and its own handle. Asserted so the rename stays a
+  // decision rather than a typo nobody notices.
+  assert.deepEqual(call.file_urls, ['https://qtrypzzcjebvfcihiynt.supabase.co/original.pdf']);
+
+  // THE ONE NARROWING, asserted on both sides rather than described.
+  const { vitals, ...carried } = call.response_json_schema.properties;
+  const { vitals: ported, ...portedRest } = CLINICAL_DOCUMENT_SCHEMA.properties;
+  assert.deepEqual(portedRest, carried, 'everything but the vitals is the original s');
+  assert.deepEqual(Object.keys(portedRest), Object.keys(carried), 'in the original s order');
+  assert.deepEqual(ported, { type: 'object' });
+
+  // And the reason: the original's own vitals are union-typed, which the owned
+  // runtime's schema contract refuses outright. Driven through that contract
+  // rather than asserted about it, so restoring the union fails here.
+  assert.equal(Object.keys(vitals.properties).length, 8);
+  for (const [name, field] of Object.entries(vitals.properties)) {
+    assert.deepEqual(field.type, ['number', 'null'], name);
+  }
+  assert.throws(() => validateSchema(structuredClone(call.response_json_schema)),
+    error => error.code === 'UNSUPPORTED_SCHEMA');
+  validateSchema(structuredClone(CLINICAL_DOCUMENT_SCHEMA));
 });

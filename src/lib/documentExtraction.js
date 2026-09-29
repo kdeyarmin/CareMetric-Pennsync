@@ -1,6 +1,10 @@
 /**
- * Reading structured patient data out of an uploaded document, on either
- * backend.
+ * Reading structured data out of an uploaded document, on either backend.
+ *
+ * Two capabilities go through here — the intake scanner's patient fields and
+ * the ingestion screen's clinical record. They differ only in their answer's
+ * envelope; the transport is one thing and is deliberately not copied per
+ * screen.
  *
  * The two paths differ in SHAPE and not in authority, which is why this module
  * exists rather than a branch inside the screen:
@@ -75,29 +79,36 @@ export function fileToBase64(file, FileReaderImpl = globalThis.FileReader) {
 }
 
 /**
- * Ask whichever backend is configured to extract patient data from `file`.
+ * Send `file` to whichever backend is configured, and answer the capability's
+ * own envelope.
  *
- * Answers the function's own envelope in both cases, so the caller's branch on
- * `status` is unchanged. `onUploaded` fires when the document has left the
- * browser, which is the moment the screen stops saying "uploading" — on the
- * owned path there is no second step to wait for, so it fires once the bytes
- * are encoded and the request is about to go.
+ * The branch decides only what the request CARRIES — a locator on the Base44
+ * path, the bytes on the owned one — and there is exactly ONE invocation
+ * either way. Two would read as two capabilities to `check:base44-surface`'s
+ * function-invocation ratchet, and the surface did not grow: the same call
+ * moved.
+ *
+ * `onUploaded` fires when the document has left the browser, which is the
+ * moment a screen stops saying "uploading". It is handed the stored locator on
+ * the Base44 path and `null` on the owned one, because there is no stored
+ * object on that path to name — the handler mints its own under its own
+ * subject and nothing outside the service can address it.
+ *
+ * `tooLarge` supplies the refusal, because the two capabilities over this do
+ * not share an envelope: one answers `{status, details, patient_data}` and the
+ * other `{success, error}`. Shaping that here would mean this module deciding
+ * what a screen reads, which is the caller's to do.
  */
-export async function extractPatientDataFromDocument(transport, file, options = {}) {
+async function sendDocument(transport, file, options) {
   const { invoke, uploadFile } = transport;
-  const { independent = false, readAsBase64 = fileToBase64, onUploaded = () => {} } = options;
+  const { independent = false, readAsBase64 = fileToBase64, onUploaded = () => {}, tooLarge } = options;
   let params;
+  let locator = null;
   if (independent) {
     // Refused here rather than at the service, so the person is told their
     // document is too large instead of watching a request fail after the whole
     // of it has been read and encoded.
-    if (file.size > OWNED_DOCUMENT_MAX_BYTES) {
-      return {
-        status: 'error',
-        details: 'This document is too large to scan. Please use one under 8 MB.',
-        patient_data: null,
-      };
-    }
+    if (file.size > OWNED_DOCUMENT_MAX_BYTES) return tooLarge();
     // `content_type` is the type the browser reported, past the one alias it
     // uses that the runtime does not name. The handler and the runtime both
     // check it against the bytes, so a wrong one is refused rather than
@@ -105,12 +116,37 @@ export async function extractPatientDataFromDocument(transport, file, options = 
     params = { base64: await readAsBase64(file), content_type: runtimeContentType(file.type) };
   } else {
     const upload = await uploadFile({ file });
-    params = { file_url: upload.file_url };
+    locator = upload.file_url;
+    params = { file_url: locator };
   }
-  // ONE invocation, with the branch deciding only what it carries. Two would
-  // read as two capabilities to `check:base44-surface`'s function-invocation
-  // ratchet, and the surface did not grow — the same call moved.
-  onUploaded();
+  onUploaded(locator);
   const response = await invoke(params);
   return response?.data;
+}
+
+/** The message a person sees when their document is past the owned ceiling. */
+const TOO_LARGE = 'This document is too large to scan. Please use one under 8 MB.';
+
+/**
+ * Structured patient fields out of an uploaded document, for the intake
+ * scanner. Answers the function's own envelope, so the caller's branch on
+ * `status` is unchanged.
+ */
+export function extractPatientDataFromDocument(transport, file, options = {}) {
+  return sendDocument(transport, file, {
+    ...options,
+    tooLarge: () => ({ status: 'error', details: TOO_LARGE, patient_data: null }),
+  });
+}
+
+/**
+ * The clinical record — patient, vitals, diagnoses, medications — out of an
+ * uploaded document, for the ingestion screen. Its envelope is `success` plus
+ * `extracted_data`, which is the original's and not this module's.
+ */
+export function extractClinicalDocument(transport, file, options = {}) {
+  return sendDocument(transport, file, {
+    ...options,
+    tooLarge: () => ({ success: false, error: TOO_LARGE }),
+  });
 }
