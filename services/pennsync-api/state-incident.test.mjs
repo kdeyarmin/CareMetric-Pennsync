@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildReportText, submitStateIncident } from './state-incident.mjs';
+import { HANDLERS } from './handlers.mjs';
 
 /**
  * The state-reportable handler's own behaviour.
@@ -45,6 +46,57 @@ test('both paused halves are reported on every path', async () => {
   assert.equal(replay.document_retention_paused, true);
   assert.equal(replay.email_paused, true);
   assert.equal(replay.notified, 0);
+});
+
+/**
+ * `patient_name` is admitted and not honoured, and both halves matter.
+ *
+ * It was absent from `STATE_INCIDENT_FIELDS` while `submitted_by_name`, the
+ * other field the report text reads, was present -- so `exactObject` refused
+ * the whole body and both screens that send it failed every submission. The
+ * parity test below already passed `patient_name` straight to
+ * `buildReportText`, which is why nothing caught it: the FUNCTION was
+ * reachable and the ENDPOINT was not.
+ *
+ * So this drives the REGISTRY ENTRY rather than `submitStateIncident`. A first
+ * draft called the module function directly and asserted the report text, and
+ * passed with the key still refused -- `exactObject` lives in the handler and
+ * nothing below it has an allowlist. A test that cannot fail for the defect it
+ * names reads exactly like one that works.
+ *
+ * The second half is the divergence, asserted so it cannot drift into the
+ * original's shape by accident: the original overrides the caller's
+ * `patient_name` with one it derived from the chart, and this service has no
+ * patient read to derive one with, so the line carries the id. A change that
+ * spread the caller's value through would pass the first assertion and fail
+ * this one.
+ */
+test('the endpoint admits patient_name and never prints the claimed one', async () => {
+  const asked = [];
+  const contract = async (name, args) => {
+    asked.push({ name, args });
+    return { success: true, notified: 0, incident: { id: 'incident-1' } };
+  };
+  await HANDLERS.submitStateReportableIncident.handle({
+    params: { ...PAYLOAD, patient_name: 'Ada Lovelace' }, contract });
+  assert.equal(asked.length, 1, 'the body was refused before it reached the contract');
+  const { incident } = asked[0].args;
+  assert.ok(incident.report_text.includes('Patient: patient-a1'),
+    'the report names the chart, not what the form claimed');
+  assert.equal(incident.report_text.includes('Ada Lovelace'), false);
+  assert.equal('patient_name' in incident, false,
+    'the contract derives the stored name itself; a caller may not supply it');
+
+  // And the gate still refuses a key nobody declared. `exactObject` throws
+  // BEFORE the handler returns a promise, so this is `throws` and not
+  // `rejects` -- the first draft used `rejects` and reported the correct
+  // refusal as a test failure.
+  assert.throws(
+    () => HANDLERS.submitStateReportableIncident.handle({
+      params: { ...PAYLOAD, severity: 'low' }, contract }),
+    error => error.code === 'INVALID_PARAMS',
+    'widening the list must not have widened it to everything');
+  assert.equal(asked.length, 1, 'a refused body reaches no contract');
 });
 
 test('the report text is the original\'s, and a caller-supplied one wins', async () => {

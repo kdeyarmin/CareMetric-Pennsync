@@ -41,30 +41,38 @@ const COMPARABLE = Object.freeze([
 ]);
 
 /**
- * Live violations, named rather than fixed here.
+ * Live violations. EMPTY, and kept rather than deleted.
  *
- * `STATE_INCIDENT_FIELDS` holds sixteen keys and `patient_name` is not one, so
- * `exactObject` refuses the whole body with INVALID_PARAMS and BOTH screens
- * fail every state-reportable submission they make against the owned backend.
- * The wrapper is pass-through, so nothing translates the key away first.
+ * It held two for the life of #352: both screens sent `patient_name` to
+ * `submitStateReportableIncident`, whose allowlist did not carry it, so
+ * `exactObject` refused the whole body and every state-reportable submission
+ * from those two pages answered INVALID_PARAMS against the owned backend.
  *
- * It is pinned instead of repaired because the repair is a product decision and
- * not a typo. D73 keeps `severity` and `state_reportable` off a submit because
- * they are the inputs to the resolve gate, and records that this capability's
- * alert deliberately names no patient -- `notification_read` is agency-wide and
- * this is the most serious incident class the product has. So widening the
- * constant would undo a narrowing somebody took on purpose, and dropping the
- * key from the screens changes what the BASE44 path sends, which still serves
- * these two pages. Neither belongs in a pull request about a reader.
+ * That pin also carried the wrong reason, and the correction is worth more
+ * than the fix. It said widening the constant would undo a narrowing somebody
+ * took on purpose, citing D73. D73's narrowing is about the NOTIFICATION,
+ * which an argument allowlist does not reach, and the contract never takes a
+ * caller's `patient_name` at all -- it derives the stored name from the
+ * `patient` row it has just authorized. So nothing about admitting the key
+ * touches what gets stored.
  *
- * The list is exact: a third site appearing is a new defect and fails here.
+ * What the reason should have said, and what reading the ORIGINAL supplied, is
+ * that the key must be admitted and NOT honoured: the original overrides it
+ * with a name derived from the chart, and this service has no patient read to
+ * derive one with. The repair is in `state-incident.mjs` and its header
+ * records the divergence.
+ *
+ * I wrote the pin's reason from the shape of the change rather than from the
+ * SQL or the original, and it read as a considered refusal to widen a
+ * PHI-relevant list. A cautious wrong reason is still a wrong reason, and it
+ * is harder to dislodge than a careless one -- it stood for a whole PR, in a
+ * file whose subject is prose that nothing can fail.
+ *
+ * The list stays because an empty one is the assertion: a name appearing here
+ * is a screen whose every call fails. An empty list cannot demonstrate that it
+ * would fire, so the test below plants one.
  */
-const REFUSED = Object.freeze([
-  'src/components/incident/SmartIncidentForm.jsx: submitStateReportableIncident'
-    + ' sends patient_name, which submitStateReportableIncident refuses',
-  'src/pages/EventReport.jsx: submitStateReportableIncident'
-    + ' sends patient_name, which submitStateReportableIncident refuses',
-]);
+const REFUSED = Object.freeze([]);
 
 /** A multiset: `TimesheetApprovalsQueue.jsx` calls `reviewTimesheet` twice. */
 const COMPARED = Object.freeze([
@@ -109,8 +117,21 @@ test('no screen sends a ported capability a key its handler refuses', () => {
   const report = measureWrapperCalls(repository);
   assert.deepEqual(report.rejected, [...REFUSED],
     'a screen is sending a key outside its handler\'s exactObject allowlist, so that\n'
-    + '  capability answers INVALID_PARAMS on every call it receives. The two in\n'
-    + '  REFUSED are known and explained there; anything else is new.');
+    + '  capability answers INVALID_PARAMS on every call it receives. Anything in\n'
+    + '  REFUSED is known and explained there; REFUSED is empty, so this is new.');
+
+  // The assertion above is now `[] === []`, which passes just as well if the
+  // comparison stopped reading anything. What proves it still separates a
+  // refused key is `a key outside the allowlist is reported, by site and by
+  // name` below, which drives one through the same code path -- so this adds
+  // the half that test cannot have: that the capability REFUSED named is
+  // genuinely repaired, rather than gone quiet because the reader lost it.
+  assert.ok(
+    handlerAllowlists(repository).admits.get('submitStateReportableIncident')
+      ?.includes('patient_name'),
+    'the two sites this list held are absent because the allowlist admits the key.\n'
+    + '  It does not, so they are absent for some other reason and REFUSED is\n'
+    + '  empty for the wrong one.');
 });
 
 test('the comparable population is the declared set, in both directions', () => {
