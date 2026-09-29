@@ -1444,6 +1444,14 @@ function strippedOfLiterals(sql) {
       out += ' ';
       continue;
     }
+    // A dollar-quoted block here is STRIPPED, not unwrapped, and that is the
+    // right direction given what this is handed. `functionBodies` returns a
+    // body with its own `$contract$` wrapper already removed, so any tag left
+    // inside it is a dollar-quoted STRING -- `execute $sql$...$sql$` -- which
+    // is literal text and must not be read as code. Unwrapping here would
+    // invert exactly the answer this function exists to get right. No body in
+    // the tree carries one today, which the test below states rather than
+    // leaves to be inferred from a green.
     const tag = /^\$[A-Za-z0-9_]*\$/.exec(sql.slice(i));
     if (tag) {
       const end = sql.indexOf(tag[0], i + tag[0].length);
@@ -1457,21 +1465,66 @@ function strippedOfLiterals(sql) {
   return out;
 }
 
-test('the six _write contracts write only through library_write\'s dynamic SQL', () => {
+test('the literal stripper bites on a body, and says what it is handed', () => {
+  /*
+   * A control for the assertions below, because "no executable DML" is a
+   * NEGATIVE result and a negative result from an instrument that cannot see
+   * anything is indistinguishable from a clean one.
+   *
+   * The shape matters and it is the shape `functionBodies` produces: a plpgsql
+   * BODY with its own `$contract$` wrapper already removed. Hand this the whole
+   * `create function ... as $b$ ... $b$` statement instead and the dollar-quote
+   * branch eats the lot, which is a true answer to a question nobody asked.
+   *
+   * A tag REMAINING inside a body is a dollar-quoted string, so stripping it is
+   * correct and unwrapping it would report literal text as executable. Nothing
+   * in the tree has one, so that branch is unexercised on real input -- stated
+   * here rather than left for a reader to infer from a green, because an
+   * unexercised branch is what the next person will simplify.
+   */
+  const dml = /\b(?:insert\s+into|update\s+(?:only\s+)?"?pennsync|delete\s+from)/gi;
+  const runs = 'begin\n  insert into "pennsync_records"."thing" (a) values (1);\nend';
+  const quoted = 'begin\n  execute \'insert into "pennsync_records"."thing" (a) values (1)\';\n'
+    + '  -- doesn\'t matter\nend';
+  assert.equal((strippedOfLiterals(runs).match(dml) ?? []).length, 1,
+    'the stripper cannot see a statement that really runs, so every "no DML"'
+    + ' assertion built on it is vacuous');
+  assert.equal((strippedOfLiterals(quoted).match(dml) ?? []).length, 0,
+    'the stripper reports quoted text as executable, which inverts the answer');
+
+  const withTag = [...functionBodies(REPOSITORY)]
+    .filter(([, entry]) => /\$[A-Za-z0-9_]*\$/.test(entry.body))
+    .map(([name]) => name);
+  assert.deepEqual(withTag, [],
+    'a body now carries a dollar-quoted string, so the branch that strips it is'
+    + ' live on real input and owes a case of its own here');
+});
+
+test('seven contracts write only through library_write\'s dynamic SQL', () => {
   /*
    * The accident `DML`'s header now names, asserted so the header cannot rot
    * into describing a tree that has moved.
    *
    * `library_write` builds its statements as text and executes them, so every
    * DML token in it is inside a quoted literal. `DML` sees them because it
-   * matches the raw body, and that is the ONLY reason these six classify as
-   * writing. Narrow the pattern to skip literals and six writes move into a
+   * matches the raw body, and that is the ONLY reason these seven classify as
+   * writing. Narrow the pattern to skip literals and seven writes move into a
    * read wave.
    *
-   * Two halves, and the second is the one worth keeping: that the writer's
-   * DML is all inside literals, and that the six callers have none of their
+   * Two halves, and the second is the one worth keeping: that the writer\'s
+   * DML is all inside literals, and that the seven callers have none of their
    * own. Either alone is satisfiable by a tree where the accident does not
    * matter.
+   *
+   * THE POPULATION IS DERIVED FROM THE CODE, not from the names. This test
+   * said six and enumerated by `endsWith(\'_write\')`, which is the name the
+   * classifier check already catches -- so the set was drawn from the check\'s
+   * blind spot and reported the EXPOSURE as though it were the population.
+   * `contract_ai_configuration_save` is the seventh: it reaches its write
+   * through `library_write` and through nothing else, exactly like the other
+   * six, and is caught only because `save` was already a verb. Asking which
+   * bodies call the writer and carry no DML of their own cannot make that
+   * mistake.
    */
   const bodies = functionBodies(REPOSITORY);
   const writer = bodies.get('pennsync_records.library_write');
@@ -1482,20 +1535,40 @@ test('the six _write contracts write only through library_write\'s dynamic SQL',
   assert.ok(raw.length > 0, 'library_write no longer looks like a write at all');
   assert.equal(executable.length, 0,
     `library_write now has DML outside its literals (${executable.join(', ')}),`
-    + ' so the six below no longer depend on the raw match and this test is'
+    + ' so the seven below no longer depend on the raw match and this test is'
     + ' asserting an accident that has stopped being one.');
 
+  const throughWriter = [...bodies]
+    .filter(([name]) => name.startsWith('pennsync_records.contract_'))
+    .filter(([, entry]) => {
+      const clean = strippedOfLiterals(entry.body);
+      return /library_write\s*\(/.test(clean) && (clean.match(dml) ?? []).length === 0;
+    })
+    .map(([name]) => name.replace('pennsync_records.', ''))
+    .sort();
+  assert.deepEqual(throughWriter, [
+    'contract_ai_configuration_save',
+    'contract_clinical_library_folder_write',
+    'contract_clinical_library_template_write',
+    'contract_clinical_pathway_write',
+    'contract_education_material_write',
+    'contract_patient_education_write',
+    'contract_validation_rule_write',
+  ], 'the set that depends on the raw match has moved; re-read DML\'s header');
+
   const origins = contractOrigins(REPOSITORY);
-  const named = [...origins.values()].filter(origin => origin.rpc.endsWith('_write'));
-  assert.equal(named.length, 6, `expected six _write contracts, got ${named.length}`);
-  for (const origin of named) {
+  for (const inner of throughWriter) {
+    const origin = [...origins.values()].find(o => o.rpc === `pennsync_${inner}`);
+    assert.ok(origin, `${inner} has no registry entry, so nothing classifies it`);
     assert.equal(origin.mutates, true, `${origin.contract} classifies read-only`);
-    const inner = bodies.get(`pennsync_records.${origin.rpc.replace(/^pennsync_/, '')}`);
-    assert.ok(inner, `${origin.rpc} has no inner function`);
-    assert.deepEqual(inner.body.match(dml) ?? [], [],
-      `${origin.contract} writes on its own now, so it no longer depends on library_write`
-      + ' and this test no longer measures what it says it measures.');
   }
+
+  // The exposure and the population are different figures and the header owes
+  // both: six of the seven are named only by `write`, and the seventh was
+  // already named by `save`. Quoting either for the other is how the wrong
+  // number got in.
+  const namedByWriteAlone = throughWriter.filter(name => name.endsWith('_write'));
+  assert.equal(namedByWriteAlone.length, 6);
 });
 
 test('a contract named as writing that classifies read-only is refused by name', (t) => {

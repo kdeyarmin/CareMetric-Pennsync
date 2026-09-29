@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import {
-  handlerAllowlists, importedWrappers, measureWrapperCalls, passThroughWrappers,
-  payloadKeys, propertyKey, summaryLines, withoutComments,
+  API_DIRECTORY, handlerAllowlists, importedWrappers, measureWrapperCalls,
+  namedAllowlists, passThroughWrappers, payloadKeys, propertyKey, summaryLines,
+  withoutComments,
 } from './tools-handler-allowlist.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -298,4 +301,57 @@ test('the summary line carries the four figures and nothing else', () => {
     + `${COMPARED.length} readable call sites, ${UNREADABLE.length} unreadable, `
     + `${REFUSED.length} refused`,
   ]);
+});
+
+/**
+ * The (file, name) keying, proved rather than asserted in prose.
+ *
+ * `namedAllowlists` keys on the module a constant is declared in as well as its
+ * name, and its header has been saying that a flat map would be last-file-wins
+ * and that no name is duplicated TODAY. The second half is a measurement of one
+ * day and the first was an argument nothing ran, so this plants the case: two
+ * modules exporting one name, the WRONG one sorting last so a flat `Map.set`
+ * would take it, and the registry importing from the right one.
+ *
+ * It matters because the failure is silent in the direction that hides: the
+ * handler would still be reported RESOLVED and compared against a list it never
+ * uses, which is a wrong answer wearing a clean one. Nothing in the real tree
+ * can raise it, since no name is duplicated there — so a fixture is the only
+ * place this can be shown to bite at all.
+ */
+test('a duplicated allowlist name resolves through the importing module', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'handler-allowlist-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directory = join(root, API_DIRECTORY);
+  mkdirSync(directory, { recursive: true });
+
+  // `wrong.mjs` sorts after `right.mjs`, so a map keyed on the name alone ends
+  // up holding the wrong list.
+  writeFileSync(join(directory, 'right.mjs'),
+    "export const SHARED_FIELDS = Object.freeze(['correct_key']);\n");
+  writeFileSync(join(directory, 'wrong.mjs'),
+    "export const SHARED_FIELDS = Object.freeze(['wrong_key']);\n");
+  writeFileSync(join(directory, 'handlers.mjs'), [
+    "import { SHARED_FIELDS } from './right.mjs';",
+    'export const HANDLERS = Object.freeze({',
+    '  doThing: Object.freeze({',
+    '    handle({ params, contract }) {',
+    '      return contract(\'doThing\', exactObject(params, SHARED_FIELDS));',
+    '    },',
+    '  }),',
+    '});',
+  ].join('\n'));
+
+  const { admits, unresolved } = handlerAllowlists(root);
+  assert.deepEqual(admits.get('doThing'), ['correct_key'],
+    'the list came from the module the registry imports, not from whichever'
+    + ' module declaring that name happened to be read last');
+  assert.equal(unresolved.has('doThing'), false, 'and it resolved at all');
+
+  // Both halves, because `['correct_key']` is also what a reader that lost the
+  // duplicate entirely would return. This is the assertion that separates
+  // "keyed correctly" from "only ever saw one of them".
+  const bothDeclared = namedAllowlists(directory);
+  assert.deepEqual(bothDeclared.get('./right.mjs').get('SHARED_FIELDS'), ['correct_key']);
+  assert.deepEqual(bothDeclared.get('./wrong.mjs').get('SHARED_FIELDS'), ['wrong_key']);
 });
