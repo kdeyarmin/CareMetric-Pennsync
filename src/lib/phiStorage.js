@@ -516,27 +516,63 @@ function retirementCompleted() {
 
 /**
  * Drop the already-synced entries from an offline-work queue while preserving
- * anything still pending sync. Best-effort: a malformed value is left untouched
- * (it isn't re-fetchable PHI we can safely interpret), never throwing.
+ * anything still pending sync.
+ *
+ * `synced` on these two queues was only ever written by the removed
+ * `mobile/OfflineStorage.jsx`, in `markVisitSynced`/`markUpdateSynced`, and only after
+ * the awaited `Visit.create`/`Visit.update` had resolved — a throw took the item to the
+ * catch, which logged and incremented its retry count instead of marking it. So a marked
+ * entry is a duplicate of a record the server acknowledged, and dropping it discards no
+ * clinical work. It is deliberately the only field here trusted that way: nothing ever
+ * wrote a comparable marker into the three PURGE_AFTER_RETIREMENT_KEYS, so those stay
+ * behind their own gate.
+ *
+ * A malformed or unexpectedly-shaped value is left untouched: it isn't re-fetchable PHI
+ * we can safely interpret, and refusing an authority transition over bytes a removed
+ * release left behind would block the app on garbage. The removals it does attempt are
+ * verified, and their failures are RETURNED rather than thrown, so a strict caller can
+ * refuse on them and a best-effort one can ignore them.
  */
 function purgeSyncedOfflineEntries() {
-  if (typeof localStorage === 'undefined') return;
+  const errors = [];
+  if (typeof localStorage === 'undefined') return errors;
   for (const key of PURGE_SYNCED_KEYS) {
+    let raw;
     try {
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      const items = JSON.parse(raw);
-      if (!Array.isArray(items)) continue;
-      const pending = items.filter((item) => !item?.synced);
+      raw = localStorage.getItem(key);
+    } catch (error) {
+      errors.push(error); // storage itself is unreadable, which a strict caller must see
+      continue;
+    }
+    if (!raw) continue;
+    let items;
+    try {
+      items = JSON.parse(raw);
+    } catch {
+      continue; // malformed — leave as-is, and never fail a transition over it
+    }
+    if (!Array.isArray(items)) continue;
+    const pending = items.filter((item) => !item?.synced);
+    try {
       if (pending.length === 0) {
         localStorage.removeItem(key);
+        if (localStorage.getItem(key) !== null) {
+          throw new Error(`Synced offline queue was not removed: ${key}`);
+        }
       } else if (pending.length !== items.length) {
-        localStorage.setItem(key, JSON.stringify(pending));
+        const next = JSON.stringify(pending);
+        localStorage.setItem(key, next);
+        if (localStorage.getItem(key) !== next) {
+          throw new Error(`Synced offline entries were not dropped: ${key}`);
+        }
       }
-    } catch {
-      /* malformed entry — leave as-is */
+    } catch (error) {
+      // The unsynced entries survive a failure here, so the queue is never left
+      // shorter than what reached the server; only the hygiene pass is lost.
+      errors.push(error);
     }
   }
+  return errors;
 }
 
 /**
@@ -720,6 +756,11 @@ export async function purgeRefetchablePhiForAuthorityTransition() {
   } catch (error) {
     errors.push(error);
   }
+  // Entries a retired queue's own marker says the server acknowledged are duplicates of
+  // re-fetchable server state, so they belong to this purge rather than to the retirement
+  // gate. Nothing unsynced is touched: see purgeSyncedOfflineEntries on why `synced` is
+  // the one legacy field trusted this way.
+  errors.push(...purgeSyncedOfflineEntries());
   try {
     await clearAndVerifyLegacyPatientCacheStrict();
   } catch (error) {
