@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The chart a model reads to suggest clinical tasks.
@@ -19,12 +19,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * predicate is the contract's own.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const PURPOSE = 'services/authority-store/supabase/record-migrations/'
-  + '20260920050000_patient_purpose_policy.sql';
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const SWEEP = 'services/authority-store/supabase/record-migrations/'
-  + '20260920340000_contract_credential_sweep.sql';
 const TASK_CONTEXT = 'services/authority-store/supabase/record-migrations/'
   + '20260920440000_contract_clinical_task_context.sql';
 const ORIGINAL = 'base44/functions/analyzeAndGenerateClinicalTasks/entry.ts';
@@ -43,10 +37,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, PURPOSE,
-    TIME_OFF, SWEEP, TASK_CONTEXT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, agency, first, last] of [
     ['patient-a1', A, 'Ada', 'Lovelace'],

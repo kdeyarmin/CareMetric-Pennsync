@@ -1,12 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Two agency configuration rows: visit point values and a payroll profile.
@@ -22,11 +19,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * The tests seed another agency's row in both cases and check it is untouched
  * — which is the failure those comments describe.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const CONFIG = 'services/authority-store/supabase/record-migrations/'
-  + '20260920280000_contract_agency_config.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -49,11 +41,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The time-off migration carries `agency_colleague`, which the payroll
-  // contract reuses rather than declaring a second colleague lookup.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, TIME_OFF, CONFIG]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, name] of [[A, 'Keystone Home Health'], [B, 'Allegheny Care Partners']]) {
     await db.query(`insert into ${SCHEMA}."agency"

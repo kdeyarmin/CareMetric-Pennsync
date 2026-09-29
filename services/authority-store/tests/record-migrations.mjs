@@ -1,18 +1,23 @@
 /**
  * The record migration directory, as a list rather than as a constant.
  *
- * A contract suite typically builds the authority half by reading
- * `supabase/migrations/` with `readdir` and then applies record files BY NAME —
- * the record store, the broker family and its own contract — so a FORWARD
- * migration over that contract is not applied by it unless somebody remembers
- * to add it. D88 makes a forward file the only legal way to change a store that
+ * A contract suite builds the authority half by reading `supabase/migrations/`
+ * with `readdir`. For the record half it used to name files — the record store,
+ * the broker family and its own contract — so a FORWARD migration over that
+ * contract was not applied by it unless somebody remembered to add it. D88 makes a forward file the only legal way to change a store that
  * has already applied the original, so the gap sits on the only remaining path:
  * a change that adds one can ship with every suite green.
  *
- * Of the suites that name this directory, two apply it whole, and only
- * `contract-clinical-library.test.mjs` exercises contract BEHAVIOUR that way.
  * This module is that loop, named once, so a suite adopting it stops carrying a
- * hand-kept list.
+ * hand-kept list. It deliberately says nothing here about HOW MANY suites have
+ * adopted it: the sentence that used to stand here counted them, was true when
+ * it was typed, and went stale the moment somebody converted one more, with
+ * nothing failing — the house defect, arriving in the file whose whole purpose
+ * is to stop a hand-kept list going stale. The count is not the property
+ * anybody needs anyway. What they need is the RULE, and the rule is checked:
+ * `record-migrations.test.mjs` scans every suite for a record migration handed
+ * to a store BY NAME and fails unless that suite also applies the directory
+ * whole or is pinned there with a reason.
  *
  * Two properties are load-bearing rather than tidy.
  *
