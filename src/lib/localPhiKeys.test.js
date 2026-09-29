@@ -81,7 +81,7 @@ test("unresolved legacy conflicts are never removed by an automatic purge", () =
   assert.ok(!PURGE_FULL_PREFIXES.includes(LOCAL_PHI_KEYS.CONFLICTS));
 });
 
-test("exactly one commit in this history has ever touched QUARANTINED_OFFLINE_KEYS", (t) => {
+test("exactly one commit in this history has ever touched the QUARANTINED_OFFLINE_KEYS line", (t) => {
   // This symbol is the durable handle for the decision that created it: the change that
   // moved CONFLICTS out of PURGE_AFTER_RETIREMENT_KEYS, so that this store is excluded
   // from every purge rather than gated behind the retirement flag. That decision's only
@@ -95,10 +95,10 @@ test("exactly one commit in this history has ever touched QUARANTINED_OFFLINE_KE
   // the symbol is now named in prose by docs/audits/OFFLINE_PHI_BROWSER_STORAGE_*.md too,
   // so an unscoped search already returns more than one commit and always will.
   //
-  // Read the count against a control: every symbol in this file returns 1, because the
-  // file has only two commits in its whole history. So this passing does not make the
-  // symbol special — it establishes only what the external reference needs, that nothing
-  // has touched it a SECOND time.
+  // Read the count against a control: every exported symbol in this file returns 1 under
+  // this same query, because the file has only two commits in its whole history. So this
+  // passing does not make the symbol special — it establishes only what the external
+  // reference needs, that nothing has touched it a SECOND time.
   //
   // Nothing outside the repository can notice when that stops being true, which is why
   // the check lives here. If it fails, the symbol has been renamed or changed again: that
@@ -115,9 +115,16 @@ test("exactly one commit in this history has ever touched QUARANTINED_OFFLINE_KE
     return;
   }
 
+  // `-G`, not `-S`. `-S` selects commits where the NUMBER of occurrences of the string
+  // changed, so it misses an edit that rewrites the declaration while leaving the symbol
+  // named once — and widening the list, `[K.CONFLICTS]` to `[K.CONFLICTS, K.PENDING]`, is
+  // exactly that shape and exactly the change that would break the reference. Measured: a
+  // probe commit making that edit is absent from `-S` and present in `-G`. Both catch a
+  // rename, because a rename removes an occurrence. `-G` also counts a reformat of the
+  // line, which is correct here: a reformat did touch the declaration.
   const commits = execFileSync(
     "git",
-    ["log", "--format=%H", "-S", "QUARANTINED_OFFLINE_KEYS", "--", "src/lib/localPhiKeys.js"],
+    ["log", "--format=%H", "-G", "QUARANTINED_OFFLINE_KEYS", "--", "src/lib/localPhiKeys.js"],
     { encoding: "utf8" },
   )
     .split("\n")
