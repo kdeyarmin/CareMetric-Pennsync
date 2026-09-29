@@ -66,6 +66,17 @@ import { retireLegacyBrowserCaches } from '@/lib/retiredBrowserCacheCleanup';
  * removes entries a queue's own marker says the server already acknowledged,
  * while `PURGE_AFTER_RETIREMENT_KEYS` stays behind both dead links above.
  *
+ * A FOURTH key is in neither of those two states, and it is worth knowing
+ * before anybody writes "the retired offline data is never purged" as one
+ * sentence: `offline_conflicts` is not in `PURGE_AFTER_RETIREMENT_KEYS` at all.
+ * It is `QUARANTINED_OFFLINE_KEYS` (`localPhiKeys.js:114`), and no production
+ * code reads that list — every reference is the constants file and its own
+ * test. So the three above have a purge that cannot be reached, while this one
+ * has no purge written for it, deliberately: it holds a nurse's manual conflict
+ * resolution beside the server copy it disagreed with. Measured here on
+ * `4db1e55` after the PHI thread reported it; the per-key form is the only one
+ * that survives careful reading, and the flat version is not supportable.
+ *
  * Note the shape rather than the instance. The question asked here was whether
  * anything invokes THIS module; that was answered exactly, and the flag chain
  * was a second independent line supporting it. Nobody asked whether the
