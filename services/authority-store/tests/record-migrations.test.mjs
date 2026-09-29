@@ -277,6 +277,13 @@ const namesARecordMigration = ({ path, base }, source) => {
   // A relative name under a directory variable is decided by the DIRECTORY: the
   // authority half of every build walks `../supabase/migrations/` with the same
   // `new URL(name, dir)` shape this rule is looking for.
+  //
+  // Both `const` lookups here tolerate whitespace around the `=`, and that is a
+  // near miss rather than neatness: `s3`, `s4` and their postgres siblings write
+  // `const dir=new URL(...)`, so a pattern requiring ` = ` found no declaration
+  // and reported six suites as unresolvable paths. The check failed closed, which
+  // is the right direction, but it was reporting its own blind spot as a finding
+  // about the tree.
   if (base) {
     const declaration = source.match(new RegExp(`\\bconst ${base}\\s*=\\s*([\\s\\S]*?);\\n`));
     if (declaration) return /record-migrations\//.test(declaration[1]);
