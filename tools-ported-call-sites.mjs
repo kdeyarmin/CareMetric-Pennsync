@@ -241,6 +241,30 @@ export function readExpectations(root) {
  * (D81), whose document reads nothing tenant-scoped, so which of a caller's
  * memberships authorizes it changes nothing on the page.
  */
+/**
+ * **A site is pinned by FILE AND LINE, so a moved site and a new one are the
+ * same refusal.** Read this before treating a `CALL_SITE_TENANT_REGRESSION` as
+ * a finding.
+ *
+ * The identity in these lists is `path:line name`, which makes the diff
+ * readable and makes every entry a hostage to the lines above it. Growing a
+ * comment, adding an import or reformatting anything earlier in a pinned file
+ * re-reports its sites at new lines, and this refuses with the same code, the
+ * same shape and the same `added` array a genuinely new untenanted call site
+ * would produce. Measured 2026-09-29: a header comment in
+ * `src/lib/retiredOfflineQueue.js` moved its two sites from 407 and 494 to 443
+ * and 530 and failed `test:utils` exactly as an unported caller would.
+ *
+ * **What distinguishes the two cases, since the code cannot.** A move takes a
+ * site OUT of the expectations at the same moment it adds one, so the pair
+ * appears in `added` here and in `fixed` on the staleness check below, with the
+ * same file and the same capability name and only the line differing. A real
+ * arrival adds without removing. The two refusals fire in sequence rather than
+ * together — this one throws first — so the second half is not in the message,
+ * and comparing `added` against `expected.absent` by file and name is what tells
+ * them apart. Re-pinning with `--write` is correct for a move and hides a real
+ * regression, so make that comparison before running it.
+ */
 export function checkCallSites(root) {
   const census = censusCallSites(root);
   const expected = readExpectations(root);

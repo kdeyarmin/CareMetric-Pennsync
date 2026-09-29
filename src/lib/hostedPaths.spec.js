@@ -48,6 +48,12 @@ describe('hosted deployment path guards', () => {
     expect(cleanup).toContain('registration.unregister()');
     expect(cleanup).toContain('cachesRef.delete(key)');
 
+    // What this pins and what it does NOT. The population is production source
+    // files under `src/`, so a script, a CLI entry point or an operator running
+    // the module by hand leaves it green. It is a real guard against the SPA
+    // re-adopting the retired queue and it cannot answer "does anything invoke
+    // this" — that was measured repo-wide on 2026-09-29 and the finding lives
+    // in the module's own header, which is where the next reader will look.
     const importers = productionSourceFiles()
       .filter((path) => !path.endsWith('/retiredOfflineQueue.js'))
       .filter((path) => /(?:from\s+|import\s*\()(['"])[^'"]*retiredOfflineQueue(?:\.js)?\1/.test(
