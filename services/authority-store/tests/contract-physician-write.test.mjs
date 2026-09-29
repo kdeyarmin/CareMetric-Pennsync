@@ -12,6 +12,28 @@ import { applyRecordMigrations } from './record-migrations.mjs';
  * and a role that may not, in the same agency -- because a contract that
  * refused everybody would satisfy half of every gate assertion on its own.
  *
+ * WHICH SURFACE EACH CASE PROVES, and which it does not. Every case here
+ * enters at the contract function, as `authenticated`, which is the surface the
+ * refusals are DECIDED on -- not at a helper below it. Asserting that
+ * `physician_write_role` refuses a clinician would pass with no contract
+ * calling it at all, which is the same defect one layer down.
+ *
+ * But a caller does not start here. It reaches this through a route, a handler
+ * whose `exactObject` allowlist can refuse first, and the contract's declared
+ * params -- so a refusal proved here is reachable only if nothing above it
+ * refuses or admits wrongly. Nothing in THIS file establishes that, and the
+ * chain is covered pairwise rather than end to end:
+ *
+ *   screen -> handler allowlist   `tools-handler-allowlist.test.mjs`
+ *   handler -> contract params    `record-contracts.test.mjs`
+ *   contract -> store             this file
+ *
+ * Three pairwise crosses are not one end-to-end call, and the difference is
+ * worth naming rather than glossing: they prove each seam agrees with its
+ * neighbour, not that a real request traverses all three. No test in this
+ * repository does the latter for a record contract, because the handler
+ * reaches the store over PostgREST.
+ *
  * The increment is the case worth reading. PGlite is ONE connection and cannot
  * interleave two callers, so this suite CANNOT prove the concurrency property
  * D78 is about; what it proves is the weaker thing that is actually the port's
