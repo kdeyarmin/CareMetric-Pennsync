@@ -8363,6 +8363,71 @@ right one is documentation, not a control. This is D120's rule about sabotage
 and D107's about a repair that records nothing, arriving together.
 
 
+## D124 — Testing only the values that refuse never reaches the code that accepts
+
+**Added 2026-09-26.** Found in `pennsync_records.operational_limit`, repaired by
+the forward migration `20260920640000_operational_limit.sql` (#322, merged
+`c3393115`).
+
+The helper ended with `return pg_catalog.least(p_limit, 5000)`. **LEAST is a
+parser construct, not a function in `pg_catalog`**, so the qualified spelling
+resolves to nothing and every call carrying a caller-supplied limit raised
+`function pg_catalog.least(integer, integer) does not exist` (42883). Seven
+capabilities call it — `contract_agency_settings_read` and the six
+`contract_*_list` reads over agency settings, tasks, PDF templates, care plans,
+face-to-face encounters, document records and note conversions — and
+`src/lib/independentEntityRoutes.js` refuses a call that names no limit, so
+**every frontend read of those seven tables would have failed.**
+
+Two things hid it, and the second is the decision.
+
+**Nothing caught it at apply time** because the body is plpgsql, whose names are
+not resolved when the function is created. The migration applies clean and the
+helper fails on its first call. That is D51's trap about a column name, arriving
+for a function.
+
+**Nothing caught it in test** because the suite had only ever passed `limit: 0`
+and `limit: null`. Zero refuses at the guard above; null returns the default of
+50. **Both return before the line under test.** The file had complete coverage
+of the values that refuse and none of the one value every real caller sends, and
+twenty-nine tests were green over a dead helper.
+
+**So: a boundary suite that exercises only refusal paths short-circuits before
+the body, and the interior can stay unexecuted behind any number of green
+tests. Cover at least one value that is ACCEPTED and flows the whole way
+through.** The guard and the body are different code; asserting the guard says
+nothing about what follows it.
+
+### Two method notes the repair is worth remembering for
+
+**A reading heuristic for blast radius was worthless and said so loudly only
+afterwards.** The first attempt marked `contract_task_list` "ok" because its
+suite passes a positive limit *somewhere* — membership standing in for the thing
+itself — and it cleared the very capability that was broken. The measurement
+that replaced it is behavioural: build the whole record directory, seed the
+fixtures, call every `public.pennsync_contract_%` wrapper taking `p_limit` with
+a limit the helper accepts, discard business refusals, keep real errors. Seven
+of thirty-three on merged `main`; none after. **And the accepting argument
+values are part of the population**: a run passing null for `p_order` reports
+five, because two of the seven refuse on the order before reaching the limit.
+Same tree, different arguments, and the narrower run is not a correction of the
+wider one.
+
+**It is one mistake and not a class, which was checked rather than assumed.**
+All 45 distinct `pg_catalog.<name>(` spellings in the store were crossed against
+`pg_proc` on a real PostgreSQL 16.13 cluster; `least` is the only one that is not
+a function there, and `pg_catalog.greatest` appears nowhere.
+
+**The remedy is dropping the prefix, never re-qualifying.** The function runs
+`set search_path = ''`, which is why a qualification was reached for at all, and
+a parser construct is not a schema object: it resolves under an empty path with
+no qualification and adds no search-path exposure. The signature stays
+`(integer, text)` byte for byte, because `create or replace` cannot change it and
+the original's `revoke all on function` names it by signature.
+
+Related: [[D88]] (why this had to be a forward migration rather than an edit in
+place), D51, D107.
+
 ## D125 — A union is verified by what it removed, not by what it contains
 
 Two threads append to one file, the merge conflicts, and the resolution is a
@@ -8840,6 +8905,146 @@ figure when a term is unreadable. This says what to do when you are not refusing
 same in spirit: publish what the instrument can support and name the instrument,
 never the answer you expect the measurement to give.
 
+### Addendum, 2026-09-29: the worked case in the ladder thread's own words
+
+**The entry above stands as written.** What follows was added later, and is the
+refusal the rule was drawn from, at `00ae087`, supplied verbatim by the session
+that made it. It is quoted rather than summarised because both halves of the
+rule live in specific clauses, and a paraphrase keeps only one.
+
+Posted with the reading itself:
+
+> **What I am NOT claiming**: that all eight are reachable with a non-null limit. I counted functions whose body contains a call, by splitting on `create function` boundaries; whether each call sits on a live branch needs reading the bodies, and batch C has executed the defect where I have only read it. Their reading beats mine on reachability. Mine is an upper bound on the population and a correction to its kind.
+
+Posted a turn later, correcting its own earlier wording:
+
+> **One correction to your note, on my own wording.** I said eight callers as a figure I had READ — eight distinct functions whose bodies name `operational_limit` — and I should have said plainly at the time that reading gives an upper bound on what a caller can reach, not a count of what does. Your routing of it is right and I have nothing to add from here: I cannot answer whether `contract_note_conversion_create`'s call is on a live branch without executing it, and I am not the session that should. If batch C's gate end comes back saying that function sits on its pinned side, that is the answer I would want before anyone calls the number seven.
+
+The two halves sit in different sentences, so a trim that keeps one loses the
+rule. The bound's DIRECTION is "an upper bound on the population", together with
+the instrument that makes it one — "I counted functions whose body contains a
+call, by splitting on `create function` boundaries". WHO COULD CLOSE IT is
+"batch C has executed the defect where I have only read it. Their reading beats
+mine on reachability", and then the close condition itself: "If batch C's gate
+end comes back saying that function sits on its pinned side, that is the answer
+I would want before anyone calls the number seven."
+
+One thing about the case is in neither quotation, and it is the part a reader is
+most likely to recognise in their own work: **the second passage exists because
+the first was not enough.** The figure of eight had already been published
+before its direction was, so the correction is part of the case rather than a
+tidy-up of it — a bound that arrives after somebody else has read the number is
+a different event from one published alongside it.
+
+## D134 — Measure in the unit the limit is stated in
+
+**Added 2026-09-26.** A threshold and the check that enforces it can be stated in
+**different units**, and the check still passes. Where the limit comes from
+somewhere else — a platform cutoff, a request ceiling, a column width — the check
+must measure in that limit's own unit; where the bound is one this repository
+CHOSE, its unit is simply whatever the check measures and there is nothing to get
+wrong. **Ask which kind you have before picking a measurement**, because the two
+look identical in code and only one of them can be wrong.
+
+**The instance that produced it.** The shared notes have a recall cutoff stated
+in **bytes** — only the first 4 KiB of a file is read back. Those files are prose
+full of em dashes and arrows, so a character count understates: read 2026-09-26
+04:0xZ, three of them measured 4,062, 4,060 and 4,053 characters against 4,090,
+4,084 and 4,069 bytes (several have since been split, so re-measure rather than
+quoting these). On the first, **the 28-byte gap was larger than its 6 bytes of
+remaining headroom**, so a thread checking in characters concludes it has room to
+write and is wrong, and what it then appends is dropped tail-first — which reads
+exactly like a line that was never written. `wc -c`, never a character count.
+
+**Applying the rule immediately found a second instance, and measuring it is what
+kept it from being reported as a defect.** `withinStatementBudget`
+(`tools-pennsync-ledger-statements.mjs:174`) compares `String(sql).length`, which
+is UTF-16 code units, against `LEDGER_STATEMENT_BUDGET = 262144`. The reason
+behind that bound is expressed in bytes — its comment is about one management
+request carrying the whole body, and cites the largest committed migration in KiB
+— so the check's unit and its reason's unit differ. Measured over all 86
+committed migrations: **71 of them contain non-ASCII**, so the units really do
+diverge here rather than coinciding by luck; the largest divergence is 74 bytes;
+both units agree that exactly one migration is over the budget, which is what the
+test naming it needs; and the second largest is 80,024 bytes, under a third of
+the bound. So it is **inert, recorded rather than changed** — and the reason it is
+inert is a property of the CONTENT, that the non-ASCII lives in comments rather
+than in data, which nobody guaranteed and a future migration need not preserve.
+
+**The project already knew this where it was hard.** `bounded_reason` under D33 is
+a byte-exact port that deliberately counts UTF-16 code units because the original
+does, with the astral-character doubling and the trim ordering worked out and
+tested. The lesson was held carefully about SQL being ported and missed about this
+repository's own thresholds — the recurring shape of a rule that exists in one
+place and is not asked next door.
+
+**One more thing the measurement showed, in passing.** That comment's "about 463
+KiB" is now 469 KiB, because the file it describes is generated and has been
+regenerated since. A figure inside a comment is a dated reading like any other.
+
+## D135 — An unchanged figure over CHANGED input still needs a control
+
+**Added 2026-09-26.** This project already holds that a zero needs a
+known-positive control, and D119 holds that a right answer is not evidence the
+instrument read anything. The case that joins them is an instrument whose input
+demonstrably moved and whose every figure held anyway — which is
+**indistinguishable, from the figures alone, from the instrument having been
+handed nothing at all.**
+
+The discriminator built for the ordinary case does not reach it. For an
+instrument whose population is a set of paths, the kind of a re-derivation is
+settled by one command:
+
+```
+git diff --name-only <base>..<head> | grep -E '<the population>'
+```
+
+Zero matches is a silence and the reading is a prediction that held. Non-zero is
+a measurement. **That is sound and it is not sufficient**, because it answers
+only whether a file arrived, never whether the instrument consumed it.
+
+**The mechanism that makes this non-obvious is name reuse.** Where an instrument
+keys its population on a NAME rather than on a file, a `create or replace` of an
+existing object reuses one, so a genuinely new file can move the input and move
+no figure. Nothing in the tool is wrong, nothing is quiet, and the reading is
+correct — it simply carries no evidence about the new file.
+
+**The worked case.** `20260920640000_operational_limit.sql` arrived in
+`record-migrations/` on the merge of #320 and #322. #318's migration-time
+reachability re-derivation over the union read `174 raising / 562 declared / 2
+migration-time calls / 0 unclassified` — every figure identical to the previous
+head, `declared` included, because `pennsync_records.operational_limit` was
+already in the set and the forward file replaces it.
+
+**The control is the instrument over the ARRIVING FILE ALONE**, which is the
+known-positive the figures cannot supply:
+
+```
+declared     : pennsync_records.operational_limit
+raising      : 0
+called       : (none)
+unclassified : 0
+```
+
+It parses, it declares, it finds no migration-time call and nothing it cannot
+place. Without that the move belongs with the four silences beside it, and
+reporting it as a measurement would be an assertion about a file nobody had
+shown the parser could read.
+
+**How to apply.** When the range command says the input moved and no figure did,
+do not report a measurement and do not report a silence. Run the instrument over
+the arriving files by themselves and report that. Ask first whether your
+population is keyed on a name, a signature or a path, because only the last makes
+a new file necessarily a new member — and a name-keyed set is the common shape
+here, since every contract and helper in this store is reached by name.
+
+The general form, which is D119 applied to itself: **an unchanged figure is
+evidence about the instrument's input only once the instrument has been shown to
+have read the change.** Same family as the coincident-figures rule — two
+predicates that usually move together, here "the input changed" and "some figure
+changed", separated by the first forward migration that replaced rather than
+added.
+
 ## D136 — Gate what will RUN, not what was written
 
 D126's guard first scanned the migration FILES for `pg_catalog.<name>(`. That is
@@ -8903,6 +9108,478 @@ belongs to no store. Twice in one evening the catalog was right and the text was
 not, for unrelated reasons — which is the argument for reaching for the catalog
 first rather than for a better parser.
 
+## D137 — A conversion's cost is the shared document, not the change
+
+**Added 2026-09-26.** Converting one contract suite from a hand-kept list of
+record migrations to the directory walk is a small, local change: two or three
+files, one build block, a `MEASURED` list that no longer decides anything. The
+cost is somewhere else entirely.
+
+Every such change carries a decisions entry, and while several threads are
+appending to `docs/BASE44_EXIT_DECISIONS_2026-09-19.md` at once, that document
+conflicts on **every rebase**. #320 took four rebases in forty minutes — main
+moved four times — and every one of them conflicted there and nowhere else. Each
+conflict is cheap to resolve and each costs a full CI cycle, so a change whose
+diff is three test files becomes four cycles on a moving base.
+
+**So sequence by what a change makes others rebase, not by how large it is.**
+Eleven owed entries are eleven conflict storms across whatever is on the critical
+path, which is why doc-only entries queue as one file per number under
+`/mnt/project-files/decisions-owed/` and land together when the queue is quiet,
+while an entry already riding a code change that touches the document keeps going
+with it.
+
+**Two things to keep when resolving one of these.** Both sides are kept, always:
+two appends are two records and neither supersedes the other. And the heading
+count is **counted on the resolved file** rather than inferred from the merge —
+119 after #320's four resolutions — because a resolution that dropped somebody
+else's entry looks exactly like a clean one.
+
+**Why this is a decision and not an observation.** It says where the queue for a
+shared document lives and that a finder writes only its own entry, which is a
+rule about how threads coordinate rather than a fact about the tree.
+
+## D138 — The job-log API returns a tail, so "read the log, not the tick" has a reach limit
+
+**Added 2026-09-26.** Recorded while merging #322, where it bit without changing
+the outcome.
+
+The house rule is that a green check run is not evidence and the job LOG is —
+`skipped 0`, the step pairing, the counts. On a long job that rule has a limit
+worth writing down, because it looks exactly like the rule working.
+
+`mcp__github__get_job_logs` returns the END of a job's log. Its `tail_lines`
+parameter did not extend the window usefully on the CI job here: asking for 1200
+lines reached back to 04:09:46, and asking for 4000 reached back to 04:09:04 —
+**a larger request bought thirty seconds**, because the payload arrives as a
+single line with escaped newlines and the parameter counts something other than
+what a reader wants. The job's own test steps had run from 04:06:00 to 04:08:42
+and were outside both windows. There is no offset parameter, so there is no way
+to page backwards to them.
+
+So on a job of this length, **the log is readable for its last few minutes and
+not for the rest**, and a reader who wants a specific step's summary line may
+simply be unable to get it — while a reader who asks for "the log" gets a real
+answer about a window they did not choose, which is [[pennsync-coordinator-lessons-instruments]]'s
+truncation defect arriving in the evidence for a merge.
+
+**What to do instead, in preference order.**
+
+1. `list_workflow_jobs` on the run returns **every step with its own conclusion
+   and timestamps**, and that is not truncated. It answers "did step 12 run and
+   pass" directly, and it distinguishes a step that ran from one that was
+   skipped — which is most of what reading the log was for.
+2. Run the same script on the identical tree locally and read its counts there.
+3. Where a job's own summary line genuinely matters and lies outside the window,
+   say so rather than implying it was read.
+
+**What was actually relied on for #322**, stated because the alternative is a
+claim that sounds stronger than the evidence: all 29 steps green from
+`list_workflow_jobs` including "Run authority store tests"; `node --test` exits
+non-zero on any failure, so that step's success is a real signal about failures
+though not about counts; and my own run of the identical tree at 737 pass, 0
+fail, `skipped 0`. The CI job's own `ℹ pass` line for that step was NOT read and
+could not be.
+
+**The general form, which is the part worth keeping: when an instrument cannot
+reach the value you would assert, name a second instrument that can, and where
+none can, print what you did read and say what closing it would take.** That is
+D96's pattern applied to evidence for a merge rather than to a check.
+
+## D139 — A check that cannot fail loudly passes silently
+
+**Added 2026-09-26.** A harness can report a pass for a run in which the thing it
+was checking never happened, and both shapes of that appeared in one night.
+**Name what the check DISTINGUISHES, and treat every other outcome as a failure.**
+
+**An ABSENCE assertion is satisfied by no output at all**, which is where this
+hides. `verify-entries.sabotage.sh`, proving the collector's byte comparison bites,
+had one case asserting that D127 — an entry that landed earlier on its own pull
+request and must NOT be flagged — did not appear in the output. The script died on
+bad argument parsing, a stack trace contains no `D127`, and the harness printed
+`QUIET  D127 correctly ignored`. A crash scored as a pass, in the suite written to
+prove a guard sound. The fix is not a better pattern: any exit status outside the
+ones the check actually distinguishes — here 0 for clean and 1 for a finding — is a
+failure, and an absence case additionally needs positive evidence that the run
+happened at all, which is what a known-positive control in the same run supplies.
+**A presence assertion is safer by construction than an absence one, because no
+output at all cannot satisfy it, while an absence assertion is satisfied by a
+crash.** That formulation is ladder's, and the harness above is its SECOND
+occurrence in this project rather than the rule's only case — which is what makes
+it a property of the two shapes of assertion and not a note about one script.
+
+**The second shape is the ladder thread's, and it is the same rule from the other
+end** (its instance, recorded here with attribution rather than authored): an
+ad-hoc `&&` chain written alongside the commit — not a hook and not a pre-commit
+step, a distinction ladder supplied and this entry originally got wrong — chained
+a conflict-marker count, and `grep -c` exits 0
+when it FINDS matches, so the step succeeded **because** there were two markers and
+the commit went through with them still in the file. **An instrument that reports a
+number is not a gate unless something compares it.** Mine left the verdict channel
+unexamined; ladder's left the output channel uncompared. In both, the harness
+believed something the tool had never said.
+
+**Why two occurrences make it a rule.** Either alone reads as a slip in one script.
+Together they say the gap is structural: a check is built by wiring an instrument
+to a verdict, and the wiring — exit status, and what compares the output — is the
+part nobody tests, because testing it means asking what happens when the
+instrument does not work. That is the same question D95 asks about a comparison's
+blind spots and D120 about a sabotage: **the assertion that did not bite is a
+finding too.** Run every guard once with the guard's own machinery broken, not only
+with the code under test broken.
+
+**How to apply.** When you write a check: enumerate the outcomes it tells apart,
+fail on anything else, and never let a zero exit status stand in for a clean
+result when the command's own convention says otherwise (`grep`, `diff` and `test`
+all carry meaning in their status that a bare `&&` discards). When you review one:
+ask what it prints when the tool is absent, crashes, or is handed the wrong
+arguments, and whether that is distinguishable from success. If it is not, the
+check's green is uninformative and has been all along.
+
+## D140 — A difference report that `continue`s on an absent key never compares that object's fields
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`).
+Measured 2026-09-26 at head `31d433d3`, instrument `services/authority-store/tests/store-inventory.mjs`.
+
+### The reading that prompted it
+
+The hosted comparison's difference count sat at 593 across a head that added a migration. A count that does not move is the shape D135 warns about, so the question was whether the instrument had gone quiet. It had not. The number is a measured consequence of the differencer's own structure.
+
+### The mechanism
+
+`store-inventory.mjs` walks the reference inventory and, for each key, looks the same key up in the hosted inventory:
+
+```js
+for (const [key, expected] of ref) {
+  const actual = host.get(key);
+  if (!actual) continue;
+  // ... field-by-field comparison
+}
+```
+
+An object hosted does not have at all is reported **once, by name**, through the separate `missing from hosted: <key>` line — and then its fields are never compared, because the loop has already `continue`d. So for any object absent from hosted, every dimension of the extended inventory (D95's columns, triggers, function bodies, argument defaults, index validity, publication membership) is structurally invisible. Not skipped by a filter, not quiet by accident: the comparison cannot reach them.
+
+### What follows
+
+1. **A difference count over two populations is not a count of differences.** It is a count of differences *among the keys both sides hold*, plus one line per key only one side holds. Those are two predicates and the figure adds them.
+2. **A body-only `create or replace` in a forward migration cannot move the figure** while the object it replaces is absent from hosted — which it is, until the apply. So "the difference count did not move" is the expected reading for exactly the class of change we ship most, and reading it as "nothing changed" or as "the instrument is broken" are both wrong.
+3. The figure that *would* move is unreadable until the apply. Say that rather than reporting the one that cannot.
+
+### The general rule
+
+Where a comparison short-circuits on a missing key, the set of dimensions it reports about that key is **one** — existence. Enumerate what the short-circuit costs, in the comparison's own file, beside the `continue`. A reader who sees only the total has no way to recover it, and a reviewer who reads only the per-dimension test list will believe every dimension is covered for every object.
+
+Related: D95, D135, D118, D122.
+
+## D141 — A classifier's fall-through is a queue; name the classes, claim nothing about the occurrence
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Shipped as #328.
+
+**Scope note.** An earlier draft of this entry carried a third rule, about the *order* of the branches. That half is **D157** and lives there alone — it is a rule about precedence between two orderings and applies well beyond a classifier. Nothing about ordering is repeated here, deliberately: the second copy is the one that goes stale.
+
+### What happened
+
+`classifyToolFailure` in `services/authority-store/tests/http-local-stack.mjs` named nine categories for a failed `supabase start` or `docker` call; anything else answered `LOCAL_CLI_START_FAILED_OUTPUT_REDACTED`. #324 had just split that from `FAILED_NO_OUTPUT`, so for the first time the two readings could be told apart — and one arrived on a head carrying #324: the CLI printed something no branch named.
+
+Three classes a local start demonstrably fails with had no name, and #328 gives them one:
+
+- `PORT_TAKEN_DURING_START` — a port taken between the port pre-flight and the start. This closes a window the port series **structurally cannot** cover: it attaches its observation at pre-flight time, so a port free when it looked and taken when docker bound it can never raise it. The daemon reports it from its own side.
+- `IMAGE_UNAVAILABLE` — an image the runner could not obtain (registry rate limit, missing manifest, pull denied).
+- `SERVICE_UNHEALTHY` — a container the daemon started and then judged unhealthy.
+
+### The two rules
+
+**1. The fall-through is a queue, not the answer.** D123 settled that a classifier's fall-through must not also be its empty case. The corollary is that once it is *only* the fall-through, every arrival in it is a class waiting for a name. Add the name; do not widen the fall-through's comment.
+
+**2. Claim nothing about an occurrence whose evidence is unrecoverable.** Nothing captures the child's output, so the text of the occurrence that prompted this is gone by design. No branch can be offered as its cause, and the code's comment says so. What the change buys is that the *next* one names itself. A branch offered as an explanation of an unrecoverable event is a story, not a category.
+
+### The pattern width, which is the other half of rule 1
+
+Copilot found it: a bare `bind: ` alternative matches `bind: permission denied` and `bind: cannot assign requested address`, so those were reported as a taken port. Naming a class is not the same as bounding it. **Too wide fails loudly, too narrow passes quietly** (D142, D148) — and this one failed loudly to a reviewer rather than in CI, which is the cheap direction to be wrong in and still a finding.
+
+### How it was proved
+
+Each pattern is planted in `http-boundary.test.mjs` **as the tool actually prints it**, not as the pattern spelled backwards: a branch nothing has been shown to reach is indistinguishable from a branch that cannot be, which matters more than usual for branches added on evidence that cannot be recovered.
+
+Both fixes were verified by *restoring the defect* — putting each over-broad pattern back and watching the assertions fail with `PORT_TAKEN_DURING_START` as actual — rather than by trusting the edit.
+
+`emittable` admits the three new codes without an edit, and that is asserted, so the no-forwarding rule still holds: nothing but a literal is emitted.
+
+Related: D123, D124, D142, D148, D151, D157.
+
+## D142 — A control's population is the capability, not the name it shares with its neighbours
+
+**Added 2026-09-26.** D127 says a conversion's strong case is proved by a
+control rather than by an assertion about the present: build the old hand-kept
+store beside the derived one and compare the capability's surface, because an
+assertion over the current surface alone passes whether or not the widening
+changed it. `contract-timesheet.test.mjs` is the worked example and scopes its
+comparison with `proname like '%timesheet%'`.
+
+**Copy the shape, re-derive the scope.** That pattern works for the timesheet
+because nothing else in the store is timesheet-named. Carried verbatim to
+`contract-incident` it FAILS, and not because anything is wrong: four later
+migrations legitimately put four more functions in the `%incident%`
+neighbourhood — `contract_state_incident_submit` (D73) and its public wrapper,
+`state_event_incident_type`, and `dashboard_incident` (D72). The derived build
+holds twelve where the hand-kept one holds eight. A pattern that matches the
+neighbourhood answers a question about the neighbourhood.
+
+So name the functions. `contract_incident`'s own eight — its four helpers, its
+two contracts and its two public wrappers — are identical across both builds in
+`proname`, identity arguments, body hash, volatility, definer, strictness and
+leakproofness. That is the capability, and it is what the strong case is a claim
+about.
+
+**And keep the neighbourhood, as the known-positive.** Deleting the wider read
+would have been the obvious tidy-up and would have left the control satisfiable
+by two identical builds — the failure D127 exists to rule out, reintroduced by
+the fix for it. The suite now asserts separately that the derived store reaches
+strictly more incident-named functions than the control, and that the control
+reaches nothing beyond the capability's own eight. Those two together say the
+builds really differ, which is what makes "identical capability" mean anything.
+
+**The luck worth naming.** This mistake failed loudly: a too-WIDE population
+reds on arrival. The same error in the other direction — a population narrower
+than the capability, a helper left off the list — passes, silently, forever.
+When scoping a control, over-capture first and cut only what you can name.
+
+**One method note.** The first reading of this suite's D127 case was taken from
+the SQL and was wrong. `20260920590000_column_defaults.sql` sets defaults on six
+`incident` columns the contract does not name in its `insert`, so
+`state_reportable` looked certain to move `null` → `false` across the swap —
+which would have made this the absorbing case. It does not move: the generated
+`record_store.sql` already carries those defaults and both builds apply it, so
+that file is the catch-up for deployments that ran the original (D88), not a
+change to any fresh build. Running both builds answered in ten seconds what
+reading the migration got backwards. **A forward migration's effect on a store
+built from nothing is not readable off the migration.**
+
+## D143 — Fear the check that would still pass after its subject was destroyed
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`).
+
+### The rule
+
+Before believing an assertion, ask what would have to be true for it to fail. If you can destroy the thing it is supposed to be protecting and the assertion still passes, it is not a check — it is a sentence that happens to be true. A check earns its place by being **reachable from the defect**, not by being adjacent to the subject or by sounding like it.
+
+The test to apply is not "is this true?" but **"name the change that makes this red."** If you cannot name one, delete it or replace it. A test nobody can make fail is worse than no test, because it consumes the attention the real check would have got and it reads, in a diff, exactly like coverage.
+
+### The case that produced it
+
+Converting `activity-audit.test.mjs` from applying three record migrations **by constant** to applying the whole `record-migrations/` directory. What the conversion buys is exactly one property: *the `before` hook applies every record migration on disk, in apply order.* That property is the subject, and it needed an assertion.
+
+My first one was:
+
+```js
+assert.ok(applied.length > MEASURED.length);
+```
+
+Destroy the subject and it still passes. Have the walk silently skip a migration — passes, as long as more than three were applied. Delete a migration from disk — passes. Apply them in the wrong order — passes, because a length says nothing about order. Add a migration to the directory that the walk cannot see — passes, and *that is the exact defect the conversion exists to prevent*. The assertion's only real content is "the directory has more than three files in it," which was true before the conversion and will be true after every plausible break of it.
+
+It is also the shape **Copilot found on #327 the same evening**, which is why it is worth a number rather than a fix: two of us wrote the same non-check on the same night in two different suites.
+
+### The repair
+
+Compare against an **independently derived** answer, so that either side moving makes it red:
+
+```js
+const onDisk = (await readdir(new URL('../supabase/record-migrations/', import.meta.url)))
+  .filter(file => file.endsWith('.sql')).sort();
+assert.deepEqual(applied, onDisk,
+  'the walk must apply every record migration on disk, in apply order');
+assert.ok(onDisk.includes(AUDIT_MIGRATION),
+  'the migration the capability is derived from must be one the walk applied');
+```
+
+`deepEqual` against a `readdir` fails on a skip, on an addition, on a deletion and on a reorder. The second line names the one migration this capability is derived from, so the set can never be "complete" in a way that omits it.
+
+### The second half, which is D151's rule arriving from underneath
+
+Having added the strong assertion I left the weak one beside it, plus a `notDeepEqual` against `MEASURED`. Plan asked the right question — *does this line have a job at all?* — and it did not: the `deepEqual` neighbour carries the whole claim, and the weak pair's only remaining function was to make the block look more thorough than it was. Both went. **A weak assertion kept beside a strong one does not add safety; it launders the strong one's credibility onto itself and the reader cannot tell which line is load-bearing.** Name the line that carries the property, then delete the rest.
+
+### It applies to prose as much as to assertions
+
+A memory file's frontmatter description is what recall shows, so a description stating more than its body supports is a claim with nothing checking it, delivered to every future reader in preference to the hedged version underneath. `pennsync-unapplied-migration-signature` said in its body that one assertion "CAN pass while the other fails" and in its description that an unapplied migration fails "not as a short ledger"; both had in fact failed in the same run the note was written from, nine lines apart, in the same log its findings were copied out of. Read a description alone and name the change that would make it false.
+
+### The same animal in the test *inventory*, not the test body
+
+Found while shipping #328 and worth keeping on its own, because it survives intact the correction that the shallow-clone hazard it sat next to is local-only and not currently firing.
+
+`services/authority-store/tests/http-boundary.test.mjs` — the suite that carries every known-positive for #328's three new branches — **runs in no `test:*` script at all**. Measured on `af4b3185`: it appears nowhere in `package.json`, and `test:authority-store` enumerates its seventy-odd files by name without it. It runs in exactly one place, `.github/workflows/pennsync-authority.yml:158`, as its own step, before the local stack starts.
+
+Nothing is broken and nothing needs fixing: `src/testRegistryContract.test.js` requires a suite to run in a `test:*` script **or** a workflow, and the workflow step satisfies it. The defect is in what a reader concludes. Run `pnpm run test:authority-store`, see 766 green, and you have *not* run the assertions for the change you are about to ship — and the script's name is the only thing that suggested you had.
+
+**A script name that sounds like it covers a suite is not evidence that it does.** This is the same animal as a population derived from a name pattern rather than from the capability (D142, D148), and as a helper's comment describing a response the helper does not produce: in all three the *proxy* for the thing is read in place of the thing, and the proxy is green. The remedy is the same one step — name the file you need run and run it by name, then check the workflow to see where else it runs.
+
+The reason it is worth a paragraph rather than a fix is that the two suites in #328 sit on opposite sides of the line. `activity-audit.test.mjs` **is** in `test:authority-store`; `http-boundary.test.mjs` is not; both are in the same directory with the same extension and no local signal distinguishing them. So the habit cannot be "suites in this directory are covered by that script." It has to be: **read the script, or read the workflow.**
+
+### Where else this bites
+
+Any figure that nothing compares (D139), any control whose population is a name pattern rather than the capability (D142, D148), and a difference report that `continue`s on an absent key and therefore compares none of that object's fields (D140) are all the same animal: the machinery runs, the output is green or unchanged, and the subject was never interrogated. The remedy is always the same and always costs one step — **break it on purpose and watch it go red before you believe it.**
+
+Related: D135, D139, D140, D142, D145, D148, D151.
+
+## D144 — A base move that changes a test SCRIPT moves your gate's population, not its inputs
+
+**Added 2026-09-26.** Found on #327 while rebasing three times in twenty
+minutes; the walk below is the measurement, and without it the last jump reads
+as mine.
+
+A suite total is a **count over a population**, and the population is whatever
+the script names. Most base moves change the code a suite runs against, so the
+total moving is evidence about the change. **A base move that edits the script
+itself changes which suites are in the count at all**, and then the total moving
+is evidence about nothing you did.
+
+`#318` added `migration-time-reachability.test.mjs` and registered it in
+`package.json`'s `test:authority-store` — **exactly the script this thread's
+gate runs**. Merging main in did not merely give my change new code to run
+against; it enlarged the set being counted.
+
+### The walk, which is the point
+
+| Head | `test:authority-store` | Why it moved |
+| --- | --- | --- |
+| `31d433d3`, change stashed | **738** | the baseline, measured by stashing and re-running |
+| `31d433d3` + the conversion | **741** | my three new tests |
+| rebased onto `4571f31f` | **742** | #326's timesheet conversion arriving |
+| rebased onto `e5866bea` | **747** | #318's new suite arriving |
+
+Every step is a reading, none is a subtraction from the next. **A reader given
+only "738 before, 747 after" would attribute nine tests to a change that added
+three**, and a reader given only the last two numbers would attribute five.
+
+### What to do
+
+- **Establish the baseline by stashing your change and re-running on the head
+  you are actually on** — never by reasoning back from a figure you read on an
+  earlier base. That is what separates the first two rows here, and it is cheap:
+  one suite run.
+- **Re-measure after every rebase, and attribute each jump to the commit that
+  arrived.** `git log <old base>..origin/main` names the candidates; a commit
+  touching `package.json`'s test scripts or a `*.test.*` file is the one to
+  suspect.
+- **Treat "the new commits are unrelated to my change" as a claim about FILES,
+  not about the gate.** #318 touches nothing my diff touches and still moved my
+  number by five. Diff-level independence does not imply measurement-level
+  independence.
+- When quoting a total to anyone, give the head it was read on. A figure without
+  its tree is the defect, not either value.
+
+The general form: **ask what a base move does to your INSTRUMENT before asking
+what it does to your code.** Most of the time the answer is nothing and the
+check costs one `git diff --stat`; the time it is not nothing is the time a
+number gets misattributed and nothing fails.
+
+Related: D106 (three counts that are each derived and never read off another),
+[[pennsync-coincident-figures]].
+
+## D145 — A verification protocol can be satisfied in full and measure nothing about the thing it was written for
+
+**Added 2026-09-26.** D143 holds that a check can be satisfied by an answer
+that proves nothing. This is the same defect one level up, in the PROTOCOL: a
+written sequence of steps, each of them real and each of them passed, whose
+steps between them do not touch the property the sequence exists to establish.
+It is worth its own number because the failure survives an honest converter
+following the instructions exactly.
+
+**The worked case.** D127's conversion protocol asks for sabotage in both
+directions: a later migration that changes the capability's surface must fail
+the comparison, and dropping the measured contract must fail the suite. Both
+were run on `contract-incident`; both bit; both are reported in #329.
+
+**Neither of them measures the gap.** Both run inside the CONVERTED suite, so
+what they establish is that the new test works. The thing the conversion claims
+to buy is that a forward migration now reaches the store this suite measures,
+and no run inside the new suite can speak to that, because the old suite is not
+in either run. So a converter who runs both, reports "sabotaged in both
+directions", and merges has satisfied the register honestly and measured
+nothing about D88's gap on that suite.
+
+**The step that carries the measurement is the third**, and it is not in the
+protocol: run the SAME planted forward migration against the PRE-conversion
+suite. On `contract-incident` that reads **15 pass / 0 fail** — green while a
+migration replaces `incident_lifecycle`, a function the capability depends on,
+because the old suite never applied the file. Against the converted suite the
+same plant gives two failures by name. That pair is D88's gap demonstrated on
+this suite rather than described, and it converts "this buys coverage" from a
+claim into a measurement.
+
+**The strongest statement of it is batch D's, from #327.** Without that third
+run, **a conversion that accidentally applied NOTHING NEW would satisfy the
+method in full**: both sabotages would still bite, because both are about
+whether the new test works, and a suite that builds the wrong store still has a
+working test. Its pre-conversion reading is thirteen pass zero fail — green
+because that suite never applied the planted file at all — against one failure
+converted. That is the form to carry: the protocol's two steps cannot
+distinguish a conversion that worked from one that did nothing, and the third
+step is the only one that can.
+
+**How to apply.** When you write or follow a verification protocol, say of each
+step which of the two jobs it does: *proves the new instrument works*, or
+*measures the property the change is about*. A protocol with no step in the
+second class is not a weak protocol, it is a protocol about something else. The
+tell is structural rather than statistical — every step running against the
+post-change artefact, with the pre-change one appearing nowhere — so it is
+visible by reading the step list, once you know to ask.
+
+**One trap in running the third step, found by re-reading its number.** Once
+the conversion is COMMITTED, `git stash` no longer gives you the pre-conversion
+suite — it gives you HEAD, which is now the converted one, and the run comes
+back with the converted failures under a label saying pre-conversion. The step
+has to name its tree by construction: `git show <pre-conversion-sha>:<path>`.
+The wrong reading looks like a result, not like an error.
+
+**And the thing that found this entry was a correction, not a review.** The protocol
+had already been relayed to three other converters, with the pre-conversion run
+attached as a secondary point rather than the load-bearing one, and nothing in
+the results would ever have contradicted it. What surfaced it was going back
+over my own earlier wording — I had written "sabotaged it both ways" — rather
+than letting the relay carry the phrase onward. **Re-reading what you said about
+your own work is a measurement instrument, and it is the only one pointed at the
+claims nothing else checks.**
+
+**The sentence the rule ends on**, because naming what the steps are compatible
+with beats naming what they fail to measure: **the protocol's two steps cannot
+distinguish a conversion that WORKED from one that did NOTHING.**
+
+## D146 — An undo whose failure mode is indistinguishable from never having worked (2026-09-26)
+
+`git checkout <path>` restores a file from the index, so using it to remove a
+planted sabotage from an uncommitted conversion removes the conversion with it.
+That happened tonight on `services/authority-store/tests/contract-fleet.test.mjs`:
+a one-line sabotage was reverted with `git checkout` and the whole swap — the
+imports, the build block, the control test — went with it. The working tree then
+looked exactly as it had before the work started, `git status` was clean, and
+nothing reported a loss. It was rebuilt from a diff that happened to be in the
+session's own output.
+
+The rule is narrow and mechanical. **Never `git checkout <file>` to undo a
+sabotage.** Commit the change first, then plant and remove the sabotage — a
+commit is what makes the undo recoverable — or undo the sabotage with the exact
+inverse edit, which touches only what was planted.
+
+The general shape is the part worth keeping, because this is the second instance
+of it in one night. The first is the rule about writing a shared
+`/mnt/project-files` file with a bash heredoc, where a sync silently restored the
+old content **and the old timestamp**, leaving a state indistinguishable from a
+write that never happened. Both are undo or write mechanisms whose failure mode
+produces exactly the state that "I never did it" produces, so no check performed
+afterwards can tell the two apart — a verification step is not available, because
+the evidence the check would read is what was destroyed. **Where a mechanism's
+failure is indistinguishable from inaction, the remedy is to change the
+mechanism, never to check after using it.** Commit before sabotaging; write
+shared files with the Write tool; re-read after writing where a read is possible
+at all.
+
+There is a third member of the family already recorded elsewhere and it is worth
+naming here because it is the reason to take the rule seriously: an idempotent
+catch-up migration is undetectable by its own effect (D127). The same question —
+"did this happen?" — has no observable answer in all three cases, and in all
+three the answer was to move the evidence upstream of the operation rather than
+to look harder afterwards.
+
 ## D147 — An entry can survive a merge intact and stop being an entry
 
 *2026-09-26.*
@@ -8951,6 +9628,124 @@ symptom is always local to whatever the instrument keys on — so it never looks
 like the same bug twice. When concatenating text that anything downstream
 parses positionally, normalise the boundary rather than trusting the parts, and
 assert the unit count on the result rather than on the inputs.
+
+## D148 — Derive the compared population; do not tune a pattern for it (2026-09-26)
+
+D142 says a control's compared population is the capability, never the name it
+shares with its neighbours, and that the asymmetry matters: a pattern too WIDE
+fails loudly and gets caught, one too NARROW passes quietly and nobody looks.
+That rule is right and this supersedes the mechanism it recommends rather than
+the rule. **Do not tune the pattern. Remove it.**
+
+`contract-membership.test.mjs` derives the set of functions to compare from the
+three measured migrations' own `create function` declarations, read out of the
+files the suite already applies, and queries `pg_proc` for exactly that set
+(`nspname`, `proname`, `pg_get_function_identity_arguments`). There is then no
+neighbourhood to be too wide or too narrow about. A function added to the
+capability upstream joins the comparison with nobody widening anything, and a
+function belonging to an adjacent capability cannot enter it however it is named.
+
+**The case that defeats a name pattern outright is `bounded_reason`.** It is
+reachable, it authorizes nothing, and it is named like neither a contract nor a
+capability, so no pattern over `proname` either includes it for a good reason or
+excludes it for one. A declaration-derived set has no opinion to get wrong: it is
+in the set if and only if the migration under measurement declares it.
+
+The general form is the part to carry: **where a rule tells you to tune a
+parameter carefully, check first whether the parameter can be removed.** A
+carefully tuned parameter still has to be re-tuned by every later reader, and the
+cost of getting it wrong is borne in the direction that stays quiet.
+
+The second half is the control's known-positive and the two compose. After
+asserting that the widened build and the pre-conversion control expose the same
+declared surface, the same test adds one overload of the capability's own
+`membership_row` to the control and asserts the same comparison now reports a
+difference. So the agreement is shown to be an observation rather than a blind
+spot — the thing an unchanged figure most needs and least often gets — with no
+planted file on disk, nothing to clean up afterwards, and therefore nothing for
+D146 to bite.
+
+## D149 — A converted suite's red after someone else's migration is the conversion working
+
+**Added 2026-09-26.** Derived while converting `contract-credential` (#327),
+before anybody had met it; four suites are converted or converting and this has
+not bitten only because no forward migration has arrived since.
+
+A suite that applied the record store, the broker family and a handful of
+contract files **by name** could not see a migration it did not name. That is
+the gap the conversion programme exists to close (D88). Closing it has a
+consequence that has to be said out loud, because the first instinct on meeting
+it is exactly wrong.
+
+**Once a suite applies the whole directory, a red on `main` after somebody
+else's migration merges is a possible and CORRECT outcome.** The first reading
+of such a red is *the conversion saw something*, not *the conversion is broken*.
+A reader who assumes the second will "fix" it by narrowing the build back to a
+named list, which is the defect, restored, with a green suite over it.
+
+### The worked case
+
+`contract-credential.test.mjs` carries a test that pins the `bounded_reason` gap
+**open**. `20260920180000_contract_assignment.sql` revokes `care_team_row` and
+the two contracts beside it and does not revoke `bounded_reason`, so PostgreSQL's
+default grant to `PUBLIC` leaves it callable. The suite asserts
+`has_function_privilege('authenticated', 'bounded_reason(text)')` is **true**,
+with the message *"if this fails the revoke has landed — replace this test with
+the refusal"*.
+
+That assertion was inert while the suite named seven files: a forward `revoke`
+could have merged and the pin would have gone on passing, describing a store
+nobody runs. **The moment the suite names the directory, the pin becomes
+load-bearing** — and the thing it is pinned to is a state somebody intends to
+change.
+
+### The corollary, which prevents an outage rather than a misreading
+
+**A forward migration that flips a pinned state, and the flip of that pin, must
+be in the SAME change.** Land the revoke alone and `main` is red until the test
+is updated; land the test alone and it is red until the revoke arrives. There is
+no ordering that avoids it, because the two halves are one fact about the store.
+
+This generalises past pins. Any assertion a converted suite makes about the
+whole store — a reachable set, a privilege, a policy's presence — is now coupled
+to every migration anyone lands. **Before merging a forward migration, ask which
+converted suites assert something about what it changes**, and carry those
+updates with it.
+
+### What this does NOT license
+
+It is not a reason to soften an assertion so that no migration can red it. An
+assertion a later change cannot contradict is not an assertion (PIN THE SET,
+NEVER MEMBERSHIP). The answer to a coupled red is to carry both halves in one
+change, never to loosen the half that noticed.
+
+Related: D88, D127, D145, [[pennsync-forward-migration-coverage]].
+
+## D150 — Read your OWN comments on a pull request before merging it
+
+**Added 2026-09-26.** Found on #321 (the catalog-qualified-names gate) minutes before the squash merge, by the ladder thread.
+
+A pull request comment outlives the state it describes. **A stale one on a MERGED pull request reads as current to everyone who finds it later**, because nothing on a merged pull request is going to move again and a reader has no reason to suspect the text of being older than the diff beside it.
+
+The instance: partway through #321 I posted a comment saying CI would go red on that branch and that the red was the intended state, naming the file-scan failure that would produce it. Both halves then stopped being true — the rewrite replaced the file scan with a check over the built catalog, and the fix the comment said was still outstanding had landed. The comment was the only thing on the pull request still asserting a red, and it would have been preserved verbatim, above a green merge, as the most authoritative-looking account of why the branch was failing.
+
+**The rule, which is the reusable half: read your own comments on the pull request before merging, not only other people's, because yours are the ones nobody else will correct.** A reviewer's stale comment gets answered — that is what a review thread is for. Your own gets skimmed past by you, because you remember writing it and remember what you meant, and read the memory rather than the text.
+
+### The repair is an edit, never a deletion
+
+Deleting it destroys the record that the branch was ever expected to be red, which is a real fact about how the change was driven and the thing a later reader is most likely to need. What went on #321 instead, and what should go on the next one:
+
+- the claim struck through with `~~…~~`, so the shape of the original is still visible and unmistakably withdrawn,
+- an edit note carrying the time of the edit and what changed the state,
+- **the original kept intact inside a `<details>` block**, so nothing is lost and nothing is presented as current.
+
+That form survives being quoted: someone who copies the struck line copies the strike, and someone who opens the `<details>` has already been told they are reading history.
+
+### Where it sits beside the other rules here
+
+It is the comment-shaped case of the project's standing one about a second representation — a page describing a store is a second representation of it, and the one that fails nothing is the one that rots (the sentence D51's entry ends on, about `adr_audit_case`). A pull request comment fails nothing by construction: no gate reads it, no test asserts it, and merging does not re-evaluate it. So the only instrument pointed at it is a reader, and before the merge there is exactly one reader who both knows the current state and is looking at the comment.
+
+**A merge is therefore the last moment a pull request's prose can be corrected, and the check belongs there**: before merging, read the pull request's own comment list top to bottom and ask of each of yours whether it is still true at this head. It costs one read of a page already open.
 
 ## D151 — Two lines that lend each other standing, and neither has any
 
@@ -9051,6 +9846,177 @@ READ. **A sweep of this kind produces candidates, never findings, and saying so
 is part of the result** — a candidate list quoted as a count of defects is the
 house defect arriving in the instrument built to catch it.
 
+## D155 — A pointer is an assertion about a file the reader will not open (2026-09-29)
+
+`MEMORY.md`'s "How I decide" section carried the line
+`[[pennsync-coordinator-decision-rules]] holds these in full`, and the file it
+named did not. The rules had been split across a second file, which the index
+also linked — but as one more name in a list, with nothing saying which rules
+were where. A reader following "in full" to the named file would have read it,
+found rules, and stopped, because the index had already told them there was
+nothing else. Nothing fails when a pointer is wrong.
+
+**The shape that makes it a decision rather than a typo is the feedback loop.**
+The same session wrote the pointer and the file, in one sitting, and the pointer
+was TRUE when written; the split came later and the pointer did not move with it.
+And the index's own shortening is justified BY the pointer: the argument for
+cutting the bullets is that the file holds them in full. So a stale pointer is
+exactly what licenses deleting the only other copy of the thing it misdescribes,
+and the deletion is irreversible in a store with no history.
+
+**What caught it was enumeration, not judgement.** The pointer reads as complete —
+it names a plausible file and makes a confident claim, and re-reading it for
+plausibility returns "fine" every time. It was caught by listing the decision
+numbers in each file and comparing the lists, which is D-COMPARE-SETS applied to
+prose: a pointer's correctness is a set relation between what it promises and
+what the target holds, and only the sets answer it.
+
+The remedy shipped in the pointer itself. It now names all three files (the rules
+were re-cut into three on 2026-09-28) and gives each one's numbers: decision-rules
+**D133, D152**; instrument-rules **D129, D136, D142, D144, D148**; green-run-rules
+**D135, D139, D143, D145, D150, D151**. Those lists were read back out of the rule
+headings rather than asserted, and the pointer says on its face that it was, so a
+later reader can tell a derived list from a remembered one.
+
+**One thing about this entry is deliberately missing, and the absence is the
+point.** An earlier draft of the pointer quantified the miss — "a file holding
+three of ten rules". That figure cannot now be re-derived: a memory file is
+overwritten in place and keeps no history, so the state the pointer was wrong
+about no longer exists anywhere. The figure is therefore dropped rather than
+repeated, because a count nobody can re-take is the same class of claim as the
+pointer it was describing. What IS measurable is today's split, 2 / 5 / 6 across
+the three files, 3,275 / 3,536 / 3,776 bytes, taken by `wc -c` on 2026-09-29.
+
+**The asymmetry is what makes this worth a number, and it is the coordinator's
+formulation:** a pointer to a file holding MORE than it claims costs nothing,
+while a pointer to one holding LESS is discoverable only by reading the target,
+and the whole point of the pointer is not to. So the two errors are not
+symmetrical the way a too-wide and a too-narrow pattern are — over-promising is
+silent by construction, and the reader who could catch it is exactly the reader
+the pointer exists to spare.
+
+**The rule to carry:** a pointer that says "in full", "everything", or "the
+complete set" is a claim about a file the reader will not open, so derive it from
+the target rather than writing it from memory — and where removing the
+alternative copy is justified by the pointer, derive it BEFORE the copy is
+removed, not after.
+
+## D156 — A catch-up forward can never be a conversion's known-positive (2026-09-29)
+
+D127 asks whether an apply-list conversion's case is STRONG — no forward
+migration touches the suite's contracts, so the swap should change nothing — or
+ABSORBING, where forwards exist and the store moves by exactly those files.
+Reading the tree answers that question wrongly whenever the forward in question
+is a **catch-up**, and no amount of care in the reading fixes it.
+
+`contract-alert` was classified absorbing by reading:
+`20260920590000_column_defaults.sql` names `patient_alert` and sets defaults on
+the two columns that suite asserts on, which is as direct a hit as a tree read
+ever gives. The control refuted it. A catch-up is DERIVED from what the generated
+store already emits — `tools-pennsync-record-catchup.mjs` reads the statements out
+of the generated file and wraps each in its idempotent form — so a store built
+from nothing gets that state out of `record_store.sql` and the catch-up is a
+no-op there.
+
+**The property that makes a catch-up correct is exactly what makes it invisible
+to a suite that builds from nothing.** D88 requires a forward file because an
+edited merged migration is skipped forever on a store that already ran it, and
+the catch-up's whole job is to leave such a store field-for-field equal to a fresh
+one. A conversion's suite IS a fresh one. So the file is real, its effect on
+hosted staging is real, and its effect on the measurement is zero — which is the
+definition of a useless known-positive.
+
+**AGENTS.md already states the property and nobody drew the consequence.** It
+says of `20260920530000_profile_self_write.sql` that its test "proves the catch-up
+leaves it field-for-field equal to a fresh build", and says in the same breath
+that a build from nothing "is the one case the defect cannot appear in". Both
+sentences were written about D88's own gap and neither was read as saying
+anything about D127's taxonomy. A stated property is not a drawn conclusion, and
+the gap between them is where a whole class of misclassification lived unseen.
+
+**Only the control found it, and the ordering matters.** The wrong classification
+was written into the suite's docblock AND into the commit message before the
+control ran; both had to be rewritten. Had the conversion shipped on the reading,
+it would have shipped with a known-positive that cannot fire, a comment asserting
+a relationship that does not hold, and a green run — the whole apparatus of a
+sound conversion around a measurement of nothing, which is exactly D145's shape.
+**So run the control before writing down which case you are in**, not to confirm
+the reading but because the reading is not evidence.
+
+**The rule.** When classifying an apply-list conversion, first ask of every
+candidate forward whether it is a catch-up. If it is, it cannot move a
+from-nothing build by construction, it is not evidence for ABSORBING, and it
+cannot serve as the known-positive. What CAN serve is the neighbourhood's growth
+as a set relation — the derived build gains functions and loses none — plus a
+planted change inside the test's own transaction, which is D148's second half.
+
+A second finding from the same work takes no number and folds into the
+name-its-tree-by-construction rule as its second occurrence: the sabotage harness
+read the pre-conversion suite from `HEAD`, which became the converted suite the
+moment the conversion was committed, so the blind arm was measuring the sighted
+one. It now names that revision by construction, as the newest revision of the
+file whose content does not yet call `applyRecordMigrations`.
+
+## D157 — When two orderings compete, the chain's order is the only thing that expresses which wins
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Found on #328 by Codex, in a regression I had introduced in the same change.
+
+### The rule
+
+A chain of `else if` branches over one piece of evidence encodes a **precedence**, not just a set of cases. Where two branches can both match the same output, the earlier one wins, and **no comment, name or test can express that** — only the position. So whenever branches are added to such a chain, the question is not "is each pattern right?" but "what else can match this text, and which answer do we want when both do?"
+
+The specific precedence this case settles, and the one to reach for:
+
+> **A fact about our own artefacts outranks an infrastructure heuristic about the run in which they were observed.**
+
+Our own migrations, refusals, contracts and named error codes are things we authored and can act on. A port collision, an image pull, a container health verdict are properties of the machine. When both are visible in one blob of output, reporting the machine's is reporting the *consequence* and discarding the *cause*.
+
+### The case
+
+`classifyToolFailure` in `services/authority-store/tests/http-local-stack.mjs` classifies the output of a failed `supabase start`. #328 added three infrastructure branches (`PORT_TAKEN_DURING_START`, `IMAGE_UNAVAILABLE`, `SERVICE_UNHEALTHY`) and I placed them **before** the existing migration-code and SQL branches.
+
+That is wrong, and wrong in a way that is invisible in isolation. A named `PENNSYNC_*` refusal raised by one of our own migrations is normally followed by its consequence: the refusal kills the container, the container exits, and the CLI prints **both** in one blob. Asking about the consequence first answers `SERVICE_UNHEALTHY` — true, useless, and it hides the one fact the module exists to preserve. Every new branch was individually correct. I had reasoned carefully about *local* ordering (image before unhealthy, because a pull failure also leaves a container not running) and not at all about *global* ordering, because the three branches looked like a self-contained block and were reviewed as one.
+
+The repair is one line of movement: the three go **after** the migration and SQL branches.
+
+### Why it needs a number rather than a fix
+
+Two reasons.
+
+**It is not detectable by the tests that cover the new branches.** Each of the three has a known-positive planted as the tool actually prints it, and all three passed in the wrong position, because each plant contains only its own signal. A chain's precedence is only observable on input that matches **two** branches, and nothing had such an input. The proof had to be constructed: plant a blob carrying a `PENNSYNC_*` refusal *and* an unhealthy-container line, assert the migration code. Verified by moving the branches back up and watching it fail with `SERVICE_UNHEALTHY` as actual.
+
+**The shape recurs wherever a block of cases is added to an existing chain.** A new block reads as additive and is not: inserting at the top silently re-decides every ambiguous input the chain already handled. The habit to build is that adding a branch to a chain is a change to the branches **above and below it**, so the diff to review is the whole chain, not the inserted lines.
+
+### How to apply
+
+1. For each branch you add, ask what *other* branch could match the same output.
+2. If any can, name which answer is wanted and place accordingly — the position is the specification.
+3. Prove it with an input that matches both, not with one that matches only the new branch.
+4. Then break it: swap the order back and watch the assertion go red (D143).
+
+Related: D123, D141 (the classifier's own rules, which no longer carry this), D142, D143, D148.
+
+## D158 — A pinned block is a LOCATION as well as a value, so copying it moves whatever is anchored to it
+
+`tools-entity-routes.test.mjs` pins the `entity routes:` reading in the go-live plan two ways: the block must be byte-identical to what the printer emits, and the prose after it must restate none of its figures. The second check finds its region with `lines.indexOf(firstLine)` — the FIRST line equal to the block's first line.
+
+So a verbatim duplicate of that line anywhere EARLIER in the page relocates the region onto prose that was never written about the block. That prose restates none of those figures, so the check passes. A real violation in Stage J's own prose goes green.
+
+**The edit that triggers it is the one a careful editor makes for a good reason.** Section 2's critical-path item was stale and the obvious repair is to paste the measured block in beside it so a reader does not have to re-derive. That paste is the defect. It would have been reviewed and approved.
+
+Measured on `6e867ff7`, two runs, and **the known-positive is the second**:
+
+| | result |
+| --- | --- |
+| restatement planted in Stage J's prose, no duplicate | 14 pass / 1 fail — the guard bites |
+| same restatement **plus** a verbatim duplicate earlier in the page | **15 pass / 0 fail** — blind, violation still present |
+
+A fix that only shows its own new assertion failing before and passing after proves the assertion works, not that the hole was real. The second row is the finding; the first is a control on the harness.
+
+The repair is six lines, scoped `copies <= 1` rather than `=== 1` so the absent-block case keeps its own assertion and its own message — a duplicated block and a missing one are different mistakes with different remedies, and one message cannot name both. It rides the change that next updates the pinned block, so the widened guard is what checks that edit rather than the blind one checking it.
+
+**The general form: when a check locates its subject by matching content, adding a copy of that content anywhere is an edit to the check.** Look for `indexOf`, `find`, "the first heading after", "the block above" — anything positional keyed on text a writer is free to repeat.
+
 ## D159 — Some populations have no declaration to derive from, by construction
 
 D148 says derive a population from declarations rather than from a pattern, and
@@ -9115,3 +10081,492 @@ it cannot be derived, measure the population both ways, control the guard in
 both directions, and assert the blind spot so the gap is checked rather than
 promised. A documented gap with a test on it is a real answer. A wider pattern
 is not.
+
+## D160 — A wave whose reading comes back negative is a result
+
+**Decision.** A wave that crosses to nothing is reported as measured and closed. It is not re-scoped, not substituted for silently, and not held open while somebody looks for work in it.
+
+**Why it needs to be a decision rather than a habit.** A thread handed a named wave reads the name as a commitment that the wave contains work. When its own measurement comes back empty, the cheap resolution is to widen something until the wave is non-empty — and in this repository the nearest thing to widen is a contract's projection, which is a forward migration through the back door and lands on a store nobody can re-run (D88). So the pressure created by a named-but-empty wave points at exactly the change the migration discipline exists to prevent.
+
+**What it looks like in practice.** `credential-queues` resolved entirely into #293. `incident-queues` crossed to 0 of 15 sites, `compliance-audit-reads` to 0 of its 7 read sites, `PolicyAcknowledgment` to 0 of 1. Four negative readings, none of which is a thread failing to find work: each is the answer that the work is already declared somewhere else, which is the thing the cross exists to discover. A list of eleven waves that survives contact with measurement at eleven is a list nobody measured.
+
+**The instruction.** Cross a wave against the open pull requests BEFORE starting it, report the empty result in the same words a non-empty one would get, and draw the next wave from a rebuilt intersection rather than from the next name down the list.
+
+## D163 — A stronger assertion placed after a weaker one is unreachable exactly when it would be most informative
+
+### The rule
+
+When two assertions in one test speak about the same subject and one of them is strictly more informative than the other, **the more informative one must run first**, or it never runs in the state that needed it. Node's test runner abandons a test body at the first throw, so an ordering that looks like "check the cheap thing, then the detailed thing" is really "in every failing case, report the cheap thing and discard the detailed one."
+
+Ordering is not a style question here. It decides what a failure is allowed to say.
+
+### The case that produced it
+
+`services/authority-store/tests/hosted-store.test.mjs`, measured at head `36402f33`, in `the ledger holds one row per committed migration`:
+
+```js
+assert.equal(ledger.rows, committed.length,           // :487
+  `the ledger holds ${ledger.rows} rows for ${committed.length} committed migrations`);
+// ...
+assert.deepEqual(ledger.names, committed.map(ledgerName).sort());   // :494
+```
+
+The count at :487 says *how many* migrations the hosted store has not run. The name comparison at :494 says *which ones*. The second answer contains the first and is the one an operator actually needs, because the remedy is an apply of named files and the count alone does not identify them.
+
+And the count is the assertion that fails in the D93 state — a merged, unapplied migration. So the name-level comparison is dead code in precisely the situation it was written for: whenever the store is short, :487 throws and :494 is never evaluated. Every run I have read reports `74 !== 85` and no names.
+
+That is the whole defect. Nothing is wrong with either assertion. What is wrong is that the weaker one is in front.
+
+### Why it survived
+
+Because it passes. On an applied store both assertions hold, so the suite is green and the ordering costs nothing observable. The ordering only bites on failure, and on failure everybody reads the message that *did* print and stops. Nine consecutive reds on this job printed a bare pair of integers and nobody noticed that a list of names was sitting two lines below, unreachable.
+
+This is D151's rule arriving from a different direction. D151 says a weak assertion beside a strong one launders the strong one's credibility — the reader credits the pair with the strong one's force. Here the weak assertion does something worse than launder: it **consumes the failure**, so the strong one contributes nothing at all, ever, and the suite still reports itself as carrying both.
+
+### The repair
+
+Put the name comparison first. `deepEqual` over two sorted arrays already reports a count mismatch as part of its diff, so the count assertion is redundant once the order is fixed — but it is cheap and its message is readable, so keep it *after*, as the fallback for the case where the names agree and the rows do not (a duplicate `version`, which `distinct_versions` also covers).
+
+Concretely: `names` first, then `distinct_versions`, then `rows`. Most informative to least.
+
+**This repair does not belong in #328 or #339.** Both of those are conversions of a suite's *population*, and folding an assertion reorder into either one would mean a green run no longer tells you which change bought what. It is its own change, against its own before-and-after: run it in the D93 state and prove the failure now names the eleven migrations.
+
+### How to apply
+
+1. In any test body with more than one assertion about one subject, ask which assertion a reader would rather have on a failure. If it is not first, it is not really there.
+2. Prefer one assertion that reports structure over two that report a scalar and then the structure. A `deepEqual` over named collections subsumes a length check and says more when it fails.
+3. Do not judge the ordering by reading the green run. Force the failure and read what it prints. The ordering defect is invisible from a pass by construction — it has no effect on a pass.
+4. When you find one, check its siblings. An ordering habit is a file-level habit, not a line-level accident.
+
+### Scope
+
+This is about two assertions **in one test body**, where a throw ends the body. It is not about ordering across `test()` calls, which the runner isolates: a failing test does not prevent a later one from running, and splitting the two assertions into two tests is a legitimate alternative repair — it makes both reachable at the cost of two failures instead of one.
+
+Nothing here is about the ordering of *checks in a chain* of scripts. That is D157, and it is a different rule about a different mechanism; the two are deliberately not merged.
+
+## D165 — "CI does not gate it" and "nothing gates it" are different claims (2026-09-29)
+
+The sentence this project has been carrying about the integration runtime is
+*"`services/integration-runtime` deploys on merge without waiting for CI, so it
+can change with nobody deciding."* Every clause of it is true. It had been
+reading, in this thread and in the coordinator's index alike, as **nothing checks
+it**, and that is false — which matters, because the two claims call for
+different responses and only one of them is the real exposure.
+
+Measured 2026-09-29 from `describe-service` on `pennsync-integrations`, not from
+the Dockerfile and not from the other service:
+
+- `source.rootDirectory` is `/services/integration-runtime`, so the build context
+  is that directory alone. Nothing accumulated elsewhere in the repo can enter
+  the image, however far behind main's tip the running revision is.
+- `build.buildCommand` is `node --test *.test.mjs`, so **the runtime's own suite
+  runs inside the image build**. A red suite fails the build, and a failed build
+  does not replace the running deployment.
+- `deploy.healthcheckPath` is `/healthz` at a 120-second timeout with three
+  restart retries.
+
+So the merge is not screened by CI and is screened by two other things. Saying
+"nothing checks it" overstates the exposure, and overstating it is not the safe
+direction: it invites a remedy aimed at the wrong gap, and it makes the true gap
+harder to see because the alarming version is already believed.
+
+**The useful output of closing the gap is not the reassurance. It is naming the
+class the real gate is blind to.** The in-image suite can read only its own
+directory — D60's discipline arriving from the other side, since the build
+context is the whole of what it can see — so a regression that shows up only
+against another service, a root guard, or the authority store is precisely what
+it cannot catch. That is also the class root CI exists to catch, and for this
+service root CI runs after the deploy is already serving. The exposure is
+therefore narrow and specific rather than total, and it is the narrow specific
+version that tells anyone what to do.
+
+**The general rule:** when a check is absent, say which check and name what the
+remaining ones cannot see. A bare "nothing gates this" is not a stronger version
+of "CI does not gate this" — it is a different and usually false claim, and it
+displaces the question that has an answer.
+
+One figure belongs with this and NOT in any index: on 2026-09-29 the running
+revision `720d1401` was 40 commits behind main's tip with **zero** of them
+touching that path, and the tree hash of `services/integration-runtime` was
+`f3940f6d` at both. That is why the hazard was small that day, not why it is
+bounded. Both halves are re-takeable in a line — `/readyz` gives the running
+revision, `git rev-parse <rev>:services/integration-runtime` gives each tree
+hash — so re-take them rather than quoting these.
+
+## D166 — A work list built from a residual is not a work list
+
+`check:entity-routes` reports what has no route. That is a subtraction, and a wave list derived from it names what is MISSING rather than what anybody can do. Two waves were sized off it and both came back empty, for two different reasons that looked identical from outside.
+
+**`credential-queues`, ten sites.** Every one of the ten is already declared by an open pull request (#293). Nothing is wrong with the sites and nothing is wrong with the instrument; the work simply belongs to somebody else already.
+
+**`pay-and-time`, seven sites.** No contract performs the statement kind any of the seven needs on the entity's table. `contract_time_off_approved` is the only pure read among the pay and time tables, it takes an agency and nothing else, and it hard-codes `status = 'approved'`. So the sites are real, unrouted and unservable: the way to make this wave land is to widen a contract, which after D88 means a forward migration, which is a decision about the store rather than a screen repointing.
+
+**The two emptinesses are different facts with the same appearance.** One says "already claimed", the other says "cannot be served without a store change". Reported as a count of remaining sites they are indistinguishable, and either one read as the other sends the next reader to rebuild a wave that is done or to write a port nothing can invoke.
+
+**The rule.** A wave is work only where three things INTERSECT: a site with no route, a capability that can actually answer it, and nothing already declaring it elsewhere. Size a wave on the intersection, never on the residual. And when a wave comes back empty, say WHICH of the three was missing — a bare empty result is a measurement whose meaning has been thrown away.
+
+Note what this does not say. `check:entity-routes` is correct and the subtraction is the right thing for it to report; the defect is in deriving a work list from one instrument's complement. This is the same shape D142 records about a control's population and D148 about a pattern's, arriving in a work queue instead of a test: a set is only as good as the predicate that built it, and a residual's predicate is "not yet", which is not a predicate about capability at all.
+
+## D167 — Doc rot has two directions and the REASSURING one is the one to distrust
+
+This project has recorded all night that documentation rots toward inventing hazards. That is one direction of two, and the other is worse.
+
+A stale hazard invents work and is LOUD: `AGENTS.md`'s claim that D82's `user_update` policy had not reached hosted staging was D82's finding, an apply carried it, and a reader reasoned soundly from the stale sentence to the conclusion that a merged profile-write port would meet a store refusing every write it makes. Nothing in that reasoning was wrong. The premise was a document. It cost a report and an investigation, and it announced itself.
+
+A stale "nothing is pending" HIDES work and reads as reassurance. `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`'s Stage D said *"The store side of every wave is applied, measured rather than assumed"* and *"the ledger has nothing pending"*. D93 says a migration merged since is pending until an operator applies it — which is exactly the condition the readings happened to find absent. Nobody investigates a sentence that says there is nothing to do.
+
+**The mechanism is an undated heading sitting above dated readings.** The two readings under it are properly dated and attributed — `already_applied: 73`, `hosted-gap` on `b8e4e021`, 2026-09-23, then "as of 2026-09-25". The heading carries no date at all. A reader takes the undated line as the standing claim and the dates as supporting detail, which inverts which one is load-bearing. A correctly dated reading can make an undated heading MORE credible, not less.
+
+**The repair recipe, which is the reusable part.** Reshape into a dated finding that names three things — the date, the instrument, and the tree it was read on — and assert nothing about now. The model is already on that page, at `plan:2503`:
+
+> "First measured 2026-09-25 shortly after `#276` merged, by an unauthenticated GET of each `/healthz`, with `main` at `17c9cdc`."
+
+Date, instrument, tree. When an entry says "reshape into a dated finding", that sentence is what it means.
+
+Two corollaries. **Removing an assertion is safe in both directions; replacing it with a second unmeasured one is not** — where the current state cannot be measured from where you are, say what was true and when, name the command, and stop. And **report what you checked and left alone**: a sweep that lists only its findings cannot be told from a shallow one, which is why the AGENTS.md line-number citations and the two pinned blocks are recorded as verified rather than silently skipped.
+
+> The invented-hazard direction does not only show up in warnings. It shows up in WORK LISTS, where it is easier to miss because a backlog nobody has measured against the store reads exactly like a backlog. Stage G's `entity_authorization` row said "Ports to write, not decisions" over seven capabilities, and measured, none of the seven could be built against anything that exists and three of them were not build work at all. A table describing seven pieces of work waiting to be picked up is a hazard invented loudly — which is the half that at least announces itself — and it survived because nothing compares a work list against the store it claims work is waiting on. When a page names work, ask what would fail if the work were already impossible.
+
+And one more, because it happened inside the sweep written for it: my own item 6 said the `proseAfterPinnedBlock` fix "is handed to the change that next updates that block", and the very next change to that block — #338, mine — landed without it. **A sentence that names a future event as the thing which will close a gap starts rotting the moment that event happens without closing it**, and it reads as closed rather than open, which is the reassuring direction again. Say what is in the tree and name the file to check, not what some later change will do.
+
+## D168 — The route gate proves the arguments and says nothing about the return
+
+**Decision.** A route is not landed without a test of its projection, and the gate's own headline is read as a statement about arguments only.
+
+**What the gate actually proves.** `check:entity-routes` takes each call site's arguments and runs them through the route's `request`. It never calls `response`. So a route counted SERVED and a route counted unserved are in **the same position** on what comes back: neither has been exercised. The consequence is that the figure means less than its name — a route can be reported as served, pass every gate, and hand its screen `undefined`.
+
+**How it was found.** A sabotage, not a reading. Changing `Task.create`'s projection key from `task` to `entries` passed the entire `independentEntityRoutes.spec.js` suite, because the operational family's projections are covered nowhere in it. Six sabotages had already bitten the assertions written for them; this one found the hole those assertions were not pointed at.
+
+**The rule.** A projection test rides the wave that lands the route, every time. This is not the test coverage that has been deferred behind the apply: a route that hands a screen the wrong object is a broken screen, and a broken screen is the transfer failing at the only thing it exists to do. The twelve routes landed before this decision stay uncovered and are a separate piece of work — retrofitting them inside a wave PR would hide a dozen fixes in a change about two.
+
+## D169 — An index that names other containers' contents cannot be told from a container that holds them (2026-09-29)
+
+The coordinator's rules for this project now live in six memory files, each
+opening with a pointer that names its five siblings and says which decision
+numbers each of them carries. Splitting them that way was right. What it created
+is a file in which the decision numbers belonging to *other* files appear, in
+prose, above the ones belonging to this one.
+
+To report the split back, this thread derived each file's contents from the file
+itself rather than from what it had intended to write — the right instinct, and
+the instrument was wrong. The population was **"a parenthesised D-number
+anywhere in the body"**, and it reported `claim-vs-evidence` as carrying D153 and
+D157. It carries neither. Both are named in its header pointer, which is how a
+reader is meant to find `negative-result` and `order-and-anchor`.
+
+**The reason it read as obviously right is the reason it was wrong.** Every rule
+in these files is cited the same way — a bold heading, then `(D<n>, whose case
+it is)` — so a scan for parenthesised numbers is precisely the shape the
+contents take. It is also precisely the shape the pointer takes, because a
+pointer that did not name numbers would not be usable. The two are textually
+identical, and **no instrument that reads one container alone can separate
+them**: the distinguishing fact is not in the text, it is in which part of the
+file the text sits in.
+
+So the derivation has to be scoped, and — this is the half worth carrying —
+**the output has to say which line it scoped to.** An unstated scope is not a
+weaker claim than a stated one; it is an unreproducible one. The next reader
+cannot tell whether a number came from the body or the pointer, which is the
+exact question the derivation existed to answer. Here the scope is the paragraph
+beginning `**How to apply:**`, which every file in the series carries and which
+sits below the pointer and above the first rule.
+
+**The near miss is what makes this worth a number.** The coordinator was, at
+that moment, collapsing the index's own section onto these six files and had
+said it would not write a memory link it had guessed — it was waiting on this
+thread's table. Had the unscoped derivation gone out, two rules would have been
+indexed into a file that only mentions them, on the one page that routes
+everybody, and the error would have been discoverable only by opening the target
+— which is what an index exists to spare a reader. That is D155 from the
+other side: D155 is a pointer being wrong about its target, this is a pointer
+being *mistaken for* its target.
+
+What caught it was enumerating the derived set against each file's own bold
+headings. Re-reading the script did not, and would not have; the script does
+exactly what it says.
+
+**Corroboration from the same sitting, and the general remedy.** Three other
+population errors, all from defining a population by pattern: `check:[a-z-]+`
+truncates `check:base44-surface` at the digit, and `check:[a-z0-9-]+` matches
+*inside* `typecheck:signal` and `typecheck:utils` — inventing two gates that do
+not exist while losing one that does. Those were fixed by taking the population
+from an enumeration the system publishes about itself,
+`Object.keys(pkg.scripts).filter(k => k.startsWith('check:'))`. **Where such an
+enumeration exists, derive from it.** A memory file publishes no manifest of its
+own contents, so there was nothing to fall back to, and the substitute is the
+stated scope: cut the region deliberately, name the line you cut at, and let the
+next reader check the cut rather than the conclusion.
+
+This is the mechanical half of the coordinator's own rule that **the index is a
+representation too**. The index is not merely another thing that can go stale;
+it is a thing whose text is indistinguishable from what it describes.
+
+## D170 — Agreement between two runs of one method is one reading with two witnesses
+
+*Added 2026-09-29. Found because the coordinator offered it to me as corroboration and it was not.*
+
+Two threads measured which `pennsync_records` functions are reachable by a caller. Batch C reported fourteen names without a `contract_` prefix; I reported fourteen before my change and five after. The coordinator read the agreement as two independent readings of the store converging, and told batch C so.
+
+They are not independent. Both are `has_function_privilege(role, …, 'execute')` asked of a PGlite build of the same tree. That is **one method run twice**. Everything the method cannot see, it cannot see in either run: if `has_function_privilege` answered the wrong question, if the PGlite build diverged from a real cluster, if the directory walk skipped a file, both readings would be wrong together and would still agree. **Two witnesses to one reading feel like corroboration and carry none.** The count is a predicate over a population, and running the same predicate twice over the same population tells you the predicate is deterministic.
+
+**What corroborates is a different ARTEFACT, not a second run.** The load-bearing question about those fourteen was whether the five `entity_*` broker entry points are reachable by decision or by accident. No amount of reachability measurement answers it: the store says they are reachable, and says nothing about whether anybody meant it. The answer is in `20260919180000_record_brokers.sql`, which revokes nine names in one statement and grants exactly five back to `authenticated` on the next line, leaving `brokered`, `broker_scope`, `broker_reserved` and `broker_check_payload` unreachable. **The prefix is not the evidence; the re-grant statement is.** Neither reachability run would have surfaced it, and a third run would not have either.
+
+The same shape appeared inside my own change. The store-wide check reports zero violations, and zero is also what a derivation that read nothing reports. Re-running it does not distinguish the two. What distinguishes them is removing the forward migration and watching the same code report exactly the nine — a different state of the world, not a second look at the same one.
+
+### What to do
+
+- **Before calling two readings independent, name what would have to be wrong for both to be wrong.** If the answer is "the method", they are one reading. Write down the method beside each figure, not just the tree.
+- **Prefer an artefact to a repetition.** A grant statement, a migration's own text, a call site, a policy — something that was written by a different act than the one you are checking. That is what can contradict you.
+- **A repetition is still worth something and is worth exactly what it is**: it rules out a transient, a typo in one invocation, a mis-copied head. Report it as that.
+- **This bites hardest where the readings come from different people**, because the social fact of two threads agreeing is what makes it feel like evidence. Two threads running the same query are not two instruments.
+
+Related: it is the same animal as praising a reconstruction as a measurement, and as a control that comes back blind not being a finding until the harness has been shown to bite. The general form is that **a result which cannot tell two worlds apart is not evidence about which one you are in**, however many times it arrives.
+
+## D171 — A write-side rule read as a read-side rule changes who decides
+
+**Decision.** Before routing a question to the owner on a decision's authority, quote the decision.
+
+**What happened.** Two per-patient incident call sites feed `severity` and free-text `details` into a model prompt. They were held, and the reason given for holding them was D44 — cited as "D44's reviewer-decided fields", which sounds like a rule about who may SEE those fields. Read that way, the question becomes an authorization question, and an authorization question is a product call, and a product call parks on the owner. It sat there for most of the night.
+
+**What D44 actually says.** Its field rule is about writing, and it explains why:
+
+> **The original's field split is a security control and says so.** `severity`, `state_reportable` and `ai_tags` are patchable by a reviewer only, because they are the inputs to `incidentNeedsCorrectiveAction`, which is what the resolve gate reads:
+>
+> > *"if the reporter could write them, they could downgrade their own high-severity incident and clear the state-reportable flag, after which the resolve gate reads the softened values and lets it close with no corrective action -- defeating the control this function exists to enforce."*
+
+And then, settling it in one sentence, in the paragraph on the direction of the split:
+
+> **The severity split has a direction, and reading it as "reviewer-only" breaks the control it protects.** The reporter NAMES the severity when filing, exactly as the original does, defaulting to `medium`. They may not soften it afterwards. A first draft of this contract floored severity at submission on the theory that a reviewer's field is a reviewer's field throughout — which would have recorded a nurse's high-severity fall as low, and the gate reads the STORED value, so the control would never fire. **The rule is about mutation, not about authorship.**
+
+So D44 governs who may CHANGE those three columns and says nothing whatever about who may read them. A screen or a contract reading `severity` is not touching D44.
+
+**What does govern the question.** D64 — *"every column that reaches a prompt is named"* — which exists because `clinical_event.source_text` is the raw note an event was extracted from, and a contract returning the whole row would hand that note to a model asked for a structured summary. Naming the columns is a contract shape. It needs nobody's permission and it was available the whole time.
+
+D44 does carry one disclosure rule, and it is worth reading beside D64 because it is the same instinct in a different place:
+
+> **The alert names no patient, and that is a narrowing this store requires.** `notification_read` is agency-WIDE while D24 narrows a chart to its care team, so a patient name on a notification would be readable by an `office_staff` member who opens no chart.
+
+That is about what a notification may carry, not about what a reader may see, and reading it as the latter is how the confusion started.
+
+**The tell was in the text.** "The rule is about mutation, not about authorship" is one sentence in the decision, and nobody read it until somebody was asked to quote the decision verbatim rather than cite it.
+
+**Why it generalises.** A decision's label is a second representation of the decision, and it rots in one direction: toward sounding broader than the text. A write rule sounds like a disclosure rule; a narrowing sounds like a prohibition; a reviewer's field sounds like a secret. Each drift moves a question one step up the chain to somebody who cannot answer it, and the cost is paid in the owner's attention rather than in a failing test — so nothing catches it. The remedy is cheap and specific: when a decision is the reason a question is not yours, open the decision and read the paragraph.
+
+## D172 — A precondition stated over a pair is a property of one member at one moment (2026-09-29)
+
+The rule this project has carried about Railway release writes is: *a variable
+write rebuilds the service from main's unpinned tip, so it is safe only while
+that directory's tree hash matches the running revision.* The rule is right. The
+way it was written down was not, and the difference is who has to re-evaluate it
+and how often.
+
+It was phrased about **the services**, as though it described a state the pair
+was in. It describes one directory, against one running revision, at one head.
+Two services, two directories, two running revisions: three of those move
+independently and the fourth — main's head — moves under both. So there is no
+moment at which "the tree hash matches" is a fact about the system. There is only
+a fact about a member, taken now.
+
+**Measured 2026-09-29 at main `faecd40f`, running revisions read from each
+service's own `/readyz`:**
+
+- `services/integration-runtime` — tree `f3940f6d` at the running revision
+  `720d1401`, tree `f3940f6d` at main. 44 commits between, **zero** touching that
+  path. The precondition HOLDS.
+- `services/pennsync-api` — tree `cc1ed981` at the running revision `d01359a3`,
+  tree `39dca753` at main. 50 commits between, **eight** touching that path. The
+  precondition has FAILED.
+
+Same rule, same instrument, same minute, opposite answers. A reader carrying the
+pair version would have taken the runtime's answer for the API's, and the API is
+the one where being wrong costs something.
+
+**What the API's write would actually deploy**, which is the reason this is a
+gate and not a caveat. Twelve migration files were added to the tree between the
+running revision and main, and the eight commits touching the service are the
+handlers that call the contracts those files create. So a release-variable write
+to `pennsync-api` before an operator has applied them puts capabilities live
+against a database that does not have them. A grep found no boot-time
+contract-existence check in that service — an absence reading rather than a
+proof, so the honest statement is that it would fail at **call time** rather than
+refuse at boot. That is worse, not better: a service that refuses to start is
+noticed in a minute, and one that starts and fails on a caregiver's click is
+noticed by the caregiver.
+
+**The general form.** When a rule is phrased about a plural — "the services",
+"the tree", "the branches", "the suites" — ask which member it is actually a
+property of, and whether that member is the one you are about to act on. A rule
+stated over a set reads as satisfiable once. It is satisfiable once **per
+member**, and it expires per member too. The day the members' answers diverge is
+the day somebody acts on the remembered one, because until then the plural
+phrasing cost nothing and so nothing corrected it.
+
+The remedy is not a longer rule. It is that the instrument is two lines —
+`/readyz` gives each running revision, `git rev-parse <rev>:<dir>` gives each
+tree hash — so **re-take it per member at the moment of acting**, and never
+quote the figures in this entry as current. They are a reading at `faecd40f` and
+they were already at risk of being wrong while this was being written: main
+moved once during the same sitting.
+
+## D173 — A fail-closed READ is an unwritten constraint on the WRITE
+
+**Added 2026-09-29.** Found on `adr-cases` by the ladder thread, while measuring whether `contract_adr_deadlines` serves the ADR screens. It does not, and this is what the measurement turned up on the way.
+
+When a read contract refuses a class of value **by name** — because returning it would do something the store must not do — that refusal is a statement about the **class**, not about the direction. The write side inherits it silently. Nothing in the tree pairs the two halves and no gate compares them, so **a contract pair built read-first will accept what its own read cannot return**, and nobody finds out until a screen reads back something it just wrote and gets nothing.
+
+### The instance
+
+`contract_adr_case_list` (#293) refuses `letter_file_url`, `packet_file_url` and `final_packet_url` by name. Its own header gives the reason: a carried `file_url` points at Base44's storage, D77's resolver **fails closed** on exactly those rather than handing one back, and returning one would give a caller a URL it would then fetch. That is a decision about a class of value — **a Base44 storage locator may not leave the owned store.**
+
+The ADR screens **write** two of those three. `src/pages/ADRCenter.jsx`'s create writes `letter_file_url`; `src/components/adr/AdrPacketVerifier.jsx`'s packet-upload update writes `packet_file_url`. So a write capability serving those sites would take a Base44 storage URL from a browser and put one **in** — the same value the read refuses to hand out, arriving through the door nobody was watching.
+
+### Why it is invisible
+
+The read's refusal is enforced by its own projection and proved by its own suite; both are green and both are right. The write does not exist yet, so there is nothing to be red. **The asymmetry only becomes reachable at the moment somebody writes the second half — which is exactly when the read's reasoning is least likely to be re-read, because it is settled, tested and merged.** A reader writing the write half starts from the entity's columns and the screens' payloads, and neither of those carries the refusal.
+
+### The rule
+
+Before writing the write half of a contract pair, read the read half's refusals and ask of each whether the write can supply the thing refused. **A refusal phrased about projection ("this is not returned") is usually a statement about the value ("this may not cross this boundary"), and only the first one is enforced.**
+
+### The corollary, which is what decided the ADR case
+
+**A pair cannot be split down the middle of such a refusal.** Six of the eight ADR write sites carry no locator and could ship today; two cannot. Shipping the six would leave the screens behaving differently depending on which side they touch — a field the write accepts and the read will never return. So the whole write half is held on the file layer rather than partially served.
+
+That is a **narrower** rule than the partial ports D31, D35, D36, D59, D73 and D81 follow, and the distinction is the reusable part. Those split on an **action** or an **input source**, where each served half is complete in itself and the refused half is refused in the answer. A split across a **value-class refusal** is not complete in itself, because both halves are talking about the same field and they disagree about it.
+
+### What closing it would take, said rather than claimed
+
+Nothing enforces this pairing today. The check that would is writable now: cross each contract's writable field set against its sibling read's withheld set and refuse an intersection. Both sides are already extracted for other reasons — `WRITE_POLICIES` in `tools-read-purpose-policy.mjs` names a create capability's writable declaration, and a read's withheld fields are enumerated with a reason each in its own suite. **It is not written, and this entry is the argument for writing it rather than a claim that it exists.** Stated the way D96 asks: the gap is named, the instrument is named, and the cost of closing it is one comparison over pairs that already exist.
+
+## D174 — An empty or self-agreeing expectation needs a positive control INSIDE the check
+
+An assertion whose expected value is an empty list is satisfied by a derivation that read nothing. An assertion that compares an output against the object it was built from agrees by construction. Both are green for a reason that has nothing to do with the property being asserted, and neither can be told apart from a real pass by reading the test. The control is: plant, prove present, remove, prove absent — and it belongs in the same test as the assertion, not in a scratch harness beside it, because a harness that is not run again does not protect the next change.
+
+The rule is only convincing at its count, so all four field occurrences belong in the entry:
+
+1. `assert.ok(applied.length > MEASURED.length)` — survived destroying its own subject. The figure it compared against was the thing under test, so the assertion held while the derivation that produced it was gone.
+2. A parser that found zero `create function` declarations in a tree of a hundred and thirty, with every assertion in its suite green. Nothing in the suite could tell "no violations" from "nothing was read".
+3. The collector compared against the in-memory array it was built from. The two sides move together by construction, so the comparison cannot fail — it is an identity dressed as a check.
+4. A floor of eighty asserted over a hundred and thirty declarations. A floor far below the real value passes through every failure mode that matters and reports as coverage.
+
+**One amendment to the wording, which I would take.** The rule names two shapes and they do not take the same control. For an EMPTY expectation, plant/prove-present/remove/prove-absent works, because the plant enters on one side only. For a SELF-AGREEING expectation it does not: planting into the object both sides are derived from moves both sides together and the check stays green, which is the defect restated rather than caught. What a self-agreeing check needs is a DIFFERENT ARTEFACT on one side — the file on disk against the in-memory array, `pg_proc` against the source text — so the two sides can disagree at all. That is D170 arriving from the other side, and saying it here is what stops a reader satisfying occurrence 3 with a plant.
+
+Sharpened, the rule reads: an empty expectation needs a plant; a self-agreeing one needs a second artefact; either way the control lives inside the check.
+
+### Occurrence 3 in full, from the session that carried this entry
+
+**Added 2026-09-29 by the collector's author at this entry's finder's request, and not by the finder.** The count of four above is its finder's, as of when the entry was written; two further occurrences arrived from other threads within the hour and are the two sections below this one. That the count moved twice in an evening is not a defect in the entry — it is the entry's own argument, which is that the rule is only convincing at its count.
+
+Occurrence 3 above is this document's own collector. Its byte-identity check compared each carried entry's region in the output against the in-memory array the splice had been built from, so a collector that mangled an entry on the way IN agreed with itself and printed `byte-identical` twenty times. The file's own docblock states the rule eleven lines above where the defect was rebuilt, by the same hand. Reading the code did not find it; planting a dropped line in a carried entry did.
+
+Two further instances arrived inside the tooling that carries this entry, and they are the best witnesses here because both were caught **before** they shipped rather than after.
+
+**An amender that inserts nothing passes its own strip-back check.** The program that puts a dated addendum inside an already-landed entry proves it touched nothing else by removing the addendum and comparing with the input — and removing an addendum that was never added restores the input perfectly. The check is satisfied by the tool doing its job and by the tool doing nothing, which is this entry's own test: **the subject could be destroyed without changing the output.** What separates them is a positive control in the same run — find the addendum in the output by searching for its heading, and require it to be byte-identical to its source.
+
+**A gate that fires first has never been shown to bite.** Four of that amender's five sabotage cases tripped a size comparison before the strip check ever ran, so the strip — the check the whole tool is built around — had no case proving it works. A size-preserving edit outside the entry now refuses with `645217 vs 645217 bytes`, which is the plainest available statement that it compares content and not length. A check standing behind another check is untested, however many cases the suite has.
+
+And the amendment above is right about what occurrence 3 needed. Re-reading each source from disk made the two sides two artefacts and the check able to fail. It did not make them the right two: a disk copy is still the collector's own, so the repaired check answers "was my copy carried faithfully" rather than "did the finder's words land". That is a separate decision, D176, and this entry's fix is not that one.
+
+### A fifth occurrence, and an exemption list that launders
+
+**Found by the plan thread, carried here at its request; its words.** Occurrence 2 above is this one's second half. Its first half is not in the entry yet and is a different shape.
+
+`services/authority-store/tests/service-rpc-signatures.test.mjs` opens with `assert.ok(exposed.length > 80, 'the migrations should expose the contract surface')` over a tree declaring a hundred and thirty contract functions, so the floor carried fifty of slack — but that is the ordinary weakness, not the finding. The finding is what happens when a function is created by the test's **own `bootstrap.sql`** rather than by a migration, and is then named in `UNCALLED`. It is exposed, so nothing complains it is missing. It is exempt, so nothing complains it is uncalled. **The harness gives itself part of the surface it then proves, and no deployment ever gets it.** Planted, the file reads 4 pass / 0 fail. A contract declared by one migration, dropped by a later one, called by nobody and exempt by nobody is invisible in the same way, and also reads 4 pass / 0 fail.
+
+The transferable part is the interlock: the count and the exemption loop were each strong **only while the other's precondition held**. The floor protected against an empty store; the loop protected against an unused function; neither stated the property, and `UNCALLED` holding exactly one entry is what kept the loop from running zero times. **Two weak checks reading as one strong one.**
+
+Its remedy is the amendment above, arrived at independently: the shipped version carries a control that does not come from reading the files — `captured`, built by driving the service's own capabilities, which name their functions in `services/pennsync-api/`. Blinding the declaration pattern back to the unquoted form now fails by name and reports 129 of them rather than passing quietly.
+
+### A sixth occurrence, with a remedy stronger than the one this entry shipped with
+
+**Found by the transfer thread, carried here at its request; its words, and it supersedes nothing above so much as sharpens it.**
+
+A spec fixture built the contract's answer envelope using the key the route under test assumes. The route reads `result.entries`; the fixture wrote `{ entries: [...] }`. The two cannot disagree by construction, so the test passed identically whether the contract answers that key or not — and one contract, `contract_clinical_event_list`, answers `events`, so the route it covered returned `undefined` on every real call while its test was green.
+
+The remedy: take the key from the **artefact under test** rather than from the test, then drive the route with **both** keys and require it to reject the wrong one. In that spec, `answerOf(routeKey, rows, key = ENTITY_ROUTES[routeKey].answerKey)`, plus a case feeding the route the other family's key and asserting a refusal.
+
+**The distinction is worth stating and it is this entry's sharpest form.** Plant-and-remove proves the check CAN fail. Driving both values proves it fails for the RIGHT REASON. An empty expectation with a positive control still passes if the check is looking at the wrong thing and happens to find nothing; a check that must reject a specific wrong value cannot.
+
+A second occurrence in the same family makes it general rather than a fixture habit: the check that reads each route's key off the contract was itself scoped to ONE migration file — the file its author was working in. Scoped that way it could not see any contract outside that family, so its silence on a new family would have read exactly like agreement. It now reads the directory. **A check scoped to where its author happened to be standing goes quiet precisely when something new arrives**, which is the same defect as a fixture that agrees with itself.
+
+## D176 — A faithfulness check must anchor UPSTREAM of the hand it audits
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Found on #336's D143, one level underneath D143 itself.
+
+### The rule
+
+A check that asks "did this text land faithfully" has to compare against **the artefact the protocol is about**, and for a relayed entry that artefact is the text the finder sent. Any copy that has already passed through the collector's hands — its working file, its disk copy, its parsed structure — sits **downstream of the hand being audited**, so comparing against one asks whether the collector carried its own copy faithfully. That is a real question. It is not the question.
+
+State the anchor explicitly, in the check, next to the comparison: *this is the inbound text, received and not re-derived.* If the anchor cannot be named that way, the check reports on itself.
+
+### The case
+
+`tools-pennsync-decision-collect` verified each entry byte-identical and printed `ok D143 4668 bytes, byte-identical`. D143 as landed carries two things that are in no file I sent: a whole section, `### It applies to prose as much as to assertions` (691 bytes), and a `**` pair bolding `"name the change that makes this red."` (4 bytes). Both below the heading, in an entry reported byte-identical and described to me as untouched below the heading.
+
+Measured rather than argued, with ladder's paragraph fingerprints — collapse every run of whitespace to one space, then sha per paragraph, so hard-wrapping cancels and only content moves. 26 paragraphs mine against 28, realigning exactly from the insertion point on: P21=P19, P22=P20, P24=P22, P25=P23, P26=P24, P27=P25, all sha-identical. The two extra are the inserted section; the 4 bytes are the bolding. Nothing corrupted, nothing lost, and 693 bytes of difference the check called zero.
+
+### Two defects, and why fixing the first hid the second
+
+The collector had already been caught once that night: it compared its output against **the same in-memory array the splice was built from**, so it agreed with itself and printed byte-identical twenty times. Destroy the subject and it still passes — D143 exactly, in the file whose own docblock two hundred lines above warns about it. Reading the code did not find it; planting a dropped line did.
+
+That was fixed by re-reading each source **from disk**, and the fix is sound: the check can now fail. Which is precisely why the second defect is hard to see. **A check that can fail is not the same as a check that can fail for the question you asked.** The disk copy is the collector's copy. Re-reading it moved the comparison from "my output against my memory" to "my output against my disk" — both inside the boundary under audit. The repair removed the appearance of a non-check while leaving the anchor where it was, and an instrument that visibly bites is trusted more than one that never has.
+
+This is D170 from the other direction. Two representations of one artefact are one reading with two witnesses; the in-memory array and the disk file are two representations of the collector's copy. What corroborates is a **different** artefact, and here that is the inbound message.
+
+### How to apply
+
+1. Name the artefact the protocol is about. For a relayed entry it is the sender's text, not anybody's copy of it.
+2. Anchor the comparison there, and say so in the check.
+3. Prove the anchor, not just the comparison: mutate **the disk copy** and require the check to report it. A disk-anchored check cannot — it will follow the mutation and stay green — so that single sabotage separates the two designs. This is D145's rule: the sabotage that measures whether a fix bought anything is the one aimed at what the fix claims to have closed.
+4. Where the inbound text genuinely cannot be retained, say what the check answers in the words above rather than letting `byte-identical` imply the stronger claim.
+
+### The part that closes the loop
+
+I could not settle, from my side, whether that paragraph came from the coordinator, from redeploy, or from a draft of mine I later rewrote — and **the reason is the defect.** An instrument anchored on the inbound text answers that question as a by-product; one anchored downstream cannot answer it at all. So the provenance question being unanswerable by the check is not a separate inconvenience, it is the anchor defect showing itself.
+
+The rule holds whichever of the three it turns out to be. If it was my own earlier draft, then my file is the wrong side of the comparison and I was the one who drifted — and a check anchored on what I sent would have said so immediately, which is the argument for it rather than against.
+
+And the added words are **true**: the paragraph is a correct statement of the `pennsync-unapplied-migration-signature` correction, and the bolding improves the entry's key line. That is the point worth keeping. The failure a provenance check prevents is an entry reading as the finder's words while carrying someone else's, and it is a failure **even when the borrowed words are better than the original**. Correct content is what makes this kind of drift survive.
+
+Related: D140, D143, D145, D147, D148, D170.
+
+## D178 — An issuance question is settled by the delivery record, never by the index
+
+**Added 2026-09-29.** Found while refusing to merge #341, which used a decision number six times across two documents that a reviewer said might already be issued elsewhere.
+
+### The problem
+
+"Who owns D-n?" and "was D-n ever issued?" are answered today by reading an index — the coordinator's memory page, or a thread's measured table of the rules files. **Both are the coordinator's own writing.** Two of them agreeing is one source with two witnesses, which is the thing D170 says is not corroboration. And the index is precisely the artefact under suspicion when the question is asked at all: if it were reliable, nobody would be asking.
+
+So an issuance question read off an index has no way to come back "the index is wrong." It can only come back "the index says X," which is the answer you already had.
+
+### The instrument
+
+**The delivery record in the receiving thread's transcript.** One grep of that thread for the number returns the turn in which it was awarded, with the reasoning attached and a timestamp — the wire record of the award, not a later recollection of it. That separates two claims an index cannot:
+
+- **was issued** — the turn exists, and it says what the number was for;
+- **is remembered as issued** — someone's list has a row.
+
+On D153 it cost under a minute and returned the award turn at `2026-09-28T17:14:47Z` with its argument intact. That is what unblocked a merge that had been held on a question nobody could settle from their own copy.
+
+### The worked case for why it must be first rather than last
+
+Within the same hour, the same index produced a wrong ownership for **D157**: stated as one thread's, corrected to another's, then the correction retracted because the two names resolved to the same session. Three statements, two contradictions, and the thing that finally settled it was the author's own first-hand claim about its own work. **A grep of the receiving thread would have returned the right answer before the first contradiction existed.** The cost of the index route was not a wrong answer that stood — it was three rounds of correction, each of which had to be noticed by someone.
+
+There is a near miss in the same window worth recording, because it is the failure this rule prevents in its other direction: ownership was briefly read off *which pull request an entry appears in*. **#336 is a collection: it splices thirty entries in byte-for-byte and refuses to author.** Its carrier is not their author. Carriage and authorship are different claims about one artefact, and an entry's location is evidence it was written, never evidence of whose it is.
+
+### The rule
+
+**When an issuance is in question, go to the receiving thread's transcript first, not to any list.** The index stays useful for everything else — it is how anyone finds the number to ask about. It simply cannot be the witness to its own error, and neither can a second list written by the same hand.
+
+### What it does not settle, said rather than claimed
+
+The grep proves a number was awarded in that thread at that time. It does not prove the award was not later withdrawn, and it cannot find an issuance made in a thread nobody thought to search. Both are real limits. Neither was reachable by the index either, so this is strictly more than what it replaces — and the honest form of the answer is "the award turn exists, here it is," not "the number is settled."
+
+## D179 — A total that closes is not evidence
+
+A partition with three free terms and one total is not self-checking: two wrong terms close as readily as two right ones. The occurrence is mine, tonight. I was carrying "unrouted = keyless + unreadable + refused" and its sub-split, and when main moved under me the headline fell by three. I kept the keyless term where it was and moved the unreadable term by three so the sum still closed. Both terms were wrong, and the tool's own second line had been printing the right unreadable figure the whole time — I had a correct reading in front of me and preferred the one that preserved the arithmetic.
+
+The tell is the shape of the act: treating a partition as something to keep CONSISTENT rather than something to RE-DERIVE. Consistency is available to a wrong answer. The remedy is that a partition is re-derived from the instrument at every head, never adjusted to absorb a change, and a term is never carried across a head change on the grounds that the rest of the sum still works. Where a sum has more free terms than constraints, its closing tells you nothing and should not be reported as though it did.
+
+Both of tonight's slips have that shape, and the first is the cheaper illustration: I reported a figure as dropped at strict 15 by double-counting seven sites that had already been struck before the total they were subtracted from was formed.
