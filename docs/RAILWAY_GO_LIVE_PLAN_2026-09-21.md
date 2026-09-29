@@ -123,11 +123,17 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=7 files=12 external_secret=2 none=78
+port queue: entity_authorization=6 files=12 external_secret=2 none=78
 ```
 
-99 carried capabilities, **78 written, 21 blocked** (2026-09-23, after D89, D90
-and D91). `records_schema` is absent from that line rather than zero in it,
+98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
+The carried total falls by one here rather than the written total rising,
+because D153 retired `enforceStaffRoleIntegrity` instead of porting it: the
+owned store constrains `staff_role` on both tables and lets nobody write it, so
+the sweep that reverted a spoofed value has no work left. **A bucket shrinking
+is not the same event as a port landing, and this page should not let the two
+read alike** — a written count that did not move is the tell.
+`records_schema` is absent from that line rather than zero in it,
 because `portQueueLine` omits an empty bucket — and that bucket is empty with
 every capability in it BUILT, which is the first time. Three of the buckets
 below have emptied, one of them twice, and the fourth has shrunk by one:
@@ -145,12 +151,13 @@ below have emptied, one of them twice, and the fourth has shrunk by one:
   mail can be sent; see §4's `Core.SendEmail` row. What a release of these two
   is NOT is a release of invitations, which have no send at all — their
   `delivery_paused: true` is a literal on an audit entry (D42).
-- `entity_authorization` **8 → 7**. D83 took two out by retiring them — a
+- `entity_authorization` **8 → 7 → 6**. D83 took two out by retiring them — a
   `global` reference table is written by migration, never at runtime — and D84
   put `offboardUser` in, where the measurement always said it belonged. D82
-  settled the profile-write path and moved none of them, because all six write
-  somebody else's row, a column outside the allowlist, or a payload nothing can
-  read.
+  settled the profile-write path and moved none of them out, because each of the
+  profile writers it then held writes somebody else's row, a column outside the
+  allowlist, or a payload nothing can read. D153 then took a third out by
+  retiring it, which is a capability leaving rather than a port landing.
 - `records_schema` **0 → 3 → 0**. D84 moving three capabilities in was the queue
   working rather than regressing: "blocked on a schema" became "its port is not
   written yet", against a store that exists. All three have since been written —
@@ -2685,7 +2692,7 @@ administrative write paths, and a vendor key.
 | Blocker | Count | What it needs |
 | --- | ---: | --- |
 | `files` | 12 | Stage H, and one decision that is not this repository's. D85 re-measured D77 and it holds: the integration runtime serves a stored object only to its uploader, and a migrated object has no uploader. The mapping, resolver and planner are built; the bytes are not copied. Four different things in one bucket — 2 wait only on the reader model, 5 need the copy and the reader model, 5 have a write leg that needs neither, and 1 has two further blockers |
-| `entity_authorization` | 7 | Ports to write, not decisions. D82 settled D23's open profile-write path at the caller's own row, and these are the seven admin and scheduled paths it deliberately does NOT reach: `autoApproveInvitedUser`, `autoEndDutyDay`, `enforceStaffRoleIntegrity`, `offboardUser`, `setNurseDutyStatus`, `userManagement`, `userManagementV2`. D83 took the two `MedicareGuideline` writers out of this bucket by retiring them: a `global` table is written by migration |
+| `entity_authorization` | 6 | **NOT all ports, and this row said otherwise until D153 measured it.** D82 settled D23's open profile-write path at the caller's own row, and these are the admin and scheduled paths it deliberately does NOT reach: `autoApproveInvitedUser`, `autoEndDutyDay`, `offboardUser`, `setNurseDutyStatus`, `userManagement`, `userManagementV2`. **Two of these six are decisions rather than ports**: `autoApproveInvitedUser` and `autoEndDutyDay` carry the `schedulerAuth` fence and so have no caller at all, which is D49's unchosen per-agency scheduler identity and not a contract anybody can write; a declaration would not unblock either. A third decision, `enforceStaffRoleIntegrity`, has left the bucket entirely: D153 retired it because the owned store made it unnecessary. Of the six left, none can be ported against a capability that already exists: all six write `User`, and nothing in the store writes `pennsync_records.user` at all, so each is a forward migration rather than a repoint. D83 took the two `MedicareGuideline` writers out of this bucket by retiring them: a `global` table is written by migration |
 | ~~`records_schema`~~ | 0 | **Emptied by D89, D90 and D91.** The three capabilities D84 kept as `port` with an uncarried leg — `distributePolicyAcknowledgment`, `sendExpirationNotifications`, `generateAIReport` — are all written. D75 had taken this bucket to zero on a correction; this is the first time every capability that was in it has been built. Note that `portQueueLine` omits an empty bucket, so it no longer appears in the measured line at all |
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
 | ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
