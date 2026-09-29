@@ -1356,15 +1356,16 @@ test('every ported model call is one the owned runtime will actually accept', as
    * ONE capability is a known exception and it is named here with its reason
    * rather than excluded: `syncCMSRegulations` sends `gemini_3_1_pro` and
    * `add_context_from_internet: true`, and the runtime refuses both —
-   * `MODEL_MAPPING_REQUIRED` and `WEB_SEARCH_NOT_MIGRATED`. It has no caller in
-   * `src/`, so nothing in the product reaches it today, but it IS in
-   * `PORTED_FUNCTIONS` and in the `integration` release wave, which is what
-   * makes this worth a failing-closed record: an operator releasing that wave
-   * gets a capability that answers a refusal to every call. Closing it is a
-   * decision about the capability, not about this test — the runtime's refusal
-   * is deliberate and there is no web search to map to, so the choice is
-   * between pausing it by name and asking the model without a search, which
-   * would store regulations recalled from training as current.
+   * `MODEL_MAPPING_REQUIRED` and `WEB_SEARCH_NOT_MIGRATED`.
+   *
+   * **Its search leg is now paused by name** (`WEB_SEARCH_RELEASE_PAUSED`,
+   * raised before the model is reached; `cms-regulations.test.mjs` proves it),
+   * so no caller reaches those params today. They are kept as the original
+   * wrote them rather than edited down to match the pause, because restoring
+   * the capability when a web search provider exists is deleting one guard.
+   * That is exactly why this check has to stay: the constants are still there
+   * to be un-paused, and the runtime still refuses them, so the pairing is the
+   * only thing recording that the two do not fit.
    */
   const directory = resolve(repository, 'services/pennsync-api');
   const modules = (await readdir(directory)).filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));

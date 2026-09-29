@@ -1584,27 +1584,35 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   its job rather than a defect. Read the runtime's own `/readyz` for what it is
   serving — this page does not say.
 
-  **One capability in this wave refuses every call, and it is not the two
+  **One capability in this wave is a PARTIAL port, and it is not the two
   above.** `syncCMSRegulations` sends `model: "gemini_3_1_pro"` and
   `add_context_from_internet: true`. The owned runtime admits `automatic` or
   the one model an operator configured, and refuses a web search BY NAME, so
   the call is refused whatever that configuration is — measured 2026-09-29 by
   driving the port's own constants through `validateParams`, which answers
   `MODEL_MAPPING_REQUIRED` and then, if an operator named that model,
-  `WEB_SEARCH_NOT_MIGRATED`. Nothing in `src/` calls it, so no screen is
-  affected today, but it IS in `PORTED_FUNCTIONS` and in this wave's
-  `PENNSYNC_API_FUNCTIONS` list. **This is a reading printed rather than
-  fixed**, for D96's reason: closing it is a decision about the capability and
-  not about the check. There is no web search to map to, so the choice is
-  between pausing it by name — the shape D42 and D81 use, where the answer says
-  the leg is paused — and asking the model without a search, which would store
-  regulations recalled from training as current ones. The second is a
-  compliance question and not a mechanical one. `pennsyncApiOriginalParity`
-  now crosses every port's model constant against the runtime's own validator
-  and names this one exception with its reason, so a SECOND capability joining
-  it fails the build, and so does this one quietly disappearing. **Nothing
-  crossed those two halves before**: the business API builds the call and the
-  runtime decides whether to make it, and each half was right on its own.
+  `WEB_SEARCH_NOT_MIGRATED`. Nothing in `src/` calls it.
+
+  **The search leg is now PAUSED BY NAME** (`WEB_SEARCH_RELEASE_PAUSED`, 503,
+  raised before the model is reached), which is D42 and D81's shape. It was
+  settled on correctness rather than weighed: the only alternative is dropping
+  the search and asking the model anyway, which stores regulations recalled
+  from training as CURRENT CMS regulations in a compliance product, and a
+  capability that refuses is strictly better than one that answers confidently
+  and wrongly. The refusal is unconditional rather than gated on an operator
+  setting, because what it waits on is a provider that does not exist rather
+  than a decision anybody can take; the port below the guard is kept whole, so
+  restoring it is deleting one guard.
+
+  **Two things about how this was found are worth more than the fix.** Nothing
+  crossed the two halves — the business API builds the model call and the
+  runtime decides whether to make it, and each half was right on its own — so
+  `pennsyncApiOriginalParity` now drives every port's model constant through
+  the runtime's own validator and names this one exception with its reason,
+  which fails the build if a second arrives or this one vanishes. And the
+  capability had **no behavioural test of any kind** until the pause, which is
+  how a 130-line port with a record contract and a trail append shipped with a
+  call neither half could make.
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven

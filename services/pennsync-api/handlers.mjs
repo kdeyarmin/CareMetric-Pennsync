@@ -1705,11 +1705,14 @@ export const HANDLERS = Object.freeze({
     // "Unchanged" describes what this service sends, not what the runtime
     // accepts: `validateParams` refuses `gemini_3_1_pro` as
     // `MODEL_MAPPING_REQUIRED` and `add_context_from_internet: true` as
-    // `WEB_SEARCH_NOT_MIGRATED`, so this capability answers a refusal to every
-    // call once released. Nothing in `src/` reaches it, and closing it is a
-    // decision about the capability rather than a repair — see the integration
-    // wave in `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`. The cross-check that
-    // makes it visible is in `pennsyncApiOriginalParity.test.js`.
+    // `WEB_SEARCH_NOT_MIGRATED`.
+    //
+    // So the search leg is PAUSED BY NAME and the capability answers
+    // `WEB_SEARCH_RELEASE_PAUSED` before reaching the model. The reasoning is
+    // in `cms-regulations.mjs`; the short of it is that the only alternative
+    // stores regulations recalled from training as current ones. The
+    // cross-check that keeps a second instance from arriving unnoticed is in
+    // `pennsyncApiOriginalParity.test.js`.
     needsIntegration: true,
     handle({ params, integration, contract, audit }) {
       exactObject(params, [], 'INVALID_PARAMS');
