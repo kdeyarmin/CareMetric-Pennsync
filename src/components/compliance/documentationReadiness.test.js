@@ -63,21 +63,57 @@ test("a fully documented, handed-off visit reports clear over a complete dataset
   assert.equal(result.counts.total, 0);
   assert.equal(result.complete, true, "every check ran");
   assert.deepEqual(result.notChecked, []);
-  assert.ok(result.checked.length >= 8, "the checks run are listed even when nothing is found");
+  // The exact set, not a floor. `checked` is not an instrument reading: the panel
+  // renders these strings verbatim under "What PennSync checked", count included
+  // (DocumentationReadinessPanel.jsx:104). The strings ARE the artefact, so there is no
+  // upstream authority for a test to read them from, and this second copy is an alarm
+  // rather than a duplicate — it goes red when the copy changes, which is what a change
+  // to what a nurse reads should do. Note that `>= 8` was already two short of the ten
+  // this returns, and passed for years by being a floor.
+  assert.deepEqual(result.checked, [
+    "Unfinished PennSync documentation drafts",
+    "EMR handoff progress on documented visits",
+    "Homebound and skilled-need support on documented visits",
+    "Unresolved PennSync compliance findings",
+    "Deferred AI verification passes",
+    "Unresolved provider follow-up",
+    "Possible OASIS inconsistencies flagged in PennSync",
+    "Open ADR / audit requests",
+    "Unresolved incidents",
+    "Recertification window",
+  ], "the checks run are listed, in order and word for word, even when nothing is found");
 });
 
 test("a dataset the caller did not supply is reported as NOT checked", () => {
-  // Passing three datasets must not look like having checked eight: "clear"
+  // Passing three datasets must not look like having checked all TEN: "clear"
   // over a partial dataset is a different claim from "clear" over a complete one.
+  // (This said "eight" while the function returned ten — the same miscount the
+  // floor below it carried. The real split here is five run and five not.)
   const result = assessDocumentationReadiness({
     visits: [CLEAN_VISIT], openTasks: [], incidents: [], now: NOW,
   });
   assert.equal(result.complete, false);
-  assert.ok(result.notChecked.some((c) => /drafts/i.test(c)));
-  assert.ok(result.notChecked.some((c) => /compliance findings/i.test(c)));
-  assert.ok(result.notChecked.some((c) => /OASIS/i.test(c)));
-  assert.ok(result.notChecked.some((c) => /ADR/i.test(c)));
-  assert.ok(!result.checked.some((c) => /drafts/i.test(c)), "an unrun check is not listed as run");
+  // Both sides exactly, for the same reason as the clean case: these strings are
+  // rendered to the reader, and a regex over `some` passes on a substring of a
+  // sentence that has otherwise been rewritten. It also pins the thing a loose match
+  // cannot see — "EMR handoff progress on documented visits" has TWO spellings, and
+  // which one appears is the difference between "we did not run this" and "we could
+  // not run this, and here is why". The module's own comment says that distinction is
+  // the reason it exists.
+  assert.deepEqual(result.notChecked, [
+    "Unfinished PennSync documentation drafts",
+    "EMR handoff progress on documented visits (no handoff-tracking start date configured)",
+    "Unresolved PennSync compliance findings",
+    "Possible OASIS inconsistencies flagged in PennSync",
+    "Open ADR / audit requests",
+  ], "every check the caller supplied no data for is named, and says why where it can");
+  assert.deepEqual(result.checked, [
+    "Homebound and skilled-need support on documented visits",
+    "Deferred AI verification passes",
+    "Unresolved provider follow-up",
+    "Unresolved incidents",
+    "Recertification window",
+  ], "an unrun check is not listed as run");
 });
 
 // ── "Nothing known" is not "nothing wrong" ─────────────────────────────────

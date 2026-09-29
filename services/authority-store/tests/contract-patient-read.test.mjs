@@ -2,12 +2,13 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
 import { POLICY_SQL_FILES } from '../../../tools-read-purpose-policy.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 import {
   PATIENT_EXACT_PURPOSE_POLICY, PATIENT_LIST_PURPOSE_POLICY,
 } from '../../pennsync-api/read-purpose-policy.mjs';
@@ -33,6 +34,64 @@ import {
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const CONTRACT = 'services/authority-store/supabase/record-migrations/20260920060000_contract_patient_read.sql';
+/**
+ * The files whose BEHAVIOUR this suite measures. They no longer decide what is
+ * applied — the store is the whole record directory now, so a forward migration
+ * over this contract is in the build the moment it is committed (D88) — and the
+ * `before` block asserts each was applied, which is all this list does.
+ *
+ * **Measured, so the assertion is credited with exactly what it does, and it
+ * does two different things.** Omitting a measured FILE from the build cannot
+ * reach it: the build dies earlier, in `20260920080000_contract_visit_read.sql`,
+ * whose own precondition raises `PENNSYNC_RECORD_STORE_REQUIRED` when
+ * `patient_purpose_gate` is absent, and the purpose policy is refused the same
+ * way. For that failure the directory already fails closed, loudly, and this
+ * loop is only the backstop for a directory that stops doing so.
+ *
+ * But a measured NAME the directory does not hold reaches it directly, and
+ * that is live today rather than a backstop: the names below are derived, so
+ * a rename the tool follows and the directory does not — or the reverse —
+ * lands here and nowhere else. Sabotaged once to be sure rather than reasoned
+ * about: pointing `CONTRACT` at a file that does not exist fails all thirteen
+ * tests on `must be applied`. An earlier draft of this paragraph said neither
+ * name could reach the assertion, which was true while the names were typed
+ * literals beside the files they named and stopped being true the moment they
+ * were derived from them.
+ *
+ * **A red here after somebody else's migration merges is a possible and correct
+ * outcome, and the first reading is that this suite SAW something** (D149).
+ * Before the swap a forward over `contract_patient_read` or the purpose policy
+ * was silently absent from this build; now it is present, so a change in what
+ * these tests observe is a change in what the deployed store does. Diagnose the
+ * arriving migration before suspecting the conversion.
+ *
+ * Its corollary decides how to land such a change: a forward that flips a state
+ * this file PINS, and the flip of that pin here, go in the SAME change. Split
+ * across two, `main` is red in between for a reason nobody introduced.
+ *
+ * The names are taken from the same exports the four-file build used to read
+ * the files through -- `POLICY_SQL_FILES.patient`, `CONTRACT`,
+ * `RECORD_MIGRATION_FILE`, `BROKER_MIGRATION_FILE` -- rather than retyped as
+ * literals beside them. A retyped basename is a second representation of a
+ * path the tool already owns, and it goes stale in the one direction nothing
+ * measures: the file is renamed, the tool follows it, and the loop below
+ * quietly asserts the presence of a name no directory has any more.
+ */
+const MEASURED = Object.freeze([
+  basename(POLICY_SQL_FILES.patient),
+  basename(CONTRACT),
+]);
+/**
+ * The exact four files this suite used to build from, kept for ONE purpose: the
+ * control in the last test rebuilds that store so the two can be compared. It
+ * is not a list anything is applied from any more, and adding a file to it
+ * would widen the control rather than the store.
+ */
+const FORMERLY_APPLIED = Object.freeze([
+  basename(RECORD_MIGRATION_FILE),
+  basename(BROKER_MIGRATION_FILE),
+  ...MEASURED,
+]);
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -44,6 +103,8 @@ const BATCH = 'select "public"."pennsync_contract_patient_batch"($1,$2,$3) as re
 const GET = 'select "public"."pennsync_contract_patient_get"($1,$2,$3) as result';
 const A = 'agency-a'; const B = 'agency-b';
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
 
 /**
  * Eight in agency-a the clinician is assigned to, one they are not, one
@@ -73,12 +134,16 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  await db.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8'));
-  // The broker family is what grants `authenticated` USAGE on the schema; a
-  // contract reached through it inherits that and grants nothing of its own.
-  await db.exec(readFileSync(resolve(repository, BROKER_MIGRATION_FILE), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, POLICY_SQL_FILES.patient), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, CONTRACT), 'utf8'));
+  // The whole record directory, in apply order, rather than the four files this
+  // suite used to name. The broker family is still what grants `authenticated`
+  // USAGE on the schema, and a contract reached through it still grants nothing
+  // of its own; that is now true because the directory contains it rather than
+  // because this file remembered to list it.
+  applied = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
+  }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const row of PATIENTS) {
     await db.query(`insert into ${SCHEMA}."patient"
@@ -330,4 +395,102 @@ test('a chart that is not there and one that is not yours answer identically', a
   await refusal(getAs(ADMIN_A, null), 'PENNSYNC_PATIENT_SUBJECT_INVALID');
   // And the agency is still asked of the authority store first.
   await refusal(getAs(ADMIN_B, pid(1)), 'PENNSYNC_PATIENT_AGENCY_NOT_HELD');
+});
+
+test('the swap widened the store and left this contract reachable unchanged', async () => {
+  // D127's question, asked about THIS contract rather than answered from the
+  // file list: does building from the whole record directory change what the
+  // capability exposes?
+  //
+  // Measured before the swap, per file rather than as a group. Nothing later in
+  // the directory redefines any of the eight functions these two files declare
+  // -- `20260920080000_contract_visit_read.sql` names `patient_purpose_gate`,
+  // and only inside a `to_regprocedure(...) is null` precondition. The one later
+  // statement that touches anything this contract reads is
+  // `20260920590000_column_defaults.sql`, which sets defaults on four `patient`
+  // columns; every fixture row above supplies all four explicitly, so no insert
+  // here reaches a default. That is the STRONG case, and the strong case is the
+  // one that needs a control, because "nothing moved" and "the instrument cannot
+  // see movement" read identically.
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the store under test is every file in the record directory, in apply order');
+  assert.deepEqual(FORMERLY_APPLIED.filter(name => !applied.includes(name)), [],
+    'every file the four-file build applied is still applied');
+
+  // The population is derived from what the measured files DECLARE, never from
+  // a name pattern. A pattern has to be tuned wide enough to catch everything
+  // and narrow enough to exclude the neighbours, and it can be wrong in either
+  // direction while staying green -- on `activity-audit`, `%activity_%` matches
+  // exactly the right four in today's directory, so the wrong instrument was
+  // green there. Declarations remove the question instead of answering it.
+  const DECLARATION = /create\s+(?:or\s+replace\s+)?function\s+"?([a-z_][a-z0-9_]*)"?\s*\.\s*"?([a-z_][a-z0-9_]*)"?\s*\(/gi;
+  const declared = [...new Set(MEASURED.flatMap(name => [...readFileSync(
+    resolve(repository, 'services/authority-store/supabase/record-migrations', name), 'utf8')
+    .matchAll(DECLARATION)].map(([, schema, fn]) => `${schema}.${fn}`)))].sort();
+  assert.ok(declared.includes('pennsync_records.contract_patient_list')
+    && declared.includes('public.pennsync_contract_patient_list'),
+    'the parser reads both declaration spellings the measured files use: '
+    + '"schema".name and "schema"."name"');
+
+  /** Every declared function that a build actually holds, with its signature. */
+  const surface = async client => (await client.query(
+    `select n.nspname as schema, p.proname as name,
+            pg_get_function_identity_arguments(p.oid) as args
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname || '.' || p.proname = any($1)
+      order by 1, 2, 3`, [declared])).rows;
+  const derived = await surface(db);
+  // Names only, de-duplicated, because a function may legitimately be
+  // overloaded and this line is about PRESENCE alone: every declared name is
+  // reachable in the derived store, so an empty or partial answer cannot be
+  // mistaken for agreement below. Whether the signatures are right is the
+  // control's question, not this one's.
+  assert.deepEqual([...new Set(derived.map(row => `${row.schema}.${row.name}`))].sort(),
+    declared, 'every function the measured files declare is present in the derived store');
+
+  // The four-file build this suite used to carry, rebuilt as the control.
+  const control = new PGlite();
+  try {
+    await control.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+    const dir = new URL('../supabase/migrations/', import.meta.url);
+    for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
+      await control.exec(await readFile(new URL(name, dir), 'utf8'));
+    }
+    await applyRecordMigrations(control, {
+      omit: applied.filter(name => !FORMERLY_APPLIED.includes(name)),
+    });
+
+    // The comparison is vacuous unless the two builds really are different
+    // stores, so that is checked rather than assumed: a control equal to the
+    // store under test would agree with it about everything.
+    const allFunctions = async client => (await client.query(
+      `select n.nspname || '.' || p.proname as name
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname in ('pennsync_records', 'pennsync_private', 'public')
+        order by 1`)).rows.map(row => row.name);
+    const derivedFunctions = await allFunctions(db);
+    const controlFunctions = await allFunctions(control);
+    const held = new Set(derivedFunctions);
+    assert.deepEqual(controlFunctions.filter(name => !held.has(name)), [],
+      'widening the store adds functions and removes none');
+    assert.notDeepEqual(controlFunctions, derivedFunctions,
+      'the control must be a different store from the one under test, or the '
+      + 'surface comparison below compares a build with itself');
+
+    assert.deepEqual(derived, await surface(control),
+      'widening the store changes nothing about what this contract exposes: '
+      + 'same functions, same identity arguments');
+
+    // Known-positive, in the same test and on the control's own connection, so
+    // there is no planted file and nothing to restore. An overload is the
+    // smallest difference the comparison is supposed to catch: same name, and a
+    // signature the deployed store does not have.
+    await control.exec('create function "pennsync_records".contract_patient_get'
+      + '(p_probe text) returns void language sql as $probe$ select $probe$;');
+    assert.notDeepEqual(derived, await surface(control),
+      'adding one overload to the control makes the comparison above report a '
+      + 'difference, so its agreement was not the comparison failing to look');
+  } finally {
+    await control.close();
+  }
 });
