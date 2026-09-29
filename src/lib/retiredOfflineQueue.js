@@ -58,6 +58,14 @@ import { retireLegacyBrowserCaches } from '@/lib/retiredBrowserCacheCleanup';
  * matters: giving the flag a writer would still purge nothing, because the
  * reader is unreachable. Fixing either link alone leaves the PHI on the device.
  *
+ * Two things about that paragraph will age and are dated rather than left to
+ * read as current. `UserNotRegisteredError.jsx`'s comment is being corrected in
+ * a change of its own, so check the file rather than this sentence. And a
+ * separate change makes `purgeSyncedOfflineEntries` reachable from the purge
+ * logout DOES call — which does NOT close what is described here: that pass
+ * removes entries a queue's own marker says the server already acknowledged,
+ * while `PURGE_AFTER_RETIREMENT_KEYS` stays behind both dead links above.
+ *
  * Note the shape rather than the instance. The question asked here was whether
  * anything invokes THIS module; that was answered exactly, and the flag chain
  * was a second independent line supporting it. Nobody asked whether the
