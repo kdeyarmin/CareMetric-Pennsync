@@ -168,12 +168,30 @@ test('a key outside the allowlist is reported, by site and by name', () => {
   assert.deepEqual(rejected, ['requestId']);
 });
 
-/** A handler that dispatches on an action is out of reach, and says so. */
+/**
+ * A handler that dispatches on an action is out of reach, and says so.
+ *
+ * The dispatched set is asserted whole, not by one member: it is the population
+ * this check declines to answer about, so it is the population most able to
+ * grow without anyone noticing. A handler gaining a second allowlist leaves the
+ * comparison silently, and this is the line that makes that a decision.
+ *
+ * Both figures below were reached independently by the thread that measured
+ * the route side of this sweep -- 126 registry entries and 6 with more than one
+ * allowlist -- from its own parse of the same file. Crossing them is what found
+ * the sentinel counting 313.
+ */
 test('an action-dispatched handler is reported, not silently skipped', () => {
   const { admits, dispatched, entries } = handlerAllowlists(repository);
-  assert.ok(entries > 50, 'handlers.mjs no longer parses as one registry entry per line');
-  assert.ok(dispatched.has('manageAuthorizedReferral'),
-    'the six-action referral handler must land in the dispatched bucket');
+  assert.equal(entries, 126,
+    'the registry entry count moved. This is a sentinel on the PARSE, not a pin\n'
+    + '  on the API: if handlers.mjs stops matching one entry per line it goes to\n'
+    + '  zero rather than drifting by one, and the sets below go empty with it.');
+  assert.deepEqual([...dispatched].sort(), [
+    'listAuthorizedPatients', 'manageAgencyMembership', 'manageAuthorizedReferral',
+    'manageMyNotifications', 'manageVehicleMaintenance', 'updateIncident',
+  ]);
+  assert.equal(admits.size, 114, 'entries with exactly one params allowlist');
   assert.equal(admits.has('manageAuthorizedReferral'), false);
   assert.deepEqual(measureWrapperCalls(repository).dispatched, ['manageAgencyMembership']);
 });

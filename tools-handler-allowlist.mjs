@@ -109,6 +109,7 @@ import { pathToFileURL } from 'node:url';
 import { argumentText, splitArguments } from './tools-entity-call-arguments.mjs';
 
 export const API_DIRECTORY = 'services/pennsync-api';
+export const REGISTRY_FILE = 'handlers.mjs';
 export const WRAPPER_DIRECTORY = 'src/functions';
 export const SOURCE_DIRECTORY = 'src';
 
@@ -204,7 +205,14 @@ export function handlerAllowlists(repository) {
     const source = readFileSync(join(directory, file), 'utf8');
     const found = [...source.matchAll(/^ {2}([A-Za-z_][\w]*): Object\.freeze\(\{/gm)]
       .map(match => ({ name: match[1], at: match.index }));
-    entries += found.length;
+    // Counted from the REGISTRY's own file. A first version summed the pattern
+    // over every module in the directory and reached 313, because a two-space
+    // frozen object is an ordinary shape and other modules are full of them.
+    // The sentinel below then held at 187 with `handlers.mjs` contributing
+    // nothing at all, so the one thing it exists to notice -- the registry
+    // ceasing to parse -- could not move it. Found by crossing these figures
+    // against a second thread's derivation rather than by reading the code.
+    if (file === REGISTRY_FILE) entries = found.length;
     for (const [index, entry] of found.entries()) {
       const body = stripBlockComments(
         source.slice(entry.at, found[index + 1]?.at ?? source.length));
