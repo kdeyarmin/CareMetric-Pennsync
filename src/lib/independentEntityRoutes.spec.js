@@ -2287,4 +2287,37 @@ describe('duplicate route declarations', () => {
       expect(declarations).toHaveLength(1);
     }
   });
+  /**
+   * The increment path discards `referral_count` and REFUSES anything else.
+   *
+   * Discarding was the first version: any key other than the date was dropped,
+   * so `{ referral_count: 2, specialty: 'Cardiology' }` succeeded as an
+   * increment and lost the specialty. The contract guarantees that an unknown
+   * or reserved field is refused by name (D39), and a route that drops keys
+   * before the request is built launders that guarantee — the contract never
+   * sees the key it promises to refuse.
+   *
+   * Today's only caller sends exactly the two keys, so this was not a live
+   * defect. It is the guarantee, asserted where it can be broken.
+   */
+  it('refuses a third key on the referral increment rather than dropping it', () => {
+    const route = ENTITY_ROUTES['Physician.update'];
+
+    // The shape the directory actually sends still works, and still drops the
+    // caller's count: the contract reads the stored value and adds one.
+    expect(route.request('phys-1', { referral_count: 4, last_referral_date: '2026-09-29' }))
+      .toEqual({ id: 'phys-1', action: 'record_referral', referral_date: '2026-09-29' });
+    expect(route.request('phys-1', { referral_count: 4 }))
+      .toEqual({ id: 'phys-1', action: 'record_referral', referral_date: null });
+
+    for (const extra of [{ specialty: 'Cardiology' }, { is_active: false }, { nonsense: 1 }]) {
+      expect(() => route.request('phys-1', { referral_count: 4, ...extra }))
+        .toThrow(ARGUMENTS_UNSUPPORTED);
+    }
+
+    // And the profile path is untouched — it passes its fields through for the
+    // contract to check, which is where the allowlist lives.
+    expect(route.request('phys-1', { specialty: 'Cardiology' }))
+      .toEqual({ id: 'phys-1', action: 'profile', fields: { specialty: 'Cardiology' } });
+  });
 });

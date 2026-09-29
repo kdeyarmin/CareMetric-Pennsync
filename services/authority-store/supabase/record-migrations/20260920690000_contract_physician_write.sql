@@ -95,11 +95,47 @@ begin
   end if;
 end $helper$;
 
+-- The three columns this table stores as something other than text. Named here
+-- rather than derived, so a column added to the allowlist without a decision
+-- about its type falls into the text class loudly at review rather than
+-- quietly at runtime.
+create function "pennsync_records".physician_boolean_fields()
+  returns text[] language sql immutable set search_path = '' as $helper$
+  select array['accepts_home_health','accepts_hospice','is_active']
+$helper$;
+
 -- Every key the caller sent is checked against the allowlist and an unknown one
--- is REFUSED, never dropped (D39).
+-- is REFUSED, never dropped (D39). **Its VALUE is checked too, and that half
+-- was missing until a review bot asked for it.**
+--
+-- The name check alone is not the schema-backed API this replaces. Base44
+-- validated each value against the entity schema before any write; this
+-- contract is the only thing left that can, and without the type check three
+-- things happen, none of them a declared refusal:
+--
+--   `{"full_name": {}}` — `->>` renders a JSON object as its own text, so the
+--   row stores the literal `{}` as a provider's name. A corrupt value, written
+--   successfully, reported as success.
+--
+--   `{"accepts_hospice": "maybe"}` — `::boolean` raises `invalid_text_
+--   representation` (22P02), and `{"preferred_contact_method": "carrier
+--   pigeon"}` raises the table's own check violation (23514). Both are real
+--   refusals and NEITHER is a code this contract declares, so the HTTP
+--   boundary cannot classify them and the screen gets a generic store failure
+--   where it should get a field error.
+--
+--   `{"tags": "cardiology"}` — `tags` is `jsonb`, so a bare string is stored
+--   where every reader expects an array.
+--
+-- So the type is checked HERE, before any DML, and the refusal is declared:
+-- `PENNSYNC_PHYSICIAN_VALUE_INVALID`. A null is always allowed, for every
+-- class — clearing a field is a legitimate edit and the columns are nullable.
+-- This is a NARROWING against the original, which accepted whatever Base44's
+-- schema accepted, and it is narrower only in refusing what that schema would
+-- also have refused.
 create function "pennsync_records".physician_check_fields(p_fields jsonb)
   returns void language plpgsql immutable set search_path = '' as $helper$
-declare v_field text;
+declare v_field text; v_kind text;
 begin
   if p_fields is null or jsonb_typeof(p_fields) <> 'object' then
     raise exception using errcode='22023', message='PENNSYNC_PHYSICIAN_WRITE_INVALID';
@@ -108,6 +144,28 @@ begin
     if not (v_field = any("pennsync_records".physician_writable_fields())) then
       raise exception using errcode='22023',
         message='PENNSYNC_PHYSICIAN_FIELD_UNSUPPORTED';
+    end if;
+    v_kind := jsonb_typeof(p_fields->v_field);
+    if v_kind = 'null' then
+      continue;
+    elsif v_field = any("pennsync_records".physician_boolean_fields()) then
+      if v_kind <> 'boolean' then
+        raise exception using errcode='22023', message='PENNSYNC_PHYSICIAN_VALUE_INVALID';
+      end if;
+    elsif v_field = 'tags' then
+      if v_kind <> 'array' then
+        raise exception using errcode='22023', message='PENNSYNC_PHYSICIAN_VALUE_INVALID';
+      end if;
+    elsif v_kind <> 'string' then
+      raise exception using errcode='22023', message='PENNSYNC_PHYSICIAN_VALUE_INVALID';
+    elsif v_field = 'preferred_contact_method'
+      and p_fields->>v_field not in ('fax', 'phone', 'email', 'portal') then
+      -- The table's own constraint, asked BEFORE the write so the answer is
+      -- this contract's refusal rather than a raw 23514. The list is repeated
+      -- from `physician_preferred_contact_method_allowed`, and the test reads
+      -- the constraint out of the generated migration and compares, so the two
+      -- cannot drift apart silently.
+      raise exception using errcode='22023', message='PENNSYNC_PHYSICIAN_VALUE_INVALID';
     end if;
   end loop;
 end $helper$;
@@ -254,9 +312,17 @@ begin
 end $contract$;
 
 -- The record owner alone, then the public wrappers. A helper a policy never
--- asks is granted to nobody: `physician_writable_fields`, `physician_write_role`
--- and `physician_check_fields` are this file's own and stay unreachable.
+-- asks is granted to nobody: `physician_writable_fields`,
+-- `physician_boolean_fields`, `physician_write_role` and
+-- `physician_check_fields` are this file's own and stay unreachable.
+--
+-- `physician_boolean_fields` arrived with the value check and was missed here,
+-- which `contract-operational-tables.test.mjs` caught by name: a helper that
+-- performs no authorization must not be reachable, and PostgreSQL had granted
+-- it to PUBLIC as it does every new function. The same default that opened the
+-- three wrappers, one layer down, and found by a guard rather than by reading.
 revoke all on function "pennsync_records".physician_writable_fields() from public, anon, authenticated, service_role;
+revoke all on function "pennsync_records".physician_boolean_fields() from public, anon, authenticated, service_role;
 revoke all on function "pennsync_records".physician_write_role(text) from public, anon, authenticated, service_role;
 revoke all on function "pennsync_records".physician_check_fields(jsonb) from public, anon, authenticated, service_role;
 revoke all on function "pennsync_records".contract_physician_create(text,jsonb) from public, anon, authenticated, service_role;

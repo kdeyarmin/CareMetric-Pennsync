@@ -2,7 +2,8 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+import { applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames }
+  from './record-migrations.mjs';
 
 const MIGRATION_NAME = '20260920690000_contract_physician_write.sql';
 
@@ -109,7 +110,16 @@ before(async () => {
   // tree the next change produces. Retire the call here when this merges —
   // `assertNewestRecordMigration`'s own error text says so, and it is what it
   // says to do rather than widening it with an exception list.
-  assertNewestRecordMigration(await applyRecordMigrations(db), MIGRATION_NAME);
+  //
+  // The whole-directory equality comes FIRST and is the assertion with the
+  // teeth: `assertNewestRecordMigration` reads only the last name, so an
+  // earlier forward migration silently missing from the applied set leaves an
+  // incomplete store and still satisfies the ordering guard. The suite would
+  // then be exercising this contract against a store no deployment gets.
+  const applied = await applyRecordMigrations(db);
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the record directory and what was applied to this store disagree');
+  assertNewestRecordMigration(applied, MIGRATION_NAME);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`
     insert into pennsync_records.physician
@@ -152,6 +162,75 @@ test('an unknown field is REFUSED by name, not filtered away (D39)', async () =>
       [A, { full_name: 'Dr X', fax_number: '555-1', [field]: 'whatever' }]));
     assert.match(refused, /PENNSYNC_PHYSICIAN_FIELD_UNSUPPORTED/, `${field} was accepted`);
   }
+});
+
+/**
+ * A field's VALUE is checked, not only its name.
+ *
+ * Every case here reaches a declared refusal. Without the type check each one
+ * reaches something else, and the something else is the finding: an object
+ * under a text column is rendered by `->>` and STORED as `{}`, a non-boolean
+ * raises `invalid_text_representation`, and a bad contact method raises the
+ * table's own check violation — the first is silent corruption reported as
+ * success and the other two are undeclared codes the HTTP boundary cannot
+ * classify.
+ *
+ * The enum list is READ OUT OF THE MIGRATION rather than retyped here, because
+ * the contract repeats the constraint's four values and a hand-kept third copy
+ * is how the two drift apart while both suites stay green.
+ */
+test('a value of the wrong JSON type is refused before any write, by a declared code', async () => {
+  const cases = [
+    ['full_name', {}], ['full_name', []], ['fax_number', 7], ['specialty', true],
+    ['accepts_hospice', 'maybe'], ['accepts_home_health', 1], ['is_active', 'yes'],
+    ['tags', 'cardiology'], ['tags', {}],
+    ['preferred_contact_method', 'carrier pigeon'], ['preferred_contact_method', 4],
+  ];
+  for (const [field, value] of cases) {
+    const why = await refusal(() => call(ADMIN_A, CREATE,
+      [A, { full_name: 'Dr V', fax_number: '555-9', [field]: value }]));
+    assert.match(why, /PENNSYNC_PHYSICIAN_VALUE_INVALID/,
+      `${field} = ${JSON.stringify(value)} was not refused as an invalid value`);
+    // The update path shares the helper, so it must answer identically rather
+    // than by a different route that happens to also refuse.
+    const onUpdate = await refusal(() => call(ADMIN_A, UPDATE,
+      [A, 'phys-a1', 'profile', { [field]: value }, null]));
+    assert.match(onUpdate, /PENNSYNC_PHYSICIAN_VALUE_INVALID/,
+      `${field} = ${JSON.stringify(value)} was accepted on update`);
+  }
+
+  // A JSON null is not a bad value: clearing a field is a legitimate edit and
+  // every one of these columns is nullable. This is the half a type check
+  // written from the refusals alone would get wrong.
+  for (const field of ['specialty', 'accepts_hospice', 'tags', 'preferred_contact_method']) {
+    const cleared = await call(ADMIN_A, UPDATE, [A, 'phys-a1', 'profile', { [field]: null }, null]);
+    assert.equal(cleared.success, true, `${field} could not be cleared`);
+  }
+
+  // And the valid values still pass, so the check is not simply refusing the
+  // column. A test that only drives refusals cannot tell those apart.
+  const ok = await call(ADMIN_A, CREATE, [A, {
+    full_name: 'Dr W', fax_number: '555-8', accepts_hospice: true,
+    tags: ['cardiology', 'referring'], preferred_contact_method: 'email',
+  }]);
+  assert.equal(ok.success, true);
+});
+
+test('the contract\'s contact-method list is the one the table constrains', async () => {
+  const sql = await readFile(new URL(`../supabase/record-migrations/${MIGRATION_NAME}`,
+    import.meta.url), 'utf8');
+  const store = await readFile(new URL(
+    '../supabase/record-migrations/20260919170000_record_store.sql', import.meta.url), 'utf8');
+  const constraint = store.match(
+    /"physician_preferred_contact_method_allowed" check \([^)]*in \(([^)]*)\)/);
+  assert.ok(constraint, 'the physician contact-method constraint is not where this test looks');
+  const allowed = [...constraint[1].matchAll(/'([^']+)'/g)].map(m => m[1]).sort();
+  const inContract = [...sql.matchAll(
+    /p_fields->>v_field not in \(([^)]*)\)/g)].flatMap(m =>
+    [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1])).sort();
+  assert.deepEqual(inContract, allowed,
+    'the contract pre-checks a different set of contact methods than the table allows,\n'
+    + '  so one of them refuses a value the other permits. Change both together.');
 });
 
 test('the schema\'s required pair is required as keys, and an empty fax still saves', async () => {

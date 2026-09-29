@@ -1031,7 +1031,18 @@ const operationalRoutes = Object.freeze({
         unsupported('fields');
       }
       if (Object.hasOwn(fields, 'referral_count')) {
-        // The increment. Everything but the date is discarded on purpose.
+        // The increment. `referral_count` is DISCARDED — the contract reads the
+        // stored value and adds one, which is the whole point of the port — but
+        // any OTHER key is REFUSED rather than dropped.
+        //
+        // Dropping was the first version and it is the shape D39 exists to stop:
+        // `{ referral_count: 2, specialty: 'Cardiology' }` would have succeeded
+        // as an increment and lost the specialty, with the contract never seeing
+        // the key it guarantees to refuse. A route that discards silently
+        // launders the guarantee before the thing that makes it is reached.
+        for (const key of Object.keys(fields)) {
+          if (key !== 'referral_count' && key !== 'last_referral_date') unsupported('fields');
+        }
         return { id, action: 'record_referral', referral_date: fields.last_referral_date ?? null };
       }
       return { id, action: 'profile', fields };
