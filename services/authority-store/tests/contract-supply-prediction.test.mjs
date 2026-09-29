@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { transpileTs } from '../../../tools-transpile-ts.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Predicting a patient's supply needs.
@@ -22,10 +22,6 @@ import { transpileTs } from '../../../tools-transpile-ts.mjs';
  * term. Change the original and this test changes with it.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const CREDENTIAL_SWEEP = 'services/authority-store/supabase/record-migrations/'
-  + '20260920340000_contract_credential_sweep.sql';
 const SUPPLY = 'services/authority-store/supabase/record-migrations/'
   + '20260920380000_contract_supply_prediction.sql';
 const ORIGINAL = 'base44/functions/predictSupplyNeeds/entry.ts';
@@ -47,12 +43,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The credential sweep carries `agency_today`, which this contract reuses
-  // rather than declaring a second notion of the store's own day.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, TIME_OFF,
-    CREDENTIAL_SWEEP, SUPPLY]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, agency, first, last] of [
     ['patient-a1', A, 'Ada', 'Lovelace'],

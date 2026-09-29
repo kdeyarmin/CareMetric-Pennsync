@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Storing what a CMS regulation sync found.
@@ -19,10 +19,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * uses for an absent one, and the answer says how many were adjusted.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const CREDENTIAL_SWEEP = 'services/authority-store/supabase/record-migrations/'
-  + '20260920340000_contract_credential_sweep.sql';
 const REGULATION = 'services/authority-store/supabase/record-migrations/'
   + '20260920370000_contract_regulatory_update.sql';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -47,11 +43,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // `time_off_date` and `agency_today` are the shared parsers this reuses.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE,
-    TIME_OFF, CREDENTIAL_SWEEP, REGULATION]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 });
 after(async () => db?.close());

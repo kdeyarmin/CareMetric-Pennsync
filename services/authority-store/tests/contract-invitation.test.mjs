@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Resending a staff invitation (`contract_invitation_resend`).
@@ -24,12 +24,8 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * record itself as though a message went out.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const AUDIT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920010000_activity_audit.sql';
 const INVITATION = 'services/authority-store/supabase/record-migrations/'
   + '20260920270000_contract_invitation.sql';
-const SWEEP = 'services/authority-store/supabase/record-migrations/'
-  + '20260920330000_contract_invitation_sweep.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -46,9 +42,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT, INVITATION, SWEEP]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   const rows = [
     ['inv-expired', A, 'new-nurse@example.invalid', 'expired', 2],

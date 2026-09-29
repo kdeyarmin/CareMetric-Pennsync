@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Credential expiry warnings — `sendExpirationNotifications`' credential half.
@@ -22,18 +22,10 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * by either suite alone, so the warnings are read back through the reader.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const DIR = 'services/authority-store/supabase/record-migrations/';
 // `caller_membership` arrives with the note-history contract (D34) and
 // `agency_today` plus `credential_due_offsets` with the credential sweep (D50);
 // both this contract and the mint refuse to apply without their dependencies,
 // by name in their own preambles rather than on first use.
-const CARRIED = [
-  `${DIR}20260920170000_contract_note_history.sql`,
-  `${DIR}20260920285000_notification_mint.sql`,
-  `${DIR}20260920300000_contract_notification.sql`,
-  `${DIR}20260920340000_contract_credential_sweep.sql`,
-  `${DIR}20260920550000_contract_expiration_notices.sql`,
-];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -54,9 +46,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ...CARRIED]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 });
 after(async () => db?.close());
