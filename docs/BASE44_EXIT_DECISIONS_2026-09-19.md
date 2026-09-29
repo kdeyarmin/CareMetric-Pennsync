@@ -5324,6 +5324,34 @@ and it is `hub`, a different destination entirely. Those are not edits waiting
 for someone's time; each is a product decision about what the feature becomes,
 and a plan sizing the stage by the count is sizing the wrong thing.
 
+**CORRECTION, added 2026-09-29 by Plan and measured first-hand. The sentence
+above is left standing rather than replaced, because a figure that was wrong on
+the day it was written, with its own refutation printed above and below it, is
+this entry's worked example and deleting it destroys the evidence.** "203 of
+445 reach a domain the migration decided not to carry" was wrong when written.
+203 was the UNSERVED TOTAL, and the table directly above that sentence prints
+the refutation: `broker_is_read_only` 9 is a row of its own. 203 = 194 + those
+9 broker writes, which is arithmetic over the filed figures rather than a
+re-measurement of that head; nobody has re-run the tool there.
+
+**Measured on `36c828a0`, clean tree, with `measureDestinations` from
+`tools-frontend-destination.mjs` and the disposition sets from
+`tools-frontend-retired-inventory.mjs`: 453 call sites, 245 land, 208 do
+not.** Of the 208, **194 reach a domain the migration decided not to carry**
+(`hub` 119, `preserved_paused` 75) and **14 do not**: 9 writes refused by the
+broker family's D2 ceiling and 5 by a D83 reference table's GRANT, all of them
+to entities the store DOES carry. So for those fourteen what has no destination
+is the OPERATION and not the domain, and the split is keyed to the DISPOSITION
+rather than to the destination bucket — which is what the first correction of
+this sentence got wrong, separating the 5 and not the 9 and landing on 203 a
+second time by a different route.
+
+**And the reason it survived two readings is that the percentage did not
+move.** 203/445 is 45.62% and 208/453 is 45.92%; both print as 46%. Both
+operands grew, a whole destination bucket appeared, and the one figure a reader
+spot-checks came out the same. That is D106 arriving inside the entry that
+carries it.
+
 ### Being served is a property of the entity; having a destination is a property of the call site
 
 The nine `broker_is_read_only` sites are the ones a per-entity tool would have
@@ -8119,6 +8147,12 @@ have collided with all of them. The remaining conversions go one suite per
 change, and the one data point says to expect a finding in each rather than a
 green re-run — it says nothing about how many there are.
 
+**The rule holds only while "empty" is still reachable, and widening the derivation is what takes that away.** `limitConstants()` in `tools-entity-call-arguments.mjs` fails closed exactly as this entry says: it refuses when the table of named row limits comes back empty, because an empty table makes every call site naming a constant read INDETERMINATE and the route audit understate for a reason nothing reports. That refusal read one file, `src/lib/queryLimits.js`, which declares two constants, and under that derivation empty was a reachable state — break the matcher, empty or move the file, and the table is empty. Then I widened the derivation to every production module in `src/` that exports an integer, thirty-three names across a dozen modules, and left the refusal untouched. `found.size` can now reach zero only if no module anywhere in `src/` exports a single integer, which is not the failure the refusal names but the absence of the whole subject. Every failure it was written for — the matcher breaking on that file's shape, that file moving — now leaves thirty-two other names in the table and the guard silent. **A predicate that survives only for inputs it was not written about is not a surviving predicate.** So: a fail-closed-on-empty check is about the derivation it was written for, and only while "empty" stays reachable on the failures it names. Widen the derivation and the check survives as a predicate and stops being about anything, with nothing failing and nothing looking stale, in a diff that need not touch its line.
+
+**The remedy is this entry's own second refusal, applied to a widened population.** D115's instance already refuses twice, on an empty listing and separately on a directory holding files but no `.sql`, because "has files" and "has migrations" are different questions. The same split is what fixes this: `queryLimits.js` is kept by NAME as a CANARY rather than as the population, the refusal reads that file's own declarations before and independently of the merged table, and the comment above it says what the name is load-bearing for, so the next person to widen the population is told. "Has constants" and "has the constants this was written to notice" are different questions.
+
+**And ask D143's question at the same moment.** Widening a derivation is exactly when to name the change that would make the check red, because neither the widening nor the answer is visible in the diff that causes it.
+
 ## D116 — A count you cannot reproduce with the instrument's own key is re-read, never predicted or audited
 
 **The rule.** A count is a predicate over a population. Where you cannot
@@ -9475,6 +9509,15 @@ The reason it is worth a paragraph rather than a fix is that the two suites in #
 Any figure that nothing compares (D139), any control whose population is a name pattern rather than the capability (D142, D148), and a difference report that `continue`s on an absent key and therefore compares none of that object's fields (D140) are all the same animal: the machinery runs, the output is green or unchanged, and the subject was never interrogated. The remedy is always the same and always costs one step — **break it on purpose and watch it go red before you believe it.**
 
 Related: D135, D139, D140, D142, D145, D148, D151.
+
+**The premise "this check works" is itself a claim, and it is usually the one nobody measured.** I was about to have a finding placed that said widening a population broke a working guard. "Broke" rests on "working", which I had not established. One line settles it — ask what, at the head before the change, referenced the guard's own failure name anywhere in the tree:
+
+```
+$ git grep -n "ENTITY_ROUTE_LIMITS_UNREADABLE" 00ccac41 -- .
+00ccac41:tools-entity-call-arguments.mjs:25: ...
+```
+
+One hit: its own source line. No test had ever asserted that guard fires, so it was never shown to bite under the narrow derivation either, and what the widening did was turn an UNPROVED guard into an UNPROVABLE one. Those two states are indistinguishable from a green run, which is why no signal exists at either boundary. **Run the command before writing the sentence.** A guard whose own failure name appears nowhere but its own line has never had D143's question asked of it, and that is true of a guard that still works as much as of one that cannot.
 
 ## D144 — A base move that changes a test SCRIPT moves your gate's population, not its inputs
 
