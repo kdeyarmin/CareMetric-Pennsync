@@ -1122,17 +1122,32 @@ const grantedToAuthenticated = sql => {
   return names;
 };
 
-const reachableOverloads = async name => {
+/**
+ * Every caller role, not just the one the grants name.
+ *
+ * `record-brokers.test.mjs` asks all three and this asked one, which left a
+ * hole the change itself describes: every revoke block here says `from
+ * public, anon, authenticated, service_role`, and a future one that named
+ * only `authenticated` would leave PostgreSQL's default grant to PUBLIC in
+ * place, so `anon` would still reach the helper and a single-role check would
+ * stay green. The role is carried in the reported string for the same reason
+ * — "reachable" without saying by whom is not an answer anybody can act on.
+ */
+const CALLER_ROLES = Object.freeze(['anon', 'authenticated', 'service_role']);
+
+const reachableOverloads = async (name, roles = CALLER_ROLES) => {
   const { rows } = await db.query(`
     select pg_catalog.oidvectortypes(p.proargtypes) as args
     from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
     where n.nspname = $1 and p.proname = $2`, [SCHEMA, name]);
   const reachable = [];
   for (const row of rows) {
-    const { rows: allowed } = await db.query(
-      'select has_function_privilege($1, $2, \'execute\') as allowed',
-      ['authenticated', `${SCHEMA}.${name}(${row.args})`]);
-    if (allowed[0].allowed) reachable.push(`${name}(${row.args})`);
+    for (const role of roles) {
+      const { rows: allowed } = await db.query(
+        'select has_function_privilege($1, $2, \'execute\') as allowed',
+        [role, `${SCHEMA}.${name}(${row.args})`]);
+      if (allowed[0].allowed) reachable.push(`${role}: ${name}(${row.args})`);
+    }
   }
   return { overloads: rows.length, reachable };
 };
@@ -1195,7 +1210,12 @@ test('a function is callable only where its own migration grants it', async () =
   for (const name of declared.keys()) {
     const { reachable } = await reachableOverloads(name);
     if (granted.has(name)) {
-      assert.ok(reachable.length > 0,
+      // Asked of `authenticated` alone, because that is the role the grant
+      // statements name. A capability reachable by `anon` would be a finding
+      // and not a confirmation, and it is not this test's to make: the
+      // refusal side below asks all three.
+      const { reachable: byCaller } = await reachableOverloads(name, ['authenticated']);
+      assert.ok(byCaller.length > 0,
         `${name} is granted to authenticated and is not callable`);
     } else if (reachable.length > 0) {
       surprises.push(...reachable);
@@ -1217,8 +1237,14 @@ test('the check bites: a helper left un-revoked is reported', async () => {
     reset role;`);
   try {
     const { reachable } = await reachableOverloads('planted_helper');
-    assert.deepEqual(reachable, ['planted_helper(text)'],
-      'a helper with no revoke must read as reachable, or the check is blind');
+    // All three roles, because the default grant is to PUBLIC and every role
+    // inherits it — which is exactly why a check that asked only
+    // `authenticated` would miss a revoke that named only `authenticated`.
+    assert.deepEqual(reachable, [
+      'anon: planted_helper(text)',
+      'authenticated: planted_helper(text)',
+      'service_role: planted_helper(text)',
+    ], 'a helper with no revoke must read as reachable, or the check is blind');
 
     // And the other direction on the same object, so the reading is about the
     // privilege rather than about the function existing at all.

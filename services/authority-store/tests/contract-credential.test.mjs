@@ -478,11 +478,19 @@ test('bounded_reason is refused, which is what closed the pin', async () => {
   // declarations and grants. Eight more were found the same way, and a name
   // pattern could not have seen any of them — `%credential%` does not match
   // `bounded_reason`, which is why this needed a test of its own at all.
-  const { rows } = await db.query(
-    'select has_function_privilege($1, $2, \'execute\') as allowed',
-    ['authenticated', `${SCHEMA}.bounded_reason(text)`]);
-  assert.equal(rows[0].allowed, false,
-    'bounded_reason performs no authorization and must not be callable');
+  // All three caller roles, not just `authenticated`. The revoke removes
+  // PostgreSQL's default grant to PUBLIC, and a future one that named only
+  // `authenticated` would leave `anon` reaching it while a single-role
+  // assertion here stayed green — the hole Copilot named on #337, which the
+  // store-wide check in `contract-operational-tables.test.mjs` closes for
+  // every helper and this closes for the one with a pin of its own.
+  for (const role of ['anon', 'authenticated', 'service_role']) {
+    const { rows } = await db.query(
+      'select has_function_privilege($1, $2, \'execute\') as allowed',
+      [role, `${SCHEMA}.bounded_reason(text)`]);
+    assert.equal(rows[0].allowed, false,
+      `bounded_reason performs no authorization and must not be callable by ${role}`);
+  }
 
   // And the function is still THERE, so the refusal is the privilege rather
   // than a helper that quietly stopped existing — the two are the same answer
