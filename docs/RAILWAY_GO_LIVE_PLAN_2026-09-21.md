@@ -3365,6 +3365,67 @@ entity routes: 81 declared, 145/245 landable call sites SERVED, 100 still to ado
   of those 100, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 99 need a named capability
 ```
 
+#### The route audit's front: five sites whose fallback is already gone
+
+**A site nobody has routed still reaches Base44. A site a declared route
+REFUSES has had its fallback taken away.** Those are not two degrees of the same
+thing and the served count cannot tell them apart, because it counts neither: a
+refused site is not served and is not in the unrouted pool either. Five are
+known and they go ahead of everything else in this audit, whatever the totals
+say about size.
+
+**Three came out of the matcher fix and could not have been seen before it**,
+which is the part worth keeping — the census had counted the CALL SITES of
+`src/lib/retiredOfflineQueue.js` at zero, so it had counted none of their
+refusals either. They are `ComplianceAudit.filter` and `Incident.filter`, which
+ask without a limit where the route requires one, and `Task.filter`, which
+filters on a field the route does not carry. Driven through `routeFor` with the
+arguments those lines actually pass, all three raise
+`STAGING_ENTITY_ARGUMENTS_UNSUPPORTED` — demonstrated rather than read off the
+gate's summary. And the module IS on the routed path: it imports `base44` from
+`src/api/base44Client.js`, whose `rawBase44` is `independentAdapter?.raw` when
+the independent adapter is configured, and that client's `entities` is
+`routedEntities(portedCall, …)`.
+
+**Two are ladder's, in `submitStateReportableIncident`, and they are the most
+serious class the product has.** `SmartIncidentForm.jsx` and `EventReport.jsx`
+both send `patient_name`; `STATE_INCIDENT_FIELDS` omits it; the wrapper is
+pass-through; `exactObject` refuses the whole submission. So every
+state-reportable submission from those two screens answers `INVALID_PARAMS`
+against the owned backend, and nothing is visibly broken only because Base44
+still serves both pages.
+
+**That one looked like a decision and is not, which is the reusable part.** The
+obvious repairs — widen the constant, or stop the screens sending the key —
+both appear to touch D73's deliberate narrowing, under which that capability's
+agency-wide alert names no patient because `notification_read` is agency-wide.
+Reading `20260920510000_contract_state_incident.sql` settles it: the alert's
+title and body are built in SQL from the event type, the SUBMITTER's verified
+address and the date, and its `jsonb` carries `incident_id`,
+`state_reportable` and `reported_by`. `report_text` reaches the stored incident
+row and never reaches `notification_mint`. **D73's narrowing lives in the
+migration, not in the service allowlist**, so the allowlist's omission was a
+defect rather than a control — and `submitted_by_name` is the in-tree precedent
+for the shape that was wanted all along: accepted at the boundary, used by
+`buildReportText`, deliberately absent from the object handed to the contract.
+The port's own builder already reads `patient_name`, carried interpolation for
+interpolation from the original, so today the owned path would print a patient
+ID where Base44 prints a name — if a request got through at all.
+
+**The honest edge travels with the fix wherever it lands.** The name does reach
+`report_text`, which IS stored. That is what Base44 stores today, so it is
+restoration rather than change; and `factual_description` on the same
+submission is free text a nurse can put a name into regardless, which is D188.
+A seventeen-key allowlist is not a privacy boundary and must not be read as
+one. What is contained is the ALERT, and that was never at risk.
+
+**So the audit's first question is not "how many sites remain" but "how many
+declared routes refuse a call that is actually made".** The gate's refusing line
+answers it for the route table — nine on this tree — and answers nothing about
+pass-through wrappers, which is where ladder's two live. Two instruments, two
+populations, and a total that merged them would be the census defect arriving
+in the audit written to describe it.
+
 #### The destination gate, which measures a different population
 
 Everything above this heading is the route gate's, and its measured figures
