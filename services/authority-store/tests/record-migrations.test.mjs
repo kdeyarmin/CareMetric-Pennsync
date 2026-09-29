@@ -22,9 +22,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { PGlite } from '@electric-sql/pglite';
+
 import {
   RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
+import { transactionControl } from '../../../tools-pennsync-migrate-shape.mjs';
 
 /** A directory URL for a fresh temporary directory, with the trailing slash the walk needs. */
 const temporaryDirectory = async () =>
@@ -384,4 +387,129 @@ test('every pinned suite exists, still needs its pin, and owes a real reason', a
       `${name} no longer hands a record migration to a store by name, so the `
       + 'scan would not report it and the pin exempts nothing — delete it');
   }
+});
+
+/**
+ * What applying a migration through this walk does and does not prove.
+ *
+ * This section exists because I got it wrong, confidently, and the shape of the
+ * error is more useful than the answer. A first measurement applied a failing
+ * migration with its own `begin; … commit;` and again without, saw NO OBJECT
+ * LEFT BEHIND in both cases, and concluded that the transport supplies the
+ * atomicity and that no test here can observe a migration's own wrapping. Two
+ * controls backed it up, and both of them bit. They were controls on the wrong
+ * axis: they proved the harness could tell a commit from a rollback, and
+ * nothing in the run ever varied the property the claim was about.
+ *
+ * The rule that survives it: a case coming back blind is not a finding until
+ * the harness has been shown to bite ON THE VARIABLE UNDER TEST. A control that
+ * bites on some other axis reads exactly like one that works.
+ *
+ * The real answer is that the two ARE distinguishable, just not by counting
+ * rows. `exec` runs a multi-statement string in an implicit transaction, so a
+ * failure discards the work either way — but a file carrying its own `begin;`
+ * leaves the SESSION in an aborted block that has to be ended before the
+ * connection can do anything else, and a file without one leaves it clean.
+ *
+ * Two different properties share the word "transaction" in this directory and
+ * only one of them is about a file. A contract's atomicity — the nine or so
+ * tests here named "in one transaction", "a refusal leaves no half-directory"
+ * and so on — is a property of ONE `query` of ONE function call, which
+ * PostgreSQL rolls back per call whatever the client wrapped. Those tests are
+ * sound and none of this bears on them. What is about a file is below.
+ */
+
+/** The four cases, run through the same `exec` the walk uses. */
+async function applyAndObserve(sql) {
+  const db = await new PGlite();
+  try {
+    let threw = false;
+    try { await db.exec(sql); } catch { threw = true; }
+    // Can this session still work WITHOUT being told to roll back? That is the
+    // question the row count cannot answer.
+    let session = 'clean';
+    try { await db.query('select 1'); } catch (error) {
+      session = /aborted/i.test(error.message) ? 'aborted-block' : `unexpected: ${error.message}`;
+    }
+    if (session !== 'clean') await db.exec('rollback;');
+    const { rows } = await db.query(
+      "select count(*)::int as count from pg_tables where tablename = 'wrapping_probe'");
+    return { threw, session, objects: rows[0].count };
+  } finally { await db.close(); }
+}
+
+const BODY = 'create table public.wrapping_probe (id int);';
+const FAILS = 'select 1 / 0;';
+
+test('a migration that wraps itself is distinguishable from one that does not', async () => {
+  const wrapped = await applyAndObserve(`begin;\n${BODY}\n${FAILS}\ncommit;\n`);
+  const bare = await applyAndObserve(`${BODY}\n${FAILS}\n`);
+
+  // **The trap, asserted rather than described.** Both failures leave nothing
+  // behind, so a check that reads only the objects cannot tell them apart and
+  // would pass with the wrapping deleted. Anyone re-deriving this from row
+  // counts alone lands where I landed, so the useless half is pinned here.
+  assert.equal(wrapped.threw, true);
+  assert.equal(bare.threw, true);
+  assert.equal(wrapped.objects, 0);
+  assert.equal(bare.objects, 0,
+    'if this ever differs, a row-count check has become able to bite and this '
+    + 'comment is stale — re-derive rather than trusting the paragraph above');
+
+  // **The discriminator.** This is what the file's own `begin;` does that the
+  // transport's implicit one does not.
+  assert.equal(wrapped.session, 'aborted-block',
+    'a self-wrapped migration must leave its own block open and aborted');
+  assert.equal(bare.session, 'clean',
+    'an unwrapped migration leaves the session usable, which is how the two differ');
+
+  // Positive controls, ON THIS AXIS: with nothing failing, the wrapping makes
+  // no difference at all. Without these the pair above could be reporting some
+  // property of failure in general rather than of the wrapping.
+  for (const sql of [`begin;\n${BODY}\ncommit;\n`, `${BODY}\n`]) {
+    const ran = await applyAndObserve(sql);
+    assert.deepEqual(ran, { threw: false, session: 'clean', objects: 1 });
+  }
+});
+
+/**
+ * Every record migration is exactly one transaction.
+ *
+ * `tools-pennsync-migrate.mjs` refuses a file that is not, so a bad file cannot
+ * reach a deployment — but that refusal is swept in `test:utils`, which does
+ * not run in the isolated authority job, and this is the suite that owns the
+ * directory. The property is cheap to check here and the failure is loud.
+ *
+ * It asks `transactionControl` rather than a regular expression of its own.
+ * Every contract in this store is a plpgsql body, and such a body opens with
+ * the word `begin` and closes with `end` — a scan that did not skip `$$ … $$`
+ * would read hundreds of block openers as transaction boundaries. One reading,
+ * shared with the tool that refuses, so the two cannot drift apart.
+ */
+test('every record migration opens and closes exactly one transaction', async () => {
+  const names = await recordMigrationNames();
+  for (const name of names) {
+    const sql = await readFile(new URL(name, RECORD_MIGRATION_DIRECTORY), 'utf8');
+    assert.deepEqual(transactionControl(sql), ['begin', 'commit'],
+      `${name} must be exactly one transaction: a partial apply of a forward `
+      + 'migration leaves a store nobody can describe');
+  }
+
+  // The check is worth nothing if it cannot fail. Three shapes that must be
+  // refused, none of which is in the tree: no wrapping, a rollback in place of
+  // the commit, and two transactions in one file.
+  for (const [shape, sql] of Object.entries({
+    unwrapped: `${BODY}\n`,
+    'rolled back': `begin;\n${BODY}\nrollback;\n`,
+    'two transactions': `begin;\n${BODY}\ncommit;\nbegin;\n${BODY}\ncommit;\n`,
+  })) {
+    assert.notDeepEqual(transactionControl(sql), ['begin', 'commit'],
+      `a ${shape} migration must not satisfy the check above`);
+  }
+
+  // And a body whose plpgsql `begin` would fool a regular expression still
+  // reads as one transaction, so the check is not merely strict.
+  assert.deepEqual(transactionControl(
+    'begin;\ncreate function public.f() returns int language plpgsql as $$\n'
+    + 'begin\n  return 1;\nend $$;\ncommit;\n'), ['begin', 'commit']);
 });
