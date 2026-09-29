@@ -3230,26 +3230,6 @@ entity routes: 64 declared, 106/237 landable call sites SERVED, 131 still to ado
   of those 131, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 130 need a named capability
 ```
 
-**And the reading on THIS tree, with both waves merged.** This one is `pnpm run
-check:entity-routes`'s own output and is **pinned**: `tools-entity-routes.test.mjs`
-fails unless the page carries it byte for byte, so paste what the tool prints and
-never retype, rewrap or re-indent it.
-
-Read the arithmetic before reading the jump: **74 is 69 plus 8 less 3**, not 69
-plus 8. The two branches were open at once and both declared the three
-`ClinicalLibraryTemplate` write keys, which merged history could not show either
-of them — a collision that lives only between two open branches is invisible to a
-cross against `main` (D183). Resolving it dropped one copy of the three keys and
-one of the two `libraryWrite` helpers, keeping the landed one and carrying across
-the other's declaration-time refusal of an unknown action.
-
-```
-entity routes: 74 declared, 113/237 landable call sites SERVED, 124 still to adopt
-  6 of those are sites a declared route REFUSES (User.list:sort), and 40 pass arguments this cannot read
-  16 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
-  of those 124, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 123 need a named capability
-```
-
 **The move above is four call sites over eight route keys, and the two counts
 are why the unrouted headline splits.** Ten write sites across three entities
 reached a capability for the first time; four of them pass arguments the gate
@@ -3271,14 +3251,43 @@ parameter. The seventh is the roster, and it is the reason the check has to read
 the HANDLER rather than the contract or the SQL. Three of the four layers carry
 `order`: the route emits it, the contract entry declares it and sends `p_order`,
 and the store's current signature is `contract_roster_list(text, integer, text,
-text)` with a matching public wrapper. The stale layer is the handler, whose
-allowlist is `['limit', 'after']`, and every request is dispatched through it
-before `contract()` is reached — so the call fails 400 before PostgREST or any
-store is involved. **An apply does not fix this**, because an apply changes the
-store and not the allowlist, and it survived because the order path IS covered a
-layer above the one that refuses it. A test that enters below a boundary cannot
-see the boundary. The seven are pinned in the spec with each key's owning batch
-named, rather than excluded by helper name, so the fixes cannot land quietly.
+text)` with a matching public wrapper. The stale layer was the handler, whose
+allowlist read `['limit', 'after']`, and every request is dispatched through it
+before `contract()` is reached — so the call failed 400 before PostgREST or any
+store was involved. **An apply would not have fixed it**, because an apply changes
+the store and not the allowlist, and it survived because the order path IS covered
+a layer above the one that refuses it. A test that enters below a boundary cannot
+see the boundary.
+
+**All seven are fixed as of the reading below, and the two fixes are different
+things.** The six operational keys were fixed in the ROUTE — their contracts take
+no order parameter, so `orderable` and `ordered` are now separate, the sort is
+honoured client-side and the key is never emitted; those handler allowlists are
+untouched and still lack it. The roster was fixed in the HANDLER, which now reads
+`['limit', 'after', 'order']`, because that contract really does take the
+parameter. Each was verified on its own rather than inferred from the pin
+reaching zero, and the pin is now the empty set with a plant beside it, since an
+empty expectation asserts nothing by itself.
+
+**And the reading on THIS tree, with both waves merged.** This one is `pnpm run
+check:entity-routes`'s own output and is **pinned**: `tools-entity-routes.test.mjs`
+fails unless the page carries it byte for byte, so paste what the tool prints and
+never retype, rewrap or re-indent it.
+
+Read the arithmetic before reading the jump: **74 is 69 plus 8 less 3**, not 69
+plus 8. The two branches were open at once and both declared the three
+`ClinicalLibraryTemplate` write keys, which merged history could not show either
+of them — a collision that lives only between two open branches is invisible to a
+cross against `main` (D183). Resolving it dropped one copy of the three keys and
+one of the two `libraryWrite` helpers, keeping the landed one and carrying across
+the other's declaration-time refusal of an unknown action.
+
+```
+entity routes: 74 declared, 113/237 landable call sites SERVED, 124 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 40 pass arguments this cannot read
+  16 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 124, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 123 need a named capability
+```
 
 #### The destination gate, which measures a different population
 
