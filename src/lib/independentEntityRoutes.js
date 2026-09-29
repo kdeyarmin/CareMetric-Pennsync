@@ -2147,7 +2147,7 @@ function guardingArity(routes) {
  * have served as unrouted, loudly, where a shadowed declaration reported
  * nothing.
  */
-function withoutCollisions(...blocks) {
+export function withoutCollisions(...blocks) {
   const merged = new Map();
   for (const block of blocks) {
     for (const [key, route] of Object.entries(block)) {

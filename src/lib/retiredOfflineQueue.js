@@ -42,6 +42,28 @@ import { retireLegacyBrowserCaches } from '@/lib/retiredBrowserCacheCleanup';
  * dropped, which is safe for the documentation and adverse for local PHI
  * hygiene, and it is a separate finding from anything about routes.
  *
+ * **That paragraph was true and stopped one link short, in the direction that
+ * makes the defect look smaller; corrected 2026-09-29 on `065ddc1`.** The gate
+ * is dead AND so is the function holding it: `clearCachedPHI` (`phiStorage.js`
+ * :735) has no production caller at all. Every mention of it under `src/`
+ * outside its own definition, its own spec and `localPhiKeys.test.js` is a
+ * COMMENT — `localPhiKeys.js:4` and `UserNotRegisteredError.jsx:14`, and the
+ * second asserts the purge happens. `AuthContext.jsx` `logout()` (line 1120)
+ * calls `purgeAuthorityBoundDrafts`,
+ * `purgeRefetchablePhiForAuthorityTransition` and `purgeTenantAuthority`, and
+ * that middle one purges `PURGE_FULL_PREFIXES` only (`phiStorage.js:714`), so
+ * the retirement keys survive logout on the path that DOES run.
+ *
+ * The outcome is the same and the REMEDY is not, which is why the correction
+ * matters: giving the flag a writer would still purge nothing, because the
+ * reader is unreachable. Fixing either link alone leaves the PHI on the device.
+ *
+ * Note the shape rather than the instance. The question asked here was whether
+ * anything invokes THIS module; that was answered exactly, and the flag chain
+ * was a second independent line supporting it. Nobody asked whether the
+ * function reading the flag was itself reached, and a correct answer to the
+ * question asked survives every check the question suggests.
+ *
  * So a declared route REFUSING one of the calls below takes no fallback away,
  * because no screen reaches them. Two do today. That is housekeeping and not
  * the stranded-work hazard the rest of this header describes.

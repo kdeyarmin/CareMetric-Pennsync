@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { ALERT_CEILING, ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, COMPLIANCE_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS } from './independentEntityRoutes';
+import { ALERT_CEILING, ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, COMPLIANCE_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS, withoutCollisions } from './independentEntityRoutes';
+import { readFileSync } from 'node:fs';
+import process from 'node:process';
 import { ADR_CASE_READ_LIMIT } from '@/components/adr/adrCaseRead';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
@@ -2074,5 +2076,66 @@ describe("what batch E's routes take on trust", () => {
     // deliberately uncrossed rather than silently counted as clean.
     expect(crossed, 'the driver has stopped reaching routes rather than the routes having changed')
       .toBeGreaterThan(60);
+  });
+});
+
+/**
+ * The duplicate-declaration guard, proved at BOTH surfaces, because proving it
+ * at one is the failure this suite exists to avoid.
+ *
+ * `withoutCollisions` is where the refusal is DECIDED, and a test that only
+ * calls it enters one layer away from where it MATTERS: the refusal protects
+ * `ENTITY_ROUTES`, and it protects it only for as long as the export is built
+ * by that function over every declaration block. Reverting the export to an
+ * object literal with `...operationalRoutes` inside it — the exact shape this
+ * replaced — leaves every behavioural test below green, because the function
+ * is still correct and nothing calls it. So the second half reads the module's
+ * own source and pins the WIRING.
+ *
+ * Neither half subsumes the other: delete the guard's body and the first goes
+ * red while the second stays green; unwire it and the reverse. Both were
+ * checked that way rather than assumed.
+ */
+describe('duplicate route declarations', () => {
+  it('refuses a key two blocks both declare', () => {
+    const a = { 'Patient.list': { request: () => ({}) } };
+    const b = { 'Patient.list': { request: () => ({}) } };
+    expect(() => withoutCollisions(a, b)).toThrow(/ENTITY_ROUTE_DUPLICATE_DECLARATION: Patient\.list/);
+  });
+
+  it('merges disjoint blocks and keeps every key', () => {
+    const merged = withoutCollisions({ a: 1, b: 2 }, { c: 3 });
+    expect(Object.keys(merged).sort()).toEqual(['a', 'b', 'c']);
+    expect(Object.isFrozen(merged)).toBe(true);
+  });
+
+  it('refuses a duplicate within one block too', () => {
+    // Object.entries over a literal cannot produce one, but a block built at
+    // runtime (Object.fromEntries over a list) can, and the merge is the only
+    // place that would see it.
+    const built = Object.fromEntries([['x', 1]]);
+    expect(() => withoutCollisions(built, { x: 2 })).toThrow(/ENTITY_ROUTE_DUPLICATE_DECLARATION/);
+  });
+
+  it('builds ENTITY_ROUTES through the guard over both declaration blocks', () => {
+    const source = readFileSync(`${process.cwd()}/src/lib/independentEntityRoutes.js`, 'utf8');
+    const built = source.match(/export const ENTITY_ROUTES = [\s\S]*?\n\);/);
+    expect(built, 'ENTITY_ROUTES export not found in its own source').toBeTruthy();
+    expect(built[0]).toContain('withoutCollisions(');
+    // Every block that declares routes must be an ARGUMENT to the merge. A
+    // block left out contributes nothing and is silent; a block spread back in
+    // is shadowed and is silent. Both are what the guard exists to end.
+    for (const blockName of ['DECLARED_ROUTES', 'operationalRoutes']) {
+      expect(built[0]).toContain(blockName);
+      expect(built[0]).not.toContain(`...${blockName}`);
+    }
+  });
+
+  it('declares each route block exactly once in the module', () => {
+    const source = readFileSync(`${process.cwd()}/src/lib/independentEntityRoutes.js`, 'utf8');
+    for (const blockName of ['DECLARED_ROUTES', 'operationalRoutes']) {
+      const declarations = source.match(new RegExp(`^const ${blockName} =`, 'gm')) || [];
+      expect(declarations).toHaveLength(1);
+    }
   });
 });
