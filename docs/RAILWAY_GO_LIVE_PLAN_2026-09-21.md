@@ -3544,12 +3544,18 @@ table that adds up and is short.
 | **total** | **33** | **48** |
 
 **A domain row is not a unit of work, and the largest row proves it.** ADR audit
-splits in two: `AdrAuditCase.list` has a shipped contract
-(`pennsync_contract_adr_case_list`) and needs a route declared, while its
-create, update and delete have no write contract at all — the only other ADR
-contract in the store is `pennsync_contract_adr_deadline_sweep` — and need SQL,
-a handler and a suite. Same entity, same row, two different stages. Read as one
-thing it is the obvious first wave, and most of it is not route work.
+splits in two. Its create, update and delete have no write contract at all — the
+only other ADR contract in the store is `pennsync_contract_adr_deadline_sweep` —
+so they need SQL, a handler and a suite. Its read is the opposite and is not
+route work either: `pennsync_contract_adr_case_list` shipped, and
+`AdrAuditCase.list` is **deliberately not declared**, for a reason that is about
+the INSTRUMENT rather than the contract. `src/lib/independentEntityRoutes.js`
+says so in its own comment: the only call site passes `ADR_CASE_READ_LIMIT`
+imported from another module, `check:entity-routes` cannot resolve a constant
+across modules, so it reads the site as unserved, and a declaration would be a
+route that moves no screen. Same entity, same row, two stages and neither of
+them the one the row implies. Read as one thing it is the obvious first wave,
+and none of it is a route to declare today.
 
 **And a KEY is not the unit either, which is this section's own subject arriving
 one level down.** `TimeOffRequest.filter` is two sites and two different
@@ -3615,8 +3621,9 @@ way the six arose is the more useful half: they were assembled from the
 contracts the classifier reported silent when each was flipped read-only, so
 the set was drawn from the check's own blind spot — it measures the EXPOSURE
 and reads like the POPULATION. #362 corrects the header and takes its test's
-population from the bodies rather than the names; it was open, not merged, when
-this was written. The other population is the EIGHT names the classifier guard
+population from the bodies rather than the names, and it is on `main` as
+`bd28cddb` — checked as a commit on `main` rather than off a listing's `merged`
+flag, which has answered wrongly here before. The other population is the EIGHT names the classifier guard
 holds, and the difference is not arithmetic:
 `contract_sent_education_record` is in the second and not the first, because it
 carries its own DML and was probed here as a positive control. Two sessions
