@@ -813,7 +813,12 @@ const operationalRoutes = Object.freeze({
       if (typeof id !== 'string' || id === '') unsupported('id');
       return { id };
     },
-    response: (result) => result?.template,
+    // `contract_pdf_template_delete` answers `{deleted, id}` — not the
+    // `template` its SAVE sibling answers. This route was written beside that
+    // sibling and read `result.template`, so it handed the manager `undefined`
+    // on every delete. Read off the contract's own `return`, not off the
+    // neighbour it was copied from.
+    response: (result) => ({ id: result?.id }),
   }),
 
   'NoteConversion.list': Object.freeze({
@@ -874,7 +879,19 @@ export const SCREEN_CEILINGS = Object.freeze({
  * runs under the policies, and one applied after the page would narrow a set
  * the store had already decided.
  */
-function screenRead({ entity, function: handler, projection, order, ceiling, query = {}, filtered, build }) {
+function screenRead({
+  entity, function: handler, projection, order, ceiling, query = {}, filtered, build, answerKey,
+}) {
+  // REQUIRED, and deliberately without a default. `entries` is the key six of
+  // the seven screen contracts answer with, and a default of it is exactly how
+  // `contract_clinical_event_list` — which answers `events` — was routed with
+  // a reader that could never find its rows. The gate cannot catch that: it
+  // runs `request` and never `response`, so a route that returns `undefined`
+  // on every call passes every check. Naming the key at each call site makes
+  // the odd one out a decision somebody had to write down.
+  if (typeof answerKey !== 'string' || answerKey === '') {
+    throw new Error(`ENTITY_ROUTE_ANSWER_KEY_REQUIRED:${entity}`);
+  }
   const read = (args) => {
     const [rawQuery, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
     if (sort !== undefined && sort !== null && sort !== order) unsupported('sort');
@@ -890,6 +907,10 @@ function screenRead({ entity, function: handler, projection, order, ceiling, que
   return {
     function: handler,
     projection,
+    // Carried on the route rather than kept in the closure, so a test can
+    // compare it against the contract's own `return` and a reviewer can see it
+    // in the diff.
+    answerKey,
     // DECLARED, because `request` takes a rest parameter and so reveals a
     // `length` of 0. `read` above destructures `(query, sort, limit)` for a
     // filtered read and `(sort, limit)` for a list, which is the entity
@@ -901,7 +922,7 @@ function screenRead({ entity, function: handler, projection, order, ceiling, que
       return build(asked, size === undefined ? undefined : Math.min(size, ceiling));
     },
     response: (result, ...args) => {
-      const entries = result?.entries;
+      const entries = result?.[answerKey];
       if (!Array.isArray(entries)) unsupported('answer');
       const { size } = read(args);
       // Only a caller who asked for MORE than the contract can give needs the
@@ -1023,6 +1044,7 @@ const DECLARED_ROUTES = Object.freeze({
    */
   'ClinicalEvent.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'events',
       entity: 'ClinicalEvent',
       function: 'listChartClinicalEvents',
       projection: 'chart_clinical_event',
@@ -1036,6 +1058,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'PatientRecommendation.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'PatientRecommendation',
       function: 'listChartRecommendations',
       projection: 'chart_recommendation_status',
@@ -1052,6 +1075,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'OCRFeedback.list': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'OCRFeedback',
       function: 'listOcrCorrections',
       projection: 'ocr_correction',
@@ -1064,6 +1088,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'OCRFeedback.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'OCRFeedback',
       function: 'listOcrCorrections',
       projection: 'ocr_correction',
@@ -1082,6 +1107,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'OCRTrainingSession.list': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'OCRTrainingSession',
       function: 'listOcrTrainingRuns',
       projection: 'ocr_training_run',
@@ -1094,6 +1120,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'SentEducationMaterial.list': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'SentEducationMaterial',
       function: 'listSentEducationMaterials',
       projection: 'sent_education_material',
@@ -1145,6 +1172,7 @@ const DECLARED_ROUTES = Object.freeze({
   }),
   'ComplianceRule.filter': Object.freeze({
     ...screenRead({
+      answerKey: 'entries',
       entity: 'ComplianceRule',
       function: 'lookupComplianceRule',
       projection: 'compliance_rule',

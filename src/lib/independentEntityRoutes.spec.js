@@ -684,27 +684,71 @@ describe("batch E's screen contracts", () => {
     await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
     return { fixture, adapter };
   };
-  const entries = (rows) => () => new Response(
-    JSON.stringify({ success: true, result: { success: true, entries: rows }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+  // The envelope a screen contract sends. `key` is the route's OWN declared
+  // answer key by default, because a fixture that always says `entries` is a
+  // second copy of the assumption the route makes — which is exactly what let
+  // `ClinicalEvent.filter` read a key `contract_clinical_event_list` never
+  // answers while every test in this block passed.
+  const answerOf = (routeKey, rows, key = ENTITY_ROUTES[routeKey].answerKey) => () => new Response(
+    JSON.stringify({ success: true, result: { success: true, [key]: rows }, execution: 'pennsync-api', base44ExecutionDependency: false }),
     { headers: { 'content-type': 'application/json' } });
+  const entries = (rows) => answerOf('OCRFeedback.filter', rows);
 
   beforeEach(() => bindTrustedTenantContext(boundUser, boundContext));
   afterEach(() => clearTrustedTenantContext());
 
   it('sends each screen its own contract, with the arguments the contract takes', async () => {
     const { fixture, adapter } = await signedIn();
-    fixture.apiResponse = entries([{ id: 'event-1' }]);
+    fixture.apiResponse = answerOf('ClinicalEvent.filter', [{ id: 'event-1' }]);
     await adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p1' }, '-event_date', 200);
     expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/listChartClinicalEvents`);
     expect(fixture.apiCalls.at(-1).body.params).toEqual({ patient_id: 'p1', limit: 200 });
 
+    // Each call gets the envelope ITS contract sends, which is why the fixture
+    // is re-set per entity: they do not all answer under the same key.
+    fixture.apiResponse = answerOf('OCRFeedback.filter', []);
     await adapter.raw.entities.OCRFeedback.filter({ applied_to_training: false }, undefined, 5000);
     expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/listOcrCorrections`);
     expect(fixture.apiCalls.at(-1).body.params).toEqual({ applied_to_training: false, limit: 500 });
 
+    fixture.apiResponse = answerOf('ComplianceRule.filter', []);
     await adapter.raw.entities.ComplianceRule.filter({ rule_code: 'CMS-TF-1' }, '-created_date', 2);
     expect(fixture.apiCalls.at(-1).body.params).toEqual({ rule_code: 'CMS-TF-1', limit: 2 });
   });
+
+  it('reads the chart event list under the key its contract actually answers', async () => {
+    const { fixture, adapter } = await signedIn();
+    const rows = [{ id: 'ce-1', event_type: 'fall' }];
+    // What the contract sends, with the key read off the route's declaration.
+    fixture.apiResponse = answerOf('ClinicalEvent.filter', rows);
+    expect(await adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p-1' })).toEqual(rows);
+
+    // And what six of its siblings send, which this route must NOT accept —
+    // an assertion that only one of the two keys works is what tells a real
+    // reader from one that happens to agree with the fixture. Every other test
+    // in this file builds its response with `entries` hard-coded, so the
+    // fixture was a second copy of the assumption the route got wrong.
+    fixture.apiResponse = answerOf('ClinicalEvent.filter', rows, 'entries');
+    await expect(adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p-1' }))
+      .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+  });
+
+  it('hands back the id its delete contract answers, not its save sibling\'s row',
+    async () => {
+      const { fixture, adapter } = await signedIn();
+      // `contract_pdf_template_delete` answers `{deleted, id}`; the SAVE
+      // contract beside it answers `{created, template}`. The route was
+      // written next to the save and read `template`, so every delete
+      // resolved to `undefined`.
+      fixture.apiResponse = () => new Response(
+        JSON.stringify({
+          success: true, result: { deleted: true, id: 'tpl-1' },
+          execution: 'pennsync-api', base44ExecutionDependency: false,
+        }), { headers: { 'content-type': 'application/json' } });
+      expect(await adapter.raw.entities.PDFTemplate.delete('tpl-1')).toEqual({ id: 'tpl-1' });
+      expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/deletePdfTemplate`);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ id: 'tpl-1' });
+    });
 
   it('refuses an order it cannot produce rather than quietly swapping one in', async () => {
     const { fixture, adapter } = await signedIn();
@@ -792,6 +836,38 @@ describe("what batch E's routes take on trust", () => {
       const enforced = [...body.matchAll(/screen_limit\(p_limit,\s*(\d+)\)/g)].map(m => Number(m[1]));
       expect(enforced, `${rpc} passes no ceiling to screen_limit`).toHaveLength(1);
       expect(enforced[0], `${handler}'s route and its contract disagree`).toBe(ceiling);
+    }
+  });
+
+  it('takes every answer key from the contract that returns it', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { RECORD_CONTRACTS } = await import('../../services/pennsync-api/record-contracts.mjs');
+    const sql = readFileSync(
+      'services/authority-store/supabase/record-migrations/20260920580000_contract_screen_records.sql',
+      'utf8');
+    // The sibling of the ceiling check above, and it exists because the gate
+    // cannot stand in for it: `check:entity-routes` runs a call's arguments
+    // through `request` and never touches `response`, so a route reading a key
+    // its contract does not answer passes every check and hands its screen
+    // `undefined` on every call. `contract_clinical_event_list` answers
+    // `events` where its six siblings answer `entries`, and the route read
+    // `entries`.
+    const declared = Object.values(ENTITY_ROUTES).filter(route => route.answerKey);
+    expect(declared.length, 'no route declares an answer key').toBeGreaterThan(0);
+    for (const route of declared) {
+      const rpc = RECORD_CONTRACTS[route.function].rpc.replace(/^pennsync_/, '');
+      const start = sql.indexOf(`create function "pennsync_records".${rpc}(`);
+      expect(start, `${rpc} is not in the migration`).toBeGreaterThan(-1);
+      const next = sql.indexOf('create function', start + 20);
+      const body = sql.slice(start, next === -1 ? sql.length : next);
+      // The key beside `'success', true` in what the contract RETURNS. Read
+      // from the migration rather than from a list kept here, because a list
+      // kept here is the second copy that drifts.
+      const returned = [...body.matchAll(
+        /return jsonb_build_object\('success', true, '([a-z_]+)'/g)].map(m => m[1]);
+      expect(returned, `${rpc} has no single success return`).toHaveLength(1);
+      expect(route.answerKey, `${route.function}'s route and its contract disagree`)
+        .toBe(returned[0]);
     }
   });
 
