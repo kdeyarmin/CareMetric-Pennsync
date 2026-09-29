@@ -45,12 +45,37 @@ Submitted On: ${submittedOn}
   `.trim();
 }
 
-/** The fields the report text and the stored detail are built from. */
+/**
+ * The fields the report text and the stored detail are built from.
+ *
+ * `patient_name` is ADMITTED AND IGNORED, which is not the same as the other
+ * sixteen and is the whole of the change that added it.
+ *
+ * It was absent, so `exactObject` refused the entire body and every
+ * state-reportable submission from the two screens that send it answered
+ * INVALID_PARAMS. Admitting it is what makes those calls work again.
+ *
+ * It is not honoured, because the original does not honour it either. The
+ * original spreads the payload into `buildReportText` and then OVERRIDES
+ * `patient_name` with a value it derived from the patient row it read, so the
+ * name in the report is the store's and never the form's. This service has no
+ * patient read -- the contract does that read, after the text is built -- so
+ * it cannot reproduce the derived name, and passing the caller's through would
+ * put a claimed name in a compliance document beside a record whose own
+ * `patient_name` column the contract derives. The two could disagree.
+ *
+ * So the `Patient:` line carries the patient id. That is a DIVERGENCE and it
+ * is a narrowing: less identifying text than the original, never more, and
+ * never anything the caller decided. Restoring the verified name means either
+ * a patient read here or moving the render into the contract, which is a
+ * decision rather than a repair.
+ */
 export const STATE_INCIDENT_FIELDS = Object.freeze([
-  'patient_id', 'event_type', 'event_type_id', 'event_date', 'event_time',
-  'location_of_event', 'medications', 'diagnosis', 'factual_description',
-  'followup_action', 'submitted_by_name', 'submitted_by_title', 'source',
-  'photo_urls', 'report_text', 'client_request_id',
+  'patient_id', 'patient_name', 'event_type', 'event_type_id', 'event_date',
+  'event_time', 'location_of_event', 'medications', 'diagnosis',
+  'factual_description', 'followup_action', 'submitted_by_name',
+  'submitted_by_title', 'source', 'photo_urls', 'report_text',
+  'client_request_id',
 ]);
 
 /**
@@ -84,10 +109,14 @@ export async function submitStateIncident({ params, contract }) {
   // The original accepts a caller-supplied `report_text` and builds one when
   // it is absent. Kept: a clinician who edited the narrative in the form is
   // submitting what they wrote, not what a template would have said.
+  // `patient_name` is overridden rather than spread, mirroring the original's
+  // own override. The original substitutes the name it read from the chart;
+  // this substitutes nothing, so `value()` falls back to the id. A caller's
+  // claimed name never reaches the text.
   const reportText = typeof params.report_text === 'string' && params.report_text.trim()
     ? params.report_text
-    : buildReportText({ ...params, patient_id: patientId, event_type: eventType },
-      new Date().toLocaleString());
+    : buildReportText({ ...params, patient_id: patientId, event_type: eventType,
+      patient_name: undefined }, new Date().toLocaleString());
 
   const answer = await contract('submitStateIncident', {
     incident: {
@@ -136,5 +165,20 @@ export async function submitStateIncident({ params, contract }) {
     emails_sent: 0,
     pdf_retained: false,
     delivery_paused: true,
+    /*
+     * The caller's `patient_name` is accepted and not used, so it is REPORTED
+     * and not silently dropped -- D39's finding about the credential port,
+     * from the other side. That original's quiet field filter is what keeps a
+     * reserved field out of a caller's reach AND what loses a misspelled one
+     * without telling anyone, and a screen that gets a 200 has no way to learn
+     * the name went nowhere. D42, D73 and D81 all settle the same thing for a
+     * thing not done: say so in the answer.
+     *
+     * Constant rather than conditional. This service cannot resolve a name at
+     * all -- the patient read happens in the contract, after the report text
+     * is built -- so the honest statement is about the capability and not
+     * about one request, and a constant has no branch to get wrong.
+     */
+    patient_name_used: false,
   };
 }
