@@ -1431,7 +1431,8 @@ test('nothing in the queue is startable and unwritten', async () => {
   // Batch A's seven reference reads (D101), batch C's fourteen clinical
   // library, patient education and configuration capabilities, batch E's
   // ten screen records, batch D's fourteen over the operational tables and
-  // the five compliance domains' read half are the same kind of thing for
+  // the five compliance domains' read half, and the provider directory's three
+  // writes, are the same kind of thing for
   // the same reason, and
   // they are why this list needs stating rather than deriving. The SPA called
   // `base44.entities.Physician.list(...)` and the rest straight through the
@@ -1451,7 +1452,8 @@ test('nothing in the queue is startable and unwritten', async () => {
       `${name} has a Base44 function, so it is a port and belongs in the queue`);
   }
   assert.deepEqual(facilities, [
-    'createAgencyTask', 'createNoteConversion', 'deletePdfTemplate',
+    'createAgencyTask', 'createNoteConversion', 'createPhysician',
+    'deletePdfTemplate', 'deletePhysician',
     'getAgencyRosterMember', 'getAgencySettings',
     'getMyNotificationPreferences', 'listAdrAuditCases', 'listAgencyIncidents',
     'listAgencyRoster', 'listAgencyTasks', 'listBrokeredRecords',
@@ -1473,7 +1475,7 @@ test('nothing in the queue is startable and unwritten', async () => {
     'recordChartRecommendation', 'recordSentEducationMaterial',
     'saveAgencySettings', 'saveAiConfiguration', 'saveCarePlan',
     'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
-    'savePdfTemplate',
+    'savePdfTemplate', 'updatePhysician',
   ]);
 });
 

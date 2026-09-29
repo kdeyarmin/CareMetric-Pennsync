@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 49 | 37 |
+  | `mutating` (derived) | 52 | 38 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1582,7 +1582,11 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   with one shared migration, and moved neither `mutating` nor `integration` —
   which is what a read-only port should look like: five capabilities that
   create nothing, over five entities the frontend already writes through
-  Base44. Every other movement since batch D belongs to a sibling batch rather
+  Base44. The provider directory's three writes then took `mutating` to 52 with
+  one shared migration and moved neither of the other two: `createPhysician`,
+  `updatePhysician` and `deletePhysician` are the whole delta, and `physician`
+  was already read through a capability in `read-only`, so the entity arrives in
+  no wave it was not already in. Every other movement since batch D belongs to a sibling batch rather
   than to this one — which is what the paragraph below means about the figures
   being global, and why the row is re-derived on the merged tree instead of
   being added to. This row was re-derived on seven bases over the life of one
@@ -3365,6 +3369,22 @@ entity routes: 81 declared, 145/245 landable call sites SERVED, 100 still to ado
   of those 100, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 99 need a named capability
 ```
 
+Then the provider directory's three writes landed and the reading moved again.
+The block above is a record of the head before them and stays where it is; this
+one is the current tree. Two of the three new routes are SERVED and the third is
+UNPROVED — `PhysicianForm.jsx` passes form state, so no static reader can run its
+arguments — which is why three declarations move the served line by two. Read the
+declared count and the served count as answering different questions: declaring a
+route always moves the first and moves the second only for the sites whose
+arguments this can resolve.
+
+```
+entity routes: 84 declared, 147/245 landable call sites SERVED, 98 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 45 pass arguments this cannot read
+  17 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 98, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 97 need a named capability
+```
+
 #### The route audit's front: five sites whose fallback is already gone
 
 **A site nobody has routed still reaches Base44. A site a declared route
@@ -3442,15 +3462,15 @@ different kinds of work:
   sort, across five files; three are the offline queue's, described above. These
   are the front of the audit and the only ones where the Base44 fallback is
   already gone.
-- **Forty-three pass arguments the scan cannot read**, because the call builds
+- **Forty-five pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Forty-eight have no route declared at all**, over thirty-three entity and
-  operation keys: fifteen reads over twelve keys, and thirty-three writes over
-  twenty-one. **The writes are more than twice the reads**, which inverts the
+- **Forty-four have no route declared at all**, over thirty entity and
+  operation keys: fifteen reads over twelve keys, and twenty-nine writes over
+  eighteen. **The writes are nearly twice the reads**, which inverts the
   shape every wave so far has had — a read port serves many screens per route
   and a write port typically serves the one form that calls it, so this
   remainder costs more per site than the served count suggests and a wave drawn
