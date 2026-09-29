@@ -1,14 +1,11 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 import {
-  BACKFILL_CONTRACT, applyBackfill, planBackfill, readExport,
-} from '../../../tools-pennsync-assignment-backfill.mjs';
+  BACKFILL_CONTRACT, applyBackfill, planBackfill, readExport } from '../../../tools-pennsync-assignment-backfill.mjs';
 
 /**
  * D24 end to end, against a real database: the backfill writes, and the record
@@ -27,7 +24,6 @@ import {
  * address on a patient whose assignment was revoked, because that is the
  * shape an email-sourced backfill gets wrong.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -41,7 +37,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  await db.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8'));
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`
     grant usage on schema ${SCHEMA} to authenticated;

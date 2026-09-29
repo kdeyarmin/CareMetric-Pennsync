@@ -1,12 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Distributing a policy version (`contract_policy_distribute`).
@@ -31,18 +28,9 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * addressed to nobody. So the last test distributes through this contract and
  * reads through `pennsync_contract_notification_list`.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const DIR = 'services/authority-store/supabase/record-migrations/';
 // `pennsync_private.caller_membership` arrives with the note-history contract
 // (D34), and both the mint and the notification reader refuse to apply without
 // it — by name, in their own preambles, rather than by failing on first use.
-const CARRIED = [
-  `${DIR}20260920010000_activity_audit.sql`,
-  `${DIR}20260920170000_contract_note_history.sql`,
-  `${DIR}20260920285000_notification_mint.sql`,
-  `${DIR}20260920300000_contract_notification.sql`,
-  `${DIR}20260920540000_contract_policy_distribute.sql`,
-];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -63,9 +51,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ...CARRIED]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, agency, version] of [[POLICY, A, '3'], ['policy-b', B, '1']]) {
     await db.query(`insert into ${SCHEMA}."policy_library"

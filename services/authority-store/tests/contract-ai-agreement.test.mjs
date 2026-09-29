@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { transpileTs } from '../../../tools-transpile-ts.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Accepting the AI content agreement — the FIRST port that writes D25's
@@ -23,8 +23,6 @@ import { transpileTs } from '../../../tools-transpile-ts.mjs';
  * than the ones displayed is the one defect that would matter here.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const AUDIT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920010000_activity_audit.sql';
 const AGREEMENT = 'services/authority-store/supabase/record-migrations/'
   + '20260920220000_contract_ai_agreement.sql';
 const ORIGINAL = 'base44/functions/acceptAiContentAgreement/entry.ts';
@@ -44,9 +42,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT, AGREEMENT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 });
 after(async () => db?.close());

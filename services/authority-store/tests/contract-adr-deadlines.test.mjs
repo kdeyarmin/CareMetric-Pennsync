@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * ADR response deadline reminders.
@@ -19,14 +19,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * repeat that, by reading the reminder back through the reader.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const NOTE_HISTORY = 'services/authority-store/supabase/record-migrations/'
-  + '20260920170000_contract_note_history.sql';
-const MINT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920285000_notification_mint.sql';
-const READER = 'services/authority-store/supabase/record-migrations/'
-  + '20260920300000_contract_notification.sql';
-const CREDENTIAL_SWEEP = 'services/authority-store/supabase/record-migrations/'
-  + '20260920340000_contract_credential_sweep.sql';
 const ADR = 'services/authority-store/supabase/record-migrations/'
   + '20260920350000_contract_adr_deadlines.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -47,12 +39,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // `agency_today` arrives with the credential sweep; `caller_membership` with
-  // the note-history contract.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE,
-    NOTE_HISTORY, MINT, READER, CREDENTIAL_SWEEP, ADR]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, agency] of [['patient-a1', A], ['patient-b1', B]]) {
     await db.query(`insert into ${SCHEMA}."patient"
