@@ -187,11 +187,27 @@ test('no public function this store exposes is reachable anonymously, exempt or 
   // **Three roles, not two.** The loop above reads `authenticated` and `anon`;
   // the house revoke block names `public, anon, service_role`, and a check that
   // reads two of the three roles a wrapper is granted over reports a clean
-  // surface while one stays open. `service_role` is the one that was missing,
-  // and it is the one that matters most if it is ever wrong: it is the role a
-  // server-side key holds, and a wrapper reachable by it is reachable without
-  // a caller identity at all — so every `caller_*` helper under it answers
-  // null and the policies have nobody to scope to.
+  // surface while one stays open. `service_role` is the one that was missing.
+  //
+  // **A first version of this comment said `service_role` was the role that
+  // matters most if it is ever wrong, and that was wrong in the direction that
+  // makes the finding sound bigger.** Another session measured it rather than
+  // reasoning about it: grant a wrapper to `service_role`, take that role and
+  // call it, and the answer is `permission denied for schema pennsync_records`.
+  // The wrapper is `security invoker`, so reaching the inner function needs the
+  // CALLER to hold `usage` on that schema. `authenticated` has it and
+  // `service_role` does not, so a service-role caller handed the wrapper grant
+  // is still refused one layer above both the `caller_*` helpers and RLS.
+  //
+  // So the ordering inverts: **`anon` is the role where this grant is the only
+  // thing standing there**, because `anon` does hold schema usage.
+  // `service_role` is revoked because it is the house form, because an outlier
+  // costs a reviewer, and because granting that schema usage later would turn
+  // a wrapper grant into reach. Not because it is worse today.
+  //
+  // One half of that is unmeasured and is named rather than assumed: the test
+  // harness creates `service_role` without `BYPASSRLS` (`tests/bootstrap.sql`)
+  // and real Supabase's holds it, so nothing here can see that case.
   //
   // Measured before asserting: all of these are already false, so this pins a
   // property that holds rather than announcing a defect. Proved by granting
