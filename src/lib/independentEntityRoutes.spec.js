@@ -816,6 +816,51 @@ describe('the declared entity routes', () => {
     }
   });
 
+
+  /**
+   * THE DISCRIMINATOR FOR THAT SECOND FAULT, AS AN INSTRUMENT RATHER THAN THE
+   * PARAGRAPH ABOVE.
+   *
+   * A capability is exposed to it when a FORWARD migration widened the body-key
+   * set its public wrapper accepts: the registry then sends a key that resolves
+   * against no function a store behind that migration has, and every call fails
+   * rather than only the ones passing the new argument. Whether a key "looks
+   * optional" decides nothing.
+   *
+   * Exactly one forward migration in the whole record directory changes a public
+   * wrapper's arity, so the exposed population is one and this says which. A
+   * paragraph recording that goes stale the day a second arrives and nothing
+   * notices; this fails, and the failure is the reading. It is deliberately
+   * tree-side: a hosted comparison would report zero forever once the store is
+   * applied, while this keeps saying which capability a store behind the tree
+   * cannot serve.
+   */
+  it('names every forward migration that changes a public wrapper\'s arity', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const DIRECTORY = 'services/authority-store/supabase/record-migrations';
+    const WRAPPER_DROPPED = /drop function "public"\."(pennsync_contract_[a-z_]+)"\(([^)]*)\)/g;
+
+    // The extractor is shown to bite before it is believed: a synthetic text
+    // with two occurrences must yield two. An expectation of "exactly one" that
+    // a broken pattern satisfies with zero is the shape this whole exercise is
+    // about.
+    const dropsIn = (text) => [...text.matchAll(WRAPPER_DROPPED)]
+      .map(([, name, args]) => `${name}(${args})`);
+    expect(dropsIn('drop function "public"."pennsync_contract_a_list"(text);\n'
+      + 'drop function "public"."pennsync_contract_b_list"(text,integer);'))
+      .toEqual(['pennsync_contract_a_list(text)', 'pennsync_contract_b_list(text,integer)']);
+
+    const found = [];
+    for (const file of readdirSync(DIRECTORY).filter(name => name.endsWith('.sql')).sort()) {
+      for (const signature of dropsIn(readFileSync(`${DIRECTORY}/${file}`, 'utf8'))) {
+        found.push(`${file}: ${signature}`);
+      }
+    }
+    expect(found).toEqual([
+      '20260920620000_roster_created_date.sql: pennsync_contract_roster_list(text,integer,text)',
+    ]);
+  });
+
   it('does not make the namespace thenable', async () => {
     const { adapter } = await signedIn();
     expect(adapter.raw.entities.then).toBeUndefined();
