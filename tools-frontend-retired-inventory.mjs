@@ -35,7 +35,7 @@ import { READ_OPERATIONS, REALTIME_OPERATIONS, SERVED, measureDestinations }
   from './tools-frontend-destination.mjs';
 
 export const FORMAT = 'pennsync-frontend-retired-inventory';
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 export const PAGE_FILE = 'docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md';
 
 /**
@@ -60,6 +60,28 @@ const kind = (operation) => {
   if (REALTIME_OPERATIONS.includes(operation)) return 'realtime';
   return READ_OPERATIONS.includes(operation) ? 'read' : 'write';
 };
+
+/**
+ * Which dispositions leave a TABLE in the owned store.
+ *
+ * This is the whole content of "the migration carried this domain", and it is
+ * a property of the disposition rather than of the destination bucket a call
+ * site landed in. `no_realtime_seam` is why the distinction has to be drawn
+ * here: today its one site is a `preserved_paused` entity with no table, and a
+ * `subscribe` on a PORTED entity would land in the same bucket with its table
+ * present — so a list of "carried buckets" would answer that site wrongly the
+ * day somebody adds one.
+ */
+export const CARRIED_DISPOSITIONS = Object.freeze(['port', 'broker']);
+/** And the ones that leave nothing: the Hub's, the paused, the archived. */
+export const UNCARRIED_DISPOSITIONS = Object.freeze(['hub', 'preserved_paused', 'retire']);
+
+/** Throws rather than defaulting, so a new disposition fails the run. */
+export function entityIsCarried(disposition) {
+  if (CARRIED_DISPOSITIONS.includes(disposition)) return true;
+  if (UNCARRIED_DISPOSITIONS.includes(disposition)) return false;
+  throw new Error(`FRONTEND_INVENTORY_UNKNOWN_DISPOSITION:${disposition}`);
+}
 
 export function measureInventory(repository) {
   const measured = measureDestinations(repository);
@@ -107,11 +129,14 @@ export function measureInventory(repository) {
   for (const site of dropped) operations[kind(site.operation)] += 1;
 
   // Not every site here reaches an uncarried domain, and the page used to say
-  // it did. Five are writes to D83 reference tables the migration DOES carry,
-  // for reads: what has no destination is the operation rather than the
-  // domain, so the two are counted apart and the prose says which is which.
-  const carriedForReads = dropped
-    .filter(site => site.destination === 'global_reference_is_read_only').length;
+  // it did. What has no destination for some of them is the OPERATION rather
+  // than the domain, so the two are counted apart and the prose says which is
+  // which. Asked of the DISPOSITION, because that is the thing that decides
+  // whether a table exists: keying it on the destination bucket is how the
+  // first version of this split counted only the five D83 writes and left the
+  // nine broker writes on the uncarried side, where their entities are served
+  // read-only and their tables plainly exist.
+  const carriedEntity = dropped.filter(site => entityIsCarried(site.disposition)).length;
 
   return {
     format: FORMAT,
@@ -121,8 +146,8 @@ export function measureInventory(repository) {
     entities: byEntity.length,
     entirely_dropped_files: byFile.filter(file => file.entirely_dropped).length,
     operations,
-    carried_for_reads: carriedForReads,
-    uncarried_domain: dropped.length - carriedForReads,
+    carried_entity: carriedEntity,
+    uncarried_domain: dropped.length - carriedEntity,
     by_entity: byEntity,
     by_file: byFile,
   };
@@ -137,9 +162,9 @@ export function renderMarkdown(report) {
     '',
     `${report.sites} entity call sites across ${report.files} files have no destination`,
     `in the owned store: ${report.uncarried_domain} reach a domain the migration decided`,
-    `not to carry, and ${report.carried_for_reads} are writes to D83 reference tables it`,
-    'carries for reads only. This says what each file loses, so the hiding work is a',
-    `series of per-screen decisions rather than one decision about ${report.sites}`,
+    `not to carry, and ${report.carried_entity} are operations with no destination on`,
+    'an entity it DOES carry, read-only. This says what each file loses, so the',
+    `hiding work is a series of per-screen decisions rather than one decision about ${report.sites}`,
     'numbers. It claims nothing about whether a screen is safe to hide: a file',
     'marked **whole** has no surviving data of its own, and every other file keeps',
     'some and needs reading.',

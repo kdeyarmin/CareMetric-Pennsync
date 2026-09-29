@@ -3777,27 +3777,42 @@ edits and an entity is the unit somebody decided about, so that is the page to
 open when this work starts, rather than this count. **Its population IS the
 destination gate's 208 and cannot drift from it**, because `measureInventory`
 filters that gate's own `measureDestinations` output — the two report at
-different units and never from different readings. **So do not read the 203
+different units and never from different readings. **So do not read the 194
 below as this paragraph's number.** When this sentence last said 203, that was
-the DROPPED TOTAL, numerically equal to the uncarried subset below and a
-different set from it; the total has since moved to 208 and the subset has not
-moved at all. Two quantities coincided, one of them changed, and nothing in
-either sentence could show it. The shape a person would notice — roughly 9 top-level destinations and
+the DROPPED TOTAL, and the subset below then said 203 as well — two different
+sets wearing one number for one commit. The total has since moved to 208 and
+the subset is 194, **which is what it has been since D80 was written**: at 445
+the buckets were `no_table` 193, `broker_is_read_only` 9 and `no_realtime_seam`
+1, so the uncarried domain was 194 there too. The eight sites the matcher
+gained were all landable and the five reference writes moved out of
+`record_store`, which is why the TOTAL moved and the subset did not. Two
+quantities coincided, one of them moved, the other was never what the sentence
+said it was, and nothing in either sentence could show either thing. The shape
+a person would notice — roughly 9 top-level destinations and
 about 33 hollowed-out pages — comes from a filename scan rather than that tool,
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
-**208 of 453 — 46% — have no destination in the owned store, and 203 of those
-reach a domain the migration has decided not to carry.** The other five are the
-D83 writes above, whose tables ARE carried, for reads: what has no destination
-there is the operation rather than the domain, and conflating the two is how
-this page would start overstating the product work. 119 of the 203 are the
-training domain, whose destination is the Hub; 75 are `preserved_paused`. **That
-75 is not an off-by-one against the table's 74**, which counts `preserved_paused`
-inside `no_table` only — the 75th is the `no_realtime_seam` site, whose entity is
-also `preserved_paused`. Each needs a product answer about what the feature
-becomes, not an edit somebody has not got to yet, so a plan that sizes this
-stage by the call-site count is sizing the wrong thing.
+**208 of 453 — 46% — have no destination in the owned store, and 194 of those
+reach a domain the migration has decided not to carry.** The other fourteen are
+writes to entities it DOES carry, read-only — nine refused by the broker
+family's D2 ceiling and five by a D83 reference table's GRANT: what has no
+destination there is the OPERATION rather than the domain, and conflating the
+two is how this page would start overstating the product work. **It said 203
+here for one commit, which is the same conflation drawn one line lower**: the
+five were separated out and the nine were not, on a split keyed to the
+destination bucket rather than to the disposition, which is the thing that
+decides whether a table exists at all. The correction is `carried_entity` in
+the inventory, derived from `CARRIED_DISPOSITIONS`, and the tell was sitting in
+the next sentence the whole time — 119 plus 75 is 194, and 203 was never a
+number this paragraph could reach. 119 of the 194 are the training domain,
+whose destination is the Hub; 75 are `preserved_paused`. **That 75 is not an
+off-by-one against the table's 74**, which counts `preserved_paused` inside
+`no_table` only — the 75th is the `no_realtime_seam` site, whose entity is also
+`preserved_paused`, so it is on the uncarried side too although its bucket is
+the one bucket that could fall either way. Each needs a product answer about
+what the feature becomes, not an edit somebody has not got to yet, so a plan
+that sizes this stage by the call-site count is sizing the wrong thing.
 
 The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
 called fine: the family serves `Announcement`, `FacilityDocumentationRule` and
@@ -3830,9 +3845,15 @@ proxy for "which could" overstates it.** Two facts, both measured:
   **touches** an entity for its own reasons is not one that **serves** a call
   site.
 
-**The 203 that cannot land have their own docket:**
+**The ones that cannot land have their own docket:**
 [FRONTEND_DECISION_DOCKET_2026-09-22.md](FRONTEND_DECISION_DOCKET_2026-09-22.md).
-Two findings in it change the plan. 81 of the 119 training sites sit in 35
+**Its 203 is D80's 203 and carries D80's error** — it opens by calling all of
+them sites "reaching an entity the owned store will have **no table for**",
+and its own closing table gives the nine admin reference writes a row of their
+own. So do not cross it against the 194 above; what it enumerates is the
+DROPPED TOTAL at 445, 193 `no_table` plus those 9 plus 1 subscription, and
+only 194 of it is the uncarried domain. Re-run the tool if you need today's
+set. Two findings in it change the plan. 81 of the 119 training sites sit in 35
 screens the learning cutover's switch never reaches — the course player and the
 compliance reports among them — so the learning cutover is a *sequencing
 dependency* of the exit. And the paused-domain screens are live today (direct
