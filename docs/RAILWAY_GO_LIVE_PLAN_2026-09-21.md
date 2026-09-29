@@ -2840,79 +2840,111 @@ entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adop
   of those 166, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 165 need a named capability
 ```
 
-And after the roster gained a creation order — a record of that head, not
-maintained either:
+And after the two library reads whose call sites had been called unprovable —
+a record of that head, not maintained either:
 
 ```
-entity routes: 52 declared, 95/237 landable call sites SERVED, 142 still to adopt
-  6 of those are sites a declared route REFUSES (User.list:sort), and 20 pass arguments this cannot read
+entity routes: 54 declared, 98/237 landable call sites SERVED, 139 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 21 pass arguments this cannot read
   8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
-  of those 142, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 141 need a named capability
+  of those 139, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 138 need a named capability
 ```
 
-The move into THAT block was 24 sites, and its cause was one order rather than
-any new capability: the roster contract learned to answer `created_date`
-descending, which is what the `User.list` sites that were refused on their sort
-were asking for, so the declared count did not move and every one of the 24 left
-the sort bucket.
-
-And after the four clinical-library write capabilities gained their routes — a
-record of that head, not maintained either:
-
-```
-entity routes: 64 declared, 102/237 landable call sites SERVED, 135 still to adopt
-  6 of those are sites a declared route REFUSES (User.list:sort), and 32 pass arguments this cannot read
-  13 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
-  of those 135, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 134 need a named capability
-```
-
-And the reading on THIS tree, after `Task.create` was declared. This one is
+And the reading on THIS tree, after the five write capabilities that had
+shipped without routes gained them. This one is
 `pnpm run check:entity-routes`'s own output and is **pinned**:
 `tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
 so paste what the tool prints and never retype, rewrap or re-indent it.
 
 ```
-entity routes: 65 declared, 104/237 landable call sites SERVED, 133 still to adopt
-  6 of those are sites a declared route REFUSES (User.list:sort), and 36 pass arguments this cannot read
+entity routes: 67 declared, 107/237 landable call sites SERVED, 130 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 37 pass arguments this cannot read
   13 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
-  of those 133, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 132 need a named capability
+  of those 130, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 129 need a named capability
 ```
 
-**The move above is two sites, and its cause is ONE declaration that nothing in
-the store was ever holding.** `createAgencyTask` shipped complete — contract,
-wrapper, grant, handler — and what kept `Task.create` undeclared lived in a test
-file: #297's regression test planted that exact key as its own route and
-asserted the measurement rises against a baseline taken without it, so declaring
-it put the key in the baseline and the assertion failed. The plant is DERIVED
-now, from whatever undeclared pair the tree has in the shape that case needs,
-and it refuses rather than skips when there is none — so the wall is gone rather
-than moved one route along, which repointing the plant would have done. Read that
-as the general lesson rather than as one route's history: a capability can be
-complete at every layer and still unreachable for a reason that lives in a test,
-and the remedy for a check held hostage by a name is to derive the name.
-
-Two things about the merge before it are worth keeping here. Declaring the
-clinical-library writes put two DECLARED call sites into the double-call shape
-#297's case needs, so the committed report now exercises that multiset
-subtraction with no plant at all — measured by restoring the Set and watching
-three tests fail, one of which reads only the committed figures. And a test
-asserting `Task.create` was held on the gate was deleted rather than renamed:
-its assertions all still passed while its name and message said the opposite of
-the tree, which is the shape of a check whose subject is gone.
-
-The earlier move into the block above it was seven sites, and its cause was
-twelve routes over four capabilities that already shipped — no contract, no
-migration and no SQL. `manageClinicalPathway`, `manageClinicalLibraryTemplate`,
+**The move above is nine sites across thirteen declarations, and its cause is
+routing capabilities that already shipped — no contract, no migration and no
+SQL.** `manageClinicalPathway`, `manageClinicalLibraryTemplate`,
 `manageClinicalLibraryFolder` and `manageEducationMaterial` each take an action
 beside the id and the payload, so each serves a `create`, an `update` and a
-`delete`, and the twelve declarations were the whole of that change. Five of the
-twelve are UNPROVED and seven are served, which is why the unproved line grew by
-five in the same merge the served count grew by seven: a route whose call sites
-all pass a variable is counted in the first and not the second. The unreadable
-line grew by twelve because every one of those sites GAINED a declared route the
-gate cannot run — the same reading #296's paragraph below records, arriving a
-second time, and the reason to state it is that a rising unreadable count beside
-a rising served count looks like a regression and is the opposite.
+`delete`, and twelve declarations were the whole of that. The thirteenth is
+`Task.create`, and what had been holding it lived in a test file rather than in
+the store: #297's regression test for the served-site subtraction planted that
+exact key as its own route and asserted the measurement rises against a baseline
+taken without it, so declaring it put the key in the baseline and the assertion
+failed. The plant is DERIVED now, from whatever undeclared pair the tree has in
+the shape that case needs, and it refuses rather than skips when there is none —
+so the wall is gone rather than moved one route along, which repointing the
+plant would have done. Read that as the general lesson rather than as one
+route's history: a capability can be complete at every layer and still
+unreachable for a reason that lives in a test, and the remedy for a check held
+hostage by a name is to derive the name.
+
+**Five of the thirteen are UNPROVED and eight are served, and the unreadable
+line rising beside the served line is the expected shape rather than a
+regression.** A route whose call sites all pass a variable is counted in the
+first and not the second, so declaring twelve routes over sites that pass whole
+payloads raises both at once. What checks those five is the contract's own
+refusals against the real migration, which is the better check and not this
+tool's to pre-empt.
+
+**Two things about that change are worth keeping.** Declaring the library
+writes put two DECLARED call sites into the double-call shape #297's case
+needs, so the committed report now exercises that multiset subtraction with no
+plant at all — measured by restoring the per-key `Set` and watching three tests
+fail, one of which reads only the committed figures. And a test asserting
+`Task.create` was held on the gate was deleted rather than renamed: every one of
+its assertions still passed while its name and its message said the opposite of
+the tree, which is the shape of a check whose subject is gone.
+
+**The branch that made this move kept its own intermediate readings and they
+are deliberately not on this page.** It measured at 95, then 102, then 104
+served before merging, and those three heads are a branch's staging history
+rather than anything a deployment or a reader passed through. A record block
+earns its place by being a head somebody could have been standing on; pasting a
+branch's private waypoints into a chain that otherwise tracks `main` would make
+the page describe a line of development that never existed.
+
+**The move into that record was three sites across two routes, and its cause
+was a re-measurement rather than anything new being built.** Both capabilities have
+been shipped since the clinical library landed; what changed is that this
+file's own note calling their call sites unprovable was checked. It named
+`ClinicalLibraryTemplate.list` and `PatientEducationAssignment.filter`, and it
+was right about one site and wrong about three. The template list has TWO call
+sites, not the one the note assumed: the pager passes a computed skip and is
+still unreadable, while the top-templates widget passes two literals. And the
+education sites pass `patient?.id`, which #300 settled is READABLE — a row id's
+value decides nothing a route can be wrong about, where a sort or a limit is
+shape. The note predated that rule, so the reason for the exclusion expired and
+the exclusion did not, which is the same shape as a bucket keeping its name
+after the reason for it has gone.
+
+**Declaring them turned up a latent mis-order in the shared helper, and it is
+the more useful half of this change.** The library reads match a screen's sort
+against a list of FIELDS, and `contract_clinical_library_template_list` orders
+`usage_count DESC`. A screen asking for `+usage_count` would have passed the
+field check, been served the descending page, and had it re-sorted ascending in
+the browser — the most-used templates handed to the screen as the least-used,
+with every other part of the seam behaving correctly. Nothing was reading it
+that way today, so no screen was wrong; it was one ascending call site away.
+The helper's own comment already said what it needed — "the contract has to
+have done the ordering, which `sortable` is the list of" — and a field list is
+not that claim. Each of the seven library routes now names the exact sort
+STRING its contract implements, read off that contract's `order by`, and a
+direction no contract implements refuses. The re-measure was that none of the
+existing call sites passes one, so this narrows the seam and moves no total.
+
+**And the move into the record before THAT one was 24 sites, with one order
+rather than any new capability behind it.** The roster contract learned to answer `created_date` descending,
+which is what the `User.list` sites that were refused on their sort were asking
+for; the declared count does not move, because no route was added. Every one of
+the 24 leaves the sort bucket, which is why that line falls while the unreadable
+line holds. The figure this block reads off its predecessor is also the one
+place a reader should be most careful: the previous block's numerator and this
+tree's base reading are the same number for two unrelated reasons, and the two
+were told apart by running the printer on both trees rather than by reasoning
+about them.
 
 **What that block says, and why the prose below it names no total from it.**
 The numerator is the count of landable call sites a declared route actually
@@ -3328,7 +3360,7 @@ account, and nobody can be admitted as one.**
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. ~~One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C~~ **That setting is now reported and reads the staging app**, since the 2026-09-25 repoint and redeploy put a post-#247 revision on the service |
 | ~~**Redeploy `pennsync-api` from current `main`**~~ **Repoint the pinned source commit, then redeploy — every time** | Stages B and D | **Done once, 2026-09-25, and it is a standing step rather than a discharged one.** It was the live blocker for two reasons, the second binding: `f18b053` implemented 74 of 80 names, and it predated the readiness fields that report the app binding, so **every** wave pasted onto it would have released against a `PENNSYNC_API_APP_ID` no probe could check. Both closed — `20c15d8`, 80 names, `appId` reading the staging app. **It is no longer the owner's alone**: a session holding the Railway connector can repoint and redeploy, and one did. What stays the owner's is creating or deleting anything, and setting `PENNSYNC_API_FUNCTIONS` and `PENNSYNC_API_RELEASE`. What recurs is the repoint: the source is pinned on purpose, so a merge does not deploy by itself — but measured 2026-09-25 05:41Z, **the pin does not survive a variable change**, which rebuilds from `main`'s latest commit, so each release wave redeploys the service from whatever `main` is at that moment. See stage B |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
-| Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
+| ~~Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime~~ | Stage E | **Done 2026-09-25 at `08:19:25Z`** on the owner's word at `08:14:51Z` (readings in stage E). This row was left unstruck after that. **Re-measured 2026-09-28** by an unauthenticated GET of `pennsync-integrations-production.up.railway.app/readyz`: `authorityMode: "independent"`, `base44ExecutionDependency: false`, `appId: "6a9881683dc68a0bd54f1ef7"` (the staging id) with `appStated: true`, `operations` `InvokeLLM`, `ExtractDataFromUploadedFile` and `SendEmail`, `missingProviders: []`, and the browser route still shut (`browserReleased: false`, `browserOperations: []`). The revision running is `720d140` (#288), not `main`'s tip, which is expected: this service redeploys on a variable write or a merge touching `/services/integration-runtime/**`, and nothing since has done either. Nothing on this row is owed. The round trip through a real login is still unproved (see stage E); a first real call is the proof |
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |

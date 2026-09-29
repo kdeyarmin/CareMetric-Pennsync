@@ -506,19 +506,52 @@ test('a revoked membership leaves the roster, however the carried row reads', as
   } finally { await db.exec('rollback'); }
 });
 
-test('no caller role reaches the roster except through a contract that authorizes', async () => {
-  const { rows } = await db.query(`
-    select p.proname as name, pg_catalog.oidvectortypes(p.proargtypes) as args, n.nspname as schema
-    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
-    where p.proname like '%roster%' and n.nspname = any(array['pennsync_records','public'])
-    order by n.nspname, p.proname`);
+/**
+ * Every function in the store whose NAME carries `roster`, with whether
+ * `authenticated` may execute it.
+ *
+ * A name pattern is a weak way to build a population and this project already
+ * holds one that read green and wrong at once. The population here stays the
+ * STORE anyway, and the reason is structural rather than a preference.
+ *
+ * Deriving it from this contract's own migration is the shape D148 asks for
+ * wherever a declaration exists to derive from, and here it would lose both of
+ * the things this test exists to catch. Roster-named functions are declared in
+ * SIX record migrations (measured 2026-09-29): `caller_roster` and
+ * `caller_roster_ids` in `20260919170000_record_store.sql`,
+ * `contract_roster_report` in its own `…470000` file, `agency_roster` in
+ * `…285000_notification_mint.sql`, and the contract's three across
+ * `…030000`, `…620000` and `…630000`. So the name this test asserts must be
+ * UNREACHABLE originates in the store migration, and the third reachable
+ * contract originates in a fourth file — a population scoped to one migration
+ * can state neither fact. A derivation here would read in the diff as a
+ * tightening and be a loosening, which is the worse of the two failures
+ * because nothing goes red.
+ *
+ * `roster-named-grant-from-another-migration` below is the control for that
+ * claim, so narrowing the population fails a test instead of passing quietly.
+ */
+const ROSTER_NAMED = `
+  select p.proname as name, pg_catalog.oidvectortypes(p.proargtypes) as args, n.nspname as schema
+  from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  where p.proname like '%roster%' and n.nspname = any(array['pennsync_records','public'])
+  order by n.nspname, p.proname`;
+
+/** The names above that `authenticated` may actually execute, sorted. */
+async function reachableRosterNames(handle) {
+  const { rows } = await handle.query(ROSTER_NAMED);
   const reachable = [];
   for (const row of rows) {
-    const { rows: allowed } = await db.query(
+    const { rows: allowed } = await handle.query(
       'select has_function_privilege($1, $2, \'execute\') as allowed',
       ['authenticated', `${row.schema}.${row.name}(${row.args})`]);
     if (allowed[0].allowed) reachable.push(`${row.schema}.${row.name}`);
   }
+  return reachable.sort();
+}
+
+test('no caller role reaches the roster except through a contract that authorizes', async () => {
+  const reachable = await reachableRosterNames(db);
   // Each is reachable by both spellings, which is deliberate and is what
   // `listPolicyLibrary` does: each is SECURITY DEFINER and performs its own
   // authorization, and the `public` wrapper only exists so a caller reaches it
@@ -536,7 +569,7 @@ test('no caller role reaches the roster except through a contract that authorize
   // of the fixture and false of the store — which is the whole reason the apply
   // list is read from the directory now. Its own suite proves its refusals; what
   // this one asserts is that it, too, is a contract rather than a helper.
-  assert.deepEqual(reachable.sort(),
+  assert.deepEqual(reachable,
     ['pennsync_records.contract_roster_get', 'pennsync_records.contract_roster_list',
       'pennsync_records.contract_roster_report',
       'public.pennsync_contract_roster_get', 'public.pennsync_contract_roster_list',
@@ -550,6 +583,41 @@ test('no caller role reaches the roster except through a contract that authorize
   // And the table itself is not a door either.
   await assert.rejects(() => as(ADMIN_A, `select "id" from ${SCHEMA}."user"`), /permission denied/i);
 });
+
+test('a roster-named grant from another migration is seen, which is why the population is the store',
+  async () => {
+    // The control for the paragraph above `ROSTER_NAMED`, planted rather than
+    // described: a comment claiming the population is store-wide reads exactly
+    // like one over a population that has quietly been narrowed.
+    //
+    // A forward file is the only legal way to change a store that has already
+    // applied its migrations (D88), so the next roster-named function to arrive
+    // will arrive in a file this contract does not name — which is precisely
+    // how `contract_roster_report` arrived, invisible here until the build
+    // stopped being a hand-kept file list. Plant one, and check the query sees
+    // it. Narrow the population to this contract's own migration and this test
+    // fails and says why; without it that narrowing is a green diff.
+    await db.exec('begin');
+    try {
+      const planted = `${SCHEMA}.planted_roster_side_door`;
+      await db.exec(`create function ${planted}(p_agency text) returns text
+        language sql security definer as $$ select p_agency $$;
+        grant execute on function ${planted}(text) to authenticated;`);
+      assert.ok((await reachableRosterNames(db)).includes(planted),
+        'a roster-named grant declared outside this contract\'s own migration must be seen');
+      // And the same plant under a name the pattern does not carry is NOT seen.
+      // That is this guard's measured blind spot rather than a gap to widen the
+      // pattern over: `%` around another word moves the blind spot instead of
+      // closing it, and the reachable-surface gate that would close it properly
+      // is a store-wide piece of work in its own right.
+      const hidden = `${SCHEMA}.planted_staff_list_side_door`;
+      await db.exec(`create function ${hidden}(p_agency text) returns text
+        language sql security definer as $$ select p_agency $$;
+        grant execute on function ${hidden}(text) to authenticated;`);
+      assert.ok(!(await reachableRosterNames(db)).includes(hidden),
+        'the pattern sees names, not grants: this is the documented blind spot');
+    } finally { await db.exec('rollback'); }
+  });
 
 test('every tenant role that holds a membership gets its agency roster', async () => {
   // The plan's stage C owes these four their roster behaviour, and nothing had

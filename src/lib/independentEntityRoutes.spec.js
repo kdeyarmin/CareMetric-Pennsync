@@ -408,6 +408,63 @@ describe('the declared entity routes', () => {
       }
     });
 
+    it('serves the two library reads whose sites were once called unprovable', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([{ id: 't-1', usage_count: 9 }]);
+
+      // `TopTemplatesWidget` passes `('-usage_count', 5)` — every argument a
+      // literal. Its sibling pager passes a computed skip and stays unreadable,
+      // which is a route with one proved site rather than an unproved route.
+      await adapter.raw.entities.ClinicalLibraryTemplate.list('-usage_count', 5);
+      expect(fixture.apiCalls.at(-1).url)
+        .toBe(`${stagingApiUrl}/v1/functions/listClinicalLibraryTemplates`);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: 5 });
+
+      // Both education sites pass `patient?.id`, which is a ROW ID and so
+      // readable, where a sort or a limit would be shape.
+      fixture.apiResponse = libraryAnswer([{ id: 'a-1', patient_id: 'patient-7' }]);
+      await adapter.raw.entities.PatientEducationAssignment
+        .filter({ patient_id: 'patient-7' }, '-assigned_date', 1000);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ patient_id: 'patient-7', limit: 1000 });
+      await adapter.raw.entities.PatientEducationAssignment
+        .filter({ patient_id: 'patient-7' }, undefined, 1000);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ patient_id: 'patient-7', limit: 1000 });
+
+      // A chart this route cannot express is refused rather than widened to
+      // the agency, which is the whole reason the predicate is parsed here.
+      await expect(adapter.raw.entities.PatientEducationAssignment
+        .filter({ status: 'assigned' }, undefined, 1000)).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    });
+
+    it('refuses a sort direction the contract does not implement, and the re-sort that would have applied is real', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([]);
+
+      // `contract_clinical_library_template_list` orders `usage_count DESC`,
+      // and that direction is what the route accepts.
+      await adapter.raw.entities.ClinicalLibraryTemplate.list('-usage_count', 5);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: 5 });
+      for (const sort of ['usage_count', '+usage_count', '-created_date', 'id']) {
+        await expect(adapter.raw.entities.ClinicalLibraryTemplate.list(sort, 5))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+
+      // The known-positive, because a refusal on its own only shows the
+      // refusal works. The route really does re-order the rows it was handed
+      // rather than trusting the page's order — here, against a page served
+      // in the wrong order on purpose. So a direction check that matched only
+      // the FIELD would have admitted `+usage_count`, been handed the five
+      // most-used templates, and re-sorted them ascending: the five most-used
+      // presented to the screen as the five least-used, with every other part
+      // of this file behaving correctly.
+      fixture.apiResponse = libraryAnswer([
+        { id: 't-low', usage_count: 1 }, { id: 't-high', usage_count: 9 }]);
+      expect(await adapter.raw.entities.ClinicalLibraryTemplate.list('-usage_count', 5))
+        .toEqual([{ id: 't-high', usage_count: 9 }, { id: 't-low', usage_count: 1 }]);
+    });
+
     it('turns the flag a screen filters on into the contract argument that means it', async () => {
       const { fixture, adapter } = await signedIn();
       fixture.apiResponse = libraryAnswer([{ id: 'm-1', is_published: true }]);
@@ -888,8 +945,10 @@ describe("what batch E's routes take on trust", () => {
       .filter(key => key.endsWith('.list') || key.endsWith('.filter'));
     // Not an allowlist: every route keyed for a read is covered, and a new one
     // joins this set by existing — which is why the number GREW rather than
-    // being relaxed when batch D's nine paged operational reads arrived.
-    expect(paged.length).toBe(38);
+    // being relaxed when batch D's nine paged operational reads arrived, and
+    // again for the two library reads whose call sites were once called
+    // unprovable.
+    expect(paged.length).toBe(40);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;
