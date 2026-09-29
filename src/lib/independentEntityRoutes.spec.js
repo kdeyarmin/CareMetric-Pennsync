@@ -973,15 +973,22 @@ describe('the declared entity routes', () => {
      * `p_order`, and the store's current signature really is
      * `contract_roster_list(text, integer, text, text)` with a matching public
      * wrapper — `20260920620000_roster_created_date.sql` added the parameter and
-     * `20260920630000_roster_display_name.sql` re-created it. The stale layer is
-     * `handlers.mjs`, whose allowlist is `exactObject(params, ['limit',
+     * `20260920630000_roster_display_name.sql` re-created it. The stale layer WAS
+     * `handlers.mjs`, whose allowlist read `exactObject(params, ['limit',
      * 'after'])`, and `app.mjs` dispatches every request through
-     * `handlers[name].handle` first. So the call fails 400 INVALID_PARAMS before
-     * `contract()` is reached, and neither PostgREST nor any store is involved:
-     * 24 of this route's 29 served sites pass `'-created_date'`, so the
-     * most-adopted route in this file fails at the boundary on every one of
-     * them. A check comparing a route's keys against its CONTRACT's params calls
-     * it clean, and so does one comparing them against the SQL.
+     * `handlers[name].handle` first. So the call failed 400 INVALID_PARAMS
+     * before `contract()` was reached, and neither PostgREST nor any store was
+     * involved: most of this route's served sites pass `'-created_date'`, so
+     * the most-adopted route in this file failed at the boundary on nearly all
+     * of them. A check comparing a route's keys against its CONTRACT's params
+     * called it clean, and so did one comparing them against the SQL.
+     *
+     * **The allowlist reads `['limit', 'after', 'order']` now and this paragraph
+     * is the record of why the check reads the HANDLER, which is an argument
+     * that outlives its own worked example.** It is written in the past tense
+     * deliberately rather than deleted: a reader who finds only the fix cannot
+     * reconstruct which of four agreeing layers was the liar. The second defect
+     * below is NOT fixed by it and is still live.
      *
      * TWO CONSEQUENCES WORTH KEEPING. An apply does not fix this one: an apply
      * changes the store, not the allowlist. And it survived because there IS
