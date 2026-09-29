@@ -77,7 +77,7 @@ test('the endpoint admits patient_name and never prints the claimed one', async 
     asked.push({ name, args });
     return { success: true, notified: 0, incident: { id: 'incident-1' } };
   };
-  await HANDLERS.submitStateReportableIncident.handle({
+  const answer = await HANDLERS.submitStateReportableIncident.handle({
     params: { ...PAYLOAD, patient_name: 'Ada Lovelace' }, contract });
   assert.equal(asked.length, 1, 'the body was refused before it reached the contract');
   const { incident } = asked[0].args;
@@ -86,6 +86,11 @@ test('the endpoint admits patient_name and never prints the claimed one', async 
   assert.equal(incident.report_text.includes('Ada Lovelace'), false);
   assert.equal('patient_name' in incident, false,
     'the contract derives the stored name itself; a caller may not supply it');
+
+  // Accepted and unused is REPORTED, never silent: a 200 that looks like the
+  // name was used is D39's defect, and both screens send one today believing
+  // it lands.
+  assert.equal(answer.patient_name_used, false);
 
   // And the gate still refuses a key nobody declared. `exactObject` throws
   // BEFORE the handler returns a promise, so this is `throws` and not

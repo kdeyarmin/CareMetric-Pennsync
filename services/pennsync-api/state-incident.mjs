@@ -165,5 +165,20 @@ export async function submitStateIncident({ params, contract }) {
     emails_sent: 0,
     pdf_retained: false,
     delivery_paused: true,
+    /*
+     * The caller's `patient_name` is accepted and not used, so it is REPORTED
+     * and not silently dropped -- D39's finding about the credential port,
+     * from the other side. That original's quiet field filter is what keeps a
+     * reserved field out of a caller's reach AND what loses a misspelled one
+     * without telling anyone, and a screen that gets a 200 has no way to learn
+     * the name went nowhere. D42, D73 and D81 all settle the same thing for a
+     * thing not done: say so in the answer.
+     *
+     * Constant rather than conditional. This service cannot resolve a name at
+     * all -- the patient read happens in the contract, after the report text
+     * is built -- so the honest statement is about the capability and not
+     * about one request, and a constant has no branch to get wrong.
+     */
+    patient_name_used: false,
   };
 }
