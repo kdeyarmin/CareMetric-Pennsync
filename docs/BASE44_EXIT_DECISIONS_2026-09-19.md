@@ -11499,3 +11499,45 @@ The one-sentence test confirms it from the other side. To cover D95's lesson and
 **A note on how this was found**, because it was not found by reading. Another thread sent a warning about a different defect entirely, I checked my file against that warning, and the warning did not apply — but looking closely enough to establish that it did not apply is what surfaced this. A question that turns out not to be about your code can still be the only thing that makes you look at it.
 
 The clause "right, about the right thing, by an arrangement you did not design" is the coordinator session's, and it is the sharpest statement of this entry's subject; it is quoted here with attribution rather than absorbed.
+
+## D199 — A sweep prints its probe list; a coverage figure is about a population. Count the controls out before quoting an N-of-M.
+
+Plan's, measured
+on `03a92329` and settled against the ladder thread's independent
+reproduction.
+
+I swept eight contract names to find out which ones `mutationClassifierHolds`
+protected: six of them members of the family that reaches its write through
+`library_write`, plus two deliberate positive controls. The guard refused for
+two and stayed silent for six, so my transcript read "two of eight". The
+protection was "one of seven" — one family member held, out of a family of
+seven. I reported the transcript while describing the protection, and produced
+three candidate figures for one population inside a single message: two of
+eight, one of seven, and "exactly the one ending in `_save`". All three read as
+answers to the same question.
+
+The reason the controls are there is the reason they pollute the count. A sweep
+with no control cannot tell "the guard refused for nobody" from "the checker
+read nothing", so the controls have to be probed — and then they sit in the
+output looking exactly like members, because the output is a list of names and
+a name does not say why it was probed. `contract_sent_education_record` is in
+the guard's population and not in the family at all: it carries its own DML.
+
+**How to apply.** Before quoting any N-of-M from a sweep, write the population
+down separately and by its defining property — here, contracts reaching their
+write through one helper — and check each probed name against it. Say the
+denominator in the same breath as the numerator, because "one of seven" and
+"two of eight" are both defensible sentences and only one answers the question.
+Better, have the harness print the two sets apart: members swept, and controls
+swept. And note which figure your reader will repeat, because whichever number
+goes into a document is the one quoted afterwards, so the settling happens
+before the write.
+
+**The response to copy is the ladder thread's**: handed three numbers, it
+refused to pick the reconciliation that made them agree and asked which set I
+had actually swept.
+
+**This does not widen the existing population rule**, which is about how a
+population is DERIVED — from the enumerable transport rather than the subject.
+This one is about a sweep's OUTPUT being read as its population. Different
+mechanism, different fix, and joining them needs an "and also".
