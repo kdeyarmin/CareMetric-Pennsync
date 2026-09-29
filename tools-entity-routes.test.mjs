@@ -584,34 +584,93 @@ function contractBodies() {
   return bodies;
 }
 
-/** The keys a contract's own `return jsonb_build_object(...)` statements name. */
+/**
+ * The keys a contract's own `return jsonb_build_object(...)` statements name.
+ *
+ * Parenthesis-counted rather than window-matched. A version bounding the
+ * argument list to 400 characters found nothing at all in `contract_alert_list`
+ * — whose answer wraps a `coalesce((select …))` far longer than that — and
+ * reported an EMPTY key set, which the comparison then read as "this route's
+ * key is not among the ones returned". That is the same extractor failure
+ * twice in one afternoon, and the second time it accused the very route the
+ * check was written for.
+ *
+ * Keys are taken at depth one only, so a nested `jsonb_build_object` inside a
+ * projection does not contribute its fields to the outer answer.
+ */
 function answeredKeys(body) {
-  return new Set([...body.matchAll(/return jsonb_build_object\(([\s\S]{0,400}?)\);/g)]
-    .flatMap(match => [...match[1].matchAll(/'([a-z_]+)'\s*,/g)].map(key => key[1])));
+  const keys = new Set();
+  const opener = /return jsonb_build_object\(/g;
+  for (let start = opener.exec(body); start; start = opener.exec(body)) {
+    let depth = 1;
+    let index = start.index + start[0].length;
+    let head = index;
+    for (; index < body.length && depth > 0; index += 1) {
+      const character = body[index];
+      if (character === '(') depth += 1;
+      else if (character === ')') depth -= 1;
+      else if (character === ',' && depth === 1) {
+        const argument = body.slice(head, index).trim();
+        const literal = argument.match(/^'([a-z_]+)'$/);
+        if (literal) keys.add(literal[1]);
+        head = index + 1;
+      }
+    }
+  }
+  return keys;
 }
 
-/** Each screen read's declared answer key, beside the contract it reaches. */
+/**
+ * Each screen read's declared answer key, default sort and contract.
+ *
+ * Read per `screenRead(` CALL rather than by a fixed property order. A first
+ * version matched `answerKey` followed by `entity` followed by `function` on
+ * consecutive lines, which is the shape seven of the nine calls happen to use —
+ * and the two it missed are both `PatientAlert`, which is the pair the whole
+ * check exists for, because `contract_alert_list` answering `alerts` is the
+ * live defect that made the key a parameter in the first place. It passed a
+ * floor of seven while blind to the two routes that motivated it.
+ *
+ * So the count is DERIVED from the file's own `answerKey:` occurrences rather
+ * than typed, for the same reason a registry sentinel should count exported
+ * names rather than carry a number: a check whose population is a literal
+ * cannot notice its population changing.
+ */
 function declaredAnswerKeys() {
   const routes = readFileSync(resolve(repository, 'src/lib/independentEntityRoutes.js'), 'utf8');
   const contracts = readFileSync(resolve(repository, 'services/pennsync-api/record-contracts.mjs'), 'utf8');
   const declared = [];
-  for (const match of routes.matchAll(
-    /answerKey:\s*'([a-z_]+)',\s*\n\s*entity:\s*'([A-Za-z]+)',\s*\n\s*function:\s*'([A-Za-z]+)'/g)) {
-    const [, answerKey, entity, capability] = match;
-    const rpc = contracts.match(
+  const calls = [...routes.matchAll(/screenRead\(\{/g)];
+  for (const [index, call] of calls.entries()) {
+    const body = routes.slice(call.index, calls[index + 1]?.index ?? routes.length);
+    const field = name => body.match(new RegExp(`\\n\\s*${name}:\\s*'(-?[A-Za-z_]+)'`))?.[1] ?? null;
+    const answerKey = field('answerKey');
+    if (answerKey === null) continue;
+    const capability = field('function');
+    const rpc = capability && contracts.match(
       new RegExp(`\\n  ${capability}: Object\\.freeze\\(\\{[\\s\\S]{0,400}?rpc: '([a-z_]+)'`));
-    declared.push({ answerKey, entity, capability, rpc: rpc?.[1]?.replace(/^pennsync_/, '') ?? null });
+    declared.push({
+      answerKey,
+      entity: field('entity'),
+      capability,
+      order: field('order'),
+      rpc: rpc ? rpc[1].replace(/^pennsync_/, '') : null,
+    });
   }
-  return declared;
+  return { declared, answerKeyCount: [...routes.matchAll(/\n\s*answerKey:/g)].length };
 }
 
 test('every declared answer key is one its contract actually returns', () => {
   const bodies = contractBodies();
-  const declared = declaredAnswerKeys();
-  // Not a floor. If the extraction above stops matching, this goes to zero and
-  // every assertion below becomes vacuously true at once.
-  assert.ok(declared.length >= 7,
-    `only ${declared.length} screen reads were extracted; the declaration shape moved`);
+  const { declared, answerKeyCount } = declaredAnswerKeys();
+  // NOT a floor, and not a number typed here. Every `answerKey:` in the route
+  // file must have been extracted, so a declaration this reader cannot parse
+  // fails instead of quietly leaving its route unmeasured. A floor of seven
+  // passed while the two `PatientAlert` routes were invisible.
+  assert.equal(declared.length, answerKeyCount,
+    `the route file declares ${answerKeyCount} answer keys and this reader found `
+    + `${declared.length}.\n  A route it cannot parse is a route it does not check, `
+    + 'which is indistinguishable\n  from a route that agrees.');
 
   for (const route of declared) {
     assert.ok(route.rpc,
