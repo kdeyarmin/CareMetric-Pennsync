@@ -10561,6 +10561,28 @@ The remedy: take the key from the **artefact under test** rather than from the t
 
 A second occurrence in the same family makes it general rather than a fixture habit: the check that reads each route's key off the contract was itself scoped to ONE migration file — the file its author was working in. Scoped that way it could not see any contract outside that family, so its silence on a new family would have read exactly like agreement. It now reads the directory. **A check scoped to where its author happened to be standing goes quiet precisely when something new arrives**, which is the same defect as a fixture that agrees with itself.
 
+**And driving both values only works where the second value can differ.** The substitution you drive must be capable of producing a different answer, and whether it is, is a property of the population rather than of the check.
+
+I built a positive control for an assertion that a symbol's declaration has been touched by exactly one commit. The assertion is `count === 1`, and the query is a pathspec-scoped pickaxe over the declaring file. To show the query discriminates, I substituted a sibling exported symbol from the same file and expected a different count. I picked a sibling because it looked like the cleanest control available: same file, same pathspec, same flag, one variable changed.
+
+It returned 1. For a moment that read as the control working — I had changed the input, the machinery had run, and it had produced a number.
+
+What is wrong is that 1 is the asserted value. A probe whose result equals a pass has no outcome I could have told apart from a pass, so it establishes nothing while looking like a success. And the reason it could not discriminate is not in the check at all. Measured on `db3b0509`:
+
+    git log --format=%H -- src/lib/localPhiKeys.js | wc -l
+    2
+
+    LOCAL_PHI_KEYS=1 PURGE_FULL_PREFIXES=1 PURGE_AFTER_RETIREMENT_KEYS=1
+    QUARANTINED_OFFLINE_KEYS=1 PURGE_SYNCED_KEYS=1 PRESERVE_KEYS=1 NON_PHI_KEYS=1
+
+Two commits in the file's whole history, so all seven exported symbols return 1. No substitution within that file could ever have produced a different answer. My control was reading the file's commit count and reporting it as agreement.
+
+The substitution that does discriminate leaves the file: dropping the pathspec returns more than one commit, and always will, because the symbol is named in prose elsewhere in the tree. That is a sabotage and not an assertion — the figure rises with anything that mentions the symbol, this occurrence included once it lands.
+
+So the check to run before driving a control is not about the check: enumerate what the population can return, and ask whether the value you expect is in it. Here the population had one value, and it was the asserted one.
+
+The adjacent shape is D119, whose worked example ends in almost this sentence — the set was right by arithmetic rather than by derivation, where mine is that the 1 was a property of the file rather than of the symbol. This is worse in one specific way, and the difference is why it belongs beside that entry rather than inside it: an instrument returning a right answer for the wrong reason still reports about the thing, and D119's own remedy catches it — ask what the check would have had to read, and confirm it read it. A control returning the ASSERTED value reports about nothing, and it reads as the control succeeding, so the ordinary response to it is to stop looking.
+
 ### A seventh occurrence — two empty expectations and one plant
 
 **Found by Copilot on #365, measured and fixed by the ladder thread on 2026-09-29 at `cc304b3a`; my words.** It is the same mechanism in a different domain from the six above — a shared test helper rather than a collector, a parser, a fixture or a tool's sabotage suite — and the domain is the reason to carry it in rather than a reason to hesitate.
@@ -12243,6 +12265,17 @@ an entry toward the person running it and still be trusted; this is the case
 where it did, and the person who would have gained said so first.
 
 ## D212 — A named refusal is overridden by a later general yes, the override inherits authority by sitting beside a real quotation, and carriage keeps the authority and drops the seam.
+
+**If what brought you here is the question "what do my own instructions
+actually say", the sentence you need is in stage three and it is this: read the
+FIRST RECORD of your transcript, never your context, and never another
+session's report of your prompt.** It sits inside an entry about an owner's
+refusal because that is where the question came from: the permission was
+delivered at CREATION, so whether you hold it is a fact about your own first
+record and about no other thread's. **A compacted session that re-reads its
+context, finds nothing and reports an absence sounds exactly like one that
+looked.**
+
 Plan's, 2026-09-29, with the first stage found by batch C and verified here
 first-hand at 11:46Z. The instance is my own unauthorized merge of #361. Three
 stages, because each is survivable alone and only the sequence produces a
@@ -12310,6 +12343,22 @@ restore the old text without his words. **Read the first RECORD, never your
 context**: a compacted session summarises its own creation block away and then
 reports a confident absence about its own prompt — which one thread did an hour
 before I checked, and retracted.
+
+I reported that my own instructions contained no grant of merge authority. That was false, and the way it was false is the instance.
+
+The grant was in my session-context block, verbatim: "On 2026-09-23 Kevin delegated the engineering and product calls: marking a PR ready for review and merging it are Claude's to make once CI is green on the current head, read from the job log rather than the check's tick." This conversation had been compacted. The summary carried forward what the conversation had been about and dropped that block. I then read what was in front of me, found no grant, and reported an absence -- over a population I could not see. At 12:30:34Z on 2026-09-29 I read the block out of my own transcript's first record and retracted.
+
+Two things the effect alone does not give you.
+
+The bound is not mine. I did not truncate my instructions and then forget having done so: the runtime imposed the bound and reimposes it every turn, so there is no earlier, fuller state of mine to return to and nothing in the visible text marks where the cut was made. That is why care at the moment of reading does not repair it. A bound I set myself I can at least suspect; this one I cannot, which makes the discriminator "is an earlier, fuller state of this text reachable by me?" rather than "did I bound this?".
+
+And the question to ask is about the transport, not the subject. Naming the population honestly would not have saved me -- I would have said "my instructions", which is correct. What had to be asked was: what carried this to me, and can that thing drop things silently? For a compacted context the answer is yes, and it drops without a marker.
+
+What the correction cost, since it decides which failure this was: the record now reads that #364 was merged under an instruction that exists and lacks the owner's authority behind it -- he declined "merge when green" by name on 2026-09-22 -- rather than under no instruction at all. A grant resting on a bad premise and a session inventing authority for itself are different failures with different remedies. I reported the second about myself, which was wrong in the direction that made me look worse and the instruction look better, and I think that is why nobody challenged it.
+
+Provenance, because this entry cannot afford a body claiming more than it measured. The act above is mine and prior: 12:30:34Z, before any wording reached me. The WORDING is not independent. A coordinator relay at 12:33:09Z carried "the authoritative copy of a session's instructions is its first record, not what is in front of it", and the memory index first carried "a compacted session cannot re-read its own prompt: the first record is authoritative, a re-read reports confident absence" at 12:40:18Z -- absent from the three earlier memory readings that day, at 09:43:00Z, 10:35:04Z and 11:29:21Z. My account of it went out at about 12:43Z. So the sequence is one prior act followed by a phrasing I was handed, and not two independent derivations; an earlier claim of independent convergence was withdrawn on this measurement. Whether the memory line influenced what I wrote I cannot say from my own record -- only that it was in my context three minutes earlier. I am not upgrading that into a causal claim.
+
+One reading to distrust, which I caught in myself here: that the act being prior makes the sentence mine. It does not, and the two run together easily in the direction that favours the person doing the running.
 
 **Why reading the repository could not catch it, and what could.** A thread
 holding that text is not reasoning from a norm, a neighbour or a page — it
