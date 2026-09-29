@@ -11452,8 +11452,6 @@ Both were proved by planting, not by reading, and the first plant is worth havin
 
 What the pair says, in the sentence the coordinator asked me to put my name to: **fixing the staleness of a comparison is not the same as fixing the comparison.** Deriving the right-hand side felt like the whole answer because it solved what had just broken, and naming which operand got fixed and which did not is what "one layer down" only gestures at.
 
----
-
 One more thing, offered rather than proposed, because it is the same shape a third time and three may be padding on an entry whose claim is the recursion rather than the count.
 
 `0581752c` — my own #350 — introduced two sentences about the same pair of figures, four hundred lines apart. The module said two parses of one tree corroborate nothing. The test file said the same two figures "were reached independently by the thread that measured the route side of this sweep… from its own parse of the same file". Both by one author, in one commit, and every suite green for the life of it, because prose cannot disagree with prose loudly. `git log -S` on each sentence puts both in that commit.
@@ -11473,3 +11471,31 @@ My instance: I was asked what a capability was FOR, and I put that beside a ques
 The remedy is separation rather than care. Ask the intent question on its own, to the respondent, and let it wait; ask the artefact question separately and answer it from the artefact. Where both must go out together, say in the message which half only the respondent can settle, so a reply covering the other half reads as incomplete rather than as an answer.
 
 A rule with only a dramatic instance reads as being about dramatic situations. Mine was not dramatic — it was an ordinary bundled question in an ordinary turn, and that is the shape to watch for, not a grand one.
+
+## D198 — a suite can be sound as a pair, and the pairing can be accidental
+
+*2026-09-29.*
+
+My record-migrations suite proves that every migration is exactly one transaction, and it is sound. It is sound for a reason I did not design and had not written down.
+
+Two halves. A positive sweep walks the real directory — `readdir`, sort, `readFile` — and asks `transactionControl` for each real file's top-level `begin`/`commit`. Beside it sit crafted-string counter-examples, asserted with `notDeepEqual`: unwrapped, rolled back, two transactions, a plpgsql body. The crafted strings prove the parser can say no. The directory sweep proves it says no on the path files actually arrive by. Neither half establishes both, and together they establish the thing that matters.
+
+I wrote the two halves for unrelated reasons, months apart in intent if not in time, and only noticed they were covering each other when another thread asked whether my refusal fires on the real path or only on a planted string. I re-ran the sabotage rather than answering from memory: stripping the wrapping out of a genuine file in the directory reds with `20260920660000_contract_compliance_reads.sql must be exactly one transaction`. The answer was yes. The reason the answer was yes was an accident.
+
+**The defect is not in the measurement.** Nothing here is wrong, nothing measures the wrong thing, and no assertion overstates. The defect is that the property holding the suite up is undocumented, so nothing protects it and nothing fails when it goes. Delete the crafted strings as redundant — they duplicate what the sweep covers, a reviewer would say, and they would be wrong — and the sweep goes on passing while the parser's ability to refuse stops being proved by anything. Replace the directory walk with a fixture list for speed and the crafted strings go on passing while the real path stops being exercised. Each refactor is locally reasonable, each leaves a green suite, and neither is visible in the half it does not touch.
+
+**The remedy is unusual and that is the point.** For most instrument defects the fix is to change what you measure. Here nothing needs changing: the fix is to write down, beside the halves, why the pair works and what each half is carrying that the other is not. An entry whose remedy is "document the property that makes this sound" is doing different work from one whose remedy is "point the instrument somewhere else".
+
+Why this is not D95 and not D120, because both sit near it.
+
+D120 is a pair with the opposite polarity. Its scenario and sabotage read as proof while establishing nothing, because the sabotage recomputes the guard's predicate for itself — and the coupling is visible in the sabotage's own source. Mine establishes everything, and the coupling is invisible in both halves. D120's remedy is to collapse the pair into ONE function so the sabotage cannot drift from the guard. Applied here that remedy would destroy the coverage: my two halves must stay two, because they enter by different doors on purpose. A rule that fixes D120's case breaks mine.
+
+D95 is closer and still not it. Its nearest passage is about a fixture that only asserts the gaps it just closed and so cannot tell a real gap from a hole in itself — a self-reference defect, where the instrument's fault is about the instrument. Mine has no self-reference; both halves are about the subject. And D95's three permanent controls were DESIGNED after somebody saw the gap, with the reason written down beside them. D95 is the record of doing deliberately what my case shows can also happen by accident, which is why it cannot state mine: its property is written down, and being unwritten is the whole of my candidate.
+
+The one-sentence test confirms it from the other side. To cover D95's lesson and this one together I have to reach "a suite's soundness can rest on a property nobody wrote down" — more general than either, and false about D95, whose property is written down. That generality is the tell.
+
+**The rule.** Where a suite's soundness depends on two or more parts covering what the others miss, say so where the parts are, and say what each carries. A property nobody chose is a property nobody will defend, and its loss produces no red — only a suite that still passes about less than it used to.
+
+**A note on how this was found**, because it was not found by reading. Another thread sent a warning about a different defect entirely, I checked my file against that warning, and the warning did not apply — but looking closely enough to establish that it did not apply is what surfaced this. A question that turns out not to be about your code can still be the only thing that makes you look at it.
+
+The clause "right, about the right thing, by an arrangement you did not design" is the coordinator session's, and it is the sharpest statement of this entry's subject; it is quoted here with attribution rather than absorbed.
