@@ -61,17 +61,19 @@
  * - A key regex requiring `:` read `importProvidersCsv({ csv_text })` as a call
  *   with NO keys and passed it. A shorthand key outside the allowlist would
  *   never have been seen.
- * - An import matcher accepting single quotes only found TWO call sites where
- *   there are eighteen, and reported clean. A check that reaches a ninth of its
- *   population and a check that reaches all of it are the same green.
+ * - An import matcher accepting single quotes only found TWO call sites out of
+ *   the whole readable population, and reported clean. A check that reaches a
+ *   fraction of its population and a check that reaches all of it are the same
+ *   green.
  * - Splitting the argument text without removing comments first made
  *   `src/pages/IncidentReportingModule.jsx` unreadable, because two of its
  *   thirteen keys carry an explanation beside them. Safe, and still wrong about
  *   the population.
  *
  * Three of the four were silent, which is the argument for asserting the
- * population as a SET rather than against a floor. A floor near eighteen would
- * have caught the third and passed the other two -- and the set is load-bearing
+ * population as a SET rather than against a floor. A floor at whatever the
+ * population measured that day would have caught the third and passed the other
+ * two -- and the set is load-bearing
  * rather than tidy, which was PROVED rather than argued: narrow the import
  * matcher back to one quote style and `no screen sends a ported capability a
  * key its handler refuses` stays GREEN, with only the population assertions
@@ -90,12 +92,29 @@
  *
  * ## Where the figures come from
  *
- * The seventeen wrappers and eighteen readable sites were measured twice, by
- * two threads, through DIFFERENT derivations -- #335 measured them from its own
- * side of the sweep and this module was written without reading its code. Two
- * routes to one pair is a second artefact and is worth recording as such; two
- * runs of one function over one tree would be repetition with two authors, and
- * corroborates nothing.
+ * They are not written here. `summaryLines` prints them and
+ * `tools-handler-allowlist.test.mjs` pins every population as a NAMED SET, so a
+ * figure in this docblock would be a second representation of something one
+ * command answers. The sentence this replaces is the worked example: it said
+ * "seventeen wrappers and eighteen readable sites", which was measured and true
+ * when it was written; resolving a NAMED allowlist to the binding `handlers.mjs`
+ * imports moved BOTH figures, the prose stayed, and nothing failed. Naming the
+ * new pair here would only restart the clock.
+ *
+ * That sentence also recorded #335 as having reached the same pair from its own
+ * side of the sweep, through a derivation written without reading this code,
+ * and offered it as a second artefact rather than a second run of one function.
+ * The distinction is real and the conclusion was still too strong. Both
+ * derivations are static parses of ONE tree at one head, so their agreeing is
+ * evidence that two parsers agree and never that either read the tree
+ * correctly -- D170, arriving in the file that states it. This change is the
+ * proof rather than the argument: the agreed pair moved the moment this side
+ * stopped scanning the whole directory for registry entries, which it had been
+ * doing throughout the agreement, and a shared subject is exactly where a
+ * shared blind spot sits. What caught it was not a second reading but a cross
+ * against a declaration no parser here produces -- `HANDLER_NAMES`, evaluated
+ * from the registry itself -- and a failure that reproduced from separate
+ * checkouts.
  *
  * Anything this cannot read statically — a spread, a computed key, a payload
  * that is a variable rather than a literal — is UNREADABLE and is reported as
@@ -345,9 +364,9 @@ const sourceFiles = (repository) => {
 export function importedWrappers(source, wrappers) {
   const bound = new Map();
   // Both quote styles. A first draft matched single quotes only and found two
-  // call sites where there are eighteen -- green, and blind to all but two of
-  // the population it claims to measure. The declared set below is what turns
-  // that into a failure rather than a quiet pass.
+  // call sites out of a population many times that -- green, and blind to all
+  // but two of the sites it claims to measure. The declared set below is what
+  // turns that into a failure rather than a quiet pass.
   for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]@\/functions\/[\w-]+['"]/g)) {
     for (const clause of match[1].split(',')) {
       const parts = clause.trim().split(/\s+as\s+/);
