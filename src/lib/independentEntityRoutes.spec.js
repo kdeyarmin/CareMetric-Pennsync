@@ -871,6 +871,40 @@ describe("what batch E's routes take on trust", () => {
     }
   });
 
+  it('never sends a capability an argument its contract does not take', async () => {
+    const { RECORD_CONTRACTS } = await import('../../services/pennsync-api/record-contracts.mjs');
+    // `record-contracts.mjs` refuses any argument outside a capability's own
+    // `params` with CONTRACT_ARGUMENTS_INVALID, so a route that emits one gets
+    // a 400 on every call that produces it. Seven routes did: they declared
+    // `created_date` as ORDERABLE when their contracts take no order parameter
+    // and already order `created_date desc` unconditionally, so the one sort
+    // every one of their call sites asks for was the one that failed.
+    //
+    // The gate cannot stand in for this either. It runs `request` and asks
+    // only that it does not throw; what comes out of it is never compared with
+    // anything. So the allowlist is read from the contract registry and the
+    // arguments are read from the route, and neither side is typed here.
+    const sorts = ['-created_date', 'created_date', '-updated_date', '-due_date',
+      '-event_date', '-sent_date', '-priority', '-severity', '-usage_count',
+      '-assigned_date', '-last_used_date', 'full_name', 'order', null, undefined];
+    for (const [key, route] of Object.entries(ENTITY_ROUTES)) {
+      const contract = RECORD_CONTRACTS[route.function];
+      if (!contract) continue;
+      const filtered = key.endsWith('.filter');
+      for (const sort of sorts) {
+        let asked;
+        try {
+          asked = route.request(...(filtered ? [{}, sort, undefined] : [sort, undefined]));
+        } catch { continue; }
+        if (asked === null || typeof asked !== 'object') continue;
+        for (const argument of Object.keys(asked)) {
+          expect(contract.params, `${key} sends ${route.function} an argument it refuses`)
+            .toContain(argument);
+        }
+      }
+    }
+  });
+
   it('leaves each unproved write to the refusals its own contract raises', async () => {
     const { readFileSync } = await import('node:fs');
     const { cwd } = await import('node:process');

@@ -465,10 +465,27 @@ function shiftWindow(query) {
  */
 export const OPERATIONAL_MAXIMUM = 5000;
 
-/** The order parameter for a sort argument, against what the contract orders by. */
-function orderKey(sort, orderable) {
+/**
+ * The order parameter for a sort argument, against what the contract orders by.
+ *
+ * TWO declarations, because a contract answers a sort in two different ways and
+ * conflating them sends a key the contract does not take. `orderable` is the
+ * fields it takes an `order` PARAMETER for; `ordered` is the sort strings its
+ * own `order by` already implements, which are accepted and sent nothing.
+ *
+ * Seven routes had the second kind declared as the first. Every one of their
+ * contracts orders `created_date desc` unconditionally and takes no order
+ * parameter at all, and `record-contracts.mjs` refuses an argument outside a
+ * capability's `params` with `CONTRACT_ARGUMENTS_INVALID` — so a screen asking
+ * for `-created_date`, which is what they all ask for, got a 400 for the one
+ * order its contract was already giving it. The gate could not see it: it runs
+ * `request` and asks only that it does not throw.
+ */
+function orderKey(sort, orderable, ordered = []) {
   if (sort === undefined || sort === null || sort === '') return undefined;
-  if (typeof sort !== 'string' || !sort.startsWith('-')) unsupported('sort');
+  if (typeof sort !== 'string') unsupported('sort');
+  if (ordered.includes(sort)) return undefined;
+  if (!sort.startsWith('-')) unsupported('sort');
   const field = sort.slice(1);
   if (!orderable.includes(field)) unsupported('sort');
   return field;
@@ -516,7 +533,9 @@ function wholePage(entries, limit, entity) {
  * A read over one operational table: the filter as named parameters, the sort
  * as the contract's order parameter, the limit passed through.
  */
-function operationalRead({ entity, fn, orderable, filterable = [], negatable = [], filtered }) {
+function operationalRead({
+  entity, fn, orderable, ordered = [], filterable = [], negatable = [], filtered,
+}) {
   return {
     function: fn,
     projection: 'operational_row',
@@ -525,7 +544,7 @@ function operationalRead({ entity, fn, orderable, filterable = [], negatable = [
     arity: filtered ? 3 : 2,
     request: (...args) => {
       const [query, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
-      const order = orderKey(sort, orderable);
+      const order = orderKey(sort, orderable, ordered);
       return {
         ...namedFilters(query, filterable, negatable),
         ...(order === undefined ? {} : { order }),
@@ -686,14 +705,14 @@ const operationalRoutes = Object.freeze({
   'AgencySettings.list': Object.freeze({
     ...operationalRead({
       entity: 'AgencySettings', fn: 'getAgencySettings',
-      orderable: ['created_date'], filtered: false,
+      orderable: [], ordered: ['-created_date'], filtered: false,
     }),
     reason: 'The settings loader reads the agency configuration newest first.',
   }),
   'AgencySettings.filter': Object.freeze({
     ...operationalRead({
       entity: 'AgencySettings', fn: 'getAgencySettings',
-      orderable: ['created_date'], filterable: ['agency_code', 'office_name'],
+      orderable: [], ordered: ['-created_date'], filterable: ['agency_code', 'office_name'],
       filtered: true,
     }),
     // The lookup stays and the tenancy behind it goes: the agency is the
@@ -717,14 +736,15 @@ const operationalRoutes = Object.freeze({
   'PDFTemplate.list': Object.freeze({
     ...operationalRead({
       entity: 'PDFTemplate', fn: 'listPdfTemplates',
-      orderable: ['created_date'], filtered: false,
+      orderable: [], ordered: ['-created_date'], filtered: false,
     }),
     reason: 'The template manager and the library both read every template, newest first.',
   }),
   'PDFTemplate.filter': Object.freeze({
     ...operationalRead({
       entity: 'PDFTemplate', fn: 'listPdfTemplates',
-      orderable: ['created_date'], filterable: ['parent_template_id'], filtered: true,
+      orderable: [], ordered: ['-created_date'],
+      filterable: ['parent_template_id'], filtered: true,
     }),
     reason: 'The version history reads the revisions of one parent template.',
   }),
@@ -762,7 +782,8 @@ const operationalRoutes = Object.freeze({
   'FaceToFaceEncounter.filter': Object.freeze({
     ...operationalRead({
       entity: 'FaceToFaceEncounter', fn: 'listFaceToFaceEncounters',
-      orderable: ['created_date'], filterable: ['referral_id'], filtered: true,
+      orderable: [], ordered: ['-created_date'],
+      filterable: ['referral_id'], filtered: true,
     }),
     reason: 'Referral intake reads the encounter already recorded against a referral.',
   }),
@@ -770,7 +791,8 @@ const operationalRoutes = Object.freeze({
   'DocumentRecord.filter': Object.freeze({
     ...operationalRead({
       entity: 'DocumentRecord', fn: 'listPatientDocumentRecords',
-      orderable: ['created_date'], filterable: ['patient_id'], filtered: true,
+      orderable: [], ordered: ['-created_date'],
+      filterable: ['patient_id'], filtered: true,
     }),
     // Its contract keeps the original's ownership rule, so this answers with
     // the caller's own uploads for that chart unless they are an agency_admin.
@@ -824,7 +846,7 @@ const operationalRoutes = Object.freeze({
   'NoteConversion.list': Object.freeze({
     ...operationalRead({
       entity: 'NoteConversion', fn: 'listNoteConversions',
-      orderable: ['created_date'], filtered: false,
+      orderable: [], ordered: ['-created_date'], filtered: false,
     }),
     reason: 'Three reports read the agency’s note conversions newest first.',
   }),
