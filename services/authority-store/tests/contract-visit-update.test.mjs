@@ -6,15 +6,14 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
-import { POLICY_SQL_FILES } from '../../../tools-read-purpose-policy.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { VISIT_ACTIONS, VISIT_ACTIONS_SERVED, VISIT_ACTION_POLICY }
   from '../../pennsync-api/read-purpose-policy.mjs';
 // The browser's own hash, imported rather than reimplemented: the point of
 // `note_fnv1a` is that these two agree, and a copy here would agree with
 // itself.
 import { hashNoteText } from '../../../src/components/smartNote/emrHandoff.js';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Documenting a visit (`contract_visit_update`).
@@ -56,10 +55,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE,
-    POLICY_SQL_FILES.visit, UPDATE]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`update pennsync_private.membership set tenant_role = 'social_worker'
     where id = 'membership-3'`);

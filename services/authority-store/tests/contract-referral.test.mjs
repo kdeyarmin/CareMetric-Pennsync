@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Referral intake: the largest capability in the migration, as one contract.
@@ -33,8 +33,6 @@ const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)))
 const MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
 // `caller_membership` (D34) and `agency_roster` (D48) are facilities this
 // contract reads, and each lives in the migration that first needed it.
-const NOTE_HISTORY = `${MIGRATIONS}20260920170000_contract_note_history.sql`;
-const MINT = `${MIGRATIONS}20260920285000_notification_mint.sql`;
 const REFERRAL = `${MIGRATIONS}20260920460000_contract_referral.sql`;
 const ORIGINAL = 'base44/functions/manageAuthorizedReferral/entry.ts';
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -59,10 +57,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE,
-    NOTE_HISTORY, MINT, REFERRAL]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // Agency-a gets an `office_staff` member: an INTAKE role that opens no
   // chart. The whole of divergence 5 lives on this one row.

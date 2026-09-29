@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Nothing from the repository root is imported here, and that is a constraint
@@ -76,10 +77,10 @@ async function lab(run) {
     for (const file of (await readdir(dir)).filter(x => x.endsWith('.sql')).sort()) {
       await setup.query(await readFile(new URL(file, dir), 'utf8'));
     }
-    const records = new URL('../supabase/record-migrations/', import.meta.url);
-    for (const file of (await readdir(records)).filter(x => x.endsWith('.sql')).sort()) {
-      await setup.query(await readFile(new URL(file, records), 'utf8'));
-    }
+    // The whole record directory, through the walk every contract suite uses,
+    // rather than a second copy of it here: two copies could agree with each
+    // other while disagreeing with the order a deployment applies.
+    await applyRecordMigrations({ exec: sql => setup.query(sql) });
     await setup.query(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
     await run({ connect, setup, admin });
   } finally {

@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * A chart that belongs to another agency, hidden on READ.
@@ -27,8 +27,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * "after" half pass against a definition this repository does not ship.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const LOCATORS = 'services/authority-store/supabase/record-migrations/'
-  + '20260920520000_file_locator_map.sql';
 const OPERATIONAL = 'services/authority-store/supabase/record-migrations/'
   + '20260920580000_contract_operational_tables.sql';
 const CHART_AGENCY = 'services/authority-store/supabase/record-migrations/'
@@ -79,10 +77,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, LOCATORS,
-    OPERATIONAL, CHART_AGENCY]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency] of [['patient-a1', A], ['patient-b1', B]]) {

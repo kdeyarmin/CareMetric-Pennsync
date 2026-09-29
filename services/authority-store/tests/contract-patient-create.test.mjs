@@ -5,12 +5,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
-import { POLICY_SQL_FILES } from '../../../tools-read-purpose-policy.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 import {
-  PATIENT_CREATE_RESERVED, PATIENT_CREATE_WRITABLE,
-} from '../../pennsync-api/read-purpose-policy.mjs';
+  PATIENT_CREATE_RESERVED, PATIENT_CREATE_WRITABLE } from '../../pennsync-api/read-purpose-policy.mjs';
 
 /**
  * Creating a patient (D28), and the bridge it is the first caller of.
@@ -23,8 +21,6 @@ import {
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const CLAIM = 'services/authority-store/supabase/record-migrations/20260920110000_claim_new_chart.sql';
-const CREATE = 'services/authority-store/supabase/record-migrations/20260920120000_contract_patient_create.sql';
-const PATIENT_CONTRACT = 'services/authority-store/supabase/record-migrations/20260920060000_contract_patient_read.sql';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ADMIN_A = 1; const CLINICIAN_A = 2; const SOCIAL_A = 3; const ADMIN_B = 4;
@@ -40,10 +36,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, POLICY_SQL_FILES.patient,
-    PATIENT_CONTRACT, CLAIM, CREATE]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // A member of agency-a who opens charts but may not start one.
   await db.exec(`update pennsync_private.membership set tenant_role = 'social_worker'

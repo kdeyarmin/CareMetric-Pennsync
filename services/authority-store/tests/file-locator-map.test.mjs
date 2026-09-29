@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 import { fileCopyRows, writeFileObjects, locatorKey, planFileCopy, readExport, COPY_CONTRACT }
   from '../../../tools-pennsync-file-copy.mjs';
 
@@ -19,7 +19,6 @@ import { fileCopyRows, writeFileObjects, locatorKey, planFileCopy, readExport, C
  * the EXACT string, and a mapping row can never be rewritten.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const MAP = 'services/authority-store/supabase/record-migrations/20260920520000_file_locator_map.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const HANDLE = 'cmfile:3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 const OTHER = 'cmfile:3f2504e0-4f89-41d3-9a0c-0305e82c3302';
@@ -35,9 +34,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, MAP]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 });
 

@@ -1,14 +1,13 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir, writeFile, unlink } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { transpileTs } from '../../../tools-transpile-ts.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The first reviewed per-capability contract, and the pattern for the 94 that
@@ -26,8 +25,6 @@ import { transpileTs } from '../../../tools-transpile-ts.mjs';
  * against the original's own `publicPolicy` running on the same rows rather
  * than against a transcription of it.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const CONTRACT_MIGRATION = 'services/authority-store/supabase/record-migrations/20260920000000_contract_policy_library.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -68,9 +65,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  await db.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, BROKER_MIGRATION_FILE), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, CONTRACT_MIGRATION), 'utf8'));
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const row of ROWS) {
     await db.query(`insert into ${SCHEMA}."policy_library"("source_app_id","id","agency_id","title",

@@ -1,16 +1,11 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
-import { POLICY_SQL_FILES } from '../../../tools-read-purpose-policy.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 import {
-  VISIT_EXACT_PURPOSE_POLICY, VISIT_LIST_PURPOSE_POLICY,
-} from '../../pennsync-api/read-purpose-policy.mjs';
+  VISIT_EXACT_PURPOSE_POLICY, VISIT_LIST_PURPOSE_POLICY } from '../../pennsync-api/read-purpose-policy.mjs';
 
 /**
  * The authorized visit read (`contract_visit_list` / `contract_visit_get`).
@@ -29,10 +24,6 @@ import {
  * purpose, a list would widen by six fields per row under a name that already
  * works.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const CONTRACT = 'services/authority-store/supabase/record-migrations/20260920080000_contract_visit_read.sql';
-const PATIENT_POLICY = POLICY_SQL_FILES.patient;
-const PATIENT_CONTRACT = 'services/authority-store/supabase/record-migrations/20260920060000_contract_patient_read.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -70,10 +61,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, PATIENT_POLICY,
-    PATIENT_CONTRACT, POLICY_SQL_FILES.visit, CONTRACT]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const row of PATIENTS) {
     await db.query(`insert into ${SCHEMA}."patient"

@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Resolving a clinical phrase against the agency's template library.
@@ -21,10 +21,6 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * would give them.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const PURPOSE = 'services/authority-store/supabase/record-migrations/'
-  + '20260920050000_patient_purpose_policy.sql';
-const ASSIGNMENT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920180000_contract_assignment.sql';
 const PHRASE = 'services/authority-store/supabase/record-migrations/'
   + '20260920410000_contract_clinical_phrase.sql';
 const ORIGINAL = 'base44/functions/expandClinicalPhrase/entry.ts';
@@ -46,12 +42,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The assignment contract carries `bounded_reason`, which is the trim
-  // JavaScript performs and which this reuses rather than declaring a second.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, PURPOSE,
-    ASSIGNMENT, PHRASE]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  // The whole record directory, in the order a deployment applies
+  // it. A forward migration is applied by every suite that adopts this walk,
+  // which is the only way a contract suite can see one land on it.
+  await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, agency, first, last] of [
     ['patient-a1', A, 'Ada', 'Lovelace'],
