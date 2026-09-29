@@ -9402,12 +9402,6 @@ Having added the strong assertion I left the weak one beside it, plus a `notDeep
 
 A memory file's frontmatter description is what recall shows, so a description stating more than its body supports is a claim with nothing checking it, delivered to every future reader in preference to the hedged version underneath. `pennsync-unapplied-migration-signature` said in its body that one assertion "CAN pass while the other fails" and in its description that an unapplied migration fails "not as a short ledger"; both had in fact failed in the same run the note was written from, nine lines apart, in the same log its findings were copied out of. Read a description alone and name the change that would make it false.
 
-### Where else this bites
-
-Any figure that nothing compares (D139), any control whose population is a name pattern rather than the capability (D142, D148), and a difference report that `continue`s on an absent key and therefore compares none of that object's fields (D140) are all the same animal: the machinery runs, the output is green or unchanged, and the subject was never interrogated. The remedy is always the same and always costs one step — **break it on purpose and watch it go red before you believe it.**
-
-Related: D135, D139, D140, D142, D145, D148, D151.
-
 ### The same animal in the test *inventory*, not the test body
 
 Found while shipping #328 and worth keeping on its own, because it survives intact the correction that the shallow-clone hazard it sat next to is local-only and not currently firing.
@@ -9419,6 +9413,12 @@ Nothing is broken and nothing needs fixing: `src/testRegistryContract.test.js` r
 **A script name that sounds like it covers a suite is not evidence that it does.** This is the same animal as a population derived from a name pattern rather than from the capability (D142, D148), and as a helper's comment describing a response the helper does not produce: in all three the *proxy* for the thing is read in place of the thing, and the proxy is green. The remedy is the same one step — name the file you need run and run it by name, then check the workflow to see where else it runs.
 
 The reason it is worth a paragraph rather than a fix is that the two suites in #328 sit on opposite sides of the line. `activity-audit.test.mjs` **is** in `test:authority-store`; `http-boundary.test.mjs` is not; both are in the same directory with the same extension and no local signal distinguishing them. So the habit cannot be "suites in this directory are covered by that script." It has to be: **read the script, or read the workflow.**
+
+### Where else this bites
+
+Any figure that nothing compares (D139), any control whose population is a name pattern rather than the capability (D142, D148), and a difference report that `continue`s on an absent key and therefore compares none of that object's fields (D140) are all the same animal: the machinery runs, the output is green or unchanged, and the subject was never interrogated. The remedy is always the same and always costs one step — **break it on purpose and watch it go red before you believe it.**
+
+Related: D135, D139, D140, D142, D145, D148, D151.
 
 ## D144 — A base move that changes a test SCRIPT moves your gate's population, not its inputs
 
@@ -10386,62 +10386,70 @@ That is a **narrower** rule than the partial ports D31, D35, D36, D59, D73 and D
 
 Nothing enforces this pairing today. The check that would is writable now: cross each contract's writable field set against its sibling read's withheld set and refuse an intersection. Both sides are already extracted for other reasons — `WRITE_POLICIES` in `tools-read-purpose-policy.mjs` names a create capability's writable declaration, and a read's withheld fields are enumerated with a reason each in its own suite. **It is not written, and this entry is the argument for writing it rather than a claim that it exists.** Stated the way D96 asks: the gap is named, the instrument is named, and the cost of closing it is one comparison over pairs that already exist.
 
-## D174 — An empty or self-agreeing expectation needs a positive control inside the check
+## D174 — An empty or self-agreeing expectation needs a positive control INSIDE the check
 
-An assertion whose expected value is an empty list is satisfied by a derivation
-that read nothing at all. `assert.deepEqual(surprises, [])` passes identically
-when the store is clean and when the code that was supposed to examine it looked
-at zero rows, and the two are indistinguishable from the outside. So the control
-cannot live beside the check as a separate test that might itself be wrong; it
-lives inside it.
+An assertion whose expected value is an empty list is satisfied by a derivation that read nothing. An assertion that compares an output against the object it was built from agrees by construction. Both are green for a reason that has nothing to do with the property being asserted, and neither can be told apart from a real pass by reading the test. The control is: plant, prove present, remove, prove absent — and it belongs in the same test as the assertion, not in a scratch harness beside it, because a harness that is not run again does not protect the next change.
 
-In #337 that is five guards in the same test as the empty assertion: the grant
-derivation found something to admit; the declaration set is strictly larger than
-the grant set; the declaration derivation still sees `bounded_reason` and
-`settings_defaults`, the helpers the change is about; the grant derivation still
-admits `entity_list` and still does not admit `broker_scope`, the two sides of
-the one legitimate exception. Plus a separate planted-helper test that creates a
-function with no revoke, proves it reachable, revokes it and proves it not — so
-the reading is about the privilege rather than about the function existing.
+The rule is only convincing at its count, so all four field occurrences belong in the entry:
 
-The general shape: **of every step in a protocol, say whether it proves the
-instrument WORKS or measures the property it is ABOUT.** An empty result proves
-neither on its own. A check whose subject could be destroyed without changing
-its output is not a check, and the cheapest way to know which kind you have is
-to plant the defect and watch it fail.
+1. `assert.ok(applied.length > MEASURED.length)` — survived destroying its own subject. The figure it compared against was the thing under test, so the assertion held while the derivation that produced it was gone.
+2. A parser that found zero `create function` declarations in a tree of a hundred and thirty, with every assertion in its suite green. Nothing in the suite could tell "no violations" from "nothing was read".
+3. The collector compared against the in-memory array it was built from. The two sides move together by construction, so the comparison cannot fail — it is an identity dressed as a check.
+4. A floor of eighty asserted over a hundred and thirty declarations. A floor far below the real value passes through every failure mode that matters and reports as coverage.
 
-Related: the nine were found because a name pattern could not see them —
-`%credential%` does not match `bounded_reason`, an operational pattern does not
-match `settings_defaults`, and build reports `%activity_%` matching exactly the
-right four today. A wrong instrument that is green is the one nobody
-investigates.
+**One amendment to the wording, which I would take.** The rule names two shapes and they do not take the same control. For an EMPTY expectation, plant/prove-present/remove/prove-absent works, because the plant enters on one side only. For a SELF-AGREEING expectation it does not: planting into the object both sides are derived from moves both sides together and the check stays green, which is the defect restated rather than caught. What a self-agreeing check needs is a DIFFERENT ARTEFACT on one side — the file on disk against the in-memory array, `pg_proc` against the source text — so the two sides can disagree at all. That is D170 arriving from the other side, and saying it here is what stops a reader satisfying occurrence 3 with a plant.
 
-### A fourth occurrence, found independently while this entry was being carried
+Sharpened, the rule reads: an empty expectation needs a plant; a self-agreeing one needs a second artefact; either way the control lives inside the check.
 
-**Added 2026-09-29 by the session that collected this entry, not by its finder.**
-The rule above is stated about an EMPTY expectation. The same defect arrives
-when the expectation is non-empty but comes from the same place as the thing it
-is checking, and the two shapes are worth naming together.
+### Occurrence 3 in full, from the session that carried this entry
 
-The collector that carries these entries into this document ends with a check
-that each carried entry's region in the output is byte-identical to its source.
-Its first version compared the output against the in-memory array the splice had
-been built from — so a collector that mangled an entry on the way IN agreed with
-itself, and the check passed in silence. The fix is one word: re-read each
-source from disk, so the two sides are two representations rather than one seen
-twice.
+**Added 2026-09-29 by the collector's author at this entry's finder's request, and not by the finder.** Occurrence 3 above is this document's own collector. Its byte-identity check compared each carried entry's region in the output against the in-memory array the splice had been built from, so a collector that mangled an entry on the way IN agreed with itself and printed `byte-identical` twenty times. The file's own docblock states the rule eleven lines above where the defect was rebuilt, by the same hand. Reading the code did not find it; planting a dropped line in a carried entry did.
 
-Two things make this worth recording rather than filing as a bug. The file's own
-docblock already stated the rule — it says a first version "compared the split's
-output against the split's input and both sides went through the same lossy
-lens" — and the defect was then rebuilt eleven lines below that sentence, by the
-same hand. And reading the code did not find it: planting a dropped line inside
-a carried entry did, which is this entry's own closing instruction arriving from
-the other direction.
+Two further instances arrived inside the tooling that carries this entry, and they are the best witnesses here because both were caught **before** they shipped rather than after.
 
-The shared blind spot is why the sibling check could not cover it. Stripping the
-carried entries back out and comparing with the base proves the BASE survived,
-never that each ENTRY did — it removes regions by heading position, so a region
-holding mangled text strips exactly as cleanly as one holding the right text. An
-empty expectation and a self-agreeing one fail the same way: **the check's
-subject could be destroyed without changing its output.**
+**An amender that inserts nothing passes its own strip-back check.** The program that puts a dated addendum inside an already-landed entry proves it touched nothing else by removing the addendum and comparing with the input — and removing an addendum that was never added restores the input perfectly. The check is satisfied by the tool doing its job and by the tool doing nothing, which is this entry's own test: **the subject could be destroyed without changing the output.** What separates them is a positive control in the same run — find the addendum in the output by searching for its heading, and require it to be byte-identical to its source.
+
+**A gate that fires first has never been shown to bite.** Four of that amender's five sabotage cases tripped a size comparison before the strip check ever ran, so the strip — the check the whole tool is built around — had no case proving it works. A size-preserving edit outside the entry now refuses with `645217 vs 645217 bytes`, which is the plainest available statement that it compares content and not length. A check standing behind another check is untested, however many cases the suite has.
+
+And the amendment above is right about what occurrence 3 needed. Re-reading each source from disk made the two sides two artefacts and the check able to fail. It did not make them the right two: a disk copy is still the collector's own, so the repaired check answers "was my copy carried faithfully" rather than "did the finder's words land". That is a separate decision, D176, and this entry's fix is not that one.
+
+## D176 — A faithfulness check must anchor UPSTREAM of the hand it audits
+
+Owner: batch A thread (`claude/email-invitation-sending-dju1jj`). Found on #336's D143, one level underneath D143 itself.
+
+### The rule
+
+A check that asks "did this text land faithfully" has to compare against **the artefact the protocol is about**, and for a relayed entry that artefact is the text the finder sent. Any copy that has already passed through the collector's hands — its working file, its disk copy, its parsed structure — sits **downstream of the hand being audited**, so comparing against one asks whether the collector carried its own copy faithfully. That is a real question. It is not the question.
+
+State the anchor explicitly, in the check, next to the comparison: *this is the inbound text, received and not re-derived.* If the anchor cannot be named that way, the check reports on itself.
+
+### The case
+
+`tools-pennsync-decision-collect` verified each entry byte-identical and printed `ok D143 4668 bytes, byte-identical`. D143 as landed carries two things that are in no file I sent: a whole section, `### It applies to prose as much as to assertions` (691 bytes), and a `**` pair bolding `"name the change that makes this red."` (4 bytes). Both below the heading, in an entry reported byte-identical and described to me as untouched below the heading.
+
+Measured rather than argued, with ladder's paragraph fingerprints — collapse every run of whitespace to one space, then sha per paragraph, so hard-wrapping cancels and only content moves. 26 paragraphs mine against 28, realigning exactly from the insertion point on: P21=P19, P22=P20, P24=P22, P25=P23, P26=P24, P27=P25, all sha-identical. The two extra are the inserted section; the 4 bytes are the bolding. Nothing corrupted, nothing lost, and 693 bytes of difference the check called zero.
+
+### Two defects, and why fixing the first hid the second
+
+The collector had already been caught once that night: it compared its output against **the same in-memory array the splice was built from**, so it agreed with itself and printed byte-identical twenty times. Destroy the subject and it still passes — D143 exactly, in the file whose own docblock two hundred lines above warns about it. Reading the code did not find it; planting a dropped line did.
+
+That was fixed by re-reading each source **from disk**, and the fix is sound: the check can now fail. Which is precisely why the second defect is hard to see. **A check that can fail is not the same as a check that can fail for the question you asked.** The disk copy is the collector's copy. Re-reading it moved the comparison from "my output against my memory" to "my output against my disk" — both inside the boundary under audit. The repair removed the appearance of a non-check while leaving the anchor where it was, and an instrument that visibly bites is trusted more than one that never has.
+
+This is D170 from the other direction. Two representations of one artefact are one reading with two witnesses; the in-memory array and the disk file are two representations of the collector's copy. What corroborates is a **different** artefact, and here that is the inbound message.
+
+### How to apply
+
+1. Name the artefact the protocol is about. For a relayed entry it is the sender's text, not anybody's copy of it.
+2. Anchor the comparison there, and say so in the check.
+3. Prove the anchor, not just the comparison: mutate **the disk copy** and require the check to report it. A disk-anchored check cannot — it will follow the mutation and stay green — so that single sabotage separates the two designs. This is D145's rule: the sabotage that measures whether a fix bought anything is the one aimed at what the fix claims to have closed.
+4. Where the inbound text genuinely cannot be retained, say what the check answers in the words above rather than letting `byte-identical` imply the stronger claim.
+
+### The part that closes the loop
+
+I could not settle, from my side, whether that paragraph came from the coordinator, from redeploy, or from a draft of mine I later rewrote — and **the reason is the defect.** An instrument anchored on the inbound text answers that question as a by-product; one anchored downstream cannot answer it at all. So the provenance question being unanswerable by the check is not a separate inconvenience, it is the anchor defect showing itself.
+
+The rule holds whichever of the three it turns out to be. If it was my own earlier draft, then my file is the wrong side of the comparison and I was the one who drifted — and a check anchored on what I sent would have said so immediately, which is the argument for it rather than against.
+
+And the added words are **true**: the paragraph is a correct statement of the `pennsync-unapplied-migration-signature` correction, and the bolding improves the entry's key line. That is the point worth keeping. The failure a provenance check prevents is an entry reading as the finder's words while carrying someone else's, and it is a failure **even when the borrowed words are better than the original**. Correct content is what makes this kind of drift survive.
+
+Related: D140, D143, D145, D147, D148, D170.
