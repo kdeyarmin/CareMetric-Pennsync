@@ -545,15 +545,16 @@ test('a handler may declare a request larger than the service default, and one d
   const { MAX_CSV_BYTES } = await import('./provider-import.mjs');
   assert.equal(HANDLERS.importProvidersCsv.maxBody, 2 * MAX_CSV_BYTES);
   // Every other handler keeps the default, so these are named exceptions and
-  // not a service-wide loosening. The two document capabilities take a file's
-  // bytes rather than a locator, so each request carries the base64 of a file
-  // the runtime will accept at 8 MiB — and they share ONE constant, asserted
-  // here so a third cannot arrive with a figure of its own.
+  // not a service-wide loosening. The three document capabilities take a
+  // file's bytes rather than a locator, so each request carries the base64 of
+  // a file the runtime will accept at 8 MiB — and they share ONE constant,
+  // asserted here so a fourth cannot arrive with a figure of its own.
   const declared = Object.entries(HANDLERS).filter(([, entry]) => entry.maxBody !== undefined);
   assert.deepEqual(declared.map(([name]) => name).sort(),
-    ['extractClinicalDocument', 'extractPatientDataFromDocument', 'importProvidersCsv']);
-  assert.equal(HANDLERS.extractClinicalDocument.maxBody,
-    HANDLERS.extractPatientDataFromDocument.maxBody);
+    ['extractClinicalDocument', 'extractPatientDataFromDocument', 'importProvidersCsv',
+      'splitReferralPDF']);
+  assert.equal(new Set(['extractClinicalDocument', 'extractPatientDataFromDocument',
+    'splitReferralPDF'].map(name => HANDLERS[name].maxBody)).size, 1);
 
   const send = (name, params) => handlerFor({ PENNSYNC_API_FUNCTIONS: name })(
     new Request('https://api.example.test/v1/functions/' + name, {

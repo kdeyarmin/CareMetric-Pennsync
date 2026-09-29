@@ -910,8 +910,8 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // capability was carried by asking a different question of the same module.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 6, patient_access_model: 0,
-    records_schema: 0, files: 10, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 80 });
+    records_schema: 0, files: 9, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    external_secret: 2, none: 81 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -1093,8 +1093,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   assert.deepEqual(report.port_blockers.files, ['createAuthorizedDocument',
     'generateAdrPacket',
     'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
-    'preparePDFWithPatientInfo', 'processPatientFileUpdate', 'reorderDeletePDFPages',
-    'splitReferralPDF']);
+    'preparePDFWithPatientInfo', 'processPatientFileUpdate', 'reorderDeletePDFPages']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
       'analyzeClinicalEvents', 'analyzeClinicalTrends',
@@ -1127,7 +1126,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'savePayrollProfile', 'saveVisitPointConfig', 'searchPDFs',
       'sendAccountReadyEmail', 'sendCredentialRenewalReminders',
       'sendExpirationNotifications', 'sendPersonnelExpirationNotifications',
-    'sendWelcomeEmail',
+    'sendWelcomeEmail', 'splitReferralPDF',
       'submitIncidentReport',
       'submitPersonnelCredential', 'submitStateReportableIncident',
       'submitTimeOffRequest', 'submitTimesheet',

@@ -94,14 +94,24 @@ export function fileToBase64(file, FileReaderImpl = globalThis.FileReader) {
  * object on that path to name — the handler mints its own under its own
  * subject and nothing outside the service can address it.
  *
- * `tooLarge` supplies the refusal, because the two capabilities over this do
- * not share an envelope: one answers `{status, details, patient_data}` and the
- * other `{success, error}`. Shaping that here would mean this module deciding
- * what a screen reads, which is the caller's to do.
+ * `tooLarge` supplies the refusal, because the capabilities over this do not
+ * share an envelope: one answers `{status, details, patient_data}`, another
+ * `{success, error}`. Shaping that here would mean this module deciding what a
+ * screen reads, which is the caller's to do.
+ *
+ * `uploadedUrl` is for a screen that has ALREADY uploaded the document for
+ * some other reason — the referral intake stores it on the referral before the
+ * split detector ever runs. Passing it means the Base44 path reuses that
+ * object instead of uploading a second copy of the same bytes, and the owned
+ * path ignores it, because a stored Base44 locator is exactly what the owned
+ * handler must never be given.
  */
 async function sendDocument(transport, file, options) {
   const { invoke, uploadFile } = transport;
-  const { independent = false, readAsBase64 = fileToBase64, onUploaded = () => {}, tooLarge } = options;
+  const {
+    independent = false, readAsBase64 = fileToBase64, onUploaded = () => {},
+    uploadedUrl = null, locatorKey = 'file_url', tooLarge,
+  } = options;
   let params;
   let locator = null;
   if (independent) {
@@ -115,9 +125,19 @@ async function sendDocument(transport, file, options) {
     // trusted.
     params = { base64: await readAsBase64(file), content_type: runtimeContentType(file.type) };
   } else {
-    const upload = await uploadFile({ file });
-    locator = upload.file_url;
-    params = { file_url: locator };
+    // `locatorKey` is the ORIGINAL's parameter name and differs between them —
+    // `file_url` for the two document scanners, `fileUrl` for the referral
+    // split. It is the Base44 path's key only; the owned path never carries a
+    // locator under any name. Defaulted rather than required because two of
+    // the three use the snake_case one, and a wrong key here is a request the
+    // original refuses as missing.
+    // A screen whose document is already stored passes `uploadedUrl` and no
+    // upload function at all, so that it names no Core integration it could
+    // never call. Refused by name rather than left to fail as "uploadFile is
+    // not a function", which says nothing about what went wrong.
+    if (!uploadedUrl && typeof uploadFile !== 'function') throw new Error('DOCUMENT_NO_UPLOAD_PATH');
+    locator = uploadedUrl || (await uploadFile({ file })).file_url;
+    params = { [locatorKey]: locator };
   }
   onUploaded(locator);
   const response = await invoke(params);
@@ -146,6 +166,22 @@ export function extractPatientDataFromDocument(transport, file, options = {}) {
  */
 export function extractClinicalDocument(transport, file, options = {}) {
   return sendDocument(transport, file, {
+    ...options,
+    tooLarge: () => ({ success: false, error: TOO_LARGE }),
+  });
+}
+
+/**
+ * Whether a referral packet holds several referrals, and where each begins.
+ *
+ * The intake screen has already stored this document on the Base44 path, so it
+ * passes `uploadedUrl` and nothing is uploaded twice. On the owned path the
+ * bytes go to the handler; the STORED copy of the referral's document is a
+ * separate question and this does not answer it.
+ */
+export function splitReferralPDF(transport, file, options = {}) {
+  return sendDocument(transport, file, {
+    locatorKey: 'fileUrl',
     ...options,
     tooLarge: () => ({ success: false, error: TOO_LARGE }),
   });

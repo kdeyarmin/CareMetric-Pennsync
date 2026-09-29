@@ -17,6 +17,9 @@ import { EXTRACTION_MAX_BODY, PATIENT_EXTRACTION_SCHEMA } from './patient-extrac
 import {
   CLINICAL_DOCUMENT_MODEL, CLINICAL_DOCUMENT_PROMPT, CLINICAL_DOCUMENT_SCHEMA,
 } from './clinical-document.mjs';
+import {
+  REFERRAL_SPLIT_MODEL, REFERRAL_SPLIT_PROMPT, REFERRAL_SPLIT_SCHEMA,
+} from './referral-split.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
 import { AI_REPORT_PARAMS, generateAiReport } from './ai-report.mjs';
@@ -1482,6 +1485,58 @@ export const HANDLERS = Object.freeze({
         // kept because a caller outside this repository might.
         timestamp: new Date().toISOString(),
       };
+    },
+  }),
+  splitReferralPDF: Object.freeze({
+    needsIntegration: true,
+    // The third document capability and the same ceiling, for the same reason.
+    maxBody: EXTRACTION_MAX_BODY,
+    /*
+     * The third port on the byte-through-handler shape, and the one where the
+     * narrowing is in the CALLER rather than here.
+     *
+     * The original takes a `fileUrl` the intake screen uploaded to Base44's
+     * storage a moment earlier. That screen keeps uploading on the Base44
+     * path; on the owned path it hands this handler the bytes instead, and the
+     * handler mints the object under the caller's own subject.
+     *
+     * **What this port does NOT carry is the storage beside it.** The same
+     * screen also files that locator as `Referral.document_url`, which a
+     * colleague opens later — and a handle minted under one caller's subject
+     * is not readable by a colleague. That half has its own record,
+     * `CROSS_SUBJECT_DOCUMENT_READ` in Stage H of
+     * `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`, so it cannot be inherited
+     * from this port. This capability only needs the document for the length
+     * of ONE request, which is why it can move and the persistence cannot.
+     *
+     * No schema narrowing: unlike `extractClinicalDocument`, every type here
+     * is one the runtime's schema contract accepts as the original wrote it.
+     */
+    async handle({ params, integration }) {
+      exactObject(params, ['base64', 'content_type'], 'INVALID_PARAMS');
+      if (typeof params.base64 !== 'string' || !params.base64
+        || typeof params.content_type !== 'string' || !params.content_type) {
+        fail(400, 'INVALID_PARAMS');
+      }
+      const upload = await integration('UploadFile', {
+        base64: params.base64, content_type: params.content_type,
+      });
+      if (!isObject(upload) || typeof upload.file_uri !== 'string' || !upload.file_uri) {
+        fail(502, 'DOCUMENT_UPLOAD_FAILED');
+      }
+      const analysis = await integration('InvokeLLM', {
+        model: REFERRAL_SPLIT_MODEL,
+        prompt: REFERRAL_SPLIT_PROMPT,
+        file_uris: [upload.file_uri],
+        response_json_schema: structuredClone(REFERRAL_SPLIT_SCHEMA),
+      });
+      // The original returns whatever the model answered. The runtime has
+      // already checked it against the schema and raises rather than answering
+      // a failure, so anything that is not an object here means the shape
+      // changed underneath — refused rather than shown as a detection of
+      // nothing, which is what the screen would render from an empty answer.
+      if (!isObject(analysis)) fail(502, 'REFERRAL_SPLIT_FAILED');
+      return { analysis, success: true };
     },
   }),
   submitStateReportableIncident: Object.freeze({

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   OWNED_DOCUMENT_MAX_BYTES, extractClinicalDocument, extractPatientDataFromDocument,
-  fileToBase64, runtimeContentType,
+  fileToBase64, runtimeContentType, splitReferralPDF,
 } from './documentExtraction';
 
 /**
@@ -160,6 +160,68 @@ describe('extractClinicalDocument', () => {
       });
       expect(seen).toEqual([expected]);
     }
+  });
+});
+
+describe('splitReferralPDF', () => {
+  const SPLIT = { success: true, analysis: { is_multiple_referrals: false, referral_count: 1 } };
+  const STORED = 'https://qtrypzzcjebvfcihiynt.supabase.co/packet.pdf';
+
+  it('reuses the document the intake screen already stored, rather than uploading twice', async () => {
+    const client = clientFor(SPLIT);
+    const answer = await splitReferralPDF(client, file(), { uploadedUrl: STORED });
+    expect(answer).toEqual(SPLIT);
+    // The intake screen uploaded this packet a moment ago and filed the
+    // locator on the referral. A second upload would be a second copy of the
+    // same bytes with a different address.
+    expect(client.uploaded).toHaveLength(0);
+    // And the key is the ORIGINAL's, which is camelCase here and snake_case on
+    // the two scanners. A wrong one is a request the original refuses as
+    // missing, with nothing on the page to say why.
+    expect(client.invoked[0].params).toEqual({ fileUrl: STORED });
+  });
+
+  it('uploads when no locator is handed in', async () => {
+    const client = clientFor(SPLIT);
+    await splitReferralPDF(client, file());
+    expect(client.uploaded).toHaveLength(1);
+    expect(client.invoked[0].params).toEqual({
+      fileUrl: 'https://qtrypzzcjebvfcihiynt.supabase.co/stored.pdf',
+    });
+  });
+
+  it('sends the bytes on the owned path and ignores the stored locator entirely', async () => {
+    // The load-bearing half. That locator names a Base44 object the owned
+    // handler could not read and must never be given, so passing it must not
+    // change what goes.
+    const client = clientFor(SPLIT);
+    await splitReferralPDF(client, file(), {
+      independent: true, uploadedUrl: STORED, readAsBase64: async () => 'QkFTRTY0',
+    });
+    expect(client.uploaded).toHaveLength(0);
+    expect(client.invoked[0].params).toEqual({ base64: 'QkFTRTY0', content_type: 'application/pdf' });
+    expect(JSON.stringify(client.invoked[0].params)).not.toContain('supabase');
+  });
+
+  it('refuses by name when it can neither upload nor was given a locator', async () => {
+    // The detector is handed no upload function on purpose, so that it names
+    // no Core integration it could never call. Without this the failure is
+    // "uploadFile is not a function", which says nothing about what is wrong.
+    const client = clientFor(SPLIT);
+    await expect(splitReferralPDF({ invoke: client.invoke }, file()))
+      .rejects.toThrow('DOCUMENT_NO_UPLOAD_PATH');
+    expect(client.invoked).toHaveLength(0);
+  });
+
+  it('refuses a packet past the ceiling in its own envelope', async () => {
+    const client = clientFor(SPLIT);
+    const answer = await splitReferralPDF(
+      client, file({ size: OWNED_DOCUMENT_MAX_BYTES + 1 }),
+      { independent: true, readAsBase64: async () => { throw new Error('read'); } },
+    );
+    expect(answer.success).toBe(false);
+    expect(answer.error).toMatch(/too large/i);
+    expect(client.invoked).toHaveLength(0);
   });
 });
 

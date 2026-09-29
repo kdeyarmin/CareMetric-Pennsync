@@ -168,6 +168,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   listMyTenantMemberships: 'json',
   getMyTenantContext: 'json',
   managePatientCareTeamAssignment: 'json',
+  splitReferralPDF: 'json',
   syncCMSRegulations: 'json',
   triageReferralWithAI: 'json',
   updateAuthorizedPatient: 'json',

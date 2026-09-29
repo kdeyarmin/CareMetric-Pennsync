@@ -28,6 +28,9 @@ import {
 } from '../../services/pennsync-api/clinical-document.mjs';
 import { validateSchema } from '../../services/integration-runtime/contracts.mjs';
 import { validateParams } from '../../services/integration-runtime/providers.mjs';
+import {
+  REFERRAL_SPLIT_MODEL, REFERRAL_SPLIT_PROMPT, REFERRAL_SPLIT_SCHEMA,
+} from '../../services/pennsync-api/referral-split.mjs';
 import { insightPrompt } from '../../services/pennsync-api/ai-report.mjs';
 import { reportMetrics, reportTrend } from '../../services/pennsync-api/report-metrics.mjs';
 import {
@@ -1424,4 +1427,42 @@ test('every ported model call is one the owned runtime will actually accept', as
     validateParams('InvokeLLM', { model: entry.value, prompt: 'x' },
       { model: 'claude-sonnet-4', anthropicKey: 'k' });
   }
+});
+
+test('the referral split prompt and schema are the original s', async () => {
+  // Same technique as the clinical document above: the original's single
+  // `InvokeLLM` argument, lifted whole and closed over `fileUrl`.
+  const relative = 'base44/functions/splitReferralPDF/entry.ts';
+  const original = await readFile(resolve(repository, relative), 'utf8');
+  const open = original.indexOf('await base44.integrations.Core.InvokeLLM({');
+  assert.ok(open > 0, 'the original still calls InvokeLLM');
+  const start = original.indexOf('{', open);
+  const end = original.indexOf('\n    });', start);
+  assert.ok(end > start, 'and its argument still ends where it did');
+  const block = `export const CALL = (fileUrl) => (${original.slice(start, end + 6)});`;
+  const file = join(tmpdir(), `split_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(block).outputText);
+  let CALL;
+  try { ({ CALL } = await import(pathToFileURL(file).href)); }
+  finally { await unlink(file).catch(() => {}); }
+  const call = CALL('https://qtrypzzcjebvfcihiynt.supabase.co/packet.pdf');
+
+  assert.equal(Object.keys(call.response_json_schema.properties).length, 4);
+  assert.ok(call.prompt.length > 500);
+
+  assert.equal(REFERRAL_SPLIT_MODEL, call.model);
+  assert.equal(REFERRAL_SPLIT_PROMPT, call.prompt);
+  assert.deepEqual(REFERRAL_SPLIT_SCHEMA, call.response_json_schema);
+  // Order too: a model reads the fields in the order it is given them.
+  assert.deepEqual(Object.keys(REFERRAL_SPLIT_SCHEMA.properties),
+    Object.keys(call.response_json_schema.properties));
+  // The original's key is `fileUrl`, which is what the Base44 path still
+  // sends. Pinned because the browser transport carries that spelling per
+  // capability and a wrong one is a request the original refuses as missing.
+  assert.deepEqual(call.file_urls, ['https://qtrypzzcjebvfcihiynt.supabase.co/packet.pdf']);
+
+  // NO narrowing here, unlike its sibling — the original's own schema is one
+  // the owned runtime accepts as written. Driven rather than asserted, so this
+  // stops being true out loud if either side moves.
+  validateSchema(structuredClone(call.response_json_schema));
 });

@@ -123,7 +123,7 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=6 files=10 external_secret=2 none=80
+port queue: entity_authorization=6 files=9 external_secret=2 none=81
 ```
 
 98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
@@ -1564,17 +1564,23 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
   | `mutating` (derived) | 63 | 41 |
-  | `integration` (derived) | 21 | 17 |
+  | `integration` (derived) | 22 | 17 |
 
-  **The twentieth and twenty-first are `extractPatientDataFromDocument` and
-  `extractClinicalDocument`, and they carry an operator cost the other
-  nineteen do not.** They are the first two ports out of the `files` bucket,
-  and they get there by taking the document's BYTES rather than a locator, so
-  each brokers `UploadFile` under its own subject — which put that name into
-  `BROKERED_OPERATIONS`. The second added no operator cost the first had not
-  already added, and no migration: it is the same shape over a different
-  integration, `InvokeLLM` with the document attached rather than
-  `ExtractDataFromUploadedFile`. `node tools-pennsync-release-ladder.mjs
+  **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
+  and `splitReferralPDF` — carry an operator cost the other nineteen do not.**
+  They are the first three ports out of the `files` bucket, and they get there
+  by taking the document's BYTES rather than a locator, so each brokers
+  `UploadFile` under the caller's own subject — which put that name into
+  `BROKERED_OPERATIONS`. The second and third added no operator cost the first
+  had not already added, and no migration: the same shape over a different
+  integration (`InvokeLLM` with the document attached rather than
+  `ExtractDataFromUploadedFile`) and then over a different document.
+
+  **What none of the three clears is `CROSS_SUBJECT_DOCUMENT_READ`**, recorded
+  in Stage H. They read a document for the length of one request; a locator
+  stored so a COLLEAGUE can open it later is a different question with a
+  different answer, and the third port sits beside exactly such a locator
+  (`Referral.document_url`) without touching it. `node tools-pennsync-release-ladder.mjs
   --wave integration --integration-deployment https://<runtime-host>` now
   requires it, so **a runtime serving only the two AI operations and
   `SendEmail` does not hold this wave**: `UploadFile` has to join
@@ -2892,6 +2898,46 @@ capabilities that are already there.
 
 **Exit:** `private_files` rehearsal receipt — source hash equals download hash,
 foreign and revoked denial, expiry and renewal.
+
+#### CROSS_SUBJECT_DOCUMENT_READ — a stored document is a second problem, and a port never clears it
+
+**Named because it must not be inherited from a port.** Measured 2026-09-29.
+
+The integration runtime derives its subject as
+`hash(hashKey, [appId, agencyId, user_id])` (`runtime.mjs:136`) — per **(app,
+agency, USER)** — and `providers.mjs`'s `fileRecord` admits an object only when
+`row.subject` equals the caller's. `pennsync-api` holds no storage credential
+and forwards the caller's own bearer, so the subject is the CALLER'S.
+
+Two consequences, and conflating them is the hazard this record exists for:
+
+1. **Within one person's work, a handle travels.** The subject is stable across
+   requests, so an object one handler mints is readable by another handler in a
+   later request by the same person. `operator-acceptance.mjs:78-89` drives
+   upload, extract and sign as three separate invocations and expects all three
+   to succeed, with a foreign-subject denial beside it. This is what lets a
+   browser-supplied document capability port at all, and it is why
+   `extractPatientDataFromDocument`, `extractClinicalDocument` and
+   `splitReferralPDF` could move.
+2. **Between people, it does not.** A COLLEAGUE opening a document is a
+   different subject and gets `FILE_ACCESS_DENIED`. So every carried locator
+   that exists so somebody ELSE can open it later stays blocked — and that is
+   most of them. `Referral.document_url` is the worked example: the intake
+   screen stores it for the care team, the census counts it as one of the 66
+   locator fields, and porting the split detector over that same document
+   changes nothing about it.
+
+**So a port of a capability that READS a document during one request is never
+evidence that STORING that document is solved.** The sentence to refuse is "the
+referral upload is unblocked". The capability is; the persistence is not, and
+the two happen to concern the same bytes, which is exactly why they get read as
+one thing.
+
+Closing this is not a data migration. It needs a reader model the runtime does
+not implement — D77 pins `RUNTIME_READER_MODEL` against `REQUIRED_READER_MODEL`
+and refuses every apply precisely because they differ — and giving that runtime
+record or tenant authorization is a decision about ITS authorization model.
+Unchanged by any of the three ports above.
 
 ### Stage I — Customer data migration (size L; after Stage F)
 
