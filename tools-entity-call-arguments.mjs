@@ -6,23 +6,82 @@ import { join, relative } from 'node:path';
 
 import { entityCalls, sourceFiles } from './tools-base44-surface.mjs';
 
-/** Named row limits the screens pass instead of a literal. */
+/**
+ * The file whose constants prove this scan is still working.
+ *
+ * It is NOT the population any more — every production source file is. It is
+ * kept by name because it is the one module guaranteed to declare a limit, so
+ * an empty read of it means the matcher or the walk has broken. Widening the
+ * population without keeping a canary would have retired that refusal by
+ * accident: with 33 names across a dozen modules `found.size` can no longer
+ * reach zero, and a guard that cannot fire has stopped guarding.
+ */
 export const LIMIT_CONSTANTS_FILE = 'src/lib/queryLimits.js';
 
+const EXPORTED_LIMIT = /^export const ([A-Z][A-Z0-9_]*)\s*=\s*(\d+)\s*;/gm;
+/** Any `const NAME =`, with the `export` kept so a local one can be told apart. */
+const ANY_DECLARATION = /(?:^|[^\w.])(export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=/gm;
+
+const limitsIn = text => [...text.matchAll(EXPORTED_LIMIT)]
+  .map(match => [match[1], Number(match[2])]);
+
 /**
- * The constants a call site names, read from the module that declares them.
+ * The integer constants a call site may name, from EVERY production module
+ * that exports one.
  *
- * Refuses an empty read rather than returning one: with no constants every
- * call site naming `ALL_ROWS` would be indeterminate, and the measurement
- * would understate for a reason nothing reports.
+ * This used to read exactly one file, and the cost was not the one site it
+ * missed but what every site's classification was DERIVED from.
+ * `ADR_CASE_READ_LIMIT` is declared in `src/components/adr/adrCaseRead.js`, so
+ * `ADRCenter.jsx` read INDETERMINATE — which makes the whole call unreadable
+ * and the site unserved — while its contract existed, was reachable and was
+ * tested. The limit was the SOURCE MODULE and never the module boundary:
+ * `PATIENT_HISTORY_ROWS` has always resolved across files. A screen\'s
+ * classification therefore depended on where somebody had happened to put a
+ * number, and nothing reported it.
+ *
+ * Three properties are load-bearing rather than tidy.
+ *
+ * It refuses AMBIGUITY instead of picking. Two modules exporting one name with
+ * DIFFERENT values means the name does not identify a number, and choosing
+ * either would hand a call site a limit its own import never had. Equal values
+ * are not ambiguous and pass.
+ *
+ * It refuses a SHADOW, which is the same problem from the other side. This
+ * resolves a NAME and does not follow imports, so a module declaring its own
+ * non-exported `const ALL_ROWS = 50` would be read with somebody else\'s 5000.
+ * Both were measured clear on 2026-09-29 (33 names, no collision, no shadow),
+ * and both are refusals here rather than sentences in this comment, because a
+ * reading of a tree on a day is not a property of the tree. Checked every run
+ * is the difference between an assumption and a guarantee.
+ *
+ * And the canary above keeps the empty-read refusal biting after the widening
+ * made `found.size` unable to reach zero.
  */
 export function limitConstants(repository) {
-  const source = readFileSync(join(repository, LIMIT_CONSTANTS_FILE), 'utf8');
-  const found = new Map();
-  for (const match of source.matchAll(/^export const ([A-Z][A-Z0-9_]*)\s*=\s*(\d+)\s*;/gm)) {
-    found.set(match[1], Number(match[2]));
+  if (!limitsIn(readFileSync(join(repository, LIMIT_CONSTANTS_FILE), 'utf8')).length) {
+    throw new Error(`ENTITY_ROUTE_LIMITS_UNREADABLE:${LIMIT_CONSTANTS_FILE}`);
   }
-  if (!found.size) throw new Error(`ENTITY_ROUTE_LIMITS_UNREADABLE:${LIMIT_CONSTANTS_FILE}`);
+  const files = [...sourceFiles(join(repository, 'src'))]
+    .map(file => [relative(repository, file), readFileSync(file, 'utf8')]);
+
+  const found = new Map();
+  const declaredIn = new Map();
+  for (const [where, text] of files) {
+    for (const [name, value] of limitsIn(text)) {
+      if (found.has(name) && found.get(name) !== value) {
+        throw new Error(`ENTITY_ROUTE_LIMIT_AMBIGUOUS:${name}:${declaredIn.get(name)}:${where}`);
+      }
+      found.set(name, value);
+      if (!declaredIn.has(name)) declaredIn.set(name, where);
+    }
+  }
+  for (const [where, text] of files) {
+    for (const match of text.matchAll(ANY_DECLARATION)) {
+      if (!match[1] && found.has(match[2])) {
+        throw new Error(`ENTITY_ROUTE_LIMIT_SHADOWED:${match[2]}:${where}`);
+      }
+    }
+  }
   return found;
 }
 

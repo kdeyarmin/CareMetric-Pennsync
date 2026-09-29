@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -11,9 +13,76 @@ import {
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const constants = limitConstants(repository);
 
-test('the named row limits are read from the module that declares them', () => {
+test('the named row limits are read from EVERY module that declares one', () => {
   assert.equal(constants.get('ALL_ROWS'), 5000);
+  // The widening's own subject: this one is declared in `adrCaseRead.js`, and
+  // while the reader took a single file the ADR Center's call read
+  // INDETERMINATE and the site read unserved with its contract already built.
+  assert.equal(constants.get('ADR_CASE_READ_LIMIT'), 200);
   assert.ok(constants.size >= 2, 'an empty table would make every call site unreadable');
+});
+
+/**
+ * A planted tree, because the three refusals below cannot occur in this
+ * repository today — which is exactly why they are refusals and not a sentence
+ * in a comment. A guard that has only ever run against a correct input has not
+ * been shown to bite, so each case is planted and watched to fail, and the
+ * last one is the CONTROL: the same tree without the defect must pass.
+ */
+function plantedTree(files) {
+  const root = mkdtempSync(join(tmpdir(), 'pennsync-limits-'));
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  return root;
+}
+
+const CANARY = { 'src/lib/queryLimits.js': 'export const ALL_ROWS = 5000;\n' };
+
+test('a name two modules give DIFFERENT values is refused, never picked', () => {
+  const root = plantedTree({
+    ...CANARY,
+    'src/components/a/limits.js': 'export const PAGE_ROWS = 100;\n',
+    'src/components/b/limits.js': 'export const PAGE_ROWS = 250;\n',
+  });
+  assert.throws(() => limitConstants(root), /ENTITY_ROUTE_LIMIT_AMBIGUOUS:PAGE_ROWS:/);
+  // The control: the same two modules AGREEING is not ambiguous, because the
+  // name still identifies one number and no call site can mean another.
+  const agreeing = plantedTree({
+    ...CANARY,
+    'src/components/a/limits.js': 'export const PAGE_ROWS = 100;\n',
+    'src/components/b/limits.js': 'export const PAGE_ROWS = 100;\n',
+  });
+  assert.equal(limitConstants(agreeing).get('PAGE_ROWS'), 100);
+});
+
+test('a local const shadowing an exported limit is refused', () => {
+  // This reader resolves a NAME and does not follow imports, so a module with
+  // its own `ALL_ROWS` would otherwise be read with somebody else's 5000.
+  const root = plantedTree({
+    ...CANARY,
+    'src/pages/Shadow.jsx': 'const ALL_ROWS = 50;\nexport default () => ALL_ROWS;\n',
+  });
+  assert.throws(() => limitConstants(root), /ENTITY_ROUTE_LIMIT_SHADOWED:ALL_ROWS:/);
+  // The control: the same declaration EXPORTED is the ordinary case the
+  // widening exists to read, and must not be mistaken for a shadow.
+  const exported = plantedTree({
+    ...CANARY,
+    'src/pages/Shadow.jsx': 'export const OTHER_ROWS = 50;\n',
+  });
+  assert.equal(limitConstants(exported).get('OTHER_ROWS'), 50);
+});
+
+test('the canary still refuses an unreadable scan after the widening', () => {
+  // Before the widening this fired when the table came back empty. With every
+  // module in the population `found.size` can no longer reach zero, so the
+  // guard would have retired itself silently — it reads the named file now.
+  const root = plantedTree({
+    'src/lib/queryLimits.js': 'export const NOT_A_LIMIT = "5000";\n',
+    'src/components/a/limits.js': 'export const PAGE_ROWS = 100;\n',
+  });
+  assert.throws(() => limitConstants(root), /ENTITY_ROUTE_LIMITS_UNREADABLE:/);
 });
 
 /**
