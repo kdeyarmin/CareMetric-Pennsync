@@ -1700,6 +1700,16 @@ export const HANDLERS = Object.freeze({
     // Model, then record contract, then trail (D53). The prompt asks the model
     // to search the internet, so `add_context_from_internet` and the response
     // schema are the original's and pass through the broker unchanged.
+    //
+    // **THAT LAST WORD WAS WRONG ABOUT THE FAR END, measured 2026-09-29.**
+    // "Unchanged" describes what this service sends, not what the runtime
+    // accepts: `validateParams` refuses `gemini_3_1_pro` as
+    // `MODEL_MAPPING_REQUIRED` and `add_context_from_internet: true` as
+    // `WEB_SEARCH_NOT_MIGRATED`, so this capability answers a refusal to every
+    // call once released. Nothing in `src/` reaches it, and closing it is a
+    // decision about the capability rather than a repair — see the integration
+    // wave in `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`. The cross-check that
+    // makes it visible is in `pennsyncApiOriginalParity.test.js`.
     needsIntegration: true,
     handle({ params, integration, contract, audit }) {
       exactObject(params, [], 'INVALID_PARAMS');

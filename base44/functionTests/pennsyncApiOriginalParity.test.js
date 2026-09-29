@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile, unlink } from 'node:fs/promises';
+import { readFile, readdir, writeFile, unlink } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -27,6 +27,7 @@ import {
   CLINICAL_DOCUMENT_MODEL, CLINICAL_DOCUMENT_PROMPT, CLINICAL_DOCUMENT_SCHEMA,
 } from '../../services/pennsync-api/clinical-document.mjs';
 import { validateSchema } from '../../services/integration-runtime/contracts.mjs';
+import { validateParams } from '../../services/integration-runtime/providers.mjs';
 import { insightPrompt } from '../../services/pennsync-api/ai-report.mjs';
 import { reportMetrics, reportTrend } from '../../services/pennsync-api/report-metrics.mjs';
 import {
@@ -1338,4 +1339,88 @@ test('the clinical document prompt and schema are the original s', async () => {
   assert.throws(() => validateSchema(structuredClone(call.response_json_schema)),
     error => error.code === 'UNSUPPORTED_SCHEMA');
   validateSchema(structuredClone(CLINICAL_DOCUMENT_SCHEMA));
+});
+
+test('every ported model call is one the owned runtime will actually accept', async () => {
+  /*
+   * D96's pattern, and the reason this is an ASSERTION rather than a sentence
+   * on a page: the business API builds a model call and the integration
+   * runtime decides whether to make it, and nothing crossed the two. A port
+   * can name a model the runtime has no mapping for, or ask for a web search
+   * the runtime refuses by name, and every suite stays green because neither
+   * half is wrong on its own.
+   *
+   * What this pins is the CROSS. The population is read from the directory, so
+   * a new port joins it without anybody remembering to.
+   *
+   * ONE capability is a known exception and it is named here with its reason
+   * rather than excluded: `syncCMSRegulations` sends `gemini_3_1_pro` and
+   * `add_context_from_internet: true`, and the runtime refuses both —
+   * `MODEL_MAPPING_REQUIRED` and `WEB_SEARCH_NOT_MIGRATED`. It has no caller in
+   * `src/`, so nothing in the product reaches it today, but it IS in
+   * `PORTED_FUNCTIONS` and in the `integration` release wave, which is what
+   * makes this worth a failing-closed record: an operator releasing that wave
+   * gets a capability that answers a refusal to every call. Closing it is a
+   * decision about the capability, not about this test — the runtime's refusal
+   * is deliberate and there is no web search to map to, so the choice is
+   * between pausing it by name and asking the model without a search, which
+   * would store regulations recalled from training as current.
+   */
+  const directory = resolve(repository, 'services/pennsync-api');
+  const modules = (await readdir(directory)).filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));
+  assert.ok(modules.length > 40, 'the port directory is being read at all');
+
+  const models = [];
+  const searchers = [];
+  for (const name of modules) {
+    // Read first, import second, and only import a module that declares one.
+    // `server.mjs` binds a port on import, so importing the directory whole is
+    // not something this suite can do.
+    const source = await readFile(join(directory, name), 'utf8');
+    // Comments stripped first — D73's lesson, and it bit here immediately: the
+    // handler's own note EXPLAINING that the runtime refuses this flag matched
+    // the scan for the flag. Whole-line comments only, so a `//` inside a
+    // prompt's template literal is left alone.
+    const code = source.split('\n')
+      .filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
+    if (/add_context_from_internet:\s*true/.test(code)) searchers.push(name);
+    if (!/export const [A-Z_]*_MODEL\s*=/.test(source)) continue;
+    const exported = await import(pathToFileURL(join(directory, name)).href);
+    for (const [key, value] of Object.entries(exported)) {
+      if (key.endsWith('_MODEL')) models.push({ name, key, value });
+    }
+  }
+  assert.ok(models.length > 10, 'and the model constants are being found');
+
+  // The runtime admits `automatic` or the one model an operator configured. A
+  // port naming anything else cannot be served whatever that configuration is,
+  // because the second name is the operator's and not the port's to predict.
+  const mapped = models.filter(entry => entry.value !== 'automatic');
+  assert.deepEqual(mapped.map(entry => `${entry.name}:${entry.key}=${entry.value}`),
+    ['cms-regulations.mjs:REGULATION_MODEL=gemini_3_1_pro']);
+  assert.deepEqual(searchers, ['cms-regulations.mjs']);
+
+  // Driven through the runtime's own validator rather than asserted about it,
+  // on the real constants, so this says what a deployment would do.
+  const { CMS_REGULATION_PROMPT, CMS_REGULATION_SCHEMA, REGULATION_MODEL } =
+    await import(pathToFileURL(join(directory, 'cms-regulations.mjs')).href);
+  const params = {
+    model: REGULATION_MODEL, prompt: CMS_REGULATION_PROMPT,
+    add_context_from_internet: true, response_json_schema: CMS_REGULATION_SCHEMA,
+  };
+  for (const [configured, code] of [
+    ['claude-sonnet-4', 'MODEL_MAPPING_REQUIRED'],
+    // Even if an operator named that model, the web search is refused after it.
+    [REGULATION_MODEL, 'WEB_SEARCH_NOT_MIGRATED'],
+  ]) {
+    assert.throws(() => validateParams('InvokeLLM', params, { model: configured, anthropicKey: 'k' }),
+      error => error.code === code, `${configured} -> ${code}`);
+  }
+
+  // And every other port's model IS accepted, so the exception above is the
+  // whole of it rather than the first one somebody happened to look at.
+  for (const entry of models.filter(one => one.value === 'automatic')) {
+    validateParams('InvokeLLM', { model: entry.value, prompt: 'x' },
+      { model: 'claude-sonnet-4', anthropicKey: 'k' });
+  }
 });

@@ -7,7 +7,17 @@
 //
 // The prompt asks the model to search the internet, so `add_context_from_internet`
 // and the response schema are the original's and are passed through the broker
-// unchanged — the runtime takes the operation's params as given.
+// unchanged.
+//
+// **"The runtime takes the operation's params as given" stood here and is
+// FALSE**, measured 2026-09-29 by driving these constants through
+// `validateParams`: the owned runtime refuses this model
+// (`MODEL_MAPPING_REQUIRED`) and refuses a web search by name
+// (`WEB_SEARCH_NOT_MIGRATED`), so every call is refused once this is released.
+// It is left as it is rather than quietly downgraded, because asking the model
+// without a search would store regulations recalled from training as current
+// ones. The open decision is recorded in the integration wave in
+// `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`.
 //
 // **What the model returns is data, not instruction.** Every enumerated field
 // it supplies is checked against the column's own constraint by the contract

@@ -1584,6 +1584,28 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   its job rather than a defect. Read the runtime's own `/readyz` for what it is
   serving — this page does not say.
 
+  **One capability in this wave refuses every call, and it is not the two
+  above.** `syncCMSRegulations` sends `model: "gemini_3_1_pro"` and
+  `add_context_from_internet: true`. The owned runtime admits `automatic` or
+  the one model an operator configured, and refuses a web search BY NAME, so
+  the call is refused whatever that configuration is — measured 2026-09-29 by
+  driving the port's own constants through `validateParams`, which answers
+  `MODEL_MAPPING_REQUIRED` and then, if an operator named that model,
+  `WEB_SEARCH_NOT_MIGRATED`. Nothing in `src/` calls it, so no screen is
+  affected today, but it IS in `PORTED_FUNCTIONS` and in this wave's
+  `PENNSYNC_API_FUNCTIONS` list. **This is a reading printed rather than
+  fixed**, for D96's reason: closing it is a decision about the capability and
+  not about the check. There is no web search to map to, so the choice is
+  between pausing it by name — the shape D42 and D81 use, where the answer says
+  the leg is paused — and asking the model without a search, which would store
+  regulations recalled from training as current ones. The second is a
+  compliance question and not a mechanical one. `pennsyncApiOriginalParity`
+  now crosses every port's model constant against the runtime's own validator
+  and names this one exception with its reason, so a SECOND capability joining
+  it fails the build, and so does this one quietly disappearing. **Nothing
+  crossed those two halves before**: the business API builds the call and the
+  runtime decides whether to make it, and each half was right on its own.
+
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
   reads and three writes — and both migration counts rose by the one migration
