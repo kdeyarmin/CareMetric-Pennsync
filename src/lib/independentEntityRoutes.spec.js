@@ -1773,6 +1773,7 @@ describe("what batch E's routes take on trust", () => {
       'NotificationPreference.create', 'NotificationPreference.update',
       'PatientEducationAssignment.update',
       'PatientRecommendation.create',
+      'Physician.create',
     ]);
     for (const key of report.unproved_routes) {
       expect(ENTITY_ROUTES[key], `${key} must be declared`).toBeDefined();
