@@ -266,6 +266,32 @@ export const HANDLERS = Object.freeze({
       return contract('getAgencySettings', params);
     },
   }),
+  createPhysician: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('createPhysician', params);
+    },
+  }),
+  updatePhysician: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'action', 'fields', 'referral_date'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      // `fields` is required for a profile edit and meaningless for the
+      // increment, so its shape is checked where it is used rather than
+      // demanded here -- the contract refuses an empty patch by name.
+      if (params.fields !== undefined && params.fields !== null
+        && !isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('updatePhysician', params);
+    },
+  }),
+  deletePhysician: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deletePhysician', params);
+    },
+  }),
   saveAgencySettings: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');

@@ -74,6 +74,19 @@ const REFERENCE_READ_CODES = Object.freeze(['PENNSYNC_CONTRACT_AGENCY_NOT_HELD']
  * body can actually reach and adds whatever is its own.
  */
 const SCREEN_COMMON = Object.freeze(['PENNSYNC_SCREEN_AGENCY_NOT_HELD']);
+
+// The provider directory's three writes share one refusal set, deliberately: a
+// screen cannot tell a create refusal from a delete refusal and learn from the
+// difference which providers exist in another agency.
+const PHYSICIAN_WRITE_CODES = Object.freeze([
+  'PENNSYNC_PHYSICIAN_WRITE_FORBIDDEN',
+  'PENNSYNC_PHYSICIAN_WRITE_INVALID',
+  'PENNSYNC_PHYSICIAN_WRITE_EMPTY',
+  'PENNSYNC_PHYSICIAN_FIELD_UNSUPPORTED',
+  'PENNSYNC_PHYSICIAN_REQUIRED_MISSING',
+  'PENNSYNC_PHYSICIAN_ACTION_UNKNOWN',
+  'PENNSYNC_PHYSICIAN_NOT_FOUND',
+]);
 const SCREEN_ADMIN_CODES = Object.freeze([
   ...SCREEN_COMMON, 'PENNSYNC_SCREEN_AGENCY_ADMIN_REQUIRED']);
 const SCREEN_CHART_CODES = Object.freeze([
@@ -2176,6 +2189,33 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_SETTINGS_AGENCY_NOT_HELD',
       'PENNSYNC_SETTINGS_LIMIT_INVALID',
     ]),
+  }),
+  createPhysician: Object.freeze({
+    rpc: 'pennsync_contract_physician_create',
+    params: Object.freeze(['fields']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_fields: args.fields ?? null }),
+    codes: PHYSICIAN_WRITE_CODES,
+  }),
+  updatePhysician: Object.freeze({
+    rpc: 'pennsync_contract_physician_update',
+    params: Object.freeze(['id', 'action', 'fields', 'referral_date']),
+    // `action` is the contract's own discriminator rather than something
+    // inferred from the payload here: the two screens make two different
+    // statements and the service is not the place to guess which.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_physician_id: args.id ?? null,
+      p_action: args.action ?? null,
+      p_fields: args.fields ?? null,
+      p_referral_date: args.referral_date ?? null,
+    }),
+    codes: PHYSICIAN_WRITE_CODES,
+  }),
+  deletePhysician: Object.freeze({
+    rpc: 'pennsync_contract_physician_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_physician_id: args.id ?? null }),
+    codes: PHYSICIAN_WRITE_CODES,
   }),
   saveAgencySettings: Object.freeze({
     rpc: 'pennsync_contract_agency_settings_save',

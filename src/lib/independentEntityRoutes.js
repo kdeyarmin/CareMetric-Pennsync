@@ -918,6 +918,63 @@ const operationalRoutes = Object.freeze({
     reason: 'Both fax dialogs read the documents already held for one chart.',
   }),
 
+  /**
+   * The referral directory's three writes.
+   *
+   * `Physician.update` carries TWO statements and the route is what tells them
+   * apart, because the browser has one method for both: `PhysicianForm` saves a
+   * profile, and `PhysicianDirectory` records a referral with
+   * `{referral_count: count + 1, last_referral_date}`. The contract takes a
+   * named action and refuses an unknown one, so the mapping is here, in one
+   * place, rather than inferred inside the service.
+   *
+   * The discriminator is the presence of `referral_count`, which is the only
+   * key the increment sends that a profile save cannot: the contract REFUSES
+   * `referral_count` as a profile field by name, so the two shapes are disjoint
+   * by construction rather than by convention. The count itself is DROPPED --
+   * the contract adds one to the stored value, so a number computed in the
+   * browser has nothing to say.
+   */
+  'Physician.create': Object.freeze({
+    function: 'createPhysician',
+    projection: 'operational_row',
+    reason: 'The provider form adds a referral source to the agency directory.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'Physician.update': Object.freeze({
+    function: 'updatePhysician',
+    projection: 'operational_row',
+    reason: 'The provider form edits a referral source and the directory records a referral against one.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      if (Object.hasOwn(fields, 'referral_count')) {
+        // The increment. Everything but the date is discarded on purpose.
+        return { id, action: 'record_referral', referral_date: fields.last_referral_date ?? null };
+      }
+      return { id, action: 'profile', fields };
+    },
+    response: (result) => result,
+  }),
+  'Physician.delete': Object.freeze({
+    function: 'deletePhysician',
+    projection: 'operational_row',
+    reason: 'The directory removes a referral source an administrator has retired.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
   'AgencySettings.create': operationalSave({
     fn: 'saveAgencySettings', key: 'settings', withId: false,
     reason: 'Three admin panels write the agency\u2019s settings row the first time there is none.',
