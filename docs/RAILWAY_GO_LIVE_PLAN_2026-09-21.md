@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 49 | 37 |
+  | `mutating` (derived) | 54 | 39 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1588,6 +1588,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   being added to. This row was re-derived on seven bases over the life of one
   pull request; the number above is a reading of the tree it merges onto and of
   no other.
+
+  The five compliance WRITES then took `mutating` to 54 and left `read-only`
+  and `integration` where they were. Its migrations rose by **two** for one
+  file, and that is the derivation working rather than a miscount: a wave's
+  migrations are the ones its handlers need, and these contracts open with a
+  precondition on the compliance READ migration, so that file now belongs to
+  both waves. A wave's migration count is therefore not a partition of the
+  directory and the six rows do not sum to it — read each row as what that
+  wave's operator must have applied, never as a share of the whole.
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
@@ -3182,10 +3191,8 @@ entity routes: 64 declared, 106/237 landable call sites SERVED, 131 still to ado
   of those 131, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 130 need a named capability
 ```
 
-**And the reading on THIS tree, after the five compliance reads.** This one is
-`pnpm run check:entity-routes`'s own output and is **pinned**:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what the tool prints and never retype, rewrap or re-indent it.
+And after the five compliance READS — a record of that head, not maintained
+either:
 
 ```
 entity routes: 71 declared, 138/237 landable call sites SERVED, 99 still to adopt
@@ -3212,6 +3219,48 @@ reading that isolates one file's effect. Under `main`'s file this tree prints
 the block above; under this branch's, the block here. The same pair was run on
 two different bases a day apart and gave the same deltas both times, which is
 what makes them a property of these seven routes rather than of a moment.
+
+**And the reading on THIS tree, after the five compliance WRITES.** This one is
+`pnpm run check:entity-routes`'s own output and is **pinned**:
+`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
+so paste what the tool prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 76 declared, 145/237 landable call sites SERVED, 92 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 33 pass arguments this cannot read
+  14 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryTemplate.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 28 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+**A WRITE port moves the line by ONE, and that contrast is the useful half of
+this reading.** The same two-tree attribution was run for these five routes —
+the printer twice on this one merged tree, once with `main`'s route module and
+once with this branch's — and it gives +5 declared, +7 served, −7 to adopt, +5
+unreadable and +2 unproved, with the entity count unmoved at 28. Seven served
+plus five unreadable is twelve, which is every call site these five routes
+reach: the arithmetic closes, so nothing is unaccounted for.
+
+Seven from five routes is barely a multiple, against thirty-two from seven a
+port earlier, and the reason is structural rather than incidental. A read is
+called from every screen that displays the thing; a write is called from the
+one form that performs it, so the served count of a write port is close to its
+call-site count by construction. **Do not size a write port by what a read port
+moved**, and do not read a small move as a route that failed — the number to
+compare a write port against is its own call sites, not a sibling's multiple.
+
+The five that went to `unreadable` rather than `served` are the same finding in
+its own form: `AdrAuditCase.create` builds its payload from the letter
+analysis and `ComplianceAudit.update` passes `buildAuditFields`'s return, so the
+gate cannot run the real arguments through `request`. "Cannot prove this serves"
+is not "does not serve" — what stands in for the proof is the refusals raised
+against the real migration, which `independentEntityRoutes.spec.js` requires by
+name rather than taking on trust.
+
+**No entity left the remaining line here, and that is expected rather than
+disappointing.** `AdrAuditCase` keeps its read call site, which has no route
+because its limit is a constant imported from another module, and
+`ComplianceAudit` keeps eight read sites the census cannot even see. A write
+port shortens the queue by call sites and not by entities.
 
 **One site moved the wrong way, and it is named rather than netted off.** The
 sites passing arguments this cannot read went up by one:

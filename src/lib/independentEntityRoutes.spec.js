@@ -1213,9 +1213,17 @@ describe("what batch E's routes take on trust", () => {
     // its job rather than the list slipping: `ClinicalLibraryTemplate.create`
     // has two call sites and both build their payload at run time, one of them
     // by spreading a phrase from a seed list.
+    // The compliance writes added two more, for the same reason and with the
+    // same remedy: `AdrAuditCase.create` builds its payload out of the letter
+    // analysis, and `ComplianceAudit.update` passes `auditFields`, which
+    // `buildAuditFields` returns. Both are covered by refusals raised against
+    // the real migration in `contract-compliance-writes.test.mjs`, which the
+    // block below reads.
     expect([...report.unproved_routes].sort()).toEqual([
+      'AdrAuditCase.create',
       'AgencySettings.create', 'AgencySettings.update',
       'ClinicalLibraryTemplate.create',
+      'ComplianceAudit.update',
       'CustomValidationRule.create', 'CustomValidationRule.update',
       'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
       'NoteConversion.create',
@@ -1253,6 +1261,63 @@ describe("what batch E's routes take on trust", () => {
       'PENNSYNC_NOTE_CONVERSION_CHART_FORBIDDEN', 'PENNSYNC_TEMPLATE_NAME_REQUIRED']) {
       expect(operational, `${code} must be exercised by the contract suite`).toContain(code);
     }
+
+    // The compliance writes, a THIRD family on the same standing. The two
+    // codes that matter most here are the ones a screen cannot see coming: an
+    // unknown key is refused rather than filtered, so a payload that drifts
+    // fails loudly instead of half-writing, and a fax history that shrank is
+    // refused rather than stored, so a stale read cannot erase what really
+    // went to a Medicare contractor.
+    const compliance = readFileSync(
+      'services/authority-store/tests/contract-compliance-writes.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_AUDIT_WRITE_FIELD_UNKNOWN', 'PENNSYNC_AUDIT_WRITE_FIELD_RESERVED',
+      'PENNSYNC_AUDIT_WRITE_REQUIRED', 'PENNSYNC_AUDIT_WRITE_VISIT_NOT_VISIBLE',
+      'PENNSYNC_ADR_WRITE_FIELD_RESERVED', 'PENNSYNC_ADR_WRITE_LOCATOR_UNSUPPORTED',
+      'PENNSYNC_ADR_WRITE_CHART_ELSEWHERE', 'PENNSYNC_ADR_WRITE_FAXES_TRUNCATED']) {
+      expect(compliance, `${code} must be exercised by the contract suite`).toContain(code);
+    }
+  });
+
+  it('hands a compliance write payload through untouched, and reads the answer', async () => {
+    const create = ENTITY_ROUTES['AdrAuditCase.create'];
+    const update = ENTITY_ROUTES['AdrAuditCase.update'];
+    const remove = ENTITY_ROUTES['AdrAuditCase.delete'];
+
+    // UNTOUCHED is the assertion. A route that dropped a key the contract does
+    // not take would turn `FIELD_UNKNOWN` into a silent no-write, which is a
+    // screen that believes it saved — so an unknown key has to reach the
+    // contract, and the reserved ones too.
+    expect(create.request({ case_name: 'x', nonsense: 1, agency_id: 'a' }))
+      .toEqual({ case: { case_name: 'x', nonsense: 1, agency_id: 'a' } });
+    expect(update.request('case-1', { status: 'submitted' }))
+      .toEqual({ case_id: 'case-1', patch: { status: 'submitted' } });
+    expect(remove.request('case-1')).toEqual({ case_id: 'case-1' });
+
+    // The arity is declared because a rest parameter reveals no length, and
+    // the guard only refuses arguments PAST it — so an over-declared arity
+    // fails open on exactly the case the guard exists to close.
+    expect([create.arity, update.arity, remove.arity]).toEqual([1, 2, 1]);
+
+    // An id that is not a string, and a payload that is not an object. Both
+    // refuse at the seam rather than reaching the contract as null.
+    expect(() => update.request(undefined, { status: 'closed' })).toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(() => update.request('case-1', null)).toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(() => update.request('case-1', ['status'])).toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(() => create.request('not an object')).toThrow(ARGUMENTS_UNSUPPORTED);
+
+    // The answer is READ. The gate never exercises `response`, so a route
+    // wired to the wrong contract passes it and then hands the screen a
+    // plausible row for a write it did not perform.
+    expect(update.response({ success: true, updated: true, case: { id: 'case-1' } }))
+      .toEqual({ id: 'case-1' });
+    expect(() => update.response({ updated: true, case: { id: 'case-1' } }))
+      .toThrow(ARGUMENTS_UNSUPPORTED);
+    // The audit contracts answer under their own key, so the case routes must
+    // not accept an audit's answer — which is what would happen if `answer`
+    // were the same string for all five.
+    expect(update.response({ success: true, audit: { id: 'a' } })).toBeUndefined();
+    expect(ENTITY_ROUTES['ComplianceAudit.create'].response(
+      { success: true, audit: { id: 'a' } })).toEqual({ id: 'a' });
   });
 
   it('closes the preference round trip the settings screen actually makes', async () => {

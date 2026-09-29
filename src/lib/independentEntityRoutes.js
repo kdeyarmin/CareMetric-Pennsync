@@ -413,6 +413,79 @@ export const COMPLIANCE_MAXIMUM = Object.freeze({
 });
 
 /**
+ * The key each compliance write contract answers the written row under, and
+ * the payload key it takes it in.
+ *
+ * Both are the CONTRACT's vocabulary rather than this file's: the audit
+ * contracts take `audit` / `patch` and answer `{ audit }`, the case ones take
+ * `case` / `patch` and answer `{ case }`. Kept as data beside the route so a
+ * reader can see the pair, and read by `complianceWrite` below so a route
+ * cannot be declared with one half of it.
+ */
+const COMPLIANCE_WRITE_SHAPES = Object.freeze(Object.assign(Object.create(null), {
+  createComplianceAudit: { payload: 'audit', answer: 'audit', id: null },
+  updateComplianceAudit: { payload: 'patch', answer: 'audit', id: 'audit_id' },
+  createAdrAuditCase: { payload: 'case', answer: 'case', id: null },
+  updateAdrAuditCase: { payload: 'patch', answer: 'case', id: 'case_id' },
+  deleteAdrAuditCase: { payload: null, answer: 'case', id: 'case_id' },
+}));
+
+/**
+ * `Entity.create(fields)`, `.update(id, fields)` and `.delete(id)` onto one of
+ * the compliance write contracts.
+ *
+ * WHAT MAY BE WRITTEN IS NOT DECIDED HERE, and that is the difference from
+ * `libraryWrite` rather than an omission. Those contracts take an `action` and
+ * a fenced field set; these refuse an unknown key and name every reserved one
+ * with a refusal code of its own, so the field set lives in SQL where it is
+ * tested against the real migration. A `writable` list in this file would be a
+ * second copy of it — and the copy that fails nothing is the one that rots.
+ *
+ * So the payload passes through UNTOUCHED. A route that dropped an unknown key
+ * to be helpful would turn the contract's `FIELD_UNKNOWN` refusal into a
+ * silent no-write, which is the one failure mode both halves were written to
+ * avoid: a screen that believes it saved.
+ *
+ * `answer` IS READ rather than returned unconditionally. The gate runs each
+ * declaration's `request` against the call sites' real arguments and never
+ * exercises `response`, so a route wired to the wrong contract passes the gate
+ * and then hands a screen a plausible row for a write it did not perform.
+ * Comparing the key the contract answers under makes that a refusal at the
+ * seam instead.
+ */
+function complianceWrite(handler) {
+  const shape = COMPLIANCE_WRITE_SHAPES[handler];
+  if (!shape) throw new Error(`ENTITY_ROUTE_WRITE_SHAPE_UNDECLARED: ${handler}`);
+  const { payload, answer, id } = shape;
+  return {
+    function: handler,
+    projection: 'compliance_write',
+    // Declared for `contractRead`'s reason: a rest parameter hides the count.
+    arity: (id ? 1 : 0) + (payload ? 1 : 0),
+    request: (...args) => {
+      const [first, second] = args;
+      const fields = id ? second : first;
+      const request = {};
+      if (id) {
+        if (typeof first !== 'string' || first === '') unsupported('id');
+        request[id] = first;
+      }
+      if (payload) {
+        if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+          unsupported('fields');
+        }
+        request[payload] = fields;
+      }
+      return request;
+    },
+    response: (result) => {
+      if (!result || result.success !== true) unsupported('answer');
+      return result[answer];
+    },
+  };
+}
+
+/**
  * A read served by a named compliance contract.
  *
  * The contrast with `brokeredRead` above is the whole reason both exist. The
@@ -1813,6 +1886,42 @@ const DECLARED_ROUTES = Object.freeze({
       filtered: true,
     }),
     reason: 'The chart analyzer reads one patient\'s audits and the note recovery reads one visit\'s.',
+  }),
+  /**
+   * The write half, served by `20260920670000_contract_compliance_writes.sql`.
+   *
+   * Two things about the ADR trio are worth reading twice. Its READ has no
+   * route (the paragraph below says why), so declaring these gives the ADR
+   * Center a store it can write and not yet one it can list — which sounds
+   * like a split and is not: `routedEntities` refuses any undeclared entity
+   * operation on this backend with no Base44 fallback, so every one of these
+   * sites refuses today. A route replaces one refusal with a served call.
+   *
+   * And `AdrPacketVerifier.jsx` sends `packet_file_url` straight from
+   * `Core.UploadFile`. On this backend the integration runtime mints a durable
+   * private `cmfile:` handle, which the contract accepts; a Base44 storage URL
+   * is refused rather than stored (D77). That is the one call site here whose
+   * success depends on which backend uploaded the file.
+   */
+  'ComplianceAudit.create': Object.freeze({
+    ...complianceWrite('createComplianceAudit'),
+    reason: 'Three screens file an audit; the contract stamps the nurse, which the `|| \'system\'` fallback could not.',
+  }),
+  'ComplianceAudit.update': Object.freeze({
+    ...complianceWrite('updateComplianceAudit'),
+    reason: 'The note save re-scores its own audit as the nurse edits, and writes only the keys it sends.',
+  }),
+  'AdrAuditCase.create': Object.freeze({
+    ...complianceWrite('createAdrAuditCase'),
+    reason: 'The ADR Center files a case from the analyzed letter, into the caller\'s own agency.',
+  }),
+  'AdrAuditCase.update': Object.freeze({
+    ...complianceWrite('updateAdrAuditCase'),
+    reason: 'Five sites advance a case through its workflow; the contract refuses a fax history that shrank.',
+  }),
+  'AdrAuditCase.delete': Object.freeze({
+    ...complianceWrite('deleteAdrAuditCase'),
+    reason: 'The ADR Center deletes a case, which only its author or an agency_admin may do.',
   }),
   /*
    * `AdrAuditCase.list` is deliberately NOT declared, and the reason is worth
