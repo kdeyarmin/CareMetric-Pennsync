@@ -9013,6 +9013,21 @@ where the weak line and the line carrying the property sit in different
 `test()` bodies, BOTH say so, because deleting or skipping the far one returns
 the suite to the unpinned shape with nothing failing.
 
+**One instrument cannot tell you whether the weak line is gone, and it is the
+one a reader will reach for.** After both repairs landed, a text scan of these
+three files reads MORE mentions of `names.length > 4` and `names.length > 6`
+than before, because each deletion left a comment explaining what was deleted
+and why. A grep reads as unfixed and is not. This project already holds that
+rule from the other direction — the `least` repair is forward-only, so a scan
+at the tip finds more occurrences of the broken call than before and that is
+correct — and this is the second occurrence, arriving from a deletion rather
+than a forward fix and landing in the same place. Both times the instrument was
+a substring over the tip and both times it answered about the text rather than
+about the behaviour. Verify a deletion by reading the file at the head you care
+about, or by running the suite, never by counting matches; and verify somebody
+else's repair the same way rather than from their pull request, because the PR
+body is not the tree.
+
 **And the instrument that found it committed the same defect.** The sweep
 written to hunt this shape flags a weak line as probably-sound when a
 `deepEqual` or a length equality sits within six lines of it. That proximity
@@ -9035,3 +9050,68 @@ shape, and the two are the same characters. Every line it prints is a thing to
 READ. **A sweep of this kind produces candidates, never findings, and saying so
 is part of the result** — a candidate list quoted as a count of defects is the
 house defect arriving in the instrument built to catch it.
+
+## D159 — Some populations have no declaration to derive from, by construction
+
+D148 says derive a population from declarations rather than from a pattern, and
+it is right about nearly every case. `app-namespace-containment.test.mjs` is the
+case where it cannot be followed, and saying so is the result rather than a
+failure to find the derivation.
+
+**The shape.** `pennsync_private` pins its app id by typing every app-scoped
+column with the `deployment_app` domain. Two assertions guard that. The first
+compares the set of domain-typed columns against a declared list — 22 columns,
+declaration-derived, exactly D148's shape, and sound. The second asks whether
+anything in the schema names an app id and escaped the domain, and its
+population is `column_name like '%app_id%'`.
+
+**Why the second cannot be derived.** The 22 columns declare themselves: they
+carry the domain, so the catalogue states the fact. The set the second query
+wants is the columns that hold an app id and are NOT typed by it — and a column
+escapes precisely by carrying no declaration. There is nothing in the tree that
+says a future `source_app` is an app id. The escape and the absence of a
+declaration are the same event, so the population D148 asks for does not exist
+to be read. That is a different situation from a pattern standing in for a
+declaration somebody wrote down elsewhere, which is what D148 is about.
+
+**Measured, not argued.** `pennsync_private` holds 220 columns; 22 carry the
+domain. The loose query returns 0 rows on the current tree, and widening the
+pattern from `app_id` to `app` also returns 0 — the only two `app`-named columns
+outside the domain are `deployment.app_id` and `known_app.app_id`, the query's
+own declared exemptions. So nothing was owed a fix, and no forward migration was
+in question.
+
+**Two controls, and the pair is the reading.** A planted
+`pennsync_private.planted_escape.app_id text` is REFUSED: the guard bites. The
+same escape planted as `planted_blind_spot.source_app text` is passed in
+silence: the blind spot is exactly a name. A 0 with no control is not a reading,
+and a blind-spot assertion with no positive control beside it passes just as
+well when the guard has been deleted.
+
+**What was refused and why, because the rejected options are the argument.**
+Widening the pattern to `~app` was refused: it moves the gap from `source_app`
+to `owning_tenant` while producing the appearance of a fix, which is worse than
+a documented gap. Pinning the COMPLEMENT — asserting that the 198 non-domain
+columns equal a declared list, so a new column of any name fails until somebody
+declares it — was refused for a reason worth keeping: a gate with a maintenance
+tax is a gate the next person weakens rather than feeds, so it buys less safety
+than its shape suggests.
+
+**The condition that makes the remaining option more than a comment.** The blind
+spot is PLANTED AS A TEST. A sentence saying "this check is name-based" ages
+into wallpaper: nothing fails when it stops being true, and nothing fails when
+somebody half-closes it. The test fails the day `source_app` becomes catchable,
+which is the day somebody widened the pattern, and the failure names what to do
+next — move the case to the caught side deliberately, and say in the same change
+which names are still outside the new pattern, because there will be some.
+Proved by sabotage: widening the query to `%app%` fails that test and leaves the
+other thirteen in the file passing, so nothing else in the suite would have
+noticed.
+
+**The general rule.** Before concluding a population must stay a pattern, do
+what D148 says and look for the declaration. But when the set you want is
+defined by the ABSENCE of the declaration you would read, stop: write down that
+it cannot be derived, measure the population both ways, control the guard in
+both directions, and assert the blind spot so the gap is checked rather than
+promised. A documented gap with a test on it is a real answer. A wider pattern
+is not.
