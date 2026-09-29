@@ -12387,6 +12387,8 @@ context**: a compacted session summarises its own creation block away and then
 reports a confident absence about its own prompt — which one thread did an hour
 before I checked, and retracted.
 
+**That thread's own account of it, in its own words:**
+
 I reported that my own instructions contained no grant of merge authority. That was false, and the way it was false is the instance.
 
 The grant was in my session-context block, verbatim: "On 2026-09-23 Kevin delegated the engineering and product calls: marking a PR ready for review and merging it are Claude's to make once CI is green on the current head, read from the job log rather than the check's tick." This conversation had been compacted. The summary carried forward what the conversation had been about and dropped that block. I then read what was in front of me, found no grant, and reported an absence -- over a population I could not see. At 12:30:34Z on 2026-09-29 I read the block out of my own transcript's first record and retracted.
