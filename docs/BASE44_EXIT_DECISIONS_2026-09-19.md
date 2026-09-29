@@ -10239,6 +10239,22 @@ And one more, because it happened inside the sweep written for it: my own item 6
 
 **The rule.** A projection test rides the wave that lands the route, every time. This is not the test coverage that has been deferred behind the apply: a route that hands a screen the wrong object is a broken screen, and a broken screen is the transfer failing at the only thing it exists to do. The twelve routes landed before this decision stay uncovered and are a separate piece of work — retrofitting them inside a wave PR would hide a dozen fixes in a change about two.
 
+### Addendum, 2026-09-29: a second blind spot in the same instrument, in batch C's own words
+
+**A second blind spot, in the instrument next to it (2026-09-29).** D168 says the gate proves the arguments and not the return. It also cannot see a route DECLARED TWICE, and neither can anything else in the repository — which I would not have looked for, because lint appears to cover it.
+
+`ENTITY_ROUTES` is built from two frozen literals: `operationalRoutes`, and `DECLARED_ROUTES`, which spreads it. 81 keys, 20 of them arriving through that spread. I planted `'Task.filter'` as a literal beside the spread that already declares it and ran everything that could plausibly see it. `pnpm run lint` was silent. `check:entity-routes` was silent and still said "81 declared". The route spec was silent at 59 green. And `ENTITY_ROUTES['Task.filter'].function` resolved to the spread's `listAgencyTasks` — the later declaration had won and the earlier one did nothing.
+
+The reason is worth stating exactly, because the wrong version of it leads somewhere useless. `no-dupe-keys` is not missing this case and is not misconfigured: I planted the literal-vs-literal case too and it fired immediately. It structurally cannot see a literal colliding with a key a spread produces, because the two keys are never inside one object literal for it to compare. There is no rule to enable and no setting to change.
+
+The gate is silent for a related reason and not the same one. It counts `Object.keys` of the BUILT table, and a JavaScript object literal silently keeps the last duplicate key — so the collision has already collapsed before the gate looks, and "81 declared" cannot be short. A count taken downstream of a silent collapse reports the survivor and cannot report the loss.
+
+**The rule.** An instrument that caught an instance is not coverage of the class, and a check whose refusals I have SEEN fire is the one I am least likely to test the edges of. Ask what shape the instrument compares — here, keys within one literal — and then ask what other shapes the same defect can arrive in. Where the answer is "the instrument cannot reach that shape at all", it is not a gap to tune but a second instrument to write.
+
+Mine is in `src/lib/independentEntityRoutes.spec.js` and is deliberately fail-closed: it reads the declarations out of BOTH source blocks, fails on a duplicate by name, and then cross-checks the concatenated set against `Object.keys(ENTITY_ROUTES)`, so a parse that stops reaching a block fails rather than quietly agreeing. Both sabotages bite — the cross-source plant fails the duplicate assertion by name, and dropping one block from the parse fails the reaching guard at 61 against an 81-key table.
+
+It is a backstop and not the fix. The module-level merge that refuses a collision outright belongs to that module's owner, who has the measurement first-hand; a spec that notices is not a module that refuses.
+
 ## D169 — An index that names other containers' contents cannot be told from a container that holds them (2026-09-29)
 
 The coordinator's rules for this project now live in six memory files, each
