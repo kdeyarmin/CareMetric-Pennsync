@@ -12,7 +12,7 @@ import { FIGURE_DIRECTIONS, MINIMUM_REASON, NOT_A_MEASUREMENT, directionLines, m
   servedSites, summaryLines }
   from './tools-entity-routes.mjs';
 import { callArguments } from './tools-entity-call-arguments.mjs';
-import { SERVED, measureDestinations } from './tools-frontend-destination.mjs';
+import { READ_OPERATIONS, SERVED, measureDestinations } from './tools-frontend-destination.mjs';
 import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
 import { buildPaths, readEntity } from './tools-tenant-path.mjs';
 
@@ -793,6 +793,109 @@ test('the landable sites partition exactly, and the audit prose carries the part
       `${PLAN} does not say "${word}" — the audit prose states the partition in\n`
       + `  words and this part is now ${count}. Update the prose.`);
   }
+});
+
+/**
+ * The audit bullet states four QUOTIENTS as well as those three counts, and
+ * until now nothing checked them.
+ *
+ * **A quotient can hold while both its terms move.** 15/12 and 20/16 are both
+ * 1.25, so a ratio pinned on its own is satisfied by a population that has
+ * changed underneath it — which is the exact failure the bullet's own closing
+ * paragraph records happening to it once already, when the provider directory's
+ * three writes moved every figure and one percentage came out unchanged. So the
+ * integer PAIR is asserted first and the quotient is DERIVED from that pair
+ * here; the quotient never stands alone as the evidence.
+ *
+ * The ratio is formatted from the integers rather than parsed out of the page,
+ * because `1.25` in prose admits anything in [1.245, 1.255) and a comparison
+ * that accepts a band is not pinning a measurement.
+ *
+ * Two things about the page's spelling, so a later reader does not write a
+ * matcher for the wrong form: the three partition COUNTS are spelled as words
+ * (`Forty-four`), and these four ratios are written as DIGITS (`2.59`). A
+ * matcher built for either form is silent about the other, which is why the
+ * test above and this one read the page differently on purpose.
+ *
+ * The read/write split is `READ_OPERATIONS`, IMPORTED rather than retyped as
+ * three strings. A hand-written split that agrees with the tool over today's
+ * population is not the tool's split — the remainder's operations happen to be
+ * only `create, delete, filter, list, update` today, so several wrong splits
+ * would agree with this one and stop agreeing the moment a `subscribe` or a
+ * `schema` site lands in it.
+ *
+ * And this pin FAILS on every pull request that declares a route, by design.
+ * That is the point: the bullet has gone stale three times, and its instruction
+ * is to re-derive the whole thing rather than adjust the number that obviously
+ * changed. One caution when it does fail — the remainder's two ratios are over
+ * a REMAINDER, so they move whenever anything LEAVES it, in whichever direction
+ * the departure was thinner or fatter than what stayed. A ratio rising there is
+ * not evidence that the remaining work got harder.
+ */
+test('the audit bullet\'s four ratios are derived from integer pairs the test also asserts', () => {
+  const routes = ENTITY_ROUTES;
+  const destinations = measureDestinations(repository);
+  const { served } = servedSites(repository, routes, destinations.sites.length);
+  const declared = new Set(Object.keys(routes));
+  const landable = destinations.sites.filter(site => SERVED.includes(site.destination));
+  const noRoute = landable.filter(site => !declared.has(`${site.entity}.${site.operation}`));
+
+  const split = (sites) => {
+    const keys = (subset) => new Set(subset.map(site => `${site.entity}.${site.operation}`)).size;
+    const reads = sites.filter(site => READ_OPERATIONS.includes(site.operation));
+    const writes = sites.filter(site => !READ_OPERATIONS.includes(site.operation));
+    return {
+      readSites: reads.length, readKeys: keys(reads),
+      writeSites: writes.length, writeKeys: keys(writes),
+    };
+  };
+  const servedSplit = split(served);
+  const remainder = split(noRoute);
+
+  // The PAIRS first. Each of these four is what the corresponding ratio below
+  // is computed from, so a population that moved without moving its quotient
+  // fails here rather than passing silently one line further down.
+  assert.deepEqual(servedSplit, { readSites: 127, readKeys: 49, writeSites: 20, writeKeys: 18 },
+    'the served pool moved. Re-derive the WHOLE bullet — both of its ratios and\n'
+    + '  the sentence about past waves — rather than editing the figure that moved.');
+  assert.deepEqual(remainder, { readSites: 15, readKeys: 12, writeSites: 29, writeKeys: 18 },
+    'the unrouted remainder moved. Re-derive the WHOLE bullet; its ratios are\n'
+    + '  over a remainder, so they move when anything LEAVES it too.');
+
+  // The page is hard-wrapped, so a literal search for a phrase spanning a line
+  // break returns a confident false negative. Collapse the whitespace first.
+  const page = readFileSync(resolve(repository, PLAN), 'utf8').replace(/\s+/gu, ' ');
+  const ratio = (sites, keys) => (sites / keys).toFixed(2);
+  const servedRead = ratio(servedSplit.readSites, servedSplit.readKeys);
+  const servedWrite = ratio(servedSplit.writeSites, servedSplit.writeKeys);
+  const poolRead = ratio(remainder.readSites, remainder.readKeys);
+  const poolWrite = ratio(remainder.writeSites, remainder.writeKeys);
+
+  // Each figure is matched WITH THE WORDS THAT GIVE IT ITS ROLE, not on its own.
+  // A first version of this check asked only whether the page contained the
+  // string, and sabotage showed it did not bite: `1.61` also appears in the
+  // paragraph recording that the figure ROSE to it, so the page went on
+  // satisfying the check with the sentence that states it edited away. A digit
+  // string found somewhere in 280 KB is not the page stating a measurement.
+  for (const [label, phrase] of [
+    ['the served pool\'s two ratios',
+      `a read key there carries ${servedRead} call sites and a write key ${servedWrite},`],
+    ['the remainder\'s two ratios',
+      `a write key covers ${poolWrite} sites against a read key's ${poolRead},`],
+  ]) {
+    assert.ok(page.includes(phrase),
+      `${PLAN} no longer states ${label} as this tree measures them. Expected the\n`
+      + `  sentence to read: "${phrase}"\n`
+      + '  These are written as DIGITS, unlike the partition counts above, which are\n'
+      + '  words. Re-derive the bullet; do not adjust the one figure that moved.');
+  }
+
+  // The remainder's key total is stated too, and it is the sum of the two key
+  // counts rather than a fifth measurement — asserted so it cannot drift away
+  // from the pair it is built from.
+  assert.equal(remainder.readKeys + remainder.writeKeys, 30);
+  assert.ok(page.includes('over thirty entity and'),
+    `${PLAN} no longer states the remainder's key total as thirty`);
 });
 
 test('every figure the tool reports says which way it moves, and nothing else does', () => {
