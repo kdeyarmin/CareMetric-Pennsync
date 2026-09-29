@@ -289,23 +289,35 @@ const refuse = (code, detail) => { throw new LadderError(code, detail); };
  * It also matches INSIDE string literals, and that is deliberate rather than
  * an oversight the next reader should tidy away. `library_write` builds its
  * statements as dynamic SQL, so all three of its DML matches are in quoted
- * text and it has NONE outside; six contracts reach their write through it and
- * through nothing else — `contract_clinical_library_folder_write`,
+ * text and it has NONE outside; SEVEN contracts reach their write through it
+ * and through nothing else — `contract_clinical_library_folder_write`,
  * `..._template_write`, `contract_clinical_pathway_write`,
- * `contract_education_material_write`, `contract_patient_education_write` and
- * `contract_validation_rule_write`, whose own bodies contain no DML at all. A
- * literal-aware matcher would classify all six read-only and put six writes
- * into a read wave. Measured with a lexer that strips single-quoted strings,
- * dollar-quoted blocks and both comment forms together, which is the only way
- * to get the answer right: tracking quotes alone desynchronises on an
- * apostrophe inside a `--` comment and reports the opposite with the same
- * confidence.
+ * `contract_education_material_write`, `contract_patient_education_write`,
+ * `contract_validation_rule_write` and `contract_ai_configuration_save`, whose
+ * own bodies contain no DML at all. A literal-aware matcher would classify all
+ * seven read-only and put seven writes into a read wave. Measured with a lexer
+ * that strips single-quoted strings and both comment forms TOGETHER, over the
+ * body `functionBodies` returns with its `$contract$` wrapper already removed:
+ * tracking quotes alone desynchronises on an apostrophe inside a `--` comment
+ * and reports the opposite with the same confidence.
+ *
+ * This paragraph said six until `ai_configuration_save` was measured into it,
+ * and the way the wrong number survived is worth more than the number. It is
+ * the only one of the seven whose name does not end in `_write`, so it is the
+ * only one the classifier check below ALREADY caught — `save` was a known verb
+ * — and the six were assembled from what that check reported silent. An
+ * enumeration drawn from a check's blind spot measures the EXPOSURE and reads
+ * like the POPULATION. Ask what a set was drawn FROM before quoting its size;
+ * the test beside this one now derives it from the bodies instead, by asking
+ * which of them call the writer and carry no DML of their own.
  *
  * `write` is in `MUTATING_VERBS` precisely so that this cannot be undone
  * quietly. Narrowing this pattern to skip literals now fails the classifier
- * check by name, with all six contracts listed. When a check survives by an
- * accident of how it is phrased, say so in its header, or the next careful
- * person removes the accident.
+ * check by name, with the six `_write` contracts listed; the seventh was
+ * already named by `save`, which is why the exposure was six and the population
+ * is seven. Those are different questions and the header owes both. When a
+ * check survives by an accident of how it is phrased, say so in its header, or
+ * the next careful person removes the accident.
  */
 const DML = /\b(?:insert\s+into|update\s+(?:only\s+)?"?pennsync|delete\s+from)/i;
 /**
