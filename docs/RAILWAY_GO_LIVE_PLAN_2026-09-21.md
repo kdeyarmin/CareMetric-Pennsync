@@ -3089,12 +3089,17 @@ these routes added that comparison over the gate's own served set, and it found
 seven route keys already in that state on this tree. Six are one shape: an
 operational read declaring a field orderable where its contract takes no order
 parameter. The seventh is the roster, and it is the reason the check has to read
-the handler rather than the contract: `listAgencyRoster`'s contract entry
-declares an `order` parameter and sends `p_order`, and `contract_roster_list`
-has no such parameter — the store carries neither it nor the refusal code that
-entry names. A comparison against the contract's own parameters calls that
-clean. The seven are pinned in the spec rather than excluded by helper name, so
-the fixes cannot land quietly.
+the HANDLER rather than the contract or the SQL. Three of the four layers carry
+`order`: the route emits it, the contract entry declares it and sends `p_order`,
+and the store's current signature is `contract_roster_list(text, integer, text,
+text)` with a matching public wrapper. The stale layer is the handler, whose
+allowlist is `['limit', 'after']`, and every request is dispatched through it
+before `contract()` is reached — so the call fails 400 before PostgREST or any
+store is involved. **An apply does not fix this**, because an apply changes the
+store and not the allowlist, and it survived because the order path IS covered a
+layer above the one that refuses it. A test that enters below a boundary cannot
+see the boundary. The seven are pinned in the spec with each key's owning batch
+named, rather than excluded by helper name, so the fixes cannot land quietly.
 
 #### The destination gate, which measures a different population
 

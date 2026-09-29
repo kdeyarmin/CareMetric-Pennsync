@@ -743,17 +743,31 @@ describe('the declared entity routes', () => {
      * break.
      */
     /*
-     * `User.list:order` IS A SEPARATE DEFECT AND A WORSE ONE, which is why this
-     * check reads the HANDLER rather than the contract. `listAgencyRoster`'s
-     * contract entry declares `order` as a parameter and sends `p_order`, and
-     * `contract_roster_list(p_agency, p_limit, p_after)` has no such parameter
-     * — the store contains neither `p_order` nor the
-     * `PENNSYNC_ROSTER_ORDER_UNSUPPORTED` code that entry declares. The handler
-     * is the only layer that says so, and it refuses `order` outright: 24 of
-     * this route's 29 served sites pass `'-created_date'`, so the most-adopted
-     * route in this file fails at the boundary on every one of them. A check
-     * comparing a route's keys against its CONTRACT's params would call it
-     * clean.
+     * `User.list:order` IS A SEPARATE DEFECT, AND THE ONE LAYER THAT REFUSES IT
+     * IS THE HANDLER — which is the whole reason this check reads the handler.
+     *
+     * Three of the four layers carry `order`. The route emits it,
+     * `RECORD_CONTRACTS.listAgencyRoster.params` declares it and sends
+     * `p_order`, and the store's current signature really is
+     * `contract_roster_list(text, integer, text, text)` with a matching public
+     * wrapper — `20260920620000_roster_created_date.sql` added the parameter and
+     * `20260920630000_roster_display_name.sql` re-created it. The stale layer is
+     * `handlers.mjs`, whose allowlist is `exactObject(params, ['limit',
+     * 'after'])`, and `app.mjs` dispatches every request through
+     * `handlers[name].handle` first. So the call fails 400 INVALID_PARAMS before
+     * `contract()` is reached, and neither PostgREST nor any store is involved:
+     * 24 of this route's 29 served sites pass `'-created_date'`, so the
+     * most-adopted route in this file fails at the boundary on every one of
+     * them. A check comparing a route's keys against its CONTRACT's params calls
+     * it clean, and so does one comparing them against the SQL.
+     *
+     * TWO CONSEQUENCES WORTH KEEPING. This is not the tree-right /
+     * deployment-behind case, and an apply does not fix it: an apply changes the
+     * store, not the allowlist. And it survived because there IS coverage for
+     * the order path — `services/pennsync-api/record-contracts.test.mjs` sends
+     * `{ order: 'created_desc' }` to `listAgencyRoster` — one layer ABOVE the
+     * layer that refuses it. A test that enters below a boundary cannot see the
+     * boundary.
      */
     expect([...violations].sort()).toEqual([
       'AgencySettings.filter:order', 'AgencySettings.list:order',
