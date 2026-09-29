@@ -7,7 +7,7 @@
 //
 // Every handler receives the caller's already-resolved current authority. A
 // handler never resolves its own authority and never widens it.
-import { exactObject, fail, isObject } from './contracts.mjs';
+import { MAX_BODY, exactObject, fail, isObject } from './contracts.mjs';
 import { buildSmartNoteData } from './transforms.mjs';
 import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
@@ -1777,3 +1777,22 @@ export const HANDLERS = Object.freeze({
 });
 
 export const HANDLER_NAMES = Object.freeze(Object.keys(HANDLERS).sort());
+
+/**
+ * The widest request any handler can legitimately send, for the transport
+ * guard in `server.mjs` to refuse above.
+ *
+ * `app.mjs` already enforces each handler's own ceiling exactly, so this is a
+ * coarse backstop and not a second answer: it exists so the socket can reject
+ * an oversized body without buffering it, and it is DERIVED from the registry
+ * rather than typed, because a typed figure is what went wrong before.
+ *
+ * `importProvidersCsv` raised its ceiling and `app.mjs` was taught to read it,
+ * but `server.mjs` kept refusing at the 1 MiB service default by
+ * `content-length` — so every import between the two figures was still
+ * answered `BODY_TOO_LARGE`, one layer further out than the fix. The test that
+ * proved the fix drove `createHandler` and said it drove "the real request
+ * path"; `server.mjs` was not on it.
+ */
+export const MAX_TRANSPORT_BODY = Object.values(HANDLERS)
+  .reduce((widest, entry) => Math.max(widest, entry.maxBody ?? MAX_BODY), MAX_BODY);

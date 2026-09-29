@@ -536,8 +536,10 @@ test('a handler may declare a request larger than the service default, and one d
    * import between those figures was refused `BODY_TOO_LARGE` before the
    * parser ran. An accidental narrowing of the original, found by review.
    *
-   * Driven through the real request path rather than asserted on the
-   * registry, because what was broken was the path and not the declaration.
+   * Driven through `createHandler` rather than asserted on the registry,
+   * because what was broken was the path and not the declaration. That is the
+   * dispatch path and NOT the whole request path: `server.mjs` sits outside it
+   * and kept its own narrower figure, which the next test covers.
    */
   const { HANDLERS } = await import('./handlers.mjs');
   const { MAX_CSV_BYTES } = await import('./provider-import.mjs');
@@ -565,4 +567,64 @@ test('a handler may declare a request larger than the service default, and one d
   // A handler that declared nothing still refuses the same payload at 1 MiB.
   const refused = await send('validatePatientData', { csv_text: big });
   assert.equal(refused.status, 413);
+});
+
+test('the raised ceiling survives the socket, not just the handler', async () => {
+  /*
+   * The regression above drives `createHandler` and its own comment calls that
+   * "the real request path". It is not: `server.mjs` is the entrypoint the
+   * image runs, and it refused at a typed 1 MiB by `content-length` before
+   * `app.mjs` was ever reached — so `importProvidersCsv`'s raised ceiling was
+   * still unreachable over HTTP, the same narrowing one layer further out.
+   *
+   * Driven through a real socket against a spawned `server.mjs`, because what
+   * is being proved is the transport and nothing below it can see it.
+   */
+  const { MAX_TRANSPORT_BODY } = await import('./handlers.mjs');
+  const { HANDLERS } = await import('./handlers.mjs');
+  const { MAX_BODY } = await import('./contracts.mjs');
+  assert.equal(MAX_TRANSPORT_BODY, HANDLERS.importProvidersCsv.maxBody);
+  assert.ok(MAX_TRANSPORT_BODY > MAX_BODY);
+
+  const { createServer } = await import('node:http');
+  const { spawn } = await import('node:child_process');
+  const probe = createServer();
+  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
+  const port = probe.address().port;
+  await new Promise(resolve => probe.close(resolve));
+
+  const child = spawn(process.execPath, ['server.mjs'], {
+    cwd: import.meta.dirname,
+    env: { ...process.env, PORT: String(port), PENNSYNC_API_APP_ID: APP,
+      PENNSYNC_API_FUNCTIONS: 'importProvidersCsv' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      child.stdout.once('data', resolve);
+      child.once('exit', code => reject(new Error(`server exited ${code}`)));
+      setTimeout(() => reject(new Error('server did not start')), 10000).unref();
+    });
+    const post = body => fetch(`http://127.0.0.1:${port}/v1/functions/importProvidersCsv`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
+      body,
+    });
+
+    // Two megabytes: over the old transport figure, under the declared one.
+    const big = `name,npi\n${'Somebody,1234567890\n'.repeat(100000)}`;
+    const body = JSON.stringify({ agency_id: 'agency-a', params: { csv_text: big } });
+    assert.ok(Buffer.byteLength(body) > MAX_BODY && Buffer.byteLength(body) < MAX_TRANSPORT_BODY);
+    const allowed = await post(body);
+    assert.notEqual(allowed.status, 413);
+    assert.notEqual((await allowed.json()).error, 'BODY_TOO_LARGE');
+
+    // And the backstop is still a backstop: past the widest declared ceiling
+    // the socket refuses without buffering.
+    const over = await post('x'.repeat(MAX_TRANSPORT_BODY + 1));
+    assert.equal(over.status, 413);
+    assert.equal((await over.json()).error, 'BODY_TOO_LARGE');
+  } finally {
+    child.kill('SIGKILL');
+  }
 });
