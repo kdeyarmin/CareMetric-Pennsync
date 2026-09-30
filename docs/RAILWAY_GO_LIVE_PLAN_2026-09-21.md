@@ -1563,8 +1563,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 54 | 39 |
-  | `integration` (derived) | 19 | 17 |
+  | `mutating` (derived) | 53 | 39 |
+  | `integration` (derived) | 20 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven

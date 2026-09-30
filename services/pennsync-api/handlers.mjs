@@ -18,6 +18,7 @@ import { exportPatientChart } from './chart-export.mjs';
 import { AI_REPORT_PARAMS, generateAiReport } from './ai-report.mjs';
 import { searchIndexedPdfs } from './pdf-search.mjs';
 import { sendAccountReadyEmail, sendWelcomeEmail } from './account-email.mjs';
+import { notifyTimeOffSubmitted } from './workforce-email.mjs';
 import {
   STATE_INCIDENT_FIELDS, submitStateIncident,
 } from './state-incident.mjs';
@@ -1037,15 +1038,31 @@ export const HANDLERS = Object.freeze({
     },
   }),
   submitTimeOffRequest: Object.freeze({
-    // `delivery_paused` is reported the way the original reports it when
-    // `OUTBOUND_DELIVERY_RELEASE` is not `enabled-v1`: the record work is done
-    // and the approver email is not sent. Outbound delivery is the integration
-    // runtime's, which is deployed and paused, so the shape a migrated caller
-    // already handles is the honest answer.
-    async handle({ params, contract }) {
+    // D97's gate, second instance, and the first where the send is a SIDE
+    // EFFECT rather than the capability — so `workforce-email.mjs` branches on
+    // the release instead of refusing 503, which is what the original does and
+    // what keeps a recorded request from being thrown away because a channel
+    // is off. `delivery_paused` is now the original's own computation rather
+    // than the constant `true` this answered: with no recipient there was no
+    // delivery to pause, and saying otherwise told a caller a message was
+    // waiting on a switch when none existed.
+    //
+    // `needsIntegration` follows the destructuring below, both directions, per
+    // D92. `needsDelivery` is deliberately ABSENT: it asks whether a released
+    // handler serves nothing without delivery, and the record work here stands
+    // on its own, so flagging it would make a deployment that releases time off
+    // report NOT ready while it is doing its job.
+    needsIntegration: true,
+    async handle({ actor, params, config, integration, contract }) {
       exactObject(params, ['request_type', 'start_date', 'end_date', 'half_day',
         'reason', 'coverage', 'manager_email'], 'INVALID_PARAMS');
-      return { ...(await contract('submitTimeOffRequest', params)), delivery_paused: true };
+      const answer = await contract('submitTimeOffRequest', params);
+      return {
+        ...answer,
+        ...(await notifyTimeOffSubmitted({
+          request: answer?.request, actor, config, integration, contract,
+        })),
+      };
     },
   }),
   cancelTimeOffRequest: Object.freeze({
