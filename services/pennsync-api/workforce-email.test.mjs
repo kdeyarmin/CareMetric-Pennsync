@@ -8,7 +8,9 @@ import { loadConfig } from './runtime.mjs';
 import { DELIVERY_RELEASE_ENV, DELIVERY_RELEASE_VALUE } from './outbound-delivery.mjs';
 import {
   credentialRenewalMessage,
+  notifyTimeOffCancelled,
   credentialReviewedMessage,
+  timeOffCancelledMessage,
   timeOffReviewedMessage,
   timeOffSubmittedMessage,
 } from './workforce-email.mjs';
@@ -362,7 +364,7 @@ test('a module that sends a side-effect notice declares the runtime and not deli
     notifying.add(match[1]);
   }
   assert.deepEqual([...notifying].sort(), ['notifyCredentialRenewal', 'notifyCredentialReviewed',
-    'notifyTimeOffReviewed', 'notifyTimeOffSubmitted'],
+    'notifyTimeOffCancelled', 'notifyTimeOffReviewed', 'notifyTimeOffSubmitted'],
     'the notices are the ones this file knows about — a new one fails here until it is covered');
 
   const registry = readFileSync(new URL('handlers.mjs', dir), 'utf8');
@@ -490,20 +492,9 @@ test('the reviewed message reads the ROW, so it says what happened and not what 
     'a whitespace-only note prints no row, as the original trims before testing');
 });
 
-test('cancelTimeOffRequest is still paused, and the reason is a field it cannot see', () => {
-  // Recorded as a test rather than a comment so it cannot rot quietly. Its
-  // original notifies only when the request was `approved` BEFORE cancellation,
-  // and `contract_time_off_cancel` returns the row it just set to `cancelled`,
-  // so the eligibility cannot be evaluated from the answer. Wiring it anyway
-  // would notify a manager about a withdrawn `pending` request the original
-  // never mentions.
-  assert.equal(Object.hasOwn(HANDLERS.cancelTimeOffRequest, 'needsIntegration'), false,
-    'it reaches no runtime while its notice cannot be built');
-  const registry = readFileSync(new URL('handlers.mjs', new URL('.', import.meta.url)), 'utf8');
-  const start = registry.indexOf('  cancelTimeOffRequest: Object.freeze({');
-  const block = registry.slice(start, registry.indexOf('}),', start));
-  assert.match(block, /delivery_paused: true/,
-    'it keeps the answer it has until the contract can say what status it replaced');
+test('cancelTimeOffRequest carries both flags now that its field exists', () => {
+  assert.equal(HANDLERS.cancelTimeOffRequest.needsIntegration, true);
+  assert.equal(Object.hasOwn(HANDLERS.cancelTimeOffRequest, 'needsDelivery'), false);
 });
 
 /**
@@ -611,6 +602,14 @@ test('a reviewed credential mails the owner from the ROW and asks the roster not
   // mail the reviewer their own decision.
   assert.equal(sent[0].params.to, 'nurse@example.test');
   assert.equal(sent[0].params.subject, 'Credential approved — RN License');
+  // Through the HANDLER, not through the message builder. The builder's own
+  // test passes an address in by hand, so it could not see that the sender was
+  // reading a field the actor does not have — `actor.userEmail`, camelCase,
+  // per `authority.mjs`'s frozen projection — and an undefined reviewer
+  // renders an empty "Approved by" row rather than failing.
+  assert.match(sent[0].params.body, /nurse@example\.test/, 'the owner is greeted');
+  assert.match(sent[0].params.body, />Approved by<\/td>\s*<td[^>]*>[^<]*@/,
+    'and the approver cell carries an address');
   assert.deepEqual(asked, [], 'nothing was asked of the roster');
 });
 
@@ -912,4 +911,160 @@ test('the two credential notices mint no row', async () => {
   });
   await submit.handler(submit.post());
   assert.deepEqual(submit.minted, [], 'not even on the renewal path that does mail');
+});
+
+/**
+ * The withdrawal notice. It is the only one of the five whose eligibility the
+ * store had to be changed to answer, so the assertions that matter are the ones
+ * that turn on `previous_status` and nothing else.
+ */
+const CANCEL = 'cancelTimeOffRequest';
+const CANCEL_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_time_off_cancel`;
+const cancelled = (patch = {}) => request({ status: 'cancelled', ...patch });
+
+const serveCancel = ({
+  delivery = false, row = cancelled(), previous = 'approved', mail = () => ({ ok: true }),
+} = {}) => {
+  const sent = [];
+  const minted = [];
+  const config = loadConfig(env({
+    PENNSYNC_API_FUNCTIONS: CANCEL,
+    ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
+  }));
+  const handler = createHandler(config, {
+    fetcher: async (url, init) => {
+      const target = String(url);
+      if (target.startsWith(RUNTIME)) {
+        const body = JSON.parse(init.body);
+        sent.push(body);
+        return mail(body).ok
+          ? Response.json({ success: true, result: { accepted: true, delivered: false, provider: 'sendgrid' } })
+          : Response.json({ error: 'PROVIDER_REFUSED' }, { status: 502 });
+      }
+      if (target === CANCEL_RPC) {
+        // `previous` of null means the key is ABSENT from the answer, which is
+        // what a deployment running the pre-migration contract sends. Passing
+        // `undefined` would silently take this builder's default instead — the
+        // trap that made the first draft of that test pass for the wrong
+        // reason.
+        return Response.json(previous === null
+          ? { success: true, request: row }
+          : { success: true, previous_status: previous, request: row });
+      }
+      if (target === NOTIFY_RPC) {
+        minted.push(JSON.parse(init.body).p_notification);
+        return Response.json({ success: true, notification_id: 'note-1', delivery_paused: true });
+      }
+      return Response.json(context('clinician'));
+    },
+    records: () => () => { throw new Error('records must not be reached'); },
+    audit: () => () => { throw new Error('audit must not be reached'); },
+  });
+  const post = () => new Request(`https://api.example.test/v1/functions/${CANCEL}`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
+    body: JSON.stringify({ agency_id: 'agency-a', params: { request_id: 'req-1' } }),
+  });
+  return { handler, sent, minted, post };
+};
+
+test('a withdrawn APPROVED request tells the manager, in app and by mail', async () => {
+  const { handler, sent, minted, post } = serveCancel({ delivery: true, previous: 'approved' });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.request.status, 'cancelled');
+  assert.equal(answer.email, true);
+  assert.equal(answer.delivery_paused, false);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].params.to, 'manager@example.test');
+  assert.equal(sent[0].params.subject, 'Time off cancelled by nurse@example.test');
+  assert.equal(minted.length, 1);
+  assert.equal(minted[0].user_email, 'manager@example.test');
+  // The original's, and the only notice of the five that is not `medium`.
+  assert.equal(minted[0].priority, 'low');
+  assert.equal(minted[0].action_label, 'View calendar');
+});
+
+test('a withdrawn PENDING request tells nobody, which is the whole condition', async () => {
+  // The case the port could not evaluate before the forward migration: the row
+  // reads `cancelled` in both, and only `previous_status` distinguishes them.
+  // Wiring it without this would have mailed a manager about a request the
+  // original never mentions.
+  const { handler, sent, minted, post } = serveCancel({ delivery: true, previous: 'pending' });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.request.status, 'cancelled', 'the cancellation is recorded');
+  assert.equal(answer.email, false);
+  assert.equal(answer.delivery_paused, false, 'no send was ever eligible');
+  assert.deepEqual(sent, []);
+  assert.deepEqual(minted, [], 'and the row is gated on eligibility, unlike on delivery');
+});
+
+test('a manager cancelling the leave they approved is not told about it', async () => {
+  // The original's third term. The row names the caller as its own approver,
+  // which is the shape an `agency_admin` who is also the named manager hits.
+  const { handler, sent, minted, post } = serveCancel({
+    delivery: true, previous: 'approved',
+    row: cancelled({ manager_email: 'nurse@example.test' }),
+  });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.email, false);
+  assert.equal(answer.delivery_paused, false);
+  assert.deepEqual(sent, []);
+  assert.deepEqual(minted, []);
+});
+
+test('and that comparison is case-insensitive, as the original is not', async () => {
+  // Driven directly rather than through the handler, because the authority
+  // envelope refuses a non-normalised caller address before a handler runs —
+  // so the case this guards against cannot be reached from outside, and the
+  // comparison is kept anyway because the addresses come from two sources.
+  const attempts = [];
+  const answer = await notifyTimeOffCancelled({
+    request: cancelled({ manager_email: 'Manager@Example.test' }),
+    previousStatus: 'approved',
+    actor: { userEmail: 'manager@example.test' },
+    config: { deliveryReleased: true },
+    integration: () => { attempts.push('SendEmail'); return { accepted: true }; },
+    contract: () => { attempts.push('createNotification'); return { success: true }; },
+  });
+  assert.equal(answer.email, false);
+  assert.deepEqual(attempts, [], 'neither half was attempted');
+});
+
+test('a request with no manager named notifies nobody and pauses nothing', async () => {
+  const { handler, sent, minted, post } = serveCancel({
+    delivery: false, previous: 'approved', row: cancelled({ manager_email: null }),
+  });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.delivery_paused, false, 'there was no delivery to pause');
+  assert.deepEqual(sent, []);
+  assert.deepEqual(minted, []);
+});
+
+test('a paused deployment still mints the withdrawal row and attempts no send', async () => {
+  const { handler, sent, minted, post } = serveCancel({ delivery: false, previous: 'approved' });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.delivery_paused, true, 'a recipient exists and the channel is off');
+  assert.equal(answer.email, false);
+  assert.deepEqual(sent, []);
+  assert.equal(minted.length, 1, 'the row is not delivery-gated (D51)');
+});
+
+test('a missing previous_status is treated as ineligible, not as approved', async () => {
+  // Fails safe. A deployment running the contract from before the forward
+  // migration answers without the key, and the alternative — assuming the
+  // request had been approved — would mail a manager about a withdrawn pending
+  // request on exactly the deployments that cannot tell.
+  const { handler, sent, minted, post } = serveCancel({ delivery: true, previous: null });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.email, false);
+  assert.deepEqual(sent, []);
+  assert.deepEqual(minted, []);
+});
+
+test('the withdrawal message names the employee, the type and the dates', () => {
+  const message = timeOffCancelledMessage(cancelled());
+  assert.equal(message.subject, 'Time off cancelled by nurse@example.test');
+  assert.match(message.body, /previously approved paid time off/);
+  assert.match(message.body, /2026-10-05/);
+  assert.match(message.body, /team calendar/);
 });

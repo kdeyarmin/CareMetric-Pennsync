@@ -57,8 +57,10 @@
 // `createNotification` contract called per recipient or a mint inside the
 // contract's own transaction, which is a forward migration; recorded here
 // rather than invented around, and left for the change that takes it.
-// **`cancelTimeOffRequest` is deliberately NOT in this change, and the reason
-// is a missing field rather than a judgement.** Its original notifies the
+// **`cancelTimeOffRequest` is now here too, and the field it was waiting for
+// arrived as a forward migration** — the header below says which and why. What
+// follows is the note it was blocked by, kept because it is the reason the
+// contract has a `previous_status` at all: Its original notifies the
 // manager only when `emailEligible` — the request was `approved` BEFORE the
 // cancellation, a manager is named, and the canceller is not that manager. The
 // first of those cannot be evaluated here: `contract_time_off_cancel` updates
@@ -169,6 +171,22 @@ export function timeOffSubmittedMessage(request) {
     summary,
   };
 }
+
+/**
+ * **THE CALLER'S ADDRESS IS `actor.userEmail`, NOT `actor.email`.** `authority`
+ * returns a frozen projection whose keys are camelCase (`authority.mjs:86`),
+ * and there is no `email` on it at all. Three senders here read `actor?.email`
+ * and got `undefined` every time: the submit fan-out, where a `??` fallback to
+ * the row's `employee_email` made the answer accidentally right because the
+ * contract writes the caller there; the credential decision, where it silently
+ * printed an EMPTY "Approved by" row on a compliance document; and the
+ * withdrawal notice, where it defeated the check that stops a manager being
+ * told about a cancellation they performed. Only the third failed a test, and
+ * only because that test compares two addresses rather than reading one — a
+ * notice built from `undefined` renders and sends. The lesson is the fallback:
+ * `actor?.email ?? request?.employee_email` cannot fail, so it cannot report
+ * that its first operand is never a value.
+ */
 
 /**
  * The sends themselves, best-effort per recipient exactly as the originals are:
@@ -306,7 +324,7 @@ export async function notifyTimeOffSubmitted({ request, actor, config, integrati
   try {
     const manager = typeof request?.manager_email === 'string' && request.manager_email.trim() !== ''
       ? [request.manager_email]
-      : await agencyAdminRecipients(contract, actor?.email ?? request?.employee_email);
+      : await agencyAdminRecipients(contract, actor?.userEmail ?? request?.employee_email);
     // The row first and ungated, in the original's order. A paused deployment
     // still writes it, because a notification is a row (D51).
     await mintNotifications(contract,
@@ -485,7 +503,7 @@ export async function notifyCredentialReviewed({ credential, actor, config, inte
       : [];
     deliveryPaused = to.length > 0 && config?.deliveryReleased !== true;
     if (to.length > 0 && !deliveryPaused) {
-      const message = credentialReviewedMessage(credential, actor?.email);
+      const message = credentialReviewedMessage(credential, actor?.userEmail);
       email = await deliverNotices({
         integration, recipients: to, subject: message.subject, body: message.body,
       });
@@ -567,6 +585,104 @@ export async function notifyCredentialRenewal({ credential, params, config, inte
     }
   } catch {
     // Best-effort: the original logs and answers, and the credential stands.
+  }
+  return { email, delivery_paused: deliveryPaused };
+}
+
+/**
+ * The manager's message when an APPROVED request is withdrawn, from
+ * `cancelTimeOffRequest`'s original. `who` is the employee on the row, which is
+ * the original's `request.employee_name || request.employee_email` and, since
+ * the carried `user` table has no name column (D38), only ever the address.
+ */
+export function timeOffCancelledMessage(request) {
+  const who = request?.employee_name || request?.employee_email || '';
+  const prettyType = String(request?.request_type ?? '').replace(/_/g, ' ');
+  const span = `${request?.start_date ?? ''} → ${request?.end_date ?? ''}`;
+  return {
+    subject: `Time off cancelled by ${who}`,
+    body: renderBrandedEmail({
+      preheader: `${who} cancelled their previously approved ${prettyType}.`,
+      eyebrow: 'Time off cancelled',
+      title: `Time off cancelled by ${who}`,
+      intro: `${who} has cancelled their previously approved ${prettyType} for ${span}.`,
+      sections: [
+        { rows: [['Employee', who], ['Type', prettyType], ['Dates', span]] },
+        { note: 'View the team calendar in PennSync under Time Off.' },
+      ],
+    }),
+  };
+}
+
+/**
+ * The manager's in-app row for the same event. `priority` is `low`, which is
+ * the only one of the five notices where it is not `medium` — the original's,
+ * and a withdrawal is information rather than an ask.
+ */
+export function timeOffCancelledNotification(request) {
+  const who = request?.employee_name || request?.employee_email || '';
+  const prettyType = String(request?.request_type ?? '').replace(/_/g, ' ');
+  const span = `${request?.start_date ?? ''} → ${request?.end_date ?? ''}`;
+  return {
+    user_email: request?.manager_email,
+    title: 'Time off cancelled',
+    message: `${who} cancelled their ${prettyType} (${span}).`,
+    type: 'info',
+    priority: 'low',
+    action_url: '/TimeOff',
+    action_label: 'View calendar',
+    metadata: { time_off_request_id: request?.id ?? null },
+  };
+}
+
+/**
+ * The withdrawal notice, and the one sender whose eligibility was UNANSWERABLE
+ * until the contract changed.
+ *
+ * **`previousStatus` is the whole reason this exists.** The original's
+ * `emailEligible` is three terms — the request was `approved` BEFORE the
+ * cancellation, a manager is named, and the canceller is not that manager — and
+ * the first could not be evaluated from an answer whose `status` the contract
+ * had just set to `cancelled`. `20260920680000_time_off_cancel_previous_status.sql`
+ * answers it from the row the contract locks, so the value is the store's at
+ * the moment of the change rather than anything a caller or an earlier read
+ * supplied.
+ *
+ * **BOTH halves are behind that one condition, which is why they ship
+ * together.** The original's `Notification.create` and its `Core.SendEmail` are
+ * inside the same `if (emailEligible)` block, so a withdrawn `pending` request
+ * notifies nobody in Base44 and must notify nobody here — the in-app row is
+ * ungated on DELIVERY (D51) and is not ungated on eligibility.
+ *
+ * The canceller is compared against the manager the way the original does it,
+ * on the address, and the caller's own is taken from the actor rather than from
+ * the row: a `pending` request the employee withdraws never reaches this, and
+ * an `agency_admin` cancelling somebody else's approved leave is the case the
+ * third term is for.
+ */
+export async function notifyTimeOffCancelled({
+  request, previousStatus, actor, config, integration, contract,
+}) {
+  let email = false;
+  let deliveryPaused = false;
+  try {
+    const manager = typeof request?.manager_email === 'string' && request.manager_email.trim() !== ''
+      ? request.manager_email
+      : '';
+    const canceller = typeof actor?.userEmail === 'string' ? actor.userEmail : '';
+    const eligible = previousStatus === 'approved' && manager !== ''
+      && manager.toLowerCase() !== canceller.toLowerCase();
+    if (!eligible) return { email, delivery_paused: deliveryPaused };
+    await mintNotifications(contract, [timeOffCancelledNotification(request)]);
+    deliveryPaused = config?.deliveryReleased !== true;
+    if (!deliveryPaused) {
+      const message = timeOffCancelledMessage(request);
+      email = await deliverNotices({
+        integration, recipients: [manager], subject: message.subject, body: message.body,
+      });
+    }
+  } catch {
+    // Best-effort, as the original is: the cancellation is recorded either way.
   }
   return { email, delivery_paused: deliveryPaused };
 }

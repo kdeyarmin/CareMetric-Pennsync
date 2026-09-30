@@ -1563,8 +1563,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 50 | 37 |
-  | `integration` (derived) | 23 | 22 |
+  | `mutating` (derived) | 49 | 37 |
+  | `integration` (derived) | 24 | 23 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1709,6 +1709,18 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   prerequisites follow from the contracts its handlers call, and these two
   handlers gained a contract call. The read waves do not move, because those
   three files were already theirs.
+
+  The fifth workforce sender transferred with them once the store could answer
+  its condition: mutating 50 → 49 and integration 23 → 24, with integration's
+  migrations 22 → 23 for the forward file
+  `20260920680000_time_off_cancel_previous_status.sql`, which replaces the
+  cancel contract so its answer names the status it replaced.
+  `20260920230000_contract_time_off.sql` still does not move a column, but the
+  reason has changed and is worth writing down: it stayed before because
+  `cancelTimeOffRequest` was left behind in `mutating`, and now nothing is left
+  behind — `getApprovedTimeOff` reaches that file from `read-only`, which holds
+  it either way. A prerequisite that did not move for one reason and then does
+  not move for another looks like nothing happening.
 
   The send's own switch, separate from `PENNSYNC_API_RELEASE`, is
   `PENNSYNC_API_DELIVERY=enabled-v1`, read exactly and untrimmed; it was written

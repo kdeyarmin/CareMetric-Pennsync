@@ -21,6 +21,7 @@ import { sendAccountReadyEmail, sendWelcomeEmail } from './account-email.mjs';
 import {
   notifyCredentialRenewal,
   notifyCredentialReviewed,
+  notifyTimeOffCancelled,
   notifyTimeOffReviewed,
   notifyTimeOffSubmitted,
 } from './workforce-email.mjs';
@@ -1110,9 +1111,29 @@ export const HANDLERS = Object.freeze({
     },
   }),
   cancelTimeOffRequest: Object.freeze({
-    async handle({ params, contract }) {
+    // The last of the five, and the only one that needed the store to change.
+    // Its notice is eligible only when the request was `approved` BEFORE the
+    // cancellation, and the contract used to answer with the row it had just
+    // set to `cancelled`, so the question was unanswerable rather than merely
+    // unasked. `20260920680000_time_off_cancel_previous_status.sql` adds
+    // `previous_status` to the ANSWER — not to the row, which has no such
+    // thing — read from the row the contract locks.
+    //
+    // Both halves of the notice are behind that one condition in the original,
+    // so a withdrawn `pending` request still notifies nobody. That is why the
+    // in-app row is minted inside the sender rather than unconditionally: it is
+    // ungated on delivery (D51), not on eligibility.
+    needsIntegration: true,
+    async handle({ actor, params, config, integration, contract }) {
       exactObject(params, ['request_id'], 'INVALID_PARAMS');
-      return { ...(await contract('cancelTimeOffRequest', params)), delivery_paused: true };
+      const answer = await contract('cancelTimeOffRequest', params);
+      return {
+        ...answer,
+        ...(await notifyTimeOffCancelled({
+          request: answer?.request, previousStatus: answer?.previous_status,
+          actor, config, integration, contract,
+        })),
+      };
     },
   }),
   reviewTimeOffRequest: Object.freeze({
