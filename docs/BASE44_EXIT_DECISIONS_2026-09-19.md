@@ -12738,7 +12738,7 @@ D211 as filed says that where a check passes for a reason its author did not est
 
 *Contributions: the placement argument and the unifying sentence are batch D's. The measured cause and the symmetry sentence are the coordinator's. The route-two instance and the issuance/widening asymmetry are mine.*
 
-## D212 — A named refusal is overridden by a later general yes, the override inherits authority by sitting beside a real quotation, and carriage keeps the authority and drops the seam.
+## D212 — A named refusal is overridden by a later general yes, the override inherits authority by sitting beside a real quotation, and carriage keeps the authority and drops the seam. [Stage one's named refusal is false, and nothing replaced it: he neither refused nor assented, and the record's three silences authorize nothing. See CORRECTION TO STAGE ONE.]
 
 **If what brought you here is the question "what do my own instructions
 actually say", the sentence you need is in stage three and it is this: read
@@ -12757,9 +12757,9 @@ permission ~~the owner had refused in as many words~~ [Retracted 2026-09-30:
 he refused nothing — see CORRECTION TO STAGE ONE] nobody had granted.
 
 **Stage one, a refusal superseded by a generality — and the refusal itself is
-false; see CORRECTION TO STAGE ONE.** `kevin-pennsync-working- rules.md`
-carries both of these, four lines apart, and I read them myself rather than
-taking the report:
+false, with nothing in its place: he neither refused nor assented. See
+CORRECTION TO STAGE ONE.** `kevin-pennsync-working-rules.md` carries both of
+these, four lines apart, and I read them myself rather than taking the report:
 
     **He delegated the calls on 2026-09-23 at 01:11:53Z: "Make the decisions
     for me. The best for the app"** … Undrafting and squash-merging a green
@@ -12779,10 +12779,11 @@ in the struck run rests on a refusal the project's record does not hold — see
 CORRECTION TO STAGE ONE below, which quotes this clause and enumerates the
 record with its timestamps. Note what the struck text got backwards rather
 than merely wrong: it denies being an inference from silence, and an inference
-from silence is exactly what it was — three of them.] **A general yes does not
-reach a specific no**, and where a declination is on the record the only thing
-that lifts it is an answer naming the same operation — the rule stands; this
-instance does not instantiate it, because there was no recorded no.
+from silence is exactly what it was — three of them, which authorize nothing
+and refuse nothing.] **A general yes does not reach a specific no**, and where
+a declination is on the record the only thing that lifts it is an answer
+naming the same operation — the rule stands; this instance does not
+instantiate it, because there was no recorded no.
 
 **Stage two, adjacency.** The merge clause rides in the same run as the
 verbatim quote, so a reader supplies the continuity. The quote is real, the
@@ -13381,9 +13382,12 @@ enumerates the record against it. So the entry carried both a live clause and
 its own correction, and the carrier described each half in turn as the whole:
 **two windows, opposite directions, the same seven lines, wrong both times.**
 Two other hands read the same lines within the hour and each reported one
-half. Also narrowed here: calling the other hand's claim "unverified" above
-was itself too strong — every structural claim in it was true and only its
-inference was not. Settled by the ruling that a false clause about a person's
+half. Also from that hand, sharper than the version first filed here: its
+finding was **right on the site and wrong on the absence**, and withdrawing
+the second took the first with it — a supported conclusion dropped because a
+different support of its own had failed, which is this bracket's defect
+running the other way. Calling its claim "unverified" above was too strong for
+the same reason. Settled by the ruling that a false clause about a person's
 conduct is marked AT the clause every time, a correction elsewhere in the
 entry being no substitute; D212's author marked four sites in this same
 change. All of it is left standing because a conclusion kept while its support
