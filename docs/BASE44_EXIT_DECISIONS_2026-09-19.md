@@ -13417,3 +13417,58 @@ it in one hour.]*
 *The revision is where the hash earned its keep, and that is the transferable half. It arrived as two replacement blocks rather than as a body, each introduced as what a paragraph "now" reads. **A replacement block quoted without its join is not self-delimiting.** The first of the two had exactly two readings — the new text REPLACING the paragraph it opens, or the new text standing in front of the sentences already there — and both produce coherent prose. The wrong one is 539 bytes shorter and silently drops the nearest-neighbour warning the same message calls mandatory. Nothing in the text distinguishes them; the byte count and the hash did, on the first attempt. Without them this entry would have been filed short in exactly the shape its siblings record above, where a body 861 bytes short passed every containment check this document runs.*
 
 *The worked example inside the entry is its author's own merge of #357, and the ruling on the merge question behind it is the coordinator session's. The carrier holds the register, has no stake in that merge, and was asked for the framing on that basis; it says nothing here about whether the merge was right, and the entry's author says what the decision was. Plan walked the prior-instance search, did not read this body, and its caveat about the walk's bound stands in plan's own terms inside the entry rather than being summarised by the carrier. One further instance, routed through plan from a fourth session, is deliberately absent at its author's decision: that session's first-hand account has not reached it, and the register's rule is not to cite a second instance until it is settled.*
+
+## D224 — The runtime authorizes the tenant, the contract authorizes the chart
+
+D77 deferred the file layer's reader-authorization question and named the reason precisely: `services/integration-runtime` is uploader-owned, so a migrated object has no reader, and giving that runtime record or tenant authorization is a decision about its own authorization model rather than something a copy tool may take. D85 re-measured that claim, found it held, and named what was missing — the record-authorized predicate already exists and is proved, and what is absent is a path from a handle to it. This decision takes that question.
+
+Ownership becomes a property of the row. `owner_kind = 'subject'` is the existing model byte for byte and is what every existing row is; `owner_kind = 'record'` binds the object to an agency and is readable by an active membership of it. The runtime authorizes the **tenant** and the calling contract authorizes the **chart**, and neither is asked the other's question. The runtime cannot evaluate `caller_assigned_patients` without the record store, and handing it that store is the widening D77 refused; the contract can, and already does on every path.
+
+**The property that had to survive is that a `cmfile:` handle is not a bearer capability.** It survives, and this is the load-bearing half: the agency a record-owned read is admitted under is the one the runtime resolved for itself, from the caller's own bearer, through live authority on every request. It is never something the caller sends. A handle leaking through a log, a URL or a screenshot buys its holder nothing, because they must independently qualify in the tenant.
+
+A signed grant minted by `pennsync-api` was the alternative and was **rejected**: the runtime already resolves the caller's authority independently, so a grant buys a fact it can derive, in exchange for a shared secret and an operator variable on two services. Where a service can read the fact itself, do not send it the fact.
+
+**The direction is restoration, not addition.** A `file_url` on a carried row is reachable in Base44 today by every authorized reader of that row, with no tenant check at all. What ships here is strictly narrower than that: an active membership in the object's own agency, and the chart predicate above it.
+
+**The hazard is recorded rather than hidden.** At the runtime's layer a record-owned object is agency-wide, which is D45's shape — tenancy is not ownership. The chart narrowing rests entirely on the contract above it. What is given up is that a buggy or compromised `pennsync-api` could reach any record-owned object in an agency its caller belongs to. That is the cost of not giving the runtime the record store, and it is the right side of that trade because the alternative widens the runtime permanently to close a hole that requires a second compromise to open.
+
+**Nothing here mints or alters a membership.** Every path reads one that already exists.
+
+Three narrowings came with it and each is deliberate. `cm_integration_file_get` **gained** `owner_kind = 'subject'` — a record-owned row carries its minter in `subject` as provenance, so without that filter the minter alone would match the old getter and reach their own record-owned object by the uploader path; a getter that hands back a row the caller may not read is the wrong place to rely on a later check. The object path embeds the agency exactly as the uploader path embeds the subject, so a row whose tenancy was altered no longer addresses its bytes. And `UploadRecordFile` is a separate operation rather than a flag on the existing uploads, so the operator allowlist governs it explicitly; it joins `BROWSER_FORBIDDEN_OPERATIONS` for the reason `SendEmail` is there, and it refuses outright when a request carries no agency rather than quietly minting an object only its author could open.
+
+**The copy plan's contract goes to v2 as a consequence of this decision, and needs no number of its own.** A plan must now carry the agency of each reference, because a v1 export cannot say what tenant to mint into and accepting one would mean guessing at it. Nothing reads v1 — the string appears nowhere in the tree, the only callers of the planner are the tool and its tests, and no export file exists — so the bump breaks nothing.
+
+**One thing this decision does not take.** A locator reached from more than one agency cannot be served to both: the mapping is keyed on the locator, so one upload becomes one handle, and one handle binds to one tenant. Mapping it would make a file unreachable from an agency that reaches it today, which is the product doing less and somebody noticing. So the plan **measures** them — naming each locator and the fields that reach it, never the rows, because a row id would put a clinical subject in the plan — and `applyFileCopy` refuses while any exists, with `FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED`. It does not drop them and it does not retarget them. Whether any exist is a property of an operator's export and is not derivable from this tree, so it is asserted here in neither direction.
+
+**The test lesson, which is the most reusable part.** The reader-split suite's first version passed under sabotage. Its store double answered the way the migration's SQL answers, so it refused a foreign tenant before the runtime was ever asked — proving the store's predicate and not the runtime's. Deleting the runtime's agency comparison left every case green. The general rule, now written where the tests are rather than here: **a layered check is proved only against a fixture in which every layer beneath it has already failed.** The suite now carries a permissive store that hands the row to everybody, and what is under test is the runtime refusing anyway.
+
+**A postscript worth one sentence in the register, because it is the same lesson from a third angle.** CI then found the shape again in a suite that needs a running local stack and so cannot run in a cloud container: `http-storage.test.mjs` failed with `LOCAL_FOREIGN_FILE_NOT_DENIED`, and the foreign caller genuinely was refused — by the fixture's own egress allowlist, which named the old getter and not the new one. A suite whose purpose is to prove the runtime denies a foreign caller was proving that its own test double does. The underlying cause was that the stack installer filtered the migration directory to the original five files, so the new getter did not exist in the stack the real providers run against.
+
+*Carried by the register's collector, 2026-09-30, unedited. The entry is the
+file-layer thread's, written to stand on its own; the collector added the
+heading above and this note and changed nothing between them. The body as
+received is 6,419 bytes, sha256
+`d5536ec2526669ec8f83b0b342ffafe3032f619f380a0784da237295304fa7ab`, so a later
+reader can tell whether it was filed whole — which is the check D222 records
+this document needing, after a body 861 bytes short passed every containment
+check it runs.*
+
+*It reached the collector directly rather than through the coordinator session,
+at its author's decision and for the reason the author gave: a hop only risks
+dropping a clause. The number came from the coordinator in the sentence that
+assigned it, which is this register's rule — numbers are issued one at a time
+and never taken off a page — and it matches what the collector held at the time
+of filing, D223 and D224 in flight with D225 next free.*
+
+*It lands here rather than on its own branch because it was written into this
+document on that branch and taken back out: this register's branch is far ahead
+of `main` and edits the same file, so the two would have conflicted on whichever
+landed second. Nothing in the tree reads this document — D224 is named only in
+four prose comments inside test and fixture files — so pull request #372 is
+self-contained without it. The v2 bump of the copy plan's contract carries no
+number of its own, by the entry's own words.*
+
+*The collector holds the register, took no part in the reader-split decision and
+makes no claim here about whether it is right; the judgements, the rejected
+alternative, the recorded hazard and the undecided cross-agency locator are the
+author's, in the author's words.*
