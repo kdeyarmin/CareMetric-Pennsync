@@ -1224,6 +1224,34 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_AI_AGREEMENT_VERSION_STALE',
     ]),
   }),
+  // The self-service duty toggle, and the FIRST capability to write a profile
+  // row through a contract. The body travels as one jsonb object rather than a
+  // parameter per field because the original distinguishes a key that is
+  // ABSENT from one whose value is `null`: absent leaves a field, null clears
+  // it, and a parameter list collapses the two.
+  //
+  // `PENNSYNC_DUTY_TARGET_FORBIDDEN` is the partial's refused leg: naming
+  // somebody else is gated on `isProtectedSuperAdmin` in the original, the
+  // platform tier D14 and D22 removed, so it answers by name rather than
+  // silently. Naming yourself is accepted, because the original accepts it.
+  setNurseDutyStatus: Object.freeze({
+    rpc: 'pennsync_contract_duty_status_set',
+    params: Object.freeze(['updates']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_updates: args.updates ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_DUTY_AGENCY_NOT_HELD',
+      'PENNSYNC_DUTY_BODY_INVALID',
+      'PENNSYNC_DUTY_STATUS_INVALID',
+      'PENNSYNC_DUTY_SCHEDULE_PAIR_REQUIRED',
+      'PENNSYNC_DUTY_SCHEDULE_INCOMPLETE',
+      'PENNSYNC_DUTY_SCHEDULE_INVALID',
+      'PENNSYNC_DUTY_SCHEDULE_BACKWARDS',
+      'PENNSYNC_DUTY_SCHEDULE_TOO_LONG',
+      'PENNSYNC_DUTY_TARGET_FORBIDDEN',
+      'PENNSYNC_DUTY_MESSAGE_INVALID',
+      'PENNSYNC_DUTY_NOTHING_TO_UPDATE',
+    ]),
+  }),
   // Signing a policy acknowledgment: the THIRD partial port. `list` is refused
   // by name because its gate is `u.role === 'admin'`, the Base44 built-in
   // admin — the platform tier D14 and D22 removed, exactly as D31 found for

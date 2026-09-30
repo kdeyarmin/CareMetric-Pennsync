@@ -18,6 +18,7 @@
     "src/components/referral/ReferralTriageAnalyzer.jsx:50 triageReferralWithAI",
     "src/components/smartNote/persistVisitNote.js:300 appendPatientNoteHistory",
     "src/components/tasks/ProactiveClinicalTaskGenerator.jsx:57 analyzeAndGenerateClinicalTasks",
+    "src/components/voice/DutyStatusCard.jsx:92 setNurseDutyStatus",
     "src/functions/acceptAiContentAgreement.js:4 acceptAiContentAgreement",
     "src/functions/analyzeVisitForSupplyUsage.js:3 analyzeVisitForSupplyUsage",
     "src/functions/cancelTimeOffRequest.js:3 cancelTimeOffRequest",

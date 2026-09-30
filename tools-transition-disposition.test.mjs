@@ -897,10 +897,18 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // Read it beside D83, which took `MedicareGuideline`'s two writers out of
   // this same bucket the same way: a blocked port and a capability that is not
   // being carried are not the same thing, however alike they look in a count.
+  // Then D223, which is the ordinary kind of move and the first out of this
+  // bucket in a while: `setNurseDutyStatus` is WRITTEN, so
+  // `entity_authorization` 6 → 5 and `none` 78 → 79 — a capability crossing,
+  // unlike D153's and D83's, where a count fell and nothing was carried. The
+  // five that stay are what D223 is about: each writes something only an
+  // ADMINISTRATIVE profile-write path could permit, and D223 refuses to build
+  // one, because D23 had already moved every one of those columns to the
+  // membership, the credential contract or the identity map.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 6, patient_access_model: 0,
+  assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
     records_schema: 0, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 78 });
+    external_secret: 2, none: 79 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -962,11 +970,28 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // generalises past this bucket: `enforceStaffRoleIntegrity` reverted a
   // spoofed `User.staff_role`, and in this store the column is constrained on
   // both tables and writable by nobody, so the sweep has no work left rather
-  // than no permission. Six remain that write somebody else's row, a column
-  // outside D82's set, or a payload nothing can read.
+  // than no permission.
+  //
+  // D223 then took the FOURTH, and this one is the ordinary kind: D82 had
+  // named `setNurseDutyStatus` as the one capability its decision actually
+  // reached, held only because the module writes through `asServiceRole` with
+  // a payload assembled elsewhere, so nothing could read it as staying inside
+  // the narrowing. `contract_duty_status_set` is that reading — the self leg
+  // served against D82's own policy and guard, the leg that named somebody
+  // else refused by name, which is D81's partial shape.
+  //
+  // FIVE remain, and D223 is the decision that says why they stay rather than
+  // leaving them to look like unwritten ports. Each writes somebody else's
+  // row, a column outside D82's set, or a payload nothing can read — and the
+  // administrative path that would permit any of it is REFUSED there, because
+  // D23 had already moved every one of those columns to the membership, the
+  // credential contract or the identity map. `autoEndDutyDay` is the one to
+  // read twice: both columns it writes ARE on D82's allowlist and it stays
+  // here because `schedulerAuth` means it has no caller at all, which is
+  // D49's open question and not this one.
   assert.deepEqual(report.port_blockers.entity_authorization,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
-      'setNurseDutyStatus', 'userManagement', 'userManagementV2']);
+      'userManagement', 'userManagementV2']);
   // ZERO. That is how many of the hundred are still waiting on the record
   // store, and it reached zero on a CORRECTION rather than on a port: D75
   // found that the last entry, `processCompletedVisit`, pauses at source with
@@ -1107,6 +1132,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'sendAccountReadyEmail', 'sendCredentialRenewalReminders',
       'sendExpirationNotifications', 'sendPersonnelExpirationNotifications',
     'sendWelcomeEmail',
+      'setNurseDutyStatus',
       'submitIncidentReport',
       'submitPersonnelCredential', 'submitStateReportableIncident',
       'submitTimeOffRequest', 'submitTimesheet',

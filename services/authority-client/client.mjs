@@ -184,6 +184,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   reviewTimeOffRequest: 'json',
   reviewTimesheet: 'json',
   submitTimesheet: 'json',
+  setNurseDutyStatus: 'json',
   analyzeVisitForSupplyUsage: 'json',
   importProvidersCsv: 'json',
   expandClinicalPhrase: 'json',

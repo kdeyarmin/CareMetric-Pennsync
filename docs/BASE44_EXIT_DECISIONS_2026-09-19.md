@@ -10572,3 +10572,102 @@ A partition with three free terms and one total is not self-checking: two wrong 
 The tell is the shape of the act: treating a partition as something to keep CONSISTENT rather than something to RE-DERIVE. Consistency is available to a wrong answer. The remedy is that a partition is re-derived from the instrument at every head, never adjusted to absorb a change, and a term is never carried across a head change on the grounds that the rest of the sum still works. Where a sum has more free terms than constraints, its closing tells you nothing and should not be reported as though it did.
 
 Both of tonight's slips have that shape, and the first is the cheaper illustration: I reported a figure as dropped at strict 15 by double-counting seven sites that had already been struck before the total they were subtracted from was formed.
+
+## D223 — The administrative profile-write path is refused, because D23 already moved its contents (2026-09-30)
+
+**Decision.** `pennsync_records.user` gets no second write policy. D82's one
+update policy — `id = caller_user_id()`, with the `PROFILE_SELF_WRITABLE`
+trigger over it — stays the whole of the write path. There is no
+administrative leg: not for a manager, not for an `agency_admin`, not for the
+record owner. Every capability that was waiting on one is routed instead to
+the store object that already answers it, by name and with a reason, below.
+
+**Why this is a refusal rather than an omission.** D82 wrote that an
+administrative write path "is a separate decision and stays unbuilt", and left
+`entity_authorization` at eight with the observation that every member writes
+something D82 does not permit. Read as a queue that is one decision from
+clearing, that reads as six ports waiting on a policy somebody has to write.
+It is not. Reading what the six actually write, column by column, the
+administrative path **dissolves**: almost nothing in it is a profile write at
+all under the owned model, because D23 already moved those columns to the
+membership, and the leftovers each have a home that is not this table.
+
+That is the transferable part. **When a bucket looks like it is waiting on a
+mechanism, enumerate what the mechanism would have to permit before building
+it.** The mechanism here would have had to permit `role`, `staff_role`,
+`is_approved`, `care_scope`, `is_active` and the `offboarded_*` trio — which
+is to say it would have had to re-admit, through a second door, exactly the
+self-asserted authority D23 spent its whole decision removing.
+
+### Where each of the five goes
+
+`setNurseDutyStatus` is not in this list because it is **written**: D82 named
+it as the one capability its decision actually reached, and
+`20260920680000_contract_duty_status.sql` is that port, in D81's partial
+shape. `entity_authorization` is five, and stays five on purpose.
+
+- **`userManagement` and `userManagementV2` are ONE capability.** Their
+  `entry.ts` files are byte-identical apart from a trailing comment naming the
+  second the production replacement — D42's `resendInvitation` shape exactly,
+  so when either is ported it is one contract with two handler names and a
+  test that reads both files. Their `updateUser` writes five fields and not
+  one of them belongs here: `role` and `staff_role` are authority
+  (`contract_membership`, D35), `credential_type` is an attestation somebody
+  verifies (`contract_credential_review`, D40), `phone` is already on D82's
+  allowlist for its own subject, and `full_name` has no carried column at all
+  — the staff name lives in `pennsync_private.staff_name`, and who may set one
+  is the owner's, not this decision's.
+- **`autoApproveInvitedUser`** writes `is_approved`, `role`, `care_scope` and
+  `staff_role` on somebody else's row when an invitation is accepted. All four
+  are the membership's, and the invitation half is D42's paused delivery. What
+  it is waiting for is an enrolment decision, not a policy.
+- **`offboardUser`** writes `is_active` and the `offboarded_*` trio. The
+  authoritative half of deactivating somebody is `identity_map.enabled`, whose
+  revocation its own trigger makes one-way, plus membership revocation (D35)
+  and chart-assignment revocation (D33) — all three built. The carried columns
+  are Base44's own bookkeeping, and D23 already says they decide nothing. It
+  carries a second thing this decision deliberately does not take: its ENTIRE
+  gate is `isProtectedSuperAdmin`, the platform tier D14 and D22 removed, so
+  it has no performer left — the shape of `reviewPersonnelCredential` before
+  D40. D40's widening reaches a capability whose only gate is the built-in
+  `role === 'admin'` and does **not** reach a `SUPER_ADMIN_EMAIL`-only one, so
+  naming an `agency_admin` as the successor is a widening beyond D40, and
+  D40's own precedent puts a widening with the owner.
+- **`autoEndDutyDay` is the one to read twice, for the second time.** D82
+  already flagged it: both columns it writes ARE on the allowlist, and it is
+  blocked because it has no caller at all — `schedulerAuth` admits a shared
+  secret, and "the caller's own row" admits a shared secret to nothing. So it
+  is not waiting on an administrative path either. It is D49's open question,
+  the cross-tenant scheduler identity, and it will still be there when this
+  decision is old.
+
+### What the refusal costs, said plainly rather than left to be discovered
+
+An `agency_admin` cannot correct a colleague's telephone number, set their
+discipline, or approve them, through this table. Two of those three have a
+destination already — the membership for the discipline and the approval —
+and the third is a real gap: nobody but the subject can fix a wrong `phone`.
+That is the cost, it is small, and it is the right side to be wrong on,
+because the alternative is a column list that somebody widens later in the
+permissive direction under time pressure. D82's own argument against a
+denylist applies to an administrative allowlist with equal force: the columns
+that get added to a staff table are job titles, approvals and scopes.
+
+The narrow shape also stays widenable without a data migration, which is the
+property D82 chose it for. If a capability later needs an administrative leg,
+it arrives as its own contract with its own reviewed gate — the way every
+other cross-person write in this store arrived — rather than as a policy that
+settles the question for all of them at once. **A policy is a decision about
+every capability that will ever touch the table; a contract is a decision
+about one.** That asymmetry is the whole reason this is refused rather than
+deferred.
+
+### What it does to the queue
+
+`port queue: entity_authorization=5 files=12 external_secret=2 none=79`, from
+`node tools-transition-disposition.mjs --summary` at the head this change was
+written on. The bucket falls by one and the five that remain are pinned BY
+NAME in `tools-transition-disposition.test.mjs`, because a count alone passes
+a swap — and because the thing this decision is most likely to be misread as
+is a promise that the five are coming. They are not coming until somebody
+decides who enrols, who offboards, and who the scheduler is.
