@@ -359,9 +359,13 @@ written.
    entities' dispositions splits them three ways: sites a route already serves,
    sites that could be adopted against the owned store, and sites that **cannot
    land at all** because the entity's domain was decided `hub` or
-   `preserved_paused` — those need a product answer, not an edit, and no amount
-   of frontend work reduces them. Sizing this item off the single number 453
-   overstates the editable part and understates the decisions.
+   `preserved_paused` — no amount of frontend work reduces them. Sizing this
+   item off the single number 453 overstates the editable part and understates
+   the decisions. **But "those need a product answer" is wrong as a blanket
+   claim**: the `hub` domain's answer was given by D8, and D7 exempts the
+   schema-and-data half of `preserved_paused` in its own words. The split, its
+   instruments and what is genuinely left for the owner are under Stage J
+   below, with the counts marked as a dated reading.
 
    **What makes this item tractable, and Stage G's seven not, is one
    distinction that runs under both**: whether a capability exists, and whether
@@ -3904,9 +3908,46 @@ whose destination is the Hub; 75 are `preserved_paused`. **That 75 is not an
 off-by-one against the table's 74**, which counts `preserved_paused` inside
 `no_table` only — the 75th is the `no_realtime_seam` site, whose entity is also
 `preserved_paused`, so it is on the uncarried side too although its bucket is
-the one bucket that could fall either way. Each needs a product answer about
-what the feature becomes, not an edit somebody has not got to yet, so a plan
-that sizes this stage by the call-site count is sizing the wrong thing.
+the one bucket that could fall either way. A plan that sizes this stage by the
+call-site count is sizing the wrong thing.
+
+**"Each needs a product answer" was wrong, and it made this block read as the
+owner's when most of it is not.** **The page already disagreed with itself**:
+the paragraph above says 119 of the 194 are the training domain *whose
+destination is the Hub* — an answer already given — and the sentence that
+followed put all 194 under "each needs a product answer". Two adjacent
+sentences, checkable without re-running anything below. Measured 2026-09-30 on
+`36c828a0` against
+`tools-frontend-retired-inventory.mjs`, `src/lib/nav.manifest.js`,
+`discoverPausedFunctions` and `auditBrokerCeiling`. The structure below is
+durable; **the counts are a dated reading, so re-run those rather than quoting
+them.**
+
+- **Training and learning — `hub`, twelve entities.** Their product answer was
+  already given: D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` send them to
+  `kdeyarmin/caremetric-support-hub`, both controls unset behind a five-step
+  pre-cutover checklist. **They are neither his to decide nor ours to port**,
+  and porting their tables into the owned store would build precisely what D8
+  decided not to build. They also pass a restoration test outright — F19 in
+  `docs/audits/FEATURE_INVENTORY.md` reads "Working but needs improvement",
+  nine of their pages are in the nav manifest, and exactly one backing function
+  is paused at source. **That is why the reading survived: functioning today
+  and belonging here are different questions.**
+- **OASIS — `preserved_paused`, eight entities.** D7 already exempts the half
+  that looked gated: *"their schemas and data still migrate; only their
+  execution stays off"*. What is his is **activation**. What is not a table
+  away is the frontend: `auditBrokerCeiling` refuses all eight — seven deny
+  direct reads, `OASISUpload` conditions them, six name a clinical subject, two
+  can hold a file — so each call site needs a hand-written contract with its own
+  gate and refusals. **A domain with no backing Base44 function is MORE work
+  here, not less, because there is no capability to port.**
+- **Fax and voice — `preserved_paused`, six entities.** Whether these function
+  today is **not answerable from this tree.** D7's pauses are attested by
+  receipts rather than source flags, and the Telnyx credentials live in-app as
+  `IntegrationSecret` — so `discoverPausedFunctions` reads zero paused handlers
+  across all fourteen `FaxLog` functions while D7 lists fax as paused, and both
+  are correct. The instrument would be an authenticated read of the hosted
+  credential presence and the Base44 release flags. **None has been taken.**
 
 The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
 called fine: the family serves `Announcement`, `FacilityDocumentationRule` and
