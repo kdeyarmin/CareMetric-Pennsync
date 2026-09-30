@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 import { AUTHORITY_CONTRACT, AUTHORITY_RPC, resolveAuthority, validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 import { createHandler } from './app.mjs';
 import { HANDLER_NAMES, validatePatientData } from './handlers.mjs';
@@ -565,4 +566,49 @@ test('a handler may declare a request larger than the service default, and one d
   // A handler that declared nothing still refuses the same payload at 1 MiB.
   const refused = await send('validatePatientData', { csv_text: big });
   assert.equal(refused.status, 413);
+});
+
+test('every key read off the caller is one the authority projection carries', () => {
+  // The guard for a defect that SHIPPED. `resolveAuthority` returns a frozen
+  // camelCase projection, and three senders read `actor?.email`, which the
+  // projection has never carried — so the caller's address was `undefined`
+  // every time. One of the three had a `?? request?.employee_email` fallback
+  // that made the answer accidentally right, one printed an empty "Approved by"
+  // row on a compliance document, and one defeated a suppression check. None
+  // failed a test, because a message built from `undefined` renders and sends.
+  //
+  // The hazard is structural rather than a typo: the WIRE context is
+  // snake_case (`CONTEXT_KEYS`) and the projection renames seven of its keys to
+  // camelCase and drops the other nine, so both vocabularies are live one
+  // function apart and a reader of the wrong one fails silently.
+  //
+  // Read off the projection itself rather than from a list here, so the check
+  // cannot disagree with the thing it checks.
+  const source = readFileSync(new URL('authority.mjs', new URL('.', import.meta.url)), 'utf8');
+  const frozen = source.slice(source.indexOf('return Object.freeze({'));
+  const projected = new Set([...frozen.slice(0, frozen.indexOf('});'))
+    .matchAll(/^\s{4}([A-Za-z][A-Za-z0-9]*):/gm)].map(match => match[1]));
+  assert.ok(projected.has('userEmail') && projected.has('tenantRole'),
+    'the projection was not parsed — this check would pass vacuously');
+
+  const dir = new URL('.', import.meta.url);
+  const offenders = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.mjs') || file.endsWith('.test.mjs')) continue;
+    const text = readFileSync(new URL(file, dir), 'utf8');
+    // Comments are stripped first: this module's own header NAMES the wrong key
+    // in order to record the defect, and a check that reads a file for an
+    // absent name must say whether it means absent from the code or from the
+    // page.
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    for (const match of code.matchAll(/\bactor\s*\??\.\s*([A-Za-z][A-Za-z0-9_]*)/g)) {
+      if (!projected.has(match[1])) offenders.push(`${file}: actor.${match[1]}`);
+    }
+    // A destructure or a computed read would slip past the pattern above, so
+    // neither is allowed rather than being parsed.
+    assert.doesNotMatch(code, /\}\s*=\s*actor\b/, `${file}: destructures the caller`);
+    assert.doesNotMatch(code, /\bactor\s*\[/, `${file}: indexes the caller`);
+  }
+  assert.deepEqual(offenders, [],
+    'a handler reads a key the authority projection does not carry, which is undefined at runtime');
 });
