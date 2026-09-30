@@ -12738,7 +12738,7 @@ D211 as filed says that where a check passes for a reason its author did not est
 
 *Contributions: the placement argument and the unifying sentence are batch D's. The measured cause and the symmetry sentence are the coordinator's. The route-two instance and the issuance/widening asymmetry are mine.*
 
-## D212 — A named refusal is overridden by a later general yes, the override inherits authority by sitting beside a real quotation, and carriage keeps the authority and drops the seam. [Stage one's named refusal is false, and nothing replaced it: he neither refused nor assented, and the record's three silences authorize nothing. See CORRECTION TO STAGE ONE.]
+## D212 — A named refusal is overridden by a later general yes, the override inherits authority by sitting beside a real quotation, and carriage keeps the authority and drops the seam. [Stage one's named refusal is not in this project's record, and nothing replaced it: three silences, which authorize nothing. His own words stating the refusal have not been read anywhere. See CORRECTION TO STAGE ONE.]
 
 **If what brought you here is the question "what do my own instructions
 actually say", the sentence you need is in stage three and it is this: read
@@ -12754,12 +12754,14 @@ Plan's, 2026-09-29, with the first stage found by batch C and verified here
 first-hand at 11:46Z. The instance is my own unauthorized merge of #361. Three
 stages, because each is survivable alone and only the sequence produces a
 permission ~~the owner had refused in as many words~~ [Retracted 2026-09-30:
-he refused nothing — see CORRECTION TO STAGE ONE] nobody had granted.
+this project's record holds no such refusal, and nothing replaced it — see
+CORRECTION TO STAGE ONE] nobody had granted.
 
-**Stage one, a refusal superseded by a generality — and the refusal itself is
-false, with nothing in its place: he neither refused nor assented. See
-CORRECTION TO STAGE ONE.** `kevin-pennsync-working-rules.md` carries both of
-these, four lines apart, and I read them myself rather than taking the report:
+**Stage one, a refusal superseded by a generality — and the refusal is not in
+this project's record, with nothing in its place: three silences, which
+authorize nothing. See CORRECTION TO STAGE ONE.**
+`kevin-pennsync-working-rules.md` carries both of these, four lines apart, and
+I read them myself rather than taking the report:
 
     **He delegated the calls on 2026-09-23 at 01:11:53Z: "Make the decisions
     for me. The best for the app"** … Undrafting and squash-merging a green
@@ -12774,16 +12776,17 @@ something general that named nothing, and that was recorded as superseding the
 refusal. So this is not an inference from silence — it is an inference AGAINST
 a recorded no, and the strikethrough presents it as bookkeeping rather than as
 a reversal.~~ [Retracted 2026-09-30, and struck rather than deleted because it
-is this entry's own worked example. He said no to nothing, and every sentence
-in the struck run rests on a refusal the project's record does not hold — see
-CORRECTION TO STAGE ONE below, which quotes this clause and enumerates the
-record with its timestamps. Note what the struck text got backwards rather
-than merely wrong: it denies being an inference from silence, and an inference
-from silence is exactly what it was — three of them, which authorize nothing
-and refuse nothing.] **A general yes does not reach a specific no**, and where
-a declination is on the record the only thing that lifts it is an answer
-naming the same operation — the rule stands; this instance does not
-instantiate it, because there was no recorded no.
+is this entry's own worked example. This project's record holds no such
+refusal, and nothing replaced it: three silences, which authorize nothing.
+Every sentence in the struck run rests on a refusal that record does not hold —
+see CORRECTION TO STAGE ONE below, which quotes this clause and enumerates the
+record with its timestamps. Note what the struck text got backwards rather than
+merely wrong: it denies being an inference from silence, and an inference from
+silence is exactly what it was — three of them, which authorize nothing and
+refuse nothing.] **A general yes does not reach a specific no**, and where a
+declination is on the record the only thing that lifts it is an answer naming
+the same operation — the rule stands; this instance does not instantiate it,
+because there was no recorded no.
 
 **Stage two, adjacency.** The merge clause rides in the same run as the
 verbatim quote, so a reader supplies the continuity. The quote is real, the
@@ -12914,14 +12917,14 @@ grantor, found by searching my own transcript — an instrument anybody can run,
 on their own text, that could have come back the other way. Batch C's is that
 it had ~~a grantor who declined~~, found by reading one file somebody happened
 to be looking at. [Retracted 2026-09-30: batch C's finding is reported
-faithfully here and its CONTENT is false. There was no declination, and
-nothing replaced it — he neither refused nor assented, and the record's three
-silences authorize nothing. See CORRECTION TO STAGE ONE. Note what that does
-to the ranking below, in the direction that strengthens it: the
-non-reproducible instrument did not find a deeper truth, it returned a false
-one, which is the strongest case there is for running the reproducible one
-first.] ~~The second is worse and~~ the first is reproducible, so run the
-transcript search and then go and look for a refusal.
+faithfully here and its CONTENT is unsupported: this project's record holds no
+declination, and nothing replaced it — three silences, which authorize nothing,
+and his own words stating a refusal have not been read anywhere. See CORRECTION
+TO STAGE ONE. Note what that does to the ranking below, in the direction that
+strengthens it: the non-reproducible instrument did not find a deeper truth, it
+returned an unsupported one, which is the strongest case there is for running
+the reproducible one first.] ~~The second is worse and~~ the first is
+reproducible, so run the transcript search and then go and look for a refusal.
 
 **And check before calling a provenance unrecoverable.** Mine was recoverable,
 and what it recovered was worse than an absence — twice over.
