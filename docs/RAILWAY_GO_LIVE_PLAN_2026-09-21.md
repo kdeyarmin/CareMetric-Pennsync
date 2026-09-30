@@ -182,11 +182,12 @@ written.
 1. ~~**Apply what is already committed to the staging project.**~~ **Done
    2026-09-21**: all 59 outstanding migrations applied to
    `caremetric-pennsync-staging`, 68 recorded in the ledger, the pin landed on
-   staging with `source 'default'`. **The ledger has since taken the five
-   migrations merged after that and stands at 73 with nothing pending**, read
-   from the `hosted-gap` job on `b8e4e021` rather than from the tick. The 59 record migrations are no
-   longer unproven against a hosted database; the handlers still are, because
-   nothing has served a request yet. Stage B has since deployed them, paused —
+   staging with `source 'default'`. **As read from the `hosted-gap` job on
+   `b8e4e021`, the ledger stood at 73 with nothing pending at that commit**;
+   this is a dated reading rather than the current state, which is not readable
+   from this tree. The 59 record migrations are no longer unproven against a
+   hosted database; the handlers still are, because nothing has served a
+   request yet. Stage B has since deployed them, paused —
    serving one needs an identity, so it is stages C and D.
 2. ~~**Create the `pennsync-api` Railway service**, deployed paused, exactly as
    the integration runtime was.~~ **Done 2026-09-22**: live at
@@ -367,7 +368,7 @@ written.
    instruments and what is genuinely left for the owner are under Stage J
    below, with the counts marked as a dated reading.
 
-   **What makes this item tractable, and Stage G's seven not, is one
+   **What makes this item tractable, and Stage G's remaining bucket not, is one
    distinction that runs under both**: whether a capability exists, and whether
    anything can call it. Here the capability exists and the gate PROVES
    something can call it, by putting each site's own arguments through the
@@ -412,17 +413,22 @@ Sizes assume the current cadence; they are estimates, not commitments.
 
 ### Stage A — Prove the committed store on hosted staging (size S, days; no approval needed)
 
-The cheapest and most overdue step in the migration, and the only one on the
-critical path that needs nothing from anybody.
+**Done 2026-09-21: the migrations this stage names were applied to
+`caremetric-pennsync-staging`.** The instrument is this stage's own dated record
+under *Applied 2026-09-21* below. ~~The cheapest and most overdue step in the
+migration, and the only one on the critical path that needs nothing from
+anybody.~~ Everything that follows is kept as the procedure and as what the
+stage found, not as work outstanding — which is why the two bullets below are
+struck rather than deleted.
 
-- Apply the five missing authority migrations to `caremetric-pennsync-staging`:
+- ~~Apply the five missing authority migrations to `caremetric-pennsync-staging`:
   `20260919090000_deployment_app_pin`, `20260919114500_enrollment_receipt`,
   `20260920040000_chart_assignment`, `20260920180000_chart_assignment_lifecycle`,
   `20260920200000_membership_lifecycle`. The app pin goes first; unset it
   defaults to staging, which is the correct outcome for this project, but the
-  `deployment` row should record that it was *chosen*.
-- Then apply every `supabase/record-migrations/` file, in order — 54 when this
-  was written, 59 now.
+  `deployment` row should record that it was *chosen*.~~
+- ~~Then apply every `supabase/record-migrations/` file, in order — 54 when this
+  was written, 59 now.~~
   `tools-pennsync-provision.mjs` cannot do this — it refuses a database that
   already holds `pennsync_private` (`PROVISION_STORE_ALREADY_PRESENT`), by
   design, because re-provisioning would try to re-pin an immutable pin.
@@ -1439,7 +1445,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   | | Count |
   | --- | ---: |
-  | Ported capabilities `src/` reaches | 54 of 80 |
+  | Ported capabilities `src/` reaches | 54 of 136 |
   | Routed call sites | 73 |
   | …naming a tenant | **3** |
   | …demonstrably not naming one | 33 |
@@ -2761,15 +2767,20 @@ from the other.
 **Exit:** production store provisioned; the pin proved chosen rather than
 defaulted; `deployment` row dated.
 
-### Stage G — The last 21 ports (size M, parallel to D and E)
+### Stage G — The ports that are left (size M, parallel to D and E)
 
 **Measured 2026-09-23: the startable side is at ZERO, and the count of what is
 left has fallen twice since this heading was written — 31, then 24 after D82 to
 D87, then 21 once D89 to D91 wrote the three ports those decisions unblocked.**
 `tools-transition-disposition.mjs` reports 78 capabilities with no blocker, and
 all 78 are registered in `services/pennsync-api` — so every port that *can* be
-written without a decision has been. The heading said 31 and says 21; read
-`pnpm run check:transition-disposition` rather than either. Four buckets the
+written without a decision has been. **The heading carried 31, then 21, and now
+carries no count at all**, because it was wrong at both and the figure has since
+moved again — D153's retirement of `enforceStaffRoleIntegrity` took the
+`entity_authorization` bucket down by one and nothing updated the heading.
+A count written into this prose is wrong within a merge, so there is none here:
+the table below carries it, and `pnpm run check:transition-disposition` is the
+instrument. Four buckets the
 queue used to report are empty: `records_schema` (D75 on a correction, then
 D84 refilled it and D89 to D91 emptied it again by building all three),
 `ported_function` (D76), `entity_not_carried` (D84) and `core_integration`
@@ -2783,7 +2794,7 @@ answer was 0. That is D47's lesson once more — read the shape from the tree.
 Re-measured after D82 to D87 (2026-09-23), which settled every decision this
 table was waiting on, and again after D89, D90 and D91 wrote the three ports
 those decisions unblocked. **What is left is no longer "ports that are simply
-not written yet"** — that bucket is empty. It is the file layer, seven
+not written yet"** — that bucket is empty. It is the file layer, the
 administrative write paths, and a vendor key.
 
 | Blocker | Count | What it needs |
@@ -2796,18 +2807,20 @@ administrative write paths, and a vendor key.
 | ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is a flag flip rather than a build, and it stayed the owner's until he flipped it on 2026-09-25 — the runtime half at `09:42Z`, the `OWNER_HELD` lift in #283, and the api's `PENNSYNC_API_DELIVERY` at `16:19Z`. All three are spent and both capabilities now send |
 
 **Where those readings come from, so the next person re-runs them rather than
-quoting this row.** The bucket and its seven names are `pnpm run
+quoting this row.** The bucket and its names are `pnpm run
 check:transition-disposition`'s own `port queue` line, which this page pins in
-Stage B. The three-and-four split is `schedulerAuth` in each capability's
-module crossed against whether any file under `src/` names it: three carry the
-fence and are named nowhere, four are named by a screen. Both read on
-`6e867ff7`. The row's shape can move under a disposition ruling without any
-capability being written — `enforceStaffRoleIntegrity` is under one now — so
-re-measure before quoting the count.
+Stage B. The split between decisions and ports is `schedulerAuth` in each
+capability's module crossed against whether any file under `src/` names it: the
+fenced ones are named nowhere, the rest are named by a screen, and the row above
+says which is which. **Written without tallies deliberately** — this paragraph
+carried a three-and-four split adding to seven, against a table that already
+said six, because D153's retirement of `enforceStaffRoleIntegrity` was recorded
+in the row and not here. The row's shape can move under a disposition ruling
+without any capability being written, so re-measure rather than quote either.
 
 **And there is a third reading, which is the one that changes how this bucket
-should be planned.** None of the seven — the four ports included — can be
-written against a capability that already exists. All seven write `User`, and
+should be planned.** None of them — the ports included — can be written against
+a capability that already exists. Every one of them writes `User`, and
 nothing under `services/authority-store/supabase/record-migrations/` writes
 `pennsync_records.user` at all, so D82's `user_update` policy and
 `user_self_write_guard` trigger are a permission with no performer: the store
