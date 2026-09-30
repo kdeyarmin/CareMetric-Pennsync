@@ -170,14 +170,20 @@ resolves the address against **that agency's roster in the owned store** —
 `RECIPIENT_LOOKUP_INCOMPLETE` when the walk could not read the whole roster, and
 the roster's own copy of the address is what reaches the provider.
 
-**Which makes the ceiling the roster's ROWS rather than anything in the code,
-and those rows are not synthetic.** The staging accounts are four addresses at
-`caremetricai.com` (`docs/INDEPENDENT_STAGING_APP.md`), a real domain, so a
-released send is bounded to those four people rather than to nobody. Read that
-as the guard being NARROW and not absent: sending a message to a real person is
-the owner's decision, so do not widen the roster, the recipient rule or the
-`agency_admin` gate to unblock a test — a test that needs a recipient it cannot
-have is the wrong test.
+**Which makes the ceiling a property of the roster's ROWS rather than of
+anything in this file, and this file cannot tell you what those rows are.**
+What the code fixes is the shape of the ceiling: `agency_roster`
+(`20260920285000_notification_mint.sql`) admits a person only where an `active`
+membership in the named agency joins an `agency` that is `active` or `trial` and
+an `identity_map` row that is `enabled` with no `revoked_at`, so the reachable
+set is exactly the agency's live staff and never an arbitrary address. It is not
+bounded to synthetic rows: staging's four documented accounts are aliases at
+`caremetricai.com`, a real domain, and nothing in the join restricts a row to an
+alias. Read that as the guard being NARROW and not absent — a recipient can be a
+mailbox somebody reads, sending a message to a real person is the owner's
+decision, so do not widen the roster, the recipient rule or the `agency_admin`
+gate to unblock a test. A test that needs a recipient it cannot have is the
+wrong test.
 
 Since D98 readiness also HONOURS it: a released set containing a sender while
 this switch is unset reports `ready: false`, because such a deployment refuses
