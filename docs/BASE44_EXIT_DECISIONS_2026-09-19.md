@@ -11109,6 +11109,65 @@ number here would invite somebody to find the other later and call it drift.
 
 Related: D118, D143, D145, D170, D178, D211, D213.
 
+**Widened 2026-09-30 — a fourth grain, EXTRACTION, and a repair to this entry's enumeration of which grains carry a proof.**
+
+The three grains above are document, process and identity. There is a fourth, and it is the one this entry's own instance was half of: the **window** an auditing hand cuts before it compares. A section slice is not part of the tooling and not a detail of the harness — it is a copy the auditing hand produces at the moment of checking, and an over-wide one is the in-memory array of the original case wearing a third coat. The contamination arrives through a BOUNDARY rather than down a copy chain: no array, no disk re-read, and the region compared still contains the auditor's own text.
+
+The instance is the register collector's, in its own account. Building a check over D224's entry, it bounded the slice on the next `## D<n>` heading. D224 is the last such section in the document, so the slice ran to the end of the file and swallowed the collector's own trailing note — text that hand had written. The check then reported all six `isProtectedSuperAdmin` call-site identifiers PRESENT in D224's entry, and it came close to asking that entry's author to rewrite it on the strength of that. Re-bounded on the following `###` heading, D224's entry names none of them.
+
+Measured here rather than taken, on `origin/claude/project-thread-35bfot` at its head on 2026-09-30: the naive slice runs to EOF at 12,798 bytes and contains the identifier twice, at offsets 8,660 and 10,164. The entry's own extent ends at the `### A collector's note on the entries that name the same removed tier` heading, 8,230 bytes in, so both occurrences lie past it. Bounded there the entry contains it zero times. **That measures the mechanism and the direction on ONE identifier and does not check the collector's six-name figure**, which is its reading of its own run and is carried here as such. D224 is not on `main`, so a reader checking this from `main` will find nothing.
+
+**The direction is what earns this a grain rather than a footnote, and the observation is the file-layer thread's.** It fails toward reporting content PRESENT. A too-narrow window reports an absence, and an absence prompts a second look; a too-wide one reports a finding, and a finding prompts an action. So every instance of this arrives looking like a discovery, and none of them is the kind of result anybody shrugs at.
+
+### Step 3 is available here, and the earlier widening reads as though it were not
+
+**The earlier widening's sentence is correctly scoped and is not what needs fixing.** It reads "**There is no equivalent at the process or identity grain**" — it names the two grains it is about and claims nothing beyond them. A first draft of this widening said that sentence was over-general, on a second hand's characterisation of it rather than on a reading of it, and that is withdrawn: it was written against a set of three grains and it is accurate about all three.
+
+**What misleads is the closing line, because the set was closed.** "The document grain keeps its sabotage; the other two get a question asked out loud" partitions three grains exhaustively, so a reader meeting a fourth has been told, by the shape of the sentence rather than by its words, that a sabotage is the document grain's alone. That is the defect an enumeration acquires when something is added to it, and nothing in the original sentence goes wrong for the reader to notice.
+
+So the repair is arithmetic rather than retraction. **At the extraction grain the sabotage is mechanical and cheap: plant a line outside the intended section's boundary and require the extractor to report it absent.** A correctly bounded extractor does; an over-wide one follows it and reports it present. One sabotage, two designs separated — step 3's shape, not an analogue of it. The count is now that document and extraction each have a step 3, while process and identity have a role constraint instead, which remains strictly less conclusive.
+
+### Scope, because the mechanism is neutral and only the branch picks a direction
+
+**A never-matching terminator is NOT this entry's defect.** The other instance of the boundary mechanism reported D176 absent from the document because its terminator was `## D177`, which does not exist. That puts nothing downstream of the audited hand into the comparison — it puts nothing into the comparison at all — so an upstream anchor would not have caught it and a positive control inside the check would. That failure belongs with D174, and this grain enters here with its direction named.
+
+The two together say more than either alone. **The mechanism is neutral and the failure BRANCH decides which rule applies**, so one over-wide slice is an anchoring defect and one unmatched anchor is a missing control, and reading a boundary bug as one kind by default gets it wrong half the time.
+
+**And this entry compressed its own instance.** It read the `## D177` probe as a process defect — the walker should not have been the author of the range — and stopped there, which is true and incomplete: that probe would have failed for an independent walker too. The role constraint and the boundary proof are two different repairs for two different halves of one instance, and they were folded into one.
+
+Attribution: the slice instance and the boundary reading are the register collector's (redeploy). The direction statement is the file-layer thread's. The `## D177` half and the measurement above are this entry's own thread's.
+
+*Carried by the register's collector, 2026-09-30, unedited. The body is D176's
+own owner's — the main-watch thread, widening its own entry — and the collector
+added this note and nothing between the marker above and here. Received at 5,535
+bytes, sha256
+`ce5dd347bccf66619aa9cbef6d52f644878bb8505fe8ceeb4af80d50470ec04e`, and
+re-derived out of this document against that digest after filing.*
+
+*It is the first body to arrive described by more than one instrument: bytes and
+characters, newlines, the non-ASCII count, md5 beside sha256. That is what let
+the transcription be checked before hashing rather than after — the byte and
+character counts differ by exactly twice the non-ASCII count, so a wrong dash
+would have shown in the arithmetic with no digest involved at all. The author
+also named in advance the one place the transport would alter the text, an
+angle-bracket pair inside a quoted `## D<n>`, and reversing that escape is what
+made the digest reproduce. Worth copying: a single hash tells a carrier only
+that something is wrong.*
+
+*Anchored at the end of D176's section, which ends where `## D178` begins,
+because `## D177` matches nothing in this document. A terminator built as "the
+next number" would have found no boundary here at all — the failure the widened
+entry documents — so the extent was measured from the document to insert it and
+measured again to verify it, and constructed neither time.*
+
+*The ruling and the words are the author's. Two things in them are the author's
+own corrections and are not the collector's to soften: it measured the
+collector's instance rather than accepting it, and says which part — the
+six-name figure — it did not check; and it withdrew its own first ruling minutes
+after sending it, having agreed with a second hand's characterisation of one of
+its own sentences before reading that sentence. The collector supplied the
+instance and took no part in deciding what the widening says.*
+
 ## D178 — An issuance question is settled by the delivery record, never by the index
 
 **Added 2026-09-29.** Found while refusing to merge #341, which used a decision number six times across two documents that a reviewer said might already be issued elsewhere.
