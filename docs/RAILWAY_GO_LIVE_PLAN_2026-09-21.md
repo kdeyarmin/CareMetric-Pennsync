@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 49 | 37 |
+  | `mutating` (derived) | 54 | 39 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1588,6 +1588,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   being added to. This row was re-derived on seven bases over the life of one
   pull request; the number above is a reading of the tree it merges onto and of
   no other.
+
+  The five compliance WRITES then took `mutating` to 54 and left `read-only`
+  and `integration` where they were. Its migrations rose by **two** for one
+  file, and that is the derivation working rather than a miscount: a wave's
+  migrations are the ones its handlers need, and these contracts open with a
+  precondition on the compliance READ migration, so that file now belongs to
+  both waves. A wave's migration count is therefore not a partition of the
+  directory and the six rows do not sum to it — read each row as what that
+  wave's operator must have applied, never as a share of the whole.
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
@@ -3271,6 +3280,48 @@ the block above; under this branch's, the block here. The same pair was run on
 two different bases a day apart and gave the same deltas both times, which is
 what makes them a property of these seven routes rather than of a moment.
 
+**The reading after the five compliance WRITES.** A record of the head it was
+taken on, and no longer the tree: it was pinned when it was written, and the
+route and allowlist work below has since moved every line of it. The pinned
+reading is the last block in this section.
+
+```
+entity routes: 76 declared, 145/237 landable call sites SERVED, 92 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 33 pass arguments this cannot read
+  14 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryTemplate.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 28 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+**A WRITE port moves the line by ONE, and that contrast is the useful half of
+this reading.** The same two-tree attribution was run for these five routes —
+the printer twice on this one merged tree, once with `main`'s route module and
+once with this branch's — and it gives +5 declared, +7 served, −7 to adopt, +5
+unreadable and +2 unproved, with the entity count unmoved at 28. Seven served
+plus five unreadable is twelve, which is every call site these five routes
+reach: the arithmetic closes, so nothing is unaccounted for.
+
+Seven from five routes is barely a multiple, against thirty-two from seven a
+port earlier, and the reason is structural rather than incidental. A read is
+called from every screen that displays the thing; a write is called from the
+one form that performs it, so the served count of a write port is close to its
+call-site count by construction. **Do not size a write port by what a read port
+moved**, and do not read a small move as a route that failed — the number to
+compare a write port against is its own call sites, not a sibling's multiple.
+
+The five that went to `unreadable` rather than `served` are the same finding in
+its own form: `AdrAuditCase.create` builds its payload from the letter
+analysis and `ComplianceAudit.update` passes `buildAuditFields`'s return, so the
+gate cannot run the real arguments through `request`. "Cannot prove this serves"
+is not "does not serve" — what stands in for the proof is the refusals raised
+against the real migration, which `independentEntityRoutes.spec.js` requires by
+name rather than taking on trust.
+
+**No entity left the remaining line here, and that is expected rather than
+disappointing.** `AdrAuditCase` keeps its read call site, which has no route
+because its limit is a constant imported from another module, and
+`ComplianceAudit` keeps eight read sites the census cannot even see. A write
+port shortens the queue by call sites and not by entities.
+
 **One site moved the wrong way, and it is named rather than netted off.** The
 sites passing arguments this cannot read went up by one:
 `ComplianceAudit.filter` in `src/components/smartNote/persistVisitNote.js`
@@ -3319,10 +3370,12 @@ parameter. Each was verified on its own rather than inferred from the pin
 reaching zero, and the pin is now the empty set with a plant beside it, since an
 empty expectation asserts nothing by itself.
 
-**And the reading on THIS tree, with both waves merged.** This one is `pnpm run
-check:entity-routes`'s own output and is **pinned**: `tools-entity-routes.test.mjs`
-fails unless the page carries it byte for byte, so paste what the tool prints and
-never retype, rewrap or re-indent it.
+**And the reading with both waves merged, read on `84718e6`.** It was this tree's
+pinned block when it was written and is now a RECORD of that head: the compliance
+writes landed under it, so the measured reading is the block further down and
+this one is kept for the move it explains. Demoting it in place is what
+`tools-entity-routes.test.mjs` asks for — it requires the measured reading to be
+the LAST fence on the page, not the only one.
 
 **The denominator moved too, and that is the more important half.** 237 became
 245 because the shared entity-call matcher was blind to one shape and is not any
@@ -3364,6 +3417,36 @@ entity routes: 81 declared, 145/245 landable call sites SERVED, 100 still to ado
   16 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
   of those 100, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 99 need a named capability
 ```
+
+**And the reading on THIS tree, with the compliance writes merged onto the route
+and allowlist work.** This one is `pnpm run check:entity-routes`'s own output and
+is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
+byte for byte, so paste what the tool prints and never retype, rewrap or
+re-indent it.
+
+```
+entity routes: 86 declared, 152/245 landable call sites SERVED, 93 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
+  18 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 93, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 92 need a named capability
+```
+
+**It is one printer run over one merged tree, so read it as a reading and not as
+a sum.** The five compliance write keys are the difference from the block above
+it, and the nine refused sites and fifty unreadable arguments come from the route
+and allowlist work, not from these five — the two branches were open at once and
+neither could see the other's effect on these totals, which is why this is
+re-measured here rather than added up.
+
+**Two of the three matcher-fix refusals are in a module nothing imports, and that
+changes what they cost rather than whether they are real.**
+`ComplianceAudit.filter` and `Incident.filter` refuse in
+`src/lib/retiredOfflineQueue.js`, and `src/lib/hostedPaths.spec.js` builds the
+list of production source files that import that module and asserts it is empty —
+so the assertion fails if one ever does, and today none does. The refusals are
+real and no screen reaches them. Measured on this tree: eight entity operations
+live in that module, across `NoteConversion`, `ComplianceAudit`, `Task` and
+`Incident`, and none is on a path a user can execute.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -3481,25 +3564,36 @@ different kinds of work:
   expression. A refusal cannot be counted until a route exists to do the
   refusing, so plotting this bucket over time measures the audit's reach and not
   the product's health.
-- **Forty-three pass arguments the scan cannot read**, because the call builds
+- **Fifty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Forty-eight have no route declared at all**, over thirty-three entity and
-  operation keys: fifteen reads over twelve keys, and thirty-three writes over
-  twenty-one. **The writes are more than twice the reads**, which inverts the
-  shape every wave so far has had. The reason is measurable on the sites already
-  served: a read key there carries 2.59 call sites and a write key 1.13, so a
+- **Thirty-four have no route declared at all**, over twenty-eight entity and
+  operation keys: fifteen reads over twelve keys, and nineteen writes over
+  sixteen. **The writes still outnumber the reads**, which inverts the shape
+  every wave so far has had. The reason is measurable on the sites already
+  served: a read key there carries 2.59 call sites and a write key 1.32, so a
   read port has historically served many screens per route while a write port
   served the one form that calls it. **Do not carry that ratio into the
-  remainder, though** — inside this pool a write key covers 1.57 sites against a
-  read key's 1.25, the opposite way round. Both are correct measurements of
-  different populations, and the conclusion rests on the first only for what it
-  says about PAST waves: this remainder costs more per site than the served
-  count suggests, and a wave drawn from it will look slow against the same
-  effort spent earlier.
+  remainder, though**: inside this pool a read key covers 1.25 sites and a write
+  key 1.19, which is nothing like the served spread and is barely a gap at all.
+  Both are correct measurements of different populations, and the conclusion
+  rests on the first only for what it says about PAST waves: this remainder
+  costs more per site than the served count suggests, and a wave drawn from it
+  will look slow against the same effort spent earlier.
+
+  **The two ratios ran the OTHER way round one head ago and that is worth
+  keeping**, because it is this paragraph's own rule arriving in the paragraph.
+  Before the compliance writes landed, the remainder's write key covered 1.57
+  sites against a read key's 1.25 — the inversion, stated here as the finding.
+  Five write keys adopting routes moved the pool and the inversion went with
+  them; nothing was wrong with the earlier measurement and nothing is wrong with
+  this one. What would have been wrong is carrying the sentence across a merge
+  because it read well. A ratio over a REMAINDER is a property of what is left,
+  so it moves every time anything is taken off it, and it has to be re-measured
+  at the head that quotes it rather than inherited.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
