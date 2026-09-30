@@ -13713,37 +13713,66 @@ makes no claim here about whether it is right; the judgements, the rejected
 alternative, the recorded hazard and the undecided cross-agency locator are the
 author's, in the author's words.*
 
-### A collector's note on three entries that name the same removed tier
+### A collector's note on the entries that name the same removed tier
 
 **This is the carrier's own and is not an entry**, in the form the D107 section
-already uses. It claims nothing about whether any of the three decisions below
-is right; each of those is its author's. It is here because two of them sit next
-to each other prescribing different remedies for the same identifier, and the
-cheapest wrong reading is that one of them must be mistaken.
+already uses. It claims nothing about whether any decision below is right; each
+is its author's. It is here because two entries sit next to each other
+prescribing different remedies for the same identifier, and the cheapest wrong
+reading is that one of them must be mistaken.
 
 `isProtectedSuperAdmin`, and the `SUPER_ADMIN_EMAIL` platform tier D14 and D22
-removed, are named in three entries that prescribe three different things. The
-discriminator is not what each decision is about. It is **what answers once the
-read is deleted**:
+removed, are reached from several capabilities, and the remedy differs per CALL
+SITE rather than per capability. The discriminator is not what a decision is
+about. It is **what answers once the read is deleted**:
 
 - **The read is decoration and the capability keeps a working gate** — delete
-  it. D224's material names `indexPDF`, `preparePDFWithPatientInfo` and
-  `processPatientFileUpdate`, widening D63.
+  it, and what remains is strictly narrower. `preparePDFWithPatientInfo:104` is
+  the one measured instance: the super-admin disjunct sits beside a real
+  membership check, which stands on its own. This is the case D63 describes.
 - **The read WAS the gate, and the policies already say what it was trying to
-  say** — delete it and add nothing. That is **D70**, whose original admits
-  `patient.created_by`, an `assigned_nurses` entry and `isProtectedSuperAdmin`,
-  and whose port "adds no gate at all".
-- **The read WAS the gate and nothing else answers** — deleting it OPENS the
-  capability, so who inherits the authority is a decision, and D40's own
-  precedent puts a widening with the owner. That is **D223**'s `offboardUser`.
+  say** — delete it and add nothing. **D70** is the precedent where the other
+  disjuncts are `patient.created_by` and an `assigned_nurses` entry, the derived
+  scope D41 and D24 removed: `indexPDF:149` and `preparePDFWithPatientInfo:150`
+  are that shape exactly. **D71** is the precedent where the read widens a
+  `created_by` filter on an unscoped path, the scope `contract_pdf_search`
+  deleted once D61 and D24 made `patient_id` trustworthy: `indexPDF:160` and
+  `:175` are that one. Same row, two precedents, and which applies is decided by
+  what the read is disjoined WITH.
+- **The read WAS the gate and no single actor answers for the whole act** —
+  deleting it OPENS the capability, so who inherits is a decision, and D40's own
+  precedent puts a widening with the owner. `processPatientFileUpdate:352` is
+  that: `isProtectedSuperAdmin` is the entire gate on a capability that
+  enumerates, creates, discharges and archives patient charts. **D223**'s
+  `offboardUser` is the same shape, and its author asks that the row not be read
+  as "nothing answers" — the store answers for the PARTS, since membership
+  revocation is D35's, chart-assignment revocation is D33's, and
+  `identity_map.enabled` is authoritative and one-way by its own trigger. What
+  is missing is a performer over the composite, not the mechanics. Read it the
+  other way and it looks like a security gap, which it is not.
 
 So one deletion has three consequences depending on what sits underneath it, and
-only the third reaches the owner. **D70 is the case that makes the other two
-stop looking like a contradiction**, and it is the one a reader comparing the
-two adjacent entries will not have in front of them — which is the whole reason
-this note exists rather than a sentence inside either entry.
+only the third reaches the owner. **D70 and D71 are the cases that make the
+other two stop looking like a contradiction**, and they are the ones a reader
+comparing two adjacent entries will not have in front of them.
 
-*Filed at the coordinator session's request and at D223's author's, who asked in
-their own words for "a sentence where the two entries sit near each other".
-D224's author was asked at the same time and had not answered when this landed.
-It makes no claim about their entry and comes out on their word alone.*
+*Filed 2026-09-30 at the coordinator session's request and at D223's author's,
+who asked in their own words for "a sentence where the two entries sit near each
+other".*
+
+*Corrected within the hour, and the correction is the part worth keeping. The
+first version put all three of D224's capabilities in the FIRST row and wrote
+the third as "nothing else answers". Both were wrong. Asked to check, D224's
+author read the call sites — six, not three, across those files — and found one
+decoration, four middle-case (two under D70, two under D71) and one that is the
+third case outright; D223's author supplied the composite qualification above.
+Neither entry carried the claim: it was only ever in this note, and D224's own
+entry names none of these identifiers. **So the note written to stop a third
+reader generalising from one case had itself generalised from one case** — the
+carrier making the same move as the two authors, on the same identifier, in the
+paragraph built to prevent it. Nobody read the six call sites until the question
+was put; the answer took one pass.*
+
+*Both authors asked for the wording before it landed and only one had answered
+when it did. That was the collector's call and the wrong one: the ask was cheap
+and the wait would have caught both errors before they reached the branch.*
