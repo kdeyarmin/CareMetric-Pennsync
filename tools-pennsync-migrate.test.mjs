@@ -159,15 +159,36 @@ test('files at a shared prefix apply in the order the rest of their stem sorts i
 test('the ledger-version refusal cannot fire while the two keys are derived as they are', () => {
   // `ledgerVersion` is the whole stem and `ledgerName` is that stem less its
   // prefix, so equal versions FORCE equal names and `MIGRATE_NAME_COLLISION`
-  // refuses first. The version guard is subsumed, and that is worth pinning
-  // rather than trusting: if `ledgerName` ever stops being a function of the
-  // stem, this fails, and whoever changed it learns the version check has
-  // just become reachable and owes a test of its own.
+  // refuses first. The version guard is subsumed.
+  //
+  // **The cross-product below does not earn that, and an earlier version of
+  // this comment claimed it did.** Equal versions mean the same stem today, so
+  // the loop is satisfied by any deterministic `ledgerName` and would stay
+  // green through a rewrite of it — it STATES the implication. What carries it
+  // is the assertion above, and the change that reds that one is the real
+  // route to a reachable version guard: truncate `ledgerVersion` to the bare
+  // prefix and two files dated the same second collide on it while their names
+  // still differ. So `ledgerVersion` is the load-bearing key here, not
+  // `ledgerName`, and whoever narrows it learns the guard has become live and
+  // owes coverage of its own.
   const probes = [
     '001_a.sql', '0001_a.sql', '002_a.sql', '001_b.sql',
     '20260920180000_contract_assignment.sql', '20260920180000_chart_assignment_lifecycle.sql',
     ...readMigrations(REPOSITORY).map(migration => migration.name),
   ];
+  for (const probe of probes) {
+    // The premise, and the only one that can be asserted here: the version IS
+    // the whole stem. So two names that differ at all differ in their version,
+    // and equal versions can only ever be one stem.
+    assert.equal(ledgerVersion(probe), probe.replace(/\.sql$/, ''),
+      `${probe}: a ledger version that is not the whole stem can collide`);
+  }
+  // The second premise — `ledgerName` agreeing on names the version maps
+  // together — has NO assertion here on purpose. Given the first, the only
+  // names it could separate are ones differing solely by the `.sql` suffix,
+  // which a migration directory cannot hold, so any test of it would pass on
+  // synthetic input and could not fail on real input. A vacuous assertion
+  // reads exactly like a working one; the acknowledged gap does not.
   for (const left of probes) {
     for (const right of probes) {
       if (ledgerVersion(left) !== ledgerVersion(right)) continue;

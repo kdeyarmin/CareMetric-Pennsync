@@ -183,9 +183,17 @@ export function planMigration({ migrations, applied }) {
   // so is the point: `ledgerVersion` is the whole stem and `ledgerName` is
   // that stem less its prefix, so equal versions force equal names and the
   // loop above has already refused. It is kept because it guards the ledger's
-  // real primary key rather than a derivation, and the implication is pinned
-  // by a test — change `ledgerName` and that test fails, which is how you
-  // learn this check has just become live and owes coverage of its own.
+  // real primary key rather than a derivation.
+  //
+  // Reachability rests on two premises, and `tools-pennsync-migrate.test.mjs`
+  // asserts each one rather than the implication they carry. **Truncate
+  // `ledgerVersion` to the bare prefix and this check goes live** — it is no
+  // longer the whole stem, so two files dated the same second collide on it
+  // while their names still differ. The other premise is `ledgerName`
+  // factoring through the version; breaking that reds its own assertion.
+  // Note which key that makes load-bearing: a rewrite of `ledgerName` alone
+  // cannot make this reachable, and an earlier version of this comment said
+  // it could.
   const byVersion = new Map();
   for (const migration of migrations) {
     const version = ledgerVersion(migration.name);
