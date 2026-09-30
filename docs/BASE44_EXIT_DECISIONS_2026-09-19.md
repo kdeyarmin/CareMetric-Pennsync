@@ -13736,6 +13736,63 @@ plan is pinned too, and nothing in this tree reads this document at all. So when
 this line and those two disagree, re-run the command; do not reconcile the
 pages.*
 
+### A third reason `offboardUser` cannot be ported, found after the decision
+
+`offboardUser` revokes across **every agency the person holds**. Its membership
+read is `AgencyMembership.filter({ user_id: userId }, …)` at
+`base44/functions/offboardUser/entry.ts:340`, with no `agency_id` term, and the
+revocation follows that unscoped list. What the owned store has no shape for is
+a **tenant-scoped caller** performing that sweep: every carried table's policies
+ask `caller_agencies()`, so one caller reaches one tenancy's rows.
+
+That is narrower than "the store cannot express it", and the distinction is
+load-bearing. `pennsync_private.identity_map`, which holds the authoritative
+enable flag, is not policy-gated at all — forced RLS, no policy, definer-only —
+so `caller_agencies()` decides nothing there. What is missing is a caller for
+the **operation**: the table has a writer (`tools-pennsync-enroll.mjs`
+inserts, gated on `PENNSYNC_ENROLL_NEW_STAFF` per D6 and D99), while the
+**revocation** — `enabled` to false, one-way by its own trigger — has no caller
+outside the tests. Read reachability as a property of the operation rather than
+of the table; a sweep for writes to a table cannot answer it.
+
+So the capability carries three independent blockers. Its entire gate is
+`isProtectedSuperAdmin`, the platform tier D14 and D22 removed, so it has no
+performer left. It writes `AgencyMembership`, which this entry already records
+as its next blocker. And the act itself is cross-tenant, which is the same open
+question D49 parks the unattended scheduler on — the owner's, not this
+decision's.
+
+The transferable half is about the queue rather than this capability: the bucket
+names a capability's FIRST blocker, so "what is it waiting for" is answered by
+reading the module, and reading it once is not the same as reading it out. Two
+of these three were found on separate passes over the same file after the
+decision was written, and the third correction came from a fourth reader.
+
+One thing not to carry in with it: three blockers is what has been found, not a
+total. A paragraph whose point is that a bucket reports a lower bound should not
+end with a number that reads like a ceiling, which is why the heading says "a
+third" rather than "the three".
+
+*Carried by the register's collector, 2026-09-30, unedited. Attribution as its
+authors give it: measured by the clinical-library thread, verified independently
+by the profile-write thread, with the `identity_map` sentence corrected by the
+collector. Four of its claims were checked against this tree before filing: the
+membership read at `entry.ts:340` carries a `user_id` term and no `agency_id`;
+`identity_map` is declared `enable row level security` and `force row level
+security` and no `create policy` names it in any migration; the gate reached at
+`entry.ts:116` is `isProtectedSuperAdmin`; and `PENNSYNC_ENROLL_NEW_STAFF` must
+read exactly `enabled-v1`. The rest is its authors'.*
+
+*Its second paragraph was wrong twice before it was right, and both are recorded
+because this page is the one place a wrong reason would have outlived the
+mistake. The first version said `pennsync_records_owner` never holds `BYPASSRLS`
+and every policy asks `caller_agencies()`, which is not the reason, because
+`identity_map` has no policy at all; its author caught that. The replacement said
+nothing in the tree writes the table, which `tools-pennsync-enroll.mjs:330`
+falsifies. That one came of a grep filtered on update and revoke keywords, in
+which an INSERT could not have appeared whatever the tree held — the conclusion
+of a search written down as a property of the table.*
+
 *The collector holds the register, took no part in this decision and makes no
 claim here about whether it is right.*
 
