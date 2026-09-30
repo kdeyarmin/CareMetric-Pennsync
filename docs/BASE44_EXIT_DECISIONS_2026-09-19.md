@@ -12912,8 +12912,15 @@ the reasoning — sweep for the form, not for the mistake.
 **Two depths, and which generalises.** Mine was that the sentence had no
 grantor, found by searching my own transcript — an instrument anybody can run,
 on their own text, that could have come back the other way. Batch C's is that
-it had a grantor who declined, found by reading one file somebody happened to
-be looking at. The second is worse and the first is reproducible, so run the
+it had ~~a grantor who declined~~, found by reading one file somebody happened
+to be looking at. [Retracted 2026-09-30: batch C's finding is reported
+faithfully here and its CONTENT is false. There was no declination, and
+nothing replaced it — he neither refused nor assented, and the record's three
+silences authorize nothing. See CORRECTION TO STAGE ONE. Note what that does
+to the ranking below, in the direction that strengthens it: the
+non-reproducible instrument did not find a deeper truth, it returned a false
+one, which is the strongest case there is for running the reproducible one
+first.] ~~The second is worse and~~ the first is reproducible, so run the
 transcript search and then go and look for a refusal.
 
 **And check before calling a provenance unrecoverable.** Mine was recoverable,
