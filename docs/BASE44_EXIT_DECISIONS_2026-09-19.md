@@ -10662,6 +10662,26 @@ every capability that will ever touch the table; a contract is a decision
 about one.** That asymmetry is the whole reason this is refused rather than
 deferred.
 
+### A second reason the five are not one policy away
+
+The queue names a capability's FIRST blocker and nothing behind it, so what a
+bucket reports is a lower bound on what its members are waiting for. Measured
+here through `discoverEntityReach` at the same head: `offboardUser` also
+writes `AgencyMembership`, and `autoApproveInvitedUser`, `userManagement` and
+`userManagementV2` also write `UserInvitation`. Both entities are
+dispositioned `port`, so neither is a missing table — but each is its own
+write-policy question, and none of them is visible while the profile path is
+the named blocker.
+
+That does not change this decision; it removes the last reading under which
+refusing the path could look expensive. **Even a built administrative path
+would have cleared four of these five to their next blocker rather than to
+done.** Anyone who later reverses this should re-run the gate rather than
+predicting, for the reason D55 and D79 each record: the bucket that empties is
+not the same thing as the work that finishes, and a count that moves in the
+direction of progress is the one nobody re-measures.
+
+
 ### What it does to the queue
 
 `port queue: entity_authorization=5 files=12 external_secret=2 none=79`, from
