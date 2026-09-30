@@ -45,7 +45,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const COPY_CONTRACT = 'cm.pennsync.file-copy.v1';
+/**
+ * v2 because the export's shape changed in a way a v1 export cannot satisfy:
+ * every reference now names the AGENCY of the row it came from. Under D224's
+ * reader model a copied object is bound to a tenant, so a plan that did not
+ * know the tenant could not say what to mint, and accepting a v1 export would
+ * mean guessing it.
+ */
+export const COPY_CONTRACT = 'cm.pennsync.file-copy.v2';
 export const MAX_EXPORT_BYTES = 64 * 1024 * 1024;
 export const LIMITS = Object.freeze({ references: 500000, locators: 200000, mapped: 200000 });
 /** The same write lock every authority mutation takes, so this serialises with them. */
@@ -60,45 +67,56 @@ export const STORAGE_HOSTS = Object.freeze(['qtrypzzcjebvfcihiynt.supabase.co', 
 export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved_paused']);
 
 /**
- * WHO MAY OPEN A COPIED OBJECT — the question that stops every apply (D77).
+ * WHO MAY OPEN A COPIED OBJECT — the question that stopped every apply (D77),
+ * answered.
  *
  * A mapping is keyed on the LOCATOR, so one upload referenced by three rows
  * becomes one owned handle. That is the property that stops two copies
- * drifting, and it is also what makes this the sharp end. The runtime that
- * would serve that handle, `services/integration-runtime/providers.mjs`, is
- * UPLOADER-OWNED: `fileRecord` admits a row only when `subject` equals the
- * caller's hashed subject, and the object path embeds that subject as well. Its
- * `id` is a primary key, so the same handle cannot be registered once per
- * reader. A migrated object has no uploader, so whichever subject the copy ran
- * as would be the only person who could ever open it, and every other
- * authorized caregiver would get `FILE_ACCESS_DENIED`.
+ * drifting, and it was also what made this the sharp end. The runtime that
+ * serves that handle, `services/integration-runtime/providers.mjs`, WAS
+ * uploader-owned: `fileRecord` admitted a row only when `subject` equalled the
+ * caller's hashed subject, and the object path embedded that subject too. A
+ * migrated object has no uploader, so whichever subject the copy ran as would
+ * have been the only person who could ever open it, and every other authorized
+ * caregiver would have got `FILE_ACCESS_DENIED`.
  *
  * That model is right for what it was built for — a file a caller uploaded in
  * their own session — and wrong for a carried row whose readers are decided by
- * a contract. Changing it is a decision about the runtime's authorization, not
- * about this tool, so it is NOT taken here and NOT worked around: D56's rule is
- * "do not widen the allowlist to unblock yourself", and the same applies to an
- * ownership check.
+ * a contract. Migration `006_record_owned_files.sql` makes the ownership a
+ * property of the ROW rather than a property of the service: an object is
+ * `subject`-owned, exactly as before and by default, or `record`-owned, bound
+ * to an AGENCY, readable by an active membership of it.
  *
- * SO EVERY APPLY IS REFUSED, and the first version of this got it backwards in
- * a way worth recording. It took a `readerModel` from the operator, refused
- * `uploader_owned` by name and accepted `record_authorized` — which nothing
- * implements. The label was never checked against anything, so the accepted
- * value was the one that CANNOT be true, the refusal message named it, and an
- * operator following the error would type the word that let immutable rows be
- * written for handles nobody but one person could open. **Pre-allowing the name
- * of a model nobody has built is worse than no check: it reads as a control and
- * it is a hint.** An attestation a tool cannot verify is not a control either.
+ * **The protection that had to survive, and did**: a handle is not a bearer
+ * capability. The agency a record-owned read is admitted under is the one the
+ * runtime resolved for itself from the caller's own bearer through live
+ * authority — never something the caller asserts — so a leaked `cmfile:` UUID
+ * still buys its holder nothing.
  *
- * `RUNTIME_READER_MODEL` is a fact about another service, so it is pinned here
- * and a test reads that service's own source to keep it honest — when the
- * runtime stops being uploader-owned, that test fails and this refusal is the
- * one line to delete. Until then `fileCopyRows` and `writeFileObjects` below
- * stay reachable, because the round trip they prove (the planner writes
- * `locator_key`, the resolver reads it) is what stops every future mapping
- * resolving to null.
+ * What the runtime deliberately does NOT answer is the chart. It cannot ask
+ * `caller_assigned_patients` without the record store, and giving it that store
+ * is the widening D56's rule forbids. So the split is that the runtime
+ * authorizes the TENANT and the calling contract authorizes the CHART, and
+ * every path to these bytes runs through such a contract first.
+ *
+ * SO AN APPLY IS NO LONGER REFUSED FOR THIS REASON, and the shape of the old
+ * refusal is worth keeping in mind rather than deleting. Its first version took
+ * a `readerModel` from the operator, refused `uploader_owned` by name and
+ * accepted `record_authorized` — which nothing implemented. The label was never
+ * checked against anything, so the accepted value was the one that COULD NOT be
+ * true, the refusal message named it, and an operator following the error would
+ * have typed the word that let immutable rows be written for handles nobody but
+ * one person could open. **Pre-allowing the name of a model nobody has built is
+ * worse than no check: it reads as a control and it is a hint.**
+ *
+ * `RUNTIME_READER_MODEL` is still a fact about another service rather than an
+ * attestation, so it stays pinned here and a test still reads that service's
+ * own source to keep it honest. What that test asserts has moved with the
+ * model: it now reads the record-owned branch and the agency comparison, so if
+ * the runtime ever goes back to binding a handle to one caller, this pin fails
+ * rather than quietly permitting applies the runtime cannot serve.
  */
-export const RUNTIME_READER_MODEL = 'uploader_owned';
+export const RUNTIME_READER_MODEL = 'record_authorized';
 export const REQUIRED_READER_MODEL = 'record_authorized';
 
 /** Why one reference produced no copy. Reported, never silent. */
@@ -113,6 +131,8 @@ export const SKIPS = Object.freeze([
 ]);
 
 const APP = /^[a-f0-9]{24}$/;
+/** The tenant id shape `cm_integration_file_record_owned` binds an object to. */
+const AGENCY = /^[A-Za-z0-9_-]{1,128}$/;
 const KEY = /^[0-9a-f]{64}$/;
 const FILE_URI = /^cmfile:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -192,9 +212,15 @@ export function readExport(raw) {
     check(typeof row.entity === 'string' && row.entity.length > 0 && row.entity.length <= 200);
     check(typeof row.path === 'string' && row.path.length > 0 && row.path.length <= 400);
     check(row.row_id === undefined || (typeof row.row_id === 'string' && row.row_id.length <= 200));
+    // Required, and shaped like the tenant ids the runtime binds to. A
+    // reference with no agency cannot say what to mint the object under, and a
+    // missing one must not read as a locator that simply has no tenant.
+    check(typeof row.agency_id === 'string' && AGENCY.test(row.agency_id),
+      'FILE_COPY_EXPORT_AGENCY_REQUIRED');
     const locator = row.locator === undefined || row.locator === null ? null : row.locator;
     check(locator === null || typeof locator === 'string', 'FILE_COPY_EXPORT_INVALID');
-    return { entity: row.entity, path: row.path, row_id: row.row_id ?? null, locator };
+    return { entity: row.entity, path: row.path, row_id: row.row_id ?? null,
+      agency_id: row.agency_id, locator };
   });
   return { app_id: parsed.app_id, references, mapped: new Set(mapped) };
 }
@@ -246,18 +272,50 @@ export function planFileCopy({ app_id: appId, references, mapped }, census, mani
     const key = locatorKey(locator);
     if (mapped.has(key)) { note('already_mapped', reference); continue; }
     const existing = copies.get(key);
-    if (existing) { existing.reference_count += 1; continue; }
+    if (existing) {
+      existing.reference_count += 1;
+      existing.agencies.add(reference.agency_id);
+      // Named by FIELD, never by row, exactly as a skip is: an operator acts on
+      // the field, and a row id here would put a clinical subject in the plan.
+      existing.fields.add(`${reference.entity}:${reference.path}`);
+      continue;
+    }
     // Before the insert rather than after it. The two admit the same count —
     // measured, not assumed — and this way the bound is the condition rather
     // than something to work out from it.
     if (copies.size >= LIMITS.locators) throw new FileCopyError('FILE_COPY_TOO_MANY_LOCATORS');
-    copies.set(key, { locator, locator_key: key, reference_count: 1 });
+    copies.set(key, { locator, locator_key: key, reference_count: 1,
+      agencies: new Set([reference.agency_id]),
+      fields: new Set([`${reference.entity}:${reference.path}`]) });
   }
-  const ordered = [...copies.values()].sort((a, b) => (a.locator_key < b.locator_key ? -1 : 1));
+  /*
+   * A locator reached from more than one agency is MEASURED and ESCALATED, not
+   * quietly dropped (D224).
+   *
+   * Keying on the locator means one upload becomes one owned handle, and under
+   * the reader model that handle is bound to a single tenant — so a locator two
+   * agencies reference today cannot be served to both. Dropping it silently
+   * would make a file unreachable from one of the agencies that reaches it now,
+   * which is somebody noticing the product doing less. So it is reported with
+   * the fields that reach it, and `applyFileCopy` refuses while any exists.
+   *
+   * Whether the real data contains any is a question this tool answers and this
+   * source cannot: it is a property of an operator's export.
+   */
+  const ordered = [];
+  const crossAgency = [];
+  for (const copy of [...copies.values()].sort((a, b) => (a.locator_key < b.locator_key ? -1 : 1))) {
+    const agencies = [...copy.agencies].sort();
+    const entry = { locator: copy.locator, locator_key: copy.locator_key,
+      reference_count: copy.reference_count };
+    if (agencies.length === 1) { ordered.push({ ...entry, agency_id: agencies[0] }); continue; }
+    crossAgency.push({ ...entry, agencies, fields: [...copy.fields].sort() });
+  }
   const plan = {
     contract: COPY_CONTRACT,
     app_id: appId,
     copies: ordered,
+    cross_agency: crossAgency,
     skips,
     skipped_fields: [...skipped.values()]
       .sort((a, b) => (`${a.reason}${a.entity}${a.path}` < `${b.reason}${b.entity}${b.path}` ? -1 : 1)),
@@ -273,8 +331,12 @@ export function planFileCopy({ app_id: appId, references, mapped }, census, mani
     object_bytes_read: 0,
     files_copied: 0,
   };
+  // `cross_agency` is inside the digest: the reviewed plan is the whole
+  // answer, and a plan that grew one between review and apply is not the plan
+  // that was reviewed.
   plan.digest = sha(Buffer.from(JSON.stringify({
     contract: plan.contract, app_id: plan.app_id, copies: plan.copies,
+    cross_agency: plan.cross_agency,
   }), 'utf8'));
   return plan;
 }
@@ -289,6 +351,9 @@ export function summarize(plan) {
     skipped,
     skips: plan.skips,
     uncarried_locators: plan.uncarried_locators,
+    // The measurement D224 turns on. Zero means the tenant binding costs
+    // nothing; anything else is a decision nobody has taken.
+    cross_agency_locators: plan.cross_agency.length,
     digest: plan.digest,
   };
 }
@@ -324,6 +389,11 @@ export function fileCopyRows(plan, { actorId, expectedDigest, copyRun, results }
       'FILE_COPY_RESULT_DIGEST_INVALID');
     check(Number.isSafeInteger(result.byte_size) && result.byte_size >= 0,
       'FILE_COPY_RESULT_SIZE_INVALID');
+    // The agency the object had to be minted under travels in the plan and is
+    // checked against what the operator's copy reports, because a handle minted
+    // in the wrong tenant is readable by the wrong agency and by nobody in the
+    // right one — and the mapping that recorded it would be immutable.
+    check(result.agency_id === copy.agency_id, 'FILE_COPY_RESULT_AGENCY_MISMATCH');
     rows.push([plan.app_id, copy.locator_key, copy.locator, result.file_uri,
       result.content_sha256, result.byte_size, copyRun, actorId]);
   }
@@ -369,21 +439,29 @@ export async function writeFileObjects(execute, rows) {
 }
 
 /**
- * Record the mappings for a copy that has already happened — REFUSED, always.
+ * Record the mappings for a copy that has already happened.
  *
- * This is the documented apply path, and it is the one place an operator would
- * enter. See `RUNTIME_READER_MODEL` above for the whole argument: the runtime
- * mints handles only its uploader can open, a migrated object has no uploader,
- * and a mapping is immutable, so recording one is a permanent row for bytes
- * every other authorized reader is refused.
+ * This is the documented apply path and the one place an operator would enter.
+ * D77 refused every call here, because the runtime minted handles only their
+ * uploader could open and a migrated object has no uploader. D224 answered
+ * that: `RUNTIME_READER_MODEL` above carries the argument, and the runtime now
+ * binds a record-owned object to an agency rather than to a person.
  *
- * The body below is what runs when that is answered. Deleting the refusal is
- * the whole change; everything under it is already proved.
+ * One refusal remains, and it is an open QUESTION rather than a settled
+ * property of the design. A locator reached from more than one agency cannot be
+ * one owned handle both agencies read, so mapping it would make the file
+ * unreachable from one of them — a thing somebody notices. Whether any such
+ * locator exists is a fact about the data, which this refusal measures at the
+ * moment an operator has it rather than assuming either way. It names them so
+ * the answer can be taken by whoever owns that call; it does not drop them, and
+ * it does not decide it.
  */
 export async function applyFileCopy(execute, plan, options) {
-  // Before the plan is even read, so the reason is what the operator sees.
+  // Before the plan is read in detail, so the reason is what the operator sees.
   check(RUNTIME_READER_MODEL === REQUIRED_READER_MODEL,
     'FILE_COPY_READER_MODEL_UNRESOLVED');
+  check(isObject(plan) && Array.isArray(plan.cross_agency), 'FILE_COPY_PLAN_INVALID');
+  check(plan.cross_agency.length === 0, 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');
   const rows = fileCopyRows(plan, options);
   const recorded = await writeFileObjects(execute, rows);
   return { recorded, planned: plan.copies.length, dropped: plan.copies.length - rows.length };

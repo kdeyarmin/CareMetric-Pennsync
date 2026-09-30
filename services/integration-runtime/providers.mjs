@@ -41,7 +41,7 @@ export function validateParams(operation, params, config) {
     validateMailParams(params);
     if (!config.sendgridKey || !config.fromEmail) fail(503, 'EMAIL_PROVIDER_NOT_CONFIGURED');
     emailAddress(config.fromEmail);
-  } else if (['UploadFile', 'UploadPrivateFile'].includes(operation)) {
+  } else if (['UploadFile', 'UploadPrivateFile', 'UploadRecordFile'].includes(operation)) {
     exactObject(params, ['base64', 'content_type']); fileBytes(params.base64, params.content_type);
   } else if (operation === 'CreateFileSignedUrl') {
     exactObject(params, ['file_uri']); requireFileUri(params.file_uri);
@@ -50,12 +50,47 @@ export function validateParams(operation, params, config) {
 export function createProviders(config, store, fetcher = fetch) {
   const storageHeaders = () => ({ apikey: config.supabaseKey, Authorization: `Bearer ${config.supabaseKey}` });
   const storageBase = `${config.supabaseUrl}/storage/v1`;
+  /**
+   * Who may open these bytes, asked of the ROW rather than of the caller.
+   *
+   * Two ownership kinds, and the row carries which one it is (migration 006).
+   * `subject` is the original model unchanged: the uploader alone, path bound
+   * to their hashed subject. `record` is a file whose readers a contract
+   * decides — a migrated object has no uploader, and a document one nurse
+   * generates is read by the care team — so it binds to the AGENCY instead and
+   * its path embeds that.
+   *
+   * The agency is `ctx.agencyId`, which the runtime resolved for itself from
+   * the caller's own bearer through live authority. It is never something the
+   * caller asserts, which is what keeps a handle from being a bearer
+   * capability: a leaked `cmfile:` UUID is useless to anyone who is not
+   * independently an active member of that tenant.
+   *
+   * The CHART narrowing is not attempted here and is not missing: the runtime
+   * cannot ask `caller_assigned_patients` without the record store, and giving
+   * it that store is the widening D77 refused. Every path to these bytes runs
+   * through a contract in `pennsync-api` that evaluates the chart predicate
+   * first, so this layer is the tenant check standing behind it.
+   *
+   * The store answers both kinds in one round trip and its own predicate is the
+   * authorization; the path check below is the second copy of the same fact,
+   * exactly as it always was.
+   */
   async function fileRecord(uri, ctx) {
     const id = requireFileUri(uri);
-    const row = await store.fileGet({ p_id: id, p_app_id: config.appId, p_subject: ctx.subject });
-    if (!row || row.id !== id || row.app_id !== config.appId || row.subject !== ctx.subject
-      || row.object_path !== `${config.appId}/${ctx.subject}/${id}` || !Number.isInteger(row.size_bytes)
-      || row.size_bytes < 1 || row.size_bytes > MAX_FILE || !/^[a-f0-9]{64}$/.test(row.sha256)) fail(403, 'FILE_ACCESS_DENIED');
+    const agencyId = ctx.agencyId ?? null;
+    const row = await store.fileGetAuthorized({ p_id: id, p_app_id: config.appId,
+      p_subject: ctx.subject, p_agency_id: agencyId });
+    if (!row || row.id !== id || row.app_id !== config.appId
+      || !Number.isInteger(row.size_bytes) || row.size_bytes < 1 || row.size_bytes > MAX_FILE
+      || !/^[a-f0-9]{64}$/.test(row.sha256)) fail(403, 'FILE_ACCESS_DENIED');
+    if (row.owner_kind === 'record') {
+      if (agencyId === null || row.agency_id !== agencyId
+        || row.object_path !== `${config.appId}/record/${agencyId}/${id}`) fail(403, 'FILE_ACCESS_DENIED');
+    } else if (row.owner_kind === 'subject') {
+      if (row.subject !== ctx.subject
+        || row.object_path !== `${config.appId}/${ctx.subject}/${id}`) fail(403, 'FILE_ACCESS_DENIED');
+    } else fail(403, 'FILE_ACCESS_DENIED');
     return row;
   }
   async function loadDocument(uri, ctx) {
@@ -116,17 +151,30 @@ export function createProviders(config, store, fetcher = fetch) {
       if (response.status !== 202) fail(502, 'EMAIL_NOT_ACCEPTED');
       return { accepted: true, delivered: false, provider: 'sendgrid' };
     }
-    if (['UploadFile', 'UploadPrivateFile'].includes(operation)) {
+    if (['UploadFile', 'UploadPrivateFile', 'UploadRecordFile'].includes(operation)) {
+      const owned = operation === 'UploadRecordFile';
+      const agencyId = ctx.agencyId ?? null;
+      // A record-owned object with no tenant would be readable by nobody, so
+      // this refuses rather than falling back to uploader ownership: a caller
+      // who asked for a file their colleagues can open must not silently get
+      // one only they can.
+      if (owned && agencyId === null) fail(400, 'RECORD_FILE_AGENCY_REQUIRED');
       const bytes = fileBytes(params.base64, params.content_type);
-      const path = `${config.appId}/${ctx.subject}/${ctx.jobId}`;
+      const path = owned ? `${config.appId}/record/${agencyId}/${ctx.jobId}`
+        : `${config.appId}/${ctx.subject}/${ctx.jobId}`;
       const response = await fetcher(`${storageBase}/object/${BUCKET}/${path}`, {
         method: 'POST', headers: { ...storageHeaders(), 'Content-Type': params.content_type, 'x-upsert': 'false' },
         body: bytes, redirect: 'error', signal: AbortSignal.timeout(30000),
       });
       if (!response.ok) fail(503, 'UPLOAD_OUTCOME_UNCERTAIN');
-      const saved = await store.fileRecord({ p_id: ctx.jobId, p_app_id: config.appId, p_subject: ctx.subject,
+      const receipt = { p_id: ctx.jobId, p_app_id: config.appId, p_subject: ctx.subject,
         p_object_path: path, p_content_type: params.content_type, p_size: bytes.length,
-        p_sha256: createHash('sha256').update(bytes).digest('hex') });
+        p_sha256: createHash('sha256').update(bytes).digest('hex') };
+      // `subject` travels on a record-owned receipt too, as provenance: it says
+      // who minted the row and authorizes nothing.
+      const saved = owned
+        ? await store.fileRecordOwned({ ...receipt, p_agency_id: agencyId })
+        : await store.fileRecord(receipt);
       if (saved !== true) fail(503, 'FILE_RECEIPT_UNCERTAIN');
       return { file_uri: `cmfile:${ctx.jobId}`, size_bytes: bytes.length, private: true };
     }

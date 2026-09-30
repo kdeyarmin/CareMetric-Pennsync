@@ -13,10 +13,10 @@ const config = { appId, supabaseUrl: 'https://xsqobvvreaovwibxwyvv.supabase.co',
 for (const variant of [`cmfile:${id}`, `cmfile:${id.toUpperCase()}`, `CMFILE:${id.toUpperCase()}`]) {
   test(`private signing canonicalizes ${variant} before owned row and object lookup`, async () => {
     let reads = 0, requests = 0;
-    const store = { async fileGet(input) {
+    const store = { async fileGetAuthorized(input) {
       reads++;
-      assert.deepEqual(input, { p_id: id, p_app_id: appId, p_subject: subject });
-      return { id, app_id: appId, subject, object_path: objectPath, size_bytes: 10, sha256: 'c'.repeat(64) };
+      assert.deepEqual(input, { p_id: id, p_app_id: appId, p_subject: subject, p_agency_id: null });
+      return { id, app_id: appId, subject, owner_kind: 'subject', agency_id: null, object_path: objectPath, size_bytes: 10, sha256: 'c'.repeat(64) };
     } };
     const provider = createProviders(config, store, async (url, options) => {
       requests++;
@@ -32,8 +32,8 @@ for (const variant of [`cmfile:${id}`, `cmfile:${id.toUpperCase()}`, `CMFILE:${i
 
 test('canonicalizing case never relaxes subject or exact storage-path authority', async () => {
   for (const patch of [{ subject: 'd'.repeat(64) }, { object_path: objectPath.replace(id, id.toUpperCase()) }]) {
-    const provider = createProviders(config, { async fileGet() {
-      return { id, app_id: appId, subject, object_path: objectPath, size_bytes: 10, sha256: 'c'.repeat(64), ...patch };
+    const provider = createProviders(config, { async fileGetAuthorized() {
+      return { id, app_id: appId, subject, owner_kind: 'subject', agency_id: null, object_path: objectPath, size_bytes: 10, sha256: 'c'.repeat(64), ...patch };
     } }, () => assert.fail('must not sign a mismatched owner or storage path'));
     await assert.rejects(() => provider('CreateFileSignedUrl', { file_uri: `cmfile:${id.toUpperCase()}` }, { subject }),
       error => error.status === 403 && error.code === 'FILE_ACCESS_DENIED');

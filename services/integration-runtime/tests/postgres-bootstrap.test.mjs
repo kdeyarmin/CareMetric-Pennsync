@@ -11,15 +11,21 @@ const base = new URL(raw);
 if (!['postgres:', 'postgresql:'].includes(base.protocol) || !['127.0.0.1', '[::1]'].includes(base.hostname)
   || base.pathname !== '/postgres' || base.search || base.hash) throw new Error('Only an explicit loopback PostgreSQL test lab is allowed');
 const migrations = new URL('../migrations/', import.meta.url);
+// The installed readback below is evidence of what the hosted project held on
+// 2026-09-18, and it has run 001-005. A forward migration is therefore applied
+// only where a case asks for it: comparing 006's additions against that
+// evidence would assert something about a deployment nobody has measured.
 const files = (await readdir(migrations)).filter(name => /^00[1-5]_.+\.sql$/.test(name)).sort();
 assert.equal(files.length, 5);
+const FORWARD = (await readdir(migrations)).filter(name => /^00[6-9]_.+\.sql$/.test(name)).sort();
+assert.deepEqual(FORWARD, ['006_record_owned_files.sql']);
 const installed = JSON.parse(await readFile(new URL('./installed-definition-metadata.json', import.meta.url), 'utf8'));
 const app = '6a9881683dc68a0bd54f1ef7';
 const subject = 'a'.repeat(64);
 const hash = 'b'.repeat(64);
 const normalize = text => text.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
 
-async function lab(run) {
+async function lab(run, { forward = false } = {}) {
   const name = `pennsync_integration_bootstrap_${process.pid}_${randomBytes(5).toString('hex')}`;
   assert.match(name, /^pennsync_integration_bootstrap_[0-9]+_[a-f0-9]{10}$/);
   const admin = new pg.Client({ connectionString: base.toString() });
@@ -37,6 +43,7 @@ async function lab(run) {
     // Unrelated data tests that these migrations preserve other application namespaces.
     await db.query("create table public.unrelated_fixture(id integer primary key,note text); insert into public.unrelated_fixture values(1,'Synthetic sentinel')");
     for (const file of files) await db.query(await readFile(new URL(file, migrations), 'utf8'));
+    if (forward) for (const file of FORWARD) await db.query(await readFile(new URL(file, migrations), 'utf8'));
     await run({ db, connect });
     assert.deepEqual((await db.query('select * from public.unrelated_fixture')).rows, [{ id: 1, note: 'Synthetic sentinel' }]);
   } finally {
@@ -198,3 +205,115 @@ test('replaying historical 001 fails without overwriting already existing resour
   await db.query('rollback');
   assert.equal((await db.query('select count(*)::integer as count from public.cm_integration_jobs where id=$1', [record.id])).rows[0].count, 1);
 }));
+
+/*
+ * Migration 006: record-owned objects.
+ *
+ * The cases below are against the real cluster rather than against the
+ * runtime's store double, because the SQL predicate in
+ * `cm_integration_file_get_authorized` IS the first layer of the
+ * authorization — the runtime's own comparisons are the second. A suite that
+ * proved only the double would prove neither.
+ */
+const owned = (db, values) => rpc(db, 'file_record_owned', values);
+const authorized = (db, values) => rpc(db, 'file_get_authorized', values);
+const AGENCY = 'agency-one';
+const OTHER_AGENCY = 'agency-two';
+const COLLEAGUE = 'e'.repeat(64);
+
+test('006 leaves every existing row uploader-owned and its reads unchanged', () => lab(async ({ db }) => {
+  await role(db);
+  const id = randomUUID();
+  // Minted through the ORIGINAL function, exactly as an applied caller does.
+  assert.equal(await rpc(db, 'file_record', [id, app, subject, `${app}/${subject}/${id}`, 'text/plain', 10, hash]), true);
+  await reset(db);
+  const row = (await db.query('select owner_kind,agency_id from public.cm_integration_files where id=$1', [id])).rows[0];
+  await role(db);
+  // The backfill is the default: no data step, and nothing existing moves.
+  assert.deepEqual(row, { owner_kind: 'subject', agency_id: null });
+  assert.equal((await rpc(db, 'file_get', [id, app, subject])).id, id);
+  assert.equal(await rpc(db, 'file_get', [id, app, COLLEAGUE]), null);
+  // And through the new getter: still the uploader's alone, whatever tenant the
+  // caller holds.
+  assert.equal((await authorized(db, [id, app, subject, null])).id, id);
+  assert.equal((await authorized(db, [id, app, subject, AGENCY])).id, id);
+  assert.equal(await authorized(db, [id, app, COLLEAGUE, AGENCY]), null);
+  assert.equal(await authorized(db, [id, app, COLLEAGUE, null]), null);
+}, { forward: true }));
+
+test('a record-owned object opens for the agency and for nobody outside it', () => lab(async ({ db }) => {
+  await role(db);
+  const id = randomUUID();
+  assert.equal(await owned(db, [id, app, subject, AGENCY, `${app}/record/${AGENCY}/${id}`, 'application/pdf', 10, hash]), true);
+  await reset(db);
+  const row = (await db.query('select owner_kind,agency_id,subject from public.cm_integration_files where id=$1', [id])).rows[0];
+  await role(db);
+  assert.deepEqual(row, { owner_kind: 'record', agency_id: AGENCY, subject });
+
+  // A colleague who did not mint it, in the same agency: admitted. This is the
+  // whole capability — a document one nurse generates, read by the care team.
+  assert.equal((await authorized(db, [id, app, COLLEAGUE, AGENCY])).id, id);
+  // Holding the handle buys nothing outside the tenant, and the minter is no
+  // exception once they are acting in a different agency.
+  assert.equal(await authorized(db, [id, app, COLLEAGUE, OTHER_AGENCY]), null);
+  assert.equal(await authorized(db, [id, app, subject, OTHER_AGENCY]), null);
+  // A caller with no tenant at all — a platform owner outside an agency scope —
+  // matches no record-owned row, including its own minter.
+  assert.equal(await authorized(db, [id, app, COLLEAGUE, null]), null);
+  assert.equal(await authorized(db, [id, app, subject, null]), null);
+  // The wrong app never matches, as it never did.
+  assert.equal(await authorized(db, [id, '694ec16e72e01b60d22f7cbf', COLLEAGUE, AGENCY]), null);
+}, { forward: true }));
+
+test('the uploader getter narrows rather than widening: it never returns a record-owned row', () => lab(async ({ db }) => {
+  await role(db);
+  const id = randomUUID();
+  assert.equal(await owned(db, [id, app, subject, AGENCY, `${app}/record/${AGENCY}/${id}`, 'text/csv', 10, hash]), true);
+  // `subject` on a record-owned row is provenance. Without this narrowing the
+  // minter would match the old getter and reach their own object through the
+  // uploader path, whose caller then checks a path that cannot hold.
+  assert.equal(await rpc(db, 'file_get', [id, app, subject]), null);
+}, { forward: true }));
+
+test('a record-owned row must address its own agency, and the two columns move together', () => lab(async ({ db }) => {
+  await role(db);
+  const id = randomUUID();
+  // The path binding is the same control the uploader-owned mint has, over the
+  // agency instead of the subject.
+  for (const path of [`${app}/${subject}/${id}`, `${app}/record/${OTHER_AGENCY}/${id}`,
+    `${app}/record/${AGENCY}/${randomUUID()}`, `${app}/record/${AGENCY}`]) {
+    await assert.rejects(owned(db, [id, app, subject, AGENCY, path, 'text/plain', 10, hash]),
+      error => /Invalid file binding/.test(error.message));
+  }
+  await assert.rejects(owned(db, [id, app, subject, 'not a tenant id', `${app}/record/not a tenant id/${id}`, 'text/plain', 10, hash]),
+    error => /Invalid file binding/.test(error.message));
+  await reset(db);
+  // And the pairing constraint, reached directly: neither kind can carry the
+  // other's tenancy, so a row readable by nobody cannot be written.
+  for (const [kind, agency] of [['record', null], ['subject', AGENCY]]) {
+    await assert.rejects(db.query(`insert into public.cm_integration_files
+      (id,app_id,subject,agency_id,owner_kind,object_path,content_type,size_bytes,sha256)
+      values($1,$2,$3,$4,$5,$6,'text/plain',10,$7)`,
+    [randomUUID(), app, subject, agency, kind, `${app}/synthetic/${randomUUID()}`, hash]),
+    error => error.code === '23514');
+  }
+}, { forward: true }));
+
+test('006 grants the browser nothing, exactly as the functions beside it', () => lab(async ({ db }) => {
+  for (const browser of ['anon', 'authenticated']) {
+    await role(db, browser);
+    await assert.rejects(authorized(db, [randomUUID(), app, subject, AGENCY]), error => error.code === '42501');
+    await assert.rejects(owned(db, [randomUUID(), app, subject, AGENCY, `${app}/record/${AGENCY}/${randomUUID()}`, 'text/plain', 10, hash]),
+      error => error.code === '42501');
+    await reset(db);
+  }
+  // Service-only, as every other definer here: the privilege list is the same
+  // one the installed comparison asserts for 001's functions.
+  assert.deepEqual((await db.query(`select p.proname as name,has_function_privilege('anon',p.oid,'EXECUTE') as anon,
+    has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated,
+    has_function_privilege('service_role',p.oid,'EXECUTE') as service_role, p.prosecdef as definer
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'
+    and p.proname in ('cm_integration_file_get_authorized','cm_integration_file_record_owned') order by p.proname`)).rows,
+  [{ name: 'cm_integration_file_get_authorized', anon: false, authenticated: false, service_role: true, definer: true },
+    { name: 'cm_integration_file_record_owned', anon: false, authenticated: false, service_role: true, definer: true }]);
+}, { forward: true }));

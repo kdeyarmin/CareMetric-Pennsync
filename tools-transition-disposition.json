@@ -609,6 +609,7 @@
     "UploadFile": "port",
     "UploadPrivateFile": "port",
     "CreateFileSignedUrl": "port",
+    "UploadRecordFile": "port",
     "GenerateImage": "retire"
   },
   "broker_ceiling": {},

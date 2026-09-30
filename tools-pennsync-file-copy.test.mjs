@@ -41,8 +41,10 @@ const exported = (references, mapped = []) => readExport(JSON.stringify({
   contract: COPY_CONTRACT, app_id: APP, references, mapped,
 }));
 const plan = (references, mapped = []) => planFileCopy(exported(references, mapped), census, manifest);
+const AGENCY = 'agency-one';
+const OTHER_AGENCY = 'agency-two';
 const ref = (patch = {}) => ({ entity: 'Document', path: DOC, row_id: 'doc-1',
-  locator: STORAGE, ...patch });
+  agency_id: AGENCY, locator: STORAGE, ...patch });
 
 test('the key a plan computes is the key the database computes', () => {
   // The migration hashes the exact string with the built-in `sha256` over its
@@ -144,7 +146,7 @@ test('an unfamiliar path on a paused entity is still reported as unfamiliar', ()
   // The carried check runs AFTER the shape checks on purpose: a census the
   // schemas have outgrown is a finding whatever the disposition says, and
   // reporting it as `uncarried_entity` would hide it behind a decision.
-  const result = plan([{ entity: 'FaxLog', path: 'invented_url', row_id: 'x', locator: STORAGE }]);
+  const result = plan([{ entity: 'FaxLog', path: 'invented_url', row_id: 'x', agency_id: AGENCY, locator: STORAGE }]);
   assert.equal(result.skips.unknown_field, 1);
   assert.equal(result.skips.uncarried_entity, 0);
 });
@@ -200,7 +202,7 @@ test('applying writes only what the copy produced, and only the reviewed plan', 
   // A locator the copy did not produce is DROPPED, never guessed at.
   const rows = fileCopyRows(result, {
     actorId, expectedDigest: result.digest, copyRun: 'run-1',
-    results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11 } },
+    results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11, agency_id: AGENCY } },
   });
   assert.equal(rows.length, 1, 'one of the two locators was produced');
   assert.equal(await writeFileObjects(execute, rows), 1);
@@ -232,8 +234,8 @@ test('a failed insert rolls the whole plan back', async () => {
     expectedDigest: result.digest,
     copyRun: 'run-1',
     results: {
-      [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11 },
-      [SECOND]: { file_uri: OTHER_HANDLE, content_sha256: zeros, byte_size: 12 },
+      [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11, agency_id: AGENCY },
+      [SECOND]: { file_uri: OTHER_HANDLE, content_sha256: zeros, byte_size: 12, agency_id: AGENCY },
     },
   })), error => /constraint/.test(error.message));
   assert.equal(statements.includes('commit'), false);
@@ -311,42 +313,109 @@ test('the command line plans and never copies', async () => {
   assert.deepEqual(JSON.parse(lines[0]), { error: 'FILE_COPY_USAGE' });
 });
 
-test('every apply is refused, and the refusal is tied to the runtime it is about', async () => {
+test('the apply is no longer refused, and the pin still reads the runtime it is about', async () => {
   /*
-   * THE FIRST VERSION OF THIS GOT THE POLARITY BACKWARDS, and it is the kind
-   * of mistake that reads as a control. It took a `readerModel` from the
+   * THE OLD REFUSAL'S FIRST VERSION GOT THE POLARITY BACKWARDS, and it is the
+   * kind of mistake that reads as a control. It took a `readerModel` from the
    * operator, refused `uploader_owned` by name and ACCEPTED `record_authorized`
-   * — which nothing implements. The label was never checked against anything,
-   * so the only accepted value was the one that cannot be true, and the refusal
-   * message named it: an operator following the error would type the word that
-   * let IMMUTABLE rows be written for handles nobody but one person can open.
+   * — which nothing implemented. The label was never checked against anything,
+   * so the only accepted value was the one that could not be true, and the
+   * refusal message named it: an operator following the error would type the
+   * word that let IMMUTABLE rows be written for handles nobody but one person
+   * could open.
    *
-   * So there is no label any more. The refusal is derived from a fact about
-   * another service, and the assertions below are what keep that fact honest:
-   * they read the runtime's own two checks, because when either goes the
-   * refusal is the one line to delete.
+   * So there is still no label. The pin is derived from a fact about another
+   * service, and the assertions below are what keep that fact honest — they
+   * read the runtime's own record-owned branch, because if it ever goes back to
+   * binding a handle to one caller this must refuse again rather than permit
+   * applies the runtime cannot serve.
    */
   const result = plan([ref()]);
-  await assert.rejects(
-    () => applyFileCopy(async () => {}, result, {
+  const written = [];
+  const recorded = await applyFileCopy(async (sql, row) => { written.push([sql, row]); }, result, {
+    actorId: '00000000-0000-4000-8000-000000000001',
+    expectedDigest: result.digest,
+    copyRun: 'run-1',
+    results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11, agency_id: AGENCY } },
+  });
+  assert.deepEqual(recorded, { recorded: 1, planned: 1, dropped: 0 });
+
+  const runtime = readFileSync('services/integration-runtime/providers.mjs', 'utf8');
+  assert.match(runtime, /row\.owner_kind === 'record'/,
+    'the runtime no longer has a record-owned branch: revisit RUNTIME_READER_MODEL');
+  assert.match(runtime, /row\.agency_id !== agencyId/,
+    'the runtime no longer binds a record-owned handle to its tenant: revisit RUNTIME_READER_MODEL');
+  assert.match(runtime, /row\.object_path !== `\$\{config\.appId\}\/record\/\$\{agencyId\}\/\$\{id\}`/,
+    'the runtime no longer embeds the agency in the path: revisit RUNTIME_READER_MODEL');
+  // The uploader-owned half is unchanged and still pinned, because D224
+  // narrowed nothing there and a silent widening of it would be a regression.
+  assert.match(runtime, /row\.subject !== ctx\.subject/,
+    'the runtime no longer binds an uploader-owned handle to its caller');
+  assert.equal(RUNTIME_READER_MODEL, 'record_authorized');
+  assert.equal(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL,
+    'these agreeing is what lets an apply through');
+});
+
+test('a locator two agencies reach is measured and escalated, never dropped', async () => {
+  /*
+   * D224's open question, as a number rather than a judgement.
+   *
+   * One locator becomes one owned handle bound to one tenant, so a locator two
+   * agencies reference cannot be served to both. The plan does not drop it —
+   * that would make a file unreachable from an agency that reaches it today,
+   * which somebody notices — and it does not map it either. It reports it with
+   * the fields that reach it, and the apply refuses while any exists.
+   */
+  const result = plan([ref(), ref({ entity: 'DocumentVersion', path: VERSION, agency_id: OTHER_AGENCY })]);
+  assert.deepEqual(result.copies, []);
+  assert.equal(result.cross_agency.length, 1);
+  assert.deepEqual(result.cross_agency[0].agencies, [AGENCY, OTHER_AGENCY].sort());
+  assert.equal(result.cross_agency[0].reference_count, 2);
+  // Named by field, never by row: a row id here would put a clinical subject in
+  // the plan, which is the one thing every diagnostic in this tool avoids.
+  assert.deepEqual(result.cross_agency[0].fields, [`Document:${DOC}`, `DocumentVersion:${VERSION}`].sort());
+  assert.equal(JSON.stringify(result).includes('doc-1'), false);
+  assert.equal(summarize(result).cross_agency_locators, 1);
+
+  await assert.rejects(() => applyFileCopy(async () => assert.fail('nothing may be written'), result, {
+    actorId: '00000000-0000-4000-8000-000000000001',
+    expectedDigest: result.digest,
+    copyRun: 'run-1',
+    results: {},
+  }), error => error.code === 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');
+
+  // Two references from the SAME agency are one ordinary copy, as they always
+  // were: this refuses a split tenant, not a shared locator.
+  const shared = plan([ref(), ref({ entity: 'DocumentVersion', path: VERSION })]);
+  assert.deepEqual(shared.cross_agency, []);
+  assert.equal(shared.copies.length, 1);
+  assert.equal(shared.copies[0].reference_count, 2);
+  assert.equal(shared.copies[0].agency_id, AGENCY);
+});
+
+test('a reference with no agency is refused rather than planned without a tenant', () => {
+  // Required, because under D224 a copied object is minted into a tenant and a
+  // plan that did not know it would be guessing. The v2 contract is what stops
+  // a v1 export reaching here at all.
+  assert.equal(COPY_CONTRACT, 'cm.pennsync.file-copy.v2');
+  for (const patch of [{ agency_id: undefined }, { agency_id: null }, { agency_id: '' },
+    { agency_id: 'not a tenant id' }, { agency_id: 42 }, { agency_id: 'a'.repeat(129) }]) {
+    assert.throws(() => exported([ref(patch)]),
+      error => error.code === 'FILE_COPY_EXPORT_AGENCY_REQUIRED', JSON.stringify(patch));
+  }
+});
+
+test('a copy minted into the wrong tenant is refused rather than recorded', async () => {
+  // The mapping is immutable, so a handle minted in the wrong agency would be a
+  // permanent row for bytes the right agency cannot read. The plan says which
+  // tenant the object had to be minted under and the result is held to it.
+  const result = plan([ref()]);
+  for (const agency of [OTHER_AGENCY, undefined, null]) {
+    await assert.rejects(() => applyFileCopy(async () => assert.fail('nothing may be written'), result, {
       actorId: '00000000-0000-4000-8000-000000000001',
       expectedDigest: result.digest,
       copyRun: 'run-1',
-      results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11 } },
-    }),
-    error => error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED',
-    'a well-formed apply is refused too, which is the whole point');
-  // And it refuses BEFORE the plan is read, so a malformed one gets this
-  // reason rather than a shape complaint that hides it.
-  await assert.rejects(() => applyFileCopy(async () => {}, {}, {}),
-    error => error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED');
-
-  const runtime = readFileSync('services/integration-runtime/providers.mjs', 'utf8');
-  assert.match(runtime, /row\.subject !== ctx\.subject/,
-    'the runtime no longer binds a handle to the caller: revisit RUNTIME_READER_MODEL');
-  assert.match(runtime, /row\.object_path !== `\$\{config\.appId\}\/\$\{ctx\.subject\}\/\$\{id\}`/,
-    'the runtime no longer embeds the subject in the path: revisit RUNTIME_READER_MODEL');
-  assert.equal(RUNTIME_READER_MODEL, 'uploader_owned');
-  assert.notEqual(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL,
-    'these differing is what refuses every apply');
+      results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11, agency_id: agency } },
+    }), error => error.code === 'FILE_COPY_RESULT_AGENCY_MISMATCH', String(agency));
+  }
 });

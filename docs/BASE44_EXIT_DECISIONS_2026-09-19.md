@@ -10572,3 +10572,148 @@ A partition with three free terms and one total is not self-checking: two wrong 
 The tell is the shape of the act: treating a partition as something to keep CONSISTENT rather than something to RE-DERIVE. Consistency is available to a wrong answer. The remedy is that a partition is re-derived from the instrument at every head, never adjusted to absorb a change, and a term is never carried across a head change on the grounds that the rest of the sum still works. Where a sum has more free terms than constraints, its closing tells you nothing and should not be reported as though it did.
 
 Both of tonight's slips have that shape, and the first is the cheaper illustration: I reported a figure as dropped at strict 15 by double-counting seven sites that had already been struck before the total they were subtracted from was formed.
+
+## D224 — The runtime authorizes the tenant, the contract authorizes the chart
+
+**Decision.** Make an integration file's ownership a property of its ROW rather
+than of the service. `owner_kind = 'subject'` is the existing model byte for
+byte and is what every existing row is; `owner_kind = 'record'` binds the object
+to an AGENCY and is readable by an active membership of it. `applyFileCopy` is
+no longer refused for the reader model, and `services/pennsync-api` gains
+`UploadRecordFile` as the way to mint a document whose readers a contract
+decides.
+
+D77 deferred this and said why: the runtime's uploader-ownership is that
+service's own authorization model, and changing it was not the copy tool's
+decision to take. D85 re-measured the claim, found it held, and named the
+missing piece exactly — the record-authorized predicate already exists and is
+proved, and what is absent is a path from a handle to it. This is that path,
+and it is deliberately not the obvious one.
+
+### What uploader-ownership was protecting, read from the code
+
+`fileRecord` admitted a row only when `row.subject` equalled the caller's hashed
+subject AND `row.object_path` was `appId/subject/id`. Stated as a property
+rather than as two comparisons: **a `cmfile:` handle is not a bearer
+capability.** A handle that leaks through a log, a URL or a screenshot buys its
+holder nothing. That is the thing that had to survive, and no model under which
+possession of the handle is sufficient was acceptable.
+
+What it could not do is serve a row whose readers are decided by a contract. A
+migrated object has no uploader, so whichever subject the copy ran as would be
+the only person who could ever open it. And the defect is not confined to
+migrated rows — D85's first finding — because an object the ported runtime mints
+under subject X is equally unreadable by subject Y. A clinical document one
+nurse generates is read by the care team, so binding it to the generator loses
+it to everybody else. **Against what the product does today that is a
+regression**: in Base44 the `file_url` sits on the carried row and every
+authorized reader of the row reaches it.
+
+### Why not a signed grant
+
+The alternative considered and rejected was a MAC over (app, file, caller,
+expiry), minted by `pennsync-api` — the service that runs the contract that
+authorized the row — and verified by the runtime. It buys nothing the runtime
+does not already have. The runtime resolves LIVE authority from the caller's own
+bearer on every request, independently, and `pennsync-api` forwards that bearer
+rather than holding a credential of its own. So the runtime can already
+establish the caller's agency for itself, and a grant would add a shared secret
+to manage, an operator variable on two services, and a second thing that can be
+wrong, in exchange for a fact it can derive.
+
+### The split, and the hazard recorded rather than hidden
+
+**The runtime authorizes the TENANT and the calling contract authorizes the
+CHART, and neither is asked the other's question.** The runtime cannot evaluate
+`caller_assigned_patients` without the record store, and giving it that store is
+the widening D77 refused and D56 forbids in general.
+
+So at the runtime's layer a record-owned object is agency-WIDE, and the chart
+narrowing rests entirely on the contract above it. **That is D45's hazard shape
+and it is deliberate here**, which is the reason to write it down rather than
+discover it later: every path to these bytes runs browser → `pennsync-api` →
+contract → runtime, so the chart predicate is evaluated on every one of them,
+and this layer is the tenant check standing behind it. What it gives up is that
+a buggy or compromised `pennsync-api` could reach any record-owned object in an
+agency its caller belongs to. What it keeps is the property that mattered: the
+agency is the runtime's own reading of live authority and never something the
+caller asserts, so a leaked handle is still useless to whoever holds it.
+
+Read `pennsync_private.file_object`'s header together with this. A locator is
+projected only by the contract that authorizes the row holding it, so the handle
+is already unreachable without passing that contract; the tenant binding is the
+second lock rather than the first.
+
+### Four properties of the migration that are load-bearing
+
+`006_record_owned_files.sql` is forward-only, as `005` was, and the hosted
+project has run `001`–`005`. The installed-definition comparison in
+`postgres-bootstrap.test.mjs` therefore keeps replaying `001`–`005` and
+comparing those against the 2026-09-18 readback: extending it to `006` would
+assert something about a deployment nobody has measured.
+
+1. **The backfill is the default.** `owner_kind` defaults to `'subject'`, so
+   every existing row is already correct and there is no data step.
+2. **The uploader getter NARROWS.** `cm_integration_file_get` gains
+   `owner_kind = 'subject'`. A record-owned row carries a `subject` — the minter,
+   as provenance — so without this the minter would match the old getter and
+   reach their own object through the uploader path. The runtime's path check
+   refuses it a moment later, but a getter that hands back a row the caller may
+   not read is the wrong place to be relying on that.
+3. **The path binds the agency** exactly as it binds the subject, so a row whose
+   tenancy was altered no longer addresses its bytes, and the unique constraint
+   on the path still catches a second registration.
+4. **The two columns move together**, as one CHECK rather than two: a
+   record-owned row with no agency would be readable by nobody, and an
+   uploader-owned row with one would claim a tenant nothing asks about.
+
+`UploadRecordFile` is a separate operation rather than a flag on the existing
+uploads, so `INTEGRATIONS_ALLOWED_OPERATIONS` and `BROKERED_OPERATIONS` govern
+it explicitly and the two existing uploads stay unchanged. It joins
+`BROWSER_FORBIDDEN_OPERATIONS` for the reason `SendEmail` is there: minting an
+object every member of an agency may open is a decision a contract takes after
+asking the record store, and a browser reaching it directly would mint one with
+nothing but the caller's own typing deciding what went into it. It refuses
+outright when the request carries no agency, rather than falling back to
+uploader ownership — a caller who asked for a file their colleagues can open
+must not silently get one only they can.
+
+### The test lesson, which is this repository's own, arriving again
+
+The first version of the reader-split suite passed under sabotage. Its store
+double answered the way the migration's SQL answers, so it refused a foreign
+tenant BEFORE the runtime was ever asked — proving the store's predicate and not
+the runtime's. Deleting the runtime's agency comparison left every case green.
+
+The runtime's check is a SECOND layer and so has to be proved against a store
+that has already failed. `permissiveStore` hands the row to everybody and what
+is under test is the runtime refusing anyway. **A harness that comes back blind
+is not a passing test until it has been shown to bite on something** — D95's
+rule, in the suite written to prove a refusal. Three sabotages of the runtime
+and four of the migration now fail, each one.
+
+### What this decision does NOT take
+
+**A locator reached from more than one agency.** Keying the mapping on the
+locator means one upload becomes one owned handle, and one handle binds to one
+tenant, so such a locator cannot be served to both agencies that reach it today.
+Mapping it would make a file unreachable from one of them, which is the product
+doing less and somebody noticing.
+
+Whether any exists is a property of an operator's export and is not derivable
+from this tree, so it is not asserted here in either direction. The copy plan
+MEASURES it: `cross_agency` names each one with the fields that reach it — never
+the rows, because a row id would put a clinical subject in the plan — and
+`summarize` reports the count. `applyFileCopy` refuses while any exists, with
+`FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED`. It does not drop them and it does
+not map them. If the count is zero the binding costs nobody anything; if it is
+not, each one is a question for whoever owns that call.
+
+The copy contract goes to **v2** in the same change, because every reference now
+has to name the agency of the row it came from. A v1 export cannot produce a
+correct plan under this model — it would not know what tenant to mint into — and
+accepting one would mean guessing.
+
+**Nothing here mints or alters a membership.** Every path reads an existing one:
+the runtime resolves the caller's live authority exactly as it already did, and
+the new SQL compares an agency id it is given. Store membership stays D6's.
