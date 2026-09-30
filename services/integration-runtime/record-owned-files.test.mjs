@@ -1,12 +1,32 @@
-// The reader split: who may open a record-owned object, and who may not.
+// The reader split, and the half of it that is NOT built.
 //
 // Synthetic fixed destinations and an injected store and fetcher throughout;
 // no credentials, no network, no bytes.
 //
 // What these prove is the property the model rests on: a `cmfile:` handle is
-// NOT a bearer capability. Every refusal below is a caller who holds the handle
-// and is refused anyway, because the tenant they hold is resolved by the
-// runtime from their own bearer and is not something they can assert.
+// NOT a bearer capability. The first version of this suite proved it for the
+// tenant and asserted, in its opening test, that a colleague sharing the agency
+// opens an object they did not mint — which is that property failing inside the
+// tenant, because `services/pennsync-api/integrations.mjs:66,86` forwards the
+// END USER's bearer and holds no service credential, so the runtime cannot tell
+// an authorized chart read from that same user asking directly. An agency-wide
+// read predicate therefore makes a leaked handle openable by every active
+// member of the agency, which is the thing being denied.
+//
+// So the record-owned READ is not built. `006`'s getter is narrowed to
+// `owner_kind = 'subject'` and the runtime refuses a record-owned row anyway if
+// one ever comes back; `UploadRecordFile` refuses to mint one at all. The
+// schema, the CHECK and the mint function ship and are tested against a real
+// cluster, because what is missing is an authorization decision about the
+// boundary between two services rather than any of that SQL. Every test below
+// is now a refusal, and the two that assert a SUCCESS are the uploader-owned
+// path, which this change leaves byte-for-byte alone.
+//
+// One consequence to keep in view when the read does ship: the tests here that
+// exercise the path and tenant comparisons for a record-owned row are currently
+// answered by the `owner_kind` refusal ABOVE them, so they prove that refusal
+// and not the comparison. They say so where they stand rather than reading as
+// coverage that exists.
 // HOW THIS AREA'S TESTS FAIL, and it is structural rather than careless.
 //
 // The reader split has a layer above and below every check — a store predicate
@@ -72,9 +92,15 @@ const subjectRow = patch => ({ id, app_id: appId, subject: minter, owner_kind: '
  * the agency is not null)`, and that is what this is.
  */
 const storeHolding = row => ({
-  async fileGetAuthorized({ p_subject: subject, p_agency_id: agency }) {
-    if (row.owner_kind === 'subject') return row.subject === subject ? row : null;
-    return agency !== null && row.agency_id === agency ? row : null;
+  async fileGet({ p_subject: subject }) {
+    // `006` narrowed this one to `owner_kind = 'subject'`, so a record-owned
+    // row never comes back however the caller is placed. The authorized getter
+    // exists in SQL and has no caller here, deliberately.
+    if (row.owner_kind !== 'subject') return null;
+    return row.subject === subject ? row : null;
+  },
+  async fileGetAuthorized() {
+    assert.fail('the runtime must not read through the authorized getter yet');
   },
 });
 const signing = objectPath => async (url, options) => {
@@ -84,19 +110,45 @@ const signing = objectPath => async (url, options) => {
 };
 const denied = error => error.status === 403 && error.code === 'FILE_ACCESS_DENIED';
 
-test('a colleague in the same agency opens a record-owned object they did not mint', async () => {
-  const provider = createProviders(config, storeHolding(recordRow()), signing(recordPath));
-  const result = await provider('CreateFileSignedUrl', { file_uri: `cmfile:${id}` },
-    { subject: colleague, agencyId });
-  assert.equal(result.signed_url,
-    `${config.supabaseUrl}/storage/v1/object/sign/${BUCKET}/${recordPath}?token=synthetic`);
+const unresolved = error =>
+  error.status === 403 && error.code === 'RECORD_FILE_READER_MODEL_UNRESOLVED';
+
+test('a colleague in the same agency is refused, because tenancy is not chart authorization', async () => {
+  // The inversion, and the reason for the whole change. This test asserted the
+  // opposite and passed: the colleague held the handle, shared the agency, and
+  // was signed a link to a chart nobody checked they may open.
+  //
+  // Both layers are driven, because they refuse for different reasons and only
+  // one of them is visible from this file. The store's narrowed getter never
+  // returns the row at all, which is indistinguishable from an absent one —
+  const shut = createProviders(config, storeHolding(recordRow()),
+    () => assert.fail('a record-owned object is not readable here at all'));
+  await assert.rejects(() => shut('CreateFileSignedUrl', { file_uri: `cmfile:${id}` },
+    { subject: colleague, agencyId }), denied);
+
+  // — so the runtime's own refusal is proved against a store that hands the row
+  // over regardless. This is the one that survives a later widening of the
+  // getter, and it fails closed rather than falling through to the path check.
+  const handed = createProviders(config, permissiveStore(recordRow()),
+    () => assert.fail('a record-owned object is not readable here at all'));
+  await assert.rejects(() => handed('CreateFileSignedUrl', { file_uri: `cmfile:${id}` },
+    { subject: colleague, agencyId }), unresolved);
+
+  // And the minter is refused too, which is the distinction worth keeping: the
+  // pause is about the OBJECT's ownership kind and not about who is asking, so
+  // it cannot be mistaken for a tenant comparison that happens to be strict.
+  await assert.rejects(() => handed('CreateFileSignedUrl', { file_uri: `cmfile:${id}` },
+    { subject: minter, agencyId }), unresolved);
 });
 
-test('holding the handle buys nothing outside the tenant', async () => {
-  // The whole point of the model. Each of these callers has the exact handle
-  // and is refused, because the agency is the runtime's own reading of their
-  // authority rather than anything they sent.
+test('holding the handle buys nothing, inside the tenant or outside it', async () => {
+  // Stronger than it was: the tenant is no longer what decides, so the list
+  // below is not a list of wrong tenants but of every caller there is. The
+  // agency is still the runtime's own reading of their authority rather than
+  // anything they sent, and now it buys them nothing either way.
   for (const ctx of [
+    { subject: colleague, agencyId },                // the object's own tenant
+    { subject: minter, agencyId },                   // the minter, in it
     { subject: colleague, agencyId: otherAgency },   // a real caller, wrong tenant
     { subject: minter, agencyId: otherAgency },      // even the minter, wrong tenant
     { subject: colleague, agencyId: null },          // no tenant at all
@@ -114,16 +166,21 @@ test('holding the handle buys nothing outside the tenant', async () => {
  * has already failed.
  *
  * `storeHolding` above answers the way migration 006's SQL answers, which means
- * it refuses a foreign tenant before the runtime is ever asked — so the test
- * above it proves the store's predicate and NOT the runtime's. Sabotaging
- * `fileRecord`'s agency comparison left that test green, which is how this one
- * came to exist. Here the store hands the row back to everybody, and what is
- * under test is the runtime refusing anyway.
+ * it refuses a record-owned row before the runtime is ever asked — so a test
+ * using it proves the store's predicate and NOT the runtime's. Sabotaging the
+ * runtime's own comparison left such a test green, which is how this one came
+ * to exist. Here the store hands the row back to everybody, and what is under
+ * test is the runtime refusing anyway.
+ *
+ * That layering is what makes the paused read provable at all: the getter alone
+ * would be indistinguishable from a getter that simply has no matching row.
  */
-const permissiveStore = row => ({ async fileGetAuthorized() { return row; } });
+const permissiveStore = row => ({ async fileGet() { return row; } });
 
-test('the runtime refuses a foreign tenant even when the store hands the row over', async () => {
+test('the runtime refuses a record-owned row even when the store hands it over', async () => {
   for (const ctx of [
+    { subject: colleague, agencyId },
+    { subject: minter, agencyId },
     { subject: colleague, agencyId: otherAgency },
     { subject: minter, agencyId: otherAgency },
     { subject: colleague, agencyId: null },
@@ -131,8 +188,9 @@ test('the runtime refuses a foreign tenant even when the store hands the row ove
     { subject: colleague },
   ]) {
     const provider = createProviders(config, permissiveStore(recordRow()),
-      () => assert.fail('the runtime must not sign for a tenant it did not resolve'));
-    await assert.rejects(() => provider('CreateFileSignedUrl', { file_uri: `cmfile:${id}` }, ctx), denied);
+      () => assert.fail('the runtime must not sign a record-owned object'));
+    await assert.rejects(() => provider('CreateFileSignedUrl', { file_uri: `cmfile:${id}` }, ctx),
+      unresolved, JSON.stringify(ctx));
   }
   // And an uploader-owned row from the same over-permissive store: the subject
   // comparison is the second layer on that side and is proved the same way.
@@ -142,16 +200,33 @@ test('the runtime refuses a foreign tenant even when the store hands the row ove
     { subject: colleague, agencyId }), denied);
 });
 
-test('a record-owned row is refused when its path does not address its own agency', async () => {
-  // The path is the second copy of the authorization fact, exactly as it is for
-  // an uploader-owned row: a row whose agency was altered no longer addresses
-  // its bytes, and the runtime refuses rather than signing the old path.
-  for (const patch of [{ object_path: subjectPath }, { object_path: `${appId}/record/${otherAgency}/${id}` },
-    { agency_id: otherAgency }, { owner_kind: 'unknown_kind' }]) {
+test('a tampered record-owned row is refused, and NOT by the path comparison', async () => {
+  /*
+   * Said plainly rather than left to read as coverage.
+   *
+   * These four rows are refused, but a record-owned row now meets the
+   * `owner_kind` refusal BEFORE any tenant or path comparison, so what this
+   * proves is that refusal and not the comparison — the same shape as the
+   * five instances the header lists, and as the reader-model gate that was
+   * placed in front of `tools-pennsync-file-copy.mjs`'s cross-agency check and
+   * silently retired three tests behind it.
+   *
+   * It is kept because fail-closed on a tampered row is worth asserting, and
+   * because the codes distinguish the cases: three carry the pause, while an
+   * unknown `owner_kind` is neither and falls to the subject comparison. When
+   * the read ships, the first three become the path check and this comment is
+   * what says so.
+   */
+  for (const [patch, expected] of [
+    [{ object_path: subjectPath }, unresolved],
+    [{ object_path: `${appId}/record/${otherAgency}/${id}` }, unresolved],
+    [{ agency_id: otherAgency }, unresolved],
+    [{ owner_kind: 'unknown_kind' }, denied],
+  ]) {
     const provider = createProviders(config, permissiveStore(recordRow(patch)),
       () => assert.fail('must not sign a mismatched tenant or storage path'));
     await assert.rejects(() => provider('CreateFileSignedUrl', { file_uri: `cmfile:${id}` },
-      { subject: colleague, agencyId }), denied);
+      { subject: colleague, agencyId }), expected, JSON.stringify(patch));
   }
 });
 
@@ -171,33 +246,34 @@ test('an uploader-owned object stays the uploader\'s, whatever agency the caller
   }
 });
 
-test('UploadRecordFile mints against the agency and refuses to mint without one', async () => {
-  let recorded = null;
+test('UploadRecordFile mints nothing, and reports the pause rather than falling back', async () => {
+  /*
+   * Paused and REPORTED as paused, in the idiom D42 and D73 use: the operator
+   * gets the reason rather than a row, and rather than an uploader-owned object
+   * quietly standing in for the one they asked for.
+   *
+   * That fallback is the failure worth asserting against. A caller asking for a
+   * file their colleagues can open, silently handed one only they can, would
+   * discover it when a colleague could not open a document — with an immutable
+   * mapping already recorded for it, which D77's copy cannot repoint.
+   */
   const store = {
-    async fileRecordOwned(input) { recorded = input; return true; },
+    async fileRecordOwned() { assert.fail('nothing may mint a record-owned row while the read is unbuilt'); },
     async fileRecord() { assert.fail('a record-owned upload must not fall back to uploader ownership'); },
   };
-  const provider = createProviders(config, store, async (url, options) => {
-    assert.equal(url, `${config.supabaseUrl}/storage/v1/object/${BUCKET}/${recordPath}`);
-    assert.equal(options.headers['x-upsert'], 'false');
-    return new Response('', { status: 200 });
-  });
-  const result = await provider('UploadRecordFile', { base64: Buffer.from('hello').toString('base64'),
-    content_type: 'text/plain' }, { subject: minter, jobId: id, agencyId });
-  assert.equal(result.file_uri, `cmfile:${id}`);
-  assert.equal(result.private, true);
-  assert.equal(recorded.p_agency_id, agencyId);
-  assert.equal(recorded.p_object_path, recordPath);
-  // Provenance, not authorization: the row records who minted it.
-  assert.equal(recorded.p_subject, minter);
+  const upload = ctx => () => createProviders(config, store,
+    () => assert.fail('no bytes may be written for an object nobody can read'))(
+    'UploadRecordFile',
+    { base64: Buffer.from('hello').toString('base64'), content_type: 'text/plain' }, ctx);
 
-  // With no tenant the object would be readable by nobody, so it refuses rather
-  // than quietly minting one only its author could open.
-  const noTenant = createProviders(config, store, () => assert.fail('must not upload without a tenant'));
-  await assert.rejects(() => noTenant('UploadRecordFile',
-    { base64: Buffer.from('hello').toString('base64'), content_type: 'text/plain' },
-    { subject: minter, jobId: id, agencyId: null }),
-  error => error.status === 400 && error.code === 'RECORD_FILE_AGENCY_REQUIRED');
+  await assert.rejects(upload({ subject: minter, jobId: id, agencyId }),
+    error => error.status === 503 && error.code === 'RECORD_FILE_READER_MODEL_UNRESOLVED');
+
+  // The tenant requirement sits AHEAD of the pause on purpose, so that it is
+  // still reached and still proved rather than becoming a line nothing can
+  // fire. Both are refusals, so the ordering discloses nothing.
+  await assert.rejects(upload({ subject: minter, jobId: id, agencyId: null }),
+    error => error.status === 400 && error.code === 'RECORD_FILE_AGENCY_REQUIRED');
 });
 
 test('the existing uploads are untouched and still bind to the subject', async () => {
@@ -258,8 +334,10 @@ test('the agency the runtime resolved is the one the provider is given', async (
   // does: the caller's tenant is its OUTPUT, never the provider's input.
   const authority = async (_config, _req, resolved) => ({
     subject: minter, canEmail: false, snapshot: `synthetic:${resolved}` });
-  // Both halves of the record-owned path: the mint needs the tenant to bind an
-  // object to it, and the read needs it to admit a colleague.
+  // Both halves of the record-owned path. The provider is a double, so this is
+  // about the wiring and not about either refusal: the tenant has to ARRIVE for
+  // the mint to bind an object to it and for the read to be able to decide
+  // anything at all, and that stays true while both are refused.
   for (const operation of ['UploadRecordFile', 'CreateFileSignedUrl']) {
     const seen = [];
     // `usableResult` refuses a signed link that is already stale, so the double

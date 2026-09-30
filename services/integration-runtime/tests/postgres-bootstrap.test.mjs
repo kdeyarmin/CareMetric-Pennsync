@@ -317,3 +317,55 @@ test('006 grants the browser nothing, exactly as the functions beside it', () =>
   [{ name: 'cm_integration_file_get_authorized', anon: false, authenticated: false, service_role: true, definer: true },
     { name: 'cm_integration_file_record_owned', anon: false, authenticated: false, service_role: true, definer: true }]);
 }, { forward: true }));
+
+/*
+ * Copilot found this on #372 and it was real. Every operation is reserved
+ * before its provider runs, `cm_integration_reserve` inserts `operation` into
+ * `cm_integration_jobs`, and that column's CHECK in `001` names seven
+ * operations. `006` added an eighth to the service and did not extend the
+ * constraint, so `UploadRecordFile` could never reach the mint at all — the
+ * reserve died on the constraint first.
+ *
+ * Nothing caught it because every suite that exercises this operation drives a
+ * store DOUBLE, which has no constraint to violate. This is the third time in
+ * this change that the thing answering in a check's place was not in the file
+ * under test, so the test belongs HERE, against a real cluster, and not beside
+ * the code that calls the double.
+ */
+test('every released operation can actually reserve, the new one included', () => lab(async ({ db }) => {
+  await role(db);
+  // Read the names out of the constraint rather than retyping them: a list
+  // here would be a second copy of the thing under test.
+  // By NAME, which is the thing the forward migration depends on: it drops
+  // this constraint by that name, so if PostgreSQL's auto-generated name ever
+  // differed the migration would fail loudly and so would this. A pattern over
+  // the definition is the wrong instrument — the table's UNIQUE constraint also
+  // names the column, and `state` has the same `= ANY (ARRAY[...])` shape.
+  const constraint = (await db.query(`select pg_get_constraintdef(oid) as def from pg_constraint
+    where conrelid = 'public.cm_integration_jobs'::regclass and contype = 'c'
+      and conname = 'cm_integration_jobs_operation_check'`)).rows;
+  assert.equal(constraint.length, 1);
+  const operations = [...constraint[0].def.matchAll(/'([A-Za-z]+)'/g)].map(match => match[1]);
+  assert.ok(operations.includes('UploadRecordFile'),
+    'the forward migration must extend the job constraint, or the operation cannot be reserved');
+
+  // The function carries its OWN copy of the list, and an operation missing
+  // from either cannot run. Asserted to agree rather than assumed: extending
+  // one and not the other is the defect this test exists for.
+  const body = (await db.query(`select pg_get_functiondef(
+    'public.cm_integration_reserve(text,text,text,text,text,uuid,integer)'::regprocedure) as def`)).rows[0].def;
+  for (const operation of operations) {
+    assert.ok(body.includes(`'${operation}'`),
+      `${operation} is in the table constraint and not in the reserve function's own guard`);
+  }
+
+  for (const operation of operations) {
+    const answer = await rpc(db, 'reserve',
+      [app, subject, operation, `request-${operation}`, hash, randomUUID(), 100]);
+    assert.equal(answer.outcome, 'owned', `${operation} must be reservable`);
+  }
+  // Deliberately NOT read back with a select: the table has RLS enabled and no
+  // policy, so a direct read as `service_role` matches zero rows by design
+  // (D32's shape). `outcome: 'owned'` is returned from the function's own
+  // `insert ... returning`, so it already attests the row landed.
+}, { forward: true }));

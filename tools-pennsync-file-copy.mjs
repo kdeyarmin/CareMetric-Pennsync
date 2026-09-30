@@ -111,24 +111,39 @@ export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved
  *
  * `RUNTIME_READER_MODEL` is still a fact about another service rather than an
  * attestation, so it stays pinned here and a test still reads that service's
- * own source to keep it honest. What that test asserts has moved with the
- * model: it now reads the record-owned branch and the agency comparison, so if
- * the runtime ever goes back to binding a handle to one caller, this pin fails
- * rather than quietly permitting applies the runtime cannot serve.
+ * own source to keep it honest.
+ *
+ * **These two DISAGREE again, and that is a measurement rather than a
+ * regression.** The tenant/chart split shipped in SQL, and then the assumption
+ * under its read half turned out not to hold: the runtime authenticates a USER
+ * and not `pennsync-api`, which forwards the caller's own bearer and nothing
+ * else, so an agency-wide predicate would have made a leaked handle plus the
+ * holder's own bearer enough for any member of that agency. The runtime's read
+ * therefore stays uploader-owned and its mint refuses, so no record-owned
+ * object can be minted or read — which means this apply must refuse, because
+ * what it would record is immutable mappings to handles nothing serves.
+ *
+ * What closes it is a caller-authenticated read, and that is a decision about
+ * the boundary between two services rather than a change to this tool. The
+ * test below reads the runtime's own source, so the day that read exists this
+ * pin fails and is corrected deliberately instead of drifting open.
  */
-export const RUNTIME_READER_MODEL = 'record_authorized';
+export const RUNTIME_READER_MODEL = 'uploader_owned';
 export const REQUIRED_READER_MODEL = 'record_authorized';
 
 /**
  * The apply's reader-model refusal, as a function so it can be DRIVEN.
  *
- * The two constants agree today, so a guard written as a bare comparison
- * between them is one nothing can make fire — and a guard that cannot fire has
- * not been shown to work. That is the rule `OWNER_HELD` already follows in this
- * repository: it has been empty since the owner emptied it, and every check
- * over it is driven from a synthetic hold in the tests rather than trusted
- * because the code reads correctly. Found by mutation: replacing the apply's
- * comparison with `true` left every suite green.
+ * The two constants DISAGREE today, so this refuses every apply for real, and
+ * the case that cannot arise is the passing one. That inverts which half owes a
+ * synthetic case and does not remove the obligation: the test drives the
+ * agreeing pair here rather than trusting that a gate nothing exercises would
+ * let a legitimate apply through. `OWNER_HELD` is the same rule from the other
+ * side — empty since the owner emptied it, with every check over it driven from
+ * a synthetic hold, because a guard that cannot fire has not been shown to
+ * work. Both directions were found by mutation: replacing this comparison with
+ * `true` left every suite green while the pins agreed, and with `false` while
+ * they disagree.
  *
  * It takes its two values as ARGUMENTS and is not injectable, which is the
  * distinction that matters. A first version of this let `options` supply the
@@ -268,6 +283,10 @@ export function planFileCopy({ app_id: appId, references, mapped }, census, mani
   // that names the field without saying how often leaves an operator to guess.
   const skipped = new Map();
   const uncarriedLocators = new Set();
+  // Locators the store already maps, by key, with the agencies THIS export
+  // reaches them from. They produce no copy; they are tracked so a mapped
+  // locator cannot escape the cross-agency check.
+  const mappedAgencies = new Map();
   const note = (reason, reference) => {
     skips[reason] += 1;
     // The entity and path, never the row id: a skip report says which FIELD is
@@ -294,7 +313,22 @@ export function planFileCopy({ app_id: appId, references, mapped }, census, mani
     }
     if (!isStorageLocator(locator)) { note('not_a_storage_locator', reference); continue; }
     const key = locatorKey(locator);
-    if (mapped.has(key)) { note('already_mapped', reference); continue; }
+    if (mapped.has(key)) {
+      note('already_mapped', reference);
+      // The agencies are accumulated even though no copy will be made, because
+      // this branch used to run BEFORE the accumulation below and so hid the
+      // very case the cross-agency escalation exists to catch: a locator
+      // mapped on an earlier run and referenced from a second agency on this
+      // one was reported `already_mapped` and the apply proceeded. Running the
+      // copy twice defeated the refusal, which is worse than not having it.
+      const seen = mappedAgencies.get(key)
+        || { locator, locator_key: key, reference_count: 0, agencies: new Set(), fields: new Set() };
+      seen.reference_count += 1;
+      seen.agencies.add(reference.agency_id);
+      seen.fields.add(`${reference.entity}:${reference.path}`);
+      mappedAgencies.set(key, seen);
+      continue;
+    }
     const existing = copies.get(key);
     if (existing) {
       existing.reference_count += 1;
@@ -335,6 +369,33 @@ export function planFileCopy({ app_id: appId, references, mapped }, census, mani
     if (agencies.length === 1) { ordered.push({ ...entry, agency_id: agencies[0] }); continue; }
     crossAgency.push({ ...entry, agencies, fields: [...copy.fields].sort() });
   }
+  /*
+   * The same escalation over locators the store ALREADY maps, which no copy
+   * would touch. Two cases and they are not equally severe, so they are
+   * reported apart rather than as one number.
+   *
+   * More than one agency in THIS export is the cross-agency case outright: one
+   * handle binds to one tenant, so whichever tenant the existing mapping names,
+   * it cannot serve the other. It joins `cross_agency` and the apply refuses.
+   *
+   * Exactly one agency here cannot be CONFIRMED, because a mapping is keyed on
+   * the locator and `pennsync_private.file_object` stores no agency, so there
+   * is nothing to compare this export's agency against. That is reported and
+   * does not refuse: a binding that disagrees resolves to a handle the runtime
+   * will not open, which is a loud refusal rather than a disclosure, and
+   * refusing here instead would block every legitimate second run. Giving
+   * `file_object` an agency column is what would settle it, and that is a
+   * forward record migration rather than a change to this tool.
+   */
+  let mappedTenantUnverified = 0;
+  for (const seen of [...mappedAgencies.values()].sort((a, b) => (a.locator_key < b.locator_key ? -1 : 1))) {
+    const agencies = [...seen.agencies].sort();
+    if (agencies.length === 1) { mappedTenantUnverified += 1; continue; }
+    crossAgency.push({ locator: seen.locator, locator_key: seen.locator_key,
+      reference_count: seen.reference_count, agencies, fields: [...seen.fields].sort(),
+      already_mapped: true });
+  }
+  crossAgency.sort((a, b) => (a.locator_key < b.locator_key ? -1 : 1));
   const plan = {
     contract: COPY_CONTRACT,
     app_id: appId,
@@ -348,6 +409,10 @@ export function planFileCopy({ app_id: appId, references, mapped }, census, mani
     // inventory is complete, a rewrite has nothing to rewrite for a table that
     // does not exist here.
     uncarried_locators: uncarriedLocators.size,
+    // Mapped locators whose stored tenant this plan cannot compare with the
+    // agency reaching them here. Counted, never merged into a skip total: a
+    // skip says no copy is needed and this says one fact about it is unknown.
+    mapped_tenant_unverified: mappedTenantUnverified,
     // The census's own attestation, for the same reason it carries one: an
     // operator reads this artifact and acts on it, and has to be able to see
     // that computing it read no object and moved no byte.
@@ -480,12 +545,33 @@ export async function writeFileObjects(execute, rows) {
  * the answer can be taken by whoever owns that call; it does not drop them, and
  * it does not decide it.
  */
+/**
+ * The cross-agency refusal, as a function for the reason `assertReaderModel` is
+ * one: so it can be DRIVEN rather than read.
+ *
+ * It used to be two inline `check` lines in the apply, reached through it by
+ * three tests. That was fine while the apply proceeded, and stopped being fine
+ * the moment the reader-model pins were made to disagree deliberately: the
+ * apply then refuses before this is ever evaluated, so every test that reached
+ * it through the apply began passing on the WRONG refusal — the code matched
+ * and the assertion was about something else. Mutation says it plainly: delete
+ * the `cross_agency.length` line and those three tests stay green, because the
+ * refusal they now observe comes from the line above it.
+ *
+ * So the gate a refusing apply hides is hoisted out and asserted directly. The
+ * general shape is worth keeping: when a check is placed in front of another,
+ * the tests behind it stop proving what they say, and nothing goes red.
+ */
+export function assertPlanApplicable(plan) {
+  check(isObject(plan) && Array.isArray(plan.cross_agency), 'FILE_COPY_PLAN_INVALID');
+  check(plan.cross_agency.length === 0, 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');
+}
+
 export async function applyFileCopy(execute, plan, options) {
   // Before the plan is read in detail, so the reason is what the operator sees.
   // The module's own pins and nothing from `options`, which is operator input.
   assertReaderModel(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL);
-  check(isObject(plan) && Array.isArray(plan.cross_agency), 'FILE_COPY_PLAN_INVALID');
-  check(plan.cross_agency.length === 0, 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');
+  assertPlanApplicable(plan);
   const rows = fileCopyRows(plan, options);
   const recorded = await writeFileObjects(execute, rows);
   return { recorded, planned: plan.copies.length, dropped: plan.copies.length - rows.length };

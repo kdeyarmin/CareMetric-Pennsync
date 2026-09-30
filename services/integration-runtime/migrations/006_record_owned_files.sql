@@ -40,6 +40,37 @@ alter table public.cm_integration_files
     check ((owner_kind = 'subject' and agency_id is null)
         or (owner_kind = 'record' and agency_id is not null));
 
+-- The operation list lives in TWO places and an operation absent from either
+-- cannot run: the table's CHECK, and a second copy inside
+-- `cm_integration_reserve` itself (004's body). Every operation is RESERVED
+-- before its provider runs, so the insert dies on the CHECK and, before that,
+-- the function raises on its own guard. `001` named seven and this service now
+-- serves eight. The review that found this named only the constraint; the
+-- second copy surfaced when a test drove the real function instead of a double.
+alter table public.cm_integration_jobs
+  drop constraint cm_integration_jobs_operation_check,
+  add constraint cm_integration_jobs_operation_check
+    check (operation in ('InvokeLLM','ExtractDataFromUploadedFile','GenerateImage','SendEmail','UploadFile','UploadPrivateFile','CreateFileSignedUrl','UploadRecordFile'));
+
+-- The function's copy is PATCHED from its installed definition rather than
+-- retyped, exactly as `005` repairs its payload binding: restating 004's body
+-- here would be a second copy of a hundred lines, free to drift in the one
+-- direction nothing measures. Refuses if the expected list is absent, so a
+-- changed body fails loudly instead of being silently left un-extended, and
+-- does nothing when the list is already extended.
+do $$
+declare definition text; seven text; eight text;
+begin
+ seven := '''InvokeLLM'',''ExtractDataFromUploadedFile'',''GenerateImage'',''SendEmail'',''UploadFile'',''UploadPrivateFile'',''CreateFileSignedUrl''';
+ eight := seven || ',''UploadRecordFile''';
+ definition := pg_get_functiondef('public.cm_integration_reserve(text,text,text,text,text,uuid,integer)'::regprocedure);
+ if position(eight in definition) > 0 then return; end if;
+ if position(seven in definition) = 0 then
+  raise exception 'Expected reservation operation list not found';
+ end if;
+ execute replace(definition, seven, eight);
+end $$;
+
 comment on column public.cm_integration_files.owner_kind is
   'Who may read these bytes: ''subject'' is the uploader alone; ''record'' is an active membership of agency_id, with the chart narrowing enforced by the calling contract.';
 comment on column public.cm_integration_files.subject is

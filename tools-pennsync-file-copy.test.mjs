@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
   COPY_CONTRACT, LIMITS, SKIPS, STORAGE_HOSTS, UNCARRIED_DISPOSITIONS, FileCopyError,
-  REQUIRED_READER_MODEL, RUNTIME_READER_MODEL, assertReaderModel,
+  REQUIRED_READER_MODEL, RUNTIME_READER_MODEL, assertReaderModel, assertPlanApplicable,
   applyFileCopy, fileCopyRows, isStorageLocator, locatorKey, locatorPaths, main, planFileCopy,
   writeFileObjects,
   readExport, summarize,
@@ -313,7 +313,7 @@ test('the command line plans and never copies', async () => {
   assert.deepEqual(JSON.parse(lines[0]), { error: 'FILE_COPY_USAGE' });
 });
 
-test('the apply is no longer refused, and the pin still reads the runtime it is about', async () => {
+test('the apply refuses again, and the pin still reads the runtime it is about', async () => {
   /*
    * THE OLD REFUSAL'S FIRST VERSION GOT THE POLARITY BACKWARDS, and it is the
    * kind of mistake that reads as a control. It took a `readerModel` from the
@@ -325,35 +325,44 @@ test('the apply is no longer refused, and the pin still reads the runtime it is 
    * could open.
    *
    * So there is still no label. The pin is derived from a fact about another
-   * service, and the assertions below are what keep that fact honest — they
-   * read the runtime's own record-owned branch, because if it ever goes back to
-   * binding a handle to one caller this must refuse again rather than permit
-   * applies the runtime cannot serve.
+   * service, and the assertions below are what keep that fact honest.
+   *
+   * AND THE APPLY REFUSES AGAIN, which is the honest state rather than a step
+   * back. The tenant/chart split shipped in SQL; what did not hold was the
+   * assumption under its read half, because this service authenticates a user
+   * and not `pennsync-api`. So the runtime reads uploader-owned and refuses to
+   * mint, no record-owned object exists to be mapped, and an apply that
+   * proceeded would write immutable mappings to handles nothing serves.
    */
   const result = plan([ref()]);
-  const written = [];
-  const recorded = await applyFileCopy(async (sql, row) => { written.push([sql, row]); }, result, {
+  await assert.rejects(() => applyFileCopy(async () => assert.fail('nothing may be written'), result, {
     actorId: '00000000-0000-4000-8000-000000000001',
     expectedDigest: result.digest,
     copyRun: 'run-1',
     results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11, agency_id: AGENCY } },
-  });
-  assert.deepEqual(recorded, { recorded: 1, planned: 1, dropped: 0 });
+  }), error => error instanceof FileCopyError && error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED',
+  'the runtime does not serve a record-owned read, so the apply must refuse');
 
   const runtime = readFileSync('services/integration-runtime/providers.mjs', 'utf8');
-  assert.match(runtime, /row\.owner_kind === 'record'/,
-    'the runtime no longer has a record-owned branch: revisit RUNTIME_READER_MODEL');
-  assert.match(runtime, /row\.agency_id !== agencyId/,
-    'the runtime no longer binds a record-owned handle to its tenant: revisit RUNTIME_READER_MODEL');
-  assert.match(runtime, /row\.object_path !== `\$\{config\.appId\}\/record\/\$\{agencyId\}\/\$\{id\}`/,
-    'the runtime no longer embeds the agency in the path: revisit RUNTIME_READER_MODEL');
-  // The uploader-owned half is unchanged and still pinned, because D224
-  // narrowed nothing there and a silent widening of it would be a regression.
+  // The pin says the runtime reads uploader-owned, so what this asserts is the
+  // absence of a record-owned read and the presence of the two refusals that
+  // make it an absence on purpose. The day a caller-authenticated read lands,
+  // these fail and the pin is corrected deliberately rather than drifting open.
+  assert.match(runtime, /store\.fileGet\(\{ p_id: id, p_app_id: config\.appId, p_subject: ctx\.subject \}\)/,
+    'the runtime no longer reads through the subject-scoped getter: revisit RUNTIME_READER_MODEL');
+  assert.doesNotMatch(runtime, /fileGetAuthorized/,
+    'the runtime reads the authorized getter again: revisit RUNTIME_READER_MODEL');
+  assert.match(runtime, /if \(row\.owner_kind === 'record'\) fail\(403, 'RECORD_FILE_READER_MODEL_UNRESOLVED'\)/,
+    'the runtime no longer refuses a record-owned row on read');
+  assert.match(runtime, /if \(owned\) fail\(503, 'RECORD_FILE_READER_MODEL_UNRESOLVED'\)/,
+    'the runtime no longer refuses to mint a record-owned row');
+  // The uploader-owned half is unchanged and still pinned: a silent widening
+  // of it would be a regression whatever happens to the record-owned half.
   assert.match(runtime, /row\.subject !== ctx\.subject/,
     'the runtime no longer binds an uploader-owned handle to its caller');
-  assert.equal(RUNTIME_READER_MODEL, 'record_authorized');
-  assert.equal(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL,
-    'these agreeing is what lets an apply through');
+  assert.equal(RUNTIME_READER_MODEL, 'uploader_owned');
+  assert.notEqual(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL,
+    'these disagreeing is what makes the apply refuse');
 });
 
 test('a locator two agencies reach is measured and escalated, never dropped', async () => {
@@ -377,12 +386,23 @@ test('a locator two agencies reach is measured and escalated, never dropped', as
   assert.equal(JSON.stringify(result).includes('doc-1'), false);
   assert.equal(summarize(result).cross_agency_locators, 1);
 
+  // Driven directly, because the apply refuses at the reader model before this
+  // gate is reached: a `rejects` through `applyFileCopy` would match a code
+  // raised one line earlier and prove nothing about cross-agency at all.
+  assert.throws(() => assertPlanApplicable(result),
+    error => error instanceof FileCopyError
+      && error.code === 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');
+  assert.doesNotThrow(() => assertPlanApplicable(plan([ref()])));
+
+  // And the apply writes nothing either way, which is the operator-visible
+  // half. The code is the reader model's, deliberately: that is the state the
+  // tree is in, and asserting the other one here would hide it.
   await assert.rejects(() => applyFileCopy(async () => assert.fail('nothing may be written'), result, {
     actorId: '00000000-0000-4000-8000-000000000001',
     expectedDigest: result.digest,
     copyRun: 'run-1',
     results: {},
-  }), error => error.code === 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');
+  }), error => error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED');
 
   // Two references from the SAME agency are one ordinary copy, as they always
   // were: this refuses a split tenant, not a shared locator.
@@ -409,15 +429,24 @@ test('a copy minted into the wrong tenant is refused rather than recorded', asyn
   // The mapping is immutable, so a handle minted in the wrong agency would be a
   // permanent row for bytes the right agency cannot read. The plan says which
   // tenant the object had to be minted under and the result is held to it.
+  //
+  // `fileCopyRows` is what raises it and is driven directly, because the apply
+  // refuses at the reader model first and would answer every case below with
+  // that code instead — passing while asserting nothing about tenants.
   const result = plan([ref()]);
+  const row = agency => () => fileCopyRows(result, {
+    actorId: '00000000-0000-4000-8000-000000000001',
+    expectedDigest: result.digest,
+    copyRun: 'run-1',
+    results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11, agency_id: agency } },
+  });
   for (const agency of [OTHER_AGENCY, undefined, null]) {
-    await assert.rejects(() => applyFileCopy(async () => assert.fail('nothing may be written'), result, {
-      actorId: '00000000-0000-4000-8000-000000000001',
-      expectedDigest: result.digest,
-      copyRun: 'run-1',
-      results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11, agency_id: agency } },
-    }), error => error.code === 'FILE_COPY_RESULT_AGENCY_MISMATCH', String(agency));
+    assert.throws(row(agency), error => error instanceof FileCopyError
+      && error.code === 'FILE_COPY_RESULT_AGENCY_MISMATCH', String(agency));
   }
+  // The matching tenant builds a row, so the refusals above are about the
+  // comparison rather than about anything else in the path rejecting all four.
+  assert.equal(row(AGENCY)().length, 1);
 });
 
 /**
@@ -434,8 +463,17 @@ test('a copy minted into the wrong tenant is refused rather than recorded', asyn
  * is the control D77's first attempt mistook a hint for.
  */
 test('the reader-model guard refuses a model the runtime does not serve', () => {
-  // The shipped pair, which must agree or every apply is refused for real.
-  assert.doesNotThrow(() => assertReaderModel(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL));
+  // The shipped pair DISAGREES, so this is the live state and not a hypothesis:
+  // the runtime reads uploader-owned rows only, the copy needs a record-
+  // authorized read, and every apply is refused until that is built.
+  assert.throws(() => assertReaderModel(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL),
+    error => error instanceof FileCopyError
+      && error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED');
+
+  // The passing case is now the one nothing in the tree produces, so it is the
+  // half that owes a synthetic pair: a gate no legitimate apply exercises could
+  // refuse for a reason nobody would notice until the model ships.
+  assert.doesNotThrow(() => assertReaderModel('record_authorized', 'record_authorized'));
 
   // Every way the pair can disagree, including the one D77 actually lived in.
   for (const [runtime, required] of [
@@ -459,4 +497,56 @@ test('the reader-model guard refuses a model the runtime does not serve', () => 
     /assertReaderModel\(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL\);/);
   assert.doesNotMatch(source, /readerModel[A-Za-z]*\s*[:=]\s*(options|params)/,
     'no caller-supplied reader model, predicate or attestation');
+});
+
+/*
+ * Copilot found this on #372 and it was real: the `already_mapped` branch ran
+ * before the agency accumulation, so a locator mapped on an earlier run and
+ * referenced from a second agency on this one was waved through as idempotent
+ * and the apply proceeded. The cross-agency refusal was defeated by running
+ * the copy twice, which is worse than not having the refusal at all.
+ *
+ * Both assertions below fail if the branch is moved back above the
+ * accumulation: the first because the entry is absent, the second because a
+ * plan with nothing in `cross_agency` applies.
+ */
+test('a locator the store already maps cannot escape the cross-agency check', async () => {
+  const key = locatorKey(STORAGE);
+  const result = plan([
+    ref({ agency_id: AGENCY, row_id: 'doc-1' }),
+    ref({ entity: 'Referral', path: REFERRAL, agency_id: OTHER_AGENCY, row_id: 'referral-1' }),
+  ], [key]);
+
+  // No copy either way — it is already mapped — and that is exactly why the
+  // old shape looked correct.
+  assert.equal(result.copies.length, 0);
+  assert.equal(result.skips.already_mapped, 2);
+
+  assert.equal(result.cross_agency.length, 1);
+  const entry = result.cross_agency[0];
+  assert.equal(entry.locator_key, key);
+  assert.equal(entry.already_mapped, true);
+  assert.deepEqual(entry.agencies, [AGENCY, OTHER_AGENCY].sort());
+  // Named by field, never by row, as every other report here is.
+  assert.deepEqual(entry.fields, [`Document:${DOC}`, `Referral:${REFERRAL}`].sort());
+  for (const key of Object.keys(entry)) assert.notEqual(key, 'row_id');
+
+  // Through the gate itself rather than the apply, for the reason the sibling
+  // test above records: the reader-model refusal now precedes it.
+  assert.throws(() => assertPlanApplicable(result),
+    error => error instanceof FileCopyError
+      && error.code === 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED',
+  'a mapped locator two agencies reach must refuse like any other');
+});
+
+test('a mapped locator reached from one agency is reported unverified, not refused', () => {
+  // The other half, and it must NOT refuse: a mapping is keyed on the locator
+  // and `file_object` stores no agency, so there is nothing to compare against.
+  // A binding that disagrees yields a handle the runtime will not open, which
+  // is a loud refusal rather than a disclosure — and refusing here would block
+  // every legitimate second run of the copy.
+  const result = plan([ref({ agency_id: AGENCY })], [locatorKey(STORAGE)]);
+  assert.equal(result.cross_agency.length, 0);
+  assert.equal(result.mapped_tenant_unverified, 1);
+  assert.equal(plan([ref({ agency_id: AGENCY })]).mapped_tenant_unverified, 0);
 });

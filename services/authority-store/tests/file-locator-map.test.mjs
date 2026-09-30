@@ -7,8 +7,8 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { applyRecordMigrations } from './record-migrations.mjs';
-import { applyFileCopy, locatorKey, planFileCopy, readExport, COPY_CONTRACT }
-  from '../../../tools-pennsync-file-copy.mjs';
+import { applyFileCopy, fileCopyRows, writeFileObjects, locatorKey, planFileCopy, readExport,
+  COPY_CONTRACT } from '../../../tools-pennsync-file-copy.mjs';
 
 /**
  * The `file_url` -> `cmfile:` mapping (D77).
@@ -185,20 +185,31 @@ test('the key the planner writes is the key the resolver reads', async () => {
   JSON.parse(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')));
   assert.equal(plan.copies.length, 1);
   const uri = 'cmfile:3f2504e0-4f89-41d3-9a0c-0305e82c33aa';
-  // Through the whole CAPABILITY now, which is what this docstring always said
-  // and what the code could not do while D77 refused every apply: it drove the
-  // planner's row builder and the insert directly, with a comment explaining
-  // the gap. D224 answered the reader model, so the real entry point runs and
-  // the refusals in front of it are exercised on the way through.
-  const { recorded } = await applyFileCopy(
+  const options = {
+    actorId: '00000000-0000-4000-8000-000000000001',
+    expectedDigest: plan.digest,
+    copyRun: 'cross-check',
+    results: { [locator]: { file_uri: uri, content_sha256: zeros, byte_size: 7, agency_id: 'agency-one' } },
+  };
+  // Through the two PRIMITIVES rather than the capability's entry point, and
+  // the reason is asserted below rather than described: `applyFileCopy` refuses
+  // every apply, because the runtime does not implement the reader model the
+  // copy needs. An earlier version of this test drove the entry point on the
+  // strength of D224 having answered that, and the answer turned out to rest on
+  // tenancy where a chart was needed.
+  //
+  // The property under test is unaffected: it is about two halves of a hash
+  // agreeing, which is why it was split out from whether a copy may be recorded
+  // at all in the first place.
+  const recorded = await writeFileObjects(
     async (sql, params) => { await db.query(sql, params); },
-    plan, {
-      actorId: '00000000-0000-4000-8000-000000000001',
-      expectedDigest: plan.digest,
-      copyRun: 'cross-check',
-      results: { [locator]: { file_uri: uri, content_sha256: zeros, byte_size: 7, agency_id: 'agency-one' } },
-    });
+    fileCopyRows(plan, options));
   assert.equal(recorded, 1, 'one mapping recorded');
+
+  // And the refusal in front of them, so this test is the one that notices the
+  // day it lifts instead of failing for a reason nobody connects to it.
+  await assert.rejects(() => applyFileCopy(async () => assert.fail('nothing may be written'),
+    plan, options), error => error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED');
   // The round trip. Both sides hash the UTF-8 bytes of the exact string, so a
   // normalisation OR a different encoding on either side shows up here and
   // nowhere else: the planner's own suite compares its key only to itself, and
