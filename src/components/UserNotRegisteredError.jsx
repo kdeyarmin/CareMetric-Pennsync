@@ -10,10 +10,14 @@ import {
 } from "@/lib/supportContacts";
 
 const UserNotRegisteredError = () => {
-  // Route sign-out through AuthContext.logout (not base44.auth.logout directly)
-  // so cached PHI is purged — queryClient.clear() + clearCachedPHI() — before
-  // the token is removed. A de-registered user who was previously approved may
-  // still have patient data cached in localStorage/IndexedDB on a shared device.
+  // Route sign-out through AuthContext.logout (not base44.auth.logout directly) so cached
+  // PHI is purged — purgeAuthorityBoundDrafts() and
+  // purgeRefetchablePhiForAuthorityTransition(), alongside the tenant teardown's cache
+  // clear. Those begin before the token is removed and are deliberately not awaited, so
+  // the durable IndexedDB half may finish after it; the logout tombstone is what keeps a
+  // later authority from trusting whatever survives. A de-registered user who was
+  // previously approved may still have patient data cached in localStorage/IndexedDB on a
+  // shared device.
   const { logout } = useAuth();
 
   return (

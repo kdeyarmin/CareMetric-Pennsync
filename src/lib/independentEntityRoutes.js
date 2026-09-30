@@ -419,6 +419,79 @@ export const COMPLIANCE_MAXIMUM = Object.freeze({
 });
 
 /**
+ * The key each compliance write contract answers the written row under, and
+ * the payload key it takes it in.
+ *
+ * Both are the CONTRACT's vocabulary rather than this file's: the audit
+ * contracts take `audit` / `patch` and answer `{ audit }`, the case ones take
+ * `case` / `patch` and answer `{ case }`. Kept as data beside the route so a
+ * reader can see the pair, and read by `complianceWrite` below so a route
+ * cannot be declared with one half of it.
+ */
+const COMPLIANCE_WRITE_SHAPES = Object.freeze(Object.assign(Object.create(null), {
+  createComplianceAudit: { payload: 'audit', answer: 'audit', id: null },
+  updateComplianceAudit: { payload: 'patch', answer: 'audit', id: 'audit_id' },
+  createAdrAuditCase: { payload: 'case', answer: 'case', id: null },
+  updateAdrAuditCase: { payload: 'patch', answer: 'case', id: 'case_id' },
+  deleteAdrAuditCase: { payload: null, answer: 'case', id: 'case_id' },
+}));
+
+/**
+ * `Entity.create(fields)`, `.update(id, fields)` and `.delete(id)` onto one of
+ * the compliance write contracts.
+ *
+ * WHAT MAY BE WRITTEN IS NOT DECIDED HERE, and that is the difference from
+ * `libraryWrite` rather than an omission. Those contracts take an `action` and
+ * a fenced field set; these refuse an unknown key and name every reserved one
+ * with a refusal code of its own, so the field set lives in SQL where it is
+ * tested against the real migration. A `writable` list in this file would be a
+ * second copy of it — and the copy that fails nothing is the one that rots.
+ *
+ * So the payload passes through UNTOUCHED. A route that dropped an unknown key
+ * to be helpful would turn the contract's `FIELD_UNKNOWN` refusal into a
+ * silent no-write, which is the one failure mode both halves were written to
+ * avoid: a screen that believes it saved.
+ *
+ * `answer` IS READ rather than returned unconditionally. The gate runs each
+ * declaration's `request` against the call sites' real arguments and never
+ * exercises `response`, so a route wired to the wrong contract passes the gate
+ * and then hands a screen a plausible row for a write it did not perform.
+ * Comparing the key the contract answers under makes that a refusal at the
+ * seam instead.
+ */
+function complianceWrite(handler) {
+  const shape = COMPLIANCE_WRITE_SHAPES[handler];
+  if (!shape) throw new Error(`ENTITY_ROUTE_WRITE_SHAPE_UNDECLARED: ${handler}`);
+  const { payload, answer, id } = shape;
+  return {
+    function: handler,
+    projection: 'compliance_write',
+    // Declared for `contractRead`'s reason: a rest parameter hides the count.
+    arity: (id ? 1 : 0) + (payload ? 1 : 0),
+    request: (...args) => {
+      const [first, second] = args;
+      const fields = id ? second : first;
+      const request = {};
+      if (id) {
+        if (typeof first !== 'string' || first === '') unsupported('id');
+        request[id] = first;
+      }
+      if (payload) {
+        if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+          unsupported('fields');
+        }
+        request[payload] = fields;
+      }
+      return request;
+    },
+    response: (result) => {
+      if (!result || result.success !== true) unsupported('answer');
+      return result[answer];
+    },
+  };
+}
+
+/**
  * A read served by a named compliance contract.
  *
  * The contrast with `brokeredRead` above is the whole reason both exist. The
@@ -1865,7 +1938,9 @@ const DECLARED_ROUTES = Object.freeze({
     }),
     reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
   }),
-  ...operationalRoutes,
+  // `operationalRoutes` used to be SPREAD here and is now merged below by
+  // `withoutCollisions`, because a spread inside an object literal is the one
+  // place a duplicate route can be declared and do nothing. See that function.
 
   /**
    * The read half of five compliance domains the frontend already writes:
@@ -1916,17 +1991,70 @@ const DECLARED_ROUTES = Object.freeze({
     }),
     reason: 'The chart analyzer reads one patient\'s audits and the note recovery reads one visit\'s.',
   }),
+  /**
+   * The write half, served by `20260920670000_contract_compliance_writes.sql`.
+   *
+   * Two things about the ADR trio are worth reading twice. Its READ has no
+   * route (the paragraph below says why), so declaring these gives the ADR
+   * Center a store it can write and not yet one it can list — which sounds
+   * like a split and is not: `routedEntities` refuses any undeclared entity
+   * operation on this backend with no Base44 fallback, so every one of these
+   * sites refuses today. A route replaces one refusal with a served call.
+   *
+   * And `AdrPacketVerifier.jsx` sends `packet_file_url` straight from
+   * `Core.UploadFile`. On this backend the integration runtime mints a durable
+   * private `cmfile:` handle, which the contract accepts; a Base44 storage URL
+   * is refused rather than stored (D77). That is the one call site here whose
+   * success depends on which backend uploaded the file.
+   */
+  'ComplianceAudit.create': Object.freeze({
+    ...complianceWrite('createComplianceAudit'),
+    reason: 'Three screens file an audit; the contract stamps the nurse, which the `|| \'system\'` fallback could not.',
+  }),
+  'ComplianceAudit.update': Object.freeze({
+    ...complianceWrite('updateComplianceAudit'),
+    reason: 'The note save re-scores its own audit as the nurse edits, and writes only the keys it sends.',
+  }),
+  'AdrAuditCase.create': Object.freeze({
+    ...complianceWrite('createAdrAuditCase'),
+    reason: 'The ADR Center files a case from the analyzed letter, into the caller\'s own agency.',
+  }),
+  'AdrAuditCase.update': Object.freeze({
+    ...complianceWrite('updateAdrAuditCase'),
+    reason: 'Five sites advance a case through its workflow; the contract refuses a fax history that shrank.',
+  }),
+  'AdrAuditCase.delete': Object.freeze({
+    ...complianceWrite('deleteAdrAuditCase'),
+    reason: 'The ADR Center deletes a case, which only its author or an agency_admin may do.',
+  }),
   /*
    * `AdrAuditCase.list` is deliberately NOT declared, and the reason is worth
    * writing down because it is not about the contract. `listAdrAuditCases`
    * exists, is reachable and is tested; its only call site
-   * (`src/pages/ADRCenter.jsx`) passes `ADR_CASE_READ_LIMIT`, imported from
-   * `src/components/adr/adrCaseRead.js`, and `check:entity-routes` cannot
-   * resolve a constant across modules — so it reads the site as unserved and
-   * a declaration here would be a route that moves no screen, which is the
-   * exact thing that gate was rebuilt to refuse. Declaring it when the gate
-   * says zero would be arguing with the instrument. It lands when the reader
-   * can follow that import, or when the screen passes a literal.
+   * (`src/pages/ADRCenter.jsx`) passes `ADR_CASE_READ_LIMIT`, and the argument
+   * reader cannot evaluate it — so it reads the site as unserved, and a
+   * declaration here would be a route that moves no screen, which is the exact
+   * thing that gate was rebuilt to refuse.
+   *
+   * **The earlier version of this comment named the wrong cause, and the wrong
+   * cause was the broader one.** It said `check:entity-routes` "cannot resolve
+   * a constant across modules". It does: `LIMIT_CONSTANTS_FILE` in
+   * `tools-entity-call-arguments.mjs` is `src/lib/queryLimits.js`, and
+   * `src/components/admin/QuickHealthOverview.jsx` passes `PATIENT_HISTORY_ROWS`
+   * imported from there, which the reader resolves to 1000 at that site and at
+   * three others. What it cannot do is resolve a constant declared ANYWHERE
+   * ELSE: `limitConstants()` reads one file, its table is exactly
+   * `ALL_ROWS, PATIENT_HISTORY_ROWS`, and `ADR_CASE_READ_LIMIT` is declared in
+   * `src/components/adr/adrCaseRead.js`. Feeding the same argument text a table
+   * widened by that one name reads it as `["-created_date", 200]`; the table as
+   * it stands reads INDETERMINATE, which makes the whole call unreadable and
+   * the site unserved. So the limit is the SOURCE MODULE, not the module
+   * boundary — a distinction that decides what would fix it.
+   *
+   * It lands when `ADR_CASE_READ_LIMIT` moves into `src/lib/queryLimits.js`,
+   * when that reader takes more than one declaring module, or when the screen
+   * passes a literal. Declaring it while the gate says zero would be arguing
+   * with the instrument.
    */
   'PersonnelCredential.list': Object.freeze({
     ...contractRead({
@@ -1994,7 +2122,45 @@ function guardingArity(routes) {
   })));
 }
 
-export const ENTITY_ROUTES = guardingArity(DECLARED_ROUTES);
+/**
+ * Merge the declaration blocks, REFUSING a key that two of them declare.
+ *
+ * A JS object literal silently keeps the LAST duplicate key, so
+ * `{ ...operationalRoutes, 'Task.filter': … }` compiles, reviews and merges
+ * with one of the two declarations doing nothing at all. Batch C planted
+ * exactly that and measured the result: lint silent, `check:entity-routes`
+ * silent and still reporting the same declared count, the spec suite green,
+ * and `ENTITY_ROUTES['Task.filter'].function` resolving to whichever
+ * declaration came last. **Every reader downstream sees the collapsed object,
+ * so the count can never be short and no figure anywhere can reveal it.**
+ *
+ * `no-dupe-keys` is not the fix and cannot be. It catches literal-vs-literal —
+ * batch C planted that case too and it fired — and structurally cannot catch
+ * literal-vs-spread, because the two keys are never inside one literal for the
+ * rule to compare. That is a class the rule does not reach rather than a rule
+ * left switched off.
+ *
+ * So the blocks are merged HERE, by a function that can see both and refuses.
+ * The cost is that a block must be listed below to be declared at all, which is
+ * the property that makes the refusal possible: a block nobody merges
+ * contributes no routes, and `check:entity-routes` reports a call site it would
+ * have served as unrouted, loudly, where a shadowed declaration reported
+ * nothing.
+ */
+export function withoutCollisions(...blocks) {
+  const merged = new Map();
+  for (const block of blocks) {
+    for (const [key, route] of Object.entries(block)) {
+      if (merged.has(key)) throw new Error(`ENTITY_ROUTE_DUPLICATE_DECLARATION: ${key}`);
+      merged.set(key, route);
+    }
+  }
+  return Object.freeze(Object.fromEntries(merged));
+}
+
+export const ENTITY_ROUTES = guardingArity(
+  withoutCollisions(DECLARED_ROUTES, operationalRoutes),
+);
 
 export const ROUTED_OPERATIONS = Object.freeze(Object.keys(ENTITY_ROUTES).sort());
 

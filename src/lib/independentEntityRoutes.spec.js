@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { ALERT_CEILING, ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, COMPLIANCE_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS } from './independentEntityRoutes';
+import { ALERT_CEILING, ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, COMPLIANCE_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS, withoutCollisions } from './independentEntityRoutes';
+import { readFileSync } from 'node:fs';
+import process from 'node:process';
 import { ADR_CASE_READ_LIMIT } from '@/components/adr/adrCaseRead';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
@@ -1762,10 +1764,18 @@ describe("what batch E's routes take on trust", () => {
     // its job rather than the list slipping: `ClinicalLibraryTemplate.create`
     // has two call sites and both build their payload at run time, one of them
     // by spreading a phrase from a seed list.
+    // The compliance writes added two more, for the same reason and with the
+    // same remedy: `AdrAuditCase.create` builds its payload out of the letter
+    // analysis, and `ComplianceAudit.update` passes `auditFields`, which
+    // `buildAuditFields` returns. Both are covered by refusals raised against
+    // the real migration in `contract-compliance-writes.test.mjs`, which the
+    // block below reads.
     expect([...report.unproved_routes].sort()).toEqual([
+      'AdrAuditCase.create',
       'AgencySettings.create', 'AgencySettings.update',
       'ClinicalLibraryFolder.create', 'ClinicalLibraryTemplate.create',
       'ClinicalPathway.create', 'ClinicalPathway.update',
+      'ComplianceAudit.update',
       'CustomValidationRule.create', 'CustomValidationRule.update',
       'EducationMaterial.create',
       'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
@@ -1826,6 +1836,63 @@ describe("what batch E's routes take on trust", () => {
       'PENNSYNC_NOTE_CONVERSION_CHART_FORBIDDEN', 'PENNSYNC_TEMPLATE_NAME_REQUIRED']) {
       expect(operational, `${code} must be exercised by the contract suite`).toContain(code);
     }
+
+    // The compliance writes, a THIRD family on the same standing. The two
+    // codes that matter most here are the ones a screen cannot see coming: an
+    // unknown key is refused rather than filtered, so a payload that drifts
+    // fails loudly instead of half-writing, and a fax history that shrank is
+    // refused rather than stored, so a stale read cannot erase what really
+    // went to a Medicare contractor.
+    const compliance = readFileSync(
+      'services/authority-store/tests/contract-compliance-writes.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_AUDIT_WRITE_FIELD_UNKNOWN', 'PENNSYNC_AUDIT_WRITE_FIELD_RESERVED',
+      'PENNSYNC_AUDIT_WRITE_REQUIRED', 'PENNSYNC_AUDIT_WRITE_VISIT_NOT_VISIBLE',
+      'PENNSYNC_ADR_WRITE_FIELD_RESERVED', 'PENNSYNC_ADR_WRITE_LOCATOR_UNSUPPORTED',
+      'PENNSYNC_ADR_WRITE_CHART_ELSEWHERE', 'PENNSYNC_ADR_WRITE_FAXES_TRUNCATED']) {
+      expect(compliance, `${code} must be exercised by the contract suite`).toContain(code);
+    }
+  });
+
+  it('hands a compliance write payload through untouched, and reads the answer', async () => {
+    const create = ENTITY_ROUTES['AdrAuditCase.create'];
+    const update = ENTITY_ROUTES['AdrAuditCase.update'];
+    const remove = ENTITY_ROUTES['AdrAuditCase.delete'];
+
+    // UNTOUCHED is the assertion. A route that dropped a key the contract does
+    // not take would turn `FIELD_UNKNOWN` into a silent no-write, which is a
+    // screen that believes it saved — so an unknown key has to reach the
+    // contract, and the reserved ones too.
+    expect(create.request({ case_name: 'x', nonsense: 1, agency_id: 'a' }))
+      .toEqual({ case: { case_name: 'x', nonsense: 1, agency_id: 'a' } });
+    expect(update.request('case-1', { status: 'submitted' }))
+      .toEqual({ case_id: 'case-1', patch: { status: 'submitted' } });
+    expect(remove.request('case-1')).toEqual({ case_id: 'case-1' });
+
+    // The arity is declared because a rest parameter reveals no length, and
+    // the guard only refuses arguments PAST it — so an over-declared arity
+    // fails open on exactly the case the guard exists to close.
+    expect([create.arity, update.arity, remove.arity]).toEqual([1, 2, 1]);
+
+    // An id that is not a string, and a payload that is not an object. Both
+    // refuse at the seam rather than reaching the contract as null.
+    expect(() => update.request(undefined, { status: 'closed' })).toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(() => update.request('case-1', null)).toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(() => update.request('case-1', ['status'])).toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(() => create.request('not an object')).toThrow(ARGUMENTS_UNSUPPORTED);
+
+    // The answer is READ. The gate never exercises `response`, so a route
+    // wired to the wrong contract passes it and then hands the screen a
+    // plausible row for a write it did not perform.
+    expect(update.response({ success: true, updated: true, case: { id: 'case-1' } }))
+      .toEqual({ id: 'case-1' });
+    expect(() => update.response({ updated: true, case: { id: 'case-1' } }))
+      .toThrow(ARGUMENTS_UNSUPPORTED);
+    // The audit contracts answer under their own key, so the case routes must
+    // not accept an audit's answer — which is what would happen if `answer`
+    // were the same string for all five.
+    expect(update.response({ success: true, audit: { id: 'a' } })).toBeUndefined();
+    expect(ENTITY_ROUTES['ComplianceAudit.create'].response(
+      { success: true, audit: { id: 'a' } })).toEqual({ id: 'a' });
   });
 
   it('closes the preference round trip the settings screen actually makes', async () => {
@@ -2009,5 +2076,214 @@ describe("what batch E's routes take on trust", () => {
     // deliberately uncrossed rather than silently counted as clean.
     expect(crossed, 'the driver has stopped reaching routes rather than the routes having changed')
       .toBeGreaterThan(60);
+  });
+  /*
+   * EVERY DECLARATION IS STILL IN THE TABLE IT WAS WRITTEN INTO.
+   *
+   * `ENTITY_ROUTES` is a JavaScript object, so two declarations of one key are
+   * not two -- the later silently replaces the earlier and nothing downstream
+   * can tell. `check:entity-routes` reports coverage over the SURVIVOR, which
+   * is the worst direction for a gate whose job is saying which calls have a
+   * route: it answers "declared" while a key is served by whichever
+   * declaration happened to come last, chosen by nobody.
+   *
+   * ESLint's `no-dupe-keys` catches the case that found this -- two literals
+   * in one literal -- and that is a real defence, in a different gate. It is
+   * NOT the whole class. `DECLARED_ROUTES` spreads `operationalRoutes`, and a
+   * literal colliding with a key that spread produces is invisible to that
+   * rule, because the two are not in the same object literal. Measured, not
+   * reasoned: planting `'Task.filter'` as a literal beside the spread that
+   * already declares it leaves lint SILENT, the gate reporting the same 81
+   * declared, and this suite green -- while the spread wins and a merged,
+   * reviewed route does nothing.
+   *
+   * So the comparison is the source's declarations against the table that came
+   * out of them. It fires on a collision within either block, on a collision
+   * ACROSS them, on a computed key this cannot read, and on a spread from
+   * somewhere this does not know about -- and it fails CLOSED, because a parse
+   * that stops seeing a block reports fewer keys than the table has rather
+   * than agreeing with it.
+   */
+  it('declares each route once, across every block the table is built from', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('src/lib/independentEntityRoutes.js', 'utf8');
+
+    const blockOf = (name) => {
+      const opened = source.indexOf(`const ${name} = Object.freeze({`);
+      expect(opened, `${name} is no longer declared the way this parse reads it`)
+        .toBeGreaterThan(-1);
+      const closed = source.indexOf('\n});', opened);
+      expect(closed).toBeGreaterThan(opened);
+      return source.slice(opened, closed);
+    };
+
+    // Every top-level line of a block, with comments dropped rather than
+    // pattern-matched away: a comment's own text can start in column three.
+    const topLevelLines = (block) => {
+      const kept = [];
+      let inComment = false;
+      for (const line of block.split('\n')) {
+        const trimmed = line.trim();
+        if (inComment) {
+          if (trimmed.includes('*/')) inComment = false;
+          continue;
+        }
+        if (trimmed.startsWith('/*')) {
+          if (!trimmed.includes('*/')) inComment = true;
+          continue;
+        }
+        if (trimmed.startsWith('//')) continue;
+        if (/^ {2}\S/.test(line)) kept.push(line);
+      }
+      return kept;
+    };
+
+    // The key-set comparison below is blind to a declaration it cannot read
+    // that OVERWRITES a key some other declaration already supplies: the
+    // object holds the same keys either way, so the sets agree while the
+    // later declaration silently decides the route. Measured, not reasoned —
+    // `[['Task', 'filter'].join('.')]: operationalRoutes['Task.create']`
+    // planted after the spread leaves this suite at 60/60 green while
+    // `ENTITY_ROUTES['Task.filter'].function` is `createAgencyTask`.
+    //
+    // So the shapes a top-level line may take are enumerated, and anything
+    // else REFUSES rather than being skipped. That is the fail-closed half:
+    // the key comparison catches what the parse can read, and this catches
+    // the parse being handed something it cannot.
+    const KEY_LINE = /^ {2}'([^']+)': /;
+    const NESTED_CLOSE = /^ {2}\}\),?$/;
+    const SPREAD = /^ {2}\.\.\.([A-Za-z_$][\w$]*),$/;
+    const PARSED_BLOCKS = ['operationalRoutes', 'DECLARED_ROUTES'];
+
+    const unreadable = [];
+    const spreadsFound = [];
+    const declared = PARSED_BLOCKS.flatMap((name) => {
+      const keys = [];
+      for (const line of topLevelLines(blockOf(name))) {
+        const key = KEY_LINE.exec(line);
+        if (key) { keys.push(key[1]); continue; }
+        const spread = SPREAD.exec(line);
+        if (spread) { spreadsFound.push(spread[1]); continue; }
+        if (NESTED_CLOSE.test(line)) continue;
+        unreadable.push(`${name}: ${line.trim()}`);
+      }
+      return keys;
+    });
+
+    expect(unreadable, 'a top-level declaration this parse cannot read. If it names a key\n'
+      + '  that already exists, it overwrites it and the key comparison below stays\n'
+      + '  green — so it is refused here rather than skipped')
+      .toEqual([]);
+
+    // A spread from somewhere this parse does not read is the same hazard
+    // wearing different syntax: its keys arrive in the table unexamined.
+    //
+    // THE EXPECTATION IS NOW THE EMPTY SET, AND THAT IS A STRONGER STATE
+    // RATHER THAN A DIFFERENT ONE. It read `['operationalRoutes']` while
+    // `DECLARED_ROUTES` ended in a `...operationalRoutes,` line, which this
+    // parse tolerated because that block is one it reads — so the keys were
+    // examined and the assertion was pinning WHICH spread existed, not that
+    // spreading was safe. `ENTITY_ROUTES` is built by `withoutCollisions`
+    // over the two blocks by name now, so there is no spread anywhere and
+    // nothing arrives in the table by a route this parse cannot follow.
+    //
+    // Keep the assertion rather than deleting it with the spread it named,
+    // and note EXACTLY which edit it is the only thing that catches — a first
+    // version of this comment said it "fails the moment somebody reintroduces
+    // a spread", which is three cases wearing one sentence, and sabotage
+    // separated them.
+    //
+    //   - A spread whose keys COLLIDE now throws at module load out of
+    //     `withoutCollisions`, before any test runs. Louder than an assertion
+    //     and nothing here is needed for it.
+    //   - A spread in the `ENTITY_ROUTES` expression itself is caught by the
+    //     wiring test below, which reads that export's own source.
+    //   - A spread of a block that does NOT collide, placed inside one of the
+    //     PARSED_BLOCKS, is caught by NEITHER: the guard sees no duplicate and
+    //     the wiring test is not looking there. Its keys reach the table with
+    //     no comparison having examined them, and the key-set assertion at the
+    //     end stays green because it reads the same spread.
+    //
+    // That third case is this assertion's own, and it was proved by planting
+    // a valid non-colliding block and watching this line name it. If a spread
+    // is ever wanted back, the block it names joins `PARSED_BLOCKS` in the
+    // same change.
+    expect([...new Set(spreadsFound)].sort(), 'a block is spread, so its declarations reach\n'
+      + '  ENTITY_ROUTES without passing through withoutCollisions and are compared\n'
+      + '  against nothing. Build the table over the block by name instead')
+      .toEqual([]);
+
+    // The parse reaching the real blocks, proved before it is relied on: a
+    // pattern that matched nothing would report no duplicates just as happily.
+    expect(declared.length).toBeGreaterThan(70);
+
+    const duplicated = declared.filter((key, index) => declared.indexOf(key) !== index);
+    expect(duplicated, 'a route key is declared twice; the later one silently wins and the\n'
+      + '  gate reports coverage over whichever that is').toEqual([]);
+
+    expect([...declared].sort(), 'the source declarations and the built table disagree, so\n'
+      + '  either a key arrives by a route this parse cannot read, or one was lost')
+      .toEqual([...Object.keys(ENTITY_ROUTES)].sort());
+  });
+});
+
+/**
+ * The duplicate-declaration guard, proved at BOTH surfaces, because proving it
+ * at one is the failure this suite exists to avoid.
+ *
+ * `withoutCollisions` is where the refusal is DECIDED, and a test that only
+ * calls it enters one layer away from where it MATTERS: the refusal protects
+ * `ENTITY_ROUTES`, and it protects it only for as long as the export is built
+ * by that function over every declaration block. Reverting the export to an
+ * object literal with `...operationalRoutes` inside it — the exact shape this
+ * replaced — leaves every behavioural test below green, because the function
+ * is still correct and nothing calls it. So the second half reads the module's
+ * own source and pins the WIRING.
+ *
+ * Neither half subsumes the other: delete the guard's body and the first goes
+ * red while the second stays green; unwire it and the reverse. Both were
+ * checked that way rather than assumed.
+ */
+describe('duplicate route declarations', () => {
+  it('refuses a key two blocks both declare', () => {
+    const a = { 'Patient.list': { request: () => ({}) } };
+    const b = { 'Patient.list': { request: () => ({}) } };
+    expect(() => withoutCollisions(a, b)).toThrow(/ENTITY_ROUTE_DUPLICATE_DECLARATION: Patient\.list/);
+  });
+
+  it('merges disjoint blocks and keeps every key', () => {
+    const merged = withoutCollisions({ a: 1, b: 2 }, { c: 3 });
+    expect(Object.keys(merged).sort()).toEqual(['a', 'b', 'c']);
+    expect(Object.isFrozen(merged)).toBe(true);
+  });
+
+  it('refuses a duplicate within one block too', () => {
+    // Object.entries over a literal cannot produce one, but a block built at
+    // runtime (Object.fromEntries over a list) can, and the merge is the only
+    // place that would see it.
+    const built = Object.fromEntries([['x', 1]]);
+    expect(() => withoutCollisions(built, { x: 2 })).toThrow(/ENTITY_ROUTE_DUPLICATE_DECLARATION/);
+  });
+
+  it('builds ENTITY_ROUTES through the guard over both declaration blocks', () => {
+    const source = readFileSync(`${process.cwd()}/src/lib/independentEntityRoutes.js`, 'utf8');
+    const built = source.match(/export const ENTITY_ROUTES = [\s\S]*?\n\);/);
+    expect(built, 'ENTITY_ROUTES export not found in its own source').toBeTruthy();
+    expect(built[0]).toContain('withoutCollisions(');
+    // Every block that declares routes must be an ARGUMENT to the merge. A
+    // block left out contributes nothing and is silent; a block spread back in
+    // is shadowed and is silent. Both are what the guard exists to end.
+    for (const blockName of ['DECLARED_ROUTES', 'operationalRoutes']) {
+      expect(built[0]).toContain(blockName);
+      expect(built[0]).not.toContain(`...${blockName}`);
+    }
+  });
+
+  it('declares each route block exactly once in the module', () => {
+    const source = readFileSync(`${process.cwd()}/src/lib/independentEntityRoutes.js`, 'utf8');
+    for (const blockName of ['DECLARED_ROUTES', 'operationalRoutes']) {
+      const declarations = source.match(new RegExp(`^const ${blockName} =`, 'gm')) || [];
+      expect(declarations).toHaveLength(1);
+    }
   });
 });

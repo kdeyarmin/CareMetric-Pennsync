@@ -480,6 +480,21 @@ test('a migration that wraps itself is distinguishable from one that does not', 
  * not run in the isolated authority job, and this is the suite that owns the
  * directory. The property is cheap to check here and the failure is loud.
  *
+ * TWO HALVES, AND NEITHER IS SUFFICIENT — say so here, because the division of
+ * labour between them is load-bearing and nothing else records it. The sweep
+ * below walks the REAL directory (`recordMigrationNames`, then `readFile`), so
+ * it proves the refusal fires on files as they actually arrive: written into
+ * the directory and picked up by the walk. The crafted counter-examples after
+ * it never touch the directory, so they prove the other thing — that
+ * `transactionControl` can say no at all. Sabotage each half to see it: strip
+ * a real migration's wrapping and only the sweep reds; weaken
+ * `transactionControl` to accept anything and only the counter-examples red.
+ *
+ * So do not delete the counter-examples as redundant with the sweep, and do
+ * not replace the walk with a fixture list for speed. Either change leaves
+ * this test green while removing half of what it establishes, and the half
+ * that remains cannot tell you the other one is gone.
+ *
  * It asks `transactionControl` rather than a regular expression of its own.
  * Every contract in this store is a plpgsql body, and such a body opens with
  * the word `begin` and closes with `end` — a scan that did not skip `$$ … $$`

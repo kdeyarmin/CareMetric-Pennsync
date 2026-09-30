@@ -1451,7 +1451,8 @@ test('nothing in the queue is startable and unwritten', async () => {
       `${name} has a Base44 function, so it is a port and belongs in the queue`);
   }
   assert.deepEqual(facilities, [
-    'createAgencyTask', 'createNoteConversion', 'deletePdfTemplate',
+    'createAdrAuditCase', 'createAgencyTask', 'createComplianceAudit',
+    'createNoteConversion', 'deleteAdrAuditCase', 'deletePdfTemplate',
     'getAgencyRosterMember', 'getAgencySettings',
     'getMyNotificationPreferences', 'listAdrAuditCases', 'listAgencyIncidents',
     'listAgencyRoster', 'listAgencyTasks', 'listBrokeredRecords',
@@ -1473,7 +1474,7 @@ test('nothing in the queue is startable and unwritten', async () => {
     'recordChartRecommendation', 'recordSentEducationMaterial',
     'saveAgencySettings', 'saveAiConfiguration', 'saveCarePlan',
     'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
-    'savePdfTemplate',
+    'savePdfTemplate', 'updateAdrAuditCase', 'updateComplianceAudit',
   ]);
 });
 

@@ -27,7 +27,6 @@ import { applyRecordMigrations } from './record-migrations.mjs';
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
-const READS_NAME = '20260920660000_contract_compliance_reads.sql';
 // `chart_not_elsewhere`'s own file, read only for its text: the sabotage below
 // restores the term from the migration that ships it rather than from a retyped
 // copy. It is APPLIED by the directory walk, not by name.
@@ -90,9 +89,22 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  assert.equal(applied.at(-1), READS_NAME,
-    'this contract must sort last in the directory, or `planMigration` refuses '
-    + 'MIGRATE_OUT_OF_ORDER once an earlier file has been applied to a store');
+  // The "this contract sorts last" guard that lived here is RETIRED rather than
+  // widened, and the reason is the rule it taught. It protected a PENDING file:
+  // `planMigration` refuses MIGRATE_OUT_OF_ORDER once an applied file sorts
+  // after a pending one, so while this migration was unmerged anything sorting
+  // after it was a base that had moved under it. It caught four such moves,
+  // two of them against files that tied this one's timestamp prefix exactly.
+  //
+  // This migration is merged now, so it is part of what a store already holds
+  // and the next change's file legitimately sorts after it — the assertion
+  // refused a correct tree the moment the write half arrived. Widening it with
+  // an exception list naming that file would keep a check whose population is
+  // "everything except the ones somebody remembered", which passes for reasons
+  // nobody can state. It moves instead: `assertNewestRecordMigration` is the
+  // same guard in `record-migrations.mjs`, and the newest PENDING migration
+  // calls it. What stays here is the set equality above, which is the
+  // assertion that actually says this store is the one a deployment gets.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   await db.exec(`insert into auth.users(id,email,email_confirmed_at)

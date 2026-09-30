@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 49 | 37 |
+  | `mutating` (derived) | 54 | 39 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1588,6 +1588,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   being added to. This row was re-derived on seven bases over the life of one
   pull request; the number above is a reading of the tree it merges onto and of
   no other.
+
+  The five compliance WRITES then took `mutating` to 54 and left `read-only`
+  and `integration` where they were. Its migrations rose by **two** for one
+  file, and that is the derivation working rather than a miscount: a wave's
+  migrations are the ones its handlers need, and these contracts open with a
+  precondition on the compliance READ migration, so that file now belongs to
+  both waves. A wave's migration count is therefore not a partition of the
+  directory and the six rows do not sum to it — read each row as what that
+  wave's operator must have applied, never as a share of the whole.
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
@@ -3271,6 +3280,48 @@ the block above; under this branch's, the block here. The same pair was run on
 two different bases a day apart and gave the same deltas both times, which is
 what makes them a property of these seven routes rather than of a moment.
 
+**The reading after the five compliance WRITES.** A record of the head it was
+taken on, and no longer the tree: it was pinned when it was written, and the
+route and allowlist work below has since moved every line of it. The pinned
+reading is the last block in this section.
+
+```
+entity routes: 76 declared, 145/237 landable call sites SERVED, 92 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 33 pass arguments this cannot read
+  14 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryTemplate.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 28 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+**A WRITE port moves the line by ONE, and that contrast is the useful half of
+this reading.** The same two-tree attribution was run for these five routes —
+the printer twice on this one merged tree, once with `main`'s route module and
+once with this branch's — and it gives +5 declared, +7 served, −7 to adopt, +5
+unreadable and +2 unproved, with the entity count unmoved at 28. Seven served
+plus five unreadable is twelve, which is every call site these five routes
+reach: the arithmetic closes, so nothing is unaccounted for.
+
+Seven from five routes is barely a multiple, against thirty-two from seven a
+port earlier, and the reason is structural rather than incidental. A read is
+called from every screen that displays the thing; a write is called from the
+one form that performs it, so the served count of a write port is close to its
+call-site count by construction. **Do not size a write port by what a read port
+moved**, and do not read a small move as a route that failed — the number to
+compare a write port against is its own call sites, not a sibling's multiple.
+
+The five that went to `unreadable` rather than `served` are the same finding in
+its own form: `AdrAuditCase.create` builds its payload from the letter
+analysis and `ComplianceAudit.update` passes `buildAuditFields`'s return, so the
+gate cannot run the real arguments through `request`. "Cannot prove this serves"
+is not "does not serve" — what stands in for the proof is the refusals raised
+against the real migration, which `independentEntityRoutes.spec.js` requires by
+name rather than taking on trust.
+
+**No entity left the remaining line here, and that is expected rather than
+disappointing.** `AdrAuditCase` keeps its read call site, which has no route
+because its limit is a constant imported from another module, and
+`ComplianceAudit` keeps eight read sites the census cannot even see. A write
+port shortens the queue by call sites and not by entities.
+
 **One site moved the wrong way, and it is named rather than netted off.** The
 sites passing arguments this cannot read went up by one:
 `ComplianceAudit.filter` in `src/components/smartNote/persistVisitNote.js`
@@ -3319,10 +3370,12 @@ parameter. Each was verified on its own rather than inferred from the pin
 reaching zero, and the pin is now the empty set with a plant beside it, since an
 empty expectation asserts nothing by itself.
 
-**And the reading on THIS tree, with both waves merged.** This one is `pnpm run
-check:entity-routes`'s own output and is **pinned**: `tools-entity-routes.test.mjs`
-fails unless the page carries it byte for byte, so paste what the tool prints and
-never retype, rewrap or re-indent it.
+**And the reading with both waves merged, read on `84718e6`.** It was this tree's
+pinned block when it was written and is now a RECORD of that head: the compliance
+writes landed under it, so the measured reading is the block further down and
+this one is kept for the move it explains. Demoting it in place is what
+`tools-entity-routes.test.mjs` asks for — it requires the measured reading to be
+the LAST fence on the page, not the only one.
 
 **The denominator moved too, and that is the more important half.** 237 became
 245 because the shared entity-call matcher was blind to one shape and is not any
@@ -3365,14 +3418,47 @@ entity routes: 81 declared, 145/245 landable call sites SERVED, 100 still to ado
   of those 100, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 99 need a named capability
 ```
 
-#### The route audit's front: five sites whose fallback is already gone
+**And the reading on THIS tree, with the compliance writes merged onto the route
+and allowlist work.** This one is `pnpm run check:entity-routes`'s own output and
+is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
+byte for byte, so paste what the tool prints and never retype, rewrap or
+re-indent it.
+
+```
+entity routes: 86 declared, 152/245 landable call sites SERVED, 93 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
+  18 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 93, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 92 need a named capability
+```
+
+**It is one printer run over one merged tree, so read it as a reading and not as
+a sum.** The five compliance write keys are the difference from the block above
+it, and the nine refused sites and fifty unreadable arguments come from the route
+and allowlist work, not from these five — the two branches were open at once and
+neither could see the other's effect on these totals, which is why this is
+re-measured here rather than added up.
+
+**Two of the three matcher-fix refusals are in a module nothing imports, and that
+changes what they cost rather than whether they are real.**
+`ComplianceAudit.filter` and `Incident.filter` refuse in
+`src/lib/retiredOfflineQueue.js`, and `src/lib/hostedPaths.spec.js` builds the
+list of production source files that import that module and asserts it is empty —
+so the assertion fails if one ever does, and today none does. The refusals are
+real and no screen reaches them. Measured on this tree: eight entity operations
+live in that module, across `NoteConversion`, `ComplianceAudit`, `Task` and
+`Incident`, and none is on a path a user can execute.
+
+#### The route audit's front, and why it is now shorter than its own list
 
 **A site nobody has routed still reaches Base44. A site a declared route
 REFUSES has had its fallback taken away.** Those are not two degrees of the same
 thing and the served count cannot tell them apart, because it counts neither: a
-refused site is not served and is not in the unrouted pool either. Five are
-known and they go ahead of everything else in this audit, whatever the totals
-say about size.
+refused site is not served and is not in the unrouted pool either. Five were
+known when this section was written and went ahead of everything else in the
+audit, whatever the totals said about size. **On `8bc9d214` none of the five can
+fire**, for two different reasons, and both are recorded below beside the
+finding rather than in place of it — the reasoning is what gets reused, and a
+section rewritten to match today's answer loses it.
 
 **Three came out of the matcher fix and could not have been seen before it**,
 which is the part worth keeping — the census had counted the CALL SITES of
@@ -3386,6 +3472,18 @@ gate's summary. And the module IS on the routed path: it imports `base44` from
 `src/api/base44Client.js`, whose `rawBase44` is `independentAdapter?.raw` when
 the independent adapter is configured, and that client's `entities` is
 `routedEntities(portedCall, …)`.
+
+**But nothing calls it, and that half was missing here.** The module is the
+one-time recovery path for the retired offline feature, and
+`src/lib/hostedPaths.spec.js` asserts that no production file under `src/`
+imports it — it walks every non-test source and requires the importer list to
+be empty. So these three refusals are real, reachable by construction and
+unreachable in fact: routed if anything called it, called by nothing. Both
+readings were taken of the same module and only one of them was written down,
+which is the census defect at the scale of a paragraph. It does not make them
+harmless, because the module exists to be wired up exactly once when somebody
+decides to drain those queues — it makes them a thing to fix BEFORE that
+happens rather than ahead of everything else.
 
 **Two are ladder's, in `submitStateReportableIncident`, and they are the most
 serious class the product has.** `SmartIncidentForm.jsx` and `EventReport.jsx`
@@ -3419,12 +3517,26 @@ submission is free text a nurse can put a name into regardless, which is D188.
 A seventeen-key allowlist is not a privacy boundary and must not be read as
 one. What is contained is the ALERT, and that was never at risk.
 
+**#355 took it, in the shape that paragraph predicted.** On `8bc9d214`
+`patient_name` is in `STATE_INCIDENT_FIELDS`, `buildReportText` uses it, and the
+object handed to the contract overrides it to `undefined` rather than spreading
+it — `submitted_by_name`'s shape, as the precedent said. The answer reports
+`patient_name_used: false`, so a caller cannot read acceptance as adoption. Two
+of the front's five sites are therefore closed by a merge rather than by a
+decision, which is worth noticing about the finding and not only about the
+sites: what looked like a product fork dissolved once somebody read the
+migration. That is the pattern to try first when a repair appears to touch a
+deliberate narrowing — find where the narrowing actually lives before treating
+the question as the owner's.
+
 **So the audit's first question is not "how many sites remain" but "how many
 declared routes refuse a call that is actually made".** The gate's refusing line
-answers it for the route table — nine on this tree — and answers nothing about
-pass-through wrappers, which is where ladder's two live. Two instruments, two
-populations, and a total that merged them would be the census defect arriving
-in the audit written to describe it.
+answers it for the route table and answers nothing about pass-through wrappers,
+which is where ladder's two lived. Two instruments, two populations, and a total
+that merged them would be the census defect arriving in the audit written to
+describe it. **That the wrapper pair was found by a different instrument from
+the route pair is the durable half** — the refusing line could not have shown
+them, and it still cannot show the next ones.
 
 #### The route audit's partition: what the remainder is actually made of
 
@@ -3439,28 +3551,306 @@ Beside the served sites, the remainder is three populations and they are three
 different kinds of work:
 
 - **Nine are REFUSED by a declared route.** Six are `User.list` asking for a
-  sort, across five files; three are the offline queue's, described above. These
-  are the front of the audit and the only ones where the Base44 fallback is
-  already gone.
-- **Forty-three pass arguments the scan cannot read**, because the call builds
+  sort, across five files; three are the offline queue's, described above.
+  These are the only sites where the Base44 fallback is already gone — but nine
+  refusals are FIVE screens. They fall across six files, and the sixth is not a
+  screen: `retiredOfflineQueue.js` is a lib module no production file imports.
+  Nine, six and five are three different counts of one bucket, and the one that
+  sizes the work is the smallest. **And this line is progress-shaped, so a rise
+  in it reads backwards**: it was six when #309 merged and is nine now, and all
+  three arrivals came from `c90ad9ae` — two keys became refusals by being
+  DECLARED, where an undeclared key is skipped rather than refused, and the
+  third became visible when the shared matcher stopped being a regular
+  expression. A refusal cannot be counted until a route exists to do the
+  refusing, so plotting this bucket over time measures the audit's reach and not
+  the product's health.
+- **Fifty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Forty-eight have no route declared at all**, over thirty-three entity and
-  operation keys: fifteen reads over twelve keys, and thirty-three writes over
-  twenty-one. **The writes are more than twice the reads**, which inverts the
-  shape every wave so far has had — a read port serves many screens per route
-  and a write port typically serves the one form that calls it, so this
-  remainder costs more per site than the served count suggests and a wave drawn
-  from it will look slow against the same effort spent earlier.
+- **Thirty-four have no route declared at all**, over twenty-eight entity and
+  operation keys: fifteen reads over twelve keys, and nineteen writes over
+  sixteen. **The writes still outnumber the reads**, which inverts the shape
+  every wave so far has had. The reason is measurable on the sites already
+  served: a read key there carries 2.59 call sites and a write key 1.32, so a
+  read port has historically served many screens per route while a write port
+  served the one form that calls it. **Do not carry that ratio into the
+  remainder, though**: inside this pool a read key covers 1.25 sites and a write
+  key 1.19, which is nothing like the served spread and is barely a gap at all.
+  Both are correct measurements of different populations, and the conclusion
+  rests on the first only for what it says about PAST waves: this remainder
+  costs more per site than the served count suggests, and a wave drawn from it
+  will look slow against the same effort spent earlier.
+
+  **The two ratios ran the OTHER way round one head ago and that is worth
+  keeping**, because it is this paragraph's own rule arriving in the paragraph.
+  Before the compliance writes landed, the remainder's write key covered 1.57
+  sites against a read key's 1.25 — the inversion, stated here as the finding.
+  Five write keys adopting routes moved the pool and the inversion went with
+  them; nothing was wrong with the earlier measurement and nothing is wrong with
+  this one. What would have been wrong is carrying the sentence across a merge
+  because it read well. A ratio over a REMAINDER is a property of what is left,
+  so it moves every time anything is taken off it, and it has to be re-measured
+  at the head that quotes it rather than inherited.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
 remainder as a single figure counts a measurement's silence as work, and counts
 a refusal — where the product is already worse off than before the route was
 declared — as the same as a site nobody has touched.
+
+#### Drawing the remainder as waves, and the column that cannot be derived
+
+Everything below was read on `8bc9d214` and is a dated record of that head
+rather than something maintained. That is deliberate and not laziness: these
+figures move with every route batch, and a pinned one pays an edit per batch.
+`tools-handler-allowlist.test.mjs` carries the worked example in its own header
+— it pinned a handler count as a literal, five capabilities landed the next
+hour, and `main` went red on a check that was measuring nothing wrong; it
+compares against a derived length now. **The partition above is pinned because a
+tool prints it; this is not, because no tool prints it.** A head-stamped record
+stays true at every later head, which a literal does not.
+
+**Grouped into candidate waves.** The keys fall into twelve domains. The
+grouping is a reading like the rest of this section and was made with a
+throwaway derivation rather than a committed tool, so what is worth recording is
+the shape of its controls, not the script: every key belongs to exactly one
+domain, no domain may be empty, and a key the map does not cover REFUSES the
+run rather than being dropped quietly — an uncovered key would otherwise leave a
+table that adds up and is short.
+
+| domain | keys | call sites |
+| --- | ---: | ---: |
+| ADR audit | 4 | 9 |
+| time and pay | 6 | 7 |
+| compliance audit | 2 | 6 |
+| document library | 6 | 6 |
+| AI configuration | 2 | 4 |
+| physician directory | 3 | 4 |
+| on call | 3 | 3 |
+| system log | 3 | 3 |
+| invitations | 1 | 2 |
+| note conversion | 1 | 2 |
+| patient alert write | 1 | 1 |
+| user filter | 1 | 1 |
+| **total** | **33** | **48** |
+
+**A domain row is not a unit of work, and the largest row proves it.** ADR audit
+splits in two. Its create, update and delete have no write contract at all — the
+only other ADR contract in the store is `pennsync_contract_adr_deadline_sweep` —
+so they need SQL, a handler and a suite. Its read is the opposite and is not
+route work either: `pennsync_contract_adr_case_list` shipped, and
+`AdrAuditCase.list` is **deliberately not declared**, for a reason that is about
+the INSTRUMENT rather than the contract. `src/lib/independentEntityRoutes.js`
+says so in its own comment: the only call site passes `ADR_CASE_READ_LIMIT`
+imported from another module, `check:entity-routes` cannot resolve a constant
+across modules, so it reads the site as unserved, and a declaration would be a
+route that moves no screen. Same entity, same row, two stages and neither of
+them the one the row implies. Read as one thing it is the obvious first wave,
+and none of it is a route to declare today.
+
+**And a KEY is not the unit either, which is this section's own subject arriving
+one level down.** `TimeOffRequest.filter` is two sites and two different
+answers: `src/pages/Timesheets.jsx` asks for one person's `status: "approved"`
+requests, which `getApprovedTimeOff` serves, while `src/pages/TimeOff.jsx` asks
+for the same person's requests at every status so they can cancel a pending one,
+and no contract serves that. A per-key cell would tell the same kind of lie the
+entity row tells.
+
+**The column that would actually size a wave is NOT derivable, and that is a
+finding rather than a gap.** "Does a contract already exist for this key" is
+what separates a declaration from a capability to build, and two instruments
+were built for it and both abandoned. Matching contract NAMES against the entity
+name is wrong in both directions — `listAdrAuditCases` matches
+`AdrAuditCase.update`, which a list contract does not serve, and
+`getApprovedTimeOff` serves `TimeOffRequest` and contains no entity name.
+Reading the contract SQL for the entity's TABLE is wrong in both directions too:
+a contract touching a table incidentally is not serving the operation, an update
+is not a create, and **a write can be invisible by construction**.
+`"pennsync_records".library_write(p_table, …)` builds its statement with
+`execute pg_catalog.format('insert into "pennsync_records".%I …', p_table, …)`,
+so the table is a STRING ARGUMENT and no static reader of a contract body can
+see the write at all. Seven tables are written
+through it — `ai_configuration`, `clinical_library_folder`,
+`clinical_library_template`, `clinical_pathway`, `custom_validation_rule`,
+`education_material` and `patient_education_assignment` — so it is a family,
+not one odd contract. **Six of those seven are written ONLY that way**, and the
+exception is worth naming because it is this section's own subject at the wrong
+unit: `clinical_library_template` also takes a direct `update` in
+`contract_clinical_phrase`, which increments its `usage_count`. So the table is
+visible to a static reader and that contract's write is not. What dynamic SQL
+hides is a CONTRACT's write, never a table, and a first draft of this paragraph
+said seven tables because the two units read interchangeably in one English
+sentence.
+
+**The general form is worth more than the instance: the question decides whether
+dynamic SQL defeats you.** `tools-pennsync-release-ladder.mjs` walks the same
+call graph and is not defeated, because it asks whether a contract writes AT ALL
+and which migrations its closure needs, never which table. Every contract
+reaching its write through the helper classifies `mutates: true`.
+
+**It survived by an accident of phrasing until #358, and the fix is the shape
+to copy.** Its `DML` test is a text match, so it fires on the `insert into`
+inside `library_write`'s `format(…)` templates. A one-pass scanner that strips
+single-quoted strings, dollar-quoted blocks, `--` line comments and `/* */`
+blocks TOGETHER found those matches only inside the strings — the ladder thread,
+on `3c94246c`, written that way because handling quotes alone is unsound: a
+comment containing an apostrophe desynchronises a quote-only scanner and inverts
+the answer. An earlier attempt of mine with a regular expression that stripped
+quoted text was unsound for a different reason, because SQL escapes a quote by
+doubling it, and it reached the same answer anyway; that is the only kind of
+agreement worth recording. So a "do not match inside strings" tightening — which
+reads exactly like a correctness improvement — would have classified the helper
+read-only and taken every contract reaching its write through it into a read
+wave.
+
+**The family is SEVEN contracts, and the two populations around it are not the
+same set.** Seven contracts reach a write through `library_write` and through
+nothing else; each has no DML of its own once quoted text and both comment forms
+are removed, so the tightening would classify all seven read-only. #358's header
+read six, which was a defect in the header rather than in the check, and the
+way the six arose is the more useful half: they were assembled from the
+contracts the classifier reported silent when each was flipped read-only, so
+the set was drawn from the check's own blind spot — it measures the EXPOSURE
+and reads like the POPULATION. #362 corrects the header and takes its test's
+population from the bodies rather than the names, and it is on `main` as
+`bd28cddb` — checked as a commit on `main` rather than off a listing's `merged`
+flag, which has answered wrongly here before. The other population is the EIGHT names the classifier guard
+holds, and the difference is not arithmetic:
+`contract_sent_education_record` is in the second and not the first, because it
+carries its own DML and was probed here as a positive control. Two sessions
+measured these on independent harnesses and agreed, including the discriminating
+reading underneath them — 49 of the store's 135 contracts carry their own DML
+and 86 do not, re-derived here on `03a92329` — which is what makes the pair
+quotable at all. It discriminates rather than answering uniformly, which is the
+property to check before believing any of these numbers: a lexer that ate the
+whole `$$` body would have reported the family read-only and been right about
+all seven for the wrong reason.
+
+**What made it survivable was the guard, and the guard was silent on six of the
+seven.** `mutationClassifierHolds` refuses when a contract named with a writing
+verb classifies read-only. Ladder measured the before-state directly, by
+removing `write` from `MUTATING_VERBS` on a tree that contains the fix and
+sweeping both trees: the six `_write` contracts go SILENT to HELD, the two
+already covered stay HELD, and the guard's reach over the whole registry goes
+from 47 of 133 origins to 53. **Nothing else moved**, which is the property
+worth checking before believing either figure. The seventh was never silent —
+`contract_ai_configuration_save` is held by `save`, which was already in the
+list — so the family's exposure and the guard's blind spot were never the same
+set, and reading either off the other gives the wrong answer by one in both
+directions. **Count the controls out of the coverage figure before quoting
+it**: a sweep of eight names over a family of seven yields at least three
+defensible numbers, and this paragraph produced all three before anybody
+measured the before-state.
+
+**#358 closed both halves in one change**: the verb is in the list, so the same
+sweep on `8bc9d214` holds for every name probed, and the matcher's header now
+says the string matching is deliberate and what removing it would cost. **When a
+check survives by an accident of how it is phrased, say so in its header** — and
+note which half is load-bearing, because the header alone would not have stopped
+the tightening from shipping green. The guard is what would have stopped it, and
+only for the names it already knew.
+
+**The cost of a row has to be read rather than measured, and reading it wrong
+is the failure this section exists to warn about — so here is the instance,
+because it happened while this section was being written.** The transfer thread
+first read the pool as eight sites over five keys that a shipped contract could
+serve. Declaring them refuted three of the five, two of them against reasons
+already written down in the files a declaration would have to touch:
+
+- `NoteConversion.filter` is held ON THE CONTRACT, deliberately, with a live
+  test. `src/lib/operationalRoutes.test.js` carries it in `HELD_ON_THE_CONTRACT`
+  because `persistVisitNote.js` narrows on five fields and
+  `listNoteConversions` takes one, while that caller requires EXACTLY ONE ROW
+  and treats anything else as an unconfirmed write. A route dropping four
+  predicates turns duplicate detection into a read that can return two.
+- `AdrAuditCase.list` is deliberately undeclared, and the reason is a comment in
+  `src/lib/independentEntityRoutes.js`: `listAdrAuditCases` exists and is
+  tested, but `ADRCenter.jsx` passes a limit constant imported from another
+  module and the gate cannot resolve one across modules, so declaring it "would
+  be a route that moves no screen, which is the exact thing that gate was
+  rebuilt to refuse".
+- `TimeOffRequest.filter` fails on the contract's BODY rather than its
+  parameters, and it fails in the dangerous direction. The `Timesheets.jsx` site
+  asks for one person's approved requests; `contract_time_off_approved(p_agency)`
+  takes no email at all and returns the whole agency's, ordered the other way.
+  Routing it would put every colleague's leave on one person's timesheet. That
+  is a WIDENING, and a disclosure one.
+
+**So the rule is the one the three share: a contract's existence is not its
+fitness, and its parameter names are not its semantics.** Two of the three were
+refuted by something already committed, which means the check is to read the
+route file and the operational-route test before believing a match, not to read
+the contract registry more carefully.
+
+**What survives is two keys over four sites, and declaring them moves the gate's
+SERVED line by ZERO.** `AIConfiguration.create` and `.update` are both served by
+`saveAiConfiguration`, whose `id` is nullable so one contract covers the pair.
+All four sites — two in `src/components/admin/AIConfigurationManager.jsx`, two in
+`src/pages/UserSettings.jsx` — pass a payload object and an id held in a
+variable, so every one of them would be declared and then counted UNPROVED.
+Measured here rather than taken: the resolver reads 331 of the 453 sites and
+refuses 122, so it is not answering uniformly, and it refuses all four of these.
+**"A route to declare" and "a served site gained" are different quantities**, and
+on this row the second is zero.
+
+**The headline is that there is no cheap wave left at all.** Two automated
+crosses put the declarable row at forty and at fourteen before either was
+abandoned; a hand reading put it at eight; declaring them put it at four, none
+of which the gate will credit. Anyone sizing a wave off the whole keyless pool
+is sizing capability work as though it were declarations. What the other
+twenty-nine keys need is not settled here and is the transfer thread's to
+publish — the three refuted above are not "capability to build" either, since
+two of them are decisions somebody already took.
+
+**Four of the pool are not route work at all, filed under names that read like
+four declarations.** `src/pages/UserSettings.jsx` calls
+`User.filter({ role: 'admin' }, undefined, ALL_ROWS)` to find the agency's
+administrators and notify them that somebody asked for their account to be
+deleted. D23 makes `User.role` a self-editable label that must never authorize,
+and `contract_roster`'s own header says `role` and `account_type` are replaced
+by `tenant_role` — so the screen asks the exact question D23 exists to refuse
+and no route can be declared for it. The successor is not missing: the
+enumeration belongs to `pennsync_private.agency_roster` and the fan-out to
+`createNotification`, which is already ported, so this is a decision about one
+screen with a strong default and nothing unbuilt behind it. The other three are
+`SystemLog.create`, `.list` and `.filter` in `PatientEducationHub.jsx` and
+`SystemJobMonitor.jsx` — the whole of the destination gate's `activity_trail`
+bucket, enumerated rather than inferred from two counts of three matching.
+`SystemLog` is dispositioned `retire`, so there is no table to route to. The
+write can never be a route: D25's trail stamps the actor from the caller helpers
+and refuses a payload naming one, so a browser cannot append to it — that is
+`audit.mjs`'s job from inside a handler. The two reads need `agency_admin`,
+where the screen shows them to whoever opens it today.
+
+**The unreadable population is not a tooling limit waiting to be lifted, and the
+obvious next idea buys a third of what it looks like.** Repo-wide there are 453
+entity call sites, of which 331 are readable and 122 are not. Only seven of the
+122 fail because they name a module-level constant the resolver does not carry,
+over six distinct names: `tools-entity-call-arguments.mjs` resolves what
+`src/lib/queryLimits.js` exports and nothing else, while `ADR_CASE_READ_LIMIT`,
+`ROSTER_PAGE_SIZE`, `PAGE_SIZE`, `ACTION_ITEM_SCAN_LIMIT`,
+`SUPPORTING_RECOVERY_ROW_LIMIT` and `EXACT_RECOVERY_ROW_LIMIT` each live beside
+the screen that uses them. The other 115 pass a genuine run-time value. **But
+carrying all six names moves the unreadable line from 122 to 119, not to 115** —
+simulated by adding them and re-walking rather than reasoned about, because four
+of those seven sites pass something else unreadable as well. *Seven sites name a
+constant* and *seven sites would become readable* are different quantities, and
+this paragraph was first drafted asserting the second.
+
+**Last, a count of routes is not a count of call sites.** #335 fixed eight
+broken routes — six sending an order their contract refuses, two reading an
+answer key their contract never sends (`ClinicalEvent.filter` and
+`PDFTemplate.delete`) — with a ninth carrying the sort defect latently:
+`FaceToFaceEncounter.filter`, whose only call site passes `undefined` for the
+sort, so it emits no order and the defect has never fired. That is eight routes
+over fourteen call sites, eleven of them behind the six sort defects alone. Both
+numbers are true and they are different numbers; the one that sounds better is
+the one to distrust. This paragraph first said seven with a latent eighth, which
+is the merged commit's own Before/After off by one in the direction that reads
+tidier.
 
 #### The destination gate, which measures a different population
 
@@ -3550,7 +3940,10 @@ a colleague is in is already served.
 
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
-- Replace call sites tier by tier; a lint rule blocks new direct entity calls.
+- Replace call sites tier by tier — **but not by the count, and not by the
+  entity.** What is left is three populations and only one of them is work;
+  the waves, and the column that cannot be derived, are above. A lint rule
+  blocks new direct entity calls.
 - Remove `@base44/sdk`, `@base44/vite-plugin` and `BASE44_LEGACY_SDK_IMPORTS` in
   the final PR of the stage.
 - Railway static-site service for the SPA: SPA fallback, immutable asset caching,
