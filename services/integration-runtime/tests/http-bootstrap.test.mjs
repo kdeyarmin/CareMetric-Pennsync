@@ -59,8 +59,12 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     retentionWasAbsent = true;
     phase = 'apply recovered migrations to actual platform';
     const directory = new URL('../migrations/', import.meta.url);
-    const files = (await readdir(directory)).filter(file => /^00[1-5]_.+\.sql$/.test(file)).sort();
-    assert.equal(files.length, 5);
+    // Every committed migration, forward files included: this installs the stack
+    // the HTTP suites run the real providers against, so a filter that stopped at
+    // the original five would leave `http-storage` proving a denial the fixture
+    // raised rather than one the runtime did. That is how 006 first failed here.
+    const files = (await readdir(directory)).filter(file => /^\d{3}_.+\.sql$/.test(file)).sort();
+    assert.equal(files.length, 6);
     for (const file of files) {
       phase = `apply ${file} to actual platform`;
       if (file === '002_storage_isolation.sql') {
