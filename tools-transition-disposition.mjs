@@ -1299,6 +1299,85 @@ export function portQueueLine(report) {
   return `port queue: ${queue.map(([blocker, names]) => `${blocker}=${names.length}`).join(' ') || 'empty'}`;
 }
 
+const MARKDOWN_SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'coverage', '.git']);
+
+/**
+ * Every markdown page in the tree, discovered rather than listed.
+ *
+ * Test directories are NOT skipped here, unlike `sourceFiles`: a page is a page
+ * wherever it sits, and skipping a directory is how the omission this exists to
+ * stop gets reintroduced one level down.
+ */
+export function markdownPages(repository) {
+  const found = [];
+  const walk = (root, prefix) => {
+    let entries;
+    try { entries = readdirSync(root, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (entry.isSymbolicLink()) continue;
+      const path = join(root, entry.name);
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (MARKDOWN_SKIPPED_DIRECTORIES.has(entry.name)) continue;
+        walk(path, relative);
+      } else if (entry.name.endsWith('.md')) {
+        found.push(relative);
+      }
+    }
+  };
+  walk(repository, '');
+  return found;
+}
+
+/**
+ * Only whitespace, a comma, a backtick or an asterisk may sit between two
+ * bucket tokens of one reading. Anything else ends the run, which is what keeps
+ * a table's BEFORE column from being read as one reading with its AFTER column.
+ */
+const PORT_QUEUE_GLUE = /^[\s,`*]*$/;
+
+/**
+ * Every port-queue reading a page quotes, as the run of bucket tokens it holds.
+ *
+ * `portQueueLine` gave these counts one form, and the pin over that form was a
+ * literal list of pages: AGENTS.md at first, then AGENTS.md and the go-live plan
+ * after the plan drifted to `none=75` with nothing able to notice. A roster of
+ * pages is a mechanism for omitting the next page, and it omitted one — the
+ * transition plan quotes the whole four-bucket payload TWICE, once inside a
+ * fence and once backticked mid-sentence, and stood at `entity_authorization=7`
+ * against a measured 6 while every suite was green. Extending the list would fix
+ * that instance and guarantee a fourth.
+ *
+ * So the pages are DISCOVERED and only the history is DECLARED. That split is
+ * the whole point: a page written later is covered before anybody remembers it
+ * exists, while a deliberate before/after reading is exactly the case somebody
+ * should have to declare out loud. The bucket names come from the report's own
+ * keys, so the scan widens when a blocker is added.
+ *
+ * Keyed on the bucket tokens and NOT on the `port queue:` prefix, because the
+ * prefix is the half a page drops: the transition plan's mid-sentence copy is
+ * the complete payload with only the prefix missing, and a prefix-keyed check
+ * would read it as prose.
+ */
+export function portQueueQuotations(text, bucketNames) {
+  const token = new RegExp(`(?:${bucketNames.join('|')})=\\d+`, 'g');
+  const quotations = [];
+  text.split('\n').forEach((line, index) => {
+    const hits = [...line.matchAll(token)];
+    if (!hits.length) return;
+    let run = [hits[0]];
+    const close = () => quotations.push({ line: index + 1, reading: run.map(hit => hit[0]).join(' ') });
+    for (let at = 1; at < hits.length; at += 1) {
+      const previous = hits[at - 1];
+      const between = line.slice(previous.index + previous[0].length, hits[at].index);
+      if (PORT_QUEUE_GLUE.test(between)) run.push(hits[at]);
+      else { close(); run = [hits[at]]; }
+    }
+    close();
+  });
+  return quotations;
+}
+
 export function main(args = process.argv.slice(2), { repository = resolve(dirname(fileURLToPath(import.meta.url))), log = console.log } = {}) {
   if (args.some(argument => !['--json', '--summary'].includes(argument))) {
     log(JSON.stringify({ error: 'INVALID_ARGUMENTS' }));
