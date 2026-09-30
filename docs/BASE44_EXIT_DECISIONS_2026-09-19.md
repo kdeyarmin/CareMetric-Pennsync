@@ -50,6 +50,16 @@ reading is true of the tree it was taken from and goes stale by the next merge;
 re-measure before quoting one, and record the new reading somewhere it can be
 dated rather than editing the old one to match.
 
+**A heading is either the parser's key or prose about a key, never both.** An
+amendment's title opens on a word rather than on `D<n>`: at `##` that line
+parses as a second entry carrying that number, because the character after the
+digits is a word boundary whatever follows it. Adopted 2026-09-30; the rule is
+the file-layer thread's, after `## D224, amendment 1 — …` arrived and would have
+filed as a duplicate `## D224`. It binds what is written from here. Titles
+already filed in that shape — `### D190, widened`, `### D210 addendum` — are
+safe at their depth and are not retrofitted, because changing a filed entry's
+title to satisfy a convention costs an amendment for a cosmetic gain.
+
 ## A number that is cited here and has no entry here
 
 **D107 has no entry in this document, and five entries reason from it.** That is
