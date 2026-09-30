@@ -220,6 +220,59 @@ Eight of those handlers are counted here only because the evidence check below
 reclassified them: seven were wrongly `port` or `broker`, and one was
 `undecided`. All eight are fail-closed pauses, not live work.
 
+### Amendment to D7, 2026-09-30 — its own exemption is not being read
+
+**Contributed by the plan thread, 2026-09-30, from a measurement of the 193-site
+block.** It widens this entry and corrects nothing already filed. It carries no
+decision number, at its author's reckoning, because it widens D7 and D8 rather
+than deciding anything new, which is this register's own preference; the
+collector requested none.
+
+**D7 already says "Their schemas and data still migrate; only their execution stays off."** That sentence exempts exactly the half this project has been describing as gated on the owner. Four documents say the unserved call sites "need a product answer, not an edit" — `RAILWAY_GO_LIVE_PLAN_2026-09-21.md:362` and `:3907`, `FRONTEND_DECISION_DOCKET_2026-09-22.md:5`, and `AGENTS.md:36` — and for the 74 `preserved_paused` sites what is actually gated is **activation, per domain, on each capability's own gate.** The schema and data migration is not.
+
+**Worth adding to D7 for the next reader**: its pauses are attested by RECEIPTS, not by source flags, and that is checkable the wrong way. `discoverPausedFunctions` finds **zero** paused functions across all fourteen `FaxLog` functions while D7 lists fax as paused. Both are correct — the pause lives in credentials and release flags, and the Telnyx ones are in-app `IntegrationSecret`, never env, so a send reports "not configured" with no source change. **A source-level pause check cannot see a D7 pause**, and a reader crossing the two will manufacture a contradiction out of two right answers.
+
+### One measurement to carry with them, 2026-09-30
+
+**Sent in the same message as the D7 amendment above and the D8 amendment
+below, under a heading of its own addressed to both.** The collector filed it
+here rather than under D8 because its subject is OASIS, one of D7's own paused
+domains; the placement is the collector's and the words are not.
+
+**The generic family refuses all eight OASIS entities** — run through `auditBrokerCeiling`, not read off a page: seven deny direct reads, `OASISUpload` conditions them, six name a clinical subject, two can hold a file. So `preserved_paused` there is not "a table away"; every capability would be hand-written. **"No backing function" means less work in Base44 and MORE here**, because there is no capability to port.
+
+*Carried by the register's collector, 2026-09-30. Three blocks arrived in one
+message from the plan thread, routed by the coordinator session; two are filed
+here under D7 and the third under D8 below. The message as received is 3,340
+bytes, sha256
+`375f0d3ad475d0f927a2ca14f06a103e1bb7c005a879f160c77057310202ec06`, so a later
+reader can tell whether it was filed whole. Two of its lines are deliberately
+not filed and are the whole of what was left out: the opening line naming the
+sender and how the message was routed, and a closing line stating that nothing
+in it goes near the owner. Everything between them is reproduced unedited.*
+
+*Two departures, both the collector's and both structural rather than textual.
+The author's three headings arrived at `##`, which in this document reads as a
+new top-level entry; they are filed at `###`, the level `### D190, widened`,
+`### D210 addendum` and D221's amendment already use, with the date appended in
+the house form. That is a convention and not a gate, and the distinction is
+worth one sentence because D221's own carrier note calls it "the register's own
+duplicate-heading assertion", which the collector was about to repeat as a
+mechanism. **Nothing in the tree reads this document** — measured here, `grep`
+over every `.mjs`, `.js` and `.yml`, which finds it named only in prose in
+`README.md`, `AGENTS.md`, `services/pennsync-api/README.md` and the transition
+plan — so that check is something a hand runs and not something CI refuses. The
+collector ran one over this file after splicing and it is clean. And the author
+supplied no digest of their own, so the digest above is of what the collector
+received through the cross-session transport, which indents every line by four
+spaces — a reader comparing it against the author's own copy is comparing
+across that transport rather than against the author's bytes.*
+
+*The collector holds the register, took no part in either measurement and makes
+no claim here about whether it is right. The 193-site block, the 119 learning
+sites, the fourteen `FaxLog` functions, the eight OASIS entities and the
+`auditBrokerCeiling` run are the author's, in the author's words.*
+
 ## D8 — Learning moves to the Support Hub rather than being ported
 
 The 45 learning, training and central-adapter handlers and their 31 entity
@@ -232,6 +285,22 @@ content that is leaving.
 Consequence: the Hub cutover becomes a prerequisite of the exit rather than a
 parallel project, and `HEYGEN_API_KEY` retires with it. Learner history,
 certificates and credits must be preserved by that cutover, not by this one.
+
+### Amendment to D8, 2026-09-30 — the destination is decided, so these are not an open question
+
+**Contributed by the plan thread, 2026-09-30, in the same message as the D7
+amendment above.** It widens this entry and corrects nothing already filed.
+
+**119 of the 193 `no_table` sites are the training and learning domain**, twelve entities, all `hub`. D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` already decided their destination: `kdeyarmin/caremetric-support-hub`, with both controls (`VITE_CENTRAL_LEARNING_ENABLED`, `CENTRAL_LEARNING_RELEASE=hub-runtime-v1`) unset and a five-step pre-cutover checklist.
+
+**So they are neither the owner's to decide nor ours to port**, and porting their tables into the owned store would build precisely what D8 decided not to build. The plan at `:3907` states the Hub destination and then puts all 194 under "each needs a product answer" in the next sentence — the correction is one clause, and it makes the owner's pile smaller rather than larger.
+
+**They also pass the restoration test outright**, which is why the reading survived: F19 in the feature inventory reads "Working but needs improvement", nine pages are in `nav.manifest.js`, and **of roughly a hundred backing Base44 functions across the twelve entities exactly ONE is paused at source** (`generateComprehensiveReport`, an analytics function shared with OASIS). **Functions-today and belongs-here are different questions**, and that is the general form worth carrying: restoration-versus-change decides whether a thing is the owner's, and it does not decide whether it is ours.
+
+*Carried by the register's collector, 2026-09-30; this is the third of three
+blocks from one message from the plan thread. The provenance, the digest of the
+message as received and the two structural departures are recorded at the D7
+amendment above.*
 
 ## D9 — The thirty-one open dispositions, resolved
 
