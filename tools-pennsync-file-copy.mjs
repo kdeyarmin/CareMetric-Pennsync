@@ -120,7 +120,7 @@ export const RUNTIME_READER_MODEL = 'record_authorized';
 export const REQUIRED_READER_MODEL = 'record_authorized';
 
 /**
- * The comparison the apply makes, as a function so its REFUSAL can be driven.
+ * The apply's reader-model refusal, as a function so it can be DRIVEN.
  *
  * The two constants agree today, so a guard written as a bare comparison
  * between them is one nothing can make fire — and a guard that cannot fire has
@@ -130,10 +130,18 @@ export const REQUIRED_READER_MODEL = 'record_authorized';
  * because the code reads correctly. Found by mutation: replacing the apply's
  * comparison with `true` left every suite green.
  *
- * Production still passes the real pins and nothing takes a model from a
- * caller, which was D77's own finding about its first attempt.
+ * It takes its two values as ARGUMENTS and is not injectable, which is the
+ * distinction that matters. A first version of this let `options` supply the
+ * predicate so a test could hand it one that refuses — and `options` is the
+ * OPERATOR's input, so that put a `() => true` bypass of this very control in
+ * the exported apply. That is D77's own finding wearing a new shape: a caller
+ * may not supply anything about the reader model, an attestation included, and
+ * least of all the function that decides it. The test drives THIS instead, and
+ * the apply calls it with the module's own pins and nothing else.
  */
-export const readerModelServes = (runtime, required) => runtime === required;
+export function assertReaderModel(runtime, required) {
+  check(runtime === required, 'FILE_COPY_READER_MODEL_UNRESOLVED');
+}
 
 /** Why one reference produced no copy. Reported, never silent. */
 export const SKIPS = Object.freeze([
@@ -474,12 +482,8 @@ export async function writeFileObjects(execute, rows) {
  */
 export async function applyFileCopy(execute, plan, options) {
   // Before the plan is read in detail, so the reason is what the operator sees.
-  // The predicate is injectable so its refusal can be DRIVEN while both pins
-  // agree; the VALUES it compares are always the module's own, never an
-  // operator's, which is the control D77's first attempt lacked.
-  const serves = options?.readerModelServes ?? readerModelServes;
-  check(serves(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL),
-    'FILE_COPY_READER_MODEL_UNRESOLVED');
+  // The module's own pins and nothing from `options`, which is operator input.
+  assertReaderModel(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL);
   check(isObject(plan) && Array.isArray(plan.cross_agency), 'FILE_COPY_PLAN_INVALID');
   check(plan.cross_agency.length === 0, 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');
   const rows = fileCopyRows(plan, options);

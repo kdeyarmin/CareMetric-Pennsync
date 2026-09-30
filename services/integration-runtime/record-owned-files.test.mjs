@@ -7,6 +7,41 @@
 // NOT a bearer capability. Every refusal below is a caller who holds the handle
 // and is refused anyway, because the tenant they hold is resolved by the
 // runtime from their own bearer and is not something they can assert.
+// HOW THIS AREA'S TESTS FAIL, and it is structural rather than careless.
+//
+// The reader split has a layer above and below every check — a store predicate
+// under the runtime's comparisons, a contract above them, a fixture standing in
+// for each — so anything even slightly too faithful answers FIRST and the check
+// under test never runs. Five instances were found while this shipped:
+//
+//   1. a store double written as migration 006's own predicate, which refused a
+//      foreign tenant before the runtime was asked;
+//   2. a classifier mask that still matched the call it had just blanked;
+//   3. this suite's own missing wiring check — deleting `agencyId` from the
+//      provider context in `runtime.mjs` left every test here green;
+//   4. `http-storage.test.mjs`'s egress allowlist refusing the new getter, so a
+//      suite proving the runtime denies a foreign caller proved its double does;
+//   5. an install step filtering the migration directory to `00[1-5]`, so the
+//      function under test did not exist in the stack at all.
+//
+// The three that mattered — 3, 4, 5 — answered from a fixture's allowlist, an
+// install step and a context assembled in another module. **None of them is in
+// the file under test.** So a reading pass scoped to that file cannot find them
+// however carefully it is done; that is a limit of the method, not of the
+// reader. Instances 1 and 2 were in-file and reading did catch those.
+//
+// What found the rest was MUTATION: weaken one production line, run every suite
+// that could notice, and see whether anything complains — which needs no idea of
+// where the answer is coming from. Nineteen mutations with no-op controls (to
+// prove the harness was running at all) found 3 and the unfireable guard in
+// `tools-pennsync-file-copy.mjs`. The script was deliberately NOT committed: a
+// scratch harness presented as a permanent check is a dead guard, and this file
+// exists partly because of two of those. Re-derive it when changing this area.
+//
+// The rule the fixtures below follow, stated once: **a layered check is proved
+// only against a fixture in which every layer beneath it has already failed** —
+// and since instance 5, "layer" includes the environment that installs them.
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProviders, validateParams } from './providers.mjs';

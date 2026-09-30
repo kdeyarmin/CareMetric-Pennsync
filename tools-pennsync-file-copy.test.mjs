@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
   COPY_CONTRACT, LIMITS, SKIPS, STORAGE_HOSTS, UNCARRIED_DISPOSITIONS, FileCopyError,
-  REQUIRED_READER_MODEL, RUNTIME_READER_MODEL, readerModelServes,
+  REQUIRED_READER_MODEL, RUNTIME_READER_MODEL, assertReaderModel,
   applyFileCopy, fileCopyRows, isStorageLocator, locatorKey, locatorPaths, main, planFileCopy,
   writeFileObjects,
   readExport, summarize,
@@ -433,22 +433,30 @@ test('a copy minted into the wrong tenant is refused rather than recorded', asyn
  * The apply still passes the real pins and takes no model from a caller, which
  * is the control D77's first attempt mistook a hint for.
  */
-test('the reader-model guard refuses a model the runtime does not serve', async () => {
-  assert.equal(readerModelServes(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL), true,
-    'the shipped pair must agree, or the apply is refused for real');
+test('the reader-model guard refuses a model the runtime does not serve', () => {
+  // The shipped pair, which must agree or every apply is refused for real.
+  assert.doesNotThrow(() => assertReaderModel(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL));
+
   // Every way the pair can disagree, including the one D77 actually lived in.
   for (const [runtime, required] of [
     ['uploader_owned', 'record_authorized'],
     ['record_authorized', 'chart_authorized'],
     ['', 'record_authorized'],
     [undefined, 'record_authorized'],
-  ]) assert.equal(readerModelServes(runtime, required), false, `${runtime} vs ${required}`);
+  ]) {
+    assert.throws(() => assertReaderModel(runtime, required),
+      error => error instanceof FileCopyError && error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED',
+      `${runtime} vs ${required}`);
+  }
 
-  // And the refusal reaches an operator as the apply's first answer, before the
-  // plan is read: a reason, not a hint about what to type instead.
-  const plan = { contract: COPY_CONTRACT, copies: [], cross_agency: [] };
-  await assert.rejects(
-    () => applyFileCopy(() => assert.fail('a refused apply must write nothing'), plan,
-      { copyRun: 'run-1', results: {}, readerModelServes: () => false }),
-    error => error instanceof FileCopyError && error.code === 'FILE_COPY_READER_MODEL_UNRESOLVED');
+  // And nothing a caller sends can reach it. A first version of this test made
+  // the predicate injectable through `options` so the refusal could be driven —
+  // which handed the operator a `() => true` bypass of the control, D77's own
+  // finding in a new shape. The apply takes no reader-model input of any kind.
+  const source = readFileSync('tools-pennsync-file-copy.mjs', 'utf8');
+  const apply = source.slice(source.indexOf('export async function applyFileCopy'));
+  assert.match(apply.slice(0, apply.indexOf('\n}')),
+    /assertReaderModel\(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL\);/);
+  assert.doesNotMatch(source, /readerModel[A-Za-z]*\s*[:=]\s*(options|params)/,
+    'no caller-supplied reader model, predicate or attestation');
 });
