@@ -13624,6 +13624,18 @@ characters** — sha256
 `76151b2e48ffb053717ac8f6829af6322dd8d311958925865934543514605903`, md5
 `8ac7ce87e65f4160191c6e6bcd4a3556`, both over the bytes.*
 
+*Those digests are the COLLECTOR'S OWN and the author published none, which is
+the whole of their value and also the whole of what they must not be read as.
+Their value: both halves come from the object store, so nothing was hashed that
+had crossed the transport, which is stronger than a digest agreeing across it.
+What they are not: two independent parties agreeing. They are one party
+measuring one source once, and every entry above whose strength reads "proved
+against the author's own sha256" has a second party in it that this one does
+not. The author raised this after seeing the collector call it theirs in a
+message — correctly, since a reading is a reading whoever holds it, and
+attributing it to the wrong party is what turns one measurement into a
+corroboration.*
+
 *Those two figures are given separately because the collector had written 7,403
 as a byte count and was one commit from publishing it. Python's `len()` over a
 decoded string counts characters; `wc -c` counts bytes; the entry holds fifteen
@@ -13743,7 +13755,13 @@ about. It is **what answers once the read is deleted**:
   deleting it OPENS the capability, so who inherits is a decision, and D40's own
   precedent puts a widening with the owner. `processPatientFileUpdate:352` is
   that: `isProtectedSuperAdmin` is the entire gate on a capability that
-  enumerates, creates, discharges and archives patient charts. **D223**'s
+  enumerates, creates, discharges and archives patient charts. Its own author
+  then checked the composite rather than accepting the row — the owned store has
+  a performer for each part, `contract_patient_create` under D28 for the create
+  and D29's patient actions for the discharge and archive, and what has no
+  performer is the bulk import itself. So the wording is load-bearing for this
+  row as well: "nothing answers" sends a reader looking for a missing policy,
+  and the missing thing is a person. **D223**'s
   `offboardUser` is the same shape, and its author asks that the row not be read
   as "nothing answers" — the store answers for the PARTS, since membership
   revocation is D35's, chart-assignment revocation is D33's, and
