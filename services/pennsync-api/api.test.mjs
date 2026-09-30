@@ -568,7 +568,7 @@ test('a handler may declare a request larger than the service default, and one d
   assert.equal(refused.status, 413);
 });
 
-test('every key read off the caller is one the authority projection carries', () => {
+test('no module in this service reads a caller key the projection renamed or dropped', () => {
   // The guard for a defect that SHIPPED. `resolveAuthority` returns a frozen
   // camelCase projection, and three senders read `actor?.email`, which the
   // projection has never carried — so the caller's address was `undefined`
@@ -584,6 +584,19 @@ test('every key read off the caller is one the authority projection carries', ()
   //
   // Read off the projection itself rather than from a list here, so the check
   // cannot disagree with the thing it checks.
+  //
+  // THE CLASS IS BOTH HALVES, NOT THE `email` CASE. The comparison is against
+  // the parsed projection, so a read of any of the nine keys the projection
+  // drops — `contract`, `app_id`, `staging`, `synthetic`, `identity_version`,
+  // `is_platform_owner`, `membership_key`, `membership_status`, `agency` —
+  // fails here exactly as a renamed one does. Proved by planting
+  // `actor?.is_platform_owner` and watching this test fail, not by reading it.
+  //
+  // ITS REACH IS THIS DIRECTORY. It walks the non-test modules of
+  // `services/pennsync-api` and says nothing about any other service. The
+  // sixteen snake_case `CONTEXT_KEYS` are the vocabulary that crosses a
+  // service boundary, and a reader of a differently shaped caller elsewhere is
+  // outside what this guard can see.
   const source = readFileSync(new URL('authority.mjs', new URL('.', import.meta.url)), 'utf8');
   const frozen = source.slice(source.indexOf('return Object.freeze({'));
   const projected = new Set([...frozen.slice(0, frozen.indexOf('});'))
