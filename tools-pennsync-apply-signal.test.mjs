@@ -186,6 +186,31 @@ test('a base whose pin does not cover its own files refuses, because the count w
   assert.deepEqual(refusal.detail.files, ['record-migrations/20260102000000_record_first.sql']);
 });
 
+test('a base the head does not descend from refuses instead of crying withdrawal', () => {
+  // The misfire this refusal exists for. A branch that is merely BEHIND its
+  // base has every migration the base added missing from its own pin, and
+  // `applySignal` correctly calls those `withdrawing` — for the inputs it was
+  // handed. The defect is upstream of it: a base that is not the head's base.
+  // Left unchecked the run emits the loudest annotation the tool has, at exit
+  // 0, and a reader cannot tell it from a migration somebody really removed.
+  const repository = baseline();
+  repository.migration('20260103000000_record_head.sql', 'select 3;');
+  repository.pin();
+  repository.commit('the head adds one');
+
+  execFileSync('git', ['checkout', '-q', '-b', 'sibling', 'HEAD^'], { cwd: repository.root });
+  repository.migration('20260104000000_record_sibling.sql', 'select 4;');
+  repository.pin();
+  repository.commit('the base adds a different one');
+  execFileSync('git', ['checkout', '-q', '-'], { cwd: repository.root });
+
+  const refusal = refusalFrom(() => measure({ base: 'sibling', repository: repository.root }));
+  assert.equal(refusal.code, 'APPLY_SIGNAL_BASE_NOT_ANCESTOR');
+  assert.equal(refusal.detail.ref, 'sibling');
+  // The direction the misfire hid: the head is missing what the BASE has.
+  assert.deepEqual(refusal.detail.behind, ['record-migrations/20260104000000_record_sibling.sql']);
+});
+
 test('a base ref that cannot be read is a refusal and never a quiet zero', () => {
   const repository = baseline();
   for (const base of ['no-such-ref', undefined]) {
