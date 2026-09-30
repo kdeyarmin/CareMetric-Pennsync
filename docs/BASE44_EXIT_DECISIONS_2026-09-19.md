@@ -13784,6 +13784,69 @@ makes no claim here about whether it is right; the judgements, the rejected
 alternative, the recorded hazard and the undecided cross-agency locator are the
 author's, in the author's words.*
 
+### D224, amendment 1 — the split's stated ground holds for the tenant and fails for the chart, so the rejection it rests on is not settled (2026-09-30)
+
+**This amends D224 and does not revise it.** It is written as an amendment rather than a correction because what departs is not false: the clause below is true of the half it was reasoning about. What it does not cover is the other half, and the entry reads as though it covered both.
+
+**Where the entry it amends actually is, because a first draft of this paragraph got it wrong in the direction that invents a hazard.** That draft said D224 had no filed body, on the strength of `git show origin/main:docs/BASE44_EXIT_DECISIONS_2026-09-19.md | grep D224` returning nothing at `origin/main` = `00ccac41`, and concluded this amendment had no filed entry to land beside. The measurement was right and the conclusion was wrong: the register on main stops at D179, and everything from D180 to D224 lives on #359's unmerged branch, measured by the redeploy thread at `69a9b571` earlier this evening — 203 register headings with a maximum of 224 there, against 168 and a maximum of 179 on main (second-hand from redeploy, with its head and time). **So a grep of main is not an instrument for whether a decision is filed, and reading it as one manufactures an absence.** This amendment lands beside a filed entry on that branch, and #359 *is* the collection it rides. The verbatim quotation below is kept as written, so the clause can be matched in the body wherever it is read.
+
+**The clause**, verbatim from `AGENTS.md` at `56148ec5`:
+
+> the runtime admits a record-owned read only for an active membership of that agency, resolved from the caller's own bearer and never asserted by them — so a handle is still not a bearer capability.
+
+**"Resolved from the caller's own bearer and never asserted by them" is the whole of the ground, and it is doing two jobs.** It answers *who is asking* — and on that it is right, and is the reason the split is a split rather than a widening: the runtime reads the agency out of the bearer it was handed and a caller cannot name their own tenant. It is then read as also answering *what they may open*, and it does not, because membership of an agency is not authorization for a chart. The entry's own first half says so in as many words — the contract authorizes the CHART — and the conclusion is drawn from the runtime's half alone.
+
+**What that costs, measured on this head.** `services/pennsync-api/integrations.mjs:66` reads the end user's `Authorization` header and `:86` forwards it verbatim; there is no service credential between the two services, and the module's own comment at `:14` records that it "cannot read, log or forward the token that authorizes it". So the runtime authenticates the END USER and never `pennsync-api`. Under an agency-wide read predicate it therefore cannot distinguish `pennsync-api` relaying a chart-authorized read from that same user asking for the object directly, and a handle that leaks is openable by every active member of the agency — through two already-released operations among them. **Inside the tenant, the handle is exactly the bearer capability the clause says it is not.** The chart gate exists in the contract and is unreachable from where the object is read.
+
+**So the rejection D224 rests on is not settled, in either direction.** A signed grant was rejected on the ground that a caller may assert nothing about their own authorization. That ground was argued against a caller asserting a TENANT, where it holds and should keep holding. It was never argued against a grant the CONTRACT mints for a chart it has already authorized, which is a different object: not a claim by the caller, but a statement by the only component that can make it, carried to the only component that cannot. **The rejection neither stands nor falls here. What is settled is the narrower thing: tenancy alone does not preserve the ground the rejection was given for, so the rejection cannot be cited as having disposed of a chart-authorizing reader.**
+
+**Adopting one is a separate decision and needs its own number, and it is now deferred behind a gate that already exists.** Every shape of it requires a secret on `pennsync-api`, and that service holds none: its only credential is a publishable key, and its complete set of environment reads is `PORT` plus configuration. The two shapes that look like they avoid one both fail on the same fact — the runtime's reach into the authority store is the caller's own bearer plus a publishable key that confers no authority by itself, so it can read exactly what the caller can read, and the caller is the problem; and the runtime's service-role key is for its own project, so `pennsync-api` holding it would be a worse release write than the first shape. **So the question is not whether a contract may attest. It is which secret that service gets and on what release write** — a `pennsync-api` configuration question rather than a file-layer one.
+
+**What shipped instead, so the tree and this page agree.** #372 carries `006`'s schema, the joint CHECK, the mint function and their tests; `fileRecord` keeps reading through the subject-scoped getter; nothing mints or reads a record-owned row, and a record-owned row that arrived some other way is refused `RECORD_FILE_READER_MODEL_UNRESOLVED` rather than read. `RUNTIME_READER_MODEL` reads `uploader_owned` against `REQUIRED_READER_MODEL`'s `record_authorized`, **so the two pins disagree on purpose and `applyFileCopy` refuses every apply.** That is the honest state: the runtime does not implement the model the copy needs. The pins are the instrument — the day a caller-authenticated read exists, the pin fails and is changed deliberately instead of drifting open.
+
+**One thing found on the way, worth more than the finding.** Placing the reader-model refusal in front of the cross-agency refusal left three tests passing on the wrong code: they asserted `applyFileCopy` rejects, it did, and the reason was the line above the one they were about. Nothing went red. The gate was hoisted into `assertPlanApplicable` and driven directly, and deleting the hoisted line now fails two tests that previously survived it; the same reasoning moved `RECORD_FILE_AGENCY_REQUIRED` ahead of the mint pause so that it stays reachable and provable rather than becoming a line nothing can fire. **A check placed in front of another silently retires the tests behind it.**
+
+**Attribution.** The disclosure finding was raised by a Copilot review on #372 and verified against primary sources here before being acted on; the reading of the clause as answering two questions with one ground, the measurement above, and the ruling that the rejection is unsettled rather than wrong are this thread's (`claude/file-layer-reader-auth-hgey2t`). The shape that shipped — schema in, read unchanged, pins disagreeing, apply refusing — was proposed here and adopted by the coordinator session, which also adopted the reframing of the deferred decision as a configuration question. The location of the register above D179 is redeploy's measurement, relayed.
+
+*Carried by the register's collector, 2026-09-30, unedited apart from the
+heading level. The body is the file-layer thread's, and the collector added this
+note and nothing between the marker above and here. Received at 7,172 bytes,
+sha256 `52cf8eaf…`, md5 `f62928c0…`, both re-derived here off the shared file
+before the write and again out of this document after it. Its byte and character
+counts differ by 24, exactly twice its twelve non-ASCII characters, so the
+transcription reconciled by arithmetic before any digest was compared.*
+
+*One departure, and it is not only convention. The heading arrived at `##`, the
+level this document reserves for a new entry, and is filed at `###` where
+`### D190, widened` and `### D210 addendum` already sit. Here the demotion is
+load-bearing: `## D224, amendment 1 — …` matches the register's own heading
+pattern and would have parsed as a SECOND `## D224`, failing the distinctness
+and ascending assertions that exist because this branch once filed a duplicate
+entry. **An amendment heading that names its parent's number collides with the
+parent by construction.** Removing exactly the one added `#` reproduces the
+author's sha256, which is how the departure is proved rather than asserted.*
+
+*The anchor it was filed against is not unique, and the assertion that says so
+is why it landed in the right place.* The heading this insertion was measured
+from occurs **twice**: once as itself at the end of D224's entry, and once
+quoted inside D176's widening, which discusses this very boundary. A first run
+asserted uniqueness, failed and stopped; a plain first-match search would have
+put the amendment inside D176 instead, because that occurrence comes first in
+the file. Anchored at line start and scoped to D224's section it is unique.
+**A document that describes its own structure makes its own headings unusable
+as plain-string anchors**, which is the extraction grain of D176 arriving one
+layer further in — not an over-wide window this time, but a window opened in
+the wrong place entirely.
+
+*Two of the body's claims were checked rather than carried. The clause quoted
+verbatim from `AGENTS.md` occurs exactly once at `56148ec5`. The register
+figures the body attributes to the redeploy thread — 203 headings with a
+maximum of 224 on this branch against 168 and 179 on `main` — are that thread's
+own measurement at `69a9b571` and are correct as the body states them, marked
+second-hand included. The ruling, the reframing of the deferred grant and the
+deferral itself are the author's; the collector took no part in deciding any of
+them.*
+
 ### A collector's note on the entries that name the same removed tier
 
 **This is the carrier's own and is not an entry**, in the form the D107 section
