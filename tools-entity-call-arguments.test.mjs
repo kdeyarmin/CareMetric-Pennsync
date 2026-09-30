@@ -78,6 +78,50 @@ test('a local const shadowing an exported limit is refused', (t) => {
   assert.equal(limitConstants(exported).get('OTHER_ROWS'), 50);
 });
 
+test('every binding shape shadows, not only const', (t) => {
+  // The guard covered `const` alone, which is one shape of five. Each of these
+  // rebinds the name identically and each was read with the exported module's
+  // 5000, silently — a lost distinction, not a loud one. All five were probed
+  // against the real 33 names and all five were absent, so this is latent; the
+  // rule this repository already carries is to re-derive the shapes from the
+  // TREE rather than from the check, because a guard covering a quarter of its
+  // own class is the shape that comes back.
+  const shapes = {
+    'let': 'let ALL_ROWS = 50;\nexport default () => ALL_ROWS;\n',
+    'var': 'var ALL_ROWS = 50;\nexport default () => ALL_ROWS;\n',
+    'destructured': 'const { ALL_ROWS } = window.config;\nexport default () => ALL_ROWS;\n',
+    'renamed in a pattern': 'const { cap: ALL_ROWS } = window.config;\nexport default () => ALL_ROWS;\n',
+    'aliased import': "import { cap as ALL_ROWS } from './cap.js';\nexport default () => ALL_ROWS;\n",
+    // Neither of these two is a `const`, so `EXPORTED_LIMIT` never admits them
+    // to the table while the name still binds in the module.
+    'exported let': 'export let ALL_ROWS = 50;\n',
+    'exported non-integer const': 'export const ALL_ROWS = compute();\nfunction compute() { return 50; }\n',
+  };
+  for (const [shape, text] of Object.entries(shapes)) {
+    const root = plantedTree({ ...CANARY, 'src/pages/Shadow.jsx': text }, t);
+    assert.throws(
+      () => limitConstants(root),
+      /ENTITY_ROUTE_LIMIT_SHADOWED:ALL_ROWS:/,
+      `${shape} rebinds ALL_ROWS and must be refused`,
+    );
+  }
+
+  // The controls, and the first is the one that matters: importing the limit
+  // ITSELF is the ordinary case, and a guard that refused it would fail every
+  // module that uses a shared limit. Aliasing the other way binds a name the
+  // table does not hold, and a property access binds nothing at all.
+  const allowed = {
+    'plain named import': "import { ALL_ROWS } from '../lib/queryLimits.js';\nexport default () => ALL_ROWS;\n",
+    'aliased to a non-limit name': "import { ALL_ROWS as cap } from '../lib/queryLimits.js';\nexport default () => cap;\n",
+    'lower-case destructuring': 'const { rows } = window.config;\nexport default () => rows;\n',
+    'a property that shares the name': 'const cfg = window.config;\nexport default () => cfg.ALL_ROWS;\n',
+  };
+  for (const [shape, text] of Object.entries(allowed)) {
+    const root = plantedTree({ ...CANARY, 'src/pages/Fine.jsx': text }, t);
+    assert.equal(limitConstants(root).get('ALL_ROWS'), 5000, `${shape} is not a shadow`);
+  }
+});
+
 test('the canary still refuses an unreadable scan after the widening', (t) => {
   // Before the widening this fired when the table came back empty. With every
   // module in the population `found.size` can no longer reach zero, so the
