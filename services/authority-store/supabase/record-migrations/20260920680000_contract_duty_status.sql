@@ -191,6 +191,16 @@ end $clean$;
  * `new Date(x).getTime()` sees it. Returns the parsed value; `p_ok` says
  * whether it parsed at all, so a caller can tell an unparseable string from a
  * deliberate null — which the original's `Number.isNaN` check is doing.
+ *
+ * `::timestamptz` is WIDER than `new Date()` in one direction that matters, so
+ * the widening is closed here rather than inherited. PostgreSQL accepts eight
+ * special inputs no JavaScript Date parses — `infinity` and `-infinity`, and
+ * the context-dependent `now`, `today`, `tomorrow`, `yesterday`, `epoch` and
+ * `allballs` — every one of which is `NaN` to the original and refused. Left
+ * alone, `infinity` persists a window that never ends and `tomorrow` persists
+ * one that means something different on the day it is read. They are refused
+ * by name before the cast, and a non-finite result is refused after it, because
+ * a value that is a duty window forever is the failure worth catching twice.
  */
 create function "pennsync_records".duty_parse_moment(p_value jsonb, out ok boolean, out at timestamptz)
   language plpgsql immutable set search_path = '' as $parse$
@@ -200,13 +210,46 @@ begin
     ok := true; return;
   end if;
   if pg_catalog.jsonb_typeof(p_value) <> 'string' then return; end if;
+  if pg_catalog.lower(pg_catalog.btrim(p_value #>> '{}')) in (
+    'infinity', '+infinity', '-infinity',
+    'now', 'today', 'tomorrow', 'yesterday', 'epoch', 'allballs') then
+    return;
+  end if;
   begin
     at := (p_value #>> '{}')::timestamptz;
     ok := true;
   exception when others then
     ok := false; at := null;
   end;
+  if ok and (at = 'infinity'::timestamptz or at = '-infinity'::timestamptz) then
+    ok := false; at := null;
+  end if;
 end $parse$;
+
+/*
+ * JavaScript truthiness over a jsonb value, because the original writes
+ * `!!scheduled_off_duty_recurring` and reads `if (target_user_email …)`.
+ *
+ * `(x ->> 'k')::boolean` is NOT that test and disagrees in both directions:
+ * the string `"false"` is truthy in JavaScript and false to PostgreSQL, the
+ * string `"0"` likewise, and an object or array raises `invalid_text_
+ * representation` rather than answering — which would leave a malformed body
+ * arriving as an undeclared error instead of a refusal the boundary can name.
+ * So the rule is reproduced rather than approximated: false for json null,
+ * `false`, zero and the empty string; true for everything else, arrays and
+ * objects included.
+ */
+create function "pennsync_records".duty_truthy(p_value jsonb) returns boolean
+  language sql immutable set search_path = '' as $truthy$
+  select case
+    when p_value is null then false
+    when pg_catalog.jsonb_typeof(p_value) = 'null' then false
+    when pg_catalog.jsonb_typeof(p_value) = 'boolean' then (p_value #>> '{}') = 'true'
+    when pg_catalog.jsonb_typeof(p_value) = 'number' then (p_value #>> '{}')::numeric <> 0
+    when pg_catalog.jsonb_typeof(p_value) = 'string' then (p_value #>> '{}') <> ''
+    else true
+  end
+$truthy$;
 
 /*
  * `setNurseDutyStatus`, self leg.
@@ -223,7 +266,7 @@ end $parse$;
 create function "pennsync_records".contract_duty_status_set(p_agency text, p_updates jsonb)
   returns jsonb language plpgsql security definer set search_path = '' as $contract$
 declare
-  v_user text; v_email text; v_target text; v_now timestamptz;
+  v_user text; v_email text; v_now timestamptz; v_details jsonb;
   v_status text; v_message text; v_has_message boolean;
   v_start_key boolean; v_end_key boolean; v_clearing boolean := false;
   v_start_ok boolean; v_start_at timestamptz;
@@ -284,7 +327,7 @@ begin
       if v_end_at <= v_start_at then
         raise exception using errcode='22023', message='PENNSYNC_DUTY_SCHEDULE_BACKWARDS';
       end if;
-      if coalesce((p_updates ->> 'scheduled_off_duty_recurring')::boolean, false)
+      if "pennsync_records".duty_truthy(p_updates -> 'scheduled_off_duty_recurring')
         and v_end_at - v_start_at >= interval '7 days' then
         raise exception using errcode='22023', message='PENNSYNC_DUTY_SCHEDULE_TOO_LONG';
       end if;
@@ -294,11 +337,16 @@ begin
   -- Whose row. The original accepts an address equal to the caller's own and
   -- gates anything else on the platform owner D14 and D22 removed, so that leg
   -- is refused by name rather than silently dropped.
-  if p_updates ? 'target_user_email'
-    and pg_catalog.jsonb_typeof(p_updates -> 'target_user_email') = 'string'
-    and (p_updates ->> 'target_user_email') <> '' then
-    v_target := p_updates ->> 'target_user_email';
-    if pg_catalog.lower(pg_catalog.btrim(v_target)) is distinct from pg_catalog.lower(v_email) then
+  --
+  -- The comparison is EXACT, because the original's is: `target_user_email !==
+  -- user.email` sends an address that differs only in case or padding down the
+  -- protected-owner branch, where an ordinary caller is refused. Folding case
+  -- here would accept a body the original rejects, which is a widening and not
+  -- this port's to take. A non-string that is truthy is refused for the same
+  -- reason — it can never be `===` a string, so the original refuses it too.
+  if "pennsync_records".duty_truthy(p_updates -> 'target_user_email') then
+    if pg_catalog.jsonb_typeof(p_updates -> 'target_user_email') <> 'string'
+      or (p_updates ->> 'target_user_email') <> v_email then
       raise exception using errcode='42501', message='PENNSYNC_DUTY_TARGET_FORBIDDEN';
     end if;
   end if;
@@ -335,7 +383,7 @@ begin
       'scheduled_off_duty_end', case when v_clearing then 'null'::jsonb else pg_catalog.to_jsonb(v_end_at) end);
   end if;
   if p_updates ? 'scheduled_off_duty_recurring' then
-    v_recurring := coalesce((p_updates ->> 'scheduled_off_duty_recurring')::boolean, false);
+    v_recurring := "pennsync_records".duty_truthy(p_updates -> 'scheduled_off_duty_recurring');
     v_set := v_set || pg_catalog.jsonb_build_object('scheduled_off_duty_recurring', v_recurring);
   end if;
   -- Clearing the window drops any recurrence with it, so a repeat cannot
@@ -376,13 +424,23 @@ begin
   -- writes `UserActivity` behind a `.catch(() => {})`, which is a compensation
   -- for two round trips; here neither half can exist without the other, so
   -- there is no `audit_recorded` flag to report (D53).
+  --
+  -- The recurrence key is present only when this call WROTE recurrence. The
+  -- original records `update.scheduled_off_duty_recurring`, which is
+  -- `undefined` when the field was not supplied and no window was cleared, and
+  -- `JSON.stringify` drops an undefined value rather than storing it. Recording
+  -- the row's standing value instead would make a duty-status-only change read
+  -- as though recurrence took part in it.
+  v_details := pg_catalog.jsonb_build_object(
+    'duty_status', v_row."duty_status",
+    'off_duty_message_set', v_has_message,
+    'severity', 'info');
+  if v_set ? 'scheduled_off_duty_recurring' then
+    v_details := v_details || pg_catalog.jsonb_build_object(
+      'scheduled_off_duty_recurring', v_row."scheduled_off_duty_recurring");
+  end if;
   perform "pennsync_records".contract_activity_append(
-    p_agency, 'duty_status_changed', 'user', v_user,
-    pg_catalog.jsonb_build_object(
-      'duty_status', v_row."duty_status",
-      'off_duty_message_set', v_has_message,
-      'scheduled_off_duty_recurring', v_row."scheduled_off_duty_recurring",
-      'severity', 'info'));
+    p_agency, 'duty_status_changed', 'user', v_user, v_details);
 
   return pg_catalog.jsonb_build_object(
     'success', true,
@@ -398,6 +456,7 @@ reset role;
 revoke all on function
   "pennsync_records".duty_message_clean(text),
   "pennsync_records".duty_parse_moment(jsonb),
+  "pennsync_records".duty_truthy(jsonb),
   "pennsync_records".contract_duty_status_set(text,jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function

@@ -30,12 +30,14 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA, PROFILE_SELF_WRITABLE } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+import {
+  applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames,
+} from './record-migrations.mjs';
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
@@ -63,8 +65,7 @@ before(async () => {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
   const applied = await applyRecordMigrations(db);
-  assert.deepEqual(applied,
-    readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
+  assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
   // This migration is the newest PENDING one, so the ordering guard is its.
   // The compliance-writes suite dropped the call when this file arrived, which
@@ -194,9 +195,46 @@ test('naming YOURSELF is accepted, because the original accepts it', async () =>
   // so an address equal to the caller's own never reaches the super-admin gate.
   // Refusing it here would be a narrowing nobody decided.
   const answer = await set(CLINICIAN_A, A, {
-    duty_status: 'off_duty', target_user_email: email(CLINICIAN_A).toUpperCase(),
+    duty_status: 'off_duty', target_user_email: email(CLINICIAN_A),
   });
   assert.equal(answer.success, true);
+});
+
+test('and the comparison is EXACT, because the original\'s is', async () => {
+  // `!==` on two strings folds no case and trims no padding, so an address
+  // differing only in case goes down the protected-owner branch and an
+  // ordinary caller is refused there. Accepting it here would be a widening,
+  // and the direction matters: this is the only check standing between a
+  // caller and somebody else's row.
+  for (const named of [
+    email(CLINICIAN_A).toUpperCase(),
+    ` ${email(CLINICIAN_A)} `,
+  ]) {
+    assert.match(
+      await refuse(CLINICIAN_A, A, { duty_status: 'off_duty', target_user_email: named }),
+      /PENNSYNC_DUTY_TARGET_FORBIDDEN/,
+      `${JSON.stringify(named)} is not the caller's address`);
+  }
+});
+
+test('a truthy NON-STRING target is refused rather than ignored', async () => {
+  // `5 !== 'someone@example.invalid'` is true in the original, so a number or
+  // an object reaches the protected-owner gate and is refused there. A type
+  // check that simply skipped a non-string would silently write the caller's
+  // own row for a body that asked for somebody else's.
+  for (const named of [5, { email: email(CLINICIAN_EMPTY) }, [email(CLINICIAN_EMPTY)]]) {
+    assert.match(
+      await refuse(CLINICIAN_A, A, { duty_status: 'off_duty', target_user_email: named }),
+      /PENNSYNC_DUTY_TARGET_FORBIDDEN/,
+      `${JSON.stringify(named)} is truthy and is not the caller's address`);
+  }
+  // …while a FALSY one is "not supplied" and writes the caller's own row, which
+  // is what `target_user_email &&` does.
+  for (const named of [null, '', false, 0]) {
+    assert.equal((await set(CLINICIAN_A, A, {
+      duty_status: 'off_duty', target_user_email: named,
+    })).success, true, `${JSON.stringify(named)} is falsy, so no target was named`);
+  }
 });
 
 test('an agency the caller does not hold is refused', async () => {
@@ -346,6 +384,57 @@ test('an impossible date is refused as a date, not stored as one PostgreSQL roun
   }), /PENNSYNC_DUTY_SCHEDULE_INVALID/);
 });
 
+test('PostgreSQL\'s eight special time literals are refused, because `new Date` refuses them', async () => {
+  // This is the one direction `::timestamptz` is WIDER than the original's
+  // parser, and both halves of it are real. `infinity` persists a window that
+  // never ends; `today` and its neighbours persist one that means something
+  // different every day it is read — and the webhooks read this window live,
+  // so a context-dependent value would answer a caller differently tomorrow
+  // with nothing in the row having changed. Every one of them is `NaN` to
+  // `new Date()` and refused by the original.
+  for (const literal of [
+    'infinity', '+infinity', '-infinity', 'INFINITY', '  infinity  ',
+    'now', 'today', 'tomorrow', 'yesterday', 'epoch', 'allballs',
+  ]) {
+    assert.match(await refuse(CLINICIAN_A, A, {
+      scheduled_off_duty_start: literal,
+      scheduled_off_duty_end: '2026-10-05T09:00:00Z',
+    }), /PENNSYNC_DUTY_SCHEDULE_INVALID/, `${JSON.stringify(literal)} as a start`);
+    assert.match(await refuse(CLINICIAN_A, A, {
+      scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+      scheduled_off_duty_end: literal,
+    }), /PENNSYNC_DUTY_SCHEDULE_INVALID/, `${JSON.stringify(literal)} as an end`);
+  }
+});
+
+test('the recurrence flag follows JAVASCRIPT truthiness, not a boolean cast', async () => {
+  // The original writes `!!scheduled_off_duty_recurring`, and `::boolean`
+  // disagrees with it in both directions: the strings "false" and "0" are
+  // truthy in JavaScript and false to PostgreSQL, while an object or an array
+  // makes the cast raise instead of answering. The week bound reads this
+  // value, so the disagreement decides whether a window is refused.
+  for (const truthy of ['false', '0', 'no', {}, [], 'x', 1, -1, 0.5]) {
+    assert.match(await refuse(CLINICIAN_A, A, {
+      scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+      scheduled_off_duty_end: '2026-10-10T09:00:00Z',
+      scheduled_off_duty_recurring: truthy,
+    }), /PENNSYNC_DUTY_SCHEDULE_TOO_LONG/, `${JSON.stringify(truthy)} is truthy`);
+  }
+  for (const falsy of [false, 0, '', null]) {
+    const answer = await set(CLINICIAN_A, A, {
+      scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+      scheduled_off_duty_end: '2026-10-10T09:00:00Z',
+      scheduled_off_duty_recurring: falsy,
+    });
+    assert.equal(answer.success, true, `${JSON.stringify(falsy)} is falsy`);
+    assert.equal(answer.scheduled_off_duty_recurring, false,
+      `${JSON.stringify(falsy)} is stored as false, the way \`!!x\` stores it`);
+  }
+  // And a truthy non-boolean is STORED as true rather than raising.
+  const stored = await set(CLINICIAN_A, A, { scheduled_off_duty_recurring: 'false' });
+  assert.equal(stored.scheduled_off_duty_recurring, true);
+});
+
 /* ------------------------------------------------------- the off-duty message */
 
 test('the message is sanitized on WRITE, in the original\'s own order', async () => {
@@ -412,6 +501,38 @@ test('the write and its audit entry are one transaction', async () => {
     `select count(*)::int as n from ${SCHEMA}."activity_audit" where "action" = $1`,
     ['duty_status_changed']);
   assert.equal(rows[0].n, before.rows[0].n + 1);
+});
+
+test('the trail names recurrence only when this call WROTE recurrence', async () => {
+  // The original records `update.scheduled_off_duty_recurring`, which is
+  // `undefined` unless the field was supplied or a window was cleared, and
+  // `JSON.stringify` drops an undefined value rather than storing it. Reading
+  // the row's standing value instead would make a duty-status-only change read
+  // as though recurrence took part in it — a false entry in a compliance trail,
+  // which is the thing D42 says is worse than an absent one.
+  const detail = async () => (await db.query(
+    `select "detail" from ${SCHEMA}."activity_audit" where "action" = $1
+     order by "occurred_at" desc, "id" desc limit 1`, ['duty_status_changed'])).rows[0].detail;
+
+  await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+    scheduled_off_duty_end: '2026-10-05T09:00:00Z',
+    scheduled_off_duty_recurring: true,
+  });
+  assert.equal((await detail()).scheduled_off_duty_recurring, true,
+    'supplied, so it is recorded');
+
+  await set(CLINICIAN_A, A, { duty_status: 'off_duty' });
+  assert.ok(!('scheduled_off_duty_recurring' in await detail()),
+    'not supplied and nothing cleared, so the key is absent rather than restated');
+
+  // Clearing the window writes recurrence without the caller naming it, so the
+  // key IS present — the original's `if (clearingSchedule)` puts it in `update`.
+  await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: null, scheduled_off_duty_end: null,
+  });
+  assert.equal((await detail()).scheduled_off_duty_recurring, false,
+    'clearing writes recurrence, so the entry says so');
 });
 
 test('a refused write leaves no audit entry behind', async () => {

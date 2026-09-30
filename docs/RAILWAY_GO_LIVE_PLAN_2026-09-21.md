@@ -126,13 +126,23 @@ in #250 and this page did not:
 port queue: entity_authorization=5 files=12 external_secret=2 none=79
 ```
 
-98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
-The carried total falls by one here rather than the written total rising,
-because D153 retired `enforceStaffRoleIntegrity` instead of porting it: the
-owned store constrains `staff_role` on both tables and lets nobody write it, so
-the sweep that reverted a spoofed value has no work left. **A bucket shrinking
-is not the same event as a port landing, and this page should not let the two
-read alike** — a written count that did not move is the tell.
+98 carried capabilities, **79 written, 19 blocked** (2026-09-30, after D223),
+which is the line above summed — `none` is the written total and the other
+three buckets are the blocked one. Derive it that way rather than carrying it
+forward: this paragraph read 78 and 20 for a day after the queue line beside it
+had moved, so the page carried two measurements of one thing that disagreed,
+which is the defect its own next sentence is about.
+
+The previous reading was **78 written, 20 blocked** (2026-09-29, after D153),
+and it is kept because of what it shows rather than for the numbers. The
+carried total fell by one there rather than the written total rising, because
+D153 retired `enforceStaffRoleIntegrity` instead of porting it: the owned store
+constrains `staff_role` on both tables and lets nobody write it, so the sweep
+that reverted a spoofed value has no work left. **A bucket shrinking is not the
+same event as a port landing, and this page should not let the two read
+alike** — a written count that did not move is the tell. D223 is the other
+shape: `setNurseDutyStatus` was really written, so `none` rose and the carried
+total did not.
 `records_schema` is absent from that line rather than zero in it,
 because `portQueueLine` omits an empty bucket — and that bucket is empty with
 every capability in it BUILT, which is the first time. Three of the buckets
