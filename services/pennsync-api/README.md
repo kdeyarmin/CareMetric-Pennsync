@@ -134,13 +134,26 @@ released capability that writes a record and a released capability that sends a
 person a message are different decisions with different owners, so the second
 needs its own act.
 
-Unset — which is every deployment today — every sender answers 503
-`OUTBOUND_DELIVERY_RELEASE_PAUSED`, `SendEmail` is not in the brokered set at
-all, and the service reaches no mail provider. Set, `SendEmail` becomes askable
-and the senders among the released names send. It is refused at startup without
-`PENNSYNC_API_INTEGRATIONS_URL`, because a channel that cannot carry anything
-should not report itself open, and `/readyz` publishes `deliveryReleased` so the
-state is readable from outside the service rather than inferred from a plan.
+Unset, every sender answers 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED`, `SendEmail`
+is not in the brokered set at all, and the service reaches no mail provider.
+Set, `SendEmail` becomes askable and the senders among the released names send.
+It is refused at startup without `PENNSYNC_API_INTEGRATIONS_URL`, because a
+channel that cannot carry anything should not report itself open, and `/readyz`
+publishes `deliveryReleased` so the state is readable from outside the service
+rather than inferred from a plan.
+
+**Whether a deployment has it SET is not a property of this file.** This
+paragraph used to say the variable was unset on every deployment — a sentence
+about a fleet, in a file that cannot see one, three paragraphs after the section
+above corrected the same claim. It was also false: an unauthenticated `GET
+https://pennsync-api-production.up.railway.app/readyz` **on 2026-09-30 at
+16:36:11Z** answered `deliveryReleased: true` and `deliveryRequired: true` at
+revision `d01359a3`, for the staging app id. **That is a dated reading and not
+the current answer either** — a release-variable write rebuilds this service
+from `main`'s tip, so the running revision moves without a word here changing.
+`curl <service>/readyz` is the instrument and takes a second. A test in
+`account-email.test.mjs` fails if this section claims a fleet's state again,
+because prose is what rotted and an assertion is what noticed.
 
 Since D98 readiness also HONOURS it: a released set containing a sender while
 this switch is unset reports `ready: false`, because such a deployment refuses
