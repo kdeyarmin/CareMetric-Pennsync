@@ -13487,6 +13487,177 @@ it in one hour.]*
 
 *The worked example inside the entry is its author's own merge of #357, and the ruling on the merge question behind it is the coordinator session's. The carrier holds the register, has no stake in that merge, and was asked for the framing on that basis; it says nothing here about whether the merge was right, and the entry's author says what the decision was. Plan walked the prior-instance search, did not read this body, and its caveat about the walk's bound stands in plan's own terms inside the entry rather than being summarised by the carrier. One further instance, routed through plan from a fourth session, is deliberately absent at its author's decision: that session's first-hand account has not reached it, and the register's rule is not to cite a second instance until it is settled.*
 
+## D223 — The administrative profile-write path is refused, because D23 already moved its contents (2026-09-30)
+
+**Decision.** `pennsync_records.user` gets no second write policy. D82's one
+update policy — `id = caller_user_id()`, with the `PROFILE_SELF_WRITABLE`
+trigger over it — stays the whole of the write path. There is no
+administrative leg: not for a manager, not for an `agency_admin`, not for the
+record owner. Every capability that was waiting on one is routed instead to
+the store object that already answers it, by name and with a reason, below.
+
+**Why this is a refusal rather than an omission.** D82 wrote that an
+administrative write path "is a separate decision and stays unbuilt", and left
+`entity_authorization` at eight with the observation that every member writes
+something D82 does not permit. Read as a queue that is one decision from
+clearing, that reads as six ports waiting on a policy somebody has to write.
+It is not. Reading what the six actually write, column by column, the
+administrative path **dissolves**: almost nothing in it is a profile write at
+all under the owned model, because D23 already moved those columns to the
+membership, and the leftovers each have a home that is not this table.
+
+That is the transferable part. **When a bucket looks like it is waiting on a
+mechanism, enumerate what the mechanism would have to permit before building
+it.** The mechanism here would have had to permit `role`, `staff_role`,
+`is_approved`, `care_scope`, `is_active` and the `offboarded_*` trio — which
+is to say it would have had to re-admit, through a second door, exactly the
+self-asserted authority D23 spent its whole decision removing.
+
+### Where each of the five goes
+
+`setNurseDutyStatus` is not in this list because it is **written**: D82 named
+it as the one capability its decision actually reached, and
+`20260920680000_contract_duty_status.sql` is that port, in D81's partial
+shape. `entity_authorization` is five, and stays five on purpose.
+
+- **`userManagement` and `userManagementV2` are ONE capability.** Their
+  `entry.ts` files are byte-identical apart from a trailing comment naming the
+  second the production replacement — D42's `resendInvitation` shape exactly,
+  so when either is ported it is one contract with two handler names and a
+  test that reads both files. Their `updateUser` writes five fields and not
+  one of them belongs here: `role` and `staff_role` are authority
+  (`contract_membership`, D35), `credential_type` is an attestation somebody
+  verifies (`contract_credential_review`, D40), `phone` is already on D82's
+  allowlist for its own subject, and `full_name` has no carried column at all
+  — the staff name lives in `pennsync_private.staff_name`, and who may set one
+  is the owner's, not this decision's.
+- **`autoApproveInvitedUser`** writes `is_approved`, `role`, `care_scope` and
+  `staff_role` on somebody else's row when an invitation is accepted. All four
+  are the membership's, and the invitation half is D42's paused delivery. What
+  it is waiting for is an enrolment decision, not a policy.
+- **`offboardUser`** writes `is_active` and the `offboarded_*` trio. The
+  authoritative half of deactivating somebody is `identity_map.enabled`, whose
+  revocation its own trigger makes one-way, plus membership revocation (D35)
+  and chart-assignment revocation (D33) — all three built. The carried columns
+  are Base44's own bookkeeping, and D23 already says they decide nothing. It
+  carries a second thing this decision deliberately does not take: its ENTIRE
+  gate is `isProtectedSuperAdmin`, the platform tier D14 and D22 removed, so
+  it has no performer left — the shape of `reviewPersonnelCredential` before
+  D40. D40's widening reaches a capability whose only gate is the built-in
+  `role === 'admin'` and does **not** reach a `SUPER_ADMIN_EMAIL`-only one, so
+  naming an `agency_admin` as the successor is a widening beyond D40, and
+  D40's own precedent puts a widening with the owner.
+- **`autoEndDutyDay` is the one to read twice, for the second time.** D82
+  already flagged it: both columns it writes ARE on the allowlist, and it is
+  blocked because it has no caller at all — `schedulerAuth` admits a shared
+  secret, and "the caller's own row" admits a shared secret to nothing. So it
+  is not waiting on an administrative path either. It is D49's open question,
+  the cross-tenant scheduler identity, and it will still be there when this
+  decision is old.
+
+### What the refusal costs, said plainly rather than left to be discovered
+
+An `agency_admin` cannot correct a colleague's telephone number, set their
+discipline, or approve them, through this table. Two of those three have a
+destination already — the membership for the discipline and the approval —
+and the third is a real gap: nobody but the subject can fix a wrong `phone`.
+That is the cost, it is small, and it is the right side to be wrong on,
+because the alternative is a column list that somebody widens later in the
+permissive direction under time pressure. D82's own argument against a
+denylist applies to an administrative allowlist with equal force: the columns
+that get added to a staff table are job titles, approvals and scopes.
+
+The narrow shape also stays widenable without a data migration, which is the
+property D82 chose it for. If a capability later needs an administrative leg,
+it arrives as its own contract with its own reviewed gate — the way every
+other cross-person write in this store arrived — rather than as a policy that
+settles the question for all of them at once. **A policy is a decision about
+every capability that will ever touch the table; a contract is a decision
+about one.** That asymmetry is the whole reason this is refused rather than
+deferred.
+
+### A second reason the five are not one policy away
+
+The queue names a capability's FIRST blocker and nothing behind it, so what a
+bucket reports is a lower bound on what its members are waiting for. Measured
+here through `discoverEntityReach` at the same head: `offboardUser` also
+writes `AgencyMembership`, and `autoApproveInvitedUser`, `userManagement` and
+`userManagementV2` also write `UserInvitation`. Both entities are
+dispositioned `port`, so neither is a missing table — but each is its own
+write-policy question, and none of them is visible while the profile path is
+the named blocker.
+
+That does not change this decision; it removes the last reading under which
+refusing the path could look expensive. **Even a built administrative path
+would have cleared four of these five to their next blocker rather than to
+done.** Anyone who later reverses this should re-run the gate rather than
+predicting, for the reason D55 and D79 each record: the bucket that empties is
+not the same thing as the work that finishes, and a count that moves in the
+direction of progress is the one nobody re-measures.
+
+
+### What it does to the queue
+
+`port queue: entity_authorization=5 files=12 external_secret=2 none=79`, from
+`node tools-transition-disposition.mjs --summary` at the head this change was
+written on. The bucket falls by one and the five that remain are pinned BY
+NAME in `tools-transition-disposition.test.mjs`, because a count alone passes
+a swap — and because the thing this decision is most likely to be misread as
+is a promise that the five are coming. They are not coming until somebody
+decides who enrols, who offboards, and who the scheduler is.
+
+*Carried by the register's collector, 2026-09-30, unedited. The entry is the
+profile-write thread's, heading line included, so the carrier imposed nothing at
+all — not even the house heading form.*
+
+*Its provenance is better than any entry filed here so far, and the pattern is
+the reusable part. Its author had committed the body to their own branch before
+taking it back out — `d8c6be2b`, then `4bb0dd8a` restoring that file to its
+state at `00ccac41` so this branch and theirs would not both append to it — and
+named the commit alongside the message. So the collector took the bytes out of
+the object store with `git show d8c6be2b:docs/BASE44_EXIT_DECISIONS_2026-09-19.md`,
+anchored on the `## D223 —` line, rather than out of the message, and the
+cross-session transport this document records altering bodies in three ways is
+not in the path at all. **An author who can commit a body hands the collector a
+source no transport touches.** The filed entry is **7,433 bytes and 7,403
+characters** — sha256
+`76151b2e48ffb053717ac8f6829af6322dd8d311958925865934543514605903`, md5
+`8ac7ce87e65f4160191c6e6bcd4a3556`, both over the bytes.*
+
+*Those two figures are given separately because the collector had written 7,403
+as a byte count and was one commit from publishing it. Python's `len()` over a
+decoded string counts characters; `wc -c` counts bytes; the entry holds fifteen
+three-byte characters and the gap is exactly thirty. **That is D204's second
+addendum happening to the hand filing two entries later** — the same unit
+confusion, from the opposite instrument, in a note whose purpose is to let a
+later reader check a size. It was caught by running both counters rather than
+by reading, which is what that addendum says catches it.*
+
+*One thing that extraction had to get right, recorded because getting it wrong
+is silent: the author gave a line offset, and a line offset is a property of
+THEIR file rather than of the entry. `tail -n +10573` on that blob begins 245
+bytes inside D222's closing paragraph. The entry is anchored on its own heading
+instead, and the discarded fragment was checked to occur in this document
+already, exactly once, so nothing was dropped and nothing was doubled. The
+double blank line before `### What it does to the queue` is the author's and is
+preserved; they flagged it so a strip-back would not read it as a mismatch.*
+
+*The `port queue:` line inside the entry is a reading at `d8c6be2b`, and the
+collector reproduced both figures in circulation from its own seat rather than
+arbitrating between two reports of them: `node tools-transition-disposition.mjs
+--summary` answers `entity_authorization=6 files=12 external_secret=2 none=78`
+on `00ccac41` and on this branch, and `entity_authorization=5 files=12
+external_secret=2 none=79` at both `d8c6be2b` and `4bb0dd8a`. One instrument,
+three trees — so the two figures were never a disagreement, and the resolution
+took one command rather than a reconciliation. **This copy is the unpinned
+one**: a test forces `AGENTS.md` to carry what the tool measures, the go-live
+plan is pinned too, and nothing in this tree reads this document at all. So when
+this line and those two disagree, re-run the command; do not reconcile the
+pages.*
+
+*The collector holds the register, took no part in this decision and makes no
+claim here about whether it is right.*
+
 ## D224 — The runtime authorizes the tenant, the contract authorizes the chart
 
 D77 deferred the file layer's reader-authorization question and named the reason precisely: `services/integration-runtime` is uploader-owned, so a migrated object has no reader, and giving that runtime record or tenant authorization is a decision about its own authorization model rather than something a copy tool may take. D85 re-measured that claim, found it held, and named what was missing — the record-authorized predicate already exists and is proved, and what is absent is a path from a handle to it. This decision takes that question.
@@ -13541,3 +13712,38 @@ number of its own, by the entry's own words.*
 makes no claim here about whether it is right; the judgements, the rejected
 alternative, the recorded hazard and the undecided cross-agency locator are the
 author's, in the author's words.*
+
+### A collector's note on three entries that name the same removed tier
+
+**This is the carrier's own and is not an entry**, in the form the D107 section
+already uses. It claims nothing about whether any of the three decisions below
+is right; each of those is its author's. It is here because two of them sit next
+to each other prescribing different remedies for the same identifier, and the
+cheapest wrong reading is that one of them must be mistaken.
+
+`isProtectedSuperAdmin`, and the `SUPER_ADMIN_EMAIL` platform tier D14 and D22
+removed, are named in three entries that prescribe three different things. The
+discriminator is not what each decision is about. It is **what answers once the
+read is deleted**:
+
+- **The read is decoration and the capability keeps a working gate** — delete
+  it. D224's material names `indexPDF`, `preparePDFWithPatientInfo` and
+  `processPatientFileUpdate`, widening D63.
+- **The read WAS the gate, and the policies already say what it was trying to
+  say** — delete it and add nothing. That is **D70**, whose original admits
+  `patient.created_by`, an `assigned_nurses` entry and `isProtectedSuperAdmin`,
+  and whose port "adds no gate at all".
+- **The read WAS the gate and nothing else answers** — deleting it OPENS the
+  capability, so who inherits the authority is a decision, and D40's own
+  precedent puts a widening with the owner. That is **D223**'s `offboardUser`.
+
+So one deletion has three consequences depending on what sits underneath it, and
+only the third reaches the owner. **D70 is the case that makes the other two
+stop looking like a contradiction**, and it is the one a reader comparing the
+two adjacent entries will not have in front of them — which is the whole reason
+this note exists rather than a sentence inside either entry.
+
+*Filed at the coordinator session's request and at D223's author's, who asked in
+their own words for "a sentence where the two entries sit near each other".
+D224's author was asked at the same time and had not answered when this landed.
+It makes no claim about their entry and comes out on their word alone.*
