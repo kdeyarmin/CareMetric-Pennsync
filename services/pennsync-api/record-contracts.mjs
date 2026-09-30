@@ -1086,6 +1086,12 @@ export const RECORD_CONTRACTS = Object.freeze({
   // and "one I may review" are the contract's rules (D45). The employee and
   // approver notifications mint through the facility (D48); their EMAIL halves
   // are `Core.SendEmail`, which nothing brokers.
+  //
+  // One known ANSWER-SHAPE wrinkle, not a wrong stored value: a daily entry's
+  // date is guarded by `time_off_date(...) is null` and cast twice in the same
+  // `or`, and PostgreSQL does not guarantee `or` evaluation order — so
+  // `2026-02-31` may surface as a raw `22007` rather than
+  // `PENNSYNC_TIMESHEET_DAILY_INVALID`. Either way the entry is refused.
   submitTimesheet: Object.freeze({
     rpc: 'pennsync_contract_timesheet_submit',
     params: Object.freeze(['timesheet_id', 'timesheet']),
@@ -1659,6 +1665,23 @@ export const RECORD_CONTRACTS = Object.freeze({
     }),
     codes: REFERRAL_CODES,
   }),
+  // One recorded NARROWING, in the follow-up dedupe rather than in the field
+  // set. `referral_instant` is a `::timestamptz` cast in a block, and
+  // PostgreSQL's special literals — `infinity`, `now`, `today`, `tomorrow`,
+  // `yesterday`, `epoch` — are not cast errors, so it parses text the
+  // original's `validInstant` refuses, that being
+  // `Number.isFinite(Date.parse(value))`. The parsed value is never stored;
+  // it only compares a stored `generated_at` against a requested one. So the
+  // behaviour differs in exactly one case: both sides carrying the SAME
+  // special literal, which resolve equal here and are both NaN there. The
+  // port then PRESERVES the reserved follow-up fields where the original
+  // drops them, so a caller can no longer wipe a portal token or a
+  // stale-notification claim by sending `generated_at: 'now'` twice. That is
+  // narrower for the caller, which is why it stands. `generated_at` is
+  // neither reserved nor shape-checked, so the literal does reach the store.
+  // Recorded here rather than in the migration because the file has been
+  // applied: an edit to it reaches no store that ran it (D88) and would cost
+  // a fingerprint re-pin and an apply-signal entry for a comment.
   updateAuthorizedReferral: Object.freeze({
     rpc: 'pennsync_contract_referral_update',
     params: Object.freeze(['referral_id', 'changes']),
@@ -2477,6 +2500,19 @@ export const RECORD_CONTRACTS = Object.freeze({
     }),
     codes: SCREEN_CHART_CODES,
   }),
+  // A DEBT for whoever adds the first reader of `expires_at`, and they will
+  // not find it by reading the diff that created the column. The contract
+  // casts `p_recommendation->>'expires_at'` to `timestamptz` with no shape
+  // check: malformed text raises and is caught, but PostgreSQL's special
+  // literals are not errors, so `infinity` stores a recommendation that never
+  // expires and `now` one already expired. Two things make that tolerable
+  // TODAY and neither is permanent. There is no function original to have
+  // diverged from — the contract's own header says the original is the entity
+  // — and NOTHING reads the column: not the list contract's projection, not
+  // this service, not the SPA. The only production caller sends
+  // `new Date(...).toISOString()`, and a call site is not a fence, which is
+  // the reasoning the contract already applies to `suggested_by_user`. Add a
+  // reader and the shape check is owed in the same change.
   recordChartRecommendation: Object.freeze({
     rpc: 'pennsync_contract_patient_recommendation_record',
     params: Object.freeze(['patient_id', 'recommendation']),
