@@ -1564,7 +1564,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
   | `mutating` (derived) | 50 | 37 |
-  | `integration` (derived) | 23 | 19 |
+  | `integration` (derived) | 23 | 22 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1699,6 +1699,16 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   the cancel contract returns the status it replaced, so the file is a
   prerequisite of both waves now. Measured by diffing `--wave` on this tree
   against `00ccac41`, not inferred from the deltas.
+
+  Restoring the in-app rows those two time-off senders never minted then took
+  `integration`'s migrations 19 → 22 with no handler moving and no new SQL
+  written: the two capabilities call the existing `createNotification` contract,
+  so the wave gains that contract's own file, the mint facility it is the only
+  writer through (`20260920285000_notification_mint.sql`, D48) and
+  `20260920300000_contract_notification.sql`, whose helpers it uses. A wave's
+  prerequisites follow from the contracts its handlers call, and these two
+  handlers gained a contract call. The read waves do not move, because those
+  three files were already theirs.
 
   The send's own switch, separate from `PENNSYNC_API_RELEASE`, is
   `PENNSYNC_API_DELIVERY=enabled-v1`, read exactly and untrimmed; it was written

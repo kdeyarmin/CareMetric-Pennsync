@@ -205,6 +205,101 @@ export async function deliverNotices({ integration, recipients, subject, body })
  * the row is the source of truth and a notification failure may not turn a
  * recorded request into an error.
  */
+/**
+ * The IN-APP row, which is the half these ports were missing entirely.
+ *
+ * **A notification is a row rather than a message (D51), so it is NOT
+ * delivery-gated** — it is minted whether or not the deployment has released
+ * outbound mail, which is what the originals do and the reason the gap was
+ * invisible: a paused deployment answered `delivery_paused: true` and looked
+ * like it was doing everything it could, while the row the dashboard reads was
+ * never written at all.
+ *
+ * **It needs no contract change and no migration, which is worth reading
+ * twice.** `createNotification` already exists and its gate
+ * (`20260920320000_contract_notification_create.sql`) admits both of these
+ * without widening: the submit fan-out's type is `info`, which is in the
+ * non-admin allowlist, and its recipient is always an `agency_admin` or
+ * `manager` because `contract_time_off_submit` refuses any other approver by
+ * name (`PENNSYNC_TIME_OFF_APPROVER_INVALID`). The review notice's caller is an
+ * `agency_admin` or the manager that same check pinned, so the contract treats
+ * them as admin — which is what lets a DENIAL carry `compliance_alert`, a type
+ * the non-admin allowlist does not hold. Both were checked against the SQL
+ * rather than assumed, for the reason the email recipient needed no roster
+ * walk: the binding was already one layer down.
+ *
+ * **One divergence, deliberate and in the direction of doing more.** Each mint
+ * carries its own catch, so one recipient's refusal loses neither the other
+ * recipients' rows nor the email. The originals put the whole fan-out in a
+ * single `Promise.all` inside the same `try` as the send, so one failed row
+ * there drops every row AND the email for an event that really happened. This
+ * is not a narrowing and it changes nobody's access — both notices go to the
+ * same addressee the original addresses — it changes only whether a failure in
+ * one suppresses the other.
+ */
+export async function mintNotifications(contract, notifications) {
+  let minted = 0;
+  for (const notification of notifications) {
+    try {
+      await contract('createNotification', { notification });
+      minted += 1;
+    } catch {
+      // Per recipient, and silent as the original is. The row is a courtesy and
+      // the record is the source of truth.
+    }
+  }
+  return minted;
+}
+
+/**
+ * The approver's in-app row, field for field from `submitTimeOffRequest`'s
+ * original. `metadata.employee_email` is the row's, which is the store's copy
+ * of the requester — the original writes `user.email`, the same person.
+ */
+export function timeOffSubmittedNotification(request, recipient) {
+  const requester = request?.employee_name || request?.employee_email || '';
+  const { summary } = timeOffSubmittedMessage(request);
+  return {
+    user_email: recipient,
+    title: 'New time-off request',
+    message: `${requester} requested ${summary}.`,
+    type: 'info',
+    priority: 'medium',
+    action_url: '/TimeOff',
+    action_label: 'Review request',
+    metadata: {
+      time_off_request_id: request?.id ?? null,
+      employee_email: request?.employee_email ?? null,
+    },
+  };
+}
+
+/**
+ * The employee's in-app row for a reviewed request. The type carries the
+ * decision — `info` for an approval and `compliance_alert` for a denial, as the
+ * original has it — and both the decision and the reviewer are read from the
+ * ROW rather than from the caller's parameters, for the reason the message is.
+ */
+export function timeOffReviewedNotification(request) {
+  const approved = request?.status === 'approved';
+  const prettyType = String(request?.request_type ?? '').replace(/_/g, ' ');
+  const span = `${request?.start_date ?? ''} → ${request?.end_date ?? ''}`;
+  const note = typeof request?.review_notes === 'string' ? request.review_notes.trim() : '';
+  return {
+    user_email: request?.employee_email,
+    title: approved ? 'Time off approved' : 'Time off denied',
+    message: `Your ${prettyType} request (${span}) was ${request?.status ?? ''}${note ? `: ${note}` : '.'}`,
+    type: approved ? 'info' : 'compliance_alert',
+    priority: 'medium',
+    action_url: '/TimeOff',
+    action_label: 'View request',
+    metadata: {
+      time_off_request_id: request?.id ?? null,
+      reviewed_by: request?.reviewed_by ?? null,
+    },
+  };
+}
+
 export async function notifyTimeOffSubmitted({ request, actor, config, integration, contract }) {
   let email = false;
   let deliveryPaused = false;
@@ -212,6 +307,10 @@ export async function notifyTimeOffSubmitted({ request, actor, config, integrati
     const manager = typeof request?.manager_email === 'string' && request.manager_email.trim() !== ''
       ? [request.manager_email]
       : await agencyAdminRecipients(contract, actor?.email ?? request?.employee_email);
+    // The row first and ungated, in the original's order. A paused deployment
+    // still writes it, because a notification is a row (D51).
+    await mintNotifications(contract,
+      manager.map(recipient => timeOffSubmittedNotification(request, recipient)));
     deliveryPaused = manager.length > 0 && config?.deliveryReleased !== true;
     if (manager.length > 0 && !deliveryPaused) {
       const message = timeOffSubmittedMessage(request);
@@ -277,13 +376,14 @@ export function timeOffReviewedMessage(request) {
  * !released` — so a row with no employee address reports `false` rather than
  * claiming a paused channel.
  */
-export async function notifyTimeOffReviewed({ request, config, integration }) {
+export async function notifyTimeOffReviewed({ request, config, integration, contract }) {
   let email = false;
   let deliveryPaused = false;
   try {
     const to = typeof request?.employee_email === 'string' && request.employee_email.trim() !== ''
       ? [request.employee_email]
       : [];
+    await mintNotifications(contract, to.map(() => timeOffReviewedNotification(request)));
     deliveryPaused = to.length > 0 && config?.deliveryReleased !== true;
     if (to.length > 0 && !deliveryPaused) {
       const message = timeOffReviewedMessage(request);

@@ -34,6 +34,7 @@ const RUNTIME = 'https://pennsync-integrations-production.up.railway.app';
 const SUBMIT_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_time_off_submit`;
 const REVIEW_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_time_off_review`;
 const ROSTER_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_roster_list`;
+const NOTIFY_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_notification_create`;
 
 const env = (patch = {}) => ({
   PENNSYNC_API_RELEASE: 'enabled-v1',
@@ -94,9 +95,11 @@ const member = (email, tenant_role = 'agency_admin', is_active = true) => ({
  */
 const serve = ({
   delivery = false, row = request(), roster = [() => rosterPage([])], mail = () => ({ ok: true }),
+  mint = () => ({ ok: true }),
 } = {}) => {
   const sent = [];
   const asked = [];
+  const minted = [];
   const config = loadConfig(env(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}));
   const handler = createHandler(config, {
     fetcher: async (url, init) => {
@@ -111,6 +114,13 @@ const serve = ({
         return Response.json({ error: 'PROVIDER_REFUSED' }, { status: 502 });
       }
       if (target === SUBMIT_RPC) return Response.json({ success: true, request: row });
+      if (target === NOTIFY_RPC) {
+        const body = JSON.parse(init.body);
+        minted.push(body.p_notification);
+        return mint(body).ok
+          ? Response.json({ success: true, notification_id: 'note-1', delivery_paused: true })
+          : Response.json({ message: 'PENNSYNC_NOTIFICATION_RECIPIENT_FORBIDDEN' }, { status: 403 });
+      }
       if (target === ROSTER_RPC) {
         const body = JSON.parse(init.body);
         asked.push(body);
@@ -122,7 +132,7 @@ const serve = ({
     records: () => () => { throw new Error('records must not be reached'); },
     audit: () => () => { throw new Error('audit must not be reached'); },
   });
-  return { handler, sent, asked };
+  return { handler, sent, asked, minted };
 };
 
 test('the registry flags say the runtime is reached and the record work stands without delivery', () => {
@@ -386,6 +396,7 @@ const reviewed = (patch = {}) => request({
 const serveReview = ({ delivery = false, row = reviewed(), mail = () => ({ ok: true }) } = {}) => {
   const sent = [];
   const rosterReads = [];
+  const minted = [];
   const config = loadConfig(env({
     PENNSYNC_API_FUNCTIONS: REVIEW,
     ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
@@ -401,6 +412,10 @@ const serveReview = ({ delivery = false, row = reviewed(), mail = () => ({ ok: t
           : Response.json({ error: 'PROVIDER_REFUSED' }, { status: 502 });
       }
       if (target === REVIEW_RPC) return Response.json({ success: true, request: row });
+      if (target === NOTIFY_RPC) {
+        minted.push(JSON.parse(init.body).p_notification);
+        return Response.json({ success: true, notification_id: 'note-1', delivery_paused: true });
+      }
       if (target === ROSTER_RPC) { rosterReads.push(1); return Response.json(rosterPage([])); }
       return Response.json(context('manager'));
     },
@@ -412,7 +427,7 @@ const serveReview = ({ delivery = false, row = reviewed(), mail = () => ({ ok: t
     headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
     body: JSON.stringify({ agency_id: 'agency-a', params: reviewParams }),
   });
-  return { handler, sent, rosterReads, post };
+  return { handler, sent, rosterReads, minted, post };
 };
 
 test('the reviewed notice is registered the same way and needs no roster read', async () => {
@@ -524,6 +539,7 @@ const serveCredential = ({
 }) => {
   const sent = [];
   const asked = [];
+  const minted = [];
   const config = loadConfig(env({
     PENNSYNC_API_FUNCTIONS: name,
     ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
@@ -539,6 +555,10 @@ const serveCredential = ({
           : Response.json({ error: 'PROVIDER_REFUSED' }, { status: 502 });
       }
       if (target === rpc) return Response.json({ success: true, credential: row });
+      if (target === NOTIFY_RPC) {
+        minted.push(JSON.parse(init.body).p_notification);
+        return Response.json({ success: true, notification_id: 'note-1', delivery_paused: true });
+      }
       if (target === ROSTER_RPC) {
         const body = JSON.parse(init.body);
         asked.push(body);
@@ -554,7 +574,7 @@ const serveCredential = ({
     headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
     body: JSON.stringify({ agency_id: 'agency-a', params: callParams }),
   });
-  return { handler, sent, asked, post };
+  return { handler, sent, asked, minted, post };
 };
 
 const reviewCred = (patch = {}) => serveCredential({
@@ -779,4 +799,117 @@ test('the renewal message projects the new expiration and the employee', () => {
   assert.match(message.body, /nurse@example\.test/);
   assert.match(message.body, /2027-01-01/);
   assert.match(message.body, /Pending Credential Approvals/);
+});
+
+/**
+ * The IN-APP row. These ports minted none, and the gap was invisible for the
+ * reason worth keeping: a paused deployment answered `delivery_paused: true`,
+ * which reads as "doing all it can", while the row the dashboard reads was
+ * never written either. So the assertions that matter are the ones with
+ * delivery UNRELEASED.
+ */
+test('a paused deployment still mints the approver row, because a row is not delivery-gated', async () => {
+  const { handler, sent, minted } = serve({ delivery: false });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.delivery_paused, true);
+  assert.equal(answer.email, false);
+  assert.equal(sent.length, 0, 'no mail while the channel is off');
+  // D51: the notification is a row, so it is written anyway. This is the whole
+  // change — with the mint behind the release branch the assertion above would
+  // still pass and the manager would still see nothing.
+  assert.equal(minted.length, 1);
+  assert.equal(minted[0].user_email, 'manager@example.test');
+  assert.equal(minted[0].type, 'info');
+  assert.equal(minted[0].title, 'New time-off request');
+  assert.match(minted[0].message, /requested 3 day\(s\) of paid time off/);
+  assert.equal(minted[0].action_url, '/TimeOff');
+  assert.equal(minted[0].metadata.time_off_request_id, 'req-1');
+});
+
+test('the approver row goes to the same recipients as the mail, fallback included', async () => {
+  const { handler, sent, minted } = serve({
+    delivery: true, row: request({ manager_email: null }),
+    roster: [() => Response.json(rosterPage([
+      member('admin-one@example.test'), member('admin-two@example.test'),
+    ]))],
+  });
+  await handler(post());
+  // One row per approver, and the same list the send used. A port minting for
+  // the named manager only would leave the fallback recipients out of the
+  // dashboard while mailing them.
+  assert.deepEqual(minted.map(n => n.user_email).sort(),
+    ['admin-one@example.test', 'admin-two@example.test']);
+  assert.deepEqual(sent.map(body => body.params.to).sort(),
+    ['admin-one@example.test', 'admin-two@example.test']);
+});
+
+test('a row with no approver at all mints nothing', async () => {
+  const { handler, minted } = serve({ delivery: true, row: request({ manager_email: null }) });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.delivery_paused, false);
+  assert.deepEqual(minted, [], 'there is nobody to address');
+});
+
+test('a refused mint loses neither the other rows nor the mail', async () => {
+  // The deliberate divergence, asserted rather than described. The originals
+  // put the whole fan-out in one `Promise.all` inside the same `try` as the
+  // send, so one refused row drops every row AND the email for an event that
+  // really happened.
+  const { handler, sent, minted } = serve({
+    delivery: true, row: request({ manager_email: null }),
+    roster: [() => Response.json(rosterPage([
+      member('admin-one@example.test'), member('admin-two@example.test'),
+    ]))],
+    mint: body => ({ ok: body.p_notification.user_email !== 'admin-one@example.test' }),
+  });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(minted.length, 2, 'both were attempted');
+  assert.equal(answer.email, true, 'and the mail went out regardless');
+  assert.equal(sent.length, 2);
+  assert.equal(answer.request.id, 'req-1');
+});
+
+test('the reviewed row carries the decision in its TYPE, from the row', async () => {
+  const approved = serveReview({ delivery: false });
+  const first = await resultOf(await approved.handler(approved.post()));
+  assert.equal(first.delivery_paused, true);
+  assert.equal(approved.minted.length, 1);
+  assert.equal(approved.minted[0].user_email, 'nurse@example.test');
+  assert.equal(approved.minted[0].type, 'info');
+  assert.equal(approved.minted[0].title, 'Time off approved');
+  assert.equal(approved.minted[0].metadata.reviewed_by, 'manager@example.test');
+
+  const denied = serveReview({ delivery: false, row: reviewed({ status: 'denied', review_notes: 'Short staffed' }) });
+  await denied.handler(denied.post());
+  // `compliance_alert` is NOT in the contract's non-admin allowlist, which is
+  // why this path depends on the reviewer being an `agency_admin` or the
+  // manager the request named — both of which the time-off contract pins.
+  assert.equal(denied.minted[0].type, 'compliance_alert');
+  assert.equal(denied.minted[0].title, 'Time off denied');
+  assert.match(denied.minted[0].message, /was denied: Short staffed/);
+});
+
+test('a reviewed row with no employee address mints nothing', async () => {
+  const { handler, minted, post } = serveReview({
+    delivery: false, row: reviewed({ employee_email: null }),
+  });
+  await handler(post());
+  assert.deepEqual(minted, []);
+});
+
+test('the two credential notices mint no row', async () => {
+  // Their originals create none — measured, and asserted in
+  // `base44/functionTests/pennsyncApiOriginalParity.test.js`, because D60 keeps
+  // a test in this directory from reading a file outside it: the image is built
+  // from this directory alone. The half that belongs here is that the ported
+  // handlers mint nothing.
+  const { handler, minted, post } = reviewCred({ delivery: true });
+  await handler(post());
+  assert.deepEqual(minted, []);
+  const submit = submitCred({
+    delivery: true,
+    roster: [() => Response.json(rosterPage([member('admin@example.test')]))],
+  });
+  await submit.handler(submit.post());
+  assert.deepEqual(submit.minted, [], 'not even on the renewal path that does mail');
 });

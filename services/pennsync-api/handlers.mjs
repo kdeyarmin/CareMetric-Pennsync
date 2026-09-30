@@ -1127,7 +1127,9 @@ export const HANDLERS = Object.freeze({
       const answer = await contract('reviewTimeOffRequest', params);
       return {
         ...answer,
-        ...(await notifyTimeOffReviewed({ request: answer?.request, config, integration })),
+        ...(await notifyTimeOffReviewed({
+          request: answer?.request, config, integration, contract,
+        })),
       };
     },
   }),
