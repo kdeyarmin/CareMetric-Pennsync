@@ -119,6 +119,22 @@ export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved
 export const RUNTIME_READER_MODEL = 'record_authorized';
 export const REQUIRED_READER_MODEL = 'record_authorized';
 
+/**
+ * The comparison the apply makes, as a function so its REFUSAL can be driven.
+ *
+ * The two constants agree today, so a guard written as a bare comparison
+ * between them is one nothing can make fire — and a guard that cannot fire has
+ * not been shown to work. That is the rule `OWNER_HELD` already follows in this
+ * repository: it has been empty since the owner emptied it, and every check
+ * over it is driven from a synthetic hold in the tests rather than trusted
+ * because the code reads correctly. Found by mutation: replacing the apply's
+ * comparison with `true` left every suite green.
+ *
+ * Production still passes the real pins and nothing takes a model from a
+ * caller, which was D77's own finding about its first attempt.
+ */
+export const readerModelServes = (runtime, required) => runtime === required;
+
 /** Why one reference produced no copy. Reported, never silent. */
 export const SKIPS = Object.freeze([
   'blank',                  // the field is absent or empty on that row
@@ -458,7 +474,11 @@ export async function writeFileObjects(execute, rows) {
  */
 export async function applyFileCopy(execute, plan, options) {
   // Before the plan is read in detail, so the reason is what the operator sees.
-  check(RUNTIME_READER_MODEL === REQUIRED_READER_MODEL,
+  // The predicate is injectable so its refusal can be DRIVEN while both pins
+  // agree; the VALUES it compares are always the module's own, never an
+  // operator's, which is the control D77's first attempt lacked.
+  const serves = options?.readerModelServes ?? readerModelServes;
+  check(serves(RUNTIME_READER_MODEL, REQUIRED_READER_MODEL),
     'FILE_COPY_READER_MODEL_UNRESOLVED');
   check(isObject(plan) && Array.isArray(plan.cross_agency), 'FILE_COPY_PLAN_INVALID');
   check(plan.cross_agency.length === 0, 'FILE_COPY_CROSS_AGENCY_LOCATOR_UNDECIDED');

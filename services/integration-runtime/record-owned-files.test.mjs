@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProviders, validateParams } from './providers.mjs';
 import { BROWSER_FORBIDDEN_OPERATIONS, OPERATIONS } from './contracts.mjs';
-import { BUCKET } from './runtime.mjs';
+import { BUCKET, performDurable } from './runtime.mjs';
 
 const id = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
 const appId = '694ec16e72e01b60d22f7cbf';
@@ -196,4 +196,48 @@ test('UploadRecordFile is a governed operation and never a browser one', () => {
     { base64: 'aGk=', content_type: 'text/plain', agency_id: agencyId }, config),
   error => error.status === 400);
   validateParams('UploadRecordFile', { base64: 'aGk=', content_type: 'text/plain' }, config);
+});
+
+/**
+ * The tenant has to ARRIVE, and nothing above proved that it does.
+ *
+ * Every test above hands `createProviders` a ctx it wrote itself, so each one
+ * proves the provider's behaviour GIVEN a tenant and says nothing about whether
+ * the tenant the runtime resolved ever reaches it. Deleting `agencyId` from the
+ * provider ctx in `runtime.mjs` left all of them green — a whole capability
+ * inert, and no check anywhere in this change noticed.
+ *
+ * It is the same shape as `permissiveStore` above and as the CI failure that
+ * followed: something other than the layer under test supplied the answer. The
+ * layer here is the WIRING, so this drives the real `performDurable` and asserts
+ * what the provider was handed.
+ */
+test('the agency the runtime resolved is the one the provider is given', async () => {
+  const config = { appId, supabaseUrl: 'https://xsqobvvreaovwibxwyvv.supabase.co', supabaseKey: 'synthetic',
+    hashKey: 'f'.repeat(64), encryptionKey: '1'.repeat(64), released: true, revision: 'synthetic' };
+  const store = {
+    async reserve() { return { id, outcome: 'owned' }; },
+    async finish() { return true; },
+  };
+  // The authority double answers about the agency the way the real resolver
+  // does: the caller's tenant is its OUTPUT, never the provider's input.
+  const authority = async (_config, _req, resolved) => ({
+    subject: minter, canEmail: false, snapshot: `synthetic:${resolved}` });
+  // Both halves of the record-owned path: the mint needs the tenant to bind an
+  // object to it, and the read needs it to admit a colleague.
+  for (const operation of ['UploadRecordFile', 'CreateFileSignedUrl']) {
+    const seen = [];
+    // `usableResult` refuses a signed link that is already stale, so the double
+    // answers with a live one; nothing here turns on its value.
+    const provider = async (_operation, _params, ctx) => { seen.push(ctx);
+      return { ok: true, expires_at_ms: Date.now() + 60000 }; };
+    await performDurable({ config, req: new Request('https://runtime.test/v1/integrations',
+      { headers: { authorization: 'Bearer synthetic' } }), agencyId, operation,
+      params: {}, requestId: `request-${operation}`, provider, store, authority });
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].agencyId, agencyId,
+      `${operation}: the provider must be handed the tenant the runtime resolved, or every record-owned path is inert`);
+    assert.equal(seen[0].subject, minter);
+    assert.equal(seen[0].jobId, id);
+  }
 });
