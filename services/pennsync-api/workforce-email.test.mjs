@@ -6,7 +6,12 @@ import { createHandler } from './app.mjs';
 import { HANDLERS, HANDLER_NAMES } from './handlers.mjs';
 import { loadConfig } from './runtime.mjs';
 import { DELIVERY_RELEASE_ENV, DELIVERY_RELEASE_VALUE } from './outbound-delivery.mjs';
-import { timeOffSubmittedMessage } from './workforce-email.mjs';
+import {
+  credentialRenewalMessage,
+  credentialReviewedMessage,
+  timeOffReviewedMessage,
+  timeOffSubmittedMessage,
+} from './workforce-email.mjs';
 
 /**
  * The approver notice for `submitTimeOffRequest`, end to end.
@@ -27,6 +32,7 @@ const KEY = 'sb_publishable_synthetic-acceptance-key';
 const TARGET = 'https://xxtyweswohkvgkprimwa.supabase.co';
 const RUNTIME = 'https://pennsync-integrations-production.up.railway.app';
 const SUBMIT_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_time_off_submit`;
+const REVIEW_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_time_off_review`;
 const ROSTER_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_roster_list`;
 
 const env = (patch = {}) => ({
@@ -345,8 +351,9 @@ test('a module that sends a side-effect notice declares the runtime and not deli
   for (const match of exported.matchAll(/export async function (notify[A-Za-z0-9]*)/g)) {
     notifying.add(match[1]);
   }
-  assert.deepEqual([...notifying].sort(), ['notifyTimeOffSubmitted'],
-    'the notices are the ones this file knows about');
+  assert.deepEqual([...notifying].sort(), ['notifyCredentialRenewal', 'notifyCredentialReviewed',
+    'notifyTimeOffReviewed', 'notifyTimeOffSubmitted'],
+    'the notices are the ones this file knows about — a new one fails here until it is covered');
 
   const registry = readFileSync(new URL('handlers.mjs', dir), 'utf8');
   const start = registry.indexOf('export const HANDLERS');
@@ -361,4 +368,415 @@ test('a module that sends a side-effect notice declares the runtime and not deli
     assert.doesNotMatch(block, /needsDelivery:\s*true/,
       `${entry[1]}: its record work stands without delivery, so the wave must not require it`);
   });
+});
+
+/**
+ * The review half. Its own deployment builder, because the capability is a
+ * different name with different params and the recipient comes from the row
+ * rather than from a roster — so nothing here shares `serve`'s roster stub, and
+ * a reader can see that no roster read is expected.
+ */
+const REVIEW = 'reviewTimeOffRequest';
+const reviewParams = { request_id: 'req-1', decision: 'approved', note: 'Enjoy it' };
+const reviewed = (patch = {}) => request({
+  status: 'approved', reviewed_by: 'manager@example.test',
+  reviewer_name: 'manager@example.test', reviewed_at: '2026-09-30T12:00:00Z',
+  review_notes: 'Enjoy it', ...patch,
+});
+const serveReview = ({ delivery = false, row = reviewed(), mail = () => ({ ok: true }) } = {}) => {
+  const sent = [];
+  const rosterReads = [];
+  const config = loadConfig(env({
+    PENNSYNC_API_FUNCTIONS: REVIEW,
+    ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
+  }));
+  const handler = createHandler(config, {
+    fetcher: async (url, init) => {
+      const target = String(url);
+      if (target.startsWith(RUNTIME)) {
+        const body = JSON.parse(init.body);
+        sent.push(body);
+        return mail(body).ok
+          ? Response.json({ success: true, result: { accepted: true, delivered: false, provider: 'sendgrid' } })
+          : Response.json({ error: 'PROVIDER_REFUSED' }, { status: 502 });
+      }
+      if (target === REVIEW_RPC) return Response.json({ success: true, request: row });
+      if (target === ROSTER_RPC) { rosterReads.push(1); return Response.json(rosterPage([])); }
+      return Response.json(context('manager'));
+    },
+    records: () => () => { throw new Error('records must not be reached'); },
+    audit: () => () => { throw new Error('audit must not be reached'); },
+  });
+  const post = () => new Request(`https://api.example.test/v1/functions/${REVIEW}`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
+    body: JSON.stringify({ agency_id: 'agency-a', params: reviewParams }),
+  });
+  return { handler, sent, rosterReads, post };
+};
+
+test('the reviewed notice is registered the same way and needs no roster read', async () => {
+  assert.equal(HANDLERS[REVIEW].needsIntegration, true);
+  assert.equal(Object.hasOwn(HANDLERS[REVIEW], 'needsDelivery'), false);
+  const { handler, sent, rosterReads, post } = serveReview({ delivery: true });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.request.id, 'req-1');
+  assert.equal(answer.email, true);
+  assert.equal(answer.delivery_paused, false);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].params.to, 'nurse@example.test', 'the employee on the row, not the caller');
+  assert.deepEqual(rosterReads, [], 'nothing was asked of the roster');
+});
+
+test('a paused deployment records the decision and attempts no send', async () => {
+  const { handler, sent, post } = serveReview({ delivery: false });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.request.status, 'approved', 'the decision is recorded');
+  assert.equal(answer.delivery_paused, true);
+  assert.equal(answer.email, false);
+  assert.equal(sent.length, 0);
+});
+
+test('a row with no employee address reports no paused delivery', async () => {
+  const { handler, sent, post } = serveReview({
+    delivery: false, row: reviewed({ employee_email: null }),
+  });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.delivery_paused, false, 'there was no delivery to pause');
+  assert.equal(answer.email, false);
+  assert.equal(sent.length, 0);
+});
+
+test('a provider refusal leaves the decision recorded', async () => {
+  const { handler, post } = serveReview({ delivery: true, mail: () => ({ ok: false }) });
+  const response = await handler(post());
+  assert.equal(response.status, 200);
+  const answer = await resultOf(response);
+  assert.equal(answer.request.status, 'approved');
+  assert.equal(answer.email, false);
+});
+
+test('the reviewed message reads the ROW, so it says what happened and not what was asked', () => {
+  // The decision comes from the contract's stored `status`, not from the
+  // caller's `decision` parameter. A message built from the request would
+  // announce an approval for a contract that recorded a denial.
+  const denied = timeOffReviewedMessage(reviewed({ status: 'denied', review_notes: 'Short staffed' }));
+  assert.equal(denied.subject, 'Update on your time-off request');
+  assert.match(denied.body, /was not approved/);
+  assert.match(denied.body, /Short staffed/);
+  assert.match(denied.body, /Note from reviewer/);
+
+  const approved = timeOffReviewedMessage(reviewed());
+  assert.equal(approved.subject, 'Your time off was approved');
+  assert.match(approved.body, /Enjoy your time away/);
+
+  const silent = timeOffReviewedMessage(reviewed({ review_notes: '   ' }));
+  assert.doesNotMatch(silent.body, /Note from reviewer/,
+    'a whitespace-only note prints no row, as the original trims before testing');
+});
+
+test('cancelTimeOffRequest is still paused, and the reason is a field it cannot see', () => {
+  // Recorded as a test rather than a comment so it cannot rot quietly. Its
+  // original notifies only when the request was `approved` BEFORE cancellation,
+  // and `contract_time_off_cancel` returns the row it just set to `cancelled`,
+  // so the eligibility cannot be evaluated from the answer. Wiring it anyway
+  // would notify a manager about a withdrawn `pending` request the original
+  // never mentions.
+  assert.equal(Object.hasOwn(HANDLERS.cancelTimeOffRequest, 'needsIntegration'), false,
+    'it reaches no runtime while its notice cannot be built');
+  const registry = readFileSync(new URL('handlers.mjs', new URL('.', import.meta.url)), 'utf8');
+  const start = registry.indexOf('  cancelTimeOffRequest: Object.freeze({');
+  const block = registry.slice(start, registry.indexOf('}),', start));
+  assert.match(block, /delivery_paused: true/,
+    'it keeps the answer it has until the contract can say what status it replaced');
+});
+
+/**
+ * The credential pair. Two capabilities, two shapes, and the split is worth
+ * naming: the REVIEW notice is addressed from the row the contract answered
+ * with, so it needs no roster; the SUBMIT notice is addressed to the agency's
+ * administrators through the roster and is sent only for a RENEWAL, which is a
+ * condition over the caller's own parameters.
+ */
+const REVIEW_CRED = 'reviewPersonnelCredential';
+const SUBMIT_CRED = 'submitPersonnelCredential';
+const CRED_REVIEW_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_credential_review`;
+const CRED_SUBMIT_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_credential_submit`;
+/**
+ * The row `credential_row` projects. `user_id` holds the owner's EMAIL — the
+ * submit contract writes `caller_email()` there and both the ownership check
+ * and the list predicate compare it with `lower(v_email)` — so it is the
+ * store's own verified copy of the address, which is why no roster read is
+ * expected on the review side.
+ */
+const credential = (patch = {}) => ({
+  id: 'cred-1', user_id: 'nurse@example.test', user_name: 'nurse@example.test',
+  item_type: 'license', title: 'RN License', issuing_organization: 'PA Board',
+  credential_number: 'RN-1', issued_date: '2024-01-01', expiration_date: '2027-01-01',
+  uploaded_file_name: 'rn.pdf', notes: null, status: 'approved',
+  approved_by: 'admin@example.test', approved_at: '2026-09-30T12:00:00Z',
+  rejection_reason: null, ...patch,
+});
+
+const serveCredential = ({
+  name, rpc, params: callParams, delivery = false, row = credential(),
+  roster = [() => Response.json(rosterPage([]))], mail = () => ({ ok: true }), tenantRole = 'agency_admin',
+}) => {
+  const sent = [];
+  const asked = [];
+  const config = loadConfig(env({
+    PENNSYNC_API_FUNCTIONS: name,
+    ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
+  }));
+  const handler = createHandler(config, {
+    fetcher: async (url, init) => {
+      const target = String(url);
+      if (target.startsWith(RUNTIME)) {
+        const body = JSON.parse(init.body);
+        sent.push(body);
+        return mail(body).ok
+          ? Response.json({ success: true, result: { accepted: true, delivered: false, provider: 'sendgrid' } })
+          : Response.json({ error: 'PROVIDER_REFUSED' }, { status: 502 });
+      }
+      if (target === rpc) return Response.json({ success: true, credential: row });
+      if (target === ROSTER_RPC) {
+        const body = JSON.parse(init.body);
+        asked.push(body);
+        return roster[Math.min(asked.length - 1, roster.length - 1)](body);
+      }
+      return Response.json(context(tenantRole));
+    },
+    records: () => () => { throw new Error('records must not be reached'); },
+    audit: () => () => { throw new Error('audit must not be reached'); },
+  });
+  const post = () => new Request(`https://api.example.test/v1/functions/${name}`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
+    body: JSON.stringify({ agency_id: 'agency-a', params: callParams }),
+  });
+  return { handler, sent, asked, post };
+};
+
+const reviewCred = (patch = {}) => serveCredential({
+  name: REVIEW_CRED, rpc: CRED_REVIEW_RPC,
+  params: { credential_id: 'cred-1', action: 'approve', rejection_reason: null }, ...patch,
+});
+const submitCred = (patch = {}) => serveCredential({
+  name: SUBMIT_CRED, rpc: CRED_SUBMIT_RPC,
+  params: {
+    credential_id: 'cred-1', renews_credential_id: 'cred-0',
+    credential: { title: 'RN License', item_type: 'license', expiration_date: '2027-01-01' },
+  },
+  ...patch,
+});
+
+test('the credential notices carry the same two registry flags', () => {
+  for (const name of [REVIEW_CRED, SUBMIT_CRED]) {
+    assert.equal(HANDLERS[name].needsIntegration, true, `${name} reaches the runtime`);
+    assert.equal(Object.hasOwn(HANDLERS[name], 'needsDelivery'), false,
+      `${name}: the record work stands without delivery`);
+  }
+});
+
+test('a reviewed credential mails the owner from the ROW and asks the roster nothing', async () => {
+  const { handler, sent, asked, post } = reviewCred({ delivery: true });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.credential.id, 'cred-1');
+  assert.equal(answer.email, true);
+  assert.equal(answer.delivery_paused, false);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].operation, 'SendEmail');
+  // The original sends `to: credential.user_id`, and that column holds the
+  // address the submit contract verified. A port addressing the CALLER would
+  // mail the reviewer their own decision.
+  assert.equal(sent[0].params.to, 'nurse@example.test');
+  assert.equal(sent[0].params.subject, 'Credential approved — RN License');
+  assert.deepEqual(asked, [], 'nothing was asked of the roster');
+});
+
+test('a paused deployment records the credential decision and attempts no send', async () => {
+  const { handler, sent, post } = reviewCred({ delivery: false });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.credential.status, 'approved', 'the compliance decision is recorded');
+  assert.equal(answer.delivery_paused, true);
+  assert.equal(answer.email, false);
+  assert.equal(sent.length, 0);
+});
+
+test('a credential with no owner address reports no paused delivery', async () => {
+  // The original computes `deliveryPaused = !released` with no recipient test
+  // at all, so an unaddressable row would claim a message was waiting on a
+  // switch. The narrowing is deliberate and recorded in the module.
+  const { handler, sent, post } = reviewCred({ delivery: false, row: credential({ user_id: null }) });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.delivery_paused, false, 'there was no delivery to pause');
+  assert.equal(answer.email, false);
+  assert.equal(sent.length, 0);
+});
+
+test('a provider refusal leaves the credential decision recorded', async () => {
+  const { handler, post } = reviewCred({ delivery: true, mail: () => ({ ok: false }) });
+  const response = await handler(post());
+  assert.equal(response.status, 200);
+  const answer = await resultOf(response);
+  assert.equal(answer.credential.status, 'approved');
+  assert.equal(answer.email, false);
+});
+
+test('the reviewed credential message is two documents, not one with a branch', () => {
+  const approved = credentialReviewedMessage(credential(), 'admin@example.test');
+  assert.equal(approved.subject, 'Credential approved — RN License');
+  assert.match(approved.body, /has been approved/);
+  assert.match(approved.body, /2027-01-01/, 'the expiration is projected');
+  assert.match(approved.body, /admin@example\.test/, 'and the approver');
+
+  const revision = credentialReviewedMessage(
+    credential({ status: 'rejected', rejection_reason: 'Illegible scan' }), 'admin@example.test');
+  assert.equal(revision.subject, 'Credential needs revision — RN License');
+  assert.match(revision.body, /Illegible scan/);
+  // The revision notice projects neither, which is the original's shape: an
+  // expiration on a document that was not accepted would read as accepted.
+  assert.doesNotMatch(revision.body, /2027-01-01/);
+  assert.doesNotMatch(revision.body, /admin@example\.test/);
+});
+
+test('a RENEWAL notifies the agency administrators through the roster', async () => {
+  const { handler, sent, asked, post } = submitCred({
+    delivery: true,
+    roster: [() => Response.json(rosterPage([
+      member('admin@example.test'),
+      member('nurse@example.test', 'clinician'),
+      member('stale@example.test', 'agency_admin', false),
+    ]))],
+  });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.email, true);
+  assert.equal(answer.delivery_paused, false);
+  assert.equal(asked.length, 1, 'the roster answered the question the User.list scan used to');
+  // Only the active administrator. The non-admin and the inactive row are
+  // filtered on the AUTHORITATIVE `tenant_role` and `is_active`, never on the
+  // carried profile's self-editable labels (D23).
+  assert.deepEqual(sent.map(body => body.params.to), ['admin@example.test']);
+  assert.equal(sent[0].params.subject, 'Credential renewal submitted — RN License');
+});
+
+test('a FIRST submission notifies nobody and reports no paused delivery', async () => {
+  // The condition is the original's — `renews_credential_id &&
+  // renews_credential_id !== credential_id` — and it is read from the caller's
+  // parameters, which is why no contract change was needed to evaluate it. A
+  // port that notified on every submission would mail the administrators about
+  // routine filings the original never mentions.
+  for (const renews of [null, 'cred-1']) {
+    const { handler, sent, asked, post } = submitCred({
+      delivery: true,
+      params: {
+        credential_id: 'cred-1', renews_credential_id: renews,
+        credential: { title: 'RN License', item_type: 'license', expiration_date: '2027-01-01' },
+      },
+    });
+    const answer = await resultOf(await handler(post()));
+    assert.equal(answer.email, false, `renews_credential_id ${renews}`);
+    assert.equal(answer.delivery_paused, false, 'no send was ever eligible');
+    assert.equal(sent.length, 0);
+    assert.deepEqual(asked, [], 'and the roster is not read for a non-renewal');
+  }
+});
+
+test('a paused deployment files the renewal, says so, and ATTEMPTS nothing', async () => {
+  // The case a sabotage pass found missing. The only paused renewal test had an
+  // EMPTY roster, so deleting the release branch altogether came back green:
+  // with nobody to notify there is no send either way. An administrator has to
+  // be present for the branch to be the thing under test.
+  const { handler, sent, post } = submitCred({
+    delivery: false,
+    roster: [() => Response.json(rosterPage([member('admin@example.test')]))],
+  });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.credential.id, 'cred-1', 'the filing is the capability and it happened');
+  assert.equal(answer.delivery_paused, true, 'a recipient exists and the channel is off');
+  assert.equal(answer.email, false);
+  assert.equal(sent.length, 0);
+});
+
+test('and the renewal never reaches the integration capability while paused', async () => {
+  // The wire assertion above cannot see the branch deleted: `SendEmail` is not
+  // in the brokered set while delivery is unreleased, so an unguarded send is
+  // refused one layer in and swallowed by the best-effort catch. This replaces
+  // the capability so the question is whether it was ASKED.
+  const attempts = [];
+  const config = loadConfig(env({ PENNSYNC_API_FUNCTIONS: SUBMIT_CRED }));
+  const handler = createHandler(config, {
+    fetcher: async (url) => {
+      const target = String(url);
+      if (target === CRED_SUBMIT_RPC) return Response.json({ success: true, credential: credential() });
+      if (target === ROSTER_RPC) return Response.json(rosterPage([member('admin@example.test')]));
+      return Response.json(context('agency_admin'));
+    },
+    integration: () => (operation) => {
+      attempts.push(operation);
+      throw new Error('INTEGRATION_OPERATION_NOT_BROKERED');
+    },
+    records: () => () => { throw new Error('records must not be reached'); },
+    audit: () => () => { throw new Error('audit must not be reached'); },
+  });
+  const post = () => new Request(`https://api.example.test/v1/functions/${SUBMIT_CRED}`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      agency_id: 'agency-a',
+      params: {
+        credential_id: 'cred-1', renews_credential_id: 'cred-0',
+        credential: { title: 'RN License', item_type: 'license', expiration_date: '2027-01-01' },
+      },
+    }),
+  });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.credential.id, 'cred-1');
+  assert.equal(answer.delivery_paused, true);
+  assert.deepEqual(attempts, [], 'the send was never asked for');
+});
+
+test('a renewal with no administrator reports no paused delivery', async () => {
+  const { handler, sent, post } = submitCred({ delivery: false, roster: [() => Response.json(rosterPage([]))] });
+  const answer = await resultOf(await handler(post()));
+  assert.equal(answer.credential.id, 'cred-1', 'the filing is the capability and it happened');
+  assert.equal(answer.delivery_paused, false, 'there was nobody to notify');
+  assert.equal(answer.email, false);
+  assert.equal(sent.length, 0);
+});
+
+test('a roster failure leaves the credential filed', async () => {
+  const { handler, post } = submitCred({
+    delivery: true,
+    roster: [() => Response.json({ error: 'ROSTER_UNAVAILABLE' }, { status: 502 })],
+  });
+  const response = await handler(post());
+  assert.equal(response.status, 200);
+  const answer = await resultOf(response);
+  assert.equal(answer.credential.id, 'cred-1');
+  assert.equal(answer.email, false);
+});
+
+test('the submitter is NOT excluded from the renewal fan-out', async () => {
+  // The counter-case to the time-off fan-out, which excludes the caller. This
+  // original excludes nobody, and an `agency_admin` renewing their own
+  // credential is the case D40 created — D44's rule is that the other
+  // administrators keep seeing it.
+  const { handler, sent, post } = submitCred({
+    delivery: true,
+    roster: [() => Response.json(rosterPage([
+      member('nurse@example.test'), member('admin@example.test'),
+    ]))],
+  });
+  await handler(post());
+  assert.deepEqual(sent.map(body => body.params.to).sort(),
+    ['admin@example.test', 'nurse@example.test']);
+});
+
+test('the renewal message projects the new expiration and the employee', () => {
+  const message = credentialRenewalMessage(credential());
+  assert.equal(message.subject, 'Credential renewal submitted — RN License');
+  assert.match(message.body, /nurse@example\.test/);
+  assert.match(message.body, /2027-01-01/);
+  assert.match(message.body, /Pending Credential Approvals/);
 });

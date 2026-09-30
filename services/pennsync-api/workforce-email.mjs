@@ -1,7 +1,12 @@
 // The staff notices — the email halves of the workforce capabilities, ported
-// from their Base44 originals. This change carries the first: the approver's
-// email for `submitTimeOffRequest`
-// (`base44/functions/submitTimeOffRequest/entry.ts:440-500`).
+// from their Base44 originals. Four of the five are here: the approver's email
+// for `submitTimeOffRequest`
+// (`base44/functions/submitTimeOffRequest/entry.ts:440-500`), the employee's
+// outcome notice for `reviewTimeOffRequest`, the employee's decision notice for
+// `reviewPersonnelCredential`, and the administrators' approval-needed notice
+// for a RENEWAL submitted through `submitPersonnelCredential`. The fifth,
+// `cancelTimeOffRequest`, is blocked on a field its contract does not return
+// and the reason is recorded at the bottom of this header.
 //
 // D97 built the gate and `account-email.mjs` is its first instance. This is the
 // second, and it differs in the one way that decides this whole module: there
@@ -52,6 +57,18 @@
 // `createNotification` contract called per recipient or a mint inside the
 // contract's own transaction, which is a forward migration; recorded here
 // rather than invented around, and left for the change that takes it.
+// **`cancelTimeOffRequest` is deliberately NOT in this change, and the reason
+// is a missing field rather than a judgement.** Its original notifies the
+// manager only when `emailEligible` — the request was `approved` BEFORE the
+// cancellation, a manager is named, and the canceller is not that manager. The
+// first of those cannot be evaluated here: `contract_time_off_cancel` updates
+// the row and returns it, so the answer's `status` is always `cancelled` and
+// the prior status is gone. Notifying whenever a manager exists would WIDEN the
+// capability — a withdrawn `pending` request was never on anybody's plate, and
+// the original says so by testing for `approved`. The eligible shape wants the
+// contract to return the status it replaced, which is a forward migration, so
+// the capability keeps its current answer until that change takes it.
+
 import { renderBrandedEmail } from './branded-email.mjs';
 
 /**
@@ -205,6 +222,251 @@ export async function notifyTimeOffSubmitted({ request, actor, config, integrati
   } catch {
     // Best-effort, and the same silence the original keeps: the dashboard is
     // the source of truth for a request that exists.
+  }
+  return { email, delivery_paused: deliveryPaused };
+}
+
+/**
+ * The employee's message when a request is reviewed, field for field from
+ * `reviewTimeOffRequest`'s original.
+ *
+ * The decision is read from the row's `status` rather than from the caller's
+ * `decision` parameter, for the reason the recipient is read from the row: the
+ * contract is what decided, and a message built from the request would say what
+ * was asked for rather than what happened. `review_notes` is the contract's
+ * stored copy, already truncated at 2000 as the original truncates it, so the
+ * note in the message is the note in the record.
+ */
+export function timeOffReviewedMessage(request) {
+  const approved = request?.status === 'approved';
+  const prettyType = String(request?.request_type ?? '').replace(/_/g, ' ');
+  const span = `${request?.start_date ?? ''} → ${request?.end_date ?? ''}`;
+  const reviewer = request?.reviewer_name || request?.reviewed_by || '';
+  const note = typeof request?.review_notes === 'string' ? request.review_notes.trim() : '';
+  return {
+    subject: approved ? 'Your time off was approved' : 'Update on your time-off request',
+    body: renderBrandedEmail({
+      preheader: `Your ${prettyType} request for ${span} was ${request?.status ?? ''}.`,
+      eyebrow: approved ? 'Request approved' : 'Request reviewed',
+      title: approved ? 'Your time off was approved' : 'Your time-off request was not approved',
+      intro: `Your ${prettyType} request for ${span} was ${request?.status ?? ''} by ${reviewer}.`,
+      sections: [
+        {
+          callout: approved
+            ? { tone: 'success', text: 'Your time off has been approved. Enjoy your time away!' }
+            : { tone: 'warn', text: 'Your request was not approved. Please reach out to your reviewer if you have questions.' },
+        },
+        ...(note ? [{ rows: [['Note from reviewer', note]] }] : []),
+        { note: 'View the details in PennSync under Time Off.' },
+      ],
+    }),
+  };
+}
+
+/**
+ * The outcome notice for a reviewed request.
+ *
+ * No roster read: the recipient is the employee named on the row the contract
+ * just updated, and the contract has already refused a reviewer who is not an
+ * `agency_admin` or `manager` of that agency, and refused a reviewer reviewing
+ * their own request. So the address is the store's copy of a colleague of the
+ * caller's own agency, which is exactly what `agencyRecipient` goes looking
+ * for elsewhere.
+ *
+ * `delivery_paused` is the original's computation again — `!!employee_email &&
+ * !released` — so a row with no employee address reports `false` rather than
+ * claiming a paused channel.
+ */
+export async function notifyTimeOffReviewed({ request, config, integration }) {
+  let email = false;
+  let deliveryPaused = false;
+  try {
+    const to = typeof request?.employee_email === 'string' && request.employee_email.trim() !== ''
+      ? [request.employee_email]
+      : [];
+    deliveryPaused = to.length > 0 && config?.deliveryReleased !== true;
+    if (to.length > 0 && !deliveryPaused) {
+      const message = timeOffReviewedMessage(request);
+      email = await deliverNotices({
+        integration, recipients: to, subject: message.subject, body: message.body,
+      });
+    }
+  } catch {
+    // Best-effort, as the original is: the decision is recorded either way.
+  }
+  return { email, delivery_paused: deliveryPaused };
+}
+
+/**
+ * The employee's message when a credential is reviewed, from
+ * `reviewPersonnelCredential`'s original. Approval and revision are two
+ * different documents there rather than one with a branch in it, and they stay
+ * two here: the revision notice carries `tone: 'urgent'`, projects no
+ * expiration and no approver, and puts the reason in a callout.
+ *
+ * `fmtDate` in the original formats the expiration for display; the stored
+ * value is already a date string, so it is printed as stored — recorded because
+ * a reader comparing the two would look for the formatter.
+ *
+ * `Approved by` is the original's `user.full_name || user.email`, and the
+ * carried `user` table has NO name column (D38), so it is only ever the
+ * address here. Substituting nothing else: an empty cell would read as an
+ * anonymous approval on a compliance document.
+ */
+export function credentialReviewedMessage(credential, reviewer) {
+  const approved = credential?.status === 'approved';
+  const title = credential?.title ?? '';
+  const who = credential?.user_name || credential?.user_id || '';
+  const reason = credential?.rejection_reason ?? '';
+  return {
+    subject: approved
+      ? `Credential approved — ${title}`
+      : `Credential needs revision — ${title}`,
+    body: renderBrandedEmail(approved
+      ? {
+        preheader: `Your ${title} credential has been approved.`,
+        eyebrow: 'Credential approved',
+        title: `Hello ${who},`,
+        intro: 'Your credential submission has been approved.',
+        sections: [
+          {
+            rows: [
+              ['Credential', title],
+              ['Type', credential?.item_type ?? ''],
+              ['Expiration', credential?.expiration_date ?? ''],
+              ['Approved by', reviewer ?? ''],
+            ],
+          },
+          { paragraphs: ['Your personnel file has been updated. You can view your current credentials in the Personnel File section.'] },
+        ],
+      }
+      : {
+        preheader: `Your ${title} submission needs revision.`,
+        eyebrow: 'Action required',
+        tone: 'urgent',
+        title: `Hello ${who},`,
+        intro: 'Your credential submission requires revision.',
+        sections: [
+          {
+            rows: [
+              ['Credential', title],
+              ['Type', credential?.item_type ?? ''],
+            ],
+          },
+          { callout: { tone: 'warn', text: `Reason: ${reason}` } },
+          { paragraphs: ['Please re-upload a corrected document in your Personnel File. If you have questions, please contact your supervisor.'] },
+        ],
+      }),
+  };
+}
+
+/**
+ * The decision notice for a reviewed credential.
+ *
+ * **The recipient is the row's `user_id`, and that is not a misreading.** The
+ * original sends `to: credential.user_id`, and this store agrees with it: the
+ * submit contract writes `caller_email()` there and both the ownership check
+ * and the list predicate compare that column with `lower(v_email)`. So the
+ * column holds the submitter's VERIFIED address, which is the store's own copy
+ * of a colleague of the reviewer's agency — the contract has already refused a
+ * reviewer outside it, and refused a reviewer reviewing their own credential.
+ *
+ * `delivery_paused` is the original's, which here is `!released` with no
+ * recipient test, because a credential cannot exist without the column its
+ * owner is identified by. The guard is kept anyway and the answer follows it:
+ * an unaddressable row reports no paused delivery rather than claiming one.
+ */
+export async function notifyCredentialReviewed({ credential, actor, config, integration }) {
+  let email = false;
+  let deliveryPaused = false;
+  try {
+    const to = typeof credential?.user_id === 'string' && credential.user_id.trim() !== ''
+      ? [credential.user_id]
+      : [];
+    deliveryPaused = to.length > 0 && config?.deliveryReleased !== true;
+    if (to.length > 0 && !deliveryPaused) {
+      const message = credentialReviewedMessage(credential, actor?.email);
+      email = await deliverNotices({
+        integration, recipients: to, subject: message.subject, body: message.body,
+      });
+    }
+  } catch {
+    // Best-effort: the original's own words are that the decision stands even
+    // if the email fails, and that the gap is reported rather than raised.
+  }
+  return { email, delivery_paused: deliveryPaused };
+}
+
+/**
+ * The approval-needed message for a submitted credential RENEWAL, from
+ * `submitPersonnelCredential`'s original.
+ */
+export function credentialRenewalMessage(credential) {
+  return {
+    subject: `Credential renewal submitted — ${credential?.title ?? ''}`,
+    body: renderBrandedEmail({
+      preheader: `${credential?.user_name ?? ''} submitted a credential renewal for approval.`,
+      eyebrow: 'Approval needed',
+      title: 'Credential renewal submitted',
+      intro: 'A credential renewal has been submitted and is waiting for review.',
+      sections: [
+        {
+          rows: [
+            ['Employee', credential?.user_name ?? ''],
+            ['Credential', credential?.title ?? ''],
+            ['Type', credential?.item_type ?? ''],
+            ['New expiration', credential?.expiration_date ?? ''],
+          ],
+        },
+        { paragraphs: ['Review it under Pending Credential Approvals in the admin console.'] },
+      ],
+    }),
+  };
+}
+
+/**
+ * The renewal notice, and the one sender here whose condition is read from the
+ * REQUEST rather than from the row.
+ *
+ * **The original sends only for a renewal** — `renews_credential_id &&
+ * renews_credential_id !== credential_id` — and that is a test over the
+ * caller's own parameters, which this layer holds, so no contract change is
+ * needed to evaluate it. A first reading of the contract said the port could
+ * not know whether a submission was a renewal, because the writable field set
+ * of the `credential` object has no such key; the top-level parameter is a
+ * different thing and `p_renews_id` has been there all along. Recorded because
+ * the wrong conclusion was one grep away from being shipped.
+ *
+ * The recipients are the agency's administrators, which is what the original's
+ * own comment says it wants: it filters a five-thousand-row `User.list` by
+ * `role`, `account_type` and `agency_name` because an earlier version emailed
+ * staff names and credential titles to every tenant's admins. That
+ * reconstruction is D41's and D43's to DELETE — `agencyAdminRecipients` asks
+ * the roster, and the policies decide which agency the caller holds.
+ *
+ * The submitter is NOT excluded here, unlike the time-off fan-out: the original
+ * excludes nobody from this one, and an `agency_admin` renewing their own
+ * credential is exactly the case D40 created and D44 says to leave visible to
+ * the other administrators.
+ */
+export async function notifyCredentialRenewal({ credential, params, config, integration, contract }) {
+  let email = false;
+  let deliveryPaused = false;
+  try {
+    const renews = typeof params?.renews_credential_id === 'string'
+      && params.renews_credential_id.trim() !== ''
+      && params.renews_credential_id !== params?.credential_id;
+    if (!renews) return { email, delivery_paused: deliveryPaused };
+    const admins = await agencyAdminRecipients(contract, null);
+    deliveryPaused = admins.length > 0 && config?.deliveryReleased !== true;
+    if (admins.length > 0 && !deliveryPaused) {
+      const message = credentialRenewalMessage(credential);
+      email = await deliverNotices({
+        integration, recipients: admins, subject: message.subject, body: message.body,
+      });
+    }
+  } catch {
+    // Best-effort: the original logs and answers, and the credential stands.
   }
   return { email, delivery_paused: deliveryPaused };
 }

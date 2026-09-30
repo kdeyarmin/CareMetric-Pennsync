@@ -1563,8 +1563,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 53 | 39 |
-  | `integration` (derived) | 20 | 17 |
+  | `mutating` (derived) | 50 | 37 |
+  | `integration` (derived) | 23 | 19 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1677,6 +1677,29 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   facility stays and is still the place a future hold goes; because an empty
   list fires none of its six guards, each is driven from a synthetic hold in its
   tests rather than left vacuous.
+  **Four workforce capabilities have MOVED out of `mutating` the same way, and
+  this time a migration column moved with them.** `submitTimeOffRequest`,
+  `reviewTimeOffRequest`, `reviewPersonnelCredential` and
+  `submitPersonnelCredential` each answered a constant `delivery_paused: true`
+  and reached no integration; they now send their staff notice, so all four
+  carry `needsIntegration: true` and the ladder places them in `integration`:
+  mutating 54 → 50 and integration 19 → 23 in the table above. The check worth
+  reading is that the handler total does not change — 2 + 2 + 4 + 55 + 50 + 23
+  is 136 either way — because a transfer moves a capability between waves while
+  an arrival raises the sum.
+
+  The migration columns went 39 → 37 and 17 → 19, which is two files changing
+  wave rather than two files arriving, and the derivation is per-file:
+  `20260920240000_contract_credential.sql` and
+  `…250000_contract_credential_review.sql` are reached by these two credential
+  capabilities and by nothing else left behind — the credential LIST reads
+  through `20260920660000_contract_compliance_reads.sql` — so both follow their
+  handlers. `20260920230000_contract_time_off.sql` does NOT move, because
+  `cancelTimeOffRequest` stays in `mutating`: its notice cannot be built until
+  the cancel contract returns the status it replaced, so the file is a
+  prerequisite of both waves now. Measured by diffing `--wave` on this tree
+  against `00ccac41`, not inferred from the deltas.
+
   The send's own switch, separate from `PENNSYNC_API_RELEASE`, is
   `PENNSYNC_API_DELIVERY=enabled-v1`, read exactly and untrimmed; it was written
   at `16:19Z` the same day. **What `/readyz` says about it is a reading, not a
