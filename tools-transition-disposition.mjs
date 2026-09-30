@@ -1358,6 +1358,23 @@ const PORT_QUEUE_GLUE = /^[\s,`*]*$/;
  * prefix is the half a page drops: the transition plan's mid-sentence copy is
  * the complete payload with only the prefix missing, and a prefix-keyed check
  * would read it as prose.
+ *
+ * What this CANNOT see, said here rather than left for somebody to discover: a
+ * figure a page restates as a BARE NUMBER in prose. AGENTS.md carried the
+ * release ladder's handler count as "126 of them over six waves", ten behind the
+ * tree, with no `handlers=` token anywhere near it — the same class of defect
+ * this function exists to stop, in the one shape it is blind to by
+ * construction, because a bare figure is indistinguishable from every other
+ * number on the page. `tools-entity-routes.mjs` records the same limit about its
+ * own single-digit figures.
+ *
+ * That gap was SIZED rather than left open, so nobody re-asks it as though the
+ * answer were unknown: there is no cheap version. A discovery over bare numbers
+ * cannot exist, and the expensive version is a documentation convention — every
+ * page quotes the instrument's line instead of restating its figure, which makes
+ * the text pinnable and is then covered by exactly this function. AGENTS.md's
+ * ladder reading was converted to that form when it was re-dated, as one
+ * instance and not a campaign. The rest is a decision for a session with room.
  */
 export function portQueueQuotations(text, bucketNames) {
   const token = new RegExp(`(?:${bucketNames.join('|')})=\\d+`, 'g');
