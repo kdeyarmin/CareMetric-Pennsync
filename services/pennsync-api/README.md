@@ -5,9 +5,10 @@ destination named in
 [the exit decisions](../../docs/BASE44_EXIT_DECISIONS_2026-09-19.md) (D1) and
 classified per capability in `tools-transition-disposition.json`.
 
-This service is **deployed and released** as of 2026-09-25 (stages B and D of
-[the go-live plan](../../docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md)); it was
-deployed and paused from 2026-09-22. It runs in
+This service was **deployed and released** when read on 2026-09-25 (stages B and
+D of [the go-live plan](../../docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md)), and
+deployed and paused from 2026-09-22; `/readyz` is what answers it now, as
+everywhere else on this page. It runs in
 the CareMetric Train Railway project at
 `pennsync-api-production.up.railway.app`, root `/services/pennsync-api`, its
 committed `Dockerfile`, healthcheck `/healthz`, configuration in service
@@ -154,6 +155,29 @@ from `main`'s tip, so the running revision moves without a word here changing.
 `curl <service>/readyz` is the instrument and takes a second. A test in
 `account-email.test.mjs` fails if this section claims a fleet's state again,
 because prose is what rotted and an assertion is what noticed.
+
+**And a correction that replaces "the channel is off" with "the channel is on"
+owes the reader the next guard, so: it is the RECIPIENT, not an operation
+allowlist.** The runtime's half was on in the same window — an unauthenticated
+`GET https://pennsync-integrations-production.up.railway.app/readyz` **on
+2026-09-30 at 16:45:43Z** answered `released: true`, `configured: true`,
+`missingProviders: []` and `SendEmail` among its `operations`, at revision
+`720d1401`, staging app id, browser route shut. So `SendEmail` is askable and a
+provider is configured, and what remains is this service's own code: the caller
+must hold `agency_admin` in the agency the request names, and `agencyRecipient`
+resolves the address against **that agency's roster in the owned store** —
+403 `RECIPIENT_NOT_IN_AGENCY` for an address nobody there holds, 503
+`RECIPIENT_LOOKUP_INCOMPLETE` when the walk could not read the whole roster, and
+the roster's own copy of the address is what reaches the provider.
+
+**Which makes the ceiling the roster's ROWS rather than anything in the code,
+and those rows are not synthetic.** The staging accounts are four addresses at
+`caremetricai.com` (`docs/INDEPENDENT_STAGING_APP.md`), a real domain, so a
+released send is bounded to those four people rather than to nobody. Read that
+as the guard being NARROW and not absent: sending a message to a real person is
+the owner's decision, so do not widen the roster, the recipient rule or the
+`agency_admin` gate to unblock a test — a test that needs a recipient it cannot
+have is the wrong test.
 
 Since D98 readiness also HONOURS it: a released set containing a sender while
 this switch is unset reports `ready: false`, because such a deployment refuses
