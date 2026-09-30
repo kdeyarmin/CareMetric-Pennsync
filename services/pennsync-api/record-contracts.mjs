@@ -1090,8 +1090,13 @@ export const RECORD_CONTRACTS = Object.freeze({
   // One known ANSWER-SHAPE wrinkle, not a wrong stored value: a daily entry's
   // date is guarded by `time_off_date(...) is null` and cast twice in the same
   // `or`, and PostgreSQL does not guarantee `or` evaluation order — so
-  // `2026-02-31` may surface as a raw `22007` rather than
-  // `PENNSYNC_TIMESHEET_DAILY_INVALID`. Either way the entry is refused.
+  // `2026-02-31` may surface as a raw `22008` (`datetime_field_overflow`, the
+  // code for a well-formed date that is not a day) rather than
+  // `PENNSYNC_TIMESHEET_DAILY_INVALID`. Measured, not inferred: `22007`
+  // (`invalid_datetime_format`) is what malformed text like `notadate` raises,
+  // and the regex in `time_off_date` refuses that shape before any cast, so
+  // `22007` is the one code this site cannot produce. Either way the entry is
+  // refused.
   submitTimesheet: Object.freeze({
     rpc: 'pennsync_contract_timesheet_submit',
     params: Object.freeze(['timesheet_id', 'timesheet']),
@@ -1672,8 +1677,11 @@ export const RECORD_CONTRACTS = Object.freeze({
   // original's `validInstant` refuses, that being
   // `Number.isFinite(Date.parse(value))`. The parsed value is never stored;
   // it only compares a stored `generated_at` against a requested one. So the
-  // behaviour differs in exactly one case: both sides carrying the SAME
-  // special literal, which resolve equal here and are both NaN there. The
+  // behaviour differs whenever the two texts denote the SAME INSTANT to
+  // PostgreSQL and at least one of them is NaN to `Date.parse` — which is
+  // wider than both sides carrying the same literal: `'epoch'` against
+  // `'1970-01-01T00:00:00Z'` is equal here and refused there, so a MIXED pair
+  // diverges too. Do not read the condition off the matching case. The
   // port then PRESERVES the reserved follow-up fields where the original
   // drops them, so a caller can no longer wipe a portal token or a
   // stale-notification claim by sending `generated_at: 'now'` twice. That is
