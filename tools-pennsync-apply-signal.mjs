@@ -209,9 +209,23 @@ export function measure({ base, repository = here }) {
         message: ancestry.failed.message,
       });
     }
+    // The refusal carries the comparison rather than discarding it, because
+    // "not an ancestor" is several situations at once and this tool cannot
+    // tell them apart: a branch behind its base, a branch that diverged, and a
+    // ref that was genuinely this branch's previous tip before a forced
+    // update. Only the last makes `behind` a WITHDRAWAL, and nothing available
+    // here establishes which one you have — a push payload's `forced` says the
+    // ancestry premise broke, not that `before` still describes this history.
+    // So it names both readings and refuses, which is louder than the exit-0
+    // annotation it replaces and asserts neither as fact.
     refuse('APPLY_SIGNAL_BASE_NOT_ANCESTOR', {
       ref: base,
       behind: Object.keys(basePin).filter(key => !(key in pin)).sort(),
+      reading: 'These are pinned at the base and absent from the head. If this ref really was '
+        + 'a previous tip of this branch, they are withdrawn and every deployment that applied '
+        + 'one refuses further migration with MIGRATE_LEDGER_UNKNOWN. If it is another line of '
+        + 'history, they are merely commits this head does not carry. Establish which before '
+        + 'acting; nothing in this comparison decides it.',
     });
   }
 
