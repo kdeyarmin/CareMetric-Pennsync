@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 54 | 39 |
+  | `mutating` (derived) | 55 | 40 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1597,6 +1597,12 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   both waves. A wave's migration count is therefore not a partition of the
   directory and the six rows do not sum to it — read each row as what that
   wave's operator must have applied, never as a share of the whole.
+  The duty-status port (D223) then took `mutating` to 55 and its migrations to
+  40, and left `read-only` and `integration` where they were. One handler, one
+  migration, and both counts move by one — which is what a plain port looks
+  like, and is worth recording precisely because the two rows above it each
+  move by something other than one for reasons that are not miscounts.
+
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
