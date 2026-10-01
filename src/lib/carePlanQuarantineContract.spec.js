@@ -53,7 +53,7 @@ describe('care-plan quarantine contract', () => {
     for (const functionName of carePlanHandlers) {
       const source = read(`base44/functions/${functionName}/entry.ts`);
       const handlerIndex = source.indexOf('Deno.serve(');
-      const clientIndex = source.indexOf('createClientFromRequest(req)', handlerIndex);
+      const clientIndex = source.indexOf('createClientFromRequest(', handlerIndex);
       const pausedReturnIndex = source.indexOf('return Response.json(', handlerIndex);
 
       expect(handlerIndex, functionName).toBeGreaterThanOrEqual(0);
