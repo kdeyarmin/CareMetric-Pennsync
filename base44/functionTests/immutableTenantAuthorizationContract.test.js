@@ -209,7 +209,7 @@ test('resolver source does not authorize from mutable custom User claims', async
   assert.match(source, /console\.error\('getMyTenantContext failed'\)/);
   assert.doesNotMatch(source, /console\.error\([^)]*,\s*error\b/);
   assert.ok(
-    source.indexOf("req.method !== 'POST'") < source.indexOf('createClientFromRequest(req)'),
+    source.indexOf("req.method !== 'POST'") < source.indexOf('createClientFromRequest('),
     'method gate must run before client construction',
   );
   assert.match(source, /req\.body\?\.getReader\(\)/);

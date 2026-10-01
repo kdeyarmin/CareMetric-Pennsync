@@ -53,6 +53,47 @@ export const deliveryReleased = (env = process.env) =>
   env[DELIVERY_RELEASE_ENV] === DELIVERY_RELEASE_VALUE;
 
 /**
+ * The five workforce staff notices' own release, and the reason it exists.
+ *
+ * `PENNSYNC_API_DELIVERY` was released on 2026-09-25 for the two account
+ * emails, and a live `/readyz` read on 2026-10-01 reports it still true. The
+ * five senders in `workforce-email.mjs` BRANCH on delivery rather than
+ * refusing, so without a gate of their own they would have begun mailing real
+ * managers, employees and agency administrators on the next deploy — no code
+ * change, no further decision, and nothing in a release write to show it.
+ * Releasing mail for an account-ready notice is not a decision about staff
+ * notices, so the two are not one switch.
+ *
+ * **It is an AND and never an override.** Both flags must be explicitly true;
+ * this one cannot open a channel `PENNSYNC_API_DELIVERY` has left shut, so it
+ * narrows and can never widen. `BROKERED_OPERATIONS` is untouched and
+ * `SendEmail` stays permitted at the broker while these stay closed — the
+ * broker answers what this deployment MAY ask for, which is a different
+ * question from whether a capability has been released to ask it.
+ *
+ * **Absent is the paused case, not a case nobody thought about.** `=== ` on
+ * both sides means unset, empty, `true`, `"enabled-V1"` and `" enabled-v1"` all
+ * read paused, and a config object missing the field entirely reads paused
+ * through `?.`. The failure that matters here is silent and outward, so the
+ * default has to be the safe one even when the field is simply forgotten.
+ */
+export const WORKFORCE_NOTICE_RELEASE_ENV = 'PENNSYNC_API_WORKFORCE_NOTICES';
+
+/** Exact and untrimmed, and the same word, so an operator reads one discipline. */
+export const workforceNoticesReleased = (env = process.env) =>
+  env[WORKFORCE_NOTICE_RELEASE_ENV] === DELIVERY_RELEASE_VALUE;
+
+/**
+ * What each of the five asks before it hands anything to `integration`.
+ *
+ * A predicate rather than a `fail`, because these record their work first and
+ * report the gap: a 503 here would throw away a time-off request or a
+ * compliance decision the contract has already committed.
+ */
+export const workforceNoticeDeliverable = config =>
+  config?.deliveryReleased === true && config?.workforceNoticesReleased === true;
+
+/**
  * What a sender calls first. The refusal is the originals' own status and code,
  * so a migrated caller that already handles a paused deployment sees nothing
  * new. `fail` carries no detail object in this service, so the originals'

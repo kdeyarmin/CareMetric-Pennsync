@@ -105,7 +105,7 @@ test('fax queue workers remain doubly gated before constructing a Base44 client'
     assert.ok(outboundGate >= 0, `${name} has the dedicated fax workflow delivery gate`);
     assert.ok(outboundGate < handler.indexOf(`if (!${flag})`), `${name} checks the global gate first`);
     assert.match(source, new RegExp(`${envName.replaceAll('_', '\\_')}['"]\\) \\|\\| ''\\)\\.trim\\(\\) === 'enabled-v1'`));
-    assert.ok(handler.indexOf(`if (!${flag})`) < handler.indexOf('createClientFromRequest(req)'));
+    assert.ok(handler.indexOf(`if (!${flag})`) < handler.indexOf('createClientFromRequest('));
     const workflow = JSON5.parse(await readFile(
       new URL(`../workflows/${workflowFile}`, import.meta.url),
       'utf8',
