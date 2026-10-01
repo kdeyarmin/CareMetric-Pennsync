@@ -189,3 +189,44 @@ export async function functionBodies(db) {
     where n.nspname in ('public', 'pennsync_records') and p.prokind = 'f'`);
   return rows;
 }
+
+/**
+ * Which callers may EXECUTE each public wrapper.
+ *
+ * `has_function_privilege` follows role membership, so a privilege reaching
+ * `anon` through a granted role is reported here as `anon` holding it. Name
+ * what that answers and what it does not: it is the GRANT on the function in
+ * this store. Whether an unauthenticated HTTP request reaches the function at
+ * all is PostgREST's `db-anon-role` and its exposed-schema setting, which is a
+ * gateway configuration no migration in this tree carries and nothing here
+ * measures. This is the half the store owns.
+ */
+export async function callerPrivileges(db) {
+  const { rows } = await db.query(`
+    select p.proname as name,
+      pg_catalog.has_function_privilege('anon', p.oid, 'execute') as anon,
+      pg_catalog.has_function_privilege('authenticated', p.oid, 'execute') as authenticated
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prokind = 'f' order by p.proname`);
+  if (rows.length === 0) {
+    throw new Error('PENNSYNC_TEST_NO_PUBLIC_WRAPPERS: no public function to read a '
+      + 'privilege off, so every assertion below would hold vacuously (D115).');
+  }
+  return rows;
+}
+
+/**
+ * THE production assertion for the grants, raised by the real store and by the
+ * planted control alike (D120).
+ *
+ * Both directions, because they fail in opposite ways and a suite that checked
+ * one would call the other's failure green: a wrapper open to `anon` is a
+ * disclosure, and a wrapper closed to `authenticated` is a capability that
+ * refuses every real caller at release time.
+ */
+export function assertClosedToAnon(assert, rows) {
+  assert.deepEqual(rows.filter(row => row.anon).map(row => row.name), [],
+    'a public wrapper is executable anonymously');
+  assert.deepEqual(rows.filter(row => !row.authenticated).map(row => row.name), [],
+    'a public wrapper is not executable by a signed-in caller, so it would refuse every request');
+}

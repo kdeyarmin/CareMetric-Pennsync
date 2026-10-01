@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { buildIntegrationSteps, summarizeSteps, summarize } from "@/components/admin/telnyxSetup";
+import { hasPersonalCell } from "@/components/admin/rosterTelecom";
 
 /**
  * TelnyxSetupProgress — the at-a-glance "command center" at the top of the
@@ -113,7 +114,14 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
   const { data: users = [], isFetched: usersFetched } = useQuery({
     queryKey: ["phone-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list("full_name", 200);
+      // `email` rather than `full_name`: the owned roster serves two orders, email
+      // with the user id as the tiebreaker and `-created_date`, and refuses every
+      // other sort outright rather than answering it in the default order
+      // (`independentEntityRoutes.js`). `full_name` is not a sort it can ever
+      // learn — the carried user table has no name column at all — so this call
+      // asked for a page the owned backend has no way to serve and was refused
+      // before the roster contract ran.
+      const _rows = await base44.entities.User.list("email", 200);
       const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
       return filterUsersByCallerAgency(_rows, currentUser);
     },
@@ -123,7 +131,10 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
 
   const provisioning = useMemo(() => {
     const withWork = users.filter((u) => u.work_phone_number);
-    const missingBridgeCell = withWork.filter((u) => !u.personal_cell_e164).length;
+    // `hasPersonalCell` rather than the raw column: the owned roster omits
+    // `personal_cell_e164` entirely, so testing it here counted every
+    // provisioned nurse as missing a bridge cell.
+    const missingBridgeCell = withWork.filter((u) => !hasPersonalCell(u)).length;
     return { total: users.length, withWorkNumber: withWork.length, missingBridgeCell };
   }, [users]);
 

@@ -4,8 +4,10 @@ import { version as helpSdkVersion } from '@caremetric/help-sdk/package.json';
 import {
   buildPennSyncHelpUrl,
   isCentralHelpEnabled,
+  PENNSYNC_OWNED_PRODUCTION_BUILD_ID,
   PENNSYNC_PRODUCTION_APP_ID,
   resolveCentralHelpActivation,
+  resolveProductionBuildIdentity,
   resolveHelpEnvironment,
   resolveKnownHelpRoute,
   sanitizeHelpAppVersion,
@@ -119,5 +121,59 @@ describe('PennSync central help context', () => {
       flag: 'true',
       environment: 'production',
     })).toBe(false);
+  });
+
+  it('activates a Base44-free production build on its own pinned identity', () => {
+    const owned = {
+      buildId: PENNSYNC_OWNED_PRODUCTION_BUILD_ID,
+      environment: 'production',
+    };
+    expect(resolveCentralHelpActivation({ ...owned, flag: 'true' })).toBe(true);
+    // An owned build sets its own variables, so the Base44 omitted-flag default
+    // does not carry over: the launcher stays off until the flag says otherwise.
+    expect(resolveCentralHelpActivation(owned)).toBe(false);
+    expect(resolveCentralHelpActivation({ ...owned, flag: 'false' })).toBe(false);
+    expect(resolveCentralHelpActivation({ ...owned, flag: 'TRUE' })).toBe(false);
+    expect(resolveCentralHelpActivation({
+      ...owned, flag: 'true', environment: 'staging',
+    })).toBe(false);
+    expect(resolveCentralHelpActivation({
+      ...owned, flag: 'true', isDevelopment: true,
+    })).toBe(false);
+    expect(resolveCentralHelpActivation({
+      buildId: 'caremetric-pennsync-preview', flag: 'true', environment: 'production',
+    })).toBe(false);
+  });
+
+  it('refuses a build that is ambiguous, unidentified, or synthetic staging', () => {
+    // Exactly one identity. A build presenting both has not established which
+    // thing it is, whichever of the two is the real one.
+    expect(resolveProductionBuildIdentity({
+      appId: PENNSYNC_PRODUCTION_APP_ID, buildId: PENNSYNC_OWNED_PRODUCTION_BUILD_ID,
+    })).toBeUndefined();
+    expect(resolveProductionBuildIdentity({})).toBeUndefined();
+    expect(resolveProductionBuildIdentity({ appId: '', buildId: '' })).toBeUndefined();
+    // The synthetic staging backend is synthetic by construction, so a
+    // `production` deployment label on it never names a production deployment.
+    expect(resolveProductionBuildIdentity({
+      buildId: PENNSYNC_OWNED_PRODUCTION_BUILD_ID, backend: 'independent-staging',
+    })).toBeUndefined();
+    expect(resolveCentralHelpActivation({
+      buildId: PENNSYNC_OWNED_PRODUCTION_BUILD_ID,
+      backend: 'independent-staging',
+      flag: 'true',
+      environment: 'production',
+    })).toBe(false);
+    expect(resolveProductionBuildIdentity({
+      appId: PENNSYNC_PRODUCTION_APP_ID,
+    })).toBe('base44');
+    expect(resolveProductionBuildIdentity({
+      buildId: PENNSYNC_OWNED_PRODUCTION_BUILD_ID,
+    })).toBe('owned');
+    // The Base44 path never consults the backend selector, so a value there
+    // cannot turn the existing production build off.
+    expect(resolveProductionBuildIdentity({
+      appId: PENNSYNC_PRODUCTION_APP_ID, backend: 'independent-staging',
+    })).toBe('base44');
   });
 });
