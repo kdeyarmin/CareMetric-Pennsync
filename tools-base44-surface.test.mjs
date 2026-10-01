@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BASELINE_FILE, FORMAT, FORMAT_VERSION, METRICS,
   compareSurface, entityCalls, main, measureSurface, parseBaseline, sourceFiles,
+  takenHandles, unaccountedHandles,
 } from './tools-base44-surface.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -146,4 +147,82 @@ test('the module that defeated the old matcher is measured, and it is one module
     if ([...entityCalls(body)].length > literal) bound.push(relative(repository, file));
   }
   assert.deepEqual(bound, ['src/lib/retiredOfflineQueue.js']);
+});
+
+test('a handle TAKEN without an immediate call is seen, and a called one is not', () => {
+  const taken = text => takenHandles(text).map(hit => `${hit.entity}:${hit.line}`);
+  // The control that bites, and the reason this exists: the shipped matcher is
+  // BLIND to this file and says so when asked, rather than being read as blind.
+  const probe = 'const handle = base44.entities.Visit;\nexport const go = () => handle.create({});\n';
+  assert.deepEqual(taken(probe), ['Visit:1']);
+  assert.deepEqual([...entityCalls(probe)], []);
+
+  // Called immediately, through whitespace and a newline, is NOT a taken handle:
+  // the existing matcher already counts those and counting them here would
+  // report every call site in the repository as a finding.
+  assert.deepEqual(taken('base44.entities.Visit.filter({});'), []);
+  assert.deepEqual(taken('base44.entities.Visit\n  .filter({});'), []);
+  assert.deepEqual(taken('base44.entities . Visit . filter({});'), []);
+
+  // A handle taken as a property value, which is the shape that passes it on.
+  assert.deepEqual(taken('useThing({ entity: base44.entities.Task, toItem });'), ['Task:1']);
+});
+
+test('a comment ABOUT the SDK is not a call site, and line numbers survive the blanking', () => {
+  const taken = text => takenHandles(text).map(hit => `${hit.entity}:${hit.line}`);
+  assert.deepEqual(taken('// a caller may hold `base44.entities.Patient` or one of its methods\n'), []);
+  assert.deepEqual(taken('/*\n * base44.entities.Patient\n */\n'), []);
+  // The blanking preserves OFFSETS, so a finding after a multi-line comment
+  // still reports its own line. A strip that deleted the text would say 2.
+  assert.deepEqual(taken('/* one\n   two\n   three */\nconst h = base44.entities.Task;\n'), ['Task:4']);
+  // The stated limit, driven rather than left to the reader: a TRAILING `//`
+  // comment is not blanked, so a handle named in one is reported. Whoever makes
+  // this stricter should delete this case rather than discover it.
+  assert.deepEqual(taken('const x = 1; // see base44.entities.Task\n'), ['Task:1']);
+
+  // The real file that motivated it, asserted against the tree.
+  assert.deepEqual(takenHandles(
+    readFileSync(resolve(repository, 'src/lib/independentStagingAdapter.js'), 'utf8')), []);
+});
+
+test('an unaccounted handle is named with its file and line, and an accounted one is not', () => {
+  // The whole finding on this tree, exactly. Four sites in three files; the
+  // reads beside them are visible and the operations through the handle are not.
+  assert.deepEqual(unaccountedHandles(repository), [
+    { file: 'src/components/training/CourseLessonBuilder.jsx', line: 105, entity: 'TrainingModule' },
+    { file: 'src/components/training/CourseQuizBuilder.jsx', line: 177, entity: 'TrainingQuestion' },
+    { file: 'src/lib/agencySettings.js', line: 7, entity: 'PayerRateConfig' },
+    { file: 'src/lib/agencySettings.js', line: 8, entity: 'FaxRetryConfig' },
+  ]);
+  // `retiredOfflineQueue.js` takes four handles and is ABSENT from that list,
+  // which is the half that keeps this from being a count of every alias: its
+  // aliased path resolves, so the tool can still see the calls arriving.
+  assert.equal(takenHandles(
+    readFileSync(resolve(repository, 'src/lib/retiredOfflineQueue.js'), 'utf8')).length, 4);
+  assert.equal(unaccountedHandles(repository)
+    .some(hit => hit.file === 'src/lib/retiredOfflineQueue.js'), false);
+  // And a literal read of the SAME entity does not account for a taken handle --
+  // the case the training builders are. Sharing an entity name with a visible
+  // call is not the aliased path resolving.
+  const builder = readFileSync(resolve(repository, 'src/components/training/CourseLessonBuilder.jsx'), 'utf8');
+  assert.equal([...entityCalls(builder)].length, 1, 'only the literal read is visible');
+  assert.deepEqual([...entityCalls(builder)].map(site => site.entity), ['TrainingModule']);
+});
+
+test('the check fails while any handle is unaccounted, even inside its baseline', () => {
+  const lines = [];
+  const code = main(['--summary'], { repository, log: line => lines.push(String(line)) });
+  const unaccounted = unaccountedHandles(repository);
+  assert.equal(unaccounted.length > 0, true, 'this tree still has unaccounted handles');
+  assert.equal(code, 1, 'an unaccounted handle fails the check');
+  assert.match(lines[0], /within baseline/, 'and it fails for that reason rather than the ratchet');
+  for (const hit of unaccounted) {
+    assert.equal(lines.some(line => line.includes(`${hit.file}:${hit.line}`)), true,
+      `${hit.file}:${hit.line} is not named in the summary`);
+  }
+  // The JSON form carries the same list, so a consumer reading the report does
+  // not have to parse prose to find out the counts above it are an undercount.
+  const json = [];
+  main([], { repository, log: line => json.push(String(line)) });
+  assert.deepEqual(JSON.parse(json.join('\n')).unaccounted_handles, unaccounted);
 });

@@ -108,6 +108,79 @@ export function* entityCalls(text) {
     yield { entity: found.get(end), end };
   }
 }
+/**
+ * Comment bodies, blanked rather than removed so every line number downstream
+ * still points at the line it came from. Blanking is the whole reason this is
+ * not the repo's usual two-replace strip: a strip that deletes the text moves
+ * every line after it, and the refusal below reports file and LINE.
+ *
+ * Its limit, stated because a reader will assume more: only a `//` comment that
+ * STARTS its line is blanked, so a trailing one after code survives. That is
+ * safe for this matcher in one direction only — a trailing comment mentioning
+ * `base44.entities.Name` would be reported as a taken handle. It is driven by a
+ * test rather than left to the reader.
+ */
+const withoutComments = text => text
+  .replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/gu, ' '))
+  .replace(/^[ \t]*\/\/.*$/gmu, comment => comment.replace(/[^\n]/gu, ' '));
+
+/**
+ * Where a file takes an entity HANDLE instead of calling through it: the same
+ * characters `ENTITY_CALL` matches, with the following `.` captured rather than
+ * required, so one regex decides both halves and they cannot drift apart.
+ */
+export const ENTITY_HANDLE = /\bbase44\s*\.\s*entities\s*\.\s*([A-Z][A-Za-z0-9_]*)(?![\w$])[ \t\r\n]*(\.)?/g;
+
+/**
+ * Every `{ entity, line }` where this file takes a handle and does not
+ * immediately call a method on it. Comments are blanked first, because a
+ * sentence ABOUT the SDK is not a call site and `src/lib/independentStagingAdapter.js`
+ * contains one.
+ */
+export function takenHandles(text) {
+  const code = withoutComments(text);
+  const taken = [];
+  for (const match of code.matchAll(ENTITY_HANDLE)) {
+    if (match[2] === '.') continue;
+    taken.push({ entity: match[1], line: code.slice(0, match.index).split('\n').length });
+  }
+  return taken;
+}
+
+/**
+ * Taking a handle is allowed only while the tool can still SEE calls arriving
+ * through it. So a taken handle is accounted for when `entityCalls` resolves at
+ * least one NON-LITERAL site for that entity in that file, and refused
+ * otherwise — which fails closed on every way of reaching the handle rather
+ * than chasing aliases through the code.
+ *
+ * Why the non-literal part carries the weight. `CourseLessonBuilder.jsx` reads
+ * through a literal `base44.entities.TrainingModule.filter` on one line and
+ * hands the HANDLE to a shared hook on the next; the hook creates, updates and
+ * deletes through it. "This entity appears somewhere in this file" would call
+ * that accounted and miss three writes, which is the case this refusal exists
+ * for. An accounted handle must have its ALIASED path resolve, not merely share
+ * an entity name with a visible call.
+ */
+export function unaccountedHandles(repository) {
+  const unaccounted = [];
+  for (const file of sourceFiles(join(repository, 'src'))) {
+    const text = readFileSync(file, 'utf8');
+    const taken = takenHandles(text);
+    if (taken.length === 0) continue;
+    const literals = new Set();
+    for (const match of text.matchAll(ENTITY_CALL)) literals.add(match.index + match[0].length);
+    const resolved = new Set();
+    for (const site of entityCalls(text)) if (!literals.has(site.end)) resolved.add(site.entity);
+    for (const hit of taken) {
+      if (!resolved.has(hit.entity)) {
+        unaccounted.push({ file: relative(repository, file), line: hit.line, entity: hit.entity });
+      }
+    }
+  }
+  return unaccounted;
+}
+
 const FUNCTION_INVOKE = /\bfunctions\s*\.\s*invoke\s*\(/g;
 const CORE_INTEGRATION = /\bintegrations\s*\.\s*Core\s*\.\s*[A-Za-z][A-Za-z0-9_]*/g;
 
@@ -210,13 +283,21 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
   try { baseline = parseBaseline(readFileSync(baselinePath, 'utf8')); }
   catch (error) { log(JSON.stringify({ error: error?.message || 'BASELINE_UNAVAILABLE' })); return 2; }
   const report = compareSurface(measured, baseline);
+  // Reported and failed SEPARATELY from the ratchet, because it is a different
+  // kind of answer: the baseline says whether the coupling grew, and this says
+  // whether the baseline could see it. A handle the tool cannot follow makes
+  // every metric above an UNDERCOUNT, so it must not be expressible as one.
+  report.unaccounted_handles = unaccountedHandles(repository);
   if (args.includes('--summary')) {
     log(`base44 surface ${report.within_baseline ? 'within baseline' : 'REGRESSED'}: `
       + METRICS.map(metric => `${metric}=${report.counts[metric]}/${baseline.maximum[metric]}`).join(' '));
+    for (const handle of report.unaccounted_handles) {
+      log(`  UNACCOUNTED HANDLE ${handle.file}:${handle.line} takes ${handle.entity} and no call through it is visible`);
+    }
   } else {
     log(JSON.stringify(report, null, 2));
   }
-  return report.within_baseline ? 0 : 1;
+  return report.within_baseline && report.unaccounted_handles.length === 0 ? 0 : 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
