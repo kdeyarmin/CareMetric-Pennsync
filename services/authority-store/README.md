@@ -195,8 +195,9 @@ the people to have accepted their Supabase Auth invitations first.
 and the policies derived from their tenant paths and decisions (D13, D14) —
 592 live when last derived, 2026-10-01 at `543a0271`, by
 `select count(*) from pg_policies` against a store built from
-`record-migrations/`; 590 of them are created in this file and the rest in the
-forward migrations beside it.
+`record-migrations/`; 589 of them come from this file, two from the activity
+trail's migration and one from the profile-write catch-up, which replaces one of
+this file's 590 `create policy` statements rather than adding to them.
 It is **generated** — regenerate with
 `node tools-entity-schema-plan.mjs --write-migration` and never edit the SQL by
 hand; a test fails if the committed file and the generator disagree.
