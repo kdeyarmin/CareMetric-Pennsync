@@ -1,4 +1,5 @@
 import { createStagingAuthorityClient, PORTED_FUNCTIONS, STAGING_APP_ID } from '../../services/authority-client/client.mjs';
+import { createFeedSubscriber, feedFor, intervalSchedule } from './independentEntityFeeds.js';
 import { routeFor } from './independentEntityRoutes.js';
 
 const EMAILS = Object.freeze(['admin-a', 'clinician-a', 'clinician-empty', 'admin-b']
@@ -73,6 +74,21 @@ const routedEntities = (serve, configured) => refusingLevel(entity => refusingLe
   // call: with no service to ask, a declared route is not a route. Refusing
   // here rather than inside `serve` keeps a misconfigured build answering
   // "unavailable" instead of a transport error.
+  // `subscribe` is the one entity operation a route cannot be: it returns an
+  // unsubscribe FUNCTION synchronously, straight into a `useEffect` cleanup,
+  // where every route here is promise-shaped. So it is declared as a feed
+  // instead, and answered before the route lookup — a feed and a route for the
+  // same entity operation cannot both exist, because `subscribe` is never a
+  // route key. With no feed declared the refusal below is unchanged, which is
+  // what lets this land before any entity has one.
+  if (operation === 'subscribe') {
+    const feed = configured() ? feedFor(entity) : null;
+    // The UNDECLARED case keeps the existing rejection exactly, rather than
+    // throwing: that behaviour is asserted today and no feed exists yet, so
+    // this branch changes nothing until one is declared.
+    if (!feed) return Promise.reject(refusal('entities', entity, operation));
+    return createFeedSubscriber({ entity, feed, serve, schedule: intervalSchedule })(...args);
+  }
   const route = configured() ? routeFor(entity, operation) : null;
   if (!route) return Promise.reject(refusal('entities', entity, operation));
   // `request` refuses an argument it cannot express, synchronously. Keep the
