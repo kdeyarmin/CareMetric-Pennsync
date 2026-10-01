@@ -13,6 +13,7 @@ import {
   readProfileBlock, readTableBlock, readTablePolicies,
   renderCatchup, renderDefaultsCatchup, renderIndexCatchup, renderTablesCatchup,
 } from '../../../tools-pennsync-record-catchup.mjs';
+import { assertNewestRecordMigration, recordMigrationNames } from './record-migrations.mjs';
 
 /**
  * The forward migration that carries a regenerated record store into a
@@ -329,6 +330,28 @@ let storedAfter;
 let insertedAfter;
 
 before(async () => {
+  // The ordering guard arrives HERE, because `TABLES_CATCHUP_MIGRATION` is now
+  // the newest pending record migration and the guard belongs to whichever file
+  // that is. It left `contract-reference-writes.test.mjs` by that suite's file
+  // being OVERTAKEN, which is the other direction of the same rule and the
+  // reason the helper's own error text mentions renaming rather than merging.
+  // The handover is per-base rather than once: four pending migrations between
+  // 720000 and 745000 land ahead of this one, each taking and losing the guard
+  // in turn, so a rebase onto a base where one of them holds it goes red naming
+  // THAT suite, and the fix is to retire the call there rather than to doubt
+  // this one. A red that names the predecessor is the handover working.
+  //
+  // It is passed the DIRECTORY listing and not an applied set, and the
+  // difference is worth stating rather than glossing: every other holder has
+  // applied the whole directory to one store and hands that result over, while
+  // this suite deliberately builds cut-down stores and applies no such set. The
+  // guard only reads the last name, so the listing is the honest argument — and
+  // it is also the weaker one, since the whole-directory equality that gives the
+  // other holders their teeth has no equivalent here. What this asserts is
+  // exactly one thing: nothing in the directory sorts after this change's file.
+  assertNewestRecordMigration(
+    await recordMigrationNames(), TABLES_CATCHUP_MIGRATION.split('/').at(-1));
+
   const stale = storeBeforeBothCatchups();
 
   const existing = new PGlite();
