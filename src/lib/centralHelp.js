@@ -3,11 +3,21 @@ import { buildHelpUrl } from '@caremetric/help-sdk';
 export const PENNSYNC_HELP_PRODUCT = 'pennsync';
 export const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
 /**
- * The owned production build's immutable identity, for a build that is no
- * longer identified to Base44. It plays exactly the part the Base44 app id
- * plays above: a value pinned in source and set only by the production
- * publication path, so a preview, a fork or a local build cannot present it.
- * It is a build label, never a tenant, an account or an origin.
+ * The owned production build's identity, for a build that is no longer
+ * identified to Base44. It is a build label, never a tenant, an account or an
+ * origin, and it is not sent anywhere.
+ *
+ * What it is NOT: unforgeable. The value is a literal here and the gate is
+ * plain equality, so anyone who runs the build can set the variable to it.
+ * That is not a hole, because whoever runs the build already controls every
+ * other variable this module reads, including the flag itself — there is no
+ * attacker this check could be defending against. What it does is distinguish
+ * the production build from an ordinary one that merely sets
+ * `VITE_DEPLOY_ENV=production`, so the launcher cannot come on by accident.
+ *
+ * It is weaker in one way than the Base44 app id above, which is worth knowing
+ * rather than glossing: that id also binds the build to a real backend, so
+ * presenting it has consequences for whoever does, while this label has none.
  */
 export const PENNSYNC_OWNED_PRODUCTION_BUILD_ID = 'caremetric-pennsync-production';
 
