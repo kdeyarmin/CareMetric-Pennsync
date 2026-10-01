@@ -25,7 +25,7 @@ function harness({ user = admin, existing = [], download = () => new Response(cs
   };
   Object.defineProperty(sdk, 'integrations', { get() { assert.fail('Paid integration attempted'); } });
   Object.defineProperty(sdk.asServiceRole, 'integrations', { get() { assert.fail('Paid service integration attempted'); } });
-  runInNewContext(transpileTs(source).outputText, { sdk, Response, TextEncoder, console: { error() {} },
+  runInNewContext(transpileTs(source).outputText, { sdk, Response, Request, Headers, TextEncoder, console: { error() {} },
     URL, setTimeout: callback => { callback(); return 0; }, Deno: { serve: value => { handler = value; } },
     fetch: async (url, options) => { downloads.push({ url, options }); return download(url, options); },
   }, { timeout: 1000 });

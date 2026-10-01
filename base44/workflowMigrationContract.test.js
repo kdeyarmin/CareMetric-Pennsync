@@ -75,7 +75,7 @@ function assertSchedule(config, expected, file) {
 }
 
 function assertHandlerReleaseState(source, expected, file) {
-  const clientIndex = source.indexOf('createClientFromRequest(req)');
+  const clientIndex = source.indexOf('createClientFromRequest(');
   if (expected.releaseState === 'live') {
     assert.match(source, /Deno\.serve\s*\(/, `${file} target must expose a handler`);
     assert.notEqual(clientIndex, -1, `${file} target must construct the Base44 client`);

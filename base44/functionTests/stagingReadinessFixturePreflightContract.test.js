@@ -281,7 +281,7 @@ test('source is read-only, target-bound, body-bounded, and logs no error details
   assert.match(source, /STAGING_READINESS_PREFLIGHT_RELEASE/);
   assert.match(source, /Base44-App-Id/);
   assert.match(source, /X-Data-Env/);
-  assert.match(source, /createPinnedSdkRequest/);
+  assert.match(source, /userScopedClientRequest/);
   assert.match(source, /Deno\.env\.get\('APP_PUBLIC_URL'\)/);
   assert.match(source, /Deno\.env\.get\('SUPER_ADMIN_EMAIL'\)/);
   assert.match(source, /req\.body\?\.getReader\(\)/);
@@ -299,11 +299,11 @@ test('source is read-only, target-bound, body-bounded, and logs no error details
   );
   assert.ok(
     source.indexOf("req.method !== 'POST'")
-      < source.indexOf('createClientFromRequest(createPinnedSdkRequest(req))'),
+      < source.indexOf('createClientFromRequest(userScopedClientRequest(req, STAGING_APP_ID))'),
   );
   assert.ok(
     source.indexOf('requireRuntimeTarget(req)')
-      < source.indexOf('createClientFromRequest(createPinnedSdkRequest(req))'),
+      < source.indexOf('createClientFromRequest(userScopedClientRequest(req, STAGING_APP_ID))'),
   );
 
   assert.ok(source.includes(`const FIXTURE_SET_ID = '${FIXTURE_SET_ID}';`));
@@ -668,11 +668,19 @@ test('method and trusted runtime target gates reject before client construction'
   });
   assert.equal(untrustedRoutingResult.response.status, 200);
   assert.equal(untrustedRouting.calls.clientRequests.length, 1);
-  assert.equal(untrustedRouting.calls.clientRequests[0].url, STAGING_ORIGIN);
+  // Cosmetic URL only: the shared userScopedClientRequest pins the platform default
+  // base44.app, because the SDK reads serverUrl from the (now dropped) Base44-Api-Url
+  // header, not from the request URL. The attacker-supplied apiUrl, state and
+  // functions version are dropped — the forwarded headers are what decide the call.
+  assert.equal(untrustedRouting.calls.clientRequests[0].url, 'https://base44.app/');
+  // x-data-env rides the closed dev/prod set the SDK honours; requireRuntimeTarget
+  // has already gated it to prod, where forwarding 'prod' is equivalent to omitting
+  // it (the backend defaults an absent data env to prod), so this is inert here.
   assert.deepEqual(untrustedRouting.calls.clientRequests[0].headers, {
     authorization: USER_BEARER,
     'base44-app-id': STAGING_APP_ID,
     'base44-service-authorization': SERVICE_BEARER,
+    'x-data-env': 'prod',
   });
 
   const wrongMethod = await loadHandler();
