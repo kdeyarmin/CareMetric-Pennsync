@@ -73,13 +73,81 @@ them is a pollution primitive. Whether this application has such a primitive is
 a separate question and **is not measured here**. On that basis this was a real
 finding to fix and not an incident.
 
-Two things the table does not cover. The Base44 Deno functions under
-`base44/functions/` import `npm:@base44/sdk@0.8.31` and resolve their own
-dependencies on Base44's hosted platform, so they are outside this lockfile and
-outside this reading — a server-side axios there would select the Node adapter,
-and nothing in this repository can measure what that platform resolves. And unit
-tests run the SDK under Node, which does select the Node adapter; a test runner
-is not a production surface and no conclusion here rests on it.
+Unit tests run the SDK under Node, which does select the Node adapter; a test
+runner is not a production surface and no conclusion here rests on it.
+
+## The server side, measured from the source rather than the platform
+
+The Base44 Deno functions under `base44/functions/` import
+`npm:@base44/sdk@0.8.31` and resolve their own dependencies on Base44's hosted
+platform. **Which axios version that resolves is not measurable from here and the
+override above does not reach it.** That is a fact about the resolution, not
+about the code, and the code is in this repository, so the reach is measurable
+even though the version is not. Deno provides no `XMLHttpRequest`, so the Node
+adapter would be selected there and the bundle argument above does not apply.
+
+**No function reaches axios directly.** Across 282 function directories there is
+no axios import; the only occurrence of the string is a comment in
+`testAutomations/entry.ts` about an SDK return shape. Every axios call is the
+SDK's own internal client, created with `baseURL: ${serverUrl}/api`.
+
+**Every axios call in the SDK passes a relative path.** Enumerated across
+`node_modules/@base44/sdk/dist/`: 40 distinct call sites, every URL a template
+literal under `/apps/${appId}/...` or a module-local `baseURL` of the same shape.
+The three that pass a bare `url` variable (`sso.js` twice, `connectors.js` once)
+build it from the same template one line above. **The SDK sets no `adapter`, no
+`proxy`, no `http2Options`, no `maxRedirects` and no `maxContentLength` anywhere.**
+
+That leaves one request-derived input reaching axios, and it is worth naming
+because it looks like the finding and is not. `createClientFromRequest` takes
+`serverUrl` from the `Base44-Api-Url` request header with no scheme validation:
+`serverUrl: serverUrlHeader || "https://base44.app"`. This repository already
+treats that header as request-controlled — `centralAdminRead/entry.ts` rebuilds
+the request to strip it before handing it to the SDK, saying in its own comment
+that `Base44-Api-Url` must not be able to "redirect a service credential". The
+other 246 `createClientFromRequest(req)` call sites pass the request through.
+
+So the question is whether a `data:` value in that header reaches
+`fromDataURI`, the ReDoS in GHSA-c29m-xwm3-cm6r. **Measured on axios 1.18.1
+itself, in an isolated install, in the exact shape the SDK produces: it does
+not.** The data branch feeds the parser `config.url`, not the base URL and not
+the combined path:
+
+```js
+convertedData = fromDataURI(own('url'), responseType === 'blob', { ... });
+```
+
+A `data:` baseURL with any relative path appended is refused before the parse
+(`ERR_BAD_REQUEST`), while a `data:` URL passed as the request `url` resolves and
+reaches the parser. Both readings were taken with the adapter instrumented to
+print its computed `fullPath` and protocol, which is how the discriminator was
+found: the baseURL case and the url case produce a byte-identical `fullPath` and
+the same `data:` protocol, and only the second parses. **So `fullPath` was not the
+discriminator and reasoning from it would have given the wrong answer.** The one
+place the base URL can reach a data-URL scanner is the content-length estimator,
+which needs an empty `config.url` and a finite `maxContentLength`; the SDK sets
+neither, and every call site passes a non-empty path.
+
+The other four highs under a Node adapter resolve the same way, except for one
+residual that is honestly open:
+
+- GHSA-3pq3-5fj3-cg6v and GHSA-542g-h47m-68v8 need the HTTP/2 transport, which
+  axios selects only on an explicit `http2Options`. Nothing sets it.
+- GHSA-m8m8-qj5v-23w3 and GHSA-x97p-jq2g-jp4f are prototype-pollution gadgets and
+  need a primitive, which is not measured here. `toFormData` is additionally not
+  entered: where the SDK sets `multipart/form-data` it has already built a real
+  `FormData`, and the plain-object branch sends `application/json`.
+- **GHSA-mghh-pgcx-3jjj is the open one.** `shouldBypassProxy` is called only when
+  `getProxyForUrl` returns something, which reads `HTTP_PROXY`/`HTTPS_PROXY` from
+  the process environment, and it normalises the *redirect target*. So it needs
+  proxy environment variables set in the function's runtime and a redirect whose
+  Location is attacker-influenced. **Both are properties of Base44's platform and
+  of what its own API returns, and neither is measurable from this repository.**
+
+That residual cannot be closed here and cannot be fixed here either: it concerns
+whatever axios the platform resolves for `@base44/sdk@0.8.31`. What would close
+it is reading the function runtime's environment for proxy variables, which is a
+platform question for whoever can see it.
 
 ## The fix
 
