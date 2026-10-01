@@ -114,6 +114,12 @@ export default function RealTimeDictationScribe({ currentUser }) {
   // The settled value, written before `start()` so the synchronous error handler
   // can read it without resolving a promise of its own.
   const resolvedLocalityRef = useRef(/** @type {string} */ (SPEECH_LOCALITY.NO_FLAG));
+  // Only the newest tap may start. While the on-device check is still pending
+  // `isListening` is false and the button is live, so two taps both reach the
+  // start branch with the same stale render state; both continuations would then
+  // call `start()` on the SAME recognizer, and the second throws
+  // `InvalidStateError` from an async callback with nothing to catch it.
+  const startGenerationRef = useRef(0);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -201,17 +207,30 @@ export default function RealTimeDictationScribe({ currentUser }) {
   const toggleListening = useCallback(async () => {
     if (!recognitionRef.current) return;
     if (isListening) {
+      // Also retires any start still pending, so stopping wins over a tap whose
+      // availability check has not come back yet.
+      startGenerationRef.current += 1;
       recognitionRef.current._shouldBeListening = false;
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
       setError("");
+      const generation = (startGenerationRef.current += 1);
       // Settle the on-device decision before starting, so the requirement is in
       // place for the first session rather than the second.
       resolvedLocalityRef.current = await localityRef.current;
-      if (!recognitionRef.current) return;
+      // Unmounted, or superseded by a later tap while this one was pending.
+      if (!recognitionRef.current || startGenerationRef.current !== generation) return;
       recognitionRef.current._shouldBeListening = true;
-      recognitionRef.current.start();
+      try {
+        recognitionRef.current.start();
+      } catch {
+        // An already-started recognizer throws here. Do not leave the restart
+        // flag set, or `onend` would spin on it.
+        recognitionRef.current._shouldBeListening = false;
+        setError("Unable to start dictation. Please try again.");
+        return;
+      }
       setIsListening(true);
     }
   }, [isListening]);

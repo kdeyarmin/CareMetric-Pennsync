@@ -26,16 +26,36 @@ function installFakeRecognizer({ available } = {}) {
       this.onresult = null;
       this.onerror = null;
       this.onend = null;
+      this.started = false;
       FakeSpeechRecognition.instance = this;
     }
-    start() { starts.push(this.processLocally === true); }
-    stop() {}
-    abort() {}
+    // Every attempt is recorded, including a rejected one, so a test can assert
+    // that a second attempt was never MADE rather than merely that it failed.
+    start() {
+      starts.push(this.processLocally === true);
+      if (this.started) {
+        const error = new Error('recognition has already started');
+        error.name = 'InvalidStateError';
+        throw error;
+      }
+      this.started = true;
+    }
+    stop() { this.started = false; }
+    abort() { this.started = false; }
   }
   FakeSpeechRecognition.prototype.processLocally = false;
   if (available) FakeSpeechRecognition.available = available;
   vi.stubGlobal('SpeechRecognition', FakeSpeechRecognition);
-  return { starts, current: () => FakeSpeechRecognition.instance };
+  const current = () => FakeSpeechRecognition.instance;
+  return {
+    starts,
+    current,
+    // A real `end` event means the session is over, so the recognizer is no
+    // longer started by the time the handler runs. Driving `onend` directly
+    // without clearing it would let a double-start throw be swallowed and read
+    // as a successful restart.
+    endSession: () => { current().started = false; current().onend(); },
+  };
 }
 
 const clickStart = async () => {
@@ -73,7 +93,7 @@ describe('RealTimeDictationScribe refusing to start', () => {
 
     await act(async () => {
       fake.current().onerror({ error: 'service-not-allowed' });
-      fake.current().onend();
+      fake.endSession();
     });
 
     // THE ASSERTION THIS FILE EXISTS FOR. Without `_shouldBeListening` being
@@ -95,7 +115,7 @@ describe('RealTimeDictationScribe refusing to start', () => {
 
     await act(async () => {
       fake.current().onerror({ error: 'service-not-allowed' });
-      fake.current().onend();
+      fake.endSession();
     });
 
     expect(fake.starts).toEqual([false]);
@@ -111,7 +131,31 @@ describe('RealTimeDictationScribe refusing to start', () => {
     // No error: a browser ending a session on its own while the nurse is still
     // dictating is what the restart is FOR, so clearing the flag on a refusal
     // must not have cleared it here.
-    await act(async () => { fake.current().onend(); });
+    await act(async () => { fake.endSession(); });
     expect(fake.starts).toHaveLength(2);
+  });
+
+  // Requiring on-device processing introduced an await between the tap and
+  // `start()`. `isListening` stays false across it and the button stays live, so
+  // two taps enter the start branch with the same stale state and both resume
+  // against ONE recognizer — where the second `start()` is an InvalidStateError.
+  it('starts once when two taps land while the availability check is pending', async () => {
+    let settle;
+    const fake = installFakeRecognizer({
+      available: () => new Promise((resolve) => { settle = resolve; }),
+    });
+    render(<Scribe />);
+
+    await clickStart();
+    await clickStart();
+    // Nothing can have started yet: the on-device answer has not come back.
+    expect(fake.starts).toEqual([]);
+
+    await act(async () => { settle('available'); });
+
+    // Only the newer tap starts. Without the generation guard both continuations
+    // start the same recognizer and the second throws.
+    expect(fake.starts).toEqual([true]);
+    expect(screen.queryByText(/Unable to start dictation/i)).not.toBeInTheDocument();
   });
 });

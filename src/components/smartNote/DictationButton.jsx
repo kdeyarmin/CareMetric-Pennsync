@@ -52,10 +52,18 @@ export default function DictationButton({ onText, disabled = false, title = "Dic
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
-    // Keep the audio on the device where this browser can. Awaiting here means
-    // the realm may have closed underneath us, so re-check before going on.
+    // Register BEFORE awaiting. The unmount cleanup disposes whatever is in this
+    // ref, so a binding created and not yet stored is invisible to it: awaiting
+    // first would let the continuation below start a recognizer this button no
+    // longer owns, leaving the microphone live with no UI left to stop it.
+    bindingRef.current?.dispose();
+    bindingRef.current = binding;
+    // Keep the audio on the device where this browser can.
     const locality = await preferLocalSpeechRecognition(rec, SR, rec.lang);
-    if (!binding.isCurrent()) { binding.dispose(); return; }
+    // Both checks are needed. `isCurrent` answers for the tenant realm only;
+    // ref identity answers for this component and this toggle, which is what
+    // unmounting or a second tap changes.
+    if (bindingRef.current !== binding || !binding.isCurrent()) { binding.dispose(); return; }
     const stop = () => {
       if (!binding.isCurrent()) return;
       try { rec.stop(); } catch { /* already stopped */ }
@@ -82,8 +90,6 @@ export default function DictationButton({ onText, disabled = false, title = "Dic
       setListening(false);
       releaseDictation(stop);
     };
-    bindingRef.current?.dispose();
-    bindingRef.current = binding;
     recRef.current = rec;
     // Stop any other recognizer first (browsers allow only one at a time).
     claimDictation(stop);

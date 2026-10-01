@@ -559,10 +559,18 @@ export default function SmartNoteAssistant({ visitId = null }) {
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
-    // Keep the audio on the device where this browser can. Awaiting here means
-    // the realm may have closed underneath us, so re-check before going on.
+    // Register BEFORE awaiting. The unmount cleanup disposes whatever is in this
+    // ref, so a binding created and not yet stored is invisible to it: awaiting
+    // first would let the continuation below start a continuous recognizer this
+    // page no longer owns, leaving the microphone live with no UI to stop it.
+    recBindingRef.current?.dispose();
+    recBindingRef.current = binding;
+    // Keep the audio on the device where this browser can.
     const locality = await preferLocalSpeechRecognition(rec, SR, rec.lang);
-    if (!binding.isCurrent()) { binding.dispose(); return; }
+    // Both checks are needed. `isCurrent` answers for the tenant realm only; ref
+    // identity answers for this page and this click, which is what unmounting,
+    // leaving step 1 or a second click changes.
+    if (recBindingRef.current !== binding || !binding.isCurrent()) { binding.dispose(); return; }
     rec.onresult = (e) => {
       if (!binding.isCurrent()) return;
       const t = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(" ");
@@ -589,8 +597,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
       setListening(false);
       releaseDictation(stop);
     };
-    recBindingRef.current?.dispose();
-    recBindingRef.current = binding;
     recRef.current = rec;
     claimDictation(stop);
     try {
