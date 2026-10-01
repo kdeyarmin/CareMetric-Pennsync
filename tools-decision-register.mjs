@@ -62,6 +62,14 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // against. D226 records why it had to happen in the same change as the entry,
 // and why the figure moving is the reason a count like this one belongs in a
 // pull request rather than in a sentence of the register.
+//
+// **It went INERT again when #388 merged, hours later**, because 226 is now on
+// the base — so the differential it bought back has already stood down, and the
+// corroboration test says which branch it took. Left alone rather than emptied,
+// which is this list's own prescription for the inert state: it is rewritten by
+// the next change that files a numbered entry, and the change re-deriving the
+// base is not one. A list that oscillates between live and inert on every
+// collection is the design working, not drift.
 export const EXPECTED_NEW = Object.freeze([226]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
@@ -77,7 +85,7 @@ export const EXPECTED_NEW = Object.freeze([226]);
 // file exists to record, arriving in the file.
 //
 // So the base is data here and git is corroboration. Typed as a RANGE minus
-// the absent numbers because 203 of them in a row is unreadable, and the
+// the absent numbers because 204 of them in a row is unreadable, and the
 // subtraction is over this typed list rather than over the document, so it is
 // not the tautology this check replaced.
 //
@@ -85,8 +93,8 @@ export const EXPECTED_NEW = Object.freeze([226]);
 // of this comment SAID they were while nothing did it — a comment naming a check
 // that is not there, in the file whose write-up is about reading a setting for
 // something it does not say. Main-watch found it by looking for the assertion.
-// So what the check catches is stated rather than implied: `224 - 21 = 203`
-// holds automatically unless an absent number is outside `1..224` or repeated,
+// So what the check catches is stated rather than implied: `226 - 22 = 204`
+// holds automatically unless an absent number is outside `1..226` or repeated,
 // and those are the two typos that would silently shrink the base.
 //
 // Re-derived 2026-10-01 from `origin/main` at `b9a9ae09`, where it had been
@@ -97,16 +105,30 @@ export const EXPECTED_NEW = Object.freeze([226]);
 // expect when a collection lands and nothing else has.
 //
 // This is the `BASE_NUMBERS`-goes-stale case the paragraph above distinguishes
-// from `EXPECTED_NEW`-goes-inert, and the two were resolved differently when
-// #359 merged for exactly that reason: the base MOVED, so it was wrong and was
-// re-derived; the collection list was wholly inside the base, so it was inert
-// and was left alone. **The collection list has since been rewritten and this
-// base has not**, which is the inert case's own prescription rather than a
-// second re-derivation: `origin/main` at `700b4d24` still holds exactly these
-// 203, because the change that moved it added no heading.
-const BASE_HIGHEST = 224;
+// from `EXPECTED_NEW`-goes-inert, and the two have now been resolved separately
+// twice. That is the pattern rather than an accident: a collection merging both
+// moves the base and leaves its own list a subset, so the base is WRONG and the
+// list is merely INERT, and they come due on different clocks.
+//
+// Re-derived again 2026-10-01 from `origin/main` at `ed32897f`, where it had
+// been `224 - 21 = 203`. What moved on the base branch: #388 merged, landing
+// D226 and nothing else, so the base gained that number and the one it skips.
+// `225` is the only new absent number and the earlier twenty-one are unchanged,
+// which is the #359 re-derivation's shape above in miniature.
+//
+// **That merge was this thread's own, and the base went stale the instant it
+// landed.** Worth stating, because it is not a lapse that more care would have
+// avoided: the base cannot be re-derived in the change that moves it. The merge
+// commit does not exist while that change is being written, and typing the new
+// figure early fails the assertion below against the base the PR actually has.
+// So the window is structural, and its cost is that `main` is red here until a
+// following change closes it — the shape D93 records for a migration merged and
+// not yet applied. What keeps the window short is that the failure is loud and
+// fires on every branch cut from the merge rather than only on `main`: this one
+// was found two minutes after the merge, by the next command that ran.
+const BASE_HIGHEST = 226;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
-  180, 184, 187, 188, 196, 200, 209, 214, 216, 219]);
+  180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);
 for (const absent of BASE_ABSENT) {
   if (!Number.isInteger(absent) || absent < 1 || absent > BASE_HIGHEST) {
     throw new Error(`BASE_ABSENT holds ${absent}, which is outside 1..${BASE_HIGHEST}, `
