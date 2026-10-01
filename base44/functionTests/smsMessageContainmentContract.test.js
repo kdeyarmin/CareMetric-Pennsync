@@ -28,7 +28,7 @@ test('scheduled SMS workers apply the global outbound gate before every worker-s
     assert.ok(source.includes(literal), `${name} retains its narrower migration pause`);
     const handler = source.indexOf('Deno.serve(async (req) =>');
     const releaseGate = source.indexOf("if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('sms')", handler);
-    const sdk = source.indexOf('createClientFromRequest(req)', handler);
+    const sdk = source.indexOf('createClientFromRequest(', handler);
     assert.ok(handler >= 0 && releaseGate > handler, `${name} handler and outbound gate must exist`);
     assert.ok(sdk > releaseGate, `${name} must fail closed before SDK creation and queue access`);
   }
@@ -39,7 +39,7 @@ test('redriveFailedSms is literally paused before SDK creation or service reads'
   assert.match(source, /const SMS_REDRIVE_MIGRATION_PAUSED = true;/);
   const handler = source.indexOf('Deno.serve(async (req) =>');
   const pause = source.indexOf('if (SMS_REDRIVE_MIGRATION_PAUSED)', handler);
-  const sdk = source.indexOf('createClientFromRequest(req)', handler);
+  const sdk = source.indexOf('createClientFromRequest(', handler);
   const messageRead = source.indexOf('entities.SmsMessage', handler);
   assert.ok(handler >= 0 && pause > handler, 'handler and pause gate must exist');
   assert.ok(sdk > pause, 'pause gate must precede SDK creation');
