@@ -91,5 +91,6 @@
   "record-migrations/20260920680000_time_off_cancel_previous_status.sql": "5c2f49d869b4b263e98b0bfd7a60b7f17fb899f9ed886c972293f19f67ffd891",
   "record-migrations/20260920690000_contract_duty_status.sql": "a2e8fea2d7466daf4d167e773d0b52bb08146095caa1d08ed4f18ee8b5fa70bf",
   "record-migrations/20260920690000_contract_physician_write.sql": "1723639f3be03a55488f78bd0082aa091aa0b9f819697ef358cc856a3286998f",
-  "record-migrations/20260920700000_contract_reference_writes.sql": "cb2916ff406987c12f77681a222a360bfaa8361e83cc2f98f4ea7ed8352a9976"
+  "record-migrations/20260920700000_contract_reference_writes.sql": "cb2916ff406987c12f77681a222a360bfaa8361e83cc2f98f4ea7ed8352a9976",
+  "record-migrations/20260920750000_oasis_schema_tables.sql": "c64e1492f0f468a8c27b8e24bbc1e53ba253c3bbd63acb8d97809d33e6d535a4"
 }

@@ -492,6 +492,116 @@ no claim here about whether it is right. The 193-site block, the 119 learning
 sites, the fourteen `FaxLog` functions, the eight OASIS entities and the
 `auditBrokerCeiling` run are the author's, in the author's words.*
 
+### Amendment to D7, 2026-10-01 — the schema clause is implementable, and this is what implements it
+
+**Contributed by the OASIS data-side thread, 2026-10-01, measured on
+`a227446f`.** It carries no decision number, at its author's reckoning and with
+the collector's agreement, because it widens D7 by implementing a sentence D7
+already contains, which is this register's own preference over issuing one.
+
+**The conflict was real and was not about the decision.** D7 says "Their schemas
+and data still migrate; only their execution stays off", while
+`tools-entity-schema-plan.mjs:41` was `CARRIED = ['port', 'broker']`, enforced
+at `:669`, so a `preserved_paused` entity had no table **by construction**. Four
+documents sized work off D7's sentence and a reader of the tree would have
+concluded it was unimplementable. Neither side was wrong about its own subject:
+**the disposition field was being asked two questions at once — does this entity
+have a table, and does its capability run — and nothing could answer them
+differently.** The confusion had already spread to four places that each
+reimplemented the first answer off the second: the planner,
+`tools-tenant-path.mjs:115`, `UNCARRIED_DISPOSITIONS` in
+`tools-transition-disposition.mjs:653`, and
+`tools-frontend-retired-inventory.mjs:75`.
+
+**The wide change was measured first and does not run.** `CARRIED` plus
+`preserved_paused` plans all 54 paused entities and stops at
+`TENANT_PATH_MISSING:AgencyKPI`. Recorded because that line is the next reader's
+first instinct and the refusal is cheaper to read than to re-derive.
+
+**What was taken instead** is `SCHEMA_ONLY`, an enumeration naming each paused
+entity whose schema migrates with a reason of at least forty characters, in the
+house form of `DECLARED_UNIQUE`, `CONTRACT_UNIQUE`, `BINDING_TENANCY` and D84's
+`uncarried_legs`; one shared `carriesTable(entity, disposition)` predicate so the
+four copies become one; and `assertSchemaOnly`, which refuses an entry whose
+entity has since been ported, retired, moved to the hub, lost its disposition or
+lost its schema file. **Each refusal is proved by sabotaging a copy of the
+manifest**, because a check nobody has seen bite is a comment.
+
+**A table is not an access path, and D7's execution half is untouched.** All ten
+OASIS capabilities remain `preserved_paused`; the generic broker family serves
+`broker` alone and the ceiling above refuses all eight on its own separate
+account; so the only way to one of these rows is a hand-written contract and
+there is none yet. **So the honest destination for such a call site is neither
+`no_table` nor `record_store`**, and `tools-frontend-destination.mjs` gains
+`no_access_contract` for exactly that state: the verdict is unchanged and only
+the reason changes, from one that would have gone stale the moment the table
+landed. Reporting `record_store` would have been the worse of the two errors,
+because the verdict is identical either way and only that one is a false claim
+about why. The bucket empties one entity at a time as contracts ship.
+
+**Measured, each re-derivable in one command and none to be quoted from here
+without re-running it**: tables 156 to **164** (156 carried + 8 schema-only,
+reported apart and never summed into one figure, because a single number would
+have moved with nothing saying which half did); columns 2416 to 2580; policies in
+the committed SQL 590 to **622**; tenant decisions 99 to **104**, of which the
+split is the thing to read rather than the total — five of the eight need one,
+`OASISAssessment` and `OASISUpload` declare `agency_id` themselves and
+`OASISWorkflowExecution` resolves by reference, and a sixth entry for it was
+written, refused by `check:tenant-decisions` as a spare, and removed, which was
+right: a decision would have stamped a second tenant column onto a row that
+already has an owner. **Frontend call sites that cannot land: 208 before and 208
+after**, `no_table` 193 splitting into 148 plus 45 `no_access_contract`. Read
+those last three together or not at all — the change adds tables and serves
+nothing.
+
+**Six existing guards bit and were updated rather than relaxed, and two of them
+are the lesson.** The "a paused entity must not acquire a table" control was
+`TrainingCourse`, which is `hub`, so it **would have passed for the wrong
+reason** under any change to the paused population; it now asserts the control's
+disposition beside its name and uses `FaxLog`. And `tools-tenant-path.test.mjs`
+compared the plan's `carried` against the path tool's carried count, which left
+alone would have drifted by exactly the eight new tables — the population that
+agreement exists to catch.
+
+**The regeneration ships a forward migration in the same change (D88)**, and
+writing it found the same defect inside the tool written to prevent it: the
+already-applied `20260920590000_column_defaults.sql` regenerated with eight new
+lines in it. An applied migration is frozen in content, so that edit would have
+reached no store that ran it while every suite stayed green. The defaults reader
+now skips the schema-only tables — their defaults arrive inline in their own
+`create table` — and `assertSkippedDefaultsAreCarried` reads them out a second
+time, deliberately rather than by reusing the first reader, and proves each one
+is carried. **It was caught by the fingerprint pin reporting the file CHANGED
+rather than added, which is the half of that pin that earns its keep.**
+
+**Two things the data side does not restore, named here rather than discovered
+later.** The uploaded documents do not move: `OASISUpload.file_url` and
+`OASISAudit.oasis_file_url` are locator fields, and D77's copy refuses every
+apply because `RUNTIME_READER_MODEL` is `uploader_owned` where
+`REQUIRED_READER_MODEL` is `record_authorized` — closing that is a decision about
+the integration runtime's own authorization model. So a migrated audit's
+attachment still opens from the old side, and giving these two entities tables
+moves two locator fields out of D77's "no row to re-point" group into the rewrite
+population. And the automation stays off, which is the decision rather than a
+gap: 8 of the 10 OASIS capabilities refuse at source while the 45 screen call
+sites are direct reads and writes that never go through them, so **the screens
+work in Base44 today and the automation behind them does not** — rebuilding the
+data side restores and rebuilding the automation adds, and the second half is the
+owner's.
+
+**The standing rule this leaves behind: when a decision and the code appear to
+contradict each other, check first whether the code is answering a narrower
+question than the decision asks.** D7 was implementable from the day it was
+written; what was missing was a way to express half of it, and a field that
+answers two questions will be read as answering whichever one the reader came
+for.
+
+**And adding an entity to `SCHEMA_ONLY` is not pre-approved by this amendment.**
+It admits the eight OASIS entities and, when that thread adds them, the six fax,
+voice and SMS ones. Each owes its own reason and its own reading of what the
+table makes reachable; the credential-bearing fax entities in particular are a
+different question from a paused table and must not ride in on one.
+
 ## D8 — Learning moves to the Support Hub rather than being ported
 
 The 45 learning, training and central-adapter handlers and their 31 entity

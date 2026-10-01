@@ -10,6 +10,7 @@ import {
   UNIQUENESS_CLAIM, UNIQUE_KINDS,
   assertSchemaOnly, buildPlan, carriesTable, chartPredicate, chartSubject, columnType, comparePlan, constraintName, contractUniqueKeys, contractUniqueName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
 } from './tools-entity-schema-plan.mjs';
+import { SCHEMA_ONLY_TABLES } from './tools-pennsync-record-catchup.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const entity = (properties, name = 'Probe') => JSON.stringify({ name, type: 'object', properties, required: [], rls: {} });
@@ -703,4 +704,15 @@ test('the committed migration carries one policy per name, and the count is pinn
   // A duplicate name would apply twice and read as one policy in any count
   // taken by eye, so the distinctness is the half a grep cannot give you.
   assert.equal(new Set(names).size, names.length);
+});
+
+test('the catch-up tool\'s copy of the schema-only table names is the same list', () => {
+  // `tools-pennsync-record-catchup.mjs` spells the eight table names out rather
+  // than importing `SCHEMA_ONLY`, so that it pulls in no `json5` and stays
+  // loadable from the isolated authority job. The cost of that second copy is
+  // paid here, in the root suite, where both are reachable: a ninth entity added
+  // to `SCHEMA_ONLY` without extending that list would otherwise ship a forward
+  // migration that silently carried eight tables out of nine.
+  assert.deepEqual([...SCHEMA_ONLY_TABLES].sort(),
+    Object.keys(SCHEMA_ONLY).map(name => snakeCase(name)).sort());
 });
