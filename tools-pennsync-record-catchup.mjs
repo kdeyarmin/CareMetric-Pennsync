@@ -50,6 +50,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
+/**
+ * `SYSTEM_COLUMNS.length` in the generator, spelled out for the same reason
+ * the table names are: importing that module pulls in `json5`, which the
+ * isolated authority job does not install. The root suite asserts the two
+ * agree, so a sixth platform column fails there rather than quietly shifting
+ * every wave's measured size by one per table.
+ */
+export const SYSTEM_COLUMN_COUNT = 5;
 
 export const SOURCE_MIGRATION =
   'services/authority-store/supabase/record-migrations/20260919170000_record_store.sql';
@@ -314,7 +322,7 @@ const TABLE_OPENS = /^create table "pennsync_records"\."([a-z_0-9]+)" \($/;
  * fingerprint pin reported the file CHANGED rather than added.
  *
  * Those defaults are not lost. They arrive inline in each table's own
- * `create table`, carried by `TABLES_CATCHUP_MIGRATION`, and
+ * `create table`, carried by the `SCHEMA_ONLY_WAVES` migrations, and
  * `assertSkippedDefaultsAreCarried` proves it statement by statement rather
  * than asserting it here — because "they are in the other file" is the kind of
  * claim that stays true until somebody narrows the other file.
@@ -429,25 +437,132 @@ export function renderDefaultsCatchup(repository = here) {
 }
 
 
-export const TABLES_CATCHUP_MIGRATION =
-  'services/authority-store/supabase/record-migrations/20260920750000_oasis_schema_tables.sql';
+/**
+ * D7's schema clause arrives in WAVES, one forward migration each.
+ *
+ * It was one file and one table list until the fax and phone entities joined
+ * `SCHEMA_ONLY`, and the reason it could not stay that way is D88 itself. A
+ * forward migration exists because the generated file cannot be edited once a
+ * store has run it — and a forward migration is a committed file, so the same
+ * rule applies to it the moment it merges. Re-rendering the OASIS file with six
+ * more tables in it would have been exactly the edit D88 forbids, one layer
+ * down, inside the mechanism built to avoid it. So each wave keeps its own file
+ * and its own names, and a later wave adds a file rather than growing one.
+ *
+ * Order is deployment order and the prefixes ascend, because that is the order
+ * `tools-pennsync-migrate.mjs` applies them in.
+ *
+ * The names are spelled out rather than imported from `SCHEMA_ONLY`, for the
+ * reason the defaults reader gives: importing `tools-entity-schema-plan.mjs`
+ * pulls in `json5`, and the isolated authority job installs no root packages, so
+ * a suite there importing this file would die at load rather than on an
+ * assertion. The cost of that second copy is paid in the root suite instead,
+ * where `record-store-catchup` asserts the UNION is exactly `snakeCase` of
+ * `SCHEMA_ONLY`'s keys — so an entity added without extending a wave fails
+ * rather than shipping catch-ups that silently carry one table fewer.
+ */
+export const SCHEMA_ONLY_WAVES = Object.freeze([
+  Object.freeze({
+    migration: 'services/authority-store/supabase/record-migrations/20260920750000_oasis_schema_tables.sql',
+    // `scope`, `size` and `unserved` are this wave's three sentences in the
+    // rendered header. The OASIS wave's are kept WORD FOR WORD from when this
+    // was the only wave, so splitting the header re-renders its file
+    // byte-identical to the one already committed and reviewed — which is the
+    // property the suite checks, rather than this comment claiming it.
+    scope: 'these eight\n-- entities one at a time',
+    size: '164 columns and 32 policies',
+    unserved: 'Every OASIS capability\n'
+      + '-- stays `preserved_paused`; the generic broker family serves `broker` alone\n'
+      + "-- and D22's ceiling refuses all eight on its own account; so after this applies",
+    tables: Object.freeze([
+      'oasis_action_item', 'oasis_assessment', 'oasis_audit', 'oasis_automation_rule',
+      'oasis_feedback', 'oasis_scenario', 'oasis_upload', 'oasis_workflow_execution',
+    ]),
+  }),
+  Object.freeze({
+    migration: 'services/authority-store/supabase/record-migrations/20260920840000_telecom_schema_tables.sql',
+    scope: 'these six fax and\n-- phone entities',
+    size: '135 columns and 24 policies',
+    // These six differ from the eight above on a fact worth carrying into the
+    // file rather than leaving in a tool: their screens are REACHABLE and the
+    // live build serves them, so here `preserved_paused` describes a capability
+    // that is in fact running. That changes nothing about the access path —
+    // there is still none — and the sentence is in the header so that nobody
+    // reads the absence of a contract as the absence of a feature.
+    unserved: 'Fax is live in\n'
+      + '-- the hosted app and nothing here activates it; the generic broker family\n'
+      + '-- serves `broker` alone, and D16\'s\n'
+      + '-- ceiling refuses all six on their own account as well -- every one of them\n'
+      + '-- CONDITIONS its reads, which D2 does not let a generic family evaluate, and\n'
+      + '-- three can hold a file besides (measured, not assumed: `auditBrokerCeiling`\n'
+      + '-- also refuses `fax_log` for a credential reference and three clinical\n'
+      + '-- subjects, and `phone_number` for a claim token); so after this applies',
+    tables: Object.freeze([
+      'call_log', 'fax_contact', 'fax_log', 'fax_retry_config', 'fax_template', 'phone_number',
+    ]),
+  }),
+]);
 
 /**
- * The eight tables D7's schema clause added, as the generator names them.
+ * Every schema-only table, across every wave.
  *
- * Spelled out rather than imported from `SCHEMA_ONLY`, for the reason the
- * defaults reader gives: importing `tools-entity-schema-plan.mjs` pulls in
- * `json5`, and the isolated authority job installs no root packages, so a
- * suite there importing this file would die at load rather than on an
- * assertion. The cost of a second copy is paid in the root suite instead,
- * where `record-store-catchup` asserts this list is exactly `snakeCase` of
- * `SCHEMA_ONLY`'s keys — so adding a ninth entity without extending this
- * fails rather than shipping a catch-up that silently carries eight.
+ * The union is validated rather than trusted: a name in two waves would be
+ * created twice, and the SECOND file is the one that would quietly do nothing
+ * under `create table if not exists`, so this refuses at load instead.
+ * `assertWavesDisjoint` is exported so a test can raise it from a synthetic
+ * pair — asserting that the real list happens to be clean is a check that
+ * passes for the wrong reason, which is the shape this repository keeps
+ * finding.
  */
-export const SCHEMA_ONLY_TABLES = Object.freeze([
-  'oasis_action_item', 'oasis_assessment', 'oasis_audit', 'oasis_automation_rule',
-  'oasis_feedback', 'oasis_scenario', 'oasis_upload', 'oasis_workflow_execution',
-]);
+export function assertWavesDisjoint(waves = SCHEMA_ONLY_WAVES) {
+  const seen = new Map();
+  for (const wave of waves) {
+    for (const table of wave.tables) {
+      if (seen.has(table)) throw new Error(`CATCHUP_WAVE_TABLE_REPEATED:${table}:${seen.get(table)}`);
+      seen.set(table, wave.migration);
+    }
+  }
+  return [...seen.keys()];
+}
+
+export const SCHEMA_ONLY_TABLES = Object.freeze(assertWavesDisjoint());
+
+/**
+ * A wave's `size` sentence, measured against the file it describes.
+ *
+ * The sentence exists to say how much would otherwise have been retyped, and
+ * it is a bare number in prose — the thing this project keeps finding wrong. It
+ * cannot be derived into the text, because the OASIS wave's header is already
+ * committed and changing a word of it would make that file a new file. So it is
+ * CHECKED instead, which costs nothing and fails where the guess was made.
+ *
+ * The metric is the entities' OWN columns: the rendered count less the five
+ * platform columns every table carries, because those are not a transcription
+ * anybody would have done by hand. Stated here rather than inferred, since
+ * both readings agree on the real waves (204 − 40 = 164, 165 − 30 = 135) and
+ * two agreeing numbers are exactly how a metric nobody wrote down survives.
+ */
+export function measureWave(repository, wave) {
+  const sql = renderTablesCatchup(repository, wave);
+  let columns = 0;
+  for (const match of sql.matchAll(/^create table if not exists "pennsync_records"\."\w+" \(\n([\s\S]*?)^\);$/gm)) {
+    columns += match[1].split('\n').filter(line => /^ {2}"/.test(line)).length;
+  }
+  const own = columns - wave.tables.length * SYSTEM_COLUMN_COUNT;
+  const policies = [...sql.matchAll(/^create policy "/gm)].length;
+  return { columns: own, policies, says: `${own} columns and ${policies} policies` };
+}
+
+/** Every wave's `size` sentence is the file's own count. */
+export function assertWaveSizes(repository = here, waves = SCHEMA_ONLY_WAVES) {
+  for (const wave of waves) {
+    const measured = measureWave(repository, wave);
+    if (measured.says !== wave.size) {
+      throw new Error(`CATCHUP_WAVE_SIZE_WRONG:${wave.migration}:${wave.size}:${measured.says}`);
+    }
+  }
+  return waves.map(wave => measureWave(repository, wave));
+}
 
 /**
  * One table's whole DDL block, from `create table` through the revoke.
@@ -498,16 +613,16 @@ export function readTablePolicies(repository, table) {
 }
 
 /**
- * The eight blocks in the form a store that already ran the generated file can
- * apply.
+ * One wave's blocks in the form a store that already ran the generated file
+ * can apply.
  *
  * `create table if not exists` is the only idempotent form a table has, and it
  * is weaker than the `create or replace` the other catch-ups use: on a store
  * that somehow holds a table of this name with different columns it is a
  * silent no-op. That is accepted here and named rather than hidden, because
- * these eight names are new to the store — nothing has ever created one — and
- * the hosted comparison is what would catch a mismatch, column by column, if
- * the premise were ever wrong.
+ * every name in these waves is new to the store — nothing has ever created one
+ * — and the hosted comparison is what would catch a mismatch, column by
+ * column, if the premise were ever wrong.
  */
 export function idempotentTables(repository, tables = SCHEMA_ONLY_TABLES) {
   const parts = [];
@@ -525,24 +640,30 @@ export function idempotentTables(repository, tables = SCHEMA_ONLY_TABLES) {
   return parts.join('\n\n');
 }
 
-const TABLES_HEADER = `-- D7's schema clause, for a store that already exists (D88).
+/**
+ * One wave's header.
+ *
+ * Three sentences come from the wave and the rest is shared, which is the split
+ * that let the OASIS file be re-rendered unchanged: `scope` names the entities,
+ * `size` says how much would otherwise have been typed, and `unserved` says
+ * what still has no way in. Anything a reader of the applied SQL needs that is
+ * true of only one wave belongs in those three, not here.
+ */
+const tablesHeader = wave => `-- D7's schema clause, for a store that already exists (D88).
 --
 -- D7 carries the paused domains as \`preserved_paused\` and says of them: "Their
 -- schemas and data still migrate; only their execution stays off." The schema
--- planner could not express that until \`SCHEMA_ONLY\` named these eight
--- entities one at a time, and regenerating
+-- planner could not express that until \`SCHEMA_ONLY\` named ${wave.scope}, and regenerating
 -- \`20260919170000_record_store.sql\` reaches a fresh provision and no
 -- deployment that has already applied it -- so the change lives in both places
 -- and this is the second.
 --
 -- DERIVED, never typed: \`node tools-pennsync-record-catchup.mjs --write\` reads
 -- each table's whole block and each of its policies out of the generated
--- migration. A hand-kept copy of 164 columns and 32 policies would drift in
+-- migration. A hand-kept copy of ${wave.size} would drift in
 -- the one direction nothing measures.
 --
--- WHAT THIS DOES NOT DO. A table is not an access path. Every OASIS capability
--- stays \`preserved_paused\`; the generic broker family serves \`broker\` alone
--- and D22's ceiling refuses all eight on its own account; so after this applies
+-- WHAT THIS DOES NOT DO. A table is not an access path. ${wave.unserved}
 -- the only way to one of these rows is a hand-written contract, and there is
 -- none yet. The frontend census reports these call sites as
 -- \`no_access_contract\` rather than as served, for exactly that reason.
@@ -590,9 +711,9 @@ reset role;
 commit;
 `;
 
-/** The schema-only tables catch-up, header and all. */
-export function renderTablesCatchup(repository = here) {
-  return TABLES_HEADER + idempotentTables(repository) + TABLES_FOOTER;
+/** One wave's schema-only tables catch-up, header and all. */
+export function renderTablesCatchup(repository = here, wave = SCHEMA_ONLY_WAVES[0]) {
+  return tablesHeader(wave) + idempotentTables(repository, wave.tables) + TABLES_FOOTER;
 }
 
 /**
@@ -609,7 +730,11 @@ export function renderTablesCatchup(repository = here) {
  */
 export function assertSkippedDefaultsAreCarried(repository = here) {
   const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
-  const carried = renderTablesCatchup(repository);
+  // Across EVERY wave, because the exclusion this checks is one list and the
+  // files are several: a default landing in the wave that is not read here
+  // would be reported as uncarried while in fact being carried, which sends
+  // somebody looking for a defect that is not there.
+  const carried = SCHEMA_ONLY_WAVES.map(wave => renderTablesCatchup(repository, wave)).join('\n');
   const skipped = [];
   let table = null;
   for (const line of sql.split('\n')) {
@@ -638,7 +763,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     [CATCHUP_MIGRATION, renderCatchup()],
     [INDEX_CATCHUP_MIGRATION, renderIndexCatchup()],
     [DEFAULTS_CATCHUP_MIGRATION, renderDefaultsCatchup()],
-    [TABLES_CATCHUP_MIGRATION, renderTablesCatchup()],
+    ...SCHEMA_ONLY_WAVES.map(wave => [wave.migration, renderTablesCatchup(here, wave)]),
   ];
   let stale = false;
   for (const [file, sql] of derived) {

@@ -8,7 +8,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
 import {
   CATCHUP_MIGRATION, DEFAULTS_CATCHUP_MIGRATION, DISTRIBUTION_INDEX,
-  INDEX_CATCHUP_MIGRATION, SCHEMA_ONLY_TABLES, TABLES_CATCHUP_MIGRATION,
+  INDEX_CATCHUP_MIGRATION, SCHEMA_ONLY_TABLES, SCHEMA_ONLY_WAVES,
+  assertWaveSizes, assertWavesDisjoint,
   assertSkippedDefaultsAreCarried, readColumnDefaults, readDistributionIndex,
   readProfileBlock, readTableBlock, readTablePolicies,
   renderCatchup, renderDefaultsCatchup, renderIndexCatchup, renderTablesCatchup,
@@ -240,8 +241,18 @@ test('applying the index catch-up to a store that already has it changes nothing
  */
 const defaultsCatchup = () =>
   readFileSync(resolve(repository, DEFAULTS_CATCHUP_MIGRATION), 'utf8');
-const tablesCatchup = () =>
-  readFileSync(resolve(repository, TABLES_CATCHUP_MIGRATION), 'utf8');
+/**
+ * Every wave's committed file, concatenated in deployment order.
+ *
+ * D7's schema clause ships one forward migration per wave now, because a
+ * forward migration is itself a committed file and re-rendering an earlier
+ * wave with a later wave's tables in it is the edit D88 forbids. So what is
+ * compared against the renderer is the whole set, in order, and a wave whose
+ * file stopped being derived fails by name rather than by the join coming out
+ * the wrong length.
+ */
+const tablesCatchup = () => SCHEMA_ONLY_WAVES
+  .map(wave => readFileSync(resolve(repository, wave.migration), 'utf8')).join('');
 
 /**
  * The eight schema-only tables as the store actually holds them: columns, the
@@ -330,9 +341,11 @@ let storedAfter;
 let insertedAfter;
 
 before(async () => {
-  // The ordering guard arrives HERE, because `TABLES_CATCHUP_MIGRATION` is now
+  // The ordering guard arrives HERE, because the LAST wave's migration is now
   // the newest pending record migration and the guard belongs to whichever file
-  // that is. It left `contract-reference-writes.test.mjs` by that suite's file
+  // that is. The last wave rather than a single constant: each new wave adds a
+  // file with a higher prefix, so the guard moves within this suite as waves
+  // arrive and the suite needs no edit for it. It left `contract-reference-writes.test.mjs` by that suite's file
   // being OVERTAKEN, which is the other direction of the same rule and the
   // reason the helper's own error text mentions renaming rather than merging.
   // The handover is per-base rather than once: four pending migrations between
@@ -350,7 +363,13 @@ before(async () => {
   // other holders their teeth has no equivalent here. What this asserts is
   // exactly one thing: nothing in the directory sorts after this change's file.
   assertNewestRecordMigration(
-    await recordMigrationNames(), TABLES_CATCHUP_MIGRATION.split('/').at(-1));
+    await recordMigrationNames(), SCHEMA_ONLY_WAVES.at(-1).migration.split('/').at(-1));
+  // And the waves are in the order they claim to be, because the guard above
+  // only looks at the last one: a wave list sorted wrongly would hand the guard
+  // a file that is not the newest and the assertion would be about the wrong
+  // name while still passing or failing for reasons of its own.
+  const prefixes = SCHEMA_ONLY_WAVES.map(wave => wave.migration.split('/').at(-1).split('_')[0]);
+  assert.deepEqual(prefixes, [...prefixes].sort(), 'wave migrations must ascend');
 
   const stale = storeBeforeBothCatchups();
 
@@ -404,12 +423,20 @@ test('the catch-up gives that store exactly the defaults a fresh build has', () 
   // of the wrong value is the defect this closes, not a default that is
   // absent, and only `pg_get_expr` can tell those apart.
   assert.deepEqual(afterDefaultsCatchup, freshDefaults);
-  // 433, not 425: the eight D7 schema-only tables declare eight defaults. They
-  // are NOT in this catch-up — it is already applied and an applied migration
-  // is frozen, so re-emitting it with them would have shipped an edit no store
+  // 454, not 425: the D7 schema-only tables declare 29 defaults between them,
+  // over two waves (8 in the OASIS wave, 21 in the fax and phone one). They are
+  // NOT in this catch-up — it is already applied and an applied migration is
+  // frozen, so re-emitting it with them would have shipped an edit no store
   // that ran it will ever see. They arrive inline in the table blocks instead,
   // which is what the cross-check below proves statement by statement.
-  assert.equal(freshDefaults.length, 433);
+  //
+  // PINNED rather than derived, and the pin is the point: `readColumnDefaults`
+  // returns 425 and the skipped reader returns 29, so deriving this as their
+  // sum would assert 425 + 29 = 454 against a store built from the same two
+  // readers and pass however many went missing. The identity is checked below;
+  // what this line is for is that the TOTAL moved when somebody meant it to.
+  assert.equal(freshDefaults.length, 454);
+  assert.equal(readColumnDefaults(repository).length, 425);
 });
 
 test('applying it to a store that already has them changes nothing', () => {
@@ -444,12 +471,46 @@ test('it backfills nothing: a row stored before the catch-up keeps its null', ()
  * the columns — a table arriving without forced RLS is readable by every tenant,
  * and that is the failure worth an assertion rather than a comment.
  */
-test('the tables catch-up is derived from the generated migration too', () => {
-  assert.deepEqual(tablesCatchup().split('\n'), renderTablesCatchup(repository).split('\n'),
-    'run `node tools-pennsync-record-catchup.mjs --write`');
+test('every wave\'s catch-up is derived from the generated migration too', () => {
+  for (const wave of SCHEMA_ONLY_WAVES) {
+    assert.deepEqual(
+      readFileSync(resolve(repository, wave.migration), 'utf8').split('\n'),
+      renderTablesCatchup(repository, wave).split('\n'),
+      `${wave.migration}: run \`node tools-pennsync-record-catchup.mjs --write\``);
+  }
+  // The join is what the cut-down store below is built against, so it has to
+  // be every wave and nothing else.
+  assert.equal(tablesCatchup(),
+    SCHEMA_ONLY_WAVES.map(wave => renderTablesCatchup(repository, wave)).join(''));
 });
 
-test('a store that applied the record migration before this has none of the eight tables', () => {
+test('a table belongs to exactly one wave, and each wave\'s size sentence is its file\'s own count', () => {
+  // Raised from a synthetic pair rather than asserted of the real list: a check
+  // that the real waves happen to be disjoint passes for the wrong reason, and
+  // this one has to bite.
+  assert.deepEqual(assertWavesDisjoint(), [...SCHEMA_ONLY_TABLES]);
+  assert.throws(() => assertWavesDisjoint([
+    { migration: 'a.sql', tables: ['oasis_upload'] },
+    { migration: 'b.sql', tables: ['oasis_upload'] },
+  ]), /CATCHUP_WAVE_TABLE_REPEATED:oasis_upload:a\.sql/);
+  // A repeat WITHIN one wave is the same defect and is caught the same way.
+  assert.throws(() => assertWavesDisjoint([{ migration: 'a.sql', tables: ['fax_log', 'fax_log'] }]),
+    /CATCHUP_WAVE_TABLE_REPEATED:fax_log/);
+  // The size sentences are bare numbers in committed prose, which is the thing
+  // this project keeps finding wrong, so they are measured against the files
+  // they describe.
+  const measured = assertWaveSizes(repository);
+  assert.equal(measured.length, SCHEMA_ONLY_WAVES.length);
+  for (const [index, wave] of SCHEMA_ONLY_WAVES.entries()) {
+    assert.equal(measured[index].says, wave.size, wave.migration);
+    assert.ok(measured[index].columns > 0 && measured[index].policies > 0, wave.migration);
+  }
+  assert.throws(() => assertWaveSizes(repository,
+    [{ ...SCHEMA_ONLY_WAVES[0], size: '1 columns and 1 policies' }]),
+    /CATCHUP_WAVE_SIZE_WRONG/);
+});
+
+test('a store that applied the record migration before this has none of the schema-only tables', () => {
   // Asserted rather than assumed: if the cut left them in place, the test below
   // is comparing a store with itself and would pass with the file empty.
   assert.deepEqual(beforeTables, []);
@@ -475,13 +536,18 @@ test('applying it to a store that already has them changes nothing', () => {
   assert.deepEqual(freshThenTablesCatchup, freshTables);
 });
 
-test('the eight defaults the defaults catch-up stops reading are carried here instead', () => {
+test('the defaults the defaults catch-up stops reading are carried here instead', () => {
   // The exclusion in `readColumnDefaults` is only safe if what it stops reading
   // arrives somewhere. This reads those defaults out of the generated migration
   // a second time, on purpose rather than by reusing the first reader, and
   // checks each one is inside an emitted table block.
+  // Across every wave: `assertSkippedDefaultsAreCarried` renders them all, so a
+  // default living in a later wave's tables is carried rather than reported
+  // missing. The count is derived from the reader rather than pinned, because
+  // pinning it would have to move with every wave and the property being
+  // checked is that each one is CARRIED, not how many there are.
   const skipped = assertSkippedDefaultsAreCarried(repository);
-  assert.equal(skipped.length, 8);
+  assert.ok(skipped.length >= 8, `expected the exclusion to be doing work, found ${skipped.length}`);
   for (const row of skipped) assert.ok(SCHEMA_ONLY_TABLES.includes(row.table), row.table);
   // And the already-applied file is genuinely untouched by them.
   for (const row of skipped) {

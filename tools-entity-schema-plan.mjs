@@ -106,6 +106,61 @@ export const SCHEMA_ONLY = Object.freeze({
     + 'it restores a log without activating anything that writes to it.',
   OASISFeedback: 'Correction feedback on a note-to-OASIS mapping, created from two screens. '
     + 'Its patient references are all optional, so it takes a tenant key of its own.',
+  // Fax and phone. These five differ from the eight above on the fact that
+  // decided the OASIS contracts: their screens ARE reachable and the live site
+  // serves them. Measured 2026-10-01 against commit `8cdd1e5d`, the build
+  // caremetricai.base44.app was serving: 25 of the 30 call sites over these six
+  // entities reach a routed page, `SendFax` is in the nav manifest and not
+  // admin-only, and its chunk makes two real `functions.invoke("sendFax")`
+  // calls while reading FaxContact, FaxLog and FaxTemplate. So for fax,
+  // `preserved_paused` describes a capability that is in fact serving users --
+  // D7's own amendment records why a source-level pause check cannot see it,
+  // the pause living in credentials and release flags rather than in source.
+  //
+  // Only the six with frontend call sites are named. Twelve more fax entities
+  // are `preserved_paused` with no call site at all; whether their rows travel
+  // is a separate question and a reason here would have to be invented.
+  FaxContact: 'The fax address book: who an agency faxes, which staff keep by hand from the '
+    + 'contacts tab of the live Fax page. Eleven call sites, ten of them reachable. Its own '
+    + 'RLS is per-person rather than per-agency -- and the AND of `created_by` and '
+    + '`data.user_email`, which is D45\'s shape exactly -- so tenancy here is not ownership '
+    + 'and the contract over it owes its own ownership check on both columns.',
+  FaxLog: 'Every fax sent or received, with its status and retry history -- the rows behind '
+    + 'the live Fax page\'s history, search and analytics tabs. Carrying nothing would lose '
+    + 'the record of faxes already sent. Its RLS reads per SENDER (`data.sent_by`) and refuses '
+    + 'every client write, so the rows are server-written and the read is another case where '
+    + 'tenancy is not ownership. Its `document_url` is a Base44 storage locator, so '
+    + 'the bytes stay there until D77\'s copy is unblocked and a legacy locator resolves to '
+    + 'null here rather than to itself.',
+  FaxTemplate: 'Cover sheets and reusable fax documents that staff author and edit from the '
+    + 'templates tab. Stored work with no capability behind it. It names no agency at all, so '
+    + 'it takes a tenant key of its own, and it holds a second storage locator under '
+    + '`document_url` with the same caveat as FaxLog.',
+  FaxRetryConfig: 'The agency\'s retry policy for a failed fax -- how many attempts and how '
+    + 'far apart -- edited from the admin settings panel. The policy is data; ACTING on it is '
+    + 'the retry half D7 keeps switched off, and no capability over this entity is activated '
+    + 'here. Its read gate is the built-in platform admin role, which D14 and D22 removed, so '
+    + 'its contract is a D40 widening and owes its own re-reading; its delete is `false`, and '
+    + 'a widening is no licence to add one.',
+  PhoneNumber: 'The pool of work numbers an agency holds, listed in the super-admin '
+    + 'provisioning panel. Carrying the rows restores a record of numbers already provisioned; '
+    + 'BUYING or porting one is paid infrastructure and stays the owner\'s. It names no agency, '
+    + 'so it takes a tenant key of its own. Its own RLS reads for the built-in platform admin '
+    + 'role and writes for the service role alone, so a contract over it is a D40 widening on '
+    + 'the read half and the write half has no caller to widen to.',
+  // CallLog is carried for its ROWS and not for a screen, which is the opposite
+  // of the five above and is said plainly so nobody reads this entry as a claim
+  // that voice works. Its four call sites are the ones that do NOT reach a page:
+  // they sit in `CallHistoryList.jsx` and `CallbackQueue.jsx`, which nothing in
+  // `src/` imports, and `patientProjectionMigrationContract.spec.js` asserts
+  // that on purpose in a test named "keeps unverified call history and callbacks
+  // outside the routed bundle". No chunk of the live build carries
+  // `startMaskedCall`, read across all 408 of them.
+  CallLog: 'Call history: who rang whom, the disposition and any voicemail. Its screens are '
+    + 'deliberately outside the routed bundle and a test asserts that, so this entry carries '
+    + 'the ROWS and claims nothing about a screen -- the call records exist in Base44 today '
+    + 'and carrying nothing would lose them. It names no agency and its `patient_id` is '
+    + 'optional, so D61 applies and it takes a tenant key of its own.',
 });
 
 /**
