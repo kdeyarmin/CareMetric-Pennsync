@@ -182,11 +182,12 @@ written.
 1. ~~**Apply what is already committed to the staging project.**~~ **Done
    2026-09-21**: all 59 outstanding migrations applied to
    `caremetric-pennsync-staging`, 68 recorded in the ledger, the pin landed on
-   staging with `source 'default'`. **The ledger has since taken the five
-   migrations merged after that and stands at 73 with nothing pending**, read
-   from the `hosted-gap` job on `b8e4e021` rather than from the tick. The 59 record migrations are no
-   longer unproven against a hosted database; the handlers still are, because
-   nothing has served a request yet. Stage B has since deployed them, paused —
+   staging with `source 'default'`. **As read from the `hosted-gap` job on
+   `b8e4e021`, the ledger stood at 73 with nothing pending at that commit**;
+   this is a dated reading rather than the current state, which is not readable
+   from this tree. The 59 record migrations are no longer unproven against a
+   hosted database; the handlers still are, because nothing has served a
+   request yet. Stage B has since deployed them, paused —
    serving one needs an identity, so it is stages C and D.
 2. ~~**Create the `pennsync-api` Railway service**, deployed paused, exactly as
    the integration runtime was.~~ **Done 2026-09-22**: live at
@@ -359,11 +360,15 @@ written.
    entities' dispositions splits them three ways: sites a route already serves,
    sites that could be adopted against the owned store, and sites that **cannot
    land at all** because the entity's domain was decided `hub` or
-   `preserved_paused` — those need a product answer, not an edit, and no amount
-   of frontend work reduces them. Sizing this item off the single number 453
-   overstates the editable part and understates the decisions.
+   `preserved_paused` — no amount of frontend work reduces them. Sizing this
+   item off the single number 453 overstates the editable part and understates
+   the decisions. **But "those need a product answer" is wrong as a blanket
+   claim**: the `hub` domain's answer was given by D8, and D7 exempts the
+   schema-and-data half of `preserved_paused` in its own words. The split, its
+   instruments and what is genuinely left for the owner are under Stage J
+   below, with the counts marked as a dated reading.
 
-   **What makes this item tractable, and Stage G's seven not, is one
+   **What makes this item tractable, and Stage G's remaining bucket not, is one
    distinction that runs under both**: whether a capability exists, and whether
    anything can call it. Here the capability exists and the gate PROVES
    something can call it, by putting each site's own arguments through the
@@ -408,17 +413,22 @@ Sizes assume the current cadence; they are estimates, not commitments.
 
 ### Stage A — Prove the committed store on hosted staging (size S, days; no approval needed)
 
-The cheapest and most overdue step in the migration, and the only one on the
-critical path that needs nothing from anybody.
+**Done 2026-09-21: the migrations this stage names were applied to
+`caremetric-pennsync-staging`.** The instrument is this stage's own dated record
+under *Applied 2026-09-21* below. ~~The cheapest and most overdue step in the
+migration, and the only one on the critical path that needs nothing from
+anybody.~~ Everything that follows is kept as the procedure and as what the
+stage found, not as work outstanding — which is why the two bullets below are
+struck rather than deleted.
 
-- Apply the five missing authority migrations to `caremetric-pennsync-staging`:
+- ~~Apply the five missing authority migrations to `caremetric-pennsync-staging`:
   `20260919090000_deployment_app_pin`, `20260919114500_enrollment_receipt`,
   `20260920040000_chart_assignment`, `20260920180000_chart_assignment_lifecycle`,
   `20260920200000_membership_lifecycle`. The app pin goes first; unset it
   defaults to staging, which is the correct outcome for this project, but the
-  `deployment` row should record that it was *chosen*.
-- Then apply every `supabase/record-migrations/` file, in order — 54 when this
-  was written, 59 now.
+  `deployment` row should record that it was *chosen*.~~
+- ~~Then apply every `supabase/record-migrations/` file, in order — 54 when this
+  was written, 59 now.~~
   `tools-pennsync-provision.mjs` cannot do this — it refuses a database that
   already holds `pennsync_private` (`PROVISION_STORE_ALREADY_PRESENT`), by
   design, because re-provisioning would try to re-pin an immutable pin.
@@ -1435,7 +1445,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   | | Count |
   | --- | ---: |
-  | Ported capabilities `src/` reaches | 54 of 80 |
+  | Ported capabilities `src/` reaches | 54 of 136 |
   | Routed call sites | 73 |
   | …naming a tenant | **3** |
   | …demonstrably not naming one | 33 |
@@ -2824,15 +2834,20 @@ from the other.
 **Exit:** production store provisioned; the pin proved chosen rather than
 defaulted; `deployment` row dated.
 
-### Stage G — The last 21 ports (size M, parallel to D and E)
+### Stage G — The ports that are left (size M, parallel to D and E)
 
 **Measured 2026-09-23: the startable side is at ZERO, and the count of what is
 left has fallen twice since this heading was written — 31, then 24 after D82 to
 D87, then 21 once D89 to D91 wrote the three ports those decisions unblocked.**
 `tools-transition-disposition.mjs` reports 78 capabilities with no blocker, and
 all 78 are registered in `services/pennsync-api` — so every port that *can* be
-written without a decision has been. The heading said 31 and says 21; read
-`pnpm run check:transition-disposition` rather than either. Four buckets the
+written without a decision has been. **The heading carried 31, then 21, and now
+carries no count at all**, because it was wrong at both and the figure has since
+moved again — D153's retirement of `enforceStaffRoleIntegrity` took the
+`entity_authorization` bucket down by one and nothing updated the heading.
+A count written into this prose is wrong within a merge, so there is none here:
+the table below carries it, and `pnpm run check:transition-disposition` is the
+instrument. Four buckets the
 queue used to report are empty: `records_schema` (D75 on a correction, then
 D84 refilled it and D89 to D91 emptied it again by building all three),
 `ported_function` (D76), `entity_not_carried` (D84) and `core_integration`
@@ -2846,7 +2861,7 @@ answer was 0. That is D47's lesson once more — read the shape from the tree.
 Re-measured after D82 to D87 (2026-09-23), which settled every decision this
 table was waiting on, and again after D89, D90 and D91 wrote the three ports
 those decisions unblocked. **What is left is no longer "ports that are simply
-not written yet"** — that bucket is empty. It is the file layer, seven
+not written yet"** — that bucket is empty. It is the file layer, the
 administrative write paths, and a vendor key.
 
 | Blocker | Count | What it needs |
@@ -2859,18 +2874,20 @@ administrative write paths, and a vendor key.
 | ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is a flag flip rather than a build, and it stayed the owner's until he flipped it on 2026-09-25 — the runtime half at `09:42Z`, the `OWNER_HELD` lift in #283, and the api's `PENNSYNC_API_DELIVERY` at `16:19Z`. All three are spent and both capabilities now send |
 
 **Where those readings come from, so the next person re-runs them rather than
-quoting this row.** The bucket and its seven names are `pnpm run
+quoting this row.** The bucket and its names are `pnpm run
 check:transition-disposition`'s own `port queue` line, which this page pins in
-Stage B. The three-and-four split is `schedulerAuth` in each capability's
-module crossed against whether any file under `src/` names it: three carry the
-fence and are named nowhere, four are named by a screen. Both read on
-`6e867ff7`. The row's shape can move under a disposition ruling without any
-capability being written — `enforceStaffRoleIntegrity` is under one now — so
-re-measure before quoting the count.
+Stage B. The split between decisions and ports is `schedulerAuth` in each
+capability's module crossed against whether any file under `src/` names it: the
+fenced ones are named nowhere, the rest are named by a screen, and the row above
+says which is which. **Written without tallies deliberately** — this paragraph
+carried a three-and-four split adding to seven, against a table that already
+said six, because D153's retirement of `enforceStaffRoleIntegrity` was recorded
+in the row and not here. The row's shape can move under a disposition ruling
+without any capability being written, so re-measure rather than quote either.
 
 **And there is a third reading, which is the one that changes how this bucket
-should be planned.** None of the seven — the four ports included — can be
-written against a capability that already exists. All seven write `User`, and
+should be planned.** None of them — the ports included — can be written against
+a capability that already exists. Every one of them writes `User`, and
 nothing under `services/authority-store/supabase/record-migrations/` writes
 `pennsync_records.user` at all, so D82's `user_update` policy and
 `user_self_write_guard` trigger are a permission with no performer: the store
@@ -3588,12 +3605,11 @@ entity routes: 84 declared, 147/245 landable call sites SERVED, 98 still to adop
   of those 98, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 97 need a named capability
 ```
 
-**And the reading on THIS tree, with the compliance writes, the provider
+**And the reading at `00ccac41`, with the compliance writes, the provider
 directory's three writes and the three reference tables' writes merged
-together.** This one is `pnpm run check:entity-routes`'s own output and
-is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
-byte for byte, so paste what the tool prints and never retype, rewrap or
-re-indent it.
+together.** It was the pinned block when it was written and is now a RECORD of
+that head; the pinned one is the last block in this stage, and only that one is
+checked byte for byte.
 
 ```
 entity routes: 97 declared, 158/245 landable call sites SERVED, 87 still to adopt
@@ -3621,6 +3637,84 @@ so the assertion fails if one ever does, and today none does. The refusals are
 real and no screen reaches them. Measured on this tree: eight entity operations
 live in that module, across `NoteConversion`, `ComplianceAudit`, `Task` and
 `Incident`, and none is on a path a user can execute.
+
+**The reading above is a record of `00ccac41` and is deliberately not
+maintained.** What follows it is measured on a tree where the INSTRUMENT
+changed, so the two are not comparable and must not be differenced.
+
+`limitConstants()` in `tools-entity-call-arguments.mjs` used to read exactly one
+module, `src/lib/queryLimits.js`. Every call site naming a row limit declared
+anywhere else read INDETERMINATE, which makes the whole call unreadable and the
+site unserved — whatever its contract could do. `AdrAuditCase.list` was the
+worked example and is recorded above: its contract existed, was reachable and
+was tested, and the only thing between it and a route was that
+`ADR_CASE_READ_LIMIT` is declared in `src/components/adr/adrCaseRead.js`. The
+earlier comment in `independentEntityRoutes.js` named the broader cause and was
+wrong; the limit was the SOURCE MODULE and never the module boundary, since
+`PATIENT_HISTORY_ROWS` has always resolved across files.
+
+The reader now takes every production module that exports an integer. It
+refuses an AMBIGUOUS name — two modules giving one name different values — and
+a local `const` SHADOWING an exported one, rather than picking, because it
+resolves a name and does not follow an import graph. Both were measured clear
+on this tree, and both are refusals in the code rather than sentences here, for
+the reason this page keeps relearning: a reading of a tree on a day is not a
+property of the tree, and a check that runs every time is the difference
+between an assumption and a guarantee. Each refusal was planted and watched to
+fail, and each carries a control that must pass.
+
+**What it moved, measured rather than predicted: exactly one site.** The whole
+per-site classification was captured before and after and differenced, and
+`AdrAuditCase.list` in `src/pages/ADRCenter.jsx` is the only line that changed,
+from unreadable to `["-created_date", 200]`. `NoteConversion.filter` was
+expected to move with it and did not, and the correction is worth keeping: it
+is held on its CONTRACT, which cannot express the field the site filters on —
+`operationalRoutes.test.js` says so and fails if `listNoteConversions` ever
+takes that field — so it was never the reader's to convert. Two sites that look
+like one cause were two.
+
+So the route below is the ruler's whole yield, and the rest of the change is
+the ruler.
+
+```
+entity routes: 87 declared, 153/245 landable call sites SERVED, 92 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
+  18 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+**Read the served count's rise as ONE screen, and read nothing at all into the
+comparison with the block above.** A figure derived by a widened instrument and
+a figure derived by the narrow one are answers to different questions, and the
+only honest statement across them is that the pool was classified by a
+different rule, not that it grew or shrank. Anything still reading
+INDETERMINATE after this is unreadable for a reason other than where its
+constant lives.
+
+**The reading on THIS tree**, after the base merge that brought the widened
+limit reader in beside the duty toggle. This is the PINNED block:
+`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
+so paste what `pnpm run check:entity-routes` prints and never retype, rewrap or
+re-indent it.
+
+```
+entity routes: 98 declared, 159/245 landable call sites SERVED, 86 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 56 pass arguments this cannot read
+  23 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 86, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 85 need a named capability
+```
+
+**Every figure above was re-run on the merged tree rather than reconciled from
+the two sides of the merge**, and that is the rule this block exists to enforce
+rather than a remark about this one. Two branches each moved the declared count
+and neither could see the other, so adding their deltas is wrong in both
+directions — and the instrument moved as well, which makes a difference against
+any earlier block in this stage a comparison between two different questions.
+Read the blocks above as dated records and difference none of them.
+
+What this head contributes to the move is the duty toggle, one capability, whose
+own write path had never been exercised by anything. The totals it produced are
+the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -3744,14 +3838,17 @@ different kinds of work:
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Twenty-two have no route declared at all**, over seventeen entity and
-  operation keys: fifteen reads over twelve keys, and seven writes over five.
-  The reason the shape keeps moving is measurable on the sites already served:
-  a read key there carries 2.59 call sites and a write key 1.24, so a
-  read port has historically served many screens per route while a write port
-  served the one form that calls it. **Do not carry that ratio into the
-  remainder, though**: inside this pool a read key covers 1.25 sites and a write
-  key 1.40, which is nothing like the served spread and points the other way.
+- **Twenty-one have no route declared at all**, over sixteen entity and
+  operation keys: fourteen reads over eleven keys, and seven writes over five.
+  Re-derived on this head rather than reconciled from either side of the merge,
+  because every figure in this bullet is a property of the whole population and
+  adding two branches' deltas is wrong in both directions. The reason the shape
+  keeps moving is measurable on the sites already served: a read key there
+  carries 2.56 call sites and a write key 1.24, so a read port has historically
+  served many screens per route while a write port served the one form that
+  calls it. **Do not carry that ratio into the remainder, though**: inside this
+  pool a read key covers 1.27 sites and a write key 1.40, which is nothing like
+  the served spread and points the other way.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it
@@ -3793,6 +3890,12 @@ different kinds of work:
   that declares a route. That is the design: the instruction is to re-derive the
   whole bullet, and a pin that goes quiet when the paragraph rots is the thing
   this section exists to complain about.
+
+  **It moved again on this tree, by one read key leaving the pool**, and the
+  served read ratio moved with it for the same reason. Neither number was
+  wrong before and neither is wrong now. Note also what did NOT move: the
+  remainder's write ratio, because nothing left that half — which is the same
+  reading twice rather than a figure that held for a reason.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
@@ -4060,28 +4163,89 @@ population, whose figures are prose here and are not pinned. A paragraph put on
 the wrong side of this line will read as a claim about the other gate.
 
 **What the dropped domains cost, and by which instrument.** `node
-tools-frontend-retired-inventory.mjs --summary`, re-measured on `main` after
-#291: **203 call sites across 84 files and 29 entities; 59 files lose
-everything they read** (reads 123, writes 79, subscriptions 1), leaving 25
-partially affected. Those are exact, and #291 writes them out per file and per
-entity as `docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md` — a file is the unit
-somebody edits and an entity is the unit somebody decided about, so that is the
-page to open when this work starts, rather than this count. The shape a person would notice — roughly 9 top-level destinations and
+tools-frontend-retired-inventory.mjs --summary`, first read on `main` after
+#291 and re-measured on `84718e6b` on 2026-09-29: **208 call sites across 86
+files and 32 entities; 59 files lose everything they read** (reads 123, writes
+84, subscriptions 1), leaving 27 partially affected. Those are exact, and #291
+writes them out per file and per entity as
+`docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md` — a file is the unit somebody
+edits and an entity is the unit somebody decided about, so that is the page to
+open when this work starts, rather than this count. **Its population IS the
+destination gate's 208 and cannot drift from it**, because `measureInventory`
+filters that gate's own `measureDestinations` output — the two report at
+different units and never from different readings. **So do not read the 194
+below as this paragraph's number.** When this sentence last said 203, that was
+the DROPPED TOTAL, and the subset below then said 203 as well — two different
+sets wearing one number for one commit. The total has since moved to 208 and
+the subset is 194, **which is what it has been since D80 was written**: at 445
+the buckets were `no_table` 193, `broker_is_read_only` 9 and `no_realtime_seam`
+1, so the uncarried domain was 194 there too. The eight sites the matcher
+gained were all landable and the five reference writes moved out of
+`record_store`, which is why the TOTAL moved and the subset did not. Two
+quantities coincided, one of them moved, the other was never what the sentence
+said it was, and nothing in either sentence could show either thing. The shape
+a person would notice — roughly 9 top-level destinations and
 about 33 hollowed-out pages — comes from a filename scan rather than that tool,
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
-**208 of 453 — 46% — have no destination in the owned store, and 203 of those
-reach a domain the migration has decided not to carry.** The other five are the
-D83 writes above, whose tables ARE carried, for reads: what has no destination
-there is the operation rather than the domain, and conflating the two is how
-this page would start overstating the product work. 119 of the 203 are the
-training domain, whose destination is the Hub; 75 are `preserved_paused`. **That
-75 is not an off-by-one against the table's 74**, which counts `preserved_paused`
-inside `no_table` only — the 75th is the `no_realtime_seam` site, whose entity is
-also `preserved_paused`. Each needs a product answer about what the feature
-becomes, not an edit somebody has not got to yet, so a plan that sizes this
-stage by the call-site count is sizing the wrong thing.
+**208 of 453 — 46% — have no destination in the owned store, and 194 of those
+reach a domain the migration has decided not to carry.** The other fourteen are
+writes to entities it DOES carry, read-only — nine refused by the broker
+family's D2 ceiling and five by a D83 reference table's GRANT: what has no
+destination there is the OPERATION rather than the domain, and conflating the
+two is how this page would start overstating the product work. **It said 203
+here for one commit, which is the same conflation drawn one line lower**: the
+five were separated out and the nine were not, on a split keyed to the
+destination bucket rather than to the disposition, which is the thing that
+decides whether a table exists at all. The correction is `carried_entity` in
+the inventory, derived from `CARRIED_DISPOSITIONS`, and the tell was sitting in
+the next sentence the whole time — 119 plus 75 is 194, and 203 was never a
+number this paragraph could reach. 119 of the 194 are the training domain,
+whose destination is the Hub; 75 are `preserved_paused`. **That 75 is not an
+off-by-one against the table's 74**, which counts `preserved_paused` inside
+`no_table` only — the 75th is the `no_realtime_seam` site, whose entity is also
+`preserved_paused`, so it is on the uncarried side too although its bucket is
+the one bucket that could fall either way. A plan that sizes this stage by the
+call-site count is sizing the wrong thing.
+
+**"Each needs a product answer" was wrong, and it made this block read as the
+owner's when most of it is not.** **The page already disagreed with itself**:
+the paragraph above says 119 of the 194 are the training domain *whose
+destination is the Hub* — an answer already given — and the sentence that
+followed put all 194 under "each needs a product answer". Two adjacent
+sentences, checkable without re-running anything below. Measured 2026-09-30 on
+`36c828a0` against
+`tools-frontend-retired-inventory.mjs`, `src/lib/nav.manifest.js`,
+`discoverPausedFunctions` and `auditBrokerCeiling`. The structure below is
+durable; **the counts are a dated reading, so re-run those rather than quoting
+them.**
+
+- **Training and learning — `hub`, twelve entities.** Their product answer was
+  already given: D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` send them to
+  `kdeyarmin/caremetric-support-hub`, both controls unset behind a five-step
+  pre-cutover checklist. **They are neither his to decide nor ours to port**,
+  and porting their tables into the owned store would build precisely what D8
+  decided not to build. They also pass a restoration test outright — F19 in
+  `docs/audits/FEATURE_INVENTORY.md` reads "Working but needs improvement",
+  nine of their pages are in the nav manifest, and exactly one backing function
+  is paused at source. **That is why the reading survived: functioning today
+  and belonging here are different questions.**
+- **OASIS — `preserved_paused`, eight entities.** D7 already exempts the half
+  that looked gated: *"their schemas and data still migrate; only their
+  execution stays off"*. What is his is **activation**. What is not a table
+  away is the frontend: `auditBrokerCeiling` refuses all eight — seven deny
+  direct reads, `OASISUpload` conditions them, six name a clinical subject, two
+  can hold a file — so each call site needs a hand-written contract with its own
+  gate and refusals. **A domain with no backing Base44 function is MORE work
+  here, not less, because there is no capability to port.**
+- **Fax and voice — `preserved_paused`, six entities.** Whether these function
+  today is **not answerable from this tree.** D7's pauses are attested by
+  receipts rather than source flags, and the Telnyx credentials live in-app as
+  `IntegrationSecret` — so `discoverPausedFunctions` reads zero paused handlers
+  across all fourteen `FaxLog` functions while D7 lists fax as paused, and both
+  are correct. The instrument would be an authenticated read of the hosted
+  credential presence and the Base44 release flags. **None has been taken.**
 
 The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
 called fine: the family serves `Announcement`, `FacilityDocumentationRule` and
@@ -4114,9 +4278,15 @@ proxy for "which could" overstates it.** Two facts, both measured:
   **touches** an entity for its own reasons is not one that **serves** a call
   site.
 
-**The 203 that cannot land have their own docket:**
+**The ones that cannot land have their own docket:**
 [FRONTEND_DECISION_DOCKET_2026-09-22.md](FRONTEND_DECISION_DOCKET_2026-09-22.md).
-Two findings in it change the plan. 81 of the 119 training sites sit in 35
+**Its 203 is D80's 203 and carries D80's error** — it opens by calling all of
+them sites "reaching an entity the owned store will have **no table for**",
+and its own closing table gives the nine admin reference writes a row of their
+own. So do not cross it against the 194 above; what it enumerates is the
+DROPPED TOTAL at 445, 193 `no_table` plus those 9 plus 1 subscription, and
+only 194 of it is the uncarried domain. Re-run the tool if you need today's
+set. Two findings in it change the plan. 81 of the 119 training sites sit in 35
 screens the learning cutover's switch never reaches — the course player and the
 compliance reports among them — so the learning cutover is a *sequencing
 dependency* of the exit. And the paused-domain screens are live today (direct

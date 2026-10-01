@@ -48,6 +48,121 @@ ${isAllowedDestination.toString()}`;
 
 export const SHARED_HELPERS = {
 
+  // The production app id, the single value a production function pins its SDK
+  // client to. Its own block so a site inlines it only when it uses it (see
+  // base44ClientRequest). Changing the production app would change this one line.
+  pennsyncProductionAppId: `const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';`,
+
+  // Rebuild an incoming Request so the Base44 SDK client it is handed cannot be
+  // redirected by a request header. createClientFromRequest reads TWO things it
+  // never validates straight off the inbound headers:
+  //   * serverUrl, from Base44-Api-Url (NOT request.url), defaulting to
+  //     https://base44.app — so a caller who sets that header aims the client's
+  //     credential, service token included, at a host of their choosing; and
+  //   * appId, from Base44-App-Id (it throws if absent, so there is no safe
+  //     default to drop), which becomes both the /apps/<appId>/ path segment and
+  //     the X-App-Id header on that same credentialed client — so a caller who
+  //     sets it aims the credential at another app's data.
+  // Both are closed here by construction, matching what the hand-rolled pins in
+  // centralAdminRead, centralLearningGrade and preflightStagingReadinessFixture
+  // already do:
+  //   * Base44-Api-Url, Base44-State and the functions-version header are DROPPED,
+  //     so serverUrl falls back to the platform default base44.app. This is not a
+  //     pin to a new origin and reads no environment: dropping the header IS the
+  //     fix, because the default is the correct origin.
+  //   * Base44-App-Id is compared against the caller-supplied expectedAppId. The
+  //     refusal is scoped to an ACTIVE mismatch — a PRESENT inbound id that differs
+  //     (the tenant-redirect attack: naming another app aims the credential at its
+  //     data) — and the call THROWS there, naming both ids. An ABSENT inbound header
+  //     is NOT a mismatch: it selects no other tenant, it only marks a request that
+  //     did not come through the platform (which always injects the header), and a
+  //     direct caller can set the header as easily as omit it, so its presence is
+  //     not authentication to enforce. Both the matching and the absent case then
+  //     emit expectedAppId — the CONSTANT, never the inbound header — so the pin is
+  //     visible at the construction site. A silent wrong-tenant read is worse than an
+  //     outage in a patient-data app, which is why a differing id is refused outright;
+  //     absent falls back to the correct app rather than 500-ing an anonymous denial.
+  // expectedAppId is REQUIRED and positional with no default; a default is how
+  // this protection becomes invisible again. The URL passed to new Request is
+  // cosmetic — the SDK ignores it and reads Base44-Api-Url (now dropped) — and is
+  // kept as the platform origin only so an origin-looking constant in a security
+  // wrapper is not read as the thing that decides the host; the headers decide.
+  // The forward posture is TWO named entry points, not one function with an
+  // options flag, for the same reason expectedAppId has no default: a posture must
+  // not be acquirable by omission. A service-role function whose author forgot a
+  // flag would silently forward the user's Authorization and nobody would notice;
+  // a function picks its posture by picking a name instead.
+  //   * userScopedClientRequest  forwards Authorization + Base44-Service-Authorization
+  //     + Base44-App-Id (the pinned constant) + the closed dev/prod X-Data-Env the
+  //     SDK itself honours. This is what a function acting as the signed-in user
+  //     needs, and what every raw createClientFromRequest(req) site gets today
+  //     minus the redirect headers.
+  //   * serviceRoleClientRequest forwards Base44-Service-Authorization +
+  //     Base44-App-Id (pinned) only — no user token, no data-env. This matches the
+  //     minimal set the admin reads (centralAdminRead, centralLearningGrade) hand-
+  //     rolled, so routing them through this is a narrowing-or-equal of their
+  //     header set in every dimension, never a widening.
+  // Call it at every createClientFromRequest site, e.g.:
+  //   createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID))
+  //   createClientFromRequest(serviceRoleClientRequest(req, PENNSYNC_PRODUCTION_APP_ID))
+  // expectedAppId is supplied by the caller, never defaulted. The production app id
+  // lives in its own pennsyncProductionAppId helper so a site inlines it only where
+  // it is used: a production function inlines both blocks, while a function pinned
+  // to another app (the staging preflight) or one that already names its own app id
+  // (centralAdminRead, centralLearningGrade) inlines only this block.
+  base44ClientRequest: `function pinnedBase44Request(req, expectedAppId, forwardUserCredential) {
+  if (typeof expectedAppId !== 'string' || expectedAppId === '') {
+    throw new Error('pinned Base44 request requires an expected Base44-App-Id');
+  }
+  // Read the inbound headers without ever throwing on the SHAPE of req. A production
+  // request is always a real Request with a Headers bag; a bare object with no usable
+  // headers (a test fixture, a malformed direct call) carries no inbound header, which
+  // is the absent case handled below. Only a PRESENT, different app id throws, and that
+  // requires a real header an attacker would have to set — so a real Request always
+  // reaches this read and the refusal is never skipped by the tolerance.
+  const inbound =
+    req && req.headers && typeof req.headers.get === 'function' ? req.headers : null;
+  const read = (name) => (inbound ? inbound.get(name) : null);
+  const received = read('Base44-App-Id');
+  // Refuse only an ACTIVE mismatch: a caller presenting a DIFFERENT app id is the
+  // tenant-redirect attack, and that is the case the refusal exists for. An ABSENT
+  // header is not a mismatch and selects no other tenant — it only means the request
+  // did not arrive through the platform, which always injects this header. We SET the
+  // pinned constant below either way, so absent falls back to the correct app exactly
+  // as the dropped Base44-Api-Url falls back to the default serverUrl. Throwing on
+  // absent would turn every anonymous denial into a 500 instead of a clean 403.
+  if (received !== null && received !== expectedAppId) {
+    throw new Error(
+      'Base44-App-Id mismatch: expected ' + expectedAppId + ', received ' + received
+    );
+  }
+  const headers = new Headers();
+  // Load-bearing: SET the constant (never forward the inbound value). The SDK reads
+  // appId from this header and throws of its own accord when it is absent, so pinning
+  // requires setting it here — dropping the inbound header alone would not suffice.
+  headers.set('Base44-App-Id', expectedAppId);
+  const serviceAuth = read('Base44-Service-Authorization');
+  if (serviceAuth !== null) headers.set('Base44-Service-Authorization', serviceAuth);
+  if (forwardUserCredential) {
+    const authorization = read('Authorization');
+    if (authorization !== null) headers.set('Authorization', authorization);
+    const dataEnv = read('X-Data-Env');
+    if (dataEnv === 'dev' || dataEnv === 'prod') headers.set('X-Data-Env', dataEnv);
+  }
+  // Cosmetic URL: serverUrl comes from the dropped Base44-Api-Url, not from here.
+  // No method: the SDK request factory reads only headers.get(...), never the
+  // method, so the request defaults to GET. An explicit POST would be inert for the
+  // SDK and would read as an outbound delivery primitive to the inventory scanner
+  // once this block is inlined into the fax status pollers.
+  return new Request('https://base44.app', { headers });
+}
+function userScopedClientRequest(req, expectedAppId) {
+  return pinnedBase44Request(req, expectedAppId, true);
+}
+function serviceRoleClientRequest(req, expectedAppId) {
+  return pinnedBase44Request(req, expectedAppId, false);
+}`,
+
   // Bind a care-team assignment to the caller's CURRENT membership, so a role
   // change or a revoke-and-regrant invalidates the assignment until it is
   // issued again. Five brokers carried identical hand-written copies of this

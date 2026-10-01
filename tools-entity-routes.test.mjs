@@ -808,7 +808,8 @@ test('the landable sites partition exactly, and the audit prose carries the part
   assert.equal(landable.length, report.landable_sites);
 
   const page = readFileSync(resolve(repository, PLAN), 'utf8');
-  const spelled = { 9: 'Nine', 22: 'Twenty-two', 56: 'Fifty-six' };
+  const spelled = { 9: 'Nine', 14: 'Fourteen', 21: 'Twenty-one', 22: 'Twenty-two', 25: 'Twenty-five',
+    26: 'Twenty-six', 33: 'Thirty-three', 50: 'Fifty', 56: 'Fifty-six' };
   for (const [count, word] of [[refused.length, spelled[refused.length]],
     [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
     assert.ok(word,

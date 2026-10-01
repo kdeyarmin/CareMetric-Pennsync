@@ -251,7 +251,7 @@ test('scheduled SMS creation and dispatch pause before constructing a Base44 cli
 
     const handler = source.slice(source.indexOf('Deno.serve'));
     const pauseGate = handler.indexOf(`if (${flag})`);
-    const clientCreation = handler.indexOf('createClientFromRequest(req)');
+    const clientCreation = handler.indexOf('createClientFromRequest(');
     assert.notEqual(pauseGate, -1, `${name} must check ${flag} in its handler`);
     assert.notEqual(clientCreation, -1, `${name} must retain its dormant implementation`);
     assert.ok(
