@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 54 | 39 |
+  | `mutating` (derived) | 54 | 40 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1588,6 +1588,16 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   being added to. This row was re-derived on seven bases over the life of one
   pull request; the number above is a reading of the tree it merges onto and of
   no other.
+
+  The timesheet approver gate then added ONE migration to `mutating` and nothing
+  to the other five, and no handler to anything: a forward file over
+  `contract_timesheet_review` (D88), so the two timesheet handlers need it and no
+  capability arrived. Only `mutating` moves because `contract_timesheet_review` is
+  reached by no read-only handler and by nothing touching the runtime — which is
+  the contrast worth keeping beside the shared-read cases, where one forward file
+  moves every derived row at once: a wave's migrations are the ones ITS handlers
+  need, so how many rows move says which handlers reach the function rather than
+  how big the change is.
 
   The five compliance WRITES then took `mutating` to 54 and left `read-only`
   and `integration` where they were. Its migrations rose by **two** for one

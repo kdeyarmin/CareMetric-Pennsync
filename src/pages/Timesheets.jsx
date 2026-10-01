@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, loadAgencyRoster } from '@/lib/agencyRoster';
+import { approverOptions } from "@/components/timesheet/approverCandidates";
 import { filterRowsByStaffAgency, filterUsersByCallerAgency } from '@/lib/agencyScope';
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -112,7 +113,20 @@ export default function Timesheets() {
     enabled: !!currentUser?.email,
   });
 
-  // Candidate approvers for the timesheet form (admins + flagged managers).
+  // Candidate approvers for the timesheet form.
+  //
+  // The predicate lives in `approverCandidates.js` and, on the owned path, is now
+  // the authoritative tenant role rather than three self-editable profile labels.
+  // It is a CORRECTNESS fix: the submit validates whoever is picked before the
+  // address reaches the row, on both backends, so the old list's fault was
+  // offering a colleague the submit would then refuse — which a nurse reads as a
+  // broken form. `approverCandidates.js` carries the whole argument.
+  //
+  // `src/pages/TimeOff.jsx` carries a byte-identical copy of the old predicate
+  // and is deliberately NOT changed here. Its contract validates a nominee the
+  // same way (`20260920230000_contract_time_off.sql`, `agency_colleague(...)
+  // .tenant_role in ('agency_admin','manager')`), so the same fix applies — it is
+  // a separate capability and belongs in a change somebody decided on.
   const { data: approvers = [] } = useQuery({
     queryKey: ["timesheets", "approvers", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
@@ -121,13 +135,7 @@ export default function Timesheets() {
         const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
         // Nurses with an agency only see same-agency approvers (backend enforces too).
         const scoped = filterUsersByCallerAgency(users, currentUser);
-        return scoped
-          .filter((u) =>
-            u.email
-            && (u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true),
-          )
-          .filter((u) => u.email !== currentUser?.email)
-          .map((u) => ({ email: u.email, name: u.full_name || u.email, role: u.role }));
+        return approverOptions(scoped, currentUser?.email);
       } catch {
         return [];
       }
