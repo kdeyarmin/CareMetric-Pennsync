@@ -7,7 +7,7 @@ export const fail = (status, code) => { throw new IntegrationError(status, code)
 export const ID = /^[A-Za-z0-9_-]{1,128}$/;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_FILE = 8 * 1024 * 1024;
-export const OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFile', 'SendEmail', 'UploadFile', 'UploadPrivateFile', 'CreateFileSignedUrl']);
+export const OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFile', 'SendEmail', 'UploadFile', 'UploadPrivateFile', 'UploadRecordFile', 'CreateFileSignedUrl']);
 // Operations a browser caller may never be granted, whatever the service list
 // says. `runtime.mjs` only requires the browser list to be a SUBSET of the
 // service list, so before `SendEmail` was released the ceiling refused a browser
@@ -16,7 +16,13 @@ export const OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFi
 // WITHOUT the recipient binding the business API applies to its two senders,
 // so the only thing bounding the recipient would be the caller's own typing.
 // This is a refusal rather than a default: nothing may configure it back on.
-export const BROWSER_FORBIDDEN_OPERATIONS = Object.freeze(['SendEmail']);
+// `UploadRecordFile` joins it for a reason of the same kind: it mints an
+// object every active member of the caller's agency may open, and which of
+// them may is a decision a contract makes after asking the record store. A
+// browser reaching it directly would mint an agency-readable object with
+// nothing but the caller's own typing deciding what went into it, and the
+// chart narrowing that stands behind this model would never be evaluated.
+export const BROWSER_FORBIDDEN_OPERATIONS = Object.freeze(['SendEmail', 'UploadRecordFile']);
 export const MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv']);
 export function exactObject(value, allowed, code = 'INVALID_INPUT') {
   if (!value || typeof value !== 'object' || Array.isArray(value)
