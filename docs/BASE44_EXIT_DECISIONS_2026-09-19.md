@@ -6579,7 +6579,12 @@ failure at `700b4d24`.
 > distinguish a file the ledger will skip forever from a file the ledger has not
 > yet run, and the remedies are opposite: the first needs a forward catch-up
 > written, the second needs nothing but an apply. The failure output cannot tell
-> them apart, because it reports the difference and not the file. **The
+> them apart, because it reports the difference and not the file. D88 does not
+> say how to tell them apart. Its author did not need to: they had just written
+> the pending file, so for their own change the three differences and the pending
+> file were the same thing, and the closing paragraph says so. A reader arriving
+> at a red run weeks later has the opposite problem — the same output, no
+> knowledge of which files are pending, and two opposite remedies. **The
 > discriminator is the pending set: D88's signature is a difference whose file is
 > NOT pending.** If the file is pending, a catch-up is a duplicate of work already
 > in the tree. Checking costs one read-only command, and the cost of not checking
@@ -6606,23 +6611,22 @@ existing decision's signature decides nothing that was open, and a number would
 make the discriminator read as a separate finding a reader could apply without
 D88, which is the opposite of what it is.*
 
-*The premise check, which NARROWED rather than confirmed.* D88's own closing
-paragraph already holds this distinction in a single instance: it records that
-the store "still needs the migration applied — one pending file, DDL only — and
-until it is, the hosted comparison stays red on the ledger count as well as the
-three objects." So that author knew, for their own change, that the three
-differences and the pending file were about the same thing. What is absent is
-the TEST, and the reason is a difference of vantage rather than an oversight.
-D88 is written by somebody who has just authored the pending file and therefore
-cannot be confused about it; a reader who arrives at a red run weeks later has
-the opposite problem, and the entry hands them the mechanism, the ratchet and
-that one instance without ever saying to look at the pending set before
-concluding D88. So the addendum neither contradicts the entry nor repeats it: it
-generalises a distinction the entry applied once, from the vantage where the
-distinction is hard to the vantage where it was free. Recorded this way because
-"D88 does not say how to tell" is true and "D88 does not know the difference"
-would not be — and the addendum is filed inside D88 partly on the strength of
-that closing paragraph.*
+*The three vantage sentences in that paragraph were added at the author's
+request and are theirs, after this collector put a narrowing to them: D88's own
+closing paragraph already holds the distinction in a single instance, so an
+addendum implying the entry does not know it would be wrong about the entry.* The
+paragraph they refer to without quoting is D88's last, verbatim — "The store
+itself still needs the migration applied — one pending file, DDL only — and until
+it is, the hosted comparison stays red on the ledger count as well as the three
+objects." The collector's part was finding that sentence and asking whether the
+premise survived it; the author's answer is that the output property stands
+exactly as written, because it is a property of the output, and what needed
+repair was the implicature around it. **Their generalisation is the durable half
+and is theirs: an entry that is correct and unusable from the reader's seat is a
+different defect from an entry that is wrong.** That is also the argument for
+filing this inside D88 rather than beside it — the entry is not mistaken, it is
+written from a seat nobody occupies by the time the output is being read — and it
+is the sharper reading of a premise check that NARROWED rather than confirmed.*
 
 *What the collector verified at its own head, which is the anchor and not the
 measurement: lines 94 and 98 of that migration are, verbatim, `alter table
