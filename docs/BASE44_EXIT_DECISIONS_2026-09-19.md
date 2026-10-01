@@ -6088,6 +6088,30 @@ a table of regulatory citations is the behaviour you want.
 
 Port queue: 7 / **6** / 0 / 0 / 12 / 0 / 2 / 0 / 2 / 73.
 
+### Addendum to D83, 2026-10-01 — the cost is three pages, not one
+
+**Addendum to D83 — the cost is three pages, not one.** Contributed by the operational-table contracts thread, 2026-10-01, measured at `20d575c1` and equivalent on main at `677bd381`.
+
+D83's cost paragraph opens "What this costs, said plainly rather than left to be discovered" and then names one page of three. That is this project's house defect arriving inside the sentence written to prevent it, and it is the most instructive thing in the entry: the paragraph is accurate about what it names, and the discovery it was meant to foreclose happened anyway, two pages over, days later. It is recorded here as a finding and deliberately not tidied away. The original paragraph stands exactly as written.
+
+Three production pages lose a runtime write to a `global` reference table, not one. Measured per call site: of 453 entity call sites in production `src/`, fourteen cannot land in the owned store, and five of the fourteen are writes to the three `global` entities.
+
+`MedicareGuidelinesLibrary.jsx:110` — `MedicareGuideline.update(is_active:false)`, the "retire this guideline" control. One site. Named in the original paragraph, which also names its sibling "add a guideline by URL". Nothing to add.
+
+`MedicareRuleSeeder.jsx:35/48` — `MedicareComplianceRule` create and update. Two sites. **Nothing of substance is lost.** The control loads `DEFAULT_MEDICARE_RULES`, twelve rules committed at `src/components/compliance/defaultMedicareRules.js:30`, which is precisely the case D83 reasons about: content reviewed once, versioned with the schema, identical in every deployment. The content survives the move intact. What goes is the one-click load.
+
+`RegulatoryMonitor.jsx:346/354` — `ComplianceRule` create and update. Two sites. **This is a real loss and it was unrecorded.** A protected administrator can today turn a reviewed regulatory update into a live compliance rule from the browser, behind an explicit "confirm rule changes" checkbox, with a traceable `rule_code` encoding the source update and the check name so an auditor can match the rule back to its origin. Under D83 they cannot. D83's reasoning covers the case rather than being contradicted by it — the content is a model's summary of a regulator's page, which is content preparation — so nothing is reopened here. It is a cost that belonged in the paragraph and was not in it.
+
+The distinction to carry: the first two pages lose a convenience, the third loses a capability. Doing less than Base44 does is neither the restoration case nor the doing-more case, and it is the one a user notices.
+
+And a note on why reading the entry could not have found this. The original cost paragraph is page-shaped — a page and its two controls — while the measurement that found the other two is call-site-shaped. Those six entities carry 31 call sites between them; every read and filter lands and only the writes do not, so a per-entity or per-page reading reports a table as served or unserved and loses which operations went with it. The unit is the call, not the table or the page.
+
+*Carried by the register's collector, 2026-10-01, from the operational-table contracts thread at `session_01Lv4CGaHHREnft6MAYfCQEU`, routed as prose because the write route for a decision entry is the collector's hand. **One structural departure, the collector's and nothing else**: the body arrived with no heading, so the `###` heading above is imposed at the level `### Addendum to D23, 2026-10-01` and `### Amendment to D7, 2026-09-30` already use, with the date in the house form. The author's own bold lead-in is kept beneath it rather than folded into the heading, so the body reads exactly as sent. The cross-session transport indents every line by four spaces; that indentation is stripped and nothing else is touched.*
+
+*What the collector verified, which is the anchor and not the measurement: D83 is at line 6047, its cost paragraph does open "What this costs, said plainly rather than left to be discovered", and it names `MedicareGuidelinesLibrary.jsx` and its two controls and no other page — so the addendum's premise holds against the file at `677bd381`. No addendum or amendment to D83 existed before this one. **The collector took no part in the call-site measurement and makes no claim here about whether it is right**; the 453, the fourteen, the five, the 31 and the three file positions are that thread's, in that thread's words.*
+
+*No digest of this region is stored, and that is deliberate rather than an omission. D204's second re-anchor settled the reason: a stored digest travels stale with a region that moves, and it then reads exactly like one that was checked, while an extraction a later reader can re-run costs a second and cannot go stale. A reader wanting the author's own bytes should ask that thread rather than compare against a hash taken on this side of a transport that reshapes the text.*
+
 ## D84 — A capability is not blocked because one of its nine legs is leaving
 
 **Decision.** The seven capabilities `entity_not_carried` held are settled, and
