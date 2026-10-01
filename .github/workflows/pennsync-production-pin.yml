@@ -1,0 +1,77 @@
+name: PennSync production pin
+
+# Proves the FOUNDATION the production-mode acceptance run needs: that a local
+# owned store can be pinned to the PRODUCTION app id at all.
+#
+# It is a job of its own, and small on purpose. D11 makes the deployment pin a
+# generated IMMUTABLE constant decided once, before the first migration runs, so
+# a store the Supabase CLI started is already pinned to STAGING — the
+# restrictive default — and cannot be corrected afterwards. Everything the
+# production acceptance run will do stands on getting that pin right, and a
+# production run against a staging-pinned store would sign in happily and prove
+# nothing about containment. That is the failure direction which does not
+# announce itself, so it is measured here by itself rather than inside a longer
+# run whose green would be read as covering it.
+#
+# No Chromium and no app build: this job reads two functions out of the store.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pennsync-production-pin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-pin:
+    name: Verify a local store can be pinned to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            services/authority-store/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated authority test dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      # Runs before any stack exists, so a drift between the three copies of the
+      # app ids, or a diagnostic that could carry CLI output, fails in seconds
+      # rather than after a twelve-minute start.
+      - name: Verify pin constants and redaction without a stack
+        run: node --test --test-name-pattern='^production pin' services/authority-store/tests/production-pin.test.mjs
+      - name: Install pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d "$RUNNER_TEMP/pennsync-production-pin-supabase.XXXXXX")"
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
+            https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_linux_amd64.tar.gz \
+            --output "$cli_dir/cli.tar.gz"
+          printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
+          tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase supabase-go
+          printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
+      # This job owns its own fresh stack and re-migrates it. Do not reuse
+      # another job's state: the reset below drops and recreates the database.
+      - name: Start fresh owned local Auth and API
+        run: node services/authority-store/tests/http-local-stack.mjs start
+      - name: Pin the local store to production and read it back
+        run: node --test --test-name-pattern='a local stack can be pinned' services/authority-store/tests/production-pin.test.mjs
+      - name: Stop owned local stack
+        if: always()
+        run: node services/authority-store/tests/http-local-stack.mjs stop
