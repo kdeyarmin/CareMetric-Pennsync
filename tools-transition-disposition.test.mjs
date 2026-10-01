@@ -13,7 +13,7 @@ import {
   entitiesTouched, isInertFunction, isPausedFunction, isRefusingHandler, main, parseManifest,
   discoverClaimsOnlyFunctions, TRUSTED_CLAIMS_FENCE,
   invokedFunctions, classifyWithoutInvocations, discoverInvocationFreeBlockers,
-  portQueueLine,
+  portQueueLine, markdownPages, portQueueQuotations,
 } from './tools-transition-disposition.mjs';
 import { PROFILE_SELF_WRITABLE, RECORD_MIGRATION_FILE } from './tools-entity-schema-plan.mjs';
 
@@ -200,6 +200,98 @@ test('a module whose only entity is the retired trail is re-classified by what e
   }
 });
 
+/**
+ * The port-queue readings in this tree that are deliberately NOT current.
+ *
+ * Every one is a dated before/after: prose recording what a bucket used to say
+ * in order to explain what moved it. They cannot be told from a stale copy by
+ * their figures — that is the whole difficulty — so they are declared here with
+ * a reason, and anything else quoting a reading has to agree with the tool.
+ *
+ * This list grows only when somebody writes a new before/after, which is rare
+ * and deliberate. The list it replaces grew every time somebody wrote a page,
+ * which is silent, and it omitted three pages that way.
+ */
+const HISTORICAL_PORT_QUEUE_READINGS = [
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'records_schema=94',
+    reason: 'D25\'s before column: what the queue said when any entity access counted as waiting on the store',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_not_carried=34 entity_authorization=34 records_schema=25',
+    reason: 'the after column beside it, showing the redistribution rather than the total moving',
+  },
+  {
+    page: 'docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md',
+    reading: 'entity_not_carried=7 entity_authorization=8 patient_access_model=0 records_schema=0 '
+      + 'files=12 ported_function=0 core_integration=2 pdf_rendering=0 external_secret=2 none=73',
+    reason: 'the row\'s own "it read, when this row was written" reading, kept to show the ten buckets the current line omits when empty',
+  },
+  {
+    page: 'docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md',
+    reading: 'records_schema=94 files=4 ported_function=1 core_integration=1 pdf_rendering=0 external_secret=1 none=10',
+    reason: 'the same row\'s "it began as" reading, the origin every later correction is measured against',
+  },
+  {
+    page: 'docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md',
+    reading: 'records_schema=80',
+    reason: 'the queue an earlier conclusion was true of, quoted to say why that conclusion expired',
+  },
+  // D223's three, which arrived in this list the moment the pages became
+  // discovered rather than listed: the decisions document was in the tree
+  // carrying them before this check could see it, so they are not new prose
+  // somebody wrote past a gate. That is the discovery change working — a
+  // roster would have gone on omitting them — and it is also why the entry
+  // itself says "nothing in this tree reads this document at all", which was
+  // true when it was written and is now false. The sentence is its author's to
+  // correct; the readings are declared here either way, because they are
+  // dated before/afters and not stale copies.
+  // The entry that USED to sit here declared `entity_authorization=5 files=12
+  // external_secret=2 none=79` as D223's dated reading, and it was right on a
+  // tree without this port. With the duty contract present that reading IS the
+  // measurement, quotations equal to the measurement are skipped before any
+  // declaration is consulted, and a declaration nothing matches fails the
+  // check below. So the entry went, and the one under it arrived: on main the
+  // footnote's OTHER figure was the live measurement and needed no
+  // declaration, and here it is the historical one. Both readings are correct
+  // and which of them is history depends on the tree, so expect this pair to
+  // swap again the next time a port moves `entity_authorization`.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
+    reason: 'the collector\'s footnote reading on `00ccac41` and on the collection branch, '
+      + 'quoted to show one instrument answering on three trees rather than two reports disagreeing',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12',
+    reason: 'the first half of the collector\'s footnote reproducing that same reading from its '
+      + 'own seat, which wraps mid-line, so the parser sees one quotation in two pieces',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'external_secret=2 none=79',
+    reason: 'the second half of that wrapped footnote line, declared separately for the same '
+      + 'reason: a quotation is per line, and neither half on its own is a reading of anything',
+  },
+  // And the swap the comment above predicted, arriving one port later and from
+  // the other direction: this port moves `files` rather than
+  // `entity_authorization`, so D223's own entry line stops being the
+  // measurement while both halves of the footnote keep the standing they had.
+  // It is a dated reading and says so in its own words — "at the head this
+  // change was written on" — so it is declared rather than corrected. The
+  // figure in a sentence that claims the present tense was corrected instead,
+  // on the three pages carrying one.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
+    reason: "D223's own reading at the head it was written on, which this port's `files` 12 → 11 "
+      + 'turns into history without touching what D223 measured',
+  },
+];
+
 test('the pages carrying the port queue carry what the tool measures', () => {
   // D79 fixed two stale bucket descriptions with assertions rather than better
   // prose, and the prose about the buckets then went stale the same way: the
@@ -220,8 +312,21 @@ test('the pages carrying the port queue carry what the tool measures', () => {
   // finish line is, and #250 pinned AGENTS.md while leaving that page
   // unguarded: on 2026-09-23 it still read `records_schema=3 ... none=75`
   // against a measured `none=78` with `records_schema` empty, so it told a
-  // reader three ports were waiting that had all been written. Both pages are
-  // held to the one line now.
+  // reader three ports were waiting that had all been written. The remedy both
+  // times was to add a page to a literal list, and the list then omitted a
+  // third: the transition plan carried `entity_authorization=7` against a
+  // measured 6, in TWO places, with every suite green. A roster of pages is a
+  // mechanism for omitting the next page, so the pages are discovered now and
+  // only the history below is declared.
+  // The transition plan was nearly pinned here as a third page, and was not,
+  // because what it needed was a sentence deleted rather than a pin. Two of its
+  // clauses claimed the figure was held to the tool when only these two pages
+  // were; the discovery walk below already catches a copy that has gone WRONG
+  // there, which is the case that bites, so a pin would have bought only the
+  // case where somebody removes the line. Against that: pinning a page makes a
+  // MISSING line fail, which reds every open branch's merge ref at once on a
+  // base state nobody caused. The false clauses are gone from that page and no
+  // pin was added.
   for (const path of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md']) {
     const page = readFileSync(resolve(repository, path), 'utf8');
     assert.ok(page.includes(line),
@@ -229,6 +334,40 @@ test('the pages carrying the port queue carry what the tool measures', () => {
       + '  Update the port-queue line there, and the decisions doc\'s ledger line,\n'
       + '  in the SAME change as whatever moved the queue.');
   }
+
+  // Everywhere ELSE the reading is quoted, discovered rather than named. A run
+  // that is not the measured payload must be a reading somebody declared as
+  // history, with its reason — and the reason is the deliverable, because the
+  // figures alone cannot say whether a run is a dated before/after or a copy
+  // that went stale. That is why history is declared and pages are not.
+  const payload = line.replace(/^port queue: /, '');
+  const declared = new Map(HISTORICAL_PORT_QUEUE_READINGS.map(
+    entry => [`${entry.page}\u0000${entry.reading}`, entry.reason]));
+  const seen = new Set();
+  const undeclared = [];
+  for (const page of markdownPages(repository)) {
+    const text = readFileSync(resolve(repository, page), 'utf8');
+    for (const quotation of portQueueQuotations(text, Object.keys(report.port_blockers))) {
+      if (quotation.reading === payload) continue;
+      const key = `${page}\u0000${quotation.reading}`;
+      if (declared.has(key)) { seen.add(key); continue; }
+      undeclared.push(`  ${page}:${quotation.line}\n    ${quotation.reading}`);
+    }
+  }
+  assert.deepEqual(undeclared, [],
+    'a page quotes a port-queue reading that is neither the measurement nor declared history:\n'
+    + `${undeclared.join('\n')}\n`
+    + `  measured: ${payload}\n`
+    + '  If it is meant to be current, update it — and note that a stale copy can sit\n'
+    + '  mid-sentence with only the `port queue:` prefix missing, in the same sentence\n'
+    + '  that tells the reader to run the tool. If it is a dated before/after, add it to\n'
+    + '  HISTORICAL_PORT_QUEUE_READINGS with a reason.');
+
+  // A declaration nothing matches is a stale exemption, which is the failure
+  // mode an exemption list has: it outlives the text it was written for and
+  // then covers whatever drifts into its shape next.
+  assert.deepEqual([...declared.keys()].filter(key => !seen.has(key)).map(key => key.split('\u0000').join(': ')), [],
+    'HISTORICAL_PORT_QUEUE_READINGS names a reading no page carries; remove the entry');
   const page = readFileSync(resolve(repository, 'AGENTS.md'), 'utf8');
 
   // The counts alone would pass a swap — one capability into a bucket and one
@@ -242,6 +381,66 @@ test('the pages carrying the port queue carry what the tool measures', () => {
     'the startable set changed; re-read what each entry now waits on and move AGENTS.md with it');
   for (const name of report.port_blockers.records_schema) {
     assert.ok(page.includes(name), `AGENTS.md should name ${name} as startable`);
+  }
+});
+
+test('a reading is grouped by what separates its tokens, not by its line', () => {
+  const buckets = ['entity_not_carried', 'entity_authorization', 'records_schema', 'files', 'none'];
+
+  // The form, and the form with its prefix removed, are the same reading: the
+  // prefix is exactly the half the transition plan's mid-sentence copy dropped,
+  // so keying on it would have read a complete stale payload as prose.
+  assert.deepEqual(portQueueQuotations('port queue: files=12 none=78', buckets),
+    [{ line: 1, reading: 'files=12 none=78' }]);
+  assert.deepEqual(portQueueQuotations('it now reads `files=12 none=78`, and the tool', buckets),
+    [{ line: 1, reading: 'files=12 none=78' }]);
+
+  // A table's BEFORE column is a different reading from its AFTER column, and a
+  // cell boundary is what says so. Group them and the decisions document's
+  // before/after row becomes one nonsensical run that no declaration matches.
+  assert.deepEqual(portQueueQuotations('| records_schema=94 | **files=4**, none=10 |', buckets),
+    [{ line: 1, reading: 'records_schema=94' }, { line: 1, reading: 'files=4 none=10' }]);
+
+  // Prose between two tokens ends the run for the same reason.
+  assert.deepEqual(portQueueQuotations('files=12 today, and none=78 after the ports landed', buckets),
+    [{ line: 1, reading: 'files=12' }, { line: 1, reading: 'none=78' }]);
+
+  // Line numbers are reported so a failure can be opened, and a bucket name
+  // without a count is not a reading — the prose names buckets constantly.
+  assert.deepEqual(portQueueQuotations('one\ntwo none=78\n', buckets),
+    [{ line: 2, reading: 'none=78' }]);
+  assert.deepEqual(portQueueQuotations('the `files` bucket is empty', buckets), []);
+});
+
+test('markdown pages are discovered, including from a directory sources skip', async () => {
+  // The roster this replaced omitted three pages, so the walk is proved rather
+  // than assumed: a page added anywhere has to appear without anything being
+  // told about it. Test directories are deliberately NOT skipped, because
+  // skipping one is how the same omission comes back a level down.
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const root = mkdtempSync(resolve(tmpdir(), 'pennsync-pages-'));
+  try {
+    writeFileSync(resolve(root, 'README.md'), '');
+    mkdirSync(resolve(root, 'docs'));
+    writeFileSync(resolve(root, 'docs/deep.md'), '');
+    mkdirSync(resolve(root, 'tests'));
+    writeFileSync(resolve(root, 'tests/fixture.md'), '');
+    mkdirSync(resolve(root, 'node_modules'));
+    writeFileSync(resolve(root, 'node_modules/vendor.md'), '');
+    writeFileSync(resolve(root, 'notes.txt'), '');
+    assert.deepEqual(markdownPages(root).sort(),
+      ['README.md', 'docs/deep.md', 'tests/fixture.md']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  // And the real tree's pages include the three that carry the reading, so the
+  // walk this test proves is the one the pin above actually runs.
+  const pages = markdownPages(repository);
+  for (const page of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md',
+    'docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md']) {
+    assert.ok(pages.includes(page), `${page} was not discovered`);
   }
 });
 
@@ -897,19 +1096,28 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // Read it beside D83, which took `MedicareGuideline`'s two writers out of
   // this same bucket the same way: a blocked port and a capability that is not
   // being carried are not the same thing, however alike they look in a count.
+  // Then D223, which moves the pair the ordinary way after three entries that
+  // did not: `setNurseDutyStatus` is WRITTEN, so `entity_authorization` 6 → 5
+  // and `none` 78 → 79 — one fewer blocked and one more carried, which is the
+  // movement D153's comment above contrasts itself with. It moves because the
+  // contract exists rather than because anything was reclassified: a ported
+  // capability reaches `none` without the blocker classifier being consulted
+  // at all.
   //
-  // `files` 12 → 11 is the third movement of that kind and is the one that
-  // leaves the queue SHORTER without anything having been written:
-  // `processPatientFileUpdate` is dispositioned `preserved_paused` because it
-  // is paused at source and its successor would be a widening nobody has
-  // decided, so it is not a file-layer port waiting on the file layer. Nothing
-  // moves to `none`. D47's rule is what puts it in this change rather than a
-  // later one: switching a capability off means changing its disposition in
-  // the same change.
+  // `files` 12 → 11 lands on top of that and is NOT D223's kind: it is the third
+  // movement of D153's, the one that leaves the queue SHORTER without anything
+  // having been written. `processPatientFileUpdate` is dispositioned
+  // `preserved_paused` because it is paused at source and its successor would
+  // be a widening nobody has decided, so it is not a file-layer port waiting
+  // on the file layer. Nothing moves to `none`. D47's rule is what puts it in
+  // this change rather than a later one: switching a capability off means
+  // changing its disposition in the same change. The two arrived on separate
+  // branches and the distribution below is the TOOL'S answer on the merged
+  // tree, not D223's figures with one bucket decremented by hand.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 6, patient_access_model: 0,
+  assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
     records_schema: 0, files: 11, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 78 });
+    external_secret: 2, none: 79 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -973,9 +1181,16 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // both tables and writable by nobody, so the sweep has no work left rather
   // than no permission. Six remain that write somebody else's row, a column
   // outside D82's set, or a payload nothing can read.
+  //
+  // D223 then took `setNurseDutyStatus` out by WRITING it, which is the only
+  // way a capability has left this bucket since D82: it was the one of the six
+  // that writes the caller's own row and nothing but columns on D82's
+  // allowlist, so it was the only one the self-write policy could ever admit.
+  // The five that remain each need the administrative path D223 refuses, so
+  // this list does not shrink again without a decision rather than a port.
   assert.deepEqual(report.port_blockers.entity_authorization,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
-      'setNurseDutyStatus', 'userManagement', 'userManagementV2']);
+      'userManagement', 'userManagementV2']);
   // ZERO. That is how many of the hundred are still waiting on the record
   // store, and it reached zero on a CORRECTION rather than on a port: D75
   // found that the last entry, `processCompletedVisit`, pauses at source with
@@ -1125,6 +1340,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'sendAccountReadyEmail', 'sendCredentialRenewalReminders',
       'sendExpirationNotifications', 'sendPersonnelExpirationNotifications',
     'sendWelcomeEmail',
+      'setNurseDutyStatus',
       'submitIncidentReport',
       'submitPersonnelCredential', 'submitStateReportableIncident',
       'submitTimeOffRequest', 'submitTimesheet',
