@@ -6,7 +6,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
+import {
+  applyRecordMigrations, recordMigrationNames,
+} from './record-migrations.mjs';
 
 // The migration this suite owns. It is no longer the newest on this tree, so the
 // ordering guard has moved on and this suite asserts only that its own file ran.
@@ -73,6 +75,20 @@ before(async () => {
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
+  // This file has now been OVERTAKEN THREE TIMES, which is why neither side of
+  // this merge named the right holder: `main` handed the guard to
+  // `roster-phone-provisioned.test.mjs` when `20260920720000` landed and to
+  // `contract-timesheet-review-approver.test.mjs` when `20260920730000` did,
+  // and this branch adds `20260920740000`, which sorts after both. So the holder
+  // on this tree is `contract-time-off-review-approver.test.mjs` alone, and the
+  // timesheet suite drops it in this same change — one holder, which is what the
+  // helper admits.
+  //
+  // Nothing about this file changed and nothing about it is wrong. Keeping the
+  // call would have failed this suite's `before` and taken every test in it down
+  // with it, naming a contract that had done nothing — which is the cost the
+  // comment above records twice already. What is kept is the half that is this
+  // suite's own property rather than the tree's.
   assert.ok(applied.includes(WRITES_FORWARD),
     `the record walk did not apply ${WRITES_FORWARD}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));

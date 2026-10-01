@@ -65,18 +65,26 @@ before(async () => {
   // The ordering guard has MOVED ON, and this is the retirement the helper's
   // own docstring asks for rather than a weakening of it: this migration is on
   // `main`, so it is part of what a store already holds, and a later file
-  // sorting after it is a correct tree rather than a base that moved.
+  // sorting after it is a correct tree rather than a base that moved. It was not
+  // dropped at its own merge, and the next forward migration to arrive failed
+  // this suite's `before` and took all 22 of its tests down with it, naming a
+  // file that had done nothing wrong.
   //
-  // Where it lives now is a merge resolution rather than either branch's
-  // answer, and on THIS tree it is neither side's. `main` sent it to
-  // `contract-duty-status`, then to `contract-reference-writes` as further
-  // forward migrations landed; this branch adds a record migration sorting
-  // after all of them, so the newest pending file here is the time off review
-  // approver role and the guard is held by
-  // `contract-time-off-review-approver.test.mjs` alone. Each claim was right
-  // about its own tree, and taking either side whole would have left two suites
-  // holding it — which the helper forbids, because the second holder asserts a
-  // tree the first one's own change makes false.
+  // Where it lives now is a merge resolution rather than either branch's answer,
+  // and on THIS tree it is neither side's. `main` sent it to
+  // `contract-duty-status`, then to `contract-reference-writes`, then to
+  // `roster-phone-provisioned` when `20260920720000` landed, then to
+  // `contract-timesheet-review-approver` when `20260920730000` did; this branch
+  // adds `20260920740000_time_off_review_approver_role`, which sorts after all of
+  // them, so the holder on this tree is
+  // `contract-time-off-review-approver.test.mjs` alone. Each side's claim was
+  // right about the tree that named it — HEAD could not see `20260920730000` and
+  // `main` cannot see `20260920740000` — and taking either whole would have left
+  // two suites holding it, which the helper forbids, because the second holder
+  // asserts a tree the first one's own change makes false.
+  //
+  // What stays is the set equality above, which is the assertion that actually
+  // says this store is the one a deployment gets.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [
