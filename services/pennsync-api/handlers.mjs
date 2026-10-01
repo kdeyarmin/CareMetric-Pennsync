@@ -1188,6 +1188,29 @@ export const HANDLERS = Object.freeze({
         { agreement_version: params.agreement_version });
     },
   }),
+  // The self-service duty toggle. The SPA sends the fields at the top level of
+  // the request, so the whole params object IS the update, and it travels to
+  // the contract as one jsonb value: the contract has to tell a key that is
+  // ABSENT (leave this field) from one whose value is null (clear it), and a
+  // parameter per field cannot express that.
+  //
+  // An unknown key is REFUSED rather than ignored, which is a narrowing of the
+  // original — it destructures the six it knows and drops the rest — and D39's
+  // rule: a caller who names a field believes it took effect, and the field
+  // most likely to be named here by a client that has not been updated is one
+  // nobody may self-assert. `target_user_email` is allowed through because the
+  // contract has an answer for it: its own address is accepted, anybody else's
+  // is refused by name.
+  setNurseDutyStatus: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, [
+        'duty_status', 'off_duty_message', 'target_user_email',
+        'scheduled_off_duty_start', 'scheduled_off_duty_end',
+        'scheduled_off_duty_recurring',
+      ], 'INVALID_PARAMS');
+      return contract('setNurseDutyStatus', { updates: params });
+    },
+  }),
   policyAcknowledgment: Object.freeze({
     // The original defaults `action` to `acknowledge` when absent, and this
     // keeps that. `list` is refused HERE rather than at the contract, because

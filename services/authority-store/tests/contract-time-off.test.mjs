@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { transpileTs } from '../../../tools-transpile-ts.mjs';
-import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The time-off domain — four Base44 capabilities over one carried table.
@@ -51,13 +51,22 @@ before(async () => {
   // it. A forward migration is applied by every suite that adopts this walk,
   // which is the only way a contract suite can see one land on it.
   const applied = await applyRecordMigrations(db);
-  // The ordering guard, inherited from `contract-compliance-writes` because
-  // that file has merged and this change's forward migration is now the newest
-  // PENDING one. `planMigration` refuses `MIGRATE_OUT_OF_ORDER` the moment an
-  // applied file sorts after a pending one, so a file this change adds has to
-  // sort after everything a store may already hold. The call retires here when
-  // this migration merges rather than accumulating an exception list.
-  assertNewestRecordMigration(applied, CANCEL_FORWARD);
+  // The ordering guard has moved ON to `contract-duty-status`, and this is the
+  // retirement the helper's own message asks for rather than a weakening of it:
+  // `CANCEL_FORWARD` has MERGED, so it is part of what a store may already
+  // hold, and the duty contract's forward file is the newest PENDING one. The
+  // handover is not cosmetic — the two files shared the prefix `20260920680000`
+  // with different names, so each suite independently believed it held the
+  // guard, and the one whose file does not sort last fails. Only the newest
+  // pending file may carry the call.
+  //
+  // What stays is the weaker property this suite actually needs: that the walk
+  // really applied its own forward file, so every refusal below is raised
+  // against it rather than against a store that never got it. Presence, not
+  // position — dropping the position check is not a reason to stop checking the
+  // migration arrived at all.
+  assert.ok(applied.includes(CANCEL_FORWARD),
+    `the record walk did not apply ${CANCEL_FORWARD}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // The clinician's carried profile claims everything the originals read. None
   // of it may decide anything, which is what the gate test proves.

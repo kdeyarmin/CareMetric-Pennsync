@@ -123,16 +123,26 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=6 files=12 external_secret=2 none=78
+port queue: entity_authorization=5 files=12 external_secret=2 none=79
 ```
 
-98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
-The carried total falls by one here rather than the written total rising,
-because D153 retired `enforceStaffRoleIntegrity` instead of porting it: the
-owned store constrains `staff_role` on both tables and lets nobody write it, so
-the sweep that reverted a spoofed value has no work left. **A bucket shrinking
-is not the same event as a port landing, and this page should not let the two
-read alike** — a written count that did not move is the tell.
+98 carried capabilities, **79 written, 19 blocked** (2026-09-30, after D223),
+which is the line above summed — `none` is the written total and the other
+three buckets are the blocked one. Derive it that way rather than carrying it
+forward: this paragraph read 78 and 20 for a day after the queue line beside it
+had moved, so the page carried two measurements of one thing that disagreed,
+which is the defect its own next sentence is about.
+
+The previous reading was **78 written, 20 blocked** (2026-09-29, after D153),
+and it is kept because of what it shows rather than for the numbers. The
+carried total fell by one there rather than the written total rising, because
+D153 retired `enforceStaffRoleIntegrity` instead of porting it: the owned store
+constrains `staff_role` on both tables and lets nobody write it, so the sweep
+that reverted a spoofed value has no work left. **A bucket shrinking is not the
+same event as a port landing, and this page should not let the two read
+alike** — a written count that did not move is the tell. D223 is the other
+shape: `setNurseDutyStatus` was really written, so `none` rose and the carried
+total did not.
 `records_schema` is absent from that line rather than zero in it,
 because `portQueueLine` omits an empty bucket — and that bucket is empty with
 every capability in it BUILT, which is the first time. Three of the buckets
@@ -1573,7 +1583,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 49 | 37 |
+  | `mutating` (derived) | 50 | 38 |
   | `integration` (derived) | 24 | 23 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1607,6 +1617,12 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   both waves. A wave's migration count is therefore not a partition of the
   directory and the six rows do not sum to it — read each row as what that
   wave's operator must have applied, never as a share of the whole.
+  The duty-status port (D223) then took `mutating` to 55 and its migrations to
+  40, and left `read-only` and `integration` where they were. One handler, one
+  migration, and both counts move by one — which is what a plain port looks
+  like, and is worth recording precisely because the two rows above it each
+  move by something other than one for reasons that are not miscounts.
+
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
