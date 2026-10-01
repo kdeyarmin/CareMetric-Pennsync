@@ -93,16 +93,43 @@ jobs:
       # It also removes the reason to move that step: a gate failure is legible in
       # the utility step directly, instead of depending on a later step having run.
       #
-      # `if: ${{ !cancelled() }}` from the second step on is what buys that: a
+      # `if: ${{ !cancelled() }}` on EVERY step of this block is what buys that: a
       # failing script no longer suppresses its siblings, and because the steps
       # after this block keep the default `success()`, the build and the gates
-      # still skip and the job still fails. The first step keeps the default too,
-      # so a lint failure above still stops everything.
+      # still skip and the job still fails.
+      #
+      # It used to read "from the second step on", with the first keeping the
+      # default "so a lint failure above still stops everything". That last clause
+      # was FALSE, and measured so: `!cancelled()` is true after an earlier step
+      # has failed and goes false only on cancellation, so a red lint took out
+      # this one step and the eight after the block, while the ten that were guarded
+      # then ran regardless. It stopped one script, not everything — and that script
+      # was the worst one to lose. `test:pennsync-transfer` is first in the list
+      # of five with no second runner, and `tools-pennsync-migrate.test.mjs`'s
+      # "the committed migrations carry no ledger-name collision" is the only
+      # thing in the repository that crosses that guard against the REAL
+      # migration directory rather than a synthetic list. For a change touching
+      # only the tooling, workflow-quality and both axe jobs name no
+      # `tools-*.mjs` path and do not run at all, so this job is the whole of CI
+      # and there was no second chance anywhere.
+      #
+      # Three threads read the boundary wrong before it was measured, twice in
+      # opposite directions, and the comment sat three lines above the sentence it
+      # contradicted. Two notes for whoever checks it next. ENUMERATE the steps;
+      # do not grep near them — a fixed-size lookahead from each `- name:` bleeds
+      # into the following step and attributes its guard to the wrong one, which
+      # is how the inversion happened. And COUNT THE `if:` DIRECTIVE LINES, not
+      # occurrences of the string: this comment contains the string it describes,
+      # so any grep for it runs higher than the number of guarded steps. No figure
+      # is written here on purpose — a first draft of this very paragraph stated
+      # the count, and the edit that added the eleventh guard falsified it in the
+      # same commit, three lines below a warning about checking the file by grep.
       #
       # Keep `pnpm test` itself as the single local command. If a script is added
       # to the chain, add a step for it here — src/testRegistryContract.test.js
       # checks that every suite runs somewhere, not that this list is complete.
       - name: Run PennSync transfer tool tests
+        if: ${{ !cancelled() }}
         run: pnpm run test:pennsync-transfer
 
       - name: Run authority store tests
