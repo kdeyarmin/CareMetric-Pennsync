@@ -8,6 +8,13 @@
  * its baseline fails; a count below it passes and is reported so the gain can
  * be locked in by lowering the baseline.
  *
+ * The same baseline carries an allowance for the one signal that is not a
+ * count: a file may take an entity HANDLE without an immediately visible call
+ * only while that file and entity are listed, so this tree's existing handles
+ * are recorded in a reviewed diff and a NEW one fails. An allowance is the
+ * record of an undercount, not permission for it, which is why an entry that
+ * matches nothing fails too: it has outlived the defect it describes.
+ *
  * It is deterministic and offline: no network, no credential, no hosted
  * inventory. Test and spec files are excluded because they deliberately model
  * the very surface being retired.
@@ -181,6 +188,15 @@ export function unaccountedHandles(repository) {
   return unaccounted;
 }
 
+/**
+ * How the committed allowance names a handle this tree already takes: by FILE
+ * and ENTITY, never by line. A line number is invalidated by any edit above it,
+ * so a line-keyed allowance would turn an unrelated insertion into a refusal
+ * and teach a reader to re-run `--update` to clear it. File and entity are also
+ * what a reviewer can check against the source without counting lines.
+ */
+export const handleKey = handle => `${handle.file}::${handle.entity}`;
+
 const FUNCTION_INVOKE = /\bfunctions\s*\.\s*invoke\s*\(/g;
 const CORE_INTEGRATION = /\bintegrations\s*\.\s*Core\s*\.\s*[A-Za-z][A-Za-z0-9_]*/g;
 
@@ -240,7 +256,12 @@ export function parseBaseline(raw) {
   if (Object.keys(maximum).length !== METRICS.length || METRICS.some(metric => !Number.isSafeInteger(maximum[metric]) || maximum[metric] < 0)) {
     throw new Error('BASELINE_INVALID_MAXIMUM');
   }
-  return baseline;
+  const allowed = baseline.allowed_handles ?? [];
+  if (!Array.isArray(allowed) || new Set(allowed).size !== allowed.length
+    || allowed.some(key => typeof key !== 'string' || !key.includes('::'))) {
+    throw new Error('BASELINE_INVALID_ALLOWANCE');
+  }
+  return { ...baseline, allowed_handles: allowed };
 }
 
 export function compareSurface(measured, baseline) {
@@ -275,8 +296,9 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
     // Deliberately explicit: lowering the baseline locks in real progress and
     // must appear in a reviewed diff. It can also silence a regression, so it
     // is never run automatically.
-    write(baselinePath, JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, maximum: measured.counts }, null, 2) + '\n');
-    log(JSON.stringify({ updated: relative(repository, baselinePath), maximum: measured.counts }, null, 2));
+    const allowed_handles = unaccountedHandles(repository).map(handleKey).sort();
+    write(baselinePath, JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, maximum: measured.counts, allowed_handles }, null, 2) + '\n');
+    log(JSON.stringify({ updated: relative(repository, baselinePath), maximum: measured.counts, allowed_handles }, null, 2));
     return 0;
   }
   let baseline;
@@ -287,17 +309,32 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
   // kind of answer: the baseline says whether the coupling grew, and this says
   // whether the baseline could see it. A handle the tool cannot follow makes
   // every metric above an UNDERCOUNT, so it must not be expressible as one.
-  report.unaccounted_handles = unaccountedHandles(repository);
+  const unaccounted = unaccountedHandles(repository);
+  const allowance = new Set(baseline.allowed_handles);
+  report.unaccounted_handles = unaccounted;
+  report.refused_handles = unaccounted.filter(handle => !allowance.has(handleKey(handle)));
+  // A stale entry FAILS rather than passing with a note. It means somebody has
+  // repaired one of the recorded handles, and the gate is the only thing that
+  // will tell them the record of it must go: a passing report says it on a line
+  // nobody reads, and the allowance then outlives the defect it describes.
+  report.stale_allowance = [...allowance]
+    .filter(key => !unaccounted.some(handle => handleKey(handle) === key)).sort();
   if (args.includes('--summary')) {
     log(`base44 surface ${report.within_baseline ? 'within baseline' : 'REGRESSED'}: `
       + METRICS.map(metric => `${metric}=${report.counts[metric]}/${baseline.maximum[metric]}`).join(' '));
     for (const handle of report.unaccounted_handles) {
-      log(`  UNACCOUNTED HANDLE ${handle.file}:${handle.line} takes ${handle.entity} and no call through it is visible`);
+      const refused = report.refused_handles.includes(handle);
+      log(`  ${refused ? 'REFUSED' : 'allowed'} HANDLE ${handle.file}:${handle.line} takes ${handle.entity}`
+        + ' and no call through it is visible');
+    }
+    for (const key of report.stale_allowance) {
+      log(`  STALE ALLOWANCE ${key} takes no unaccounted handle any more. Delete the entry.`);
     }
   } else {
     log(JSON.stringify(report, null, 2));
   }
-  return report.within_baseline && report.unaccounted_handles.length === 0 ? 0 : 1;
+  return report.within_baseline && report.refused_handles.length === 0
+    && report.stale_allowance.length === 0 ? 0 : 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

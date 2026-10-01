@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BASELINE_FILE, FORMAT, FORMAT_VERSION, METRICS,
-  compareSurface, entityCalls, main, measureSurface, parseBaseline, sourceFiles,
+  compareSurface, entityCalls, handleKey, main, measureSurface, parseBaseline, sourceFiles,
   takenHandles, unaccountedHandles,
 } from './tools-base44-surface.mjs';
 
@@ -80,6 +81,9 @@ test('updating the baseline is explicit and writes only the measured counts', ()
   assert.ok(written.path.endsWith(BASELINE_FILE));
   const parsed = parseBaseline(written.body);
   assert.deepEqual(parsed.maximum, measureSurface(repository).counts);
+  // Without this the one command a reader reaches for to lower the baseline
+  // would silently delete the record of every handle the tool cannot follow.
+  assert.deepEqual(parsed.allowed_handles, unaccountedHandles(repository).map(handleKey).sort());
 });
 
 test('the command line refuses unknown arguments and an unavailable baseline', () => {
@@ -209,20 +213,70 @@ test('an unaccounted handle is named with its file and line, and an accounted on
   assert.deepEqual([...entityCalls(builder)].map(site => site.entity), ['TrainingModule']);
 });
 
-test('the check fails while any handle is unaccounted, even inside its baseline', () => {
+test('this tree\'s unaccounted handles are the committed allowance, so the gate passes', () => {
   const lines = [];
   const code = main(['--summary'], { repository, log: line => lines.push(String(line)) });
   const unaccounted = unaccountedHandles(repository);
   assert.equal(unaccounted.length > 0, true, 'this tree still has unaccounted handles');
-  assert.equal(code, 1, 'an unaccounted handle fails the check');
-  assert.match(lines[0], /within baseline/, 'and it fails for that reason rather than the ratchet');
+  assert.equal(code, 0, 'a handle the committed baseline records does not fail the gate');
+  // Named anyway, every one of them: the allowance records an undercount, and a
+  // reader of this output has to be able to see which counts are short.
   for (const hit of unaccounted) {
     assert.equal(lines.some(line => line.includes(`${hit.file}:${hit.line}`)), true,
       `${hit.file}:${hit.line} is not named in the summary`);
   }
-  // The JSON form carries the same list, so a consumer reading the report does
-  // not have to parse prose to find out the counts above it are an undercount.
+  assert.equal(lines.some(line => line.startsWith('  REFUSED')), false);
+  assert.equal(lines.some(line => line.includes('STALE ALLOWANCE')), false,
+    'an allowance entry matching nothing should have been deleted with the fix that earned it');
   const json = [];
   main([], { repository, log: line => json.push(String(line)) });
-  assert.deepEqual(JSON.parse(json.join('\n')).unaccounted_handles, unaccounted);
+  const report = JSON.parse(json.join('\n'));
+  assert.deepEqual(report.unaccounted_handles, unaccounted);
+  assert.deepEqual(report.refused_handles, []);
+});
+
+test('a handle the allowance does not name fails the gate, and naming it clears it', () => {
+  // Over a fixture tree through the real walker, matcher and command line: the
+  // question is what the GATE does, and a hand-built report cannot answer it.
+  const root = mkdtempSync(join(tmpdir(), 'base44-surface-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'screen.jsx'),
+      'const handle = base44.entities.Visit;\nexport const save = payload => handle.create(payload);\n');
+    const file = { format: FORMAT, version: FORMAT_VERSION, maximum: Object.fromEntries(METRICS.map(m => [m, 50])) };
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: [] }));
+    const refused = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => refused.push(String(line)) }), 1);
+    assert.match(refused.join('\n'), /within baseline/, 'it fails on the handle, not on the ratchet');
+    assert.equal(refused.some(line => line.startsWith('  REFUSED HANDLE src/screen.jsx:1')), true);
+
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit'] }));
+    const allowed = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => allowed.push(String(line)) }), 0);
+    assert.equal(allowed.some(line => line.startsWith('  allowed HANDLE src/screen.jsx:1')), true);
+
+    // A stale entry FAILS: whoever repaired the handle has to delete its record,
+    // and a passing note is a line nobody reads.
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/gone.js::Visit', 'src/screen.jsx::Visit'] }));
+    const stale = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => stale.push(String(line)) }), 1);
+    assert.equal(stale.some(line => line.includes('STALE ALLOWANCE src/gone.js::Visit')), true);
+    assert.equal(stale.some(line => line.startsWith('  REFUSED')), false, 'and not as a refusal');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the baseline rejects an allowance it cannot be read against', () => {
+  const file = patch => JSON.stringify({ ...baseline(), ...patch });
+  for (const [name, patch] of Object.entries({
+    notAnArray: { allowed_handles: 'src/screen.jsx::Visit' },
+    notStrings: { allowed_handles: [{ file: 'src/screen.jsx', entity: 'Visit' }] },
+    missingEntity: { allowed_handles: ['src/screen.jsx'] },
+    duplicated: { allowed_handles: ['src/screen.jsx::Visit', 'src/screen.jsx::Visit'] },
+  })) {
+    assert.throws(() => parseBaseline(file(patch)), /BASELINE_INVALID_ALLOWANCE/, name);
+  }
+  // Absent is empty, which refuses every handle rather than allowing them.
+  assert.deepEqual(parseBaseline(file({})).allowed_handles, []);
 });
