@@ -239,6 +239,21 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reading: 'records_schema=80',
     reason: 'the queue an earlier conclusion was true of, quoted to say why that conclusion expired',
   },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
+    reason: 'D223\'s collector reading on `00ccac41`, named as one of three trees one instrument answered on, so the two figures in circulation were shown not to be a disagreement',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12',
+    reason: 'the same sentence\'s reading at `d8c6be2b` and `4bb0dd8a`, which the prose wraps across two lines so each half quotes separately; declared rather than rewrapped because the entry is collected verbatim',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'external_secret=2 none=79',
+    reason: 'the second half of that same wrapped reading, and the reason it is here rather than merged: a payload split by a line break is exactly the shape this check warns about, so it is named instead of being made to disappear',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {
