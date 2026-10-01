@@ -516,6 +516,28 @@ struck rather than deleted.
   ledger check by one row; the owner applied the migration at about `18:18Z`;
   the re-run came back green, 22 of 22, `skipped 0`. Anyone reading the first
   run as a schema problem is debugging the clock.
+
+  **Second worked instance, 2026-10-01, and it is recorded here as a DATED
+  READING with its reporters named rather than as a state of the store.** A
+  staging apply landed against `main` at `82bd9c94`, with the apply output
+  stamped `19:23:47Z`, and the hosted ledger moved from 74 rows to 90. **None of
+  that was measured from this tree.** The apply session's own transcript is the
+  primary source; it reached this page through a worker of the coordinator
+  session, so it is second-hand here, and that session's report is saved outside
+  the repository as `staging-apply-report-2026-10-01.md`. The ledger movement was
+  read independently of that transcript, from `main`'s CI logs, by two further
+  sessions. A reading corroborated three ways is still a reading of one moment:
+  `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` with no
+  `--apply` is what answers what a store holds now, and this sentence does not.
+
+  **What that reading does NOT say is what is pending, which is a different
+  instrument.** At `543a0271` two record migrations had arrived and not been
+  applied, and `node tools-pennsync-apply-signal.mjs --base origin/main` on the
+  head carrying this paragraph reports one more arriving with it — measured here,
+  five runs agreeing, rather than inferred from the ledger figure above. D106's
+  rule is the whole point: what is committed, what reaches a deployment and what
+  a deployment has RUN are three counts, each derived, and subtracting one from
+  another across two instruments is how they get merged by accident.
 - **A second transport had to exist before that plan could be run at all, and
   that is a finding rather than a convenience.** From this container — and from
   any runner allowed outbound HTTPS and nothing else, which includes CI here —
@@ -3985,7 +4007,7 @@ different kinds of work:
   eight sites out of this pool and the withdrawn duty toggle put nothing back,
   so a bucket nobody touched moved twice. That is what a remainder does: it is a
   property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.56 call sites and a write
+  the sites already served: a read key there carries 2.62 call sites and a write
   key 1.24, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.27 sites and a
@@ -3996,7 +4018,7 @@ different kinds of work:
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at five consecutive heads and every one
+  **This bullet has now been re-derived at six consecutive heads and every one
   of its six figures has moved, reversing a finding stated in its own prose
   three times.** One head ago the two halves were level at fifteen sites each
   and the write key was the THINNER, at 1.15 against 1.25; the head before that
@@ -4033,11 +4055,23 @@ different kinds of work:
   whole bullet, and a pin that goes quiet when the paragraph rots is the thing
   this section exists to complain about.
 
-  **It moved again on this tree, by one read key leaving the pool**, and the
-  served read ratio moved with it for the same reason. Neither number was
-  wrong before and neither is wrong now. Note also what did NOT move: the
-  remainder's write ratio, because nothing left that half — which is the same
-  reading twice rather than a figure that held for a reason.
+  **It moved again on this tree, and for the first time the REMAINDER did not
+  move at all.** Three call sites joined the served pool — the three admin
+  screens that stopped asking the roster for an order it cannot serve — and they
+  joined a key that pool already held, so the served read SITES rose by three
+  while its read KEYS stood still and the ratio rose from 2.56 to 2.62 with no
+  route declared anywhere. The remainder is untouched, to the integer, in all
+  four of its figures: those three sites always had a route declared over them
+  and were sitting in the REFUSED bucket, which this bullet does not count, so
+  nothing could leave a pool they were never in.
+
+  **That is the cleanest instance yet of the mechanism this bullet keeps
+  restating, and it points the opposite way from the last one.** A head ago a
+  departure moved a ratio nobody had worked on; here work on three sites moved a
+  ratio and left the remainder's four figures exactly as they were. A reader
+  watching only the served ratio would see it rise and a reader watching only
+  the remainder would see a flat line, and both would be reading this same
+  change correctly. Neither number was wrong before and neither is wrong now.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
