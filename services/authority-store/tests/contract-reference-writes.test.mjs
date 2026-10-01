@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import {
-  applyRecordMigrations, recordMigrationNames, assertNewestRecordMigration,
+  applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
 
 // The migration this suite owns, and the newest record migration on this tree,
@@ -76,7 +76,19 @@ before(async () => {
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  assertNewestRecordMigration(applied, WRITES_FORWARD);
+  // The guard is RETIRED here by the same rule the comment above states, now
+  // arriving from the other side: this suite's file has been OVERTAKEN again,
+  // by `20260920720000_roster_phone_provisioned`, which this merge brings in and
+  // which sorts after it. So the guard moves on to
+  // `roster-phone-provisioned.test.mjs` and is held there alone.
+  //
+  // Nothing about this file changed and nothing about it is wrong. Keeping the
+  // call would have failed this suite's `before` and taken every test in it down
+  // with it, naming a contract that had done nothing — which is the cost the
+  // comment above records twice already. What is kept is the half that is this
+  // suite's own property rather than the tree's.
+  assert.ok(applied.includes(WRITES_FORWARD),
+    `the record walk did not apply ${WRITES_FORWARD}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await seed();
 });

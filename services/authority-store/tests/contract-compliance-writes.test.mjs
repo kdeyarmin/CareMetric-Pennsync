@@ -65,16 +65,21 @@ before(async () => {
   // The ordering guard has MOVED ON, and this is the retirement the helper's
   // own docstring asks for rather than a weakening of it: this migration is on
   // `main`, so it is part of what a store already holds, and a later file
-  // sorting after it is a correct tree rather than a base that moved.
+  // sorting after it is a correct tree rather than a base that moved. It was not
+  // dropped at its own merge, and the next forward migration to arrive failed
+  // this suite's `before` and took all 22 of its tests down with it, naming a
+  // file that had done nothing wrong.
   //
-  // Where it lives now is a merge resolution rather than either branch's
-  // answer. `main` sent it to `contract-time-off`, correctly for `main`; this
-  // branch adds a record migration that sorts after that one, so on THIS tree
-  // the newest pending file is the duty-status contract and the guard is held
-  // by `contract-duty-status.test.mjs` alone. Both claims were right about
-  // their own tree, and taking either side whole would have left two suites
-  // holding it — which the helper forbids, because the second holder asserts a
-  // tree the first one's own change makes false.
+  // Where it lives now is a merge resolution rather than either branch's answer.
+  // On THIS tree the newest pending record migration is
+  // `20260920720000_roster_phone_provisioned`, so the guard is held by
+  // `roster-phone-provisioned.test.mjs` alone — not by `contract-time-off` and
+  // not by `contract-reference-writes`, each of which was the right answer for
+  // the tree that named it. Two holders is the state the helper forbids, because
+  // the second asserts a tree the first one's own change makes false.
+  //
+  // What stays is the set equality above, which is the assertion that actually
+  // says this store is the one a deployment gets.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [
