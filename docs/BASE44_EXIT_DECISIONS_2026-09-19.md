@@ -192,10 +192,10 @@ original skipped on a missing base, so under that version CI would have gone
 green with the only real-document assertion silently not running.
 
 **The repair removes the dependency instead of hardening it.** The base's
-numbers are typed alongside the collection's thirty-five — as a range minus a
-typed list of absent numbers, the subtraction being over that list rather than
-over the document, so it is not the tautology above — and the membership
-assertion needs no git at all. **Neither total is written here, and the reason is
+numbers are typed alongside the numbers the collection in hand adds — as a
+range minus a typed list of absent numbers, the subtraction being over that
+list rather than over the document, so it is not the tautology above — and the
+membership assertion needs no git at all. **Neither total is written here, and the reason is
 this entry's own rule.** This sentence carried the base's as `168` and it was
 wrong within the night: #359 merged, the base grew to 203, and the figure sat
 here describing a list it no longer described. Worse than stale, the word it
@@ -14376,3 +14376,78 @@ was put; the answer took one pass.*
 *Both authors asked for the wording before it landed and only one had answered
 when it did. That was the collector's call and the wrong one: the ask was cheap
 and the wait would have caught both errors before they reached the branch.*
+
+## D226 — A collection's current figures belong in its pull request and its pass history belongs in the document (2026-10-01)
+
+A collection of entries is re-derived repeatedly before it lands, and every pass
+moves figures: how many numbers the collection adds, which of them the base
+already holds, what the typed lists are. **Those current figures belong in the
+pull-request description, and the pass-by-pass history belongs here.** The
+description is the right home for a number that the next pass replaces; it is
+read once, by a reviewer, while the figures are still current. This document is
+read cold by somebody who cannot tell a current figure from a stale one, so what
+it may carry is what stays true — the ordinal history, tensed and attributed to
+the pass that measured it.
+
+**The worked example is this register's own write-up, and it is mechanical rather
+than a quibble.** The write-up's repair paragraph says, in bold, **"Neither total
+is written here, and the reason is this entry's own rule"** — and the sentence it
+says that about, immediately before it, is "The base's numbers are typed
+alongside the collection's thirty-five". The bolded claim is not a general
+aspiration that drifted: the next sentence explains it, reporting that *this
+sentence carried the base's as `168`* and was wrong within the night of being
+typed. So the repair found the exact defect in the exact sentence, removed one of
+its two totals, and left the other standing four words from the word "neither".
+**No new measurement was needed to see it; reading the sentence the claim is
+about is enough,** and nobody did for as long as the paragraph read as a rule
+plus an example of obeying it.
+
+What finally surfaced it was performing the action the neighbouring paragraph
+prescribes. `EXPECTED_NEW`'s comment says to **rewrite the list for the next
+collection** once it goes inert, and this change does: #359's thirty-five
+numbers become this collection's one. At that moment "the collection's
+thirty-five" is false. **A figure in prose can be wrong and unreachable at the
+same time** — unreachable because nothing reads prose, and so reached only by a
+reader who acts on the paragraph beside it. That sentence is repaired here to
+state the property, which is what the same paragraph's closing clause already
+instructs: *state the property and let the diff carry the count.*
+
+**The ordinal half is why the history needs this document rather than better
+prose.** That write-up is built on deictics that were exact in the pass they were
+written in — "this collection", "this entry's own subject arriving inside it",
+"the fourth time tonight". Line 164's "two of this collection's thirty-five" is
+still true of #359's collection and now has no unambiguous referent, because the
+document has seen a second collection since. The remedy is not to strip the
+deictics, which carry the finding, but to name the pass they belong to. **A
+figure here is attributed to its pass or it is not written.**
+
+**This collection's passes, recorded here because this is the surface that keeps
+them.** Five content commits: one filing of a contributed addendum to D83, then
+four corrections — a gate claim the contributing author corrected in their own
+words; a permission-block half filed while an SPA-gate clause was refused on a
+route-table measurement; four files reported as five; and an exhaustiveness claim
+dropped for asserting *less* narrowness than the code has, four paragraphs from a
+note of this collector's asserting *more*. Two of the four were this collector's
+own. The per-commit detail stays in the pull request, where it is read while it
+is current.
+
+**The mechanical half ships in the same change, and one piece of it is a design
+working as written.** The rewrite puts the corroboration test's differential back
+in its live branch instead of the inert one, where it had been announcing in a
+printed info line that it could not fail. Two typed prose assertions move with
+the list, from thirty-five to one and from 203 to 204, and a third stops being
+implied by the first. **That consequence was predicted in the test's own
+comment**, which keeps the third assertion on the stated ground that "the two
+diverge again the moment the list is rewritten for the next collection". They
+did. An assertion kept for a future that arrives is worth recording beside the
+many kept for futures that do not — and so is the info line, because a guard
+that cannot fail announcing itself in prose nobody has to read is still better
+than one that passes in silence.
+
+*Issued to the redeploy thread and written by it, 2026-10-01. The number's
+subject was settled before the entry was drafted: asked which description "that
+description" names, this thread put the question up rather than resolve it in the
+direction that makes the work its own. The answer is that D226's own sentence
+contrasts an ephemeral pull-request description with the durable document, so the
+ephemeral side is a pull request's and the register collection's write-up is the
+durable side of the same contrast — the reading that lands against the asker.*
