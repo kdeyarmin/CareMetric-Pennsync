@@ -153,6 +153,8 @@ export function createStore(config, fetcher = fetch) {
   return {
     reserve: body => rpc('cm_integration_reserve', body), finish: body => rpc('cm_integration_finish', body),
     fileGet: body => rpc('cm_integration_file_get', body), fileRecord: body => rpc('cm_integration_file_record', body),
+    fileGetAuthorized: body => rpc('cm_integration_file_get_authorized', body),
+    fileRecordOwned: body => rpc('cm_integration_file_record_owned', body),
   };
 }
 function usableResult(operation, result) {
@@ -186,7 +188,10 @@ async function performOwned({ config, req, agencyId, operation, params, requestI
     if (check.snapshot !== before.snapshot || check.subject !== before.subject) fail(409, 'AUTHORITY_CHANGED');
     if (reservation.outcome === 'completed') return usableResult(operation, unseal(config.encryptionKey, `${config.appId}:${before.subject}:${reservation.id}`, reservation.result));
     started = true;
-    let result = await provider(operation, params, { subject: before.subject, jobId: reservation.id });
+    // `agencyId` is the tenant this request was authorized in, resolved by
+    // `authority` from the caller's own bearer. A record-owned object binds to
+    // it; the caller never supplies it.
+    let result = await provider(operation, params, { subject: before.subject, jobId: reservation.id, agencyId });
     result = usableResult(operation, result);
     const encrypted = seal(config.encryptionKey, `${config.appId}:${before.subject}:${reservation.id}`, result);
     const saved = await store.finish({ p_id: reservation.id, p_claim: claim, p_state: 'completed', p_result: encrypted });

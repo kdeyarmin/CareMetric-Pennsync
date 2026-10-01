@@ -283,7 +283,9 @@ export default function ReferralIntake() {
 
       // A PDF may bundle several patients; hand it to the split detector.
       if (result.needsMultiReferralSplit) {
-        setMultiReferralDetection({ fileUrl: result.fileUrl, fileName: file.name });
+        // The file itself travels too: the owned backend is handed the bytes
+        // rather than a locator it could not read.
+        setMultiReferralDetection({ file, fileUrl: result.fileUrl, fileName: file.name });
         return;
       }
 
@@ -1871,6 +1873,7 @@ export default function ReferralIntake() {
             {multiReferralDetection && (
               <div className="border-t border-slate-200 pt-5">
                 <MultiReferralDetector
+                  file={multiReferralDetection.file}
                   fileUrl={multiReferralDetection.fileUrl}
                   onDetectionComplete={handleMultiReferralDetectionComplete}
                   onDismiss={resetUploadedDocument}

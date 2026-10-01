@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
+import { splitReferralPDF } from '@/lib/documentExtraction';
+import { usesIndependentBackend } from '@/lib/independentStagingSession';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, CheckCircle2, Loader, FileStack } from 'lucide-react';
 
-export default function MultiReferralDetector({ fileUrl, onDetectionComplete, onDismiss }) {
+export default function MultiReferralDetector({ file, fileUrl, onDetectionComplete, onDismiss }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState(null);
@@ -18,19 +20,27 @@ export default function MultiReferralDetector({ fileUrl, onDetectionComplete, on
     setIsAnalyzing(true);
     setError(null);
     try {
-      const response = await base44.functions.invoke('splitReferralPDF', {
-        fileUrl
-      });
+      // Base44 reads the document the intake screen already stored, so
+      // `uploadedUrl` reuses it rather than uploading the same bytes twice;
+      // the owned service is handed the bytes and mints its own object. So
+      // this screen never uploads and is handed NO upload function — which is
+      // also why `check:base44-surface`'s Core-integration count is unchanged:
+      // naming `Core.UploadFile` here would have added a site that could never
+      // run. The literal capability name stays at the call site so
+      // `tools-ported-call-sites.mjs` can still see it.
+      const data = await splitReferralPDF({
+        invoke: (params) => base44.functions.invoke('splitReferralPDF', params),
+      }, file, { independent: usesIndependentBackend, uploadedUrl: fileUrl });
 
-      if (!response.data.success) {
-        throw new Error('Failed to analyze PDF');
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to analyze PDF');
       }
 
-      setAnalysis(response.data.analysis);
-      
+      setAnalysis(data.analysis);
+
       // Pre-select all detected referrals
-      if (response.data.analysis.referrals) {
-        setSelectedReferrals(response.data.analysis.referrals.map(r => r.index));
+      if (data.analysis.referrals) {
+        setSelectedReferrals(data.analysis.referrals.map(r => r.index));
       }
     } catch (err) {
       console.error('Analysis error:', err);
@@ -38,7 +48,7 @@ export default function MultiReferralDetector({ fileUrl, onDetectionComplete, on
     } finally {
       setIsAnalyzing(false);
     }
-  }, [fileUrl]);
+  }, [file, fileUrl]);
 
   React.useEffect(() => {
     analyzeFile();

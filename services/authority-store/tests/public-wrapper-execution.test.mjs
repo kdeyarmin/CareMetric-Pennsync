@@ -2,8 +2,8 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import {
-  AGENCY_A, assertNoDeadBodies, buildStore, callAs, functionBodies, helperReach,
-  publicWrappers, sweep,
+  AGENCY_A, assertClosedToAnon, assertNoDeadBodies, buildStore, callAs, callerPrivileges,
+  functionBodies, helperReach, publicWrappers, sweep,
 } from './public-wrapper-execution.mjs';
 
 /**
@@ -172,6 +172,15 @@ const STOPS = Object.freeze({
   pennsync_contract_payroll_profile_save: 'PENNSYNC_CONFIG_INVALID',
   pennsync_contract_pdf_template_delete: 'PENNSYNC_TEMPLATE_ID_INVALID',
   pennsync_contract_pdf_template_save: 'PENNSYNC_TEMPLATE_FIELDS_INVALID',
+  pennsync_contract_document_template_delete: 'PENNSYNC_DOC_TEMPLATE_ID_INVALID',
+  pennsync_contract_document_template_save: 'PENNSYNC_DOC_TEMPLATE_FIELDS_INVALID',
+  pennsync_contract_library_document_delete: 'PENNSYNC_LIBRARY_ID_INVALID',
+  pennsync_contract_library_document_update: 'PENNSYNC_LIBRARY_FIELDS_INVALID',
+  pennsync_contract_on_call_shift_delete: 'PENNSYNC_ON_CALL_ID_INVALID',
+  pennsync_contract_on_call_shift_save: 'PENNSYNC_ON_CALL_FIELDS_INVALID',
+  pennsync_contract_physician_create: 'PENNSYNC_PHYSICIAN_WRITE_INVALID',
+  pennsync_contract_physician_delete: 'PENNSYNC_PHYSICIAN_WRITE_INVALID',
+  pennsync_contract_physician_update: 'PENNSYNC_PHYSICIAN_WRITE_INVALID',
   pennsync_contract_policy_acknowledge: 'PENNSYNC_POLICY_ACK_SUBJECT_INVALID',
   pennsync_contract_policy_distribute: 'PENNSYNC_POLICY_ID_REQUIRED',
   pennsync_contract_policy_library_list: 'PENNSYNC_CONTRACT_MODE_INVALID',
@@ -497,6 +506,97 @@ test('a wrapper whose body cannot run is REPORTED, proved by planting one', asyn
       [...results.filter(r => r.outcome === 'failed').map(r => r.name),
         'pennsync_contract_planted_dead'].sort(),
       'planting one dead body changed the findings by something other than that body');
+  } finally {
+    await planted.close();
+  }
+});
+
+test('every public wrapper is closed to anon and open to a signed-in caller', async () => {
+  // The population is the WHOLE public function set, and that is the point of
+  // the test rather than a detail of it.
+  //
+  // `service-rpc-signatures.test.mjs` asserts both grants too, and its
+  // population is `captured` -- the names the service's own capabilities build
+  // a request for. That is the right population for what IT claims (every call
+  // the service makes resolves and is callable), and it is not the population
+  // the grant property is about. What sits outside `captured` is the one
+  // contract in that suite's `UNCALLED` list, the three broker writes it
+  // proves are unreachable, and every `pennsync_staging_*` wrapper the ported
+  // service never calls. All of them are correctly closed today, which is why
+  // nothing was failing and why nothing would have.
+  //
+  // No total is written here on purpose: both sides move whenever a migration
+  // adds a wrapper or a port adds a caller, so a snapshot in a comment goes
+  // stale while the file around it stays correct, and a reader cannot tell
+  // which of the two is wrong. The population this test runs over is the one
+  // `ANSWERS` and `STOPS` pin below, so it is never out of date. To take the
+  // figures for a pull request, measure them and name the head:
+  //   node --input-type=module -e "…buildStore(db); publicWrappers(db)…"
+  // from this directory, which is what produced the counts in #365's body.
+  //
+  // The twenty-first is the one that moves: a wrapper whose migration lands
+  // before its handler is exposed and uncaptured, and the only way to get that
+  // state past the other suite is to add it to `UNCALLED` -- which buys an
+  // exemption from the caller requirement AND, silently, from the grant check
+  // that ran over the same set. A release wave that ships SQL ahead of the API
+  // side puts every one of its wrappers through exactly that door.
+  assertClosedToAnon(assert, await callerPrivileges(db));
+});
+
+test('a wrapper granted to anon IS reported, proved by planting one', async () => {
+  // The control. Without it the assertion above passes on a store where every
+  // grant is correct and would also pass on one where the reader returned the
+  // wrong column, and those are indistinguishable from a green.
+  const planted = new PGlite();
+  try {
+    await buildStore(planted);
+    // Not a new function: an existing wrapper, granted. Creating one and
+    // granting it would prove the reader sees a function created in this test,
+    // which is not the claim -- the claim is about the store's own wrappers.
+    await planted.exec('grant execute on function "public"."pennsync_contract_activity_list"'
+      + '(text,integer,text) to anon;');
+    const rows = await callerPrivileges(planted);
+    // The PRODUCTION assertion, raised against the planted build (D120).
+    assert.throws(() => assertClosedToAnon(assert, rows), /pennsync_contract_activity_list/,
+      'granting a wrapper to anon was not reported');
+    // An equality rather than a membership, for D113's reason: that the plant
+    // is reported does not say the report is the plant.
+    assert.deepEqual(rows.filter(row => row.anon).map(row => row.name),
+      ['pennsync_contract_activity_list'],
+      'planting one grant changed the findings by something other than that grant');
+  } finally {
+    await planted.close();
+  }
+});
+
+test('a wrapper closed to a signed-in caller IS reported, proved by revoking one', async () => {
+  // The other half of the same production helper, and it needs its own plant.
+  // `assertClosedToAnon` raises on the `anon` list FIRST, so the control above
+  // stops at that line and never reaches the `authenticated` assertion below
+  // it: revoke the signed-in grant and both the real-store test and that
+  // control stay green, which is the shape this suite exists to refuse. The
+  // two failures are also opposite -- a wrapper open to `anon` is a
+  // disclosure, one closed to `authenticated` refuses every real caller at
+  // release time -- so one plant cannot stand in for the other.
+  //
+  // Raised by Copilot on #365; the gap was real and this is the fix rather
+  // than an argument about it.
+  const planted = new PGlite();
+  try {
+    await buildStore(planted);
+    // Same choice as above: an existing wrapper, not one created here.
+    await planted.exec('revoke execute on function "public"."pennsync_contract_activity_list"'
+      + '(text,integer,text) from authenticated;');
+    const rows = await callerPrivileges(planted);
+    // The PRODUCTION assertion again (D120), reaching its second line this time
+    // because the first has nothing to report on this build.
+    assert.deepEqual(rows.filter(row => row.anon).map(row => row.name), [],
+      'the revoke was supposed to change the signed-in grant and nothing else');
+    assert.throws(() => assertClosedToAnon(assert, rows), /pennsync_contract_activity_list/,
+      'closing a wrapper to a signed-in caller was not reported');
+    assert.deepEqual(rows.filter(row => !row.authenticated).map(row => row.name),
+      ['pennsync_contract_activity_list'],
+      'revoking one grant changed the findings by something other than that grant');
   } finally {
     await planted.close();
   }

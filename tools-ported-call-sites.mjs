@@ -301,6 +301,29 @@ export function readExpectations(root) {
  * grows: the first after the fallback existed was `generatePatientHandout`
  * (D81), whose document reads nothing tenant-scoped, so which of a caller's
  * memberships authorizes it changes nothing on the page.
+ *
+ * `setNurseDutyStatus` (`src/components/voice/DutyStatusCard.jsx`) is admitted
+ * on the sharpest reading yet, and it is one about the ORIGINAL rather than
+ * about the port: `hasExactActiveAgencyMembership` requires EXACTLY ONE active
+ * membership and refuses otherwise, so a caller who could have meant a
+ * different tenant cannot reach the capability at all today. The bound tenant
+ * therefore decides nothing for any caller the incumbent serves. What it does
+ * decide, for a caller the port newly admits, is which agency's activity trail
+ * the entry lands in -- and they hold both, and the row being written is their
+ * own profile, which carries no agency.
+ *
+ * `extractPatientDataFromDocument` (`src/components/patient/OCRDocumentExtractor.jsx`,
+ * through `src/lib/documentExtraction.js`) is the
+ * second, admitted on the same reading and for a sharper reason: the capability
+ * reads NO row at all. It takes a document's bytes, brokers an upload and asks
+ * a model what is in it, so no tenant is consulted anywhere in the answer and a
+ * caller holding two memberships cannot have meant the other one. Note also
+ * what it is not: the site was already in `src/` before this port, calling the
+ * Base44 original from the screen; adopting it moved the call into a shared
+ * module and did NOT add a request to the frontend, which is why
+ * `check:base44-surface`'s invocation count is unchanged. One invocation with
+ * the branch deciding only what it carries — two would have read as growth
+ * there while the surface stood still.
  */
 /**
  * **A site is pinned by FILE AND LINE, so a moved site and a new one are the

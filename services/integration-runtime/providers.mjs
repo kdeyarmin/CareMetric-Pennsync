@@ -41,7 +41,7 @@ export function validateParams(operation, params, config) {
     validateMailParams(params);
     if (!config.sendgridKey || !config.fromEmail) fail(503, 'EMAIL_PROVIDER_NOT_CONFIGURED');
     emailAddress(config.fromEmail);
-  } else if (['UploadFile', 'UploadPrivateFile'].includes(operation)) {
+  } else if (['UploadFile', 'UploadPrivateFile', 'UploadRecordFile'].includes(operation)) {
     exactObject(params, ['base64', 'content_type']); fileBytes(params.base64, params.content_type);
   } else if (operation === 'CreateFileSignedUrl') {
     exactObject(params, ['file_uri']); requireFileUri(params.file_uri);
@@ -50,12 +50,51 @@ export function validateParams(operation, params, config) {
 export function createProviders(config, store, fetcher = fetch) {
   const storageHeaders = () => ({ apikey: config.supabaseKey, Authorization: `Bearer ${config.supabaseKey}` });
   const storageBase = `${config.supabaseUrl}/storage/v1`;
+  /**
+   * Who may open these bytes, asked of the ROW rather than of the caller.
+   *
+   * Two ownership kinds, and the row carries which one it is (migration 006).
+   * `subject` is the original model unchanged: the uploader alone, path bound
+   * to their hashed subject, and it is what every row is and what every read
+   * here resolves. `record` is the kind whose readers a contract would decide;
+   * `006` creates it and the joint CHECK that keeps it coherent, and NOTHING
+   * READS ONE — see the refusal inside, and the reason with it.
+   *
+   * The store's own predicate is the authorization and the path check below is
+   * the second copy of the same fact, exactly as it always was.
+   */
   async function fileRecord(uri, ctx) {
     const id = requireFileUri(uri);
+    /*
+     * READS STAY UPLOADER-OWNED, and that is the finding this change was
+     * corrected by rather than a leftover.
+     *
+     * The tenant/chart split is right and its SQL half ships below. What does
+     * not hold is the assumption that a record-owned read could rest on tenant
+     * membership alone because a contract above would have checked the chart.
+     * This service authenticates a USER, not `pennsync-api`: the API forwards
+     * the caller's own bearer and nothing else, so a request that came through
+     * a contract is indistinguishable here from one a user sent straight to
+     * `/v1/integrations`. Under an agency-wide predicate a leaked `cmfile:`
+     * handle plus the holder's own bearer would therefore be enough for any
+     * member of that agency, through `CreateFileSignedUrl` and through the two
+     * released operations that pass a handle here — and `a handle is not a
+     * bearer capability` is the property the whole split exists to keep.
+     *
+     * So the getter stays the subject-scoped one. `006` narrowed it with
+     * `owner_kind = 'subject'`, so a record-owned row does not come back at
+     * all and no caller reaches one. The refusal below is therefore about
+     * intent rather than reachability: it is here so that widening the getter
+     * later cannot open this path silently, and it fails closed.
+     */
     const row = await store.fileGet({ p_id: id, p_app_id: config.appId, p_subject: ctx.subject });
-    if (!row || row.id !== id || row.app_id !== config.appId || row.subject !== ctx.subject
-      || row.object_path !== `${config.appId}/${ctx.subject}/${id}` || !Number.isInteger(row.size_bytes)
-      || row.size_bytes < 1 || row.size_bytes > MAX_FILE || !/^[a-f0-9]{64}$/.test(row.sha256)) fail(403, 'FILE_ACCESS_DENIED');
+    if (!row || row.id !== id || row.app_id !== config.appId
+      || !Number.isInteger(row.size_bytes) || row.size_bytes < 1 || row.size_bytes > MAX_FILE
+      || !/^[a-f0-9]{64}$/.test(row.sha256)) fail(403, 'FILE_ACCESS_DENIED');
+    // Not readable by anyone here until a caller-authenticated path exists.
+    if (row.owner_kind === 'record') fail(403, 'RECORD_FILE_READER_MODEL_UNRESOLVED');
+    if (row.subject !== ctx.subject
+      || row.object_path !== `${config.appId}/${ctx.subject}/${id}`) fail(403, 'FILE_ACCESS_DENIED');
     return row;
   }
   async function loadDocument(uri, ctx) {
@@ -116,17 +155,54 @@ export function createProviders(config, store, fetcher = fetch) {
       if (response.status !== 202) fail(502, 'EMAIL_NOT_ACCEPTED');
       return { accepted: true, delivered: false, provider: 'sendgrid' };
     }
-    if (['UploadFile', 'UploadPrivateFile'].includes(operation)) {
+    if (['UploadFile', 'UploadPrivateFile', 'UploadRecordFile'].includes(operation)) {
+      const owned = operation === 'UploadRecordFile';
+      const agencyId = ctx.agencyId ?? null;
+      /*
+       * Minting is PAUSED and reported as paused, in the idiom D42 and D73 use
+       * for a half a port cannot serve: an operator who names this operation in
+       * the allowlist gets this refusal rather than a row.
+       *
+       * It is paused because nothing can read what it would mint. The read
+       * above stays uploader-owned until this service can authenticate
+       * `pennsync-api` as its caller, so a record-owned object would be a
+       * durable row addressing bytes no caller reaches — and a mint that
+       * silently produces unreadable objects is worse than a refusal, because
+       * the copy would record immutable mappings for them.
+       *
+       * The SQL and its tests ship regardless: `cm_integration_file_record_owned`
+       * and the agency-bound path are proved against a real cluster, so what is
+       * missing is a caller-authenticated read and nothing else.
+       */
+      // A record-owned object with no tenant would be readable by nobody, so
+      // this refuses rather than falling back to uploader ownership: a caller
+      // who asked for a file their colleagues can open must not silently get
+      // one only they can.
+      //
+      // It is deliberately AHEAD of the pause below, which is the outer of the
+      // two refusals and would otherwise answer every call and leave this line
+      // unreachable. A control nothing can reach has not been shown to work and
+      // reads as coverage that does not exist — the defect this change found in
+      // two other places. Both are refusals, so the order discloses nothing,
+      // and this one stays provable for the day the pause lifts.
+      if (owned && agencyId === null) fail(400, 'RECORD_FILE_AGENCY_REQUIRED');
+      if (owned) fail(503, 'RECORD_FILE_READER_MODEL_UNRESOLVED');
       const bytes = fileBytes(params.base64, params.content_type);
-      const path = `${config.appId}/${ctx.subject}/${ctx.jobId}`;
+      const path = owned ? `${config.appId}/record/${agencyId}/${ctx.jobId}`
+        : `${config.appId}/${ctx.subject}/${ctx.jobId}`;
       const response = await fetcher(`${storageBase}/object/${BUCKET}/${path}`, {
         method: 'POST', headers: { ...storageHeaders(), 'Content-Type': params.content_type, 'x-upsert': 'false' },
         body: bytes, redirect: 'error', signal: AbortSignal.timeout(30000),
       });
       if (!response.ok) fail(503, 'UPLOAD_OUTCOME_UNCERTAIN');
-      const saved = await store.fileRecord({ p_id: ctx.jobId, p_app_id: config.appId, p_subject: ctx.subject,
+      const receipt = { p_id: ctx.jobId, p_app_id: config.appId, p_subject: ctx.subject,
         p_object_path: path, p_content_type: params.content_type, p_size: bytes.length,
-        p_sha256: createHash('sha256').update(bytes).digest('hex') });
+        p_sha256: createHash('sha256').update(bytes).digest('hex') };
+      // `subject` travels on a record-owned receipt too, as provenance: it says
+      // who minted the row and authorizes nothing.
+      const saved = owned
+        ? await store.fileRecordOwned({ ...receipt, p_agency_id: agencyId })
+        : await store.fileRecord(receipt);
       if (saved !== true) fail(503, 'FILE_RECEIPT_UNCERTAIN');
       return { file_uri: `cmfile:${ctx.jobId}`, size_bytes: bytes.length, private: true };
     }

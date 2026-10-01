@@ -74,6 +74,42 @@ const REFERENCE_READ_CODES = Object.freeze(['PENNSYNC_CONTRACT_AGENCY_NOT_HELD']
  * body can actually reach and adds whatever is its own.
  */
 const SCREEN_COMMON = Object.freeze(['PENNSYNC_SCREEN_AGENCY_NOT_HELD']);
+
+// The provider directory's three writes share one refusal set, deliberately: a
+// screen cannot tell a create refusal from a delete refusal and learn from the
+// difference which providers exist in another agency.
+const PHYSICIAN_WRITE_CODES = Object.freeze([
+  'PENNSYNC_PHYSICIAN_WRITE_FORBIDDEN',
+  'PENNSYNC_PHYSICIAN_WRITE_INVALID',
+  'PENNSYNC_PHYSICIAN_WRITE_EMPTY',
+  'PENNSYNC_PHYSICIAN_FIELD_UNSUPPORTED',
+  'PENNSYNC_PHYSICIAN_VALUE_INVALID',
+  'PENNSYNC_PHYSICIAN_REQUIRED_MISSING',
+  'PENNSYNC_PHYSICIAN_ACTION_UNKNOWN',
+  'PENNSYNC_PHYSICIAN_NOT_FOUND',
+]);
+// The three reference writes share a gate and a field checker, so their codes
+// differ only in the prefix the shared checker composes them from. They are
+// spelled out per family rather than generated, because a code one contract
+// cannot raise must never cross back from another.
+const REFERENCE_WRITE_COMMON = Object.freeze([
+  'PENNSYNC_REFERENCE_AGENCY_NOT_HELD',
+  'PENNSYNC_REFERENCE_FORBIDDEN',
+]);
+const referenceWriteCodes = prefix => Object.freeze([
+  ...REFERENCE_WRITE_COMMON,
+  `${prefix}_FIELDS_INVALID`, `${prefix}_FIELDS_EMPTY`,
+  `${prefix}_FIELD_UNKNOWN`, `${prefix}_FIELD_RESERVED`, `${prefix}_FIELD_INVALID`,
+  `${prefix}_ID_INVALID`, `${prefix}_NOT_FOUND`,
+]);
+const ON_CALL_WRITE_CODES = Object.freeze([...referenceWriteCodes('PENNSYNC_ON_CALL'),
+  'PENNSYNC_ON_CALL_DATE_REQUIRED', 'PENNSYNC_ON_CALL_COVERAGE_REQUIRED']);
+const LIBRARY_WRITE_CODES = referenceWriteCodes('PENNSYNC_LIBRARY');
+const DOC_TEMPLATE_WRITE_CODES = Object.freeze([
+  ...referenceWriteCodes('PENNSYNC_DOC_TEMPLATE'),
+  'PENNSYNC_DOC_TEMPLATE_NAME_REQUIRED',
+  'PENNSYNC_DOC_TEMPLATE_CATEGORY_REQUIRED',
+  'PENNSYNC_DOC_TEMPLATE_CONTENT_REQUIRED']);
 const SCREEN_ADMIN_CODES = Object.freeze([
   ...SCREEN_COMMON, 'PENNSYNC_SCREEN_AGENCY_ADMIN_REQUIRED']);
 const SCREEN_CHART_CODES = Object.freeze([
@@ -2235,6 +2271,84 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_SETTINGS_AGENCY_NOT_HELD',
       'PENNSYNC_SETTINGS_LIMIT_INVALID',
     ]),
+  }),
+  createPhysician: Object.freeze({
+    rpc: 'pennsync_contract_physician_create',
+    params: Object.freeze(['fields']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_fields: args.fields ?? null }),
+    codes: PHYSICIAN_WRITE_CODES,
+  }),
+  updatePhysician: Object.freeze({
+    rpc: 'pennsync_contract_physician_update',
+    params: Object.freeze(['id', 'action', 'fields', 'referral_date']),
+    // `action` is the contract's own discriminator rather than something
+    // inferred from the payload here: the two screens make two different
+    // statements and the service is not the place to guess which.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_physician_id: args.id ?? null,
+      p_action: args.action ?? null,
+      p_fields: args.fields ?? null,
+      p_referral_date: args.referral_date ?? null,
+    }),
+    codes: PHYSICIAN_WRITE_CODES,
+  }),
+  deletePhysician: Object.freeze({
+    rpc: 'pennsync_contract_physician_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_physician_id: args.id ?? null }),
+    codes: PHYSICIAN_WRITE_CODES,
+  }),
+  // An absent id is a create and an explicit null is the same thing, which is
+  // `saveAgencySettings`'s shape: the three screens' create-or-update mutations
+  // are one mutation each, so the contract has no third case to refuse.
+  saveOnCallShift: Object.freeze({
+    rpc: 'pennsync_contract_on_call_shift_save',
+    params: Object.freeze(['id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields ?? null,
+    }),
+    codes: ON_CALL_WRITE_CODES,
+  }),
+  deleteOnCallShift: Object.freeze({
+    rpc: 'pennsync_contract_on_call_shift_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_id: args.id ?? null }),
+    codes: ON_CALL_WRITE_CODES,
+  }),
+  // No create: `LibraryDocument` requires `file_url`, which the contract refuses
+  // until the file copy has run (D77), so there is nothing a create could write.
+  updateLibraryDocument: Object.freeze({
+    rpc: 'pennsync_contract_library_document_update',
+    params: Object.freeze(['id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_id: args.id ?? null, p_fields: args.fields ?? null,
+    }),
+    codes: LIBRARY_WRITE_CODES,
+  }),
+  deleteLibraryDocument: Object.freeze({
+    rpc: 'pennsync_contract_library_document_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_id: args.id ?? null }),
+    codes: LIBRARY_WRITE_CODES,
+  }),
+  saveDocumentTemplate: Object.freeze({
+    rpc: 'pennsync_contract_document_template_save',
+    params: Object.freeze(['id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields ?? null,
+    }),
+    codes: DOC_TEMPLATE_WRITE_CODES,
+  }),
+  deleteDocumentTemplate: Object.freeze({
+    rpc: 'pennsync_contract_document_template_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_id: args.id ?? null }),
+    codes: DOC_TEMPLATE_WRITE_CODES,
   }),
   saveAgencySettings: Object.freeze({
     rpc: 'pennsync_contract_agency_settings_save',
