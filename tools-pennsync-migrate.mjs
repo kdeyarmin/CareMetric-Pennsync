@@ -126,14 +126,24 @@ export function ledgerName(fileName) {
  * The version this tool records for a migration it applies.
  *
  * The file's WHOLE stem, not its timestamp prefix, because the prefix is not
- * unique and `version` is the ledger's primary key. Two pairs collide today —
- * `20260920180000_chart_assignment_lifecycle` with
- * `20260920180000_contract_assignment`, and the two `20260920200000_*` files —
- * one from each migration directory, which is an ordinary thing for two
- * sequences dated the same day. Recording the prefix made the second of each
- * pair raise `unique_violation`; now that the row commits inside the
- * migration's transaction that would roll the whole migration back and abort
- * the run partway, on the real hosted target, at `contract_assignment`.
+ * unique and `version` is the ledger's primary key. Recording the prefix made
+ * the second file at a shared prefix raise `unique_violation`; now that the
+ * row commits inside the migration's transaction, that would roll the whole
+ * migration back and abort the run partway, on the real hosted target.
+ *
+ * **How many prefixes collide is deliberately not stated here, and this
+ * paragraph is not the place to look it up.** The sentence that used to stand
+ * here said "two pairs collide today", named them, and called each one "one
+ * from each migration directory, which is an ordinary thing for two sequences
+ * dated the same day" — accurate when written, and by a reading of this tree
+ * on 2026-09-30 wrong in both halves: more prefixes collide than it counted,
+ * one group is a triple rather than a pair, and most of the collisions now sit
+ * wholly inside `record-migrations`, which is one sequence colliding with
+ * itself and is not what that reassurance covered. Nothing failed while it
+ * rotted. So the census moved into an assertion: `tools-pennsync-migrate.test.mjs`
+ * derives the colliding groups from the tree and proves neither key this tool
+ * matches on collides for any of them, however many arrive. Run that test for
+ * the current answer rather than reading a number out of a comment.
  *
  * The stem stays sortable and stays readable, and the ledger's own uniqueness
  * check is what the tool relies on.
@@ -168,6 +178,22 @@ export function planMigration({ migrations, applied }) {
   // `version` is the ledger's primary key, so two migrations sharing one abort
   // the run at the second. Checked here, before anything is applied, rather
   // than discovered as a `unique_violation` half way through a deployment.
+  //
+  // This refusal is UNREACHABLE as the two keys are derived today, and saying
+  // so is the point: `ledgerVersion` is the whole stem and `ledgerName` is
+  // that stem less its prefix, so equal versions force equal names and the
+  // loop above has already refused. It is kept because it guards the ledger's
+  // real primary key rather than a derivation.
+  //
+  // Reachability rests on two premises, and `tools-pennsync-migrate.test.mjs`
+  // asserts each one rather than the implication they carry. **Truncate
+  // `ledgerVersion` to the bare prefix and this check goes live** — it is no
+  // longer the whole stem, so two files dated the same second collide on it
+  // while their names still differ. The other premise is `ledgerName`
+  // factoring through the version; breaking that reds its own assertion.
+  // Note which key that makes load-bearing: a rewrite of `ledgerName` alone
+  // cannot make this reachable, and an earlier version of this comment said
+  // it could.
   const byVersion = new Map();
   for (const migration of migrations) {
     const version = ledgerVersion(migration.name);
