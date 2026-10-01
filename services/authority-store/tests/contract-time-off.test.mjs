@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { transpileTs } from '../../../tools-transpile-ts.mjs';
-import { applyRecordMigrations } from './record-migrations.mjs';
+import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
 
 /**
  * The time-off domain — four Base44 capabilities over one carried table.
@@ -34,6 +34,7 @@ const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b'][
 const ADMIN_A = 1; const CLINICIAN_A = 2; const SPARE_A = 3; const ADMIN_B = 4;
 const SUBMIT = 'select "public"."pennsync_contract_time_off_submit"($1,$2,$3,$4,$5,$6,$7,$8) as result';
 const CANCEL = 'select "public"."pennsync_contract_time_off_cancel"($1,$2) as result';
+const CANCEL_FORWARD = '20260920680000_time_off_cancel_previous_status.sql';
 const REVIEW = 'select "public"."pennsync_contract_time_off_review"($1,$2,$3,$4) as result';
 const APPROVED = 'select "public"."pennsync_contract_time_off_approved"($1) as result';
 const A = 'agency-a'; const B = 'agency-b';
@@ -49,7 +50,14 @@ before(async () => {
   // The whole record directory, in the order a deployment applies
   // it. A forward migration is applied by every suite that adopts this walk,
   // which is the only way a contract suite can see one land on it.
-  await applyRecordMigrations(db);
+  const applied = await applyRecordMigrations(db);
+  // The ordering guard, inherited from `contract-compliance-writes` because
+  // that file has merged and this change's forward migration is now the newest
+  // PENDING one. `planMigration` refuses `MIGRATE_OUT_OF_ORDER` the moment an
+  // applied file sorts after a pending one, so a file this change adds has to
+  // sort after everything a store may already hold. The call retires here when
+  // this migration merges rather than accumulating an exception list.
+  assertNewestRecordMigration(applied, CANCEL_FORWARD);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // The clinician's carried profile claims everything the originals read. None
   // of it may decide anything, which is what the gate test proves.
@@ -191,6 +199,33 @@ test('a request is cancelled by its owner or an administrator, and only while op
   // A request in another agency is simply not there.
   await refusal(cancel(ADMIN_A, 'no-such-request'), 'PENNSYNC_TIME_OFF_NOT_FOUND');
   await refusal(cancel(ADMIN_A, 'has spaces'), 'PENNSYNC_TIME_OFF_SUBJECT_INVALID');
+  await db.exec(`delete from ${SCHEMA}."time_off_request"`);
+});
+
+test('the cancel answer names the status it replaced, which the row cannot', async () => {
+  // `20260920680000_time_off_cancel_previous_status.sql`. The whole point is
+  // that the ROW cannot answer this: after the update its status is `cancelled`
+  // whichever state it came from, so a notice eligible only for a withdrawn
+  // APPROVED request had no way to tell the two apart.
+  const open = (await submit(CLINICIAN_A)).request;
+  const fromPending = await cancel(CLINICIAN_A, open.id);
+  assert.equal(fromPending.request.status, 'cancelled');
+  assert.equal(fromPending.previous_status, 'pending');
+
+  const accepted = (await submit(CLINICIAN_A, { manager: email(ADMIN_A) })).request;
+  assert.equal((await review(ADMIN_A, accepted.id, 'approved')).request.status, 'approved');
+  const fromApproved = await cancel(CLINICIAN_A, accepted.id);
+  assert.equal(fromApproved.request.status, 'cancelled');
+  assert.equal(fromApproved.previous_status, 'approved',
+    'the two cancellations differ only here, and the notice turns on it');
+
+  // It is a key on the ANSWER and not a field of the projection, because a row
+  // has no previous status. Every other reader shares `time_off_row`.
+  assert.equal(Object.hasOwn(fromApproved.request, 'previous_status'), false);
+  const listed = await approved(ADMIN_A);
+  for (const entry of listed.requests ?? []) {
+    assert.equal(Object.hasOwn(entry, 'previous_status'), false);
+  }
   await db.exec(`delete from ${SCHEMA}."time_off_request"`);
 });
 

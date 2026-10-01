@@ -27,7 +27,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
@@ -62,10 +62,11 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // This migration is the newest PENDING one, so the ordering guard is its.
-  // See `assertNewestRecordMigration` for why the check moves rather than
-  // accumulating — the read half's copy retired when this file arrived.
-  assertNewestRecordMigration(applied, WRITES_NAME);
+  // The ordering guard has MOVED ON, and this is the retirement the helper's
+  // own docstring asks for rather than a weakening of it: this migration is on
+  // `main`, so it is part of what a store already holds, and a later file
+  // sorting after it is a correct tree rather than a base that moved. The
+  // check now lives on the newest pending file, in `contract-time-off`.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [
