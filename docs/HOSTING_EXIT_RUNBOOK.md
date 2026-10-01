@@ -65,7 +65,10 @@ Three things follow, and the third is the one that moves this runbook's order.
 at any commit, because no commit here is its source. Reading it needs the binary
 or the account: installing the live app and watching its requests, or finding the
 build artefact §6 of that runbook goes looking for. Both are outside this
-container.
+container. One of those two was done on 2026-10-01: the owner read iOS's own
+App Privacy Report on the installed app, which is recorded under "What each answer
+to that question changes" below. That is still not a reading from here, and this
+paragraph's claim about the container stands.
 
 The public hints were tried on 2026-10-01 and none of them answers it, which is
 itself worth recording so nobody tries again. Both app origins serve a real,
@@ -149,6 +152,27 @@ live app is known to load the custom domain or a StoreKit-complete replacement i
 live.
 
 ## What each answer to that question changes
+
+**Answered on 2026-10-01, and it is the first branch: the installed app loads
+`caremetricai.base44.app`.** The owner opened the installed app with iOS's App
+Privacy Report switched on, and its "Domains contacted directly by app" list holds
+three entries, one contact each at 18:12 local: `base44.app`,
+`caremetricai.base44.app` and `qtrypzzcjebvfcihiynt.supabase.co`.
+`app.caremetricai.com` is absent, and a wrapper that opened it would have put it
+first. Three limits on that reading, since it is the evidence the order below now
+rests on: it names domains rather than the page the wrapper opened, so the start
+URL is a strong inference and not a direct reading; it is one launch on one phone
+inside the report's own window; and it says nothing about the Android app. **So
+everything under "If the installed app loads `caremetricai.base44.app`" below is
+now the live branch, and the custom-domain branch is kept for the record rather
+than planned around.**
+
+The third domain is **Base44's own storage** and not ours: this repository's SSRF
+allowlist names `qtrypzzcjebvfcihiynt.supabase.co` as a Base44 host
+(`base44/functions/importProvidersCsv/entry.ts:154` and two siblings), its paths
+sit in a `base44-prod` bucket, and the owned staging project is
+`xxtyweswohkvgkprimwa.supabase.co` (`.env.example`). A build from this tree is
+expected to contact it at launch, which is what put it on the closing list below.
 
 Written out in advance so the answer needs no further reasoning when it arrives.
 Base44's documentation settles the mechanism: the wrapper "automatically chooses
@@ -447,6 +471,14 @@ data and leave with it.
 certificate for `app.caremetricai.com` while it serves that hostname. After step 10
 moves the record, remove the binding there too, or two places keep claiming the
 same name.
+
+**The brand logo every screen renders.** `src/lib/brand.js` hard-codes
+`BRAND_LOGO_URL` at `qtrypzzcjebvfcihiynt.supabase.co`, Base44's own storage, and
+fifteen modules import it — `PageLoader.jsx` and `SignInScreen.jsx` among them, so
+the first screen of a cold start fetches it. This one is ours to fix rather than to
+revoke, and it is not only the phone's: the web app loads the same URL, so the
+image has to be served from our own host before the Base44 account closes. The file
+holds one constant, so the change is the asset's move rather than the code's.
 
 **The hosted data, the user accounts and the generated native build**, which are
 the other half of the exit rather than this runbook's, named here only so the list
