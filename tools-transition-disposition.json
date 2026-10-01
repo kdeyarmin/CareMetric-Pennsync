@@ -610,6 +610,8 @@
     "UploadPrivateFile": "port",
     "CreateFileSignedUrl": "port",
     "UploadRecordFile": "port",
+    "SendFax": "port",
+    "SendSms": "port",
     "GenerateImage": "retire"
   },
   "broker_ceiling": {},

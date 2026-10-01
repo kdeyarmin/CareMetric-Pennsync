@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { BUCKET } from './runtime.mjs';
 import { buildMailPayload, emailAddress, validateMailParams } from './mail-contract.mjs';
+import { readCredential } from './provider-credential.mjs';
+import { TELECOM_OPERATIONS, TELECOM_PROVIDER, sendTelecom, validateTelecomParams } from './telecom.mjs';
 import { MAX_FILE, UUID, conforms, exactObject, fail, fileBytes, limitedBytes, readJson, text, validateSchema } from './safety.mjs';
 
 const FILE_URI = /^cmfile:([0-9a-f-]{36})$/i;
@@ -45,6 +47,12 @@ export function validateParams(operation, params, config) {
     exactObject(params, ['base64', 'content_type']); fileBytes(params.base64, params.content_type);
   } else if (operation === 'CreateFileSignedUrl') {
     exactObject(params, ['file_uri']); requireFileUri(params.file_uri);
+  } else if (TELECOM_OPERATIONS.includes(operation)) {
+    // Shape only. Whether this service may send at all, and whether a
+    // credential exists for this half of the provider, are decided at the
+    // provider call — a validation that refused on the release would make a
+    // paused operation indistinguishable from a malformed request.
+    validateTelecomParams(operation, params, config);
   } else fail(409, 'INTEGRATION_NOT_MIGRATED');
 }
 export function createProviders(config, store, fetcher = fetch) {
@@ -205,6 +213,16 @@ export function createProviders(config, store, fetcher = fetch) {
         : await store.fileRecord(receipt);
       if (saved !== true) fail(503, 'FILE_RECEIPT_UNCERTAIN');
       return { file_uri: `cmfile:${ctx.jobId}`, size_bytes: bytes.length, private: true };
+    }
+    if (TELECOM_OPERATIONS.includes(operation)) {
+      return sendTelecom(operation, params, {
+        config,
+        // Bound to this app and this provider by the credential module itself;
+        // nothing a caller sends chooses which credential is read.
+        readCredential: () => readCredential(config, store, TELECOM_PROVIDER),
+        fetcher,
+        readJson,
+      });
     }
     const row = await fileRecord(params.file_uri, ctx);
     const response = await fetcher(`${storageBase}/object/sign/${BUCKET}/${row.object_path}`, {
