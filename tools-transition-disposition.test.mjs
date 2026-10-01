@@ -995,8 +995,11 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // The second does not turn on who calls it at all — the module reads every
   // `duty_status: 'on_duty'` row in the deployment and updates each one, so
   // `user_update`'s `id = caller_user_id()` refuses it whatever caller it
-  // gets, an admin included. Routing it to D49 alone would say a scheduler
-  // identity unblocks it, and it would not.
+  // gets, an admin included — the policy refuses the ROW, so being on the
+  // column allowlist cannot reach it, and `pennsync_records."user"` is
+  // force-RLS, which binds a definer that never holds `BYPASSRLS` too.
+  // Routing it to D49 alone would say a scheduler identity unblocks it, and
+  // it would not.
   assert.deepEqual(report.port_blockers.entity_authorization,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
       'userManagement', 'userManagementV2']);

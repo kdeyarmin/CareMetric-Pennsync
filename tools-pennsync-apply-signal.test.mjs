@@ -236,6 +236,14 @@ test('this repository, against itself, owes nothing and reads its own pin', () =
   // Drives the real tree through the real readers. `HEAD` against `HEAD` is the
   // one base every checkout has, however shallow, and it proves the pin and the
   // directories agree here — the precondition every count above depends on.
+  //
+  // IT MEASURES THE WORKING TREE, so it is RED BY DESIGN on a dirty one: edit a
+  // committed migration and this case correctly reports it under `editing` and
+  // fails until the change is committed. That is the signal working, not drift,
+  // and it is worth saying here because the alternative is somebody learning to
+  // ignore this suite mid-edit rather than learning to ignore the artefact.
+  // A comment-only edit to a migration does it too — the sha moves anyway, which
+  // is why the pin is re-derived in the same change.
   const signal = measure({ base: 'HEAD' });
   assert.equal(signal.behindBy, 0);
   assert.deepEqual(signal.editing, []);
