@@ -3958,7 +3958,7 @@ different kinds of work:
   audit. A rise measures the audit's reach; this fall measures one call site
   repaired; and a fall could equally mean a route was withdrawn. Read the cause,
   never the direction.
-- **Fifty pass arguments the scan cannot read**, because the call builds
+- **Sixty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
