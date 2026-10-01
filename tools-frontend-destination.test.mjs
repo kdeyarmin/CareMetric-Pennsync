@@ -5,12 +5,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  AUDITED_ENTITIES, DESTINATIONS, FORMAT, FORMAT_VERSION, MANIFEST_FILE, READ_OPERATIONS, REALTIME_OPERATIONS, SERVED,
+  AUDITED_ENTITIES, DESTINATIONS, FORMAT, FORMAT_VERSION, KNOWN_DISPOSITIONS, MANIFEST_FILE,
+  READ_OPERATIONS, REALTIME_OPERATIONS, SERVED,
   TENANT_DECISION_FILE, WRITE_OPERATIONS, classifyOperation, compare, destinationFor, main,
   measureDestinations, parseBaseline, refineGlobalReference, refineRetired, summarise,
 } from './tools-frontend-destination.mjs';
 import { measureSurface } from './tools-base44-surface.mjs';
-import { snakeCase } from './tools-entity-schema-plan.mjs';
+import { SCHEMA_ONLY, snakeCase } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const baseline = (maximum_unserved) => JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, maximum_unserved });
@@ -40,6 +41,50 @@ test('an operation the frontend performs is classified, never assumed', () => {
   // between "this is fine" and "this silently cannot work".
   assert.throws(() => destinationFor('broker', 'upsert'), /FRONTEND_DESTINATION_UNKNOWN_OPERATION:upsert/);
   assert.throws(() => destinationFor('invented', 'list'), /FRONTEND_DESTINATION_UNKNOWN_DISPOSITION:invented/);
+});
+
+/**
+ * It fails closed on EVERY path out of the function, which is not what the
+ * assertion above proves and is the gap a review found.
+ *
+ * Two early returns answer without consulting the disposition — `realtime`, and
+ * a `SCHEMA_ONLY` entity — so both sat above the `switch` and its
+ * `default: throw` was unreachable through either. A disposition that was
+ * misspelled or had gone missing reported a clean bucket for exactly the eight
+ * entities in the newest and least familiar one, while the same bad value threw
+ * for every other entity in the tree. Nothing was lost on the day it was found,
+ * because all eight really did read `preserved_paused` — which is why it needed a
+ * test rather than a reading: it was a property that could lapse without any
+ * figure moving.
+ *
+ * Each case is driven through a DIFFERENT exit, because one of them passing says
+ * nothing about the others — that is how the first version came to be checked
+ * and still be wrong.
+ */
+test('an unknown disposition is refused on every path, not only through the switch', () => {
+  const schemaOnly = Object.keys(SCHEMA_ONLY)[0];
+  assert.ok(schemaOnly, 'this test needs a SCHEMA_ONLY entity to route through that exit');
+  for (const [disposition, operation, entity, exit] of [
+    ['invented', 'list', null, 'the switch'],
+    ['invented', 'list', schemaOnly, 'the SCHEMA_ONLY early return'],
+    ['invented', REALTIME_OPERATIONS[0], null, 'the realtime early return'],
+    ['invented', REALTIME_OPERATIONS[0], schemaOnly, 'both early returns at once'],
+    [undefined, 'list', schemaOnly, 'a disposition that is absent rather than wrong'],
+  ]) {
+    assert.throws(() => destinationFor(disposition, operation, entity),
+      /FRONTEND_DESTINATION_UNKNOWN_DISPOSITION/,
+      `a bad disposition reached ${exit} without being refused`);
+  }
+  // And the two early returns still answer for a GOOD disposition, or the
+  // refusal above would be passing by breaking them.
+  assert.equal(destinationFor('preserved_paused', 'list', schemaOnly), 'no_access_contract');
+  assert.equal(destinationFor('port', REALTIME_OPERATIONS[0], null), 'no_realtime_seam');
+  // The switch's own default is unreachable now and keeps a distinct code, so a
+  // disposition added to `KNOWN_DISPOSITIONS` and not to the switch is still a
+  // refusal rather than an `undefined` destination.
+  assert.ok(KNOWN_DISPOSITIONS.every(name => DESTINATIONS.includes(
+    destinationFor(name, name === 'broker' ? 'list' : 'list', null))),
+    'every known disposition must map to a declared destination');
 });
 
 test('the broker family serves reads and refuses writes, and the split is the finding', () => {

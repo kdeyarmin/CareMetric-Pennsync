@@ -70,6 +70,14 @@ export const DESTINATIONS = Object.freeze([
 export const TENANT_DECISION_FILE = 'tools-tenant-decision.json';
 /** The destinations that mean a call site has somewhere to go. */
 export const SERVED = Object.freeze(['record_store', 'broker_family', 'activity_trail']);
+/**
+ * Every disposition this tool will answer for. A name outside it is a refusal
+ * rather than a bucket, and the check reading it runs BEFORE any early return —
+ * see `destinationFor`, where that ordering is the whole point.
+ */
+export const KNOWN_DISPOSITIONS = Object.freeze([
+  'port', 'broker', 'retire', 'hub', 'preserved_paused',
+]);
 
 export function classifyOperation(operation) {
   if (READ_OPERATIONS.includes(operation)) return 'read';
@@ -89,6 +97,20 @@ export function classifyOperation(operation) {
 export function destinationFor(disposition, operation, entity = null) {
   const kind = classifyOperation(operation);
   if (!kind) throw new Error(`FRONTEND_DESTINATION_UNKNOWN_OPERATION:${operation}`);
+  // The disposition is validated HERE rather than in the `switch` below, and the
+  // reason is a defect review found in this function: both early returns under
+  // this line answer without consulting the disposition at all, so the
+  // `default: throw` was unreachable for a `realtime` operation and — once
+  // `SCHEMA_ONLY` arrived — for every entity in the new bucket. An entity there
+  // that lost or misspelled its disposition reported a clean `no_access_contract`
+  // instead of failing the run, which is the fail-closed property this census
+  // leans on elsewhere being silently suspended for exactly the eight entities a
+  // reader is newly interested in. Measured before it was moved: with the old
+  // order, `destinationFor('something_new', 'list', 'OASISUpload')` returned a
+  // bucket and `destinationFor('something_new', 'list', null)` threw.
+  if (!KNOWN_DISPOSITIONS.includes(disposition)) {
+    throw new Error(`FRONTEND_DESTINATION_UNKNOWN_DISPOSITION:${disposition}`);
+  }
   if (kind === 'realtime') return 'no_realtime_seam';
   // A `SCHEMA_ONLY` entity has a table and no way in. Reporting it as
   // `no_table` would be the bucket keeping its name after the reason for it
@@ -110,7 +132,12 @@ export function destinationFor(disposition, operation, entity = null) {
     case 'preserved_paused':
       return 'no_table';
     default:
-      throw new Error(`FRONTEND_DESTINATION_UNKNOWN_DISPOSITION:${disposition}`);
+      // Unreachable while this switch handles every name in
+      // `KNOWN_DISPOSITIONS`, and kept with a DIFFERENT code for that reason: it
+      // now catches only a disposition added to that list and not to this
+      // switch, which would otherwise fall out of the function as `undefined`
+      // and be counted as a destination nothing recognises.
+      throw new Error(`FRONTEND_DESTINATION_UNHANDLED_DISPOSITION:${disposition}`);
   }
 }
 
