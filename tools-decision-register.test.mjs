@@ -291,22 +291,33 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // file's sabotage range `1..224`: both say what the lists are, neither is
 // derived from them, and a silent re-derivation makes all three disagree.
 //
-// The collection figure still guards prose, measured rather than assumed:
-// `thirty-five` is live in the register at two places that describe the design
-// in the present tense.
+// The collection figure no longer guards a sentence describing the design, and
+// that changed in the same pass as the list. Re-measured 2026-10-01 after the
+// rewrite, and SCOPED, because the document is not the write-up: within this
+// check's own write-up `thirty-five` survives at three places and all three
+// report what #359's collection was, while the one sentence that carried it in
+// the present tense — "the base's numbers are typed alongside the collection's
+// thirty-five" — is the one the rewrite falsified and D226 repaired. Elsewhere
+// the document carries the same word about three unrelated populations, which is
+// why this is scoped: a first draft of this comment said "in the register" and
+// was false by those three. So this pin guards the
+// module's own rewrite note and D226, both of which attribute the figure to a
+// pass, which is the whole of D226's ruling.
 //
-// **And the third assertion is implied by the first for as long as the
-// collection is inert**, since EXPECTED_DOCUMENT is the union and the base holds
-// every number in EXPECTED_NEW. It is kept because the two diverge again the
-// moment the list is rewritten for the next collection — but it is not
-// independent coverage today, and a reader should not count it as any.
+// **The third assertion is independent coverage again**, and the divergence that
+// made it so was predicted here rather than discovered: the previous version of
+// this comment kept it on the stated ground that "the two diverge again the
+// moment the list is rewritten for the next collection", while recording that it
+// was not independent coverage that day. The list was rewritten; they diverged.
+// An assertion kept for a future that arrives is worth saying so about.
 test('the figures quoted in prose are the figures the lists hold', () => {
   assert.equal(REAL_BASE_NUMBERS.length, 203,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
-  assert.equal(EXPECTED_NEW.length, 35,
-    "the collection figure is quoted in the register's write-up and in #359's description");
-  assert.equal(EXPECTED_DOCUMENT.length, 203,
-    'the union; equal to the base figure while the collection is inert, and the '
-    + 'assertion that catches a union built as a concatenation');
+  assert.equal(EXPECTED_NEW.length, 1,
+    'the collection figure: the collection in hand adds D226 alone, and the figure is '
+    + "quoted in the module's rewrite note and in D226, each attributing it to a pass");
+  assert.equal(EXPECTED_DOCUMENT.length, 204,
+    'the union: the base plus D226, so no longer equal to the base figure and no longer '
+    + 'implied by it, and the assertion that catches a union built as a concatenation');
 });

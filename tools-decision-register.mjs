@@ -50,11 +50,19 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // document changes, and a reader who carries "inert, not wrong" across to it
 // gets the wrong answer. A base that has moved is wrong rather than inert, and
 // the corroboration test is what says so.
-export const EXPECTED_NEW = Object.freeze([
-  181, 182, 183, 185, 186, 189, 190, 191, 192, 193, 194, 195, 197, 198, 199,
-  201, 202, 203, 204, 205, 206, 207, 208, 210, 211, 212, 213, 215, 217, 218,
-  220, 221, 222, 223, 224,
-]);
+// Rewritten 2026-10-01 for the collection in hand, which adds D226 and nothing
+// else. It held #359's thirty-five numbers in `181..224`, every one of which
+// `BASE_NUMBERS` below now carries, so the differential in the corroboration
+// test had gone INERT and was saying so in a printed info line rather than a
+// failure. Nothing is lost by the rewrite: those thirty-five are in the base and
+// `EXPECTED_DOCUMENT` is the union, so what the document must hold is unchanged
+// apart from D226. What is bought back is a differential that can fail again.
+//
+// This is the paragraph above being OBEYED and not the deletion it warns
+// against. D226 records why it had to happen in the same change as the entry,
+// and why the figure moving is the reason a count like this one belongs in a
+// pull request rather than in a sentence of the register.
+export const EXPECTED_NEW = Object.freeze([226]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //
@@ -89,10 +97,13 @@ export const EXPECTED_NEW = Object.freeze([
 // expect when a collection lands and nothing else has.
 //
 // This is the `BASE_NUMBERS`-goes-stale case the paragraph above distinguishes
-// from `EXPECTED_NEW`-goes-inert, and the two were resolved differently in this
-// change for exactly that reason: the base MOVED, so it was wrong and is
-// re-derived; the collection list is now wholly inside the base, so it is inert
-// and is deliberately left alone.
+// from `EXPECTED_NEW`-goes-inert, and the two were resolved differently when
+// #359 merged for exactly that reason: the base MOVED, so it was wrong and was
+// re-derived; the collection list was wholly inside the base, so it was inert
+// and was left alone. **The collection list has since been rewritten and this
+// base has not**, which is the inert case's own prescription rather than a
+// second re-derivation: `origin/main` at `700b4d24` still holds exactly these
+// 203, because the change that moved it added no heading.
 const BASE_HIGHEST = 224;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
   180, 184, 187, 188, 196, 200, 209, 214, 216, 219]);

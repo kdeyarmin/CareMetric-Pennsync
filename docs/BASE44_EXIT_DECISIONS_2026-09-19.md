@@ -192,10 +192,10 @@ original skipped on a missing base, so under that version CI would have gone
 green with the only real-document assertion silently not running.
 
 **The repair removes the dependency instead of hardening it.** The base's
-numbers are typed alongside the collection's thirty-five — as a range minus a
-typed list of absent numbers, the subtraction being over that list rather than
-over the document, so it is not the tautology above — and the membership
-assertion needs no git at all. **Neither total is written here, and the reason is
+numbers are typed alongside the numbers the collection in hand adds — as a
+range minus a typed list of absent numbers, the subtraction being over that
+list rather than over the document, so it is not the tautology above — and the
+membership assertion needs no git at all. **Neither total is written here, and the reason is
 this entry's own rule.** This sentence carried the base's as `168` and it was
 wrong within the night: #359 merged, the base grew to 203, and the figure sat
 here describing a list it no longer described. Worse than stale, the word it
@@ -6126,6 +6126,40 @@ migration — slower, reviewed, and the same in staging and production, which fo
 a table of regulatory citations is the behaviour you want.
 
 Port queue: 7 / **6** / 0 / 0 / 12 / 0 / 2 / 0 / 2 / 73.
+
+### Addendum to D83, 2026-10-01 — the cost is three pages, not one
+
+**Addendum to D83 — the cost is three pages, not one.** Contributed by the operational-table contracts thread, 2026-10-01, measured at `20d575c1` and equivalent on main at `677bd381`.
+
+D83's cost paragraph opens "What this costs, said plainly rather than left to be discovered" and then names one page of three. That is this project's house defect arriving inside the sentence written to prevent it, and it is the most instructive thing in the entry: the paragraph is accurate about what it names, and the discovery it was meant to foreclose happened anyway, two pages over, days later. It is recorded here as a finding and deliberately not tidied away. The original paragraph stands exactly as written.
+
+Three production pages lose a runtime write to a `global` reference table, not one. Measured per call site: of 453 entity call sites in production `src/`, fourteen cannot land in the owned store, and five of the fourteen are writes to the three `global` entities.
+
+`MedicareGuidelinesLibrary.jsx:110` — `MedicareGuideline.update(is_active:false)`, the "retire this guideline" control. One site. Named in the original paragraph, which also names its sibling "add a guideline by URL". Nothing to add.
+
+`MedicareRuleSeeder.jsx:35/48` — `MedicareComplianceRule` create and update. Two sites. **Nothing of substance is lost.** The control loads `DEFAULT_MEDICARE_RULES`, twelve rules committed at `src/components/compliance/defaultMedicareRules.js:30`, which is precisely the case D83 reasons about: content reviewed once, versioned with the schema, identical in every deployment. The content survives the move intact. What goes is the one-click load.
+
+`RegulatoryMonitor.jsx:346/354` — `ComplianceRule` create and update. Two sites. **This is a real loss and it was unrecorded.** An administrator can today turn a reviewed regulatory update into a live compliance rule from the browser — the gate on the control is `isAdminLike` (`src/lib/superAdmin.js:58`), Base44's built-in `role === 'admin'` rather than the stricter `isSuperAdmin` beside it, and the page it sits on is route-gated more narrowly still — behind an explicit "confirm rule changes" checkbox, with a traceable `rule_code` encoding the source update and the check name so an auditor can match the rule back to its origin. Under D83 they cannot. D83's reasoning covers the case rather than being contradicted by it — the content is a model's summary of a regulator's page, which is content preparation — so nothing is reopened here. It is a cost that belonged in the paragraph and was not in it.
+
+The distinction to carry: the first two pages lose a convenience, the third loses a capability. Doing less than Base44 does is neither the restoration case nor the doing-more case, and it is the one a user notices. It was also not dropped for being riskier. What decides whether these writes are permitted today is each entity's own permission block, and that is identical across all six: `create` and `update` to Base44's built-in `role === 'admin'`, with `delete` the same on the four that allow it and refused outright on `ComplianceRule` and `MedicareComplianceRule`. So the only thing separating the nine restored sites from these two is the tenant kind — `agency` for Announcement, FacilityDocumentationRule and RegulatoryUpdate, `global` for ComplianceRule, MedicareComplianceRule and MedicareGuideline — which is the kind D83 attaches to.
+
+And a note on why reading the entry could not have found this. The original cost paragraph is page-shaped — a page and its two controls — while the measurement that found the other two is call-site-shaped. Those six entities carry 31 call sites between them; every read and filter lands and only the writes do not, so a per-entity or per-page reading reports a table as served or unserved and loses which operations went with it. The unit is the call, not the table or the page.
+
+*Carried by the register's collector, 2026-10-01, from the operational-table contracts thread at `session_01Lv4CGaHHREnft6MAYfCQEU`, routed as prose because the write route for a decision entry is the collector's hand. **One structural departure, the collector's and nothing else**: the body arrived with no heading, so the `###` heading above is imposed at the level `### Addendum to D23, 2026-10-01` and `### Amendment to D7, 2026-09-30` already use, with the date in the house form. The author's own bold lead-in is kept beneath it rather than folded into the heading, so the body reads exactly as sent. **A second departure, added later and also the collector's**: the author's substituted aside ended "and nothing more", which the route-gate measurement two notes below makes false for this control, so that clause is replaced with "and the page it sits on is route-gated more narrowly still". Their reading of the component gate is untouched; what is removed is a claim of exhaustiveness their own later measurement withdrew. Recorded because the rest of their words are applied verbatim and this one is not. The cross-session transport indents every line by four spaces; that indentation is stripped and nothing else is touched.*
+
+*What the collector verified, which is the anchor and not the measurement: D83 is at line 6047, its cost paragraph does open "What this costs, said plainly rather than left to be discovered", and it names `MedicareGuidelinesLibrary.jsx` and its two controls and no other page — so the addendum's premise holds against the file at `677bd381`. No addendum or amendment to D83 existed before this one. **The collector took no part in the call-site measurement and makes no claim here about whether it is right**; the 453, the fourteen, the five, the 31 and the three file positions are that thread's, in that thread's words.*
+
+*Corrected before merge, 2026-10-01, at the author's own instruction, and the substitution above is the author's words applied verbatim.*
+
+*The sentence read "A protected administrator can today turn a reviewed regulatory update…", which the author withdrew on reading the gate: the phrase came off the product's own error strings and the module name `superAdmin.js` rather than off the function. **The general shape is worth more than the fix — an error message is not a permission**, which is D36's "a comment is not a permission" arriving through a different surface; it caught two threads in one evening on the same strings. The collector checked the anchors the substitution names and they hold: `isAdminLike` is three lines at `src/lib/superAdmin.js:58` (`user.role === "admin"`), the stricter `isSuperAdmin` sits at `:49` and this path does not call it, and `src/components/hub-tabs/RegulatoryCompliance.jsx:14` passes `isAdminLike(currentUser)` into `RegulatoryMonitor` at `:22`. One figure in the author's note is understated and is corrected here rather than carried: that error string is not two strings but **seven, across four files** in `src/` — and "five files" was this collector's own miscount of a list it had just enumerated correctly in the same sentence, which the author caught. The author then measured the three gates nobody had read: `OnCallSchedule.jsx:30`, `TemplateManagement.jsx:51` and `AdminUserSetup.jsx:40` each gate on `isAdminLike`, and `OnCallShift` and `DocumentTemplate` carry `create`, `update` and `delete` at `{"user_condition":{"role":"admin"}}`, so the misleading word sits over a sound and unforgeable gate rather than over an exposure — `role` is Base44's built-in and is protected from `updateMe`. One exception, found only because the note below had taught the collector to read the route table first: `AdminUserSetup` is `adminOnly: true`, so that page's effective gate is the narrower tenant-bound one and the "no exceptions" reading would have been one layer short for a third time.*
+
+***A second sentence arrived with this correction and is deliberately NOT filed, because the correction's own shape recurs one layer down.** It would have said that all six entities are gated on exactly that same built-in role today, leaving the tenant kind as the only thing separating the nine restored sites from these two. The collector checked that before filing it and it does not hold for `MedicareComplianceRule`: `MedicareRuleSeeder` is mounted at `src/pages/ComplianceCenter.jsx:671` behind `isAdminView(currentUser)` (`:144`), which is a different module — `src/lib/roles.js:223` over `getRoleView` at `:168` — and admits a built-in admin only once a trusted tenant context has bound one exact ACTIVE membership. So one of the six carries a tenant condition inside its own gate, which is the axis that sentence names as the only difference. The direction matters and is the reason nothing in the entry needs widening: `isAdminView` is NARROWER than `isAdminLike`, so the loss is not understated above. Returned to the author to re-derive, because it is their measurement and not the collector's to rewrite. `MedicareGuideline`'s own page was checked too and the author's reading holds there: `src/pages/MedicareGuidelinesLibrary.jsx` imports both helpers, and the write guard at `:86` and `:107` is `canManageGuidelines` from `isAdminLike` at `:76`, while `adminView` at `:73` only decides whether a cannot-do-this notice renders at `:302`.*
+
+*That last addition is the author's second attempt at a sentence the collector had returned, and it is filed because its claim was measured here directly: the six `rls` blocks in `base44/entities/` do carry `create` and `update` at `{"user_condition":{"role":"admin"}}` with no variation, `delete` the same on Announcement, FacilityDocumentationRule, RegulatoryUpdate and MedicareGuideline, and `delete: false` on the other two — the only asymmetry among the six being that `ComplianceRule` also gates its READ, where the other five read `true`. Their re-derivation found a second error their first check had not looked for, which is worth recording beside the first.*
+
+*What is NOT filed from it is its account of the SPA's own gates, and the reason is the fourth instance of the same shape in one evening — this time the collector's own.* The clause would have said that `src/pages/FacilityDocumentationRules.jsx` carries no gate at all, so the entity policy is the whole of it there, and that `MedicareRuleSeeder` is the lone narrower case. The page file really is eighteen lines with no gate in it, and its manager component reads `currentUser` only to stamp `created_by`. But `src/lib/nav.manifest.js:737` marks that page `adminOnly: true`, and `adminOnly` gates the ROUTE rather than the navigation link: `src/App.jsx:325` refuses it as `blockedAdmin` against `isAdmin` at `:313`, which is `getRoleView(user)` resolving to `super_admin` or `facility_admin` — the same tenant-bound predicate as `isAdminView`, and narrower than the built-in role. **So the effective gate is the outermost layer, and in this application that is the route table rather than anything visible in the page.** Measured: `ComplianceCenter` is `adminOnly: true` and hosts BOTH writes at `:671` and `:673`, so `RegulatoryMonitor`'s inner `isAdminLike` is not its effective gate either; `FacilityDocumentationRules` is `adminOnly: true`; and only `MedicareGuidelinesLibrary` and `NotificationSettings` are `adminOnly: false`, which is where a component's `isAdminLike` really is the whole of the SPA's answer. **The collector's own earlier check was one layer short in exactly that way** — it confirmed that `RegulatoryCompliance.jsx:14` reaches `RegulatoryMonitor` through `isAdminLike` and nothing else, which is true of the prop and false of the capability. Four of the six are therefore reached through a gate that additionally requires one bound ACTIVE membership, so **how many people lose the capability does not reduce to how many hold the built-in role**. That it is also unmeasured in the live app is the author's own note and stands: reading the production user rows is refused in the measuring session, and no way round that refusal was sought.*
+
+*No digest of this region is stored, and that is deliberate rather than an omission. D204's second re-anchor settled the reason: a stored digest travels stale with a region that moves, and it then reads exactly like one that was checked, while an extraction a later reader can re-run costs a second and cannot go stale. A reader wanting the author's own bytes should ask that thread rather than compare against a hash taken on this side of a transport that reshapes the text.*
 
 ## D84 — A capability is not blocked because one of its nine legs is leaving
 
@@ -14342,3 +14376,109 @@ was put; the answer took one pass.*
 *Both authors asked for the wording before it landed and only one had answered
 when it did. That was the collector's call and the wrong one: the ask was cheap
 and the wait would have caught both errors before they reached the branch.*
+
+## D226 — A collection's current figures belong in its pull request and its pass history belongs in the document (2026-10-01)
+
+A collection of entries is re-derived repeatedly before it lands, and every pass
+moves figures: how many numbers the collection adds, which of them the base
+already holds, what the typed lists are. **Those current figures belong in the
+pull-request description, and the pass-by-pass history belongs here.** The
+description is the right home for a number that the next pass replaces; it is
+read once, by a reviewer, while the figures are still current. This document is
+read cold by somebody who cannot tell a current figure from a stale one, so what
+it may carry is what stays true — the ordinal history, tensed and attributed to
+the pass that measured it.
+
+**The worked example is this register's own write-up, and it is mechanical rather
+than a quibble.** The write-up's repair paragraph says, in bold, **"Neither total
+is written here, and the reason is this entry's own rule"** — and the sentence it
+says that about, immediately before it, is "The base's numbers are typed
+alongside the collection's thirty-five". The bolded claim is not a general
+aspiration that drifted: the next sentence explains it, reporting that *this
+sentence carried the base's as `168`* and was wrong within the night of being
+typed. So the repair found the exact defect in the exact sentence, removed one of
+its two totals, and left the other standing four words from the word "neither".
+**No new measurement was needed to see it; reading the sentence the claim is
+about is enough,** and nobody did for as long as the paragraph read as a rule
+plus an example of obeying it.
+
+What finally surfaced it was performing the action the neighbouring paragraph
+prescribes. `EXPECTED_NEW`'s comment says to **rewrite the list for the next
+collection** once it goes inert, and this change does: #359's thirty-five
+numbers become this collection's one. At that moment "the collection's
+thirty-five" is false. **A figure in prose can be wrong and unreachable at the
+same time** — unreachable because nothing reads prose, and so reached only by a
+reader who acts on the paragraph beside it. That sentence is repaired here to
+state the property, which is what the same paragraph's closing clause already
+instructs: *state the property and let the diff carry the count.*
+
+**It is a different species from the other findings this collection carries, and
+the contrast is the reusable part.** The others are instruments answering a
+narrower question than the one asked: a failure array truncated to ten of 632, a
+`head` bound the reader chose and then reported as the population, a differential
+standing down in a branch that cannot fail. In all of those the reading is true
+about a population nobody picked and looks exactly like a complete one. This is
+the inverse. No instrument was involved and no population was narrowed — a claim
+was made about a sentence and nobody opened the sentence. What protected it was
+that the pair read as self-consistent: a rule, and immediately before it an
+example of obeying the rule, which was the violation. **So the check here is not
+a better instrument. It is reading the referent**, and it costs nothing but the
+thought that a claim about a neighbouring sentence is a claim one can go and
+check.
+
+**The ordinal half is why the history needs this document rather than better
+prose.** That write-up is built on deictics that were exact in the pass they were
+written in — "this collection", "this entry's own subject arriving inside it",
+"the fourth time tonight". Line 164's "two of this collection's thirty-five" is
+still true of #359's collection and now has no unambiguous referent, because the
+document has seen a second collection since. The remedy is not to strip the
+deictics, which carry the finding, but to name the pass they belong to. **A
+figure here is attributed to its pass or it is not written.**
+
+**This collection's passes, recorded here because this is the surface that keeps
+them — and deliberately not as a total.** The corrections, in order: a gate claim
+the contributing author corrected in their own words; a permission-block half
+filed while an SPA-gate clause was refused on a route-table measurement; four
+files reported as five; an exhaustiveness claim dropped for asserting *less*
+narrowness than the code has, four paragraphs from a note of this collector's
+asserting *more*; and a scope error in this entry's own new test comment, which
+said a figure survived "in the register" only as this collection's history when
+three unrelated mentions elsewhere say otherwise. Three of those five were this
+collector's own.
+
+**There is no count of commits here, and why there is none is the sharpest thing
+in this entry.** The paragraph above first carried one — "five content commits,
+then four corrections" — and it was accurate when drafted and false when
+committed, because the commit that files this entry is itself a pass and carries
+a correction, so the figure could not include the act of writing it. A review bot
+caught it within minutes of the push, against the pull-request description, which
+had the larger number because it was written after the commit rather than inside
+it. **A pass count written inside the pass cannot include itself**, so no value is
+correct at rest: raising it to six makes the commit that raises it the seventh.
+That is not an argument for keeping a stale number and not an argument for
+correcting one again. It is the structural case for the clause this entry obeys
+everywhere else — *state the property and let the diff carry the count* — and for
+the ruling above it, since the tally belongs on the surface that is read once,
+while it is current, by somebody with the commit list in front of them. The
+enumeration stays because each named correction is a fact that does not move.
+
+**The mechanical half ships in the same change, and one piece of it is a design
+working as written.** The rewrite puts the corroboration test's differential back
+in its live branch instead of the inert one, where it had been announcing in a
+printed info line that it could not fail. Two typed prose assertions move with
+the list, from thirty-five to one and from 203 to 204, and a third stops being
+implied by the first. **That consequence was predicted in the test's own
+comment**, which keeps the third assertion on the stated ground that "the two
+diverge again the moment the list is rewritten for the next collection". They
+did. An assertion kept for a future that arrives is worth recording beside the
+many kept for futures that do not — and so is the info line, because a guard
+that cannot fail announcing itself in prose nobody has to read is still better
+than one that passes in silence.
+
+*Issued to the redeploy thread and written by it, 2026-10-01. The number's
+subject was settled before the entry was drafted: asked which description "that
+description" names, this thread put the question up rather than resolve it in the
+direction that makes the work its own. The answer is that D226's own sentence
+contrasts an ephemeral pull-request description with the durable document, so the
+ephemeral side is a pull request's and the register collection's write-up is the
+durable side of the same contrast — the reading that lands against the asker.*
