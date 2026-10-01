@@ -7208,6 +7208,73 @@ this switch, plus `INTEGRATIONS_RELEASE`, `SendEmail` in
 `INTEGRATIONS_ALLOWED_OPERATIONS`, and a configured provider. That service's
 configuration is not this decision's to change.
 
+**Addendum, 2026-10-01 — a second gate over the same channel, and why five
+senders do not call `agencyRecipient`.** Measured on PR #373 at `d8c233e5`, with
+CI green on that head read from the job log rather than from a check badge — the
+production-audit step's fourteen pre-existing advisories pass under
+`continue-on-error`, which is a property of that step and not of this change.
+
+The workforce staff notices are a delivery path in this decision's sense, so by
+its own clause — that any future delivery path has to ask the config too — they
+ask it. There are five: `notifyTimeOffSubmitted`, `notifyTimeOffReviewed` and
+`notifyTimeOffCancelled`, hanging off `submitTimeOffRequest`,
+`reviewTimeOffRequest` and `cancelTimeOffRequest`; `notifyCredentialReviewed`
+off `reviewPersonnelCredential`; and `notifyCredentialRenewal` off
+`submitPersonnelCredential`. They are gated by `PENNSYNC_API_WORKFORCE_NOTICES`,
+read exactly and untrimmed against `enabled-v1` as `PENNSYNC_API_DELIVERY` is,
+and the deliverable predicate is the conjunction of both flags, so the second
+gate can only narrow the first. Releasing the mail channel no longer releases
+these; that is now a separate act.
+
+D49's scheduled sweep `sendCredentialRenewalReminders` is not among them and
+sends nothing: its handler destructures no `integration`, `needsIntegration` is
+undefined, its body is a single contract call, and it appears nowhere in this
+change. `notifyCredentialRenewal` fires on a human's submission of a renewal
+rather than on a timer, so no scheduler-identity question arises for any of the
+five.
+
+These five do not call `agencyRecipient` and cannot raise
+`RECIPIENT_NOT_IN_AGENCY`. That is deliberate and it is not a weakening of D98.
+D98's check exists because `sendAccountReadyEmail` is handed its recipient as a
+caller parameter, so a roster read at send time is the only thing standing
+between an `agency_admin` and any address. None of these five is handed an
+address. Every recipient they use comes from one of two places, and neither is
+the caller. The first is a column the contract wrote: `manager_email` for the
+time-off submitted and cancelled notices, resolved through `agency_colleague`
+and stored as the identity map's `expected_email` rather than as the caller's
+string; `employee_email` for the time-off reviewed notice; and the credential's
+`user_id` for the credential reviewed notice, those two written as
+`caller_email()`. The second is the roster contract itself, walked and filtered
+on authority-store membership — by the credential renewal notice, and by the
+time-off submitted notice when the row names no approver, so that sender uses
+both. This was established against the tree: no direct assignment, no trigger on
+either table, and no rule anywhere. The broker family does contain a generic
+dynamic update over a table name, and it reaches neither of these tables — the
+family serves only `Announcement`, `FacilityDocumentationRule` and
+`RegulatoryUpdate`, and refuses anything else. None of this speaks to a store
+that something was applied to outside the migrations.
+
+So the guarantee D98 makes at send time is made here at write time, by the
+contract's own resolution rather than by a reconstruction of it standing beside
+the store.
+
+**The rule this leaves behind.** A sender that is given a recipient must go
+through `agencyRecipient`. A sender that reads a recipient a contract wrote, or
+walks the roster contract itself, need not, provided nothing rewrites those
+columns afterwards. A sixth sender that takes an address from its caller is the
+first case and not the second, whatever it is named.
+
+**What this addendum does not establish.** That mail arrives: releasing either
+flag means a call attempts a send, and nothing here observes an inbox. Nor that
+the notices which walk the roster reach every agency administrator — the walk is
+bounded by a page budget and an approver limit, and it now reports which bound
+stopped it rather than truncating silently. Invitation delivery remains excluded
+by this decision's own exclusion; these are notices.
+
+**Unmeasured.** Whose addresses the roster and identity map of the configured
+app actually hold has not been read, because no credential for that store is
+held. Nothing here establishes that only test accounts are reachable.
+
 ## D98 — A role gate is not a recipient, and a ready service that serves nothing
 
 Two review findings on D97, taken rather than argued with, and they are the same
