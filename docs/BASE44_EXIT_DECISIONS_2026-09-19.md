@@ -14422,14 +14422,31 @@ deictics, which carry the finding, but to name the pass they belong to. **A
 figure here is attributed to its pass or it is not written.**
 
 **This collection's passes, recorded here because this is the surface that keeps
-them.** Five content commits: one filing of a contributed addendum to D83, then
-four corrections — a gate claim the contributing author corrected in their own
-words; a permission-block half filed while an SPA-gate clause was refused on a
-route-table measurement; four files reported as five; and an exhaustiveness claim
-dropped for asserting *less* narrowness than the code has, four paragraphs from a
-note of this collector's asserting *more*. Two of the four were this collector's
-own. The per-commit detail stays in the pull request, where it is read while it
-is current.
+them — and deliberately not as a total.** The corrections, in order: a gate claim
+the contributing author corrected in their own words; a permission-block half
+filed while an SPA-gate clause was refused on a route-table measurement; four
+files reported as five; an exhaustiveness claim dropped for asserting *less*
+narrowness than the code has, four paragraphs from a note of this collector's
+asserting *more*; and a scope error in this entry's own new test comment, which
+said a figure survived "in the register" only as this collection's history when
+three unrelated mentions elsewhere say otherwise. Three of those five were this
+collector's own.
+
+**There is no count of commits here, and why there is none is the sharpest thing
+in this entry.** The paragraph above first carried one — "five content commits,
+then four corrections" — and it was accurate when drafted and false when
+committed, because the commit that files this entry is itself a pass and carries
+a correction, so the figure could not include the act of writing it. A review bot
+caught it within minutes of the push, against the pull-request description, which
+had the larger number because it was written after the commit rather than inside
+it. **A pass count written inside the pass cannot include itself**, so no value is
+correct at rest: raising it to six makes the commit that raises it the seventh.
+That is not an argument for keeping a stale number and not an argument for
+correcting one again. It is the structural case for the clause this entry obeys
+everywhere else — *state the property and let the diff carry the count* — and for
+the ruling above it, since the tally belongs on the surface that is read once,
+while it is current, by somebody with the commit list in front of them. The
+enumeration stays because each named correction is a fact that does not move.
 
 **The mechanical half ships in the same change, and one piece of it is a design
 working as written.** The rewrite puts the corroboration test's differential back
