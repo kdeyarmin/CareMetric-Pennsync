@@ -118,7 +118,7 @@ begin
     order by n."created_date" desc nulls last, n."id" desc
     limit v_limit
   ) p;
-  return jsonb_build_object('success', true, 'numbers', v_rows);
+  return jsonb_build_object('success', true, 'entries', v_rows);
 end $contract$;
 
 reset role;

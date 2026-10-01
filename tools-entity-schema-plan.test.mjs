@@ -589,9 +589,10 @@ test('every contract key is caught by name in the contract that names it', () =>
   // exactly this index, and the function it claims to belong to has to be there.
   const plan = buildPlan(repository);
   const keys = plan.entities.flatMap(row => row.contract_unique_keys);
-  assert.equal(keys.length, 3, 'three contracts depend on a key of their own');
+  assert.equal(keys.length, 4, 'four contracts depend on a key of their own');
   assert.deepEqual(keys.map(key => key.index).sort(),
-    ['policy_acknowledgment_distribution_unique', 'timesheet_period_unique',
+    ['fax_retry_config_active_agency_unique',
+      'policy_acknowledgment_distribution_unique', 'timesheet_period_unique',
       'visit_point_config_active_agency_unique']);
   for (const key of keys) {
     const sql = readFileSync(resolve(repository,

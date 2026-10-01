@@ -209,6 +209,21 @@ export const PORTED_FUNCTIONS = Object.freeze({
   distributePolicyAcknowledgment: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',
+  listFaxContacts: 'json',
+  createFaxContact: 'json',
+  bulkCreateFaxContacts: 'json',
+  updateFaxContact: 'json',
+  deleteFaxContact: 'json',
+  listFaxTemplates: 'json',
+  createFaxTemplate: 'json',
+  updateFaxTemplate: 'json',
+  useFaxTemplate: 'json',
+  deleteFaxTemplate: 'json',
+  getFaxRetryConfig: 'json',
+  saveFaxRetryConfig: 'json',
+  listAgencyPhoneNumbers: 'json',
+  listFaxLogs: 'json',
+  searchFaxLogs: 'json',
 });
 /**
  * A JSON response allowance above the 1 MiB default, by handler name.

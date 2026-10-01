@@ -13,7 +13,7 @@
     "skipped_properties": 0,
     "merged_system_columns": 7,
     "unique_keys": 6,
-    "contract_unique_keys": 3,
+    "contract_unique_keys": 4,
     "append_only": 4
   },
   "entities": [
@@ -1002,7 +1002,18 @@
       "columns": 8,
       "constrained": 0,
       "unique_keys": [],
-      "contract_unique_keys": [],
+      "contract_unique_keys": [
+        {
+          "key": "active_agency",
+          "index": "fax_retry_config_active_agency_unique",
+          "columns": [
+            "agency_id"
+          ],
+          "live": "is_active",
+          "contract": "contract_fax_retry_config_save",
+          "migration": "20260920870000_contract_fax_retry_config.sql"
+        }
+      ],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []

@@ -15,7 +15,6 @@ import {
   readProfileBlock, readTableBlock, readTableIndexes, readTablePolicies,
   renderCatchup, renderDefaultsCatchup, renderIndexCatchup, renderTablesCatchup,
 } from '../../../tools-pennsync-record-catchup.mjs';
-import { assertNewestRecordMigration, recordMigrationNames } from './record-migrations.mjs';
 
 /**
  * The forward migration that carries a regenerated record store into a
@@ -305,16 +304,24 @@ const STORED = `select "status" from "pennsync_records"."timesheet" where "id" =
  *
  * Both cuts, in that order, because the hosted store is missing both and a
  * "before" holding either would compare a store with itself. The tables are cut
- * through the same readers the tables catch-up uses, so the two cannot describe
- * different changes — and the defaults are cut AFTER, from what is left, so the
- * eight defaults that live inside those table blocks are gone with the blocks
- * rather than being looked for in text that no longer has them.
+ * through the same readers the tables catch-up uses — ALL THREE of them, the
+ * block, the policies and the indexes, because the catch-up emits all three and
+ * a cut that left one behind would describe a different change from the one
+ * being tested. The index arm is not decoration: the assertion below reads the
+ * table's NAME, so a surviving `create index` line on a cut table keeps the name
+ * present and fails loudly, which is how `fax_retry_config` found this.
+ * The defaults are cut AFTER, from what is left, so the eight defaults that live
+ * inside those table blocks are gone with the blocks rather than being looked
+ * for in text that no longer has them.
  */
 function storeBeforeBothCatchups() {
   let stale = recordStore();
   for (const table of SCHEMA_ONLY_TABLES) {
     stale = stale.replace(readTableBlock(repository, table), '');
     for (const { sql: statement } of readTablePolicies(repository, table)) {
+      stale = stale.replace(`${statement}\n`, '');
+    }
+    for (const { sql: statement } of readTableIndexes(repository, table)) {
       stale = stale.replace(`${statement}\n`, '');
     }
   }
@@ -342,29 +349,26 @@ let storedAfter;
 let insertedAfter;
 
 before(async () => {
-  // The ordering guard arrives HERE, because the LAST wave's migration is now
-  // the newest pending record migration and the guard belongs to whichever file
-  // that is. The last wave rather than a single constant: each new wave adds a
-  // file with a higher prefix, so the guard moves within this suite as waves
-  // arrive and the suite needs no edit for it. It left `contract-reference-writes.test.mjs` by that suite's file
-  // being OVERTAKEN, which is the other direction of the same rule and the
-  // reason the helper's own error text mentions renaming rather than merging.
-  // The handover is per-base rather than once: four pending migrations between
-  // 720000 and 745000 land ahead of this one, each taking and losing the guard
-  // in turn, so a rebase onto a base where one of them holds it goes red naming
-  // THAT suite, and the fix is to retire the call there rather than to doubt
-  // this one. A red that names the predecessor is the handover working.
+  // THE ORDERING GUARD HAS LEFT THIS SUITE, and the direction is the rule
+  // rather than an exception. It arrived here when the last wave's migration
+  // was the newest pending record file; the five fax and phone CONTRACTS in
+  // the same change sort at 850000 to 890000 and OVERTOOK it, so the guard
+  // belongs to the newest of those -- `contract-fax-log.test.mjs`, over
+  // 20260920890000. That is the same handover by which it reached this suite
+  // from `contract-reference-writes.test.mjs`, which is why the helper's own
+  // error text talks about renaming rather than merging.
   //
-  // It is passed the DIRECTORY listing and not an applied set, and the
-  // difference is worth stating rather than glossing: every other holder has
-  // applied the whole directory to one store and hands that result over, while
-  // this suite deliberately builds cut-down stores and applies no such set. The
-  // guard only reads the last name, so the listing is the honest argument — and
-  // it is also the weaker one, since the whole-directory equality that gives the
-  // other holders their teeth has no equivalent here. What this asserts is
-  // exactly one thing: nothing in the directory sorts after this change's file.
-  assertNewestRecordMigration(
-    await recordMigrationNames(), SCHEMA_ONLY_WAVES.at(-1).migration.split('/').at(-1));
+  // The call is RETIRED here rather than widened to tolerate the five, because
+  // a guard that admits a list of exceptions stops asserting the thing it is
+  // for: there is exactly one newest file and exactly one suite that should
+  // say so. `record-migrations.test.mjs` is what keeps that from becoming an
+  // absence nobody notices -- it fails unless some suite holds the guard over
+  // the newest name.
+  //
+  // What stays here is the waves' own ordering, which is this suite's to
+  // assert whatever else is in the directory: a wave list sorted wrongly would
+  // render each wave's file against the wrong prefix and nothing else here
+  // would see it.
   // And the waves are in the order they claim to be, because the guard above
   // only looks at the last one: a wave list sorted wrongly would hand the guard
   // a file that is not the newest and the assertion would be about the wrong

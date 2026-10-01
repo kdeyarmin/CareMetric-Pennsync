@@ -174,7 +174,7 @@ begin
     order by f."created_date" desc nulls last, f."id" desc
     limit v_limit
   ) t;
-  return jsonb_build_object('success', true, 'templates', v_rows);
+  return jsonb_build_object('success', true, 'entries', v_rows);
 end $contract$;
 
 create function "pennsync_records".contract_fax_template_create(

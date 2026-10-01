@@ -1582,8 +1582,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 59 | 40 |
+  | `read-only` (derived) | 61 | 32 |
+  | `mutating` (derived) | 68 | 43 |
   | `integration` (derived) | 27 | 23 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
