@@ -239,20 +239,42 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reading: 'records_schema=80',
     reason: 'the queue an earlier conclusion was true of, quoted to say why that conclusion expired',
   },
+  // D223's three, which arrived in this list the moment the pages became
+  // discovered rather than listed: the decisions document was in the tree
+  // carrying them before this check could see it, so they are not new prose
+  // somebody wrote past a gate. That is the discovery change working — a
+  // roster would have gone on omitting them — and it is also why the entry
+  // itself says "nothing in this tree reads this document at all", which was
+  // true when it was written and is now false. The sentence is its author's to
+  // correct; the readings are declared here either way, because they are
+  // dated before/afters and not stale copies.
+  // The entry that USED to sit here declared `entity_authorization=5 files=12
+  // external_secret=2 none=79` as D223's dated reading, and it was right on a
+  // tree without this port. With the duty contract present that reading IS the
+  // measurement, quotations equal to the measurement are skipped before any
+  // declaration is consulted, and a declaration nothing matches fails the
+  // check below. So the entry went, and the one under it arrived: on main the
+  // footnote's OTHER figure was the live measurement and needed no
+  // declaration, and here it is the historical one. Both readings are correct
+  // and which of them is history depends on the tree, so expect this pair to
+  // swap again the next time a port moves `entity_authorization`.
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
-    reason: 'D223\'s collector reading on `00ccac41`, named as one of three trees one instrument answered on, so the two figures in circulation were shown not to be a disagreement',
+    reason: 'the collector\'s footnote reading on `00ccac41` and on the collection branch, '
+      + 'quoted to show one instrument answering on three trees rather than two reports disagreeing',
   },
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=5 files=12',
-    reason: 'the same sentence\'s reading at `d8c6be2b` and `4bb0dd8a`, which the prose wraps across two lines so each half quotes separately; declared rather than rewrapped because the entry is collected verbatim',
+    reason: 'the first half of the collector\'s footnote reproducing that same reading from its '
+      + 'own seat, which wraps mid-line, so the parser sees one quotation in two pieces',
   },
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'external_secret=2 none=79',
-    reason: 'the second half of that same wrapped reading, and the reason it is here rather than merged: a payload split by a line break is exactly the shape this check warns about, so it is named instead of being made to disappear',
+    reason: 'the second half of that wrapped footnote line, declared separately for the same '
+      + 'reason: a quotation is per line, and neither half on its own is a reading of anything',
   },
 ];
 
@@ -282,7 +304,21 @@ test('the pages carrying the port queue carry what the tool measures', () => {
   // measured 6, in TWO places, with every suite green. A roster of pages is a
   // mechanism for omitting the next page, so the pages are discovered now and
   // only the history below is declared.
-  for (const path of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md']) {
+  // The transition plan joins them, and the gap it closes is DELETION rather
+  // than staleness: the discovery walk below already caught a stale copy there,
+  // and would have whether or not the page were pinned, so nothing about that
+  // page was passing by coincidence. What the walk cannot see is a line that is
+  // GONE — it only inspects quotations that exist — and two of that page's
+  // sentences SAY the figure is held to the tool, which a reader can only check
+  // while the figure is still on the page. Pinning it makes removing the line
+  // fail as well as changing it. Those sentences are also corrected, because
+  // one of them reasoned about which copy could be the stale one, and that
+  // reasoning was about the wrong mechanism. The cost is that a port now edits
+  // three pages, which is the right trade: an unpinned page fails with a
+  // message offering to declare the stale copy as HISTORY, and for a
+  // present-tense sentence that remedy blesses the defect instead of fixing it.
+  for (const path of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md',
+    'docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md']) {
     const page = readFileSync(resolve(repository, path), 'utf8');
     assert.ok(page.includes(line),
       `${path} does not carry the measured port queue.\n  measured: ${line}\n`
@@ -1051,14 +1087,13 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // Read it beside D83, which took `MedicareGuideline`'s two writers out of
   // this same bucket the same way: a blocked port and a capability that is not
   // being carried are not the same thing, however alike they look in a count.
-  // Then D223, which is the ordinary kind of move and the first out of this
-  // bucket in a while: `setNurseDutyStatus` is WRITTEN, so
-  // `entity_authorization` 6 → 5 and `none` 78 → 79 — a capability crossing,
-  // unlike D153's and D83's, where a count fell and nothing was carried. The
-  // five that stay are what D223 is about: each writes something only an
-  // ADMINISTRATIVE profile-write path could permit, and D223 refuses to build
-  // one, because D23 had already moved every one of those columns to the
-  // membership, the credential contract or the identity map.
+  // Then D223, which moves the pair the ordinary way after three entries that
+  // did not: `setNurseDutyStatus` is WRITTEN, so `entity_authorization` 6 → 5
+  // and `none` 78 → 79 — one fewer blocked and one more carried, which is the
+  // movement D153's comment above contrasts itself with. It moves because the
+  // contract exists rather than because anything was reclassified: a ported
+  // capability reaches `none` without the blocker classifier being consulted
+  // at all.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
     records_schema: 0, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
@@ -1124,36 +1159,15 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // generalises past this bucket: `enforceStaffRoleIntegrity` reverted a
   // spoofed `User.staff_role`, and in this store the column is constrained on
   // both tables and writable by nobody, so the sweep has no work left rather
-  // than no permission.
+  // than no permission. Six remain that write somebody else's row, a column
+  // outside D82's set, or a payload nothing can read.
   //
-  // D223 then took the FOURTH, and this one is the ordinary kind: D82 had
-  // named `setNurseDutyStatus` as the one capability its decision actually
-  // reached, held only because the module writes through `asServiceRole` with
-  // a payload assembled elsewhere, so nothing could read it as staying inside
-  // the narrowing. `contract_duty_status_set` is that reading — the self leg
-  // served against D82's own policy and guard, the leg that named somebody
-  // else refused by name, which is D81's partial shape.
-  //
-  // FIVE remain, and D223 is the decision that says why they stay rather than
-  // leaving them to look like unwritten ports. Each writes somebody else's
-  // row, a column outside D82's set, or a payload nothing can read — and the
-  // administrative path that would permit any of it is REFUSED there, because
-  // D23 had already moved every one of those columns to the membership, the
-  // credential contract or the identity map. `autoEndDutyDay` is the one to
-  // read twice, and it has TWO blockers rather than the one this file first
-  // named. Both columns it writes ARE on D82's allowlist, so neither of those
-  // is a reason. The first is D49's open question, though not quite as it was
-  // put here: `getSchedulerAuthError` admits an admin triggering the job
-  // manually as well as an unattended run carrying `x-internal-secret`, so
-  // `schedulerAuth` means there MAY be no caller, not that there is none.
-  // The second does not turn on who calls it at all — the module reads every
-  // `duty_status: 'on_duty'` row in the deployment and updates each one, so
-  // `user_update`'s `id = caller_user_id()` refuses it whatever caller it
-  // gets, an admin included — the policy refuses the ROW, so being on the
-  // column allowlist cannot reach it, and `pennsync_records."user"` is
-  // force-RLS, which binds a definer that never holds `BYPASSRLS` too.
-  // Routing it to D49 alone would say a scheduler identity unblocks it, and
-  // it would not.
+  // D223 then took `setNurseDutyStatus` out by WRITING it, which is the only
+  // way a capability has left this bucket since D82: it was the one of the six
+  // that writes the caller's own row and nothing but columns on D82's
+  // allowlist, so it was the only one the self-write policy could ever admit.
+  // The five that remain each need the administrative path D223 refuses, so
+  // this list does not shrink again without a decision rather than a port.
   assert.deepEqual(report.port_blockers.entity_authorization,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
       'userManagement', 'userManagementV2']);
