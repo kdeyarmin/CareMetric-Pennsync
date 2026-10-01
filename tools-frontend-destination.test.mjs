@@ -91,9 +91,11 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   assert.equal(report.total, 453);
   assert.equal(report.served, 245);
   // 208 of 453. Stage J reads as "replace call sites tier by tier", which is a
-  // refactor whose size is the count; 46% of them reach a domain the migration
-  // has DECIDED not to carry, and each one needs a product answer rather than
-  // an edit.
+  // refactor whose size is the count; 46% of them have no destination, and
+  // each one needs a product answer rather than an edit. 194 of the 208 reach
+  // a domain the migration DECIDED not to carry and 14 do not — those are
+  // writes to entities it carries read-only — which is a distinction this file
+  // used to lose here and `tools-frontend-retired-inventory` now derives.
   //
   // 445 became 453 when the shared matcher learned to read a namespace bound
   // into an object literal, and every one of the eight is LANDABLE: `unserved`

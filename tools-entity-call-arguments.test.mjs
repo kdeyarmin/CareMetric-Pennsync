@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -11,9 +13,170 @@ import {
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const constants = limitConstants(repository);
 
-test('the named row limits are read from the module that declares them', () => {
+test('the named row limits are read from EVERY module that declares one', () => {
   assert.equal(constants.get('ALL_ROWS'), 5000);
+  // The widening's own subject: this one is declared in `adrCaseRead.js`, and
+  // while the reader took a single file the ADR Center's call read
+  // INDETERMINATE and the site read unserved with its contract already built.
+  assert.equal(constants.get('ADR_CASE_READ_LIMIT'), 200);
   assert.ok(constants.size >= 2, 'an empty table would make every call site unreadable');
+});
+
+/**
+ * A planted tree, because the three refusals below cannot occur in this
+ * repository today — which is exactly why they are refusals and not a sentence
+ * in a comment. A guard that has only ever run against a correct input has not
+ * been shown to bite, so each case is planted and watched to fail, and the
+ * last one is the CONTROL: the same tree without the defect must pass.
+ *
+ * The tree is removed when the test that planted it ends, so a local run does
+ * not leave one behind per case per run.
+ */
+function plantedTree(files, t) {
+  const root = mkdtempSync(join(tmpdir(), 'pennsync-limits-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  return root;
+}
+
+const CANARY = { 'src/lib/queryLimits.js': 'export const ALL_ROWS = 5000;\n' };
+
+test('a name two modules give DIFFERENT values is refused, never picked', (t) => {
+  const root = plantedTree({
+    ...CANARY,
+    'src/components/a/limits.js': 'export const PAGE_ROWS = 100;\n',
+    'src/components/b/limits.js': 'export const PAGE_ROWS = 250;\n',
+  }, t);
+  assert.throws(() => limitConstants(root), /ENTITY_ROUTE_LIMIT_AMBIGUOUS:PAGE_ROWS:/);
+  // The control: the same two modules AGREEING is not ambiguous, because the
+  // name still identifies one number and no call site can mean another.
+  const agreeing = plantedTree({
+    ...CANARY,
+    'src/components/a/limits.js': 'export const PAGE_ROWS = 100;\n',
+    'src/components/b/limits.js': 'export const PAGE_ROWS = 100;\n',
+  }, t);
+  assert.equal(limitConstants(agreeing).get('PAGE_ROWS'), 100);
+});
+
+test('a local const shadowing an exported limit is refused', (t) => {
+  // This reader resolves a NAME and does not follow imports, so a module with
+  // its own `ALL_ROWS` would otherwise be read with somebody else's 5000.
+  const root = plantedTree({
+    ...CANARY,
+    'src/pages/Shadow.jsx': 'const ALL_ROWS = 50;\nexport default () => ALL_ROWS;\n',
+  }, t);
+  assert.throws(() => limitConstants(root), /ENTITY_ROUTE_LIMIT_SHADOWED:ALL_ROWS:/);
+  // The control: the same declaration EXPORTED is the ordinary case the
+  // widening exists to read, and must not be mistaken for a shadow.
+  const exported = plantedTree({
+    ...CANARY,
+    'src/pages/Shadow.jsx': 'export const OTHER_ROWS = 50;\n',
+  }, t);
+  assert.equal(limitConstants(exported).get('OTHER_ROWS'), 50);
+});
+
+test('every binding shape shadows, not only const', (t) => {
+  // The guard covered `const` alone, which is one shape of five. Each of these
+  // rebinds the name identically and each was read with the exported module's
+  // 5000, silently — a lost distinction, not a loud one. All five were probed
+  // against the real 33 names and all five were absent, so this is latent; the
+  // rule this repository already carries is to re-derive the shapes from the
+  // TREE rather than from the check, because a guard covering a quarter of its
+  // own class is the shape that comes back.
+  const shapes = {
+    'let': 'let ALL_ROWS = 50;\nexport default () => ALL_ROWS;\n',
+    'var': 'var ALL_ROWS = 50;\nexport default () => ALL_ROWS;\n',
+    'destructured': 'const { ALL_ROWS } = window.config;\nexport default () => ALL_ROWS;\n',
+    'renamed in a pattern': 'const { cap: ALL_ROWS } = window.config;\nexport default () => ALL_ROWS;\n',
+    'aliased import': "import { cap as ALL_ROWS } from './cap.js';\nexport default () => ALL_ROWS;\n",
+    // Neither of these two is a `const`, so `EXPORTED_LIMIT` never admits them
+    // to the table while the name still binds in the module.
+    'exported let': 'export let ALL_ROWS = 50;\n',
+    'exported non-integer const': 'export const ALL_ROWS = compute();\nfunction compute() { return 50; }\n',
+  };
+  for (const [shape, text] of Object.entries(shapes)) {
+    const root = plantedTree({ ...CANARY, 'src/pages/Shadow.jsx': text }, t);
+    assert.throws(
+      () => limitConstants(root),
+      /ENTITY_ROUTE_LIMIT_SHADOWED:ALL_ROWS:/,
+      `${shape} rebinds ALL_ROWS and must be refused`,
+    );
+  }
+
+  // The controls, and the first is the one that matters: importing the limit
+  // ITSELF is the ordinary case, and a guard that refused it would fail every
+  // module that uses a shared limit. Aliasing the other way binds a name the
+  // table does not hold, and a property access binds nothing at all.
+  const allowed = {
+    'plain named import': "import { ALL_ROWS } from '../lib/queryLimits.js';\nexport default () => ALL_ROWS;\n",
+    'aliased to a non-limit name': "import { ALL_ROWS as cap } from '../lib/queryLimits.js';\nexport default () => cap;\n",
+    'lower-case destructuring': 'const { rows } = window.config;\nexport default () => rows;\n',
+    'a property that shares the name': 'const cfg = window.config;\nexport default () => cfg.ALL_ROWS;\n',
+  };
+  for (const [shape, text] of Object.entries(allowed)) {
+    const root = plantedTree({ ...CANARY, 'src/pages/Fine.jsx': text }, t);
+    assert.equal(limitConstants(root).get('ALL_ROWS'), 5000, `${shape} is not a shadow`);
+  }
+});
+
+test('the canary still refuses an unreadable scan after the widening', (t) => {
+  // Before the widening this fired when the table came back empty. With every
+  // module in the population `found.size` can no longer reach zero, so the
+  // guard would have retired itself silently — it reads the named file now.
+  const root = plantedTree({
+    'src/lib/queryLimits.js': 'export const NOT_A_LIMIT = "5000";\n',
+    'src/components/a/limits.js': 'export const PAGE_ROWS = 100;\n',
+  }, t);
+  assert.throws(() => limitConstants(root), /ENTITY_ROUTE_LIMITS_UNREADABLE:/);
+});
+
+test('a comment or a literal naming a const is neither a limit nor a shadow', (t) => {
+  // Both scans match raw text and neither knows what a binding is. All three
+  // shapes were measured firing on 2026-09-29: the comment threw
+  // ENTITY_ROUTE_LIMIT_SHADOWED, and the other two put a name into the table
+  // that no import could resolve.
+  const root = plantedTree({
+    ...CANARY,
+    'src/pages/Commented.jsx': '// Example: const ALL_ROWS = 50;\n'
+      + 'export default () => null;\n',
+    'src/pages/Block.jsx': '/*\nexport const DOC_LIMIT = 9;\n*/\n',
+    'src/pages/Template.jsx': 'export const SNIPPET = `\nexport const FAKE_LIMIT = 7;\n`;\n',
+  }, t);
+  const found = limitConstants(root);
+  assert.equal(found.get('DOC_LIMIT'), undefined, 'a block comment declares nothing');
+  assert.equal(found.get('FAKE_LIMIT'), undefined, 'a template literal declares nothing');
+  assert.equal(found.get('ALL_ROWS'), 5000, 'a commented shadow is not a shadow');
+  // The control: the same three shapes as CODE are each read, so the masking
+  // is not simply dropping everything it is shown.
+  const real = plantedTree({
+    ...CANARY,
+    'src/pages/Block.jsx': 'export const DOC_LIMIT = 9;\n',
+    'src/pages/Template.jsx': 'export const FAKE_LIMIT = 7;\n',
+  }, t);
+  assert.equal(limitConstants(real).get('DOC_LIMIT'), 9);
+  assert.equal(limitConstants(real).get('FAKE_LIMIT'), 7);
+});
+
+test('a regex literal carrying a quote does not swallow the declaration below it', (t) => {
+  // The masking's own defect, found by the fix for the one above. A backtick
+  // inside a character class read as division opens a template literal and
+  // blanks everything to the next backtick — which in
+  // `src/components/training/videoNarration.js` is twelve lines down and takes
+  // a real `export const` with it. A lost name is indistinguishable from an
+  // absent one, so this is the sharper of the two directions.
+  const root = plantedTree({
+    ...CANARY,
+    'src/components/a/strip.js': "const clean = (s) => s.replace(/[*_#`~]/g, '');\n"
+      + 'export const STRIP_ROWS = 40;\n'
+      + 'export default clean;\n',
+  }, t);
+  assert.equal(limitConstants(root).get('STRIP_ROWS'), 40);
+  // And the real tree's instance, so the case stays anchored to the file that
+  // produced it rather than to a plant that could drift away from it.
+  assert.equal(constants.get('MIN_AUTHORED_NARRATION_CHARS'), 80);
 });
 
 /**

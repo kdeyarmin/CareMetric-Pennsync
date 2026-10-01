@@ -113,35 +113,96 @@ export function callText(source, open) {
  * `callText` already skips strings and comments to balance parentheses; the
  * same discipline has to apply to what is searched, not only to where the call
  * ends. Blanking preserves offsets, so nothing else shifts.
+ *
+ * It preserves NEWLINES too, and that is load-bearing rather than tidy. A
+ * block comment and a multi-line template both span lines, so blanking their
+ * newlines would join the line before to the line after: a line-anchored scan
+ * would stop seeing a real declaration that followed one, and `lineOf` — which
+ * two callers here run over the MASKED text — would report a line number too
+ * small by however many lines the comment took. Both failures are silent.
  */
 export function codeOnly(text) {
   const out = [...text];
+  /** Mask a span to spaces, leaving its newlines where they are. */
+  const blank = (from, to) => {
+    for (let at = from; at < to; at += 1) if (out[at] !== '\n') out[at] = ' ';
+  };
   for (let index = 0; index < text.length; index += 1) {
     const pair = text.slice(index, index + 2);
     if (pair === '//') {
       const stop = text.indexOf('\n', index);
       const end = stop < 0 ? text.length : stop;
-      for (let at = index; at < end; at += 1) out[at] = ' ';
+      blank(index, end);
       index = end; continue;
     }
     if (pair === '/*') {
       const stop = text.indexOf('*/', index);
       const end = stop < 0 ? text.length : stop + 2;
-      for (let at = index; at < end; at += 1) out[at] = ' ';
+      blank(index, end);
       index = end - 1; continue;
+    }
+    if (text[index] === '/' && isRegexStart(out, index)) {
+      let at = index + 1;
+      let inClass = false;
+      for (; at < text.length; at += 1) {
+        const character = text[at];
+        // An unterminated literal means this `/` was not a regex after all.
+        // Stopping at the newline leaves the rest of the line unmasked, which
+        // is the direction that loses nothing.
+        if (character === '\n') break;
+        if (character === '\\') { blank(at, at + 2); at += 1; continue; }
+        if (character === '[') inClass = true;
+        else if (character === ']') inClass = false;
+        else if (character === '/' && !inClass) break;
+        blank(at, at + 1);
+      }
+      index = at; continue;
     }
     const quote = text[index];
     if (quote === '"' || quote === "'" || quote === '`') {
       let at = index + 1;
       for (; at < text.length; at += 1) {
-        if (text[at] === '\\') { out[at] = ' '; at += 1; out[at] = ' '; continue; }
+        if (text[at] === '\\') { blank(at, at + 2); at += 1; continue; }
         if (text[at] === quote) break;
-        out[at] = ' ';
+        blank(at, at + 1);
       }
       index = at; continue;
     }
   }
   return out.join('');
+}
+
+/**
+ * Whether the `/` at `index` opens a regular expression rather than dividing.
+ *
+ * Only the preceding significant character can tell them apart, and getting it
+ * wrong is not cosmetic. `videoNarration.js:35` contains `.replace(/[*_#`~]/g,
+ * '')` — a BACKTICK inside a character class. Read as division, that backtick
+ * opens a template literal and everything to the next backtick twelve lines
+ * down is blanked, taking a real `export const` at line 62 with it. A masker
+ * that silently eats real declarations is worse than one that misses a
+ * commented example, because nothing downstream can tell a lost name from an
+ * absent one.
+ *
+ * `out` is the partly masked copy, so comments before this point are already
+ * spaces and the scan back skips them for free.
+ */
+const REGEX_PRECEDING_KEYWORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+  'case', 'do', 'else', 'yield', 'await',
+]);
+
+function isRegexStart(out, index) {
+  let back = index - 1;
+  while (back >= 0 && /\s/.test(out[back])) back -= 1;
+  if (back < 0) return true;
+  const previous = out[back];
+  if (!/[\w$)\]'"`]/.test(previous)) return true;
+  // A word before it is division after a value and a regex after a keyword.
+  if (!/[\w$]/.test(previous)) return false;
+  let start = back;
+  while (start >= 0 && /[\w$]/.test(out[start])) start -= 1;
+  return REGEX_PRECEDING_KEYWORDS.has(out.slice(start + 1, back + 1).join(''));
 }
 
 /** Where a character offset falls, as a line number. */

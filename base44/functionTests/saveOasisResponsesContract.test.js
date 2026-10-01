@@ -741,7 +741,7 @@ test("static containment keeps the hard pause first, service-role-only create, a
   assert.match(source, /Visit-policy proofs are\s+\/\/ all activation blockers/i);
   const handler = source.slice(source.indexOf("Deno.serve"));
   assert.ok(handler.indexOf("if (OASIS_V2_WRITES_PAUSED)") < handler.indexOf("parseRequest(req)"));
-  assert.ok(handler.indexOf("if (OASIS_V2_WRITES_PAUSED)") < handler.indexOf("createClientFromRequest(req)"));
+  assert.ok(handler.indexOf("if (OASIS_V2_WRITES_PAUSED)") < handler.indexOf("createClientFromRequest("));
   assert.match(source, /const entities = base44\.asServiceRole\.entities;/);
   assert.match(source, /await entities\.OASISAssessment\.create\(record\)/);
   assert.doesNotMatch(source, /base44\.entities\.OASISAssessment/);

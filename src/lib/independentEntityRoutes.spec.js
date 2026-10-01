@@ -2085,12 +2085,13 @@ describe("what batch E's routes take on trust", () => {
     // being relaxed when batch D's nine paged operational reads arrived, again
     // for the two library reads whose call sites were once called unprovable,
     // again for the two `PatientAlert` reads, and again here for the five
-    // compliance reads' seven. That growth is the point: the loop below reaches
-    // each new route by construction, so a route cannot land without its
-    // argument count being checked. The number is re-measured on each rebase
-    // rather than added to, because a figure arrived at by arithmetic over two
-    // branches is not a reading of either.
-    expect(paged.length).toBe(49);
+    // compliance reads' seven, and again for `AdrAuditCase.list` once the
+    // argument reader stopped taking its limit from one module. That growth is
+    // the point: the loop below reaches each new route by construction, so a
+    // route cannot land without its argument count being checked. The number is
+    // re-measured on each rebase rather than added to, because a figure arrived
+    // at by arithmetic over two branches is not a reading of either.
+    expect(paged.length).toBe(50);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;

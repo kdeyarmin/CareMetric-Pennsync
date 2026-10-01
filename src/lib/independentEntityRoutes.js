@@ -2102,34 +2102,33 @@ const DECLARED_ROUTES = Object.freeze({
     reason: 'The ADR Center deletes a case, which only its author or an agency_admin may do.',
   }),
   /*
-   * `AdrAuditCase.list` is deliberately NOT declared, and the reason is worth
-   * writing down because it is not about the contract. `listAdrAuditCases`
-   * exists, is reachable and is tested; its only call site
-   * (`src/pages/ADRCenter.jsx`) passes `ADR_CASE_READ_LIMIT`, and the argument
-   * reader cannot evaluate it — so it reads the site as unserved, and a
-   * declaration here would be a route that moves no screen, which is the exact
-   * thing that gate was rebuilt to refuse.
+   * `AdrAuditCase.list` was deliberately NOT declared until the reader that
+   * classifies its call site was widened, and what that cost is worth keeping.
+   * `listAdrAuditCases` existed, was reachable and was tested throughout; the
+   * one thing stopping the route was that `src/pages/ADRCenter.jsx` passes
+   * `ADR_CASE_READ_LIMIT`, declared in `src/components/adr/adrCaseRead.js`,
+   * while `limitConstants()` read exactly one file. So the site read
+   * INDETERMINATE, which makes the whole call unreadable and the site
+   * unserved, and declaring a route while the gate said zero would have been
+   * arguing with the instrument.
    *
-   * **The earlier version of this comment named the wrong cause, and the wrong
-   * cause was the broader one.** It said `check:entity-routes` "cannot resolve
-   * a constant across modules". It does: `LIMIT_CONSTANTS_FILE` in
-   * `tools-entity-call-arguments.mjs` is `src/lib/queryLimits.js`, and
-   * `src/components/admin/QuickHealthOverview.jsx` passes `PATIENT_HISTORY_ROWS`
-   * imported from there, which the reader resolves to 1000 at that site and at
-   * three others. What it cannot do is resolve a constant declared ANYWHERE
-   * ELSE: `limitConstants()` reads one file, its table is exactly
-   * `ALL_ROWS, PATIENT_HISTORY_ROWS`, and `ADR_CASE_READ_LIMIT` is declared in
-   * `src/components/adr/adrCaseRead.js`. Feeding the same argument text a table
-   * widened by that one name reads it as `["-created_date", 200]`; the table as
-   * it stands reads INDETERMINATE, which makes the whole call unreadable and
-   * the site unserved. So the limit is the SOURCE MODULE, not the module
-   * boundary — a distinction that decides what would fix it.
-   *
-   * It lands when `ADR_CASE_READ_LIMIT` moves into `src/lib/queryLimits.js`,
-   * when that reader takes more than one declaring module, or when the screen
-   * passes a literal. Declaring it while the gate says zero would be arguing
-   * with the instrument.
+   * The limit was the SOURCE MODULE and never the module boundary — an earlier
+   * comment here named the broader cause and was wrong, since
+   * `PATIENT_HISTORY_ROWS` has always resolved across files. `limitConstants()`
+   * now reads every production module that exports an integer, refusing an
+   * ambiguous name and a local shadow rather than picking, so a screen's
+   * classification no longer depends on where somebody happened to put a
+   * number. That change moves the RULER: a route-audit figure taken before it
+   * and one taken after are not comparable and must not be differenced.
    */
+  'AdrAuditCase.list': Object.freeze({
+    ...contractRead({
+      handler: 'listAdrAuditCases',
+      sortable: ['created_date'],
+      filtered: false,
+    }),
+    reason: 'The ADR Center lists its agency\'s cases; the contract shows a nurse their own and an agency_admin all of them.',
+  }),
   'PersonnelCredential.list': Object.freeze({
     ...contractRead({
       handler: 'listPersonnelCredentials',
