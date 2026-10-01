@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import {
   LOCAL_PHI_KEYS,
   PURGE_FULL_PREFIXES,
@@ -78,4 +79,61 @@ test("unresolved legacy conflicts are never removed by an automatic purge", () =
   assert.deepEqual(QUARANTINED_OFFLINE_KEYS, [LOCAL_PHI_KEYS.CONFLICTS]);
   assert.ok(!PURGE_AFTER_RETIREMENT_KEYS.includes(LOCAL_PHI_KEYS.CONFLICTS));
   assert.ok(!PURGE_FULL_PREFIXES.includes(LOCAL_PHI_KEYS.CONFLICTS));
+});
+
+test("exactly one commit in this history has ever touched the QUARANTINED_OFFLINE_KEYS line", (t) => {
+  // This symbol is the durable handle for the decision that created it: the change that
+  // moved CONFLICTS out of PURGE_AFTER_RETIREMENT_KEYS, so that this store is excluded
+  // from every purge rather than gated behind the retirement flag. That decision's only
+  // record in the tree is the comment on the declaration, and it is referred to from
+  // outside the repository as "the one change that ever touched this symbol" rather than
+  // by a commit hash or a date — a date is ambiguous here, because two commits the same
+  // day carry near-identical subjects.
+  //
+  // The reference is unique only when scoped to the DECLARING FILE, which is why the
+  // pathspec below is part of the assertion and not a speed optimisation: repository-wide
+  // the symbol is now named in prose by docs/audits/OFFLINE_PHI_BROWSER_STORAGE_*.md too,
+  // so an unscoped search already returns more than one commit and always will.
+  //
+  // Read the count against a control: every exported symbol in this file returns 1 under
+  // this same query, because the file has only two commits in its whole history. So this
+  // passing does not make the symbol special — it establishes only what the external
+  // reference needs, that nothing has touched it a SECOND time.
+  //
+  // Nothing outside the repository can notice when that stops being true, which is why
+  // the check lives here. If it fails, the symbol has been renamed or changed again: that
+  // is not a reason to delete the test. It means an external reference has become
+  // ambiguous and needs re-pointing at whatever is unique now.
+  const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
+    encoding: "utf8",
+  }).trim();
+  if (shallow !== "false") {
+    // A shallow clone can truncate history at a commit that has a real parent, so the
+    // absent revisions are invisible rather than nonexistent and a pass here would assert
+    // something unmeasured. Reported rather than answered; CI clones at full depth.
+    t.skip("shallow clone: the full history of this file is not present");
+    return;
+  }
+
+  // `-G`, not `-S`. `-S` selects commits where the NUMBER of occurrences of the string
+  // changed, so it misses an edit that rewrites the declaration while leaving the symbol
+  // named once — and widening the list, `[K.CONFLICTS]` to `[K.CONFLICTS, K.PENDING]`, is
+  // exactly that shape and exactly the change that would break the reference. Measured: a
+  // probe commit making that edit is absent from `-S` and present in `-G`. Both catch a
+  // rename, because a rename removes an occurrence. `-G` also counts a reformat of the
+  // line, which is correct here: a reformat did touch the declaration.
+  const commits = execFileSync(
+    "git",
+    ["log", "--format=%H", "-G", "QUARANTINED_OFFLINE_KEYS", "--", "src/lib/localPhiKeys.js"],
+    { encoding: "utf8" },
+  )
+    .split("\n")
+    .filter(Boolean);
+
+  assert.equal(
+    commits.length,
+    1,
+    `QUARANTINED_OFFLINE_KEYS must have exactly one commit in its history for that ` +
+      `reference to be unique; found ${commits.length}: ${commits.join(", ")}`,
+  );
 });
