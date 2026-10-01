@@ -56,6 +56,13 @@ export function createTenantSdkRealmGate() {
   // has processed any login handoff. Bootstrap must resolve against this exact
   // browser epoch; a cross-tab token transition while brokers are pending may
   // not be adopted retroactively at open().
+  //
+  // Under test this is why a realm cannot be opened once per FILE: the shared
+  // setup clears web storage after every test (`src/test/setup.js`), which drops
+  // the epoch pointer, so the next `open()` expires for an external transition
+  // and no later call can re-pin, because this constant is captured at module
+  // load. Reset the module graph and re-import per test — see
+  // `src/lib/authorityBoundFileDrops.spec.js`.
   const bootstrapBrowserAuthorityEpoch = ensureBrowserAuthorityEpoch();
   let state = 'closed';
   let epoch = 0;
