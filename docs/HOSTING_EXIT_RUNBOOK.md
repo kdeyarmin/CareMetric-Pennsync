@@ -148,6 +148,69 @@ load-bearing and open-ended rather than a tidy-up, and stays so until either the
 live app is known to load the custom domain or a StoreKit-complete replacement is
 live.
 
+## What each answer to that question changes
+
+Written out in advance so the answer needs no further reasoning when it arrives.
+Base44's documentation settles the mechanism: the wrapper "automatically chooses
+the main entry URL for your mobile app based on your published app" and there is
+no per-app start page, so the installed binary opens whichever address was the
+app's primary published one in January 2026. There are exactly two candidates and
+each leads somewhere different below.
+
+**One thing is true either way, and is not waiting on the answer.** Step 7b — the
+listing's privacy-policy, Support and EULA URLs — is App Store Connect metadata,
+needs no binary, and is blocked by nothing. It can be done before the answer
+arrives.
+
+### If the installed app loads `caremetricai.base44.app`
+
+- **Step 10 changes nothing for it.** Moving the `app.caremetricai.com` record
+  does not touch the Base44 subdomain, so every installed phone keeps working
+  across the DNS move without any action.
+- **Step 11 is indefinite rather than temporary.** That hostname has to keep
+  resolving to Base44 for as long as installed copies are in use, and nothing in
+  the hosting move brings that to an end. Its end condition is a replacement
+  build being live *and* adopted, which is a product decision rather than a step
+  here.
+- **So the hosting exit completes with one Base44-served hostname still live**,
+  and the Base44 plan cannot be closed by finishing this runbook. That is a
+  consequence for the closing list at the end of this file, not a blocker for any
+  step in it.
+- **A replacement build's requirements split in two, and the split decides whose
+  call each half is.** Restoring what Base44's wrapper already does is
+  engineering: a shell that opens the primary address, camera and microphone,
+  blob downloads, an app-bound domain list. `ios/` plus #399 is already that, and
+  it is the half that needs no decision. Doing *more* than Base44's wrapper does
+  is Kevin's: StoreKit purchase and restore, which Base44's documentation says it
+  does not support at all ("the purchase has to happen on the web for now"), and
+  the declared minimum OS, which this tree lowers to 15.0 against the live 15.6.
+  The recovery runbook's §5.2 blocker is entirely in that second half.
+- **Keep the purchase question out of this.** Whether anyone has ever bought a
+  subscription inside the app is an App Store Connect sales reading, not
+  something a phone or this repository can answer. It decides how much the
+  StoreKit half matters; it does not decide whether step 10 can happen, and step
+  10 does not wait on it.
+
+### If the installed app loads `app.caremetricai.com`
+
+- **Step 10 is the cutover for every installed phone.** The moment that record
+  moves, installed apps load our host. Nothing else in this runbook has that
+  property.
+- **So step 10 inherits the whole sign-in precondition, and step 6 is its gate.**
+  Our origin must serve authentication itself before the record moves: measured on
+  2026-10-01, `/login` on the app origin is a Base44-served document rather than
+  this bundle, and after step 10 that document is simply gone. The precondition
+  covers more than `/login` — anything the wrapper navigates to in the main frame
+  has to exist on our origin — so step 6's instrument is a floor and not the whole
+  check.
+- **Step 11 shortens from indefinite to a bounded window.** What still points at
+  the Base44 subdomain is then links rather than apps: emailed links minted before
+  step 7, and the listing URLs before step 7b. It has to keep resolving until
+  those have aged out, which is a date rather than an open end.
+- **No replacement binary is on the critical path at all.** #399 becomes
+  housekeeping — it makes the repository's shell agree with what the live app
+  already does — and step 8 stops being load-bearing in any form.
+
 ## Two facts that decide the order of everything below
 
 **The custom domain already serves the same application.** `app.caremetricai.com`
@@ -260,6 +323,10 @@ migration. Steps 1 to 7 and 10 do not wait on them; step 11 does the protecting
 instead. What the transitional native change in `#399` buys is that **whenever** a
 replacement is built, it binds the custom domain — the source is right and ready,
 and nothing about it is urgent.
+
+How long step 11 lasts, and whether step 10 is a cutover or a non-event for the
+installed app, both turn on the one unknown above. "What each answer to that
+question changes" states each branch's consequences before the answer arrives.
 
 ### Step 7 in detail
 
