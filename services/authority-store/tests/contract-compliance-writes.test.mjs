@@ -65,8 +65,16 @@ before(async () => {
   // The ordering guard has MOVED ON, and this is the retirement the helper's
   // own docstring asks for rather than a weakening of it: this migration is on
   // `main`, so it is part of what a store already holds, and a later file
-  // sorting after it is a correct tree rather than a base that moved. The
-  // check now lives on the newest pending file, in `contract-time-off`.
+  // sorting after it is a correct tree rather than a base that moved.
+  //
+  // Where it lives now is a merge resolution rather than either branch's
+  // answer. `main` sent it to `contract-time-off`, correctly for `main`; this
+  // branch adds a record migration that sorts after that one, so on THIS tree
+  // the newest pending file is the duty-status contract and the guard is held
+  // by `contract-duty-status.test.mjs` alone. Both claims were right about
+  // their own tree, and taking either side whole would have left two suites
+  // holding it — which the helper forbids, because the second holder asserts a
+  // tree the first one's own change makes false.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [
