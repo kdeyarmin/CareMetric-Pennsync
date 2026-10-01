@@ -1057,6 +1057,74 @@ const operationalRoutes = Object.freeze({
     reason: 'Both fax dialogs read the documents already held for one chart.',
   }),
 
+  /**
+   * The referral directory's three writes.
+   *
+   * `Physician.update` carries TWO statements and the route is what tells them
+   * apart, because the browser has one method for both: `PhysicianForm` saves a
+   * profile, and `PhysicianDirectory` records a referral with
+   * `{referral_count: count + 1, last_referral_date}`. The contract takes a
+   * named action and refuses an unknown one, so the mapping is here, in one
+   * place, rather than inferred inside the service.
+   *
+   * The discriminator is the presence of `referral_count`, which is the only
+   * key the increment sends that a profile save cannot: the contract REFUSES
+   * `referral_count` as a profile field by name, so the two shapes are disjoint
+   * by construction rather than by convention. The count itself is DROPPED --
+   * the contract adds one to the stored value, so a number computed in the
+   * browser has nothing to say.
+   */
+  'Physician.create': Object.freeze({
+    function: 'createPhysician',
+    projection: 'operational_row',
+    reason: 'The provider form adds a referral source to the agency directory.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'Physician.update': Object.freeze({
+    function: 'updatePhysician',
+    projection: 'operational_row',
+    reason: 'The provider form edits a referral source and the directory records a referral against one.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      if (Object.hasOwn(fields, 'referral_count')) {
+        // The increment. `referral_count` is DISCARDED — the contract reads the
+        // stored value and adds one, which is the whole point of the port — but
+        // any OTHER key is REFUSED rather than dropped.
+        //
+        // Dropping was the first version and it is the shape D39 exists to stop:
+        // `{ referral_count: 2, specialty: 'Cardiology' }` would have succeeded
+        // as an increment and lost the specialty, with the contract never seeing
+        // the key it guarantees to refuse. A route that discards silently
+        // launders the guarantee before the thing that makes it is reached.
+        for (const key of Object.keys(fields)) {
+          if (key !== 'referral_count' && key !== 'last_referral_date') unsupported('fields');
+        }
+        return { id, action: 'record_referral', referral_date: fields.last_referral_date ?? null };
+      }
+      return { id, action: 'profile', fields };
+    },
+    response: (result) => result,
+  }),
+  'Physician.delete': Object.freeze({
+    function: 'deletePhysician',
+    projection: 'operational_row',
+    reason: 'The directory removes a referral source an administrator has retired.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
   'AgencySettings.create': operationalSave({
     fn: 'saveAgencySettings', key: 'settings', withId: false,
     reason: 'Three admin panels write the agency\u2019s settings row the first time there is none.',
@@ -1770,6 +1838,114 @@ const DECLARED_ROUTES = Object.freeze({
     },
     response: (result, query, sort, limit) =>
       servedPage(result.entries, limit, REFERENCE_MAXIMUM.OnCallShift, 'OnCallShift'),
+  }),
+  /**
+   * The writes for the same three tables. The saves take the id the screens
+   * already hold — an absent one is a create — which is how each screen's own
+   * create-or-update mutation is one route rather than two.
+   *
+   * `LibraryDocument.create` is deliberately NOT here. Its entity requires
+   * `file_url`, the contract refuses that column until D77's file copy has run,
+   * and the call site's first statement is `Core.UploadFile`, which the
+   * independent adapter refuses before the entity write is reached. Declaring a
+   * route that could only refuse would read as a capability rather than as the
+   * file layer's absence.
+   */
+  'OnCallShift.create': Object.freeze({
+    function: 'saveOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen assigns a shift an administrator has just filled in.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'OnCallShift.update': Object.freeze({
+    function: 'saveOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen reassigns a shift that already exists.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'OnCallShift.delete': Object.freeze({
+    function: 'deleteOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen clears a shift an administrator has emptied.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  'LibraryDocument.update': Object.freeze({
+    function: 'updateLibraryDocument',
+    projection: 'library_document_row',
+    reason: 'The template library retires or restores one of the agency\'s documents.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'LibraryDocument.delete': Object.freeze({
+    function: 'deleteLibraryDocument',
+    projection: 'library_document_row',
+    reason: 'The template library deletes a document an administrator has removed.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.create': Object.freeze({
+    function: 'saveDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management adds a document template for the agency.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.update': Object.freeze({
+    function: 'saveDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management edits an existing document template.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.delete': Object.freeze({
+    function: 'deleteDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management deletes a template an administrator has removed.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
   }),
   /**
    * The visit point schedule. Both call sites live in one `queryFn`, and the
