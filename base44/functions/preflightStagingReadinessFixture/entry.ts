@@ -1,4 +1,58 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
+// <<<BEGIN SHARED HELPER: base44ClientRequest — generated, edit base44/_shared/backendHelpers.mjs>>>
+function pinnedBase44Request(req, expectedAppId, forwardUserCredential) {
+  if (typeof expectedAppId !== 'string' || expectedAppId === '') {
+    throw new Error('pinned Base44 request requires an expected Base44-App-Id');
+  }
+  // Read the inbound headers without ever throwing on the SHAPE of req. A production
+  // request is always a real Request with a Headers bag; a bare object with no usable
+  // headers (a test fixture, a malformed direct call) carries no inbound header, which
+  // is the absent case handled below. Only a PRESENT, different app id throws, and that
+  // requires a real header an attacker would have to set — so a real Request always
+  // reaches this read and the refusal is never skipped by the tolerance.
+  const inbound =
+    req && req.headers && typeof req.headers.get === 'function' ? req.headers : null;
+  const read = (name) => (inbound ? inbound.get(name) : null);
+  const received = read('Base44-App-Id');
+  // Refuse only an ACTIVE mismatch: a caller presenting a DIFFERENT app id is the
+  // tenant-redirect attack, and that is the case the refusal exists for. An ABSENT
+  // header is not a mismatch and selects no other tenant — it only means the request
+  // did not arrive through the platform, which always injects this header. We SET the
+  // pinned constant below either way, so absent falls back to the correct app exactly
+  // as the dropped Base44-Api-Url falls back to the default serverUrl. Throwing on
+  // absent would turn every anonymous denial into a 500 instead of a clean 403.
+  if (received !== null && received !== expectedAppId) {
+    throw new Error(
+      'Base44-App-Id mismatch: expected ' + expectedAppId + ', received ' + received
+    );
+  }
+  const headers = new Headers();
+  // Load-bearing: SET the constant (never forward the inbound value). The SDK reads
+  // appId from this header and throws of its own accord when it is absent, so pinning
+  // requires setting it here — dropping the inbound header alone would not suffice.
+  headers.set('Base44-App-Id', expectedAppId);
+  const serviceAuth = read('Base44-Service-Authorization');
+  if (serviceAuth !== null) headers.set('Base44-Service-Authorization', serviceAuth);
+  if (forwardUserCredential) {
+    const authorization = read('Authorization');
+    if (authorization !== null) headers.set('Authorization', authorization);
+    const dataEnv = read('X-Data-Env');
+    if (dataEnv === 'dev' || dataEnv === 'prod') headers.set('X-Data-Env', dataEnv);
+  }
+  // Cosmetic URL: serverUrl comes from the dropped Base44-Api-Url, not from here.
+  // No method: the SDK request factory reads only headers.get(...), never the
+  // method, so the request defaults to GET. An explicit POST would be inert for the
+  // SDK and would read as an outbound delivery primitive to the inventory scanner
+  // once this block is inlined into the fax status pollers.
+  return new Request('https://base44.app', { headers });
+}
+function userScopedClientRequest(req, expectedAppId) {
+  return pinnedBase44Request(req, expectedAppId, true);
+}
+function serviceRoleClientRequest(req, expectedAppId) {
+  return pinnedBase44Request(req, expectedAppId, false);
+}
+// <<<END SHARED HELPER: base44ClientRequest>>>
 
 /**
  * Read-only eligibility and bounded point-in-time collision preflight for the
@@ -35,11 +89,6 @@ const OWNER_HISTORY_FIELDS = [
 const TENANT_ROLES = new Set([
   'agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care',
 ]);
-const SDK_REQUEST_HEADER_NAMES = [
-  'Authorization',
-  'Base44-Service-Authorization',
-  'Base44-App-Id',
-] as const;
 const USER_FIELDS = [
   'id',
   'email',
@@ -190,15 +239,6 @@ function requireRuntimeTarget(req: Request) {
   if (dataEnvironment !== null && dataEnvironment !== 'prod') {
     throw new PublicError(403, 'Staging readiness preflight data environment is unavailable');
   }
-}
-
-function createPinnedSdkRequest(req: Request) {
-  const headers = new Headers();
-  for (const name of SDK_REQUEST_HEADER_NAMES) {
-    const value = req.headers.get(name);
-    if (value !== null) headers.set(name, value);
-  }
-  return new Request(STAGING_ORIGIN, { method: 'POST', headers });
 }
 
 function isProtectedPlatformOwner(user: Record<string, unknown>) {
@@ -718,7 +758,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST' });
     }
     requireRuntimeTarget(req);
-    const base44 = createClientFromRequest(createPinnedSdkRequest(req));
+    const base44 = createClientFromRequest(userScopedClientRequest(req, STAGING_APP_ID));
     const caller = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(caller)) return noStore(DEACTIVATED_USER_RESPONSE());
     const owner = loadProtectedOwner(caller);
