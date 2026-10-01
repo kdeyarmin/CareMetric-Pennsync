@@ -3,7 +3,12 @@ import { Mic, Square } from "lucide-react";
 import { toast } from "sonner";
 import { enhanceTranscription } from "@/components/utils/medicalDictionary";
 import { claimDictation, releaseDictation } from "./dictationController";
-import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
+import {
+  createAuthorityBoundSpeechRecognition,
+  preferLocalSpeechRecognition,
+  LOCAL_SPEECH_REFUSED_MESSAGE,
+  SPEECH_LOCALITY,
+} from '@/lib/tenantMediaDevices';
 
 /**
  * A small, self-contained push-to-dictate mic button. Uses the browser's
@@ -32,7 +37,7 @@ export default function DictationButton({ onText, disabled = false, title = "Dic
     stopRef.current = null;
   }, []);
 
-  const toggle = () => {
+  const toggle = async () => {
     if (listening) { recRef.current?.stop(); setListening(false); releaseDictation(stopRef.current); return; }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast.error("Speech recognition isn't supported in this browser."); return; }
@@ -47,6 +52,10 @@ export default function DictationButton({ onText, disabled = false, title = "Dic
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
+    // Keep the audio on the device where this browser can. Awaiting here means
+    // the realm may have closed underneath us, so re-check before going on.
+    const locality = await preferLocalSpeechRecognition(rec, SR, rec.lang);
+    if (!binding.isCurrent()) { binding.dispose(); return; }
     const stop = () => {
       if (!binding.isCurrent()) return;
       try { rec.stop(); } catch { /* already stopped */ }
@@ -58,10 +67,15 @@ export default function DictationButton({ onText, disabled = false, title = "Dic
       const enhanced = enhanceTranscription(t);
       if (enhanced?.trim()) onText?.(enhanced.trim());
     };
-    rec.onerror = () => {
+    rec.onerror = (e) => {
       if (!binding.isCurrent()) return;
       setListening(false);
       releaseDictation(stop);
+      // Only OUR local requirement is reported. `service-not-allowed` also means
+      // the user agent declined the requested service for its own reasons.
+      if (locality === SPEECH_LOCALITY.LOCAL && e?.error === "service-not-allowed") {
+        toast.error(LOCAL_SPEECH_REFUSED_MESSAGE);
+      }
     };
     rec.onend = () => {
       if (!binding.isCurrent()) return;

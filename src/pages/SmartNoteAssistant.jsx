@@ -47,7 +47,12 @@ import {
   setVisitReviewAcknowledgement,
 } from '@/functions/updateAuthorizedVisit';
 import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
-import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
+import {
+  createAuthorityBoundSpeechRecognition,
+  preferLocalSpeechRecognition,
+  LOCAL_SPEECH_REFUSED_MESSAGE,
+  SPEECH_LOCALITY,
+} from '@/lib/tenantMediaDevices';
 import { useAuth } from '@/lib/AuthContext';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
@@ -540,7 +545,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     };
   }, []);
 
-  const startDictation = () => {
+  const startDictation = async () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast.error("Speech recognition not supported in this browser."); return; }
     let binding;
@@ -554,6 +559,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
+    // Keep the audio on the device where this browser can. Awaiting here means
+    // the realm may have closed underneath us, so re-check before going on.
+    const locality = await preferLocalSpeechRecognition(rec, SR, rec.lang);
+    if (!binding.isCurrent()) { binding.dispose(); return; }
     rec.onresult = (e) => {
       if (!binding.isCurrent()) return;
       const t = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(" ");
@@ -565,10 +574,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
       try { rec.stop(); } catch { /* already stopped */ }
     };
     recStopRef.current = stop;
-    rec.onerror = () => {
+    rec.onerror = (e) => {
       if (!binding.isCurrent()) return;
       setListening(false);
       releaseDictation(stop);
+      // Only OUR local requirement is reported. `service-not-allowed` also means
+      // the user agent declined the requested service for its own reasons.
+      if (locality === SPEECH_LOCALITY.LOCAL && e?.error === "service-not-allowed") {
+        toast.error(LOCAL_SPEECH_REFUSED_MESSAGE);
+      }
     };
     rec.onend = () => {
       if (!binding.isCurrent()) return;
