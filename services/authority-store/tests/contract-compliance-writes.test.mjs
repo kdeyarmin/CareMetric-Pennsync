@@ -27,7 +27,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
@@ -62,10 +62,16 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // This migration is the newest PENDING one, so the ordering guard is its.
-  // See `assertNewestRecordMigration` for why the check moves rather than
-  // accumulating — the read half's copy retired when this file arrived.
-  assertNewestRecordMigration(applied, WRITES_NAME);
+  // The ordering guard was HERE while this migration was pending, and is retired
+  // now that it has merged — which is what `assertNewestRecordMigration`'s own
+  // rule prescribes: a suite whose migration has merged drops the call rather
+  // than widening it with an exception list. It was not dropped at the merge, so
+  // the next forward migration to arrive in the tree failed this suite's `before`
+  // and took all 22 of its tests down with it, naming a file that had done nothing
+  // wrong. The guard now travels with whichever change is pending.
+  //
+  // What stays is the set equality above, which is the assertion that actually
+  // says this store is the one a deployment gets.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [

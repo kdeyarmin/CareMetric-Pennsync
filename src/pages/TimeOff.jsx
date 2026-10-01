@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
+import { approverOptions } from "@/components/approvals/approverCandidates";
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -61,6 +62,15 @@ export default function TimeOff() {
   // Candidate approvers for the request form. User listing is admin-oriented;
   // if it's not permitted for this user we fall back gracefully to "route to admins".
   // Agency-scoped callers only see same-agency approvers (backend enforces too).
+  //
+  // The predicate lives in `approverCandidates.js` and, on the owned path, is now
+  // the roster's authoritative `tenant_role` rather than three self-editable
+  // profile labels. It is a CORRECTNESS fix, not a security one: the submit
+  // validates the nominee either way and refuses what does not hold up, so what
+  // the old list did was offer colleagues the submit would then refuse, which a
+  // nurse reads as the form being broken. `Timesheets.jsx` carried this predicate
+  // byte for byte and shares the module now, which is why the correction reaches
+  // both screens instead of whichever one somebody was looking at.
   const { data: approvers = [] } = useQuery({
     queryKey: ["timeoff", "approvers", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
@@ -68,13 +78,7 @@ export default function TimeOff() {
         const users = await base44.entities.User.list("full_name", 500);
         const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
         const scoped = filterUsersByCallerAgency(users, currentUser);
-        return scoped
-          .filter((u) =>
-            u.email
-            && (u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true),
-          )
-          .filter((u) => u.email !== currentUser?.email)
-          .map((u) => ({ email: u.email, name: u.full_name || u.email, role: u.role }));
+        return approverOptions(scoped, currentUser?.email);
       } catch {
         return [];
       }

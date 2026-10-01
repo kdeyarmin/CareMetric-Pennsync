@@ -1563,7 +1563,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 54 | 39 |
+  | `mutating` (derived) | 54 | 40 |
   | `integration` (derived) | 19 | 17 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
@@ -1632,6 +1632,19 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   the two conflicting readings above were both correct for their own tree, and
   reconciling them by arithmetic is how a delta gets stated over a total that
   no longer exists.
+
+  The `mutating` row's migrations rose by one again, and ONLY that row, because
+  the leave-review approver fix's forward migration redefines
+  `contract_time_off_review` — one contract, reached by handlers in no other
+  wave. Contrast the roster telephone change next to it, where a forward file
+  over a shared READ contract moved all three derived rows at once: which rows
+  move is a property of how widely the contract is reached, not of how large the
+  change is. The handler count does not move, because the change adds no
+  capability; a handler count that had moved would have meant the classification
+  shifted rather than that work arrived. Re-derived from `--summary` on this
+  tree rather than added to the figure above, for the reason the D108 paragraph
+  gives: replaying a delta onto a base that has moved states it over a total
+  that no longer exists.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
