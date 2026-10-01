@@ -60,6 +60,153 @@ already filed in that shape — `### D190, widened`, `### D210 addendum` — are
 safe at their depth and are not retrofitted, because changing a filed entry's
 title to satisfy a convention costs an amendment for a cosmetic gain.
 
+### What enforces it, and the enumeration nobody performed, 2026-10-01
+
+This sits beside the convention rather than under a number of its own, because
+separating a rule from the thing that mechanically enforces it is worse than
+the rule having no number. **That absence is real and is left standing here:
+the rules governing this register have no amendment trail**, which is a change
+to how this document works rather than a decision about the product, and it is
+not settled as a side effect of landing a test.
+
+**The enumeration that was owed was of the programs that WRITE this document,
+and nobody performed it.** Four write or verify it, with different scopes: the
+splice, the amender, the per-entry verifier, and an untracked harness in one
+session's scratchpad that nothing runs. Every account traded across an evening
+described one of the four as the guard. One session enumerated the splice
+program's nine refusals and answered about "the guard"; another reimplemented
+four rows from a table and reasoned about "the guard" from them; a third
+reasoned about "the suite" from a sentence over that table. **The rule that
+would have prevented it had already been measured, agreed and written down that
+same evening** — re-pointing an instrument cannot find a check you never looked
+for, only enumerating can — **and two sessions then broke it inside the hour,
+on the question that had produced it.** A rule learned in one domain does not
+transfer itself; the harder finding is that a rule learned in the same hour
+does not either, unless somebody asks what population the enumeration was over.
+
+**The general form is one sentence: a count says how many and not which, so a
+wrong member is invisible at both ends.** That was written down in this project
+about a cardinality claim over sessions, days before it was needed about
+headings, which is the same transfer failing inside the same document.
+
+The splice program asserts three things about heading structure: distinctness
+of the **base**, never of its output; that an owed number is not already in the
+base; and that its **output** is strictly ascending, which tests `<=` and so
+fails an adjacent duplicate as well. It contains no arithmetic over the absent
+set and no second parser — no `grep`, no `spawn`, no `execSync` — so two-parser
+agreement is not in it in any form.
+
+**An earlier draft of this write-up carried a four-row sabotage table, and what
+follows is what that table was a table of, which is why it is gone.** Three of
+its four columns were a harness one session wrote to explore the question:
+untracked, run by hand, run by nothing on a commit, a push or a pull request.
+Its sentence said each sabotage "is now caught", and the "now" implied a
+defence in force — it was a record of an investigation, presented as a
+description of a guard. A reader could not tell the untracked harness from the
+three real line numbers beside it, and that is the same confusion that cost an
+evening.
+
+**The entry counts in that program are `console.log`, printed and never
+compared, and the argument about them is the lesson.** One line prints
+`carried`, taken from the owed working directory. Another, three lines later,
+prints `added by this collection (set difference)`. Neither is compared to
+anything. Two sessions spent an hour disagreeing about which of two variants
+the program used, and it uses **both, as output** — each had correctly
+identified a real expression and each assumed the one they found was the
+asserted one. The duplicate D191 was caught by a person reading that output and
+noticing two numbers disagree. **A figure printed beside a list of refusals
+reads as one of them.**
+
+**Count-preservation across an amendment is already asserted over the committed
+document** — `amend-entry.mjs:60` refuses when the heading count changes — so
+what is new is not an assertion over this document's headings, nor the first of
+its kind. It is **membership**: which numbers, rather than how many. The
+distinction has a measured instance, and it is the sabotage that motivated the
+exercise: a one-for-one swap, a pre-existing heading dropped and an unrelated
+number added in order, leaves the count exactly where it was and passes
+distinctness and ascent alongside it. Count-preservation cannot see it by
+construction. The set identity names both halves, as missing and unexpected.
+
+**The convention above has had an enforcement longer than its prose has.** The
+commit that adopted it on 2026-09-30 wrote down a rule the tooling was already
+keeping: `amend-entry.mjs:41` refuses an addendum whose first line does not
+open `### `, so an amendment titled on the parser's key is refused mechanically
+by the program that would apply it. What is left uncovered is the arrival path
+rather than the rule — that check reads the amendment being applied, so a
+heading reaching this document any other way, through the splice, a hand edit
+or a merge, is unchecked. A predicate over the committed document covers every
+path, and reports such a heading as a duplicate of the number it carries.
+
+Measured over seven cases with a control first, each sabotage asserted to have
+landed before its verdict was believed: `tools-decision-register.test.mjs`
+fails a dropped heading on a spliced entry, a dropped heading on a pre-existing
+one, the one-for-one swap, a duplicate, a malformed heading, a scrambled order,
+and an amendment heading opening on the parser's key. Missing and unexpected
+numbers are **named rather than counted**, because the failure guarded is a
+heading going without anybody knowing which. Distinctness, ascent and
+two-parser agreement all stay beside it: a set sees neither a repeat nor an
+ordering, and a malformed heading beside a well-formed one leaves the set
+correct while a raw `^## D` count runs high — a case measured after a first
+version of the check's own comment claimed it for the wrong one, and corrected
+by the harness rather than by reading.
+
+**It replaces arithmetic that could not fail.** The harness tested
+`max - |absent| == |headings|` with `absent` derived as `range(1, max)` minus
+the heading set, so both sides move together on every input and the equation
+reduces to a distinctness check. It caught one sabotage of seven — the
+duplicate, the trial anybody reaches for — which is worse than catching none,
+because a column of `true` teaches its reader that a case is covered. That
+tautology is asserted in the new test, in both directions, so what it replaced
+cannot quietly come back.
+
+**The expected list is authored and must stay authored, and the argument is a
+measurement rather than a principle.** The owed working directory held two of
+this collection's thirty-five, so wiring the expectation to it would make a
+clean document report thirty-three unexpected headings, and the obvious repair
+for a noisy check is to regenerate the list from the head — the exact defect
+the check replaces, one level up. The quieter hazard is worse: as working files
+are tidied away the expectation shrinks with them, and an entry stops being
+protected at the moment its file is cleaned up, with nothing failing. **The
+drifting thing is the one input the assertion must not take.**
+
+**Two limits it names in its own output on every run, including a clean one.**
+It looks at headings only and says nothing about any entry body, so an entry
+whose text was replaced under a correct heading passes it — **a larger hole
+than the one it closes**, recorded here rather than left for somebody to find.
+And the typed list has a real cost: a number filed without being added to it
+fails as unexpected, which is the design and not a bug, because an undocumented
+cost is how somebody comes to delete the list. It is also one program among
+four, and its clean run says nothing about the other three; the reason to add
+it is the question none of them asks, not the coverage it supplies.
+
+**A base that cannot be resolved skips locally and fails under CI**, where the
+checkout is unshallow and one is guaranteed: a test that cannot tell "no
+differences" from "no base" is the artefact this write-up is about. Both
+branches were measured against a nonexistent ref. **And the real-document
+comparison is non-vacuous, which is worth stating rather than assuming**: it
+fails on the base — `headings=168 base=168 expected=203` — and passes on the
+collection — `203 / 168 / 203`, no problems. A check that passed in both places
+would have proved only that it ran.
+
+**One page had to be corrected in the same change, and the reason generalises.**
+`AGENTS.md` described the test-wiring contract as covering `services/` alone and
+omitted the root `tools-*.test.*` half, where a workflow step is not a home —
+which nearly put the new check somewhere nothing would bind it. **A page
+describing a check is a second representation of it, and it is the one that
+rots.** Same family as a table read as a suite and a printed figure read as an
+assertion, and the commonest of the three, because documentation is written
+once and checks keep changing.
+
+**The worked example of all of it is the resolution sentence this write-up
+replaced.** One session measured both variants of a cross-check over the real
+bytes, reported which reading was right on which branch, and concluded that one
+line decided it and that line was not in the tree. Every measurement in that
+was sound and both branches were real expressions. There is no such line. It
+was a two-branch table built around a comparison that does not exist, and it
+read as settled precisely because the arithmetic was correct. **We did not
+disagree for want of care, and more care would not have separated us. What
+separated us was reading every refusal in the program.**
+
 ## A number that is cited here and has no entry here
 
 **D107 has no entry in this document, and five entries reason from it.** That is
