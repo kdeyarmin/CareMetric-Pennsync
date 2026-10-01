@@ -3465,6 +3465,59 @@ real and no screen reaches them. Measured on this tree: eight entity operations
 live in that module, across `NoteConversion`, `ComplianceAudit`, `Task` and
 `Incident`, and none is on a path a user can execute.
 
+**The reading above is a record of `00ccac41` and is deliberately not
+maintained.** What follows it is measured on a tree where the INSTRUMENT
+changed, so the two are not comparable and must not be differenced.
+
+`limitConstants()` in `tools-entity-call-arguments.mjs` used to read exactly one
+module, `src/lib/queryLimits.js`. Every call site naming a row limit declared
+anywhere else read INDETERMINATE, which makes the whole call unreadable and the
+site unserved — whatever its contract could do. `AdrAuditCase.list` was the
+worked example and is recorded above: its contract existed, was reachable and
+was tested, and the only thing between it and a route was that
+`ADR_CASE_READ_LIMIT` is declared in `src/components/adr/adrCaseRead.js`. The
+earlier comment in `independentEntityRoutes.js` named the broader cause and was
+wrong; the limit was the SOURCE MODULE and never the module boundary, since
+`PATIENT_HISTORY_ROWS` has always resolved across files.
+
+The reader now takes every production module that exports an integer. It
+refuses an AMBIGUOUS name — two modules giving one name different values — and
+a local `const` SHADOWING an exported one, rather than picking, because it
+resolves a name and does not follow an import graph. Both were measured clear
+on this tree, and both are refusals in the code rather than sentences here, for
+the reason this page keeps relearning: a reading of a tree on a day is not a
+property of the tree, and a check that runs every time is the difference
+between an assumption and a guarantee. Each refusal was planted and watched to
+fail, and each carries a control that must pass.
+
+**What it moved, measured rather than predicted: exactly one site.** The whole
+per-site classification was captured before and after and differenced, and
+`AdrAuditCase.list` in `src/pages/ADRCenter.jsx` is the only line that changed,
+from unreadable to `["-created_date", 200]`. `NoteConversion.filter` was
+expected to move with it and did not, and the correction is worth keeping: it
+is held on its CONTRACT, which cannot express the field the site filters on —
+`operationalRoutes.test.js` says so and fails if `listNoteConversions` ever
+takes that field — so it was never the reader's to convert. Two sites that look
+like one cause were two.
+
+So the route below is the ruler's whole yield, and the rest of the change is
+the ruler.
+
+```
+entity routes: 87 declared, 153/245 landable call sites SERVED, 92 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
+  18 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+**Read the served count's rise as ONE screen, and read nothing at all into the
+comparison with the block above.** A figure derived by a widened instrument and
+a figure derived by the narrow one are answers to different questions, and the
+only honest statement across them is that the pool was classified by a
+different rule, not that it grew or shrank. Anything still reading
+INDETERMINATE after this is unreadable for a reason other than where its
+constant lives.
+
 #### The route audit's front, and why it is now shorter than its own list
 
 **A site nobody has routed still reaches Base44. A site a declared route
@@ -3587,14 +3640,14 @@ different kinds of work:
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Thirty-four have no route declared at all**, over twenty-eight entity and
-  operation keys: fifteen reads over twelve keys, and nineteen writes over
+- **Thirty-three have no route declared at all**, over twenty-seven entity and
+  operation keys: fourteen reads over eleven keys, and nineteen writes over
   sixteen. **The writes still outnumber the reads**, which inverts the shape
   every wave so far has had. The reason is measurable on the sites already
-  served: a read key there carries 2.59 call sites and a write key 1.32, so a
+  served: a read key there carries 2.56 call sites and a write key 1.32, so a
   read port has historically served many screens per route while a write port
   served the one form that calls it. **Do not carry that ratio into the
-  remainder, though**: inside this pool a read key covers 1.25 sites and a write
+  remainder, though**: inside this pool a read key covers 1.27 sites and a write
   key 1.19, which is nothing like the served spread and is barely a gap at all.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
@@ -3611,6 +3664,12 @@ different kinds of work:
   because it read well. A ratio over a REMAINDER is a property of what is left,
   so it moves every time anything is taken off it, and it has to be re-measured
   at the head that quotes it rather than inherited.
+
+  **It moved again on this tree, by one read key leaving the pool**, and the
+  served read ratio moved with it for the same reason. Neither number was
+  wrong before and neither is wrong now. Note also what did NOT move: the
+  remainder's write ratio, because nothing left that half — which is the same
+  reading twice rather than a figure that held for a reason.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
