@@ -14,9 +14,17 @@ describe('iOS App Store wrapper guardrails', () => {
 
     expect(project).toContain('PRODUCT_BUNDLE_IDENTIFIER: com.caremetric.ai');
     expect(project).not.toContain('PRODUCT_BUNDLE_IDENTIFIER: com.caremetric.pennsync');
-    expect(webView).toContain('https://caremetricai.base44.app/');
+    // The shell loads the CUSTOM domain since the transitional build (D3 step
+    // two). `tools-app-store-migration.test.mjs` is the authority on what the
+    // native files may contain and why; these are the browser-suite copies of
+    // the two that matter here, so a change that edits one file and not the
+    // other cannot pass.
+    expect(webView).toContain('https://app.caremetricai.com/');
+    expect(webView).not.toContain('https://caremetricai.base44.app/');
     expect(webView).not.toContain('https://pennsync.base44.app/');
-    expect(readme).toContain('https://caremetricai.base44.app/');
+    expect(readme).toContain('https://app.caremetricai.com/');
+    // All three App-Bound Domains stay listed while sign-in is still Base44's.
+    expect(plist).toContain('<string>caremetricai.com</string>');
     expect(plist).toContain('<string>base44.app</string>');
     expect(plist).toContain('<string>base44.com</string>');
     expect(plist).not.toContain('<string>pennsync.base44.app</string>');
