@@ -26,6 +26,13 @@ import { AI_REPORT_PARAMS, generateAiReport } from './ai-report.mjs';
 import { searchIndexedPdfs } from './pdf-search.mjs';
 import { sendAccountReadyEmail, sendWelcomeEmail } from './account-email.mjs';
 import {
+  notifyCredentialRenewal,
+  notifyCredentialReviewed,
+  notifyTimeOffCancelled,
+  notifyTimeOffReviewed,
+  notifyTimeOffSubmitted,
+} from './workforce-email.mjs';
+import {
   STATE_INCIDENT_FIELDS, submitStateIncident,
 } from './state-incident.mjs';
 import { generateFollowUpTasks as runFollowUpTasks } from './follow-up-tasks.mjs';
@@ -1108,41 +1115,136 @@ export const HANDLERS = Object.freeze({
     },
   }),
   reviewPersonnelCredential: Object.freeze({
-    async handle({ params, contract }) {
+    // The employee's decision notice, in the branch shape the other staff
+    // notices use: the review is recorded whether or not a channel is open, so
+    // a 503 here would throw away a compliance decision the contract has
+    // already committed. The original says so in its own words — the decision
+    // stands even if the email fails, and the gap is reported.
+    //
+    // The recipient is the row's `user_id`, which this store fills with
+    // `caller_email()` on submission, so it is the store's own verified copy of
+    // the submitter's address and no roster read is needed. `delivery_paused`
+    // was the constant `true` and is now the original's computation, with one
+    // narrowing recorded in `workforce-email.mjs`: an unaddressable row reports
+    // no paused delivery rather than claiming a message is waiting on a switch.
+    needsIntegration: true,
+    async handle({ actor, params, config, integration, contract }) {
       exactObject(params, ['credential_id', 'action', 'rejection_reason'], 'INVALID_PARAMS');
-      return { ...(await contract('reviewPersonnelCredential', params)), delivery_paused: true };
+      const answer = await contract('reviewPersonnelCredential', params);
+      return {
+        ...answer,
+        ...(await notifyCredentialReviewed({
+          credential: answer?.credential, actor, config, integration,
+        })),
+      };
     },
   }),
   submitPersonnelCredential: Object.freeze({
-    async handle({ params, contract }) {
+    // The administrators' approval-needed notice, and the only one of the five
+    // whose CONDITION is read from the request rather than from the row: the
+    // original sends it for a RENEWAL only, which is a test over
+    // `renews_credential_id` against `credential_id`, both of them parameters
+    // this layer already holds. So an ordinary first submission notifies
+    // nobody, exactly as it does today, and `delivery_paused` stays false for
+    // it rather than reporting a send that was never eligible.
+    //
+    // The recipients are the agency's administrators through the roster, which
+    // is D41's and D43's deletion of the original's `User.list` scan over
+    // `role`, `account_type` and `agency_name` — the reconstruction whose
+    // earlier version, its own comment records, mailed one tenant's staff names
+    // to every other tenant's admins.
+    //
+    // `recipients_truncated` is new in the answer and is `null` for a whole
+    // fan-out. Both bounds on that walk under-send rather than mis-send, so
+    // neither is a disclosure question — but a renewal notice that quietly
+    // reaches three of five administrators is still a defect, and the walk may
+    // not refuse, because the credential is already recorded. So it says which
+    // bound clipped it instead: the original's own 500 ceiling, or this
+    // service's page budget running out.
+    needsIntegration: true,
+    async handle({ params, config, integration, contract }) {
       exactObject(params, ['credential_id', 'renews_credential_id', 'credential'],
         'INVALID_PARAMS');
       if (!isObject(params.credential)) fail(400, 'INVALID_PARAMS');
-      return { ...(await contract('submitPersonnelCredential', params)), delivery_paused: true };
+      const answer = await contract('submitPersonnelCredential', params);
+      return {
+        ...answer,
+        ...(await notifyCredentialRenewal({
+          credential: answer?.credential, params, config, integration, contract,
+        })),
+      };
     },
   }),
   submitTimeOffRequest: Object.freeze({
-    // `delivery_paused` is reported the way the original reports it when
-    // `OUTBOUND_DELIVERY_RELEASE` is not `enabled-v1`: the record work is done
-    // and the approver email is not sent. Outbound delivery is the integration
-    // runtime's, which is deployed and paused, so the shape a migrated caller
-    // already handles is the honest answer.
-    async handle({ params, contract }) {
+    // D97's gate, second instance, and the first where the send is a SIDE
+    // EFFECT rather than the capability — so `workforce-email.mjs` branches on
+    // the release instead of refusing 503, which is what the original does and
+    // what keeps a recorded request from being thrown away because a channel
+    // is off. `delivery_paused` is now the original's own computation rather
+    // than the constant `true` this answered: with no recipient there was no
+    // delivery to pause, and saying otherwise told a caller a message was
+    // waiting on a switch when none existed.
+    //
+    // `needsIntegration` follows the destructuring below, both directions, per
+    // D92. `needsDelivery` is deliberately ABSENT: it asks whether a released
+    // handler serves nothing without delivery, and the record work here stands
+    // on its own, so flagging it would make a deployment that releases time off
+    // report NOT ready while it is doing its job.
+    needsIntegration: true,
+    async handle({ actor, params, config, integration, contract }) {
       exactObject(params, ['request_type', 'start_date', 'end_date', 'half_day',
         'reason', 'coverage', 'manager_email'], 'INVALID_PARAMS');
-      return { ...(await contract('submitTimeOffRequest', params)), delivery_paused: true };
+      const answer = await contract('submitTimeOffRequest', params);
+      return {
+        ...answer,
+        ...(await notifyTimeOffSubmitted({
+          request: answer?.request, actor, config, integration, contract,
+        })),
+      };
     },
   }),
   cancelTimeOffRequest: Object.freeze({
-    async handle({ params, contract }) {
+    // The last of the five, and the only one that needed the store to change.
+    // Its notice is eligible only when the request was `approved` BEFORE the
+    // cancellation, and the contract used to answer with the row it had just
+    // set to `cancelled`, so the question was unanswerable rather than merely
+    // unasked. `20260920680000_time_off_cancel_previous_status.sql` adds
+    // `previous_status` to the ANSWER — not to the row, which has no such
+    // thing — read from the row the contract locks.
+    //
+    // Both halves of the notice are behind that one condition in the original,
+    // so a withdrawn `pending` request still notifies nobody. That is why the
+    // in-app row is minted inside the sender rather than unconditionally: it is
+    // ungated on delivery (D51), not on eligibility.
+    needsIntegration: true,
+    async handle({ actor, params, config, integration, contract }) {
       exactObject(params, ['request_id'], 'INVALID_PARAMS');
-      return { ...(await contract('cancelTimeOffRequest', params)), delivery_paused: true };
+      const answer = await contract('cancelTimeOffRequest', params);
+      return {
+        ...answer,
+        ...(await notifyTimeOffCancelled({
+          request: answer?.request, previousStatus: answer?.previous_status,
+          actor, config, integration, contract,
+        })),
+      };
     },
   }),
   reviewTimeOffRequest: Object.freeze({
-    async handle({ params, contract }) {
+    // The outcome notice, in the same shape as `submitTimeOffRequest`'s: a
+    // branch rather than a refusal, because the decision is recorded whether or
+    // not a channel is open. The recipient is the employee on the row the
+    // contract just updated, so there is no roster read and nothing for this
+    // layer to resolve.
+    needsIntegration: true,
+    async handle({ params, config, integration, contract }) {
       exactObject(params, ['request_id', 'decision', 'note'], 'INVALID_PARAMS');
-      return { ...(await contract('reviewTimeOffRequest', params)), delivery_paused: true };
+      const answer = await contract('reviewTimeOffRequest', params);
+      return {
+        ...answer,
+        ...(await notifyTimeOffReviewed({
+          request: answer?.request, config, integration, contract,
+        })),
+      };
     },
   }),
   getApprovedTimeOff: Object.freeze({

@@ -62,13 +62,19 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // The ordering guard was HERE while this migration was pending, and it has
-  // moved on to `contract-physician-write.test.mjs` now that this one is
-  // merged — exactly as `assertNewestRecordMigration`'s own error text says to
-  // do, and exactly as this file did to the read half when it arrived. The
-  // guard travels with the newest PENDING migration and is never held by two
-  // suites at once; a second holder is a check asserting a tree that the first
-  // one's own change makes false.
+  // The ordering guard has MOVED ON, and this is the retirement the helper's
+  // own docstring asks for rather than a weakening of it: this migration is on
+  // `main`, so it is part of what a store already holds, and a later file
+  // sorting after it is a correct tree rather than a base that moved.
+  //
+  // Where it lives now is a merge resolution rather than either branch's
+  // answer. `main` sent it to `contract-time-off`, correctly for `main`; this
+  // branch adds a record migration that sorts after that one, so on THIS tree
+  // the newest pending file is the duty-status contract and the guard is held
+  // by `contract-duty-status.test.mjs` alone. Both claims were right about
+  // their own tree, and taking either side whole would have left two suites
+  // holding it — which the helper forbids, because the second holder asserts a
+  // tree the first one's own change makes false.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [

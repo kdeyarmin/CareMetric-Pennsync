@@ -1466,3 +1466,40 @@ test('the referral split prompt and schema are the original s', async () => {
   // stops being true out loud if either side moves.
   validateSchema(structuredClone(call.response_json_schema));
 });
+
+/**
+ * Which workforce originals create an in-app `Notification` row, read from the
+ * originals themselves. It lives here rather than beside the port because D60
+ * keeps a test in `services/pennsync-api` from reading a file outside that
+ * directory — the image is built from it alone.
+ *
+ * The measurement changed the scope of the work: the notification gap was
+ * described as five senders and is two, because the two credential modules
+ * create no notification at all.
+ */
+test('only the three time-off originals create an in-app notification', async () => {
+  const roots = fileURLToPath(new URL('../functions/', import.meta.url));
+  const creates = {};
+  for (const name of ['submitTimeOffRequest', 'reviewTimeOffRequest', 'cancelTimeOffRequest',
+    'reviewPersonnelCredential', 'submitPersonnelCredential']) {
+    creates[name] = await readFile(join(roots, name, 'entry.ts'), 'utf8');
+  }
+  for (const name of ['reviewPersonnelCredential', 'submitPersonnelCredential']) {
+    // Not "creates none": names none, anywhere in the module. A port that
+    // minted a row for either would be inventing behaviour the product has
+    // never had.
+    assert.equal(/Notification/.test(creates[name]), false,
+      `${name} names Notification, so the ported handler owes one`);
+  }
+  for (const name of ['submitTimeOffRequest', 'reviewTimeOffRequest', 'cancelTimeOffRequest']) {
+    assert.ok(creates[name].includes('Notification.create'), `${name} creates one`);
+  }
+  // And the cancel one is behind the SAME condition as its email, which is why
+  // its row is blocked on the status the contract no longer carries rather than
+  // on anything the notification path needs.
+  const cancel = creates.cancelTimeOffRequest;
+  const guard = cancel.indexOf('if (emailEligible) {');
+  assert.ok(guard > 0, 'the cancel original still guards on emailEligible');
+  assert.ok(cancel.indexOf('Notification.create') > guard,
+    'and its notification is inside that guard, not before it');
+});

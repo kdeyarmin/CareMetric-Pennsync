@@ -1573,8 +1573,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 64 | 42 |
-  | `integration` (derived) | 22 | 17 |
+  | `mutating` (derived) | 59 | 40 |
+  | `integration` (derived) | 27 | 23 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
   and `splitReferralPDF` — carry an operator cost the other nineteen do not.**
@@ -1629,6 +1629,12 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   capability had **no behavioural test of any kind** until the pause, which is
   how a 130-line port with a record contract and a trail append shipped with a
   call neither half could make.
+
+  **Those two rows were RE-DERIVED on the merged tree, not reconciled.** Two
+  branches moved them and neither could see the other: one read 64 and 42
+  against 22 and 17, the other 49 and 37 against 24 and 23, and the merged tree
+  reads neither pair. `node tools-pennsync-release-ladder.mjs --summary` is the
+  instrument and it is the only thing either figure should ever be copied from.
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1754,6 +1760,51 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   facility stays and is still the place a future hold goes; because an empty
   list fires none of its six guards, each is driven from a synthetic hold in its
   tests rather than left vacuous.
+  **Four workforce capabilities have MOVED out of `mutating` the same way, and
+  this time a migration column moved with them.** `submitTimeOffRequest`,
+  `reviewTimeOffRequest`, `reviewPersonnelCredential` and
+  `submitPersonnelCredential` each answered a constant `delivery_paused: true`
+  and reached no integration; they now send their staff notice, so all four
+  carry `needsIntegration: true` and the ladder places them in `integration`:
+  mutating 54 → 50 and integration 19 → 23 in the table above. The check worth
+  reading is that the handler total does not change — 2 + 2 + 4 + 55 + 50 + 23
+  is 136 either way — because a transfer moves a capability between waves while
+  an arrival raises the sum.
+
+  The migration columns went 39 → 37 and 17 → 19, which is two files changing
+  wave rather than two files arriving, and the derivation is per-file:
+  `20260920240000_contract_credential.sql` and
+  `…250000_contract_credential_review.sql` are reached by these two credential
+  capabilities and by nothing else left behind — the credential LIST reads
+  through `20260920660000_contract_compliance_reads.sql` — so both follow their
+  handlers. `20260920230000_contract_time_off.sql` does NOT move, because
+  `cancelTimeOffRequest` stays in `mutating`: its notice cannot be built until
+  the cancel contract returns the status it replaced, so the file is a
+  prerequisite of both waves now. Measured by diffing `--wave` on this tree
+  against `00ccac41`, not inferred from the deltas.
+
+  Restoring the in-app rows those two time-off senders never minted then took
+  `integration`'s migrations 19 → 22 with no handler moving and no new SQL
+  written: the two capabilities call the existing `createNotification` contract,
+  so the wave gains that contract's own file, the mint facility it is the only
+  writer through (`20260920285000_notification_mint.sql`, D48) and
+  `20260920300000_contract_notification.sql`, whose helpers it uses. A wave's
+  prerequisites follow from the contracts its handlers call, and these two
+  handlers gained a contract call. The read waves do not move, because those
+  three files were already theirs.
+
+  The fifth workforce sender transferred with them once the store could answer
+  its condition: mutating 50 → 49 and integration 23 → 24, with integration's
+  migrations 22 → 23 for the forward file
+  `20260920680000_time_off_cancel_previous_status.sql`, which replaces the
+  cancel contract so its answer names the status it replaced.
+  `20260920230000_contract_time_off.sql` still does not move a column, but the
+  reason has changed and is worth writing down: it stayed before because
+  `cancelTimeOffRequest` was left behind in `mutating`, and now nothing is left
+  behind — `getApprovedTimeOff` reaches that file from `read-only`, which holds
+  it either way. A prerequisite that did not move for one reason and then does
+  not move for another looks like nothing happening.
+
   The send's own switch, separate from `PENNSYNC_API_RELEASE`, is
   `PENNSYNC_API_DELIVERY=enabled-v1`, read exactly and untrimmed; it was written
   at `16:19Z` the same day. **What `/readyz` says about it is a reading, not a

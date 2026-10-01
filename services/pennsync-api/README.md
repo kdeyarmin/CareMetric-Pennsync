@@ -5,9 +5,10 @@ destination named in
 [the exit decisions](../../docs/BASE44_EXIT_DECISIONS_2026-09-19.md) (D1) and
 classified per capability in `tools-transition-disposition.json`.
 
-This service is **deployed and released** as of 2026-09-25 (stages B and D of
-[the go-live plan](../../docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md)); it was
-deployed and paused from 2026-09-22. It runs in
+This service was **deployed and released** when read on 2026-09-25 (stages B and
+D of [the go-live plan](../../docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md)), and
+deployed and paused from 2026-09-22; `/readyz` is what answers it now, as
+everywhere else on this page. It runs in
 the CareMetric Train Railway project at
 `pennsync-api-production.up.railway.app`, root `/services/pennsync-api`, its
 committed `Dockerfile`, healthcheck `/healthz`, configuration in service
@@ -65,6 +66,31 @@ mail to a real person*, was told no. Ask `/readyz` for `deliveryReleased`, or
 https://<service-host>`. Released means a send is **attempted**, not that mail
 arrives, and invitations are not covered by it: their `delivery_paused: true`
 is a literal on an audit entry (D42), not a switch.
+
+**The five workforce staff notices have a SECOND switch of their own**,
+`PENNSYNC_API_WORKFORCE_NOTICES`, read exactly and untrimmed against the same
+`enabled-v1` word. `workforceNoticeDeliverable` is an AND of both flags, so it
+can only narrow: it cannot open a channel `PENNSYNC_API_DELIVERY` has left
+shut, and with it absent the five branch to the originals' own
+`delivery_paused` answer rather than refusing — a 503 there would throw away a
+time-off request or a compliance decision the contract has already committed.
+It exists because delivery was released on 2026-09-25 for the two account
+emails, which is not a decision about staff notices. `/readyz` publishes
+`workforceNoticesReleased` beside `deliveryReleased`, and the same caution
+applies to both: ask the deployment, not this page.
+
+Two of those five fan out across the agency's administrators, and their answer
+carries `recipients_truncated` — `null` for a whole set, `approver_limit` for
+the originals' own 500 ceiling, `page_budget` for the roster walk running out
+of pages. Neither bound may refuse, because the record is already written, so
+the answer is where an incomplete fan-out is reported. A recipient these five
+send to is never one a caller named: three read a column a contract wrote
+(`manager_email` resolved through `pennsync_private.agency_colleague` and
+stored as the identity map's `expected_email`, plus `employee_email` and
+`personnel_credential.user_id`, both `caller_email()`), and two ask the roster.
+That is why they do not go through `agencyRecipient` and do not need to — the
+rule being that a sender HANDED a recipient must, and a sender that READS one a
+contract wrote need not, provided nothing rewrites that column afterwards.
 
 **Do not read the release state from this file.** A variable change here is a
 deploy that rebuilds from `main`'s tip, so both the running code and the
@@ -134,13 +160,55 @@ released capability that writes a record and a released capability that sends a
 person a message are different decisions with different owners, so the second
 needs its own act.
 
-Unset — which is every deployment today — every sender answers 503
-`OUTBOUND_DELIVERY_RELEASE_PAUSED`, `SendEmail` is not in the brokered set at
-all, and the service reaches no mail provider. Set, `SendEmail` becomes askable
-and the senders among the released names send. It is refused at startup without
-`PENNSYNC_API_INTEGRATIONS_URL`, because a channel that cannot carry anything
-should not report itself open, and `/readyz` publishes `deliveryReleased` so the
-state is readable from outside the service rather than inferred from a plan.
+Unset, every sender answers 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED`, `SendEmail`
+is not in the brokered set at all, and the service reaches no mail provider.
+Set, `SendEmail` becomes askable and the senders among the released names send.
+It is refused at startup without `PENNSYNC_API_INTEGRATIONS_URL`, because a
+channel that cannot carry anything should not report itself open, and `/readyz`
+publishes `deliveryReleased` so the state is readable from outside the service
+rather than inferred from a plan.
+
+**Whether a deployment has it SET is not a property of this file.** This
+paragraph used to say the variable was unset on every deployment — a sentence
+about a fleet, in a file that cannot see one, three paragraphs after the section
+above corrected the same claim. It was also false: an unauthenticated `GET
+https://pennsync-api-production.up.railway.app/readyz` **on 2026-09-30 at
+16:36:11Z** answered `deliveryReleased: true` and `deliveryRequired: true` at
+revision `d01359a3`, for the staging app id. **That is a dated reading and not
+the current answer either** — a release-variable write rebuilds this service
+from `main`'s tip, so the running revision moves without a word here changing.
+`curl <service>/readyz` is the instrument and takes a second. A test in
+`account-email.test.mjs` fails if this section claims a fleet's state again,
+because prose is what rotted and an assertion is what noticed.
+
+**And a correction that replaces "the channel is off" with "the channel is on"
+owes the reader the next guard, so: it is the RECIPIENT, not an operation
+allowlist.** The runtime's half was on in the same window — an unauthenticated
+`GET https://pennsync-integrations-production.up.railway.app/readyz` **on
+2026-09-30 at 16:45:43Z** answered `released: true`, `configured: true`,
+`missingProviders: []` and `SendEmail` among its `operations`, at revision
+`720d1401`, staging app id, browser route shut. So `SendEmail` is askable and a
+provider is configured, and what remains is this service's own code: the caller
+must hold `agency_admin` in the agency the request names, and `agencyRecipient`
+resolves the address against **that agency's roster in the owned store** —
+403 `RECIPIENT_NOT_IN_AGENCY` for an address nobody there holds, 503
+`RECIPIENT_LOOKUP_INCOMPLETE` when the walk could not read the whole roster, and
+the roster's own copy of the address is what reaches the provider.
+
+**Which makes the ceiling a property of the roster's ROWS rather than of
+anything in this file, and this file cannot tell you what those rows are.**
+What the code fixes is the shape of the ceiling: `agency_roster`
+(`20260920285000_notification_mint.sql`) admits a person only where an `active`
+membership in the named agency joins an `agency` that is `active` or `trial` and
+an `identity_map` row that is `enabled` with no `revoked_at`, so the reachable
+set is exactly the agency's live staff and never an arbitrary address. It is not
+bounded to synthetic rows: staging's four documented accounts are aliases at
+`caremetricai.com`, a real domain, and nothing in the join restricts a row to an
+alias. Read that as the guard being NARROW and not absent — a recipient can be a
+mailbox somebody reads, sending a message to a real person is the owner's
+decision, so do not widen the roster, the recipient rule or the `agency_admin`
+gate to unblock a test. A test that needs a recipient it cannot have is the
+wrong test.
 
 Since D98 readiness also HONOURS it: a released set containing a sender while
 this switch is unset reports `ready: false`, because such a deployment refuses
