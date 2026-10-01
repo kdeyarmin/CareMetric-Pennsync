@@ -37,7 +37,11 @@ test('production pin diagnostics can be printed without carrying CLI output', ()
   for (const message of ['PRODUCTION_PIN_NOT_APPLIED', 'PRODUCTION_PIN_CLI_FAILED_OUTPUT_REDACTED',
     'PRODUCTION_PIN_RECORDED_AS_DEFAULT', 'PRODUCTION_PIN_CONTAINMENT_WRONG',
     'PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN', 'PRODUCTION_PIN_INITIAL_READ_FAILED',
-    'PRODUCTION_PIN_APP_MALFORMED', 'LOCAL_TARGET_MISMATCH', 'LOCAL_PORT_ALREADY_IN_USE 54321']) {
+    'PRODUCTION_PIN_APP_MALFORMED', 'LOCAL_TARGET_MISMATCH', 'LOCAL_PORT_ALREADY_IN_USE 54321',
+    // A SQLSTATE and nothing else. Five characters from a fixed set, so it
+    // names which refusal a statement hit without carrying any of the text
+    // around it.
+    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501', 'PRODUCTION_PIN_READBACK_FAILED 42P01']) {
     assert.equal(emittableProductionPin(message), true);
   }
   // Anything that could carry a credential, a URL, a command or free text must
@@ -46,13 +50,32 @@ test('production pin diagnostics can be printed without carrying CLI output', ()
   for (const message of ['failed to connect to postgresql://postgres:postgres@127.0.0.1:54322/postgres',
     'sb_secret_abcdefghijklmnop', 'eyJhbGciOi.eyJzdWIi.signature', 'production_pin_not_applied',
     'PRODUCTION_PIN_FAILED: supabase db reset said no', 'LOCAL_PORT_ALREADY_IN_USE 543210',
-    'Error: PRODUCTION_PIN_NOT_APPLIED']) {
+    'Error: PRODUCTION_PIN_NOT_APPLIED',
+    // Not a SQLSTATE: too long, too short, lower case, or a message where one
+    // would go. The suffix admits five characters of a fixed alphabet and
+    // nothing that could carry an identifier or a sentence.
+    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501X', 'PRODUCTION_PIN_SETTING_WRITE_FAILED 4250',
+    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42p01', 'PRODUCTION_PIN_SETTING_WRITE_FAILED postgres',
+    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501 postgres']) {
     assert.equal(emittableProductionPin(message), false);
   }
 });
 
 test('a local stack can be pinned to the production app and refuses the staging app',
-  { timeout: 15 * 60 * 1000 }, async () => {
+  { timeout: 20 * 60 * 1000 }, async () => {
     const pin = await pinLocalStackToProduction();
-    assert.deepEqual(pin, { app_id: PRODUCTION_APP, label: 'production', source: 'setting' });
+    // The ROUTE is reported rather than asserted: which of the two a Supabase
+    // local stack permits is what this probe measures, and the second run of
+    // this job answered that the role write is refused outright. What is
+    // asserted is the pin itself, which is the same either way -- and `source`
+    // being `setting` rather than `default` is what makes a production label
+    // mean a pin that was chosen rather than one that happens to match.
+    assert.ok(['session-options', 'role-setting'].includes(pin.via), pin.via);
+    assert.deepEqual(
+      { app_id: pin.app_id, label: pin.label, source: pin.source },
+      { app_id: PRODUCTION_APP, label: 'production', source: 'setting' },
+    );
+    // Printed because the route is the finding, and nothing here carries CLI
+    // output: both values are this module's own literals.
+    console.log(`production pin carried by ${pin.via}`);
   });

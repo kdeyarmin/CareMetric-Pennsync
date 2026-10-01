@@ -52,11 +52,29 @@ export const PIN_SETTING = 'pennsync.deployment_app_id';
  * reason `emittable` is: this is where a diagnostic goes to die.
  */
 export const emittableProductionPin = message =>
-  /^(PRODUCTION_PIN_[A-Z_]+|LOCAL_[A-Z_]+( [0-9]{1,5})?)$/.test(message);
+  /^(PRODUCTION_PIN_[A-Z_]+( [0-9A-Z]{5})?|LOCAL_[A-Z_]+( [0-9]{1,5})?)$/.test(message);
 
-async function cli(args, timeout = 12 * 60 * 1000) {
-  try { await exec(CLI, args, { timeout, maxBuffer: 64 * 1024 * 1024 }); }
-  catch { fail('PRODUCTION_PIN_CLI_FAILED_OUTPUT_REDACTED'); }
+/**
+ * A failing statement's SQLSTATE, and nothing else.
+ *
+ * The first run of this job spent its whole diagnosis on
+ * `PRODUCTION_PIN_SETTING_WRITE_FAILED` with no way to tell a privilege refusal
+ * from a bad parameter name, because the message a redaction rule cannot pass is
+ * also the message the author needs. A SQLSTATE is five characters from a fixed
+ * set defined by the standard — it carries no identifier, no URL and no free
+ * text — so it is the one part of a driver error that is safe to print, and
+ * `emittableProductionPin` admits exactly that shape and no more.
+ *
+ * An error with no code (a socket failure, a thrown string) adds nothing, which
+ * keeps the bare code the empty case rather than a second meaning for one value.
+ */
+const withSqlstate = (code, error) =>
+  fail(/^[0-9A-Z]{5}$/.test(error?.code ?? '') ? `${code} ${error.code}` : code);
+
+async function cli(args, { timeout = 12 * 60 * 1000, env } = {}) {
+  try {
+    await exec(CLI, args, { timeout, maxBuffer: 64 * 1024 * 1024, env: env ?? process.env });
+  } catch { fail('PRODUCTION_PIN_CLI_FAILED_OUTPUT_REDACTED'); }
 }
 
 /**
@@ -82,59 +100,94 @@ export async function pinLocalStackToProduction() {
   const status = await localStatus();
   const databaseUrl = status.DB_URL;
 
-  // (1) Role-scoped so it survives the database being dropped. `set_config` on
-  // the session would not: the migration runs in a session the CLI opens.
-  const setter = clientFor(databaseUrl);
-  try {
-    try {
-      await setter.connect();
-      const { rows: before } = await setter.query(
-        'select pennsync_private.deployment_label() as label');
-      // Guards the premise rather than assuming it: if a CLI start ever stopped
-      // applying our migrations, the reset below would be doing something else.
-      if (before[0]?.label !== 'staging') fail('PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN');
-    } catch (error) {
-      if (emittableProductionPin(error.message)) throw error;
-      fail('PRODUCTION_PIN_INITIAL_READ_FAILED');
-    }
-    // `ALTER ROLE` is a utility statement, so it takes NO parameter placeholder:
-    // `set ... = $1` is a syntax error, which is what the first run of this job
-    // reported. The value is this module's own constant rather than anything a
-    // caller supplies, and it is re-checked against the app-id shape here so
-    // that interpolating it cannot become a way to inject one.
-    if (!/^[a-f0-9]{24}$/.test(PRODUCTION_APP)) fail('PRODUCTION_PIN_APP_MALFORMED');
-    try {
-      await setter.query(`alter role postgres set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
-    } catch (error) {
-      if (emittableProductionPin(error.message)) throw error;
-      fail('PRODUCTION_PIN_SETTING_WRITE_FAILED');
-    }
-  } finally { await setter.end().catch(() => {}); }
+  // The initial state is GUARDED rather than assumed: if a CLI start ever
+  // stopped applying our migrations, every reset below would be doing something
+  // other than what this module claims.
+  await withClient(databaseUrl, 'PRODUCTION_PIN_INITIAL_READ_FAILED', async client => {
+    const { rows } = await client.query('select pennsync_private.deployment_label() as label');
+    if (rows[0]?.label !== 'staging') fail('PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN');
+  });
 
-  // (2) Recreates the database and re-applies the migrations.
-  await cli([ 'db', 'reset', '--workdir', workdir ]);
+  // Interpolated rather than bound, because `ALTER ROLE` is a utility statement
+  // and takes no parameter placeholder -- `set ... = $1` is a syntax error,
+  // which is what the first run of this job reported. The value is this module's
+  // own constant rather than anything a caller supplies, and it is re-checked
+  // against the app-id shape so that interpolating it cannot become a way to
+  // pass something else.
+  if (!/^[a-f0-9]{24}$/.test(PRODUCTION_APP)) fail('PRODUCTION_PIN_APP_MALFORMED');
 
-  // (3) A NEW session, because a role setting only reaches sessions opened
-  // after it and this is the whole point of the sequence.
-  const reader = clientFor(databaseUrl);
+  // TWO ROUTES, in order, because which of them a Supabase local stack permits
+  // is the thing this probe exists to find out and could not be answered from
+  // here: this container has no Docker and no CLI. The second run of this job
+  // refused the role write outright, so the probe no longer asserts a route --
+  // it reports which one carried the pin, and the caller records that.
+  //
+  //   session-options: `PGOPTIONS` on the CLI's own process, so the migration
+  //     runs in a session that already has the setting. It mutates nothing
+  //     cluster-wide and needs no privilege beyond connecting, which is why it
+  //     is tried first. It depends on the CLI passing its environment through to
+  //     whatever opens the migration connection, which is the unproven part.
+  //   role-setting: `ALTER ROLE ... SET`, which puts a row in
+  //     `pg_db_role_setting` with `setdatabase = 0` -- cluster-scoped, so it is
+  //     NOT stored inside the database the reset is about to drop. For a custom
+  //     parameter with no extension behind it this is a privileged write, and a
+  //     local stack's `postgres` role is not necessarily a superuser.
+  //
+  // Each route is followed by a reset and a read-back, and a route that leaves
+  // the pin at STAGING -- the default -- is treated as not having worked rather
+  // than as an error, because that is exactly how it presents.
+  const options = `-c ${PIN_SETTING}=${PRODUCTION_APP}`;
+  await cli(['db', 'reset', '--workdir', workdir], {
+    env: { ...process.env, PGOPTIONS: options },
+  });
+  let pin = await readPin(databaseUrl);
+  if (pin.label === 'production') return describe(pin, 'session-options');
+
+  await withClient(databaseUrl, 'PRODUCTION_PIN_SETTING_WRITE_FAILED', client =>
+    client.query(`alter role postgres set ${PIN_SETTING} = '${PRODUCTION_APP}'`));
+  await cli(['db', 'reset', '--workdir', workdir]);
+  pin = await readPin(databaseUrl);
+  if (pin.label !== 'production') fail('PRODUCTION_PIN_NOT_APPLIED');
+  return describe(pin, 'role-setting');
+}
+
+/** Connect, do one thing, always close. The code names which step failed. */
+async function withClient(databaseUrl, code, body) {
+  const client = clientFor(databaseUrl);
   try {
-    await reader.connect();
-    const { rows } = await reader.query(`select pennsync_private.deployment_app_id() as app_id,
+    await client.connect();
+    return await body(client);
+  } catch (error) {
+    if (emittableProductionPin(error.message)) throw error;
+    return withSqlstate(code, error);
+  } finally { await client.end().catch(() => {}); }
+}
+
+/**
+ * The pin, from a NEW session.
+ *
+ * A new connection is the whole point of the sequence in the role-setting case:
+ * a role setting only reaches sessions opened after it.
+ */
+const readPin = databaseUrl =>
+  withClient(databaseUrl, 'PRODUCTION_PIN_READBACK_FAILED', async client => {
+    const { rows } = await client.query(`select pennsync_private.deployment_app_id() as app_id,
       pennsync_private.deployment_label() as label,
       (select d.source from pennsync_private.deployment d) as source,
       pennsync_private.app_admitted($1) as admits_production,
       pennsync_private.app_admitted($2) as admits_staging`, [PRODUCTION_APP, STAGING_APP]);
-    const pin = rows[0];
-    if (pin?.app_id !== PRODUCTION_APP || pin.label !== 'production') fail('PRODUCTION_PIN_NOT_APPLIED');
-    // `setting` rather than `default` is what distinguishes a pin that was
-    // CHOSEN from one that merely happens to match.
-    if (pin.source !== 'setting') fail('PRODUCTION_PIN_RECORDED_AS_DEFAULT');
-    // The containment the pin exists for, read from the store rather than
-    // inferred from the label.
-    if (pin.admits_production !== true || pin.admits_staging !== false) fail('PRODUCTION_PIN_CONTAINMENT_WRONG');
-    return Object.freeze({ app_id: pin.app_id, label: pin.label, source: pin.source });
-  } catch (error) {
-    if (emittableProductionPin(error.message)) throw error;
-    fail('PRODUCTION_PIN_READBACK_FAILED');
-  } finally { await reader.end().catch(() => {}); }
+    if (!rows[0]) fail('PRODUCTION_PIN_READBACK_EMPTY');
+    return rows[0];
+  });
+
+/** The checks that make a production label mean containment, not just a string. */
+function describe(pin, via) {
+  if (pin.app_id !== PRODUCTION_APP) fail('PRODUCTION_PIN_NOT_APPLIED');
+  // `setting` rather than `default` is what distinguishes a pin that was CHOSEN
+  // from one that merely happens to match.
+  if (pin.source !== 'setting') fail('PRODUCTION_PIN_RECORDED_AS_DEFAULT');
+  // The containment the pin exists for, read from the store rather than
+  // inferred from the label.
+  if (pin.admits_production !== true || pin.admits_staging !== false) fail('PRODUCTION_PIN_CONTAINMENT_WRONG');
+  return Object.freeze({ app_id: pin.app_id, label: pin.label, source: pin.source, via });
 }

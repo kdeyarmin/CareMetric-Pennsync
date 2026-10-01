@@ -32,7 +32,7 @@ jobs:
   production-pin:
     name: Verify a local store can be pinned to production
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
