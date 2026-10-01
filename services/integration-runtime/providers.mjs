@@ -55,26 +55,13 @@ export function createProviders(config, store, fetcher = fetch) {
    *
    * Two ownership kinds, and the row carries which one it is (migration 006).
    * `subject` is the original model unchanged: the uploader alone, path bound
-   * to their hashed subject. `record` is a file whose readers a contract
-   * decides — a migrated object has no uploader, and a document one nurse
-   * generates is read by the care team — so it binds to the AGENCY instead and
-   * its path embeds that.
+   * to their hashed subject, and it is what every row is and what every read
+   * here resolves. `record` is the kind whose readers a contract would decide;
+   * `006` creates it and the joint CHECK that keeps it coherent, and NOTHING
+   * READS ONE — see the refusal inside, and the reason with it.
    *
-   * The agency is `ctx.agencyId`, which the runtime resolved for itself from
-   * the caller's own bearer through live authority. It is never something the
-   * caller asserts, which is what keeps a handle from being a bearer
-   * capability: a leaked `cmfile:` UUID is useless to anyone who is not
-   * independently an active member of that tenant.
-   *
-   * The CHART narrowing is not attempted here and is not missing: the runtime
-   * cannot ask `caller_assigned_patients` without the record store, and giving
-   * it that store is the widening D77 refused. Every path to these bytes runs
-   * through a contract in `pennsync-api` that evaluates the chart predicate
-   * first, so this layer is the tenant check standing behind it.
-   *
-   * The store answers both kinds in one round trip and its own predicate is the
-   * authorization; the path check below is the second copy of the same fact,
-   * exactly as it always was.
+   * The store's own predicate is the authorization and the path check below is
+   * the second copy of the same fact, exactly as it always was.
    */
   async function fileRecord(uri, ctx) {
     const id = requireFileUri(uri);

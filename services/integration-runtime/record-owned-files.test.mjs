@@ -246,6 +246,61 @@ test('an uploader-owned object stays the uploader\'s, whatever agency the caller
   }
 });
 
+/*
+ * THE SUBJECT COMPARISON IS THE LAST THING STANDING, so it is pinned on its own.
+ *
+ * `/v1/integrations` authenticates the END USER and never `pennsync-api`
+ * (`app.mjs` reads one bearer; `services/pennsync-api/integrations.mjs:66,86`
+ * forwards the caller's own and holds no service credential). Both released
+ * operations pass a caller-supplied handle to `fileRecord` through
+ * `loadDocument`. So nothing between a leaked `cmfile:` UUID and the bytes it
+ * names except this comparison — and for thirty-five minutes at `56148ec5`
+ * this branch had widened it to the tenant, which a reviewer caught and no test
+ * did.
+ *
+ * The test above does not cover it. `storeHolding` IS migration 006's predicate,
+ * so it refuses a foreign subject before the runtime is asked: delete
+ * `row.subject !== ctx.subject` from `providers.mjs` and that test stays green.
+ * This is instance 1 of the header's list, in the one place it costs a chart.
+ *
+ * So the store here hands the row to everybody, and the two comparisons are
+ * separated rather than asserted together: the second case gives the row a path
+ * that matches the CALLER, so the path check cannot refuse and only the subject
+ * check can. Sabotage confirmed each case fails for its own line.
+ */
+test('a handle minted for one subject is refused for every other caller, tenant or not', async () => {
+  const handed = row => createProviders(config, permissiveStore(row),
+    () => assert.fail('a caller who did not mint this object may not reach the bytes'));
+  const open = (row, ctx) => () => handed(row)('CreateFileSignedUrl', { file_uri: `cmfile:${id}` }, ctx);
+
+  // Case one: the row exactly as it is stored, handed to a caller who is not
+  // its subject. This is what a widened store predicate would deliver, and it
+  // is refused here regardless of where the caller is placed.
+  for (const ctx of [
+    { subject: colleague, agencyId },                // the minter's own tenant
+    { subject: colleague, agencyId: otherAgency },   // another tenant
+    { subject: colleague, agencyId: null },          // no tenant at all
+    { subject: colleague },                          // agency absent rather than null
+  ]) {
+    await assert.rejects(open(subjectRow(), ctx), denied);
+  }
+
+  // Case two: the subject comparison ALONE. The path embeds the caller, so
+  // `row.object_path !== `${appId}/${ctx.subject}/${id}`` holds and cannot be
+  // what refuses; only `row.subject !== ctx.subject` is left to do it.
+  await assert.rejects(
+    open(subjectRow({ object_path: `${appId}/${colleague}/${id}` }), { subject: colleague, agencyId }),
+    denied);
+
+  // And the control, so the refusals above are not a provider that refuses
+  // everything: the subject themselves still gets their link.
+  const mine = createProviders(config, permissiveStore(subjectRow()), signing(subjectPath));
+  const result = await mine('CreateFileSignedUrl', { file_uri: `cmfile:${id}` },
+    { subject: minter, agencyId });
+  assert.equal(result.signed_url,
+    `${config.supabaseUrl}/storage/v1/object/sign/${BUCKET}/${subjectPath}?token=synthetic`);
+});
+
 test('UploadRecordFile mints nothing, and reports the pause rather than falling back', async () => {
   /*
    * Paused and REPORTED as paused, in the idiom D42 and D73 use: the operator
