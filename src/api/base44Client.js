@@ -7,7 +7,7 @@ import {
 } from '@/lib/tenantSdkRealmGate';
 import { getActiveTrustedTenantContext } from '@/lib/roles';
 import { readExternalIntegrationConfig, routeExternalCoreOperations } from '@/lib/externalIntegrationTransport';
-import { independentStagingAdapter as independentAdapter } from '@/lib/independentStagingSession';
+import { ownedBackendAdapter as independentAdapter } from '@/lib/independentStagingSession';
 
 const { appId, serverUrl, token, functionsVersion } = appParams;
 
