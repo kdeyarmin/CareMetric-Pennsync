@@ -606,6 +606,22 @@ after them. The access contracts over these eight entities are not restoring a
 working screen, because there is no working screen behind any of the 45 sites, so
 whether to build them is the owner's rather than a default.
 
+**And the obvious next question has an answer, which the first version of this
+retraction left open: the screens DID work and were switched off.** Five
+checked, and every one existed unpaused before its flag arrived — two of the
+flags land on 2026-09-04 and 2026-09-07, in commits titled "Harden source-only
+authorization and readiness gates" and "Harden tenant reads and reconcile staging
+readiness". So this is a feature that ran and was deliberately turned off, not
+one that never shipped. **Reading history here needed a deliberate step**: the
+container's clone is shallow, and before `git fetch --deepen` every one of these
+files reported first appearing at the graft boundary on 2026-09-28 — a date that
+is a property of the clone and of every file in it, which reads exactly like a
+finding. The pauses' own stated reasons are AI correctness and PDGM payment
+safety ("a verified CMS grouper", "protected assessment provenance", "this is not
+a $0 result"), which is the automation half this amendment already leaves to the
+owner rather than anything the migration did. So the record half restores and the
+switch stays the owner's, and the two are separable.
+
 **And the general rule, which is D75's in the other half of the tree: a
 capability paused at source has a paused SCREEN as often as a paused handler, and
 nothing here measures the second.** Three shapes of paused handler are
