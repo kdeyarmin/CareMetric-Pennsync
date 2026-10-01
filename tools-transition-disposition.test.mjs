@@ -240,30 +240,44 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reading: 'records_schema=80',
     reason: 'the queue an earlier conclusion was true of, quoted to say why that conclusion expired',
   },
-  // The four below are the register collector's readings inside one decision
-  // entry, at heads it names. The entry's own note says this copy is the
-  // UNPINNED one and that disagreement with the pinned pages is to be settled by
-  // re-running the command rather than by reconciling prose — so each is a dated
-  // record, which is what this list is for, and not a copy that drifted.
+  // D223's three, which arrived in this list the moment the pages became
+  // discovered rather than listed: the decisions document was in the tree
+  // carrying them before this check could see it, so they are not new prose
+  // somebody wrote past a gate. That is the discovery change working — a
+  // roster would have gone on omitting them — and it is also why the entry
+  // itself said "nothing in this tree reads this document at all", which was
+  // true when it was written and is now false. **That sentence has since been
+  // corrected in the entry itself**, in the same change that added the fourth
+  // reading below; the readings are declared here either way, because they are
+  // dated before/afters and not stale copies.
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
-    reason: 'the reading inside the entry, at `d8c6be2b`, which the entry states as the head it was written on',
+    reason: 'D223\'s "What it does to the queue" reading at `d8c6be2b`, the head that decision '
+      + 'was written on: the before column for the one bucket its refusal moved',
   },
+  // The FOURTH, which D223's three do not cover and which is undeclared without
+  // it: the collector's footnote reproduces the OTHER figure in circulation as
+  // well, to show that two readings fifteen minutes apart were one instrument
+  // over three trees rather than a disagreement. It is the reading on
+  // `00ccac41`, and declaring only the `d8c6be2b` pair leaves it failing.
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
-    reason: 'the collector reproducing the OTHER figure in circulation, on `00ccac41`, to show the two were one instrument over three trees rather than a disagreement',
+    reason: 'the same footnote reproducing the figure on `00ccac41` from the collector\'s own '
+      + 'seat, which is what establishes the two were never in conflict',
   },
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=5 files=12',
-    reason: 'the `d8c6be2b` and `4bb0dd8a` reading in the same sentence, which the page hard-wraps mid-reading, so this half and the next are two quotations to this matcher and one figure to a reader',
+    reason: 'the first half of the collector\'s footnote reproducing that same reading from its '
+      + 'own seat, which wraps mid-line, so the parser sees one quotation in two pieces',
   },
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'external_secret=2 none=79',
-    reason: 'the second half of that wrapped reading; declared separately because the matcher is per line and a wrap is invisible to it',
+    reason: 'the second half of that wrapped footnote line, declared separately for the same '
+      + 'reason: a quotation is per line, and neither half on its own is a reading of anything',
   },
 ];
 
