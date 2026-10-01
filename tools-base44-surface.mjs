@@ -12,8 +12,10 @@
  * count: a file may take an entity HANDLE without an immediately visible call
  * only while that file and entity are listed, so this tree's existing handles
  * are recorded in a reviewed diff and a NEW one fails. An allowance is the
- * record of an undercount, not permission for it, which is why an entry that
- * matches nothing fails too: it has outlived the defect it describes.
+ * record of an undercount, not permission for it, which is why entries are
+ * COUNTED rather than matched -- a second handle beside a declared one is still
+ * refused -- and why a declaration with nothing to match fails too: it has
+ * outlived the defect it describes.
  *
  * It is deterministic and offline: no network, no credential, no hosted
  * inventory. Test and spec files are excluded because they deliberately model
@@ -271,8 +273,9 @@ export function parseBaseline(raw) {
     throw new Error('BASELINE_INVALID_MAXIMUM');
   }
   const allowed = baseline.allowed_handles ?? [];
-  if (!Array.isArray(allowed) || new Set(allowed).size !== allowed.length
-    || allowed.some(key => typeof key !== 'string' || !key.includes('::'))) {
+  // A repeated key is legal and MEANS something: one entry per occurrence, so
+  // declaring a file's handle does not admit a second one beside it.
+  if (!Array.isArray(allowed) || allowed.some(key => typeof key !== 'string' || !key.includes('::'))) {
     throw new Error('BASELINE_INVALID_ALLOWANCE');
   }
   return { ...baseline, allowed_handles: allowed };
@@ -324,15 +327,26 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
   // whether the baseline could see it. A handle the tool cannot follow makes
   // every metric above an UNDERCOUNT, so it must not be expressible as one.
   const unaccounted = unaccountedHandles(repository);
-  const allowance = new Set(baseline.allowed_handles);
+  // Counted, not matched. A key says which file-and-entity pair is known; the
+  // COUNT says how many, so a second handle of a declared entity in a declared
+  // file is refused rather than admitted by its neighbour's entry.
+  const declared = new Map();
+  for (const key of baseline.allowed_handles) declared.set(key, (declared.get(key) ?? 0) + 1);
+  const found = new Map();
   report.unaccounted_handles = unaccounted;
-  report.refused_handles = unaccounted.filter(handle => !allowance.has(handleKey(handle)));
+  report.refused_handles = unaccounted.filter(handle => {
+    const key = handleKey(handle);
+    const nth = (found.get(key) ?? 0) + 1;
+    found.set(key, nth);
+    return nth > (declared.get(key) ?? 0);
+  });
   // A stale entry FAILS rather than passing with a note. It means somebody has
   // repaired one of the recorded handles, and the gate is the only thing that
   // will tell them the record of it must go: a passing report says it on a line
   // nobody reads, and the allowance then outlives the defect it describes.
-  report.stale_allowance = [...allowance]
-    .filter(key => !unaccounted.some(handle => handleKey(handle) === key)).sort();
+  report.stale_allowance = [...declared].sort(([a], [b]) => (a < b ? -1 : 1))
+    .filter(([key, count]) => count > (found.get(key) ?? 0))
+    .map(([key, count]) => ({ key, declared: count, found: found.get(key) ?? 0 }));
   if (args.includes('--summary')) {
     log(`base44 surface ${report.within_baseline ? 'within baseline' : 'REGRESSED'}: `
       + METRICS.map(metric => `${metric}=${report.counts[metric]}/${baseline.maximum[metric]}`).join(' '));
@@ -341,8 +355,9 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
       log(`  ${refused ? 'REFUSED' : 'allowed'} HANDLE ${handle.file}:${handle.line} takes ${handle.entity}`
         + ' and no call through it is visible');
     }
-    for (const key of report.stale_allowance) {
-      log(`  STALE ALLOWANCE ${key} takes no unaccounted handle any more. Delete the entry.`);
+    for (const entry of report.stale_allowance) {
+      log(`  STALE ALLOWANCE ${entry.key} is declared ${entry.declared} time(s) and taken ${entry.found}.`
+        + ` Delete ${entry.declared - entry.found} entry(s).`);
     }
   } else {
     log(JSON.stringify(report, null, 2));

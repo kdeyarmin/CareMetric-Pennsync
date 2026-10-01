@@ -282,6 +282,29 @@ test('a handle the allowance does not name fails the gate, and naming it clears 
     assert.equal(main(['--summary'], { repository: root, log: line => stale.push(String(line)) }), 1);
     assert.equal(stale.some(line => line.includes('STALE ALLOWANCE src/gone.js::Visit')), true);
     assert.equal(stale.some(line => line.startsWith('  REFUSED')), false, 'and not as a refusal');
+
+    // A SECOND handle of an already-declared entity in an already-declared file
+    // is refused, because one entry declares one occurrence. Found by review:
+    // keying without counting admitted the new site beside its neighbour.
+    writeFileSync(join(root, 'src', 'screen.jsx'),
+      'const handle = base44.entities.Visit;\nexport const save = payload => handle.create(payload);\n'
+      + 'export const second = base44.entities.Visit;\n');
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit'] }));
+    const second = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => second.push(String(line)) }), 1);
+    assert.equal(second.some(line => line.startsWith('  REFUSED HANDLE src/screen.jsx:3')), true);
+    assert.equal(second.some(line => line.startsWith('  allowed HANDLE src/screen.jsx:1')), true,
+      'the declared occurrence is still the first one, not whichever the surplus is');
+    // And declaring it twice admits both.
+    writeFileSync(join(root, BASELINE_FILE),
+      JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit', 'src/screen.jsx::Visit'] }));
+    assert.equal(main(['--summary'], { repository: root, log: () => {} }), 0);
+    // Dropping back to one taken handle makes the second declaration STALE.
+    writeFileSync(join(root, 'src', 'screen.jsx'),
+      'const handle = base44.entities.Visit;\nexport const save = payload => handle.create(payload);\n');
+    const shrunk = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => shrunk.push(String(line)) }), 1);
+    assert.equal(shrunk.some(line => line.includes('declared 2 time(s) and taken 1')), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -293,10 +316,11 @@ test('the baseline rejects an allowance it cannot be read against', () => {
     notAnArray: { allowed_handles: 'src/screen.jsx::Visit' },
     notStrings: { allowed_handles: [{ file: 'src/screen.jsx', entity: 'Visit' }] },
     missingEntity: { allowed_handles: ['src/screen.jsx'] },
-    duplicated: { allowed_handles: ['src/screen.jsx::Visit', 'src/screen.jsx::Visit'] },
   })) {
     assert.throws(() => parseBaseline(file(patch)), /BASELINE_INVALID_ALLOWANCE/, name);
   }
+  // A repeated key is LEGAL: it declares a second occurrence in the same file.
+  assert.deepEqual(parseBaseline(file({ allowed_handles: ['s::V', 's::V'] })).allowed_handles, ['s::V', 's::V']);
   // Absent is empty, which refuses every handle rather than allowing them.
   assert.deepEqual(parseBaseline(file({})).allowed_handles, []);
 });
