@@ -240,6 +240,31 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reading: 'records_schema=80',
     reason: 'the queue an earlier conclusion was true of, quoted to say why that conclusion expired',
   },
+  // The four below are the register collector's readings inside one decision
+  // entry, at heads it names. The entry's own note says this copy is the
+  // UNPINNED one and that disagreement with the pinned pages is to be settled by
+  // re-running the command rather than by reconciling prose — so each is a dated
+  // record, which is what this list is for, and not a copy that drifted.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
+    reason: 'the reading inside the entry, at `d8c6be2b`, which the entry states as the head it was written on',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
+    reason: 'the collector reproducing the OTHER figure in circulation, on `00ccac41`, to show the two were one instrument over three trees rather than a disagreement',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12',
+    reason: 'the `d8c6be2b` and `4bb0dd8a` reading in the same sentence, which the page hard-wraps mid-reading, so this half and the next are two quotations to this matcher and one figure to a reader',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'external_secret=2 none=79',
+    reason: 'the second half of that wrapped reading; declared separately because the matcher is per line and a wrap is invisible to it',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {

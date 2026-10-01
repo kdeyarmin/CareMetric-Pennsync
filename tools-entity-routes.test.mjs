@@ -882,10 +882,10 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The PAIRS first. Each of these four is what the corresponding ratio below
   // is computed from, so a population that moved without moving its quotient
   // fails here rather than passing silently one line further down.
-  assert.deepEqual(servedSplit, { readSites: 127, readKeys: 49, writeSites: 31, writeKeys: 25 },
+  assert.deepEqual(servedSplit, { readSites: 128, readKeys: 50, writeSites: 31, writeKeys: 25 },
     'the served pool moved. Re-derive the WHOLE bullet — both of its ratios and\n'
     + '  the sentence about past waves — rather than editing the figure that moved.');
-  assert.deepEqual(remainder, { readSites: 15, readKeys: 12, writeSites: 7, writeKeys: 5 },
+  assert.deepEqual(remainder, { readSites: 14, readKeys: 11, writeSites: 7, writeKeys: 5 },
     'the unrouted remainder moved. Re-derive the WHOLE bullet; its ratios are\n'
     + '  over a remainder, so they move when anything LEAVES it too.');
 
@@ -920,9 +920,9 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The remainder's key total is stated too, and it is the sum of the two key
   // counts rather than a fifth measurement — asserted so it cannot drift away
   // from the pair it is built from.
-  assert.equal(remainder.readKeys + remainder.writeKeys, 17);
-  assert.ok(page.includes('over seventeen entity and'),
-    `${PLAN} no longer states the remainder's key total as seventeen`);
+  assert.equal(remainder.readKeys + remainder.writeKeys, 16);
+  assert.ok(page.includes('over sixteen entity and'),
+    `${PLAN} no longer states the remainder's key total as sixteen`);
 });
 
 test('every figure the tool reports says which way it moves, and nothing else does', () => {
