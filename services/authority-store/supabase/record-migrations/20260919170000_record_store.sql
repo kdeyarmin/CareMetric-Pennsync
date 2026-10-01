@@ -2032,6 +2032,7 @@ create table "pennsync_records"."fax_retry_config" (
 alter table "pennsync_records"."fax_retry_config" enable row level security;
 alter table "pennsync_records"."fax_retry_config" force row level security;
 revoke all on "pennsync_records"."fax_retry_config" from public;
+create unique index "fax_retry_config_active_agency_unique" on "pennsync_records"."fax_retry_config" ("source_app_id", "agency_id") where "agency_id" is not null and "agency_id" <> '' and "is_active" is not false;
 
 create table "pennsync_records"."fax_template" (
   "source_app_id" text not null,

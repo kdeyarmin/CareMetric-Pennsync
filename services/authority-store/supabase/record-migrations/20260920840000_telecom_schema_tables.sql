@@ -269,6 +269,7 @@ drop policy if exists "fax_retry_config_update" on "pennsync_records"."fax_retry
 create policy "fax_retry_config_update" on "pennsync_records"."fax_retry_config" for update using ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies()));
 drop policy if exists "fax_retry_config_delete" on "pennsync_records"."fax_retry_config";
 create policy "fax_retry_config_delete" on "pennsync_records"."fax_retry_config" for delete using ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies()));
+create unique index if not exists "fax_retry_config_active_agency_unique" on "pennsync_records"."fax_retry_config" ("source_app_id", "agency_id") where "agency_id" is not null and "agency_id" <> '' and "is_active" is not false;
 
 create table if not exists "pennsync_records"."fax_template" (
   "source_app_id" text not null,

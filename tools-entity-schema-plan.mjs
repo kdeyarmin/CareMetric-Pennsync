@@ -433,6 +433,28 @@ export const CONTRACT_UNIQUE = Object.freeze({
       + 'version\'s distribution — there is no inactive half to keep, which is what makes this '
       + 'different from the point config.',
   }),
+  'FaxRetryConfig.active_agency': Object.freeze({
+    columns: Object.freeze(['agency_id']),
+    live: 'is_active',
+    contract: 'contract_fax_retry_config_save',
+    migration: '20260920870000_contract_fax_retry_config.sql',
+    because: 'At most one ACTIVE fax retry policy per agency, and here the entity asks for '
+      + 'it in its own words — `agency_id` is described as "Immutable Agency id for this '
+      + 'retry policy. New server-owned policy writes must set it and reject duplicates." '
+      + 'That is a datastore constraint requested in prose and never granted, so it is '
+      + 'this family rather than D30\'s: `UNIQUENESS_CLAIM` does not match the sentence, '
+      + 'and the claim is about a COMPOSITE scope the schema cannot express anyway. The '
+      + 'save is the point config\'s shape exactly — look for the agency\'s row, update it, '
+      + 'insert when there is none — so it is the same defect D78 was written for, since '
+      + '`select … for update` locks nothing when the row does not exist and an agency '
+      + 'configuring retries for the first time from two sessions would end with two '
+      + 'policies. Every reader takes one: `fetchCallerScopedConfig` asks for `-created_date` '
+      + 'with a limit of 1, so a second active row makes a fax worker\'s retry ceiling '
+      + 'depend on an `order by`. PARTIAL over `is_active` for the point config\'s reason — '
+      + 'a deactivated policy is history the entity may keep and no reader consults it — '
+      + 'and PLAIN columns because `agency_id` is written from the authorized agency and '
+      + 'normalised by nothing.',
+  }),
   'VisitPointConfig.active_agency': Object.freeze({
     columns: Object.freeze(['agency_id']),
     live: 'active',

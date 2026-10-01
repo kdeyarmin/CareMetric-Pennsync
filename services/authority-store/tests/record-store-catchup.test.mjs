@@ -511,21 +511,32 @@ test('a table belongs to exactly one wave, and each wave\'s size sentence is its
     /CATCHUP_WAVE_SIZE_WRONG/);
 });
 
-test('a wave carries its tables\' indexes, and today there are none to carry', () => {
-  // The ZERO is measured, and that is the whole point of this slice: no
-  // schema-only table has an index yet, so a reader added later would have
-  // nothing to prove itself against and every committed file would stay
-  // byte-identical whether it worked or not. An index on one of these tables
-  // would otherwise reach a fresh build and no store that had already applied
-  // the generated migration -- D88 one index at a time, and silently, because
-  // an absent unique index refuses nothing and `select ... for update` locks
-  // nothing when the row does not exist (D78).
-  for (const table of SCHEMA_ONLY_TABLES) {
-    assert.deepEqual(readTableIndexes(repository, table), [], table);
-  }
-  // So it is proved against a table that HAS one. `timesheet` is not in any
-  // wave; this asks only whether `idempotentTables` carries what the reader
-  // finds, which is the half that would have been missing.
+test('a wave carries its tables\' indexes, and the one that exists is in its file', () => {
+  // The gap this closes was invisible when it was closed: no schema-only table
+  // had an index, so the reader could not be wrong about anything and every
+  // committed file rendered identically with or without it. One arrived in the
+  // same change -- `FaxRetryConfig.active_agency`, the D78 key the retry-config
+  // contract catches BY NAME -- and without the reader it would have reached a
+  // fresh build and no store that had already applied the generated migration.
+  // D88 one index at a time, and silently, because an absent unique index
+  // refuses nothing and `select ... for update` locks nothing when the row does
+  // not exist.
+  //
+  // So this asserts the WHOLE set rather than a count: a wave table gaining an
+  // index has to show up here, in the diff, named.
+  const byTable = new Map(SCHEMA_ONLY_TABLES.map(table =>
+    [table, readTableIndexes(repository, table).map(entry => entry.name)]));
+  assert.deepEqual([...byTable].filter(([, names]) => names.length), [
+    ['fax_retry_config', ['fax_retry_config_active_agency_unique']],
+  ]);
+  // And it is in the wave's committed file, in the idempotent form, which is
+  // the half that would have been missing.
+  const wave = SCHEMA_ONLY_WAVES.find(entry => entry.tables.includes('fax_retry_config'));
+  const committed = readFileSync(resolve(repository, wave.migration), 'utf8');
+  assert.ok(committed.includes(
+    'create unique index if not exists "fax_retry_config_active_agency_unique"'));
+  // Proved against a second table too, one in no wave at all, so the carry is
+  // shown to work rather than shown to agree with itself.
   const carried = idempotentTables(repository, ['timesheet']);
   const [index] = readTableIndexes(repository, 'timesheet');
   assert.equal(index.name, 'timesheet_period_unique');
