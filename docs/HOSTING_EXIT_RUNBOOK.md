@@ -39,22 +39,103 @@ This is the single most consequential reading in this file, and it is not new
 here: `docs/MOBILE_RECOVERY_RUNBOOK_2026-09-22.md` §2 established it on
 2026-09-22 from two independent signals — this repository's `ios/` shell has no
 StoreKit while the live app sells four subscriptions, and it targets iOS 15.0
-while the live app requires 15.6. Today's store read agrees and dates it: the
-live build is version `1.0`, released **2026-01-05** and never updated, while
-every file under `ios/` arrived in this repository in one commit on
-**2026-09-28**, nine months later. No commit here produced what people have
-installed.
+while the live app requires 15.6. Both still hold: the store page lists all four
+subscriptions today (`$29.99`, `$79.99`, `$149.99`, `$264.99`), and the minimum
+is still 15.6.
+
+Today's store read dates it. The live build is version `1.0`, released
+**2026-01-05**, never updated. The earliest commit touching `ios/` anywhere is
+**2026-07-02** — `091a4107`, "Add iOS shell: camera/mic Info.plist strings and
+WKDownloadDelegate for blob exports" — six months after that release, and
+`appURL` held the placeholder `pennsync.example.com` until `ae7e53ef` on
+2026-07-03 pointed it at the Base44 subdomain. So no commit here produced what
+people have installed.
+
+**Read that history through the GitHub API, not a local clone.** A first version
+of this section said the whole directory arrived in one commit on 2026-09-28,
+which is this container's shallow boundary (`git rev-parse
+--is-shallow-repository` is `true`, 128 commits, and `git log` names that
+boundary as the earliest commit touching every path in the tree). The claim was
+an artefact of clone depth that happened to support the right conclusion, which
+is the worst way for a reading to be wrong.
 
 Three things follow, and the third is the one that moves this runbook's order.
 
 **What the installed app loads cannot be measured from here.** Not from `appURL`
 at any commit, because no commit here is its source. Reading it needs the binary
 or the account: installing the live app and watching its requests, or finding the
-PWABuilder output §6 of that runbook goes looking for. Both are outside this
+build artefact §6 of that runbook goes looking for. Both are outside this
 container.
+
+The public hints were tried on 2026-10-01 and none of them answers it, which is
+itself worth recording so nobody tries again. Both app origins serve a real,
+deliberately **empty** association file — `/.well-known/apple-app-site-association`
+returns `{"applinks":{"apps":[],"details":[]}}` and `/.well-known/assetlinks.json`
+returns `[]`, both as `application/json` and both distinguishable from the SPA
+shell an invented path returns. So no app claims either domain: there are no
+universal links, and nothing about the binary can be read from them. The
+marketing site at `www.caremetricai.com` (the apex 301s to it) references
+`app.caremetricai.com` and no Base44 host, which says what the product's own
+front door uses and nothing about what the binary loads. The listing's support,
+privacy and EULA URLs all name the Base44 subdomain, which is consistent with a
+January build made against it and is not proof of one.
+
+**Note a contradiction between two documents here.**
+`docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` states as fact that "Both apps load
+`caremetricai.base44.app`", while §7 of the recovery runbook says the live
+binaries' own configuration is unknown because their source was not found. The
+runbook's version is the measured one; the plan's sentence is the one a reader
+would act on, and it belongs to that page's next change.
 
 **Which version people have *is* measurable, and it is all of them.** `1.0` is
 the only version ever published, so there is no version spread to reason about.
+
+**The store listing's own links point at the hostname being retired, and this one
+is cheap to fix.** Read from the live product page on 2026-10-01: the privacy
+policy in the app's privacy panel is `https://caremetricai.base44.app/privacypolicy`,
+the developer Support link is `https://caremetricai.base44.app/support`, and the
+EULA named in the app's own description is `https://caremetricai.base44.app/eula`.
+All three are on the Base44 subdomain. Apple requires a working privacy-policy
+URL, so retiring that hostname breaks the listing itself — independently of
+anything the binary does. Changing them is **App Store Connect metadata**, which
+needs no new binary and no StoreKit, so unlike step 8 it is not blocked. Two
+pre-existing notes while they are being changed, measured the same day and not
+caused by the move: `/privacypolicy` is a real route in this bundle
+(`src/routes.jsx:226`, aliased three ways), `/support` is not — the only
+redirect is `/Support` with a capital — and `/eula` is no route at all. All
+three return the app shell on both origins today, because an unknown path does
+too.
+
+**Keeping the hostname resolving is a different claim from §7's remedy, and it
+does not replace it.** §7 of the recovery runbook says that changing the origin
+needs an App Store update on iOS and a new bundle signed with the original key on
+Android, so **both signing paths have to be recovered before the frontend
+moves**, "or the apps break at cutover and cannot be fixed afterwards". That is
+about what makes it ever *possible* to change what the installed apps load.
+Keeping `caremetricai.base44.app` resolving is about what stops them breaking
+while that has not happened. Both hold; the second is not a cheaper substitute
+for the first, and nothing here reduces §7's requirement, which the plan page
+already carries as a Stage L row ahead of the frontend move.
+
+Three refinements to §7 that this section's findings supply, offered to that
+document rather than asserted here:
+
+- **Its iOS bullet reasons from this repository's shell** ("hard-codes `appURL`
+  … changing either needs an App Store update"), and §2 of the same document
+  establishes that shell is not the live app. The iOS half therefore describes a
+  binary nobody has installed.
+- **"Cannot be fixed afterwards" is Android's**, the way "never regenerated" was
+  in §5.1. Lose the Android upload key and the app can never be updated again;
+  on iOS account access can be regained and a binary shipped later, so what
+  cannot be undone there is the *window* in which users are broken, not the
+  ability to fix it.
+- **"The frontend moves" is two events here, not one.** Step 10 moves
+  `app.caremetricai.com` and does not touch `caremetricai.base44.app`, which
+  keeps resolving to Base44 until step 11 ends. So if the live app loads the
+  Base44 subdomain, step 10 changes nothing for it; if it loads the custom
+  domain, step 10 is the event, and our host must then serve what it needs —
+  which is the `/login` precondition above. Which of the two strands it depends
+  on the unknown this section opened with.
 
 **So the transitional binary cannot be the protection for installed apps.** A
 build from this tree must not be submitted over the live app at all: the recovery
@@ -131,10 +212,11 @@ Railway reads and release writes; no other thread writes Railway.
 | 5 | Set `PENNSYNC_SITE_RELEASED=enabled-v1` and verify asset-for-asset against the deployment's own hostname | release thread | yes — unset it |
 | 6 | Confirm `/login` no longer belongs to Base44 on this origin (the instrument above) | Claude | n/a, a reading |
 | 7 | Point `APP_PUBLIC_URL` at `https://app.caremetricai.com` in the Base44 function environment | **Kevin** — Base44 account | yes, by restoring the previous value |
+| 7b | Repoint the App Store listing's privacy-policy, Support and EULA URLs off `caremetricai.base44.app` | **Kevin** — App Store Connect metadata, no binary and not blocked by step 8 | yes, by restoring the URLs |
 | 8 | *Blocked, and not on the critical path:* a replacement binary from this tree needs StoreKit purchase and restore first (recovery runbook §5.2), then Apple account continuity for `com.caremetric.ai` | **Kevin** — the in-app-purchase decision, the Apple account, and the no-upload gate in `docs/APP_STORE_SUBMISSION_CHECKLIST.md` | a release can be pulled; an installed update cannot be taken back |
 | 9 | *Only if step 8 ever happens:* wait for adoption of that build | — | — |
 | 10 | Repoint `app.caremetricai.com` at the owned host in GoDaddy | **Kevin** — DNS | yes, by restoring the A record |
-| 11 | **Keep `caremetricai.base44.app` resolving.** This is what protects the installed app, not step 8 | **Kevin** — Base44 account | — |
+| 11 | **Keep `caremetricai.base44.app` resolving.** This is what protects installed copies while step 8 is blocked. It does not replace recovering the signing paths — see below | **Kevin** — Base44 account | — |
 
 Steps 8 and 9 are bracketed on purpose. They were written as the protection for
 installed apps and they are not: the binary they describe cannot be submitted
@@ -179,8 +261,15 @@ hostname the product is leaving. It does **not** mean the link opens the
 installed app — that needs a universal-link association, and there is none in
 `ios/PennSync/` to measure.
 
-Instrument: there is none from here. This is a value in Kevin's Base44 function
-environment, not in the tree, and nothing in this repository can read it — so
+Step 7b is the same shape from the other side and is numbered with it for that
+reason: another value outside the code that names the hostname being retired, in
+App Store Connect rather than the function environment. The section above has the
+three URLs as read on 2026-10-01 and the two pre-existing route notes that go
+with changing them. Unlike step 8 it needs no binary, so it is not blocked.
+
+Instrument: there is none from here for `APP_PUBLIC_URL`. This is a value in
+Kevin's Base44 function environment, not in the tree, and nothing in this
+repository can read it — so
 confirm it by sending one invitation to an address he controls and reading the
 link, which is his to do and is also a message to a real person.
 
