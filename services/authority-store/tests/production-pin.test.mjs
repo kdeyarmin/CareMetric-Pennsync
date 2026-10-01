@@ -64,13 +64,12 @@ test('production pin diagnostics can be printed without carrying CLI output', ()
 test('a local stack can be pinned to the production app and refuses the staging app',
   { timeout: 20 * 60 * 1000 }, async () => {
     const pin = await pinLocalStackToProduction();
-    // The ROUTE is reported rather than asserted: which of the two a Supabase
-    // local stack permits is what this probe measures, and the second run of
-    // this job answered that the role write is refused outright. What is
-    // asserted is the pin itself, which is the same either way -- and `source`
+    // The route is named so that a change of route cannot pass quietly: which
+    // one a Supabase local stack permits took three runs of this job to
+    // establish, and the module records what the other two answered. `source`
     // being `setting` rather than `default` is what makes a production label
     // mean a pin that was chosen rather than one that happens to match.
-    assert.ok(['session-options', 'role-setting'].includes(pin.via), pin.via);
+    assert.equal(pin.via, 'superuser-role-setting');
     assert.deepEqual(
       { app_id: pin.app_id, label: pin.label, source: pin.source },
       { app_id: PRODUCTION_APP, label: 'production', source: 'setting' },

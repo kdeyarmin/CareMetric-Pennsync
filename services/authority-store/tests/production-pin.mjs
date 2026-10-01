@@ -17,7 +17,11 @@
 //
 //   1. set the pin setting on the ROLE rather than on the database, which puts a
 //      row in `pg_db_role_setting` with `setdatabase = 0` — cluster-scoped, so
-//      it is NOT stored inside the database that is about to be dropped;
+//      it is NOT stored inside the database that is about to be dropped. The
+//      write is made as the stack's SUPERUSER, because storing a custom
+//      placeholder parameter on a role or a database is a superuser-only write
+//      and a local stack's `postgres` is not one; the function below records the
+//      two routes that were measured not to work, and why;
 //   2. `supabase db reset`, which recreates the database and re-applies the
 //      migrations, so the pin block runs again and now reads the setting;
 //   3. read `deployment_app_id()` and `deployment_label()` back FROM A NEW
@@ -45,6 +49,14 @@ export const PRODUCTION_APP = '694ec16e72e01b60d22f7cbf';
 export const STAGING_APP = '6a9881683dc68a0bd54f1ef7';
 /** The setting the pin migration reads once. Mirrors `tools-pennsync-provision.mjs`. */
 export const PIN_SETTING = 'pennsync.deployment_app_id';
+/**
+ * The local stack's superuser.
+ *
+ * Needed because storing a placeholder parameter on a role is a superuser-only
+ * write, and the role `supabase status` publishes is not one. Local stacks only:
+ * nothing hosted is ever reached from here.
+ */
+export const SUPERUSER = 'supabase_admin';
 
 /**
  * What may be printed when this module throws. Everything else becomes the
@@ -116,39 +128,40 @@ export async function pinLocalStackToProduction() {
   // pass something else.
   if (!/^[a-f0-9]{24}$/.test(PRODUCTION_APP)) fail('PRODUCTION_PIN_APP_MALFORMED');
 
-  // TWO ROUTES, in order, because which of them a Supabase local stack permits
-  // is the thing this probe exists to find out and could not be answered from
-  // here: this container has no Docker and no CLI. The second run of this job
-  // refused the role write outright, so the probe no longer asserts a route --
-  // it reports which one carried the pin, and the caller records that.
+  // ONE ROUTE, and the two that were MEASURED not to work are recorded here
+  // rather than retried, because each costs a full reset per run:
   //
-  //   session-options: `PGOPTIONS` on the CLI's own process, so the migration
-  //     runs in a session that already has the setting. It mutates nothing
-  //     cluster-wide and needs no privilege beyond connecting, which is why it
-  //     is tried first. It depends on the CLI passing its environment through to
-  //     whatever opens the migration connection, which is the unproven part.
-  //   role-setting: `ALTER ROLE ... SET`, which puts a row in
-  //     `pg_db_role_setting` with `setdatabase = 0` -- cluster-scoped, so it is
-  //     NOT stored inside the database the reset is about to drop. For a custom
-  //     parameter with no extension behind it this is a privileged write, and a
-  //     local stack's `postgres` role is not necessarily a superuser.
+  //   `PGOPTIONS` on the CLI's own process, so the migration would run in a
+  //     session that already carried the setting. It reached nothing: the reset
+  //     completed and the store came back pinned to staging, so whatever opens
+  //     the migration connection does not inherit this process's environment.
+  //   `ALTER ROLE ... SET` as the role `supabase status` publishes -- `postgres`
+  //     -- which answered SQLSTATE 42501, insufficient_privilege. A custom
+  //     parameter with no extension behind it is a placeholder, and PostgreSQL
+  //     will not let a non-superuser store one on a role or a database because it
+  //     cannot check who may set it. A local stack's `postgres` is not a
+  //     superuser.
   //
-  // Each route is followed by a reset and a read-back, and a route that leaves
-  // the pin at STAGING -- the default -- is treated as not having worked rather
-  // than as an error, because that is exactly how it presents.
-  const options = `-c ${PIN_SETTING}=${PRODUCTION_APP}`;
-  await cli(['db', 'reset', '--workdir', workdir], {
-    env: { ...process.env, PGOPTIONS: options },
-  });
-  let pin = await readPin(databaseUrl);
-  if (pin.label === 'production') return describe(pin, 'session-options');
-
-  await withClient(databaseUrl, 'PRODUCTION_PIN_SETTING_WRITE_FAILED', client =>
+  // So the write is made by the stack's own SUPERUSER, `supabase_admin`, reached
+  // by taking the published URL and changing only its user. The password is the
+  // stack's, derived from its own status rather than written down here, and this
+  // is a throwaway local cluster either way. Role-scoped rather than
+  // database-scoped so it survives the reset dropping the database, and it is
+  // left behind deliberately: the job owns this stack and stops it at the end.
+  const superuserUrl = new URL(databaseUrl);
+  superuserUrl.username = SUPERUSER;
+  await withClient(superuserUrl.href, 'PRODUCTION_PIN_SETTING_WRITE_FAILED', client =>
     client.query(`alter role postgres set ${PIN_SETTING} = '${PRODUCTION_APP}'`));
+
+  // Recreates the database and re-applies the migrations, so the pin block runs
+  // again -- this time in a session that reads the setting.
   await cli(['db', 'reset', '--workdir', workdir]);
-  pin = await readPin(databaseUrl);
+
+  // A NEW session: a role setting only reaches sessions opened after it, which
+  // is the whole point of the sequence.
+  const pin = await readPin(databaseUrl);
   if (pin.label !== 'production') fail('PRODUCTION_PIN_NOT_APPLIED');
-  return describe(pin, 'role-setting');
+  return describe(pin, 'superuser-role-setting');
 }
 
 /** Connect, do one thing, always close. The code names which step failed. */
