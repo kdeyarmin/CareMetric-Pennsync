@@ -264,6 +264,17 @@ export function readExpectations(root) {
  * and comparing `added` against `expected.absent` by file and name is what tells
  * them apart. Re-pinning with `--write` is correct for a move and hides a real
  * regression, so make that comparison before running it.
+ *
+ * **A move can also cross files, and then "same file" is not the test.**
+ * Measured 2026-10-01: lifting `HighRiskPatientsWidget`'s
+ * `getScopedPatientAlerts` query into `useHighRiskPatientAlerts.js` so the
+ * dashboard's high-risk priority and its widget share one query key removed
+ * the site at `HighRiskPatientsWidget.jsx:26` and added one at
+ * `useHighRiskPatientAlerts.js:53`, with the same capability name and a
+ * different file. What identifies it as a move is that the CALL is the same
+ * one — the same arguments, from code the old file now imports — and the
+ * totals are unchanged. A real arrival raises `absent` by the number it adds;
+ * a move leaves it where it was, which is the figure to read before `--write`.
  */
 export function checkCallSites(root) {
   const census = censusCallSites(root);

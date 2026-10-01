@@ -19,8 +19,8 @@ const severityIcons = {
   low: CheckCircle2,
 };
 
-export default function TodayPriorities({ currentUser, visits, patients, incidents, noteConversions, noteConversionsAvailable, messages, dashboardError }) {
-  const priorities = buildTodayPriorities({ currentUser, visits, patients, incidents, noteConversions, noteConversionsAvailable, messages, dashboardError });
+export default function TodayPriorities({ currentUser, visits, patients, incidents, patientAlerts, noteConversions, noteConversionsAvailable, messages, dashboardError }) {
+  const priorities = buildTodayPriorities({ currentUser, visits, patients, incidents, patientAlerts, noteConversions, noteConversionsAvailable, messages, dashboardError });
 
   return (
     <Card className="border-navy-100 bg-gradient-to-br from-white via-white to-navy-50/40 shadow-sm">

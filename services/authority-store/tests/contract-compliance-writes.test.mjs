@@ -27,7 +27,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
@@ -62,10 +62,14 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // This migration is the newest PENDING one, so the ordering guard is its.
-  // See `assertNewestRecordMigration` for why the check moves rather than
-  // accumulating — the read half's copy retired when this file arrived.
-  assertNewestRecordMigration(applied, WRITES_NAME);
+  // The ordering guard is NOT here any more. This migration merged, at
+  // `00ccac41`, so it is part of what a store already holds and a later
+  // change's file legitimately sorts after it — which is the retirement
+  // `assertNewestRecordMigration` documents, not a widening. It moved on to
+  // `20260920680000_dashboard_visit_documentation.sql`, in
+  // `contract-dashboard.test.mjs`, exactly as it moved here from the read
+  // half. The directory/applied comparison above stays, because that one is
+  // about this suite seeing the whole store rather than about ordering.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [

@@ -20,6 +20,7 @@ import ProactiveClinicalSupport from "@/components/clinical/ProactiveClinicalSup
 import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
 import TodayPriorities from "@/components/dashboard/TodayPriorities.jsx";
+import { useHighRiskPatientAlerts } from "@/components/dashboard/useHighRiskPatientAlerts";
 import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -140,6 +141,10 @@ export default function Dashboard() {
     : careScope === "both"
     ? "Home Health & Hospice"
     : "Home Health";
+  // The high-risk priority and HighRiskPatientsWidget ask one question through
+  // one query key, so react-query serves both from a single request.
+  const { data: patientAlerts = [] } = useHighRiskPatientAlerts();
+
   const clinical = isClinicalUser(currentUser);
   const patientAccess = canViewPatients(currentUser);
   const eyebrow = clinical ? careScopeLabel : staffRoleLabel(getStaffRole(currentUser));
@@ -219,6 +224,7 @@ export default function Dashboard() {
             visits={visits}
             patients={patients}
             incidents={incidents}
+            patientAlerts={patientAlerts}
             noteConversionsAvailable={false}
             dashboardError={dashboardError}
           />

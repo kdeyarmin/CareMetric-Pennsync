@@ -73,3 +73,89 @@ test('buildTodayPriorities does not mutate Date values carried on records', () =
 
   assert.equal(visitDate.getTime(), before);
 });
+
+// --- The two priorities D72 measured as broken -------------------------------
+//
+// Both read columns that exist in neither store: `visit.note_id`, so the
+// negation `!visit.note_id` was always true and the tile counted EVERY
+// completed visit; and `patient.risk_level` / `patient.hospitalization_risk`,
+// so the high-risk tile could never fire at all. These cases pin what each one
+// counts now. Each was watched to fail against the old implementation first.
+
+test('a completed visit that carries a nurse note is not counted as needing one', () => {
+  const priorities = buildTodayPriorities({
+    now: NOW,
+    currentUser: { email: 'nurse@example.com', role: 'user' },
+    visits: [
+      { id: 'v1', patient_id: 'p1', status: 'completed', visit_date: '2026-07-22', nurse_notes: 'Wound dressing changed; no drainage.' },
+      { id: 'v2', patient_id: 'p1', status: 'completed', visit_date: '2026-07-22', nurse_notes: '   ' },
+      { id: 'v3', patient_id: 'p1', status: 'completed', visit_date: '2026-07-22' },
+    ],
+  });
+
+  const missing = priorities.find((priority) => priority.id === 'completed-visits-missing-notes');
+  assert.ok(missing, 'the two undocumented visits still raise the priority');
+  assert.match(missing.title, /^2 completed visits need notes$/);
+});
+
+test('the owned store\'s has_documentation decides when it is present', () => {
+  // The dashboard contract projects a boolean rather than the note text, so a
+  // payload from that path carries no `nurse_notes` to fall back on.
+  const priorities = buildTodayPriorities({
+    now: NOW,
+    currentUser: { email: 'nurse@example.com', role: 'user' },
+    visits: [
+      { id: 'v1', patient_id: 'p1', status: 'completed', visit_date: '2026-07-22', has_documentation: true },
+      { id: 'v2', patient_id: 'p1', status: 'completed', visit_date: '2026-07-22', has_documentation: false },
+    ],
+  });
+
+  const missing = priorities.find((priority) => priority.id === 'completed-visits-missing-notes');
+  assert.match(missing.title, /^1 completed visit needs? notes?$/);
+});
+
+test('high-risk patients come from active high and critical alerts', () => {
+  const priorities = buildTodayPriorities({
+    now: NOW,
+    currentUser: { email: 'nurse@example.com', role: 'user' },
+    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace' }, { id: 'p2', first_name: 'Grace', last_name: 'Hopper' }],
+    patientAlerts: [
+      { id: 'a1', patient_id: 'p1', status: 'active', severity: 'high' },
+      { id: 'a2', patient_id: 'p2', status: 'active', severity: 'critical' },
+      { id: 'a3', patient_id: 'p2', status: 'active', severity: 'high' },
+    ],
+  });
+
+  const highRisk = priorities.find((priority) => priority.id === 'high-risk-patients');
+  assert.ok(highRisk, 'the priority fires');
+  assert.match(highRisk.title, /^2 high-risk patients to review$/, 'one row per patient, not per alert');
+  assert.match(highRisk.description, /Grace Hopper/, 'the critical alert leads');
+});
+
+test('resolved and low-severity alerts raise no high-risk priority', () => {
+  const priorities = buildTodayPriorities({
+    now: NOW,
+    currentUser: { email: 'nurse@example.com', role: 'user' },
+    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace' }],
+    patientAlerts: [
+      { id: 'a1', patient_id: 'p1', status: 'resolved', severity: 'critical' },
+      { id: 'a2', patient_id: 'p1', status: 'active', severity: 'medium' },
+      { id: 'a3', patient_id: 'p1', status: 'active', severity: 'high', resolved_date: '2026-07-21' },
+    ],
+  });
+
+  assert.equal(priorities.some((priority) => priority.id === 'high-risk-patients'), false);
+});
+
+test('a patient row claiming a risk level raises nothing, because no such column exists', () => {
+  // The three spellings this used to read — risk_level, riskLevel and
+  // hospitalization_risk — are on no patient table and in no entity schema, so
+  // reading them was dead code that made the tile look implemented.
+  const priorities = buildTodayPriorities({
+    now: NOW,
+    currentUser: { email: 'nurse@example.com', role: 'user' },
+    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace', risk_level: 'critical', hospitalization_risk: 'high' }],
+  });
+
+  assert.equal(priorities.some((priority) => priority.id === 'high-risk-patients'), false);
+});

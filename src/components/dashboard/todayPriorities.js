@@ -42,6 +42,48 @@ function countOpenMessages(messages = [], user) {
   return messages.filter((message) => !message?.read_by?.includes(user?.email)).length;
 }
 
+// Does this visit carry documentation?
+//
+// This used to ask `!visit.note_id`, and no store has ever had a `note_id`
+// column on a visit — so the negation was always true and the tile counted
+// every completed visit rather than the undocumented ones. `nurse_notes` is
+// the column the rest of the product already treats as the visit's
+// documentation (DataQualityDashboard, ReportsCenter, AIAutoTagger all read
+// it), so this asks the same question they do.
+//
+// The owned store projects `has_documentation` instead of the note text — a
+// dashboard payload has no business carrying a nurse's narrative — so the
+// boolean wins where it is present and the text is the Base44 path's answer.
+function visitHasDocumentation(visit) {
+  if (typeof visit?.has_documentation === 'boolean') return visit.has_documentation;
+  return String(visit?.nurse_notes ?? '').trim() !== '';
+}
+
+const ALERT_SEVERITY_RANK = { critical: 2, high: 1 };
+
+// Patients with an open high or critical alert, most severe first.
+//
+// The predecessor read `patient.risk_level`, `patient.riskLevel` and
+// `patient.hospitalization_risk`. None of the three is a column on any patient
+// table or in any entity schema, so the tile could never fire. Nor are
+// `PatientRiskAssessment` and `RiskAnalysis` an answer: both have tables and
+// neither has a single writer anywhere in this repository. `PatientAlert` is
+// what the product actually populates, and it is what HighRiskPatientsWidget
+// on this same dashboard already reads.
+function highRiskPatientIds(patientAlerts) {
+  const bySeverity = new Map();
+  for (const alert of patientAlerts) {
+    const rank = ALERT_SEVERITY_RANK[String(alert?.severity || '').toLowerCase()];
+    if (!rank) continue;
+    if (String(alert?.status || '').toLowerCase() !== 'active') continue;
+    if (alert?.resolved_date) continue;
+    const patientId = alert?.patient_id;
+    if (!patientId) continue;
+    if ((bySeverity.get(patientId) ?? 0) < rank) bySeverity.set(patientId, rank);
+  }
+  return [...bySeverity.entries()].sort((a, b) => b[1] - a[1]).map(([patientId]) => patientId);
+}
+
 function priorityScore(priority) {
   const severity = { critical: 0, high: 1, medium: 2, low: 3 }[priority.severity] ?? 4;
   return severity * 100 + (priority.sortOrder ?? 50);
@@ -56,6 +98,7 @@ export function buildTodayPriorities({
   visits = [],
   patients = [],
   incidents = [],
+  patientAlerts = [],
   noteConversions = [],
   noteConversionsAvailable = true,
   messages = [],
@@ -97,7 +140,7 @@ export function buildTodayPriorities({
     }));
   }
 
-  const completedWithoutNotes = visits.filter((visit) => visit?.status === 'completed' && !visit?.note_id && isToday(visit.visit_date || visit.completed_date, now));
+  const completedWithoutNotes = visits.filter((visit) => visit?.status === 'completed' && !visitHasDocumentation(visit) && isToday(visit.visit_date || visit.completed_date, now));
   if (completedWithoutNotes.length > 0) {
     priorities.push(createPriority({
       id: 'completed-visits-missing-notes',
@@ -111,15 +154,12 @@ export function buildTodayPriorities({
     }));
   }
 
-  const highRiskPatients = patients.filter((patient) => {
-    const risk = String(patient?.risk_level || patient?.riskLevel || '').toLowerCase();
-    return risk === 'high' || risk === 'critical' || patient?.hospitalization_risk === 'high';
-  });
-  if (highRiskPatients.length > 0) {
+  const highRiskIds = highRiskPatientIds(patientAlerts);
+  if (highRiskIds.length > 0) {
     priorities.push(createPriority({
       id: 'high-risk-patients',
-      title: `${highRiskPatients.length} high-risk patient${highRiskPatients.length === 1 ? '' : 's'} to review`,
-      description: `Prioritize ${patientName(highRiskPatients[0])} and confirm follow-up, education, and escalation plans.`,
+      title: `${highRiskIds.length} high-risk patient${highRiskIds.length === 1 ? '' : 's'} to review`,
+      description: `Prioritize ${patientName(patientById.get(highRiskIds[0]))} and confirm follow-up, education, and escalation plans.`,
       actionLabel: 'Review patients',
       to: '/Patients',
       severity: 'high',

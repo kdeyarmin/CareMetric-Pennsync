@@ -1562,7 +1562,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 27 |
+  | `read-only` (derived) | 55 | 28 |
   | `mutating` (derived) | 54 | 39 |
   | `integration` (derived) | 19 | 17 |
 
@@ -1632,6 +1632,19 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   the two conflicting readings above were both correct for their own tree, and
   reconciling them by arithmetic is how a delta gets stated over a total that
   no longer exists.
+
+  The `read-only` row's migrations rose by one with the dashboard
+  documentation signal, and the derivation again rather than the number: that
+  forward migration redefines `dashboard_visit`, which `contract_dashboard`
+  projects through, so the wave carrying `getDashboardData` gains it as a
+  prerequisite. No handler count moved anywhere, which is the check to read —
+  the change adds no capability, it widens one projection by a derived
+  boolean. The other two rows did NOT move, and that is worth saying because
+  the paragraphs above record the opposite case: these rows are each wave's
+  OWN prerequisites, not the cumulative value, so a migration reaching only
+  `read-only`'s handlers moves only `read-only` — while the value `--wave
+  mutating` emits does grow, because THAT is the superset. All three were
+  re-derived from `--summary` on this tree rather than added to.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
