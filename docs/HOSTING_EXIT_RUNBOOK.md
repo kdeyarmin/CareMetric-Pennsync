@@ -472,13 +472,28 @@ certificate for `app.caremetricai.com` while it serves that hostname. After step
 moves the record, remove the binding there too, or two places keep claiming the
 same name.
 
-**The brand logo every screen renders.** `src/lib/brand.js` hard-codes
-`BRAND_LOGO_URL` at `qtrypzzcjebvfcihiynt.supabase.co`, Base44's own storage, and
-fifteen modules import it — `PageLoader.jsx` and `SignInScreen.jsx` among them, so
-the first screen of a cold start fetches it. This one is ours to fix rather than to
-revoke, and it is not only the phone's: the web app loads the same URL, so the
-image has to be served from our own host before the Base44 account closes. The file
-holds one constant, so the change is the asset's move rather than the code's.
+**Three images the product serves from Base44's storage.** These are ours to fix
+rather than to revoke, and they are the one item here that breaks something a user
+sees. All three point at `qtrypzzcjebvfcihiynt.supabase.co`, under a bucket named
+`base44-prod`, which this repository's own SSRF allowlist names as a Base44 host
+(`base44/functions/importProvidersCsv/entry.ts:154` and two siblings). Read from
+every `https://` in production `src/` and `services/` code on 2026-10-01, test files
+excluded:
+
+- `src/lib/brand.js` holds `BRAND_LOGO_URL`, imported by fifteen modules including
+  `PageLoader.jsx` and `SignInScreen.jsx`, so the first screen of a cold start
+  fetches it. This is the one the installed app's privacy report showed.
+- `src/components/education/HandoutPreview.jsx:42` hard-codes an agency letterhead
+  image in the patient-education preview, reached from `PatientEducationHub.jsx`.
+- `services/pennsync-api/branded-email.mjs:34` puts the same brand logo in the mail
+  the **owned** service sends. That one is worth reading twice: it is not Base44
+  code, so an exit that moved every capability across would still be sending mail
+  whose header image is served by the account being closed, and a recipient would
+  see a broken image rather than an error anyone reports.
+
+Each is a URL constant rather than a mechanism, so the work is moving the two image
+files to our own host and changing three lines. Nothing here blocks a step, and
+nothing in this runbook's order depends on it.
 
 **The hosted data, the user accounts and the generated native build**, which are
 the other half of the exit rather than this runbook's, named here only so the list
