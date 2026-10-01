@@ -191,19 +191,47 @@ tonight. It is also the argument for the hardening rather than against it: the
 original skipped on a missing base, so under that version CI would have gone
 green with the only real-document assertion silently not running.
 
-**The repair removes the dependency instead of hardening it.** The base's 168
-numbers are typed beside the collection's thirty-five — as a range minus a typed
-list of absent numbers, the subtraction being over that list rather than over
-the document, so it is not the tautology above — and the membership assertion
-needs no git at all. Measured in a directory with no repository in it: the
+**The repair removes the dependency instead of hardening it.** The base's
+numbers are typed alongside the collection's thirty-five — as a range minus a
+typed list of absent numbers, the subtraction being over that list rather than
+over the document, so it is not the tautology above — and the membership
+assertion needs no git at all. **Neither total is written here, and the reason is
+this entry's own rule.** This sentence carried the base's as `168` and it was
+wrong within the night: #359 merged, the base grew to 203, and the figure sat
+here describing a list it no longer described. Worse than stale, the word it
+carried was `beside`, and once a collection merges its numbers are INSIDE the
+base rather than next to it — so renumbering alone would have left 203 beside
+thirty-five, which a reader adds to 238. Read both off `BASE_NUMBERS` and
+`EXPECTED_NEW`; state the property and let the diff carry the count. Measured in a directory with no repository in it: the
 assertion runs, and dropping one heading from a copy of this document fails it
 with `HEADING_MISSING:D190`. The git read survives as CORROBORATION, checking
 that the typed base still describes the base document, and it skips when the ref
 is absent — which is safe in a way it was not before, because what a skip now
 costs is coverage of the typed list's freshness and not coverage of membership.
 The skip says exactly that rather than leaving a reader to work it out. **And the
-corroboration carries the differential**: the same comparison must FAIL against
-the base document, or it is proving only that it ran.
+corroboration carries a differential**: the same comparison must FAIL against the
+base document, or it is proving only that it ran.
+
+**That differential stands down when the collection merges, and finding out cost
+one more correction in this same entry.** The collection list's paragraph promises
+it goes INERT rather than wrong — once a collection merges, the base holds its
+numbers and the membership check simply guards every entry instead of these. The
+promise does not reach the differential: inert means the base document satisfies
+the expected set, so a flat assertion that the comparison must fail turns the one
+event the design expects into a red. It now branches, reports which branch ran,
+and in the inert branch asserts the complement — that the base does satisfy the
+set — because a differential that silently stops differentiating is this write-up's
+subject in miniature. **The same promise did not reach the expected set's
+ARITHMETIC either, and that one was already wrong when it was read.** The set was
+built by concatenating the base with the collection, so with the overlap total it
+counted the merged numbers twice: a 203-heading document checked against a
+238-entry expectation. Membership was unharmed, because every consumer of it
+builds a `Set`; only the LENGTH was wrong, and only two assertions read the
+length. **The sentence above this one predicted that number** — it says a reader
+adds 203 and thirty-five to 238 — and it was written without anyone checking
+whether the code did the addition it was warning a reader against. It did.
+**Naming a hazard is not measuring for it**, and the gap between the two was one
+paragraph.
 
 **One page had to be corrected in the same change, and the reason generalises.**
 `AGENTS.md` described the test-wiring contract as covering `services/` alone and
@@ -226,7 +254,7 @@ the useful half, so the check was written rather than the sentence deleted, and
 it now states what it catches instead of implying it — that arithmetic cannot
 fail on its own, because the base is derived as the range minus the absent list
 and both sides move together, so what the guards catch is an absent number
-outside `1..179`, which removes nothing, or one repeated, which removes a number
+outside `1..224`, which removes nothing, or one repeated, which removes a number
 twice. **Cutting both guards out of the module fails exactly one test and leaves
 the other thirteen green**, which is why they were worth asserting: nothing else
 in the suite can see their absence.
@@ -3554,6 +3582,17 @@ here:
    bypasses anything, the sweep's writes are attributable to a visible and
    revocable member, and the contract needed is the one written here. It costs
    a maintenance identity per agency, in `identity_map` and `membership`.
+   **And that cost makes this decision the OWNER'S, which nothing above says.**
+   A maintenance identity per agency is a person who never held a Base44
+   account, and D6 as extended by D99 admits one only as `locally_verified`
+   with the path refused unless `PENNSYNC_ENROLL_NEW_STAFF` reads exactly
+   `enabled-v1` — his own unanswered question
+   (`docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md` D6 row;
+   `tools-pennsync-enroll.mjs:86`, refusal at `:34`). So the ownership follows
+   from shape 1's cost rather than from anything in this section, and a reader
+   who takes "a decision about identity" as an architecture question will
+   conclude it is unblocked and be wrong. **Do not start shape 1 work on that
+   reading.**
 2. **A `pennsync_private` definer with no caller.** Rejected on inspection: a
    definer does not escape forced RLS either, so it would need a bypass role,
    which is the one thing the record store's design forbids outright.
@@ -13906,7 +13945,7 @@ self-asserted authority D23 spent its whole decision removing.
 
 `setNurseDutyStatus` is not in this list because it is **written**: D82 named
 it as the one capability its decision actually reached, and
-`20260920680000_contract_duty_status.sql` is that port, in D81's partial
+`20260920690000_contract_duty_status.sql` is that port, in D81's partial
 shape. `entity_authorization` is five, and stays five on purpose.
 
 - **`userManagement` and `userManagementV2` are ONE capability.** Their
