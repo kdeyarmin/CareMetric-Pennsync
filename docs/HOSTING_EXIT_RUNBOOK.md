@@ -20,7 +20,9 @@ property. Each step names its own instrument; run the instrument.
 | Both origins' server chain | `server: cloudflare`, `via: 1.1 Caddy`, `x-render-origin-server: uvicorn` |
 | Response headers | `referrer-policy`, `strict-transport-security: max-age=31536000`, `x-content-type-options: nosniff`, `x-frame-options: DENY` |
 | `caremetricai.base44.app` only | `x-robots-tag: noindex, follow` and a `robots` meta; the custom domain is indexable |
-| What the iOS app loads | `https://caremetricai.base44.app/` (`ios/PennSync/WebViewController.swift:38`) — **not** the custom domain |
+| What **this repository's** iOS shell loads | `https://caremetricai.base44.app/` on `main`; `app.caremetricai.com` on the transitional branch |
+| What the **installed** iOS app loads | **unknown, and not readable here** — see below |
+| The live App Store build | version `1.0`, released 2026-01-05, **never updated**, minimum iOS 15.6 (`itunes.apple.com/lookup?id=6757097720`, read 2026-10-01) |
 
 Instruments: `curl -sS -D - https://app.caremetricai.com/ -o /dev/null` and
 `curl -H 'accept: application/dns-json'
@@ -31,15 +33,52 @@ either origin. This container's outbound HTTPS is re-signed by an egress
 gateway, so `openssl s_client` reports the gateway's certificate and not the
 origin's. Read that from a normal network before relying on it.
 
+## The installed iPhone app is not built from this repository
+
+This is the single most consequential reading in this file, and it is not new
+here: `docs/MOBILE_RECOVERY_RUNBOOK_2026-09-22.md` §2 established it on
+2026-09-22 from two independent signals — this repository's `ios/` shell has no
+StoreKit while the live app sells four subscriptions, and it targets iOS 15.0
+while the live app requires 15.6. Today's store read agrees and dates it: the
+live build is version `1.0`, released **2026-01-05** and never updated, while
+every file under `ios/` arrived in this repository in one commit on
+**2026-09-28**, nine months later. No commit here produced what people have
+installed.
+
+Three things follow, and the third is the one that moves this runbook's order.
+
+**What the installed app loads cannot be measured from here.** Not from `appURL`
+at any commit, because no commit here is its source. Reading it needs the binary
+or the account: installing the live app and watching its requests, or finding the
+PWABuilder output §6 of that runbook goes looking for. Both are outside this
+container.
+
+**Which version people have *is* measurable, and it is all of them.** `1.0` is
+the only version ever published, so there is no version spread to reason about.
+
+**So the transitional binary cannot be the protection for installed apps.** A
+build from this tree must not be submitted over the live app at all: the recovery
+runbook §5.2 records that it would remove purchase and restore for current paying
+subscribers of four live products and lower the declared minimum OS. That is
+Stage L's in-app-purchase row and it is a product decision, not a hosting one. So
+what protects installed apps across the hosting move is **keeping
+`caremetricai.base44.app` resolving** — step 11 below, which is therefore
+load-bearing and open-ended rather than a tidy-up, and stays so until either the
+live app is known to load the custom domain or a StoreKit-complete replacement is
+live.
+
 ## Two facts that decide the order of everything below
 
 **The custom domain already serves the same application.** `app.caremetricai.com`
 and `caremetricai.base44.app` return the same build — byte-identical except for
 three injected tags (`og:url`, `twitter:url`, `canonical`) and the `robots` meta.
-So the native build can be moved onto the custom domain **while Base44 is still
-serving it**, which is the whole trick: once installed apps load
-`app.caremetricai.com`, the hosting move is a DNS change and needs no second
-App Store release.
+So the native **source** can be moved onto the custom domain while Base44 is
+still serving it, and a replacement binary built from this tree at any later date
+needs no coordination with the hosting move. An earlier version of this paragraph
+went one step further and said the hosting move therefore needs no App Store
+release — which is true of a binary built from this tree and says nothing about
+the one people have installed, since that was built somewhere else. The section
+above is the correction; step 11 is what it costs.
 
 **`/login` on both origins is a Base44 page, not our bundle.** Measured:
 `app.caremetricai.com/login` returns a 17,441-byte document that is not the SPA
@@ -92,15 +131,18 @@ Railway reads and release writes; no other thread writes Railway.
 | 5 | Set `PENNSYNC_SITE_RELEASED=enabled-v1` and verify asset-for-asset against the deployment's own hostname | release thread | yes — unset it |
 | 6 | Confirm `/login` no longer belongs to Base44 on this origin (the instrument above) | Claude | n/a, a reading |
 | 7 | Point `APP_PUBLIC_URL` at `https://app.caremetricai.com` in the Base44 function environment | **Kevin** — Base44 account | yes, by restoring the previous value |
-| 8 | Recover Apple signing continuity for `com.caremetric.ai`, then build, submit and ship the transitional binary | **Kevin** — Apple account, and the no-upload gate in `docs/APP_STORE_SUBMISSION_CHECKLIST.md` | a release can be pulled; an installed update cannot be taken back |
-| 9 | Wait for adoption of that build | — | — |
+| 8 | *Blocked, and not on the critical path:* a replacement binary from this tree needs StoreKit purchase and restore first (recovery runbook §5.2), then Apple account continuity for `com.caremetric.ai` | **Kevin** — the in-app-purchase decision, the Apple account, and the no-upload gate in `docs/APP_STORE_SUBMISSION_CHECKLIST.md` | a release can be pulled; an installed update cannot be taken back |
+| 9 | *Only if step 8 ever happens:* wait for adoption of that build | — | — |
 | 10 | Repoint `app.caremetricai.com` at the owned host in GoDaddy | **Kevin** — DNS | yes, by restoring the A record |
-| 11 | Keep `caremetricai.base44.app` reachable until old-binary adoption is negligible | **Kevin** — Base44 account | — |
+| 11 | **Keep `caremetricai.base44.app` resolving.** This is what protects the installed app, not step 8 | **Kevin** — Base44 account | — |
 
-Step 8 is the long one and nothing in this repository shortens it. The three
-recovery problems the plan names — signing assets, the absent `android/`
-project, and the four live in-app purchases with no implementation here — gate
-it regardless of how the migration goes.
+Steps 8 and 9 are bracketed on purpose. They were written as the protection for
+installed apps and they are not: the binary they describe cannot be submitted
+until the in-app-purchase work exists, which is Stage L's row and predates this
+migration. Steps 1 to 7 and 10 do not wait on them; step 11 does the protecting
+instead. What the transitional native change in `#399` buys is that **whenever** a
+replacement is built, it binds the custom domain — the source is right and ready,
+and nothing about it is urgent.
 
 ### Step 7 in detail
 
