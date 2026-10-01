@@ -583,11 +583,36 @@ the integration runtime's own authorization model. So a migrated audit's
 attachment still opens from the old side, and giving these two entities tables
 moves two locator fields out of D77's "no row to re-point" group into the rewrite
 population. And the automation stays off, which is the decision rather than a
-gap: 8 of the 10 OASIS capabilities refuse at source while the 45 screen call
-sites are direct reads and writes that never go through them, so **the screens
-work in Base44 today and the automation behind them does not** — rebuilding the
-data side restores and rebuilding the automation adds, and the second half is the
-owner's.
+gap: what the eight tables carry is what the app *stores* about an assessment,
+and what stays paused is everything that *fires*.
+
+**A sentence stood here saying the screens work in Base44 today, and it was
+wrong.** It reasoned from a true pair — 8 of the 10 OASIS capabilities refuse at
+source, and the 45 screen call sites are direct reads and writes that never go
+through them — to a conclusion the pair does not support, because nothing in it
+asked whether the components holding those call sites render. Measured on
+`a227446f`: **all 45 sit in components no user can reach**, by three mechanisms
+across 27 files — 12 files paused at source in the `const X_ENABLED = false` and
+`const X_PAUSED = true` shapes D7, D47 and D75 enumerate for handlers, 13 more
+reached only through a paused ancestor, and 2 that nothing in `src/` imports at
+all. The script is `measurements/oasis-screen-reachability.mjs` in the project
+library, with its own controls; it was wrong twice before it was right and both
+wrong versions returned the same clean answer, so **re-run it rather than quoting
+the figure**.
+
+This leaves the tables exactly as above — D7's schema clause is about what
+migrates and says nothing about whether a screen renders — and moves the piece
+after them. The access contracts over these eight entities are not restoring a
+working screen, because there is no working screen behind any of the 45 sites, so
+whether to build them is the owner's rather than a default.
+
+**And the general rule, which is D75's in the other half of the tree: a
+capability paused at source has a paused SCREEN as often as a paused handler, and
+nothing here measures the second.** Three shapes of paused handler are
+enumerated and checked. The same three sit in `src/` with no check over them,
+which is how the retracted sentence came to be written down at all. Sizing
+restore-versus-add off the handler census alone gets it wrong in the direction
+that makes the work look like restoration.
 
 **The standing rule this leaves behind: when a decision and the code appear to
 contradict each other, check first whether the code is answering a narrower
