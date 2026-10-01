@@ -245,7 +245,7 @@ test('the git helper can carry this document, and a skip means an absent ref and
 // believed because it is written down is this file's whole subject, so the
 // guards get the same treatment as the predicate: sabotage, and watch it refuse.
 //
-// The arithmetic `224 - 21 = 203` cannot fail on its own — the base is DERIVED
+// The arithmetic `226 - 22 = 204` cannot fail on its own — the base is DERIVED
 // as the range minus the absent list — so what the guards catch is the two
 // typos that would make the derivation quietly produce a larger base than the
 // list reads: an absent number outside the range, which removes nothing, and a
@@ -266,7 +266,7 @@ test('the base refuses the two typos that would silently enlarge it', async () =
     'the unmutated copy does not load to the same base, so a refusal below proves nothing');
 
   const CASES = [
-    ['outside-the-range', '219]', '319]', /outside 1\.\.224/],
+    ['outside-the-range', '225]', '325]', /outside 1\.\.226/],
     ['repeated', ', 216,', ', 214,', /repeats a number/],
   ];
   for (const [name, from, to, message] of CASES) {
@@ -288,25 +288,45 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // removed rather than renumbered — a figure that was wrong within the night of
 // being typed is not made safe by being corrected. So the base pin no longer
 // guards prose. What it guards is the module's own dated paragraph and this
-// file's sabotage range `1..224`: both say what the lists are, neither is
+// file's sabotage range `1..226`: both say what the lists are, neither is
 // derived from them, and a silent re-derivation makes all three disagree.
 //
-// The collection figure still guards prose, measured rather than assumed:
-// `thirty-five` is live in the register at two places that describe the design
-// in the present tense.
+// The collection figure no longer guards a sentence describing the design, and
+// that changed in the same pass as the list. Re-measured 2026-10-01 after the
+// rewrite, and SCOPED, because the document is not the write-up: within this
+// check's own write-up `thirty-five` survives at three places and all three
+// report what #359's collection was, while the one sentence that carried it in
+// the present tense — "the base's numbers are typed alongside the collection's
+// thirty-five" — is the one the rewrite falsified and D226 repaired. Elsewhere
+// the document carries the same word about three unrelated populations, which is
+// why this is scoped: a first draft of this comment said "in the register" and
+// was false by those three. So this pin guards the
+// module's own rewrite note and D226, both of which attribute the figure to a
+// pass, which is the whole of D226's ruling.
 //
-// **And the third assertion is implied by the first for as long as the
-// collection is inert**, since EXPECTED_DOCUMENT is the union and the base holds
-// every number in EXPECTED_NEW. It is kept because the two diverge again the
-// moment the list is rewritten for the next collection — but it is not
-// independent coverage today, and a reader should not count it as any.
+// **The third assertion is implied by the first AGAIN, and the round trip is the
+// instructive part.** An older version of this comment kept it on the stated
+// ground that "the two diverge again the moment the list is rewritten for the
+// next collection". The list was rewritten for D226 and they diverged, exactly as
+// predicted. Then #388 merged, the base grew to hold 226, and they converged
+// again hours later. So this assertion is independent only while a collection is
+// PENDING, which is a shorter window than "until the next rewrite" — the same
+// oscillation `EXPECTED_NEW` makes between live and inert, read from the other
+// side. Kept for the reason it always was: it diverges on the next collection,
+// and it is the only one of the three that catches a union built as a
+// concatenation. A review bot caught this paragraph still claiming the divergence
+// after the assertion message below had been rewritten to say the opposite,
+// which is the hazard of a comment that argues about figures it sits beside.
 test('the figures quoted in prose are the figures the lists hold', () => {
-  assert.equal(REAL_BASE_NUMBERS.length, 203,
+  assert.equal(REAL_BASE_NUMBERS.length, 204,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
-  assert.equal(EXPECTED_NEW.length, 35,
-    "the collection figure is quoted in the register's write-up and in #359's description");
-  assert.equal(EXPECTED_DOCUMENT.length, 203,
-    'the union; equal to the base figure while the collection is inert, and the '
-    + 'assertion that catches a union built as a concatenation');
+  assert.equal(EXPECTED_NEW.length, 1,
+    'the collection figure: D226 alone, now wholly on the base, and the figure is quoted '
+    + "in the module's rewrite note and in D226, each attributing it to a pass");
+  assert.equal(EXPECTED_DOCUMENT.length, 204,
+    'the union, which equals the base figure again now that the collection is inert — so '
+    + 'this is implied by the first assertion once more, and is kept for the same stated '
+    + 'reason as before: it diverges on the next collection. It still catches a union '
+    + 'built as a concatenation, which neither other assertion would.');
 });
