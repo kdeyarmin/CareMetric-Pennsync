@@ -50,11 +50,27 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // document changes, and a reader who carries "inert, not wrong" across to it
 // gets the wrong answer. A base that has moved is wrong rather than inert, and
 // the corroboration test is what says so.
-export const EXPECTED_NEW = Object.freeze([
-  181, 182, 183, 185, 186, 189, 190, 191, 192, 193, 194, 195, 197, 198, 199,
-  201, 202, 203, 204, 205, 206, 207, 208, 210, 211, 212, 213, 215, 217, 218,
-  220, 221, 222, 223, 224,
-]);
+// Rewritten 2026-10-01 for the collection in hand, which adds D226 and nothing
+// else. It held #359's thirty-five numbers in `181..224`, every one of which
+// `BASE_NUMBERS` below now carries, so the differential in the corroboration
+// test had gone INERT and was saying so in a printed info line rather than a
+// failure. Nothing is lost by the rewrite: those thirty-five are in the base and
+// `EXPECTED_DOCUMENT` is the union, so what the document must hold is unchanged
+// apart from D226. What is bought back is a differential that can fail again.
+//
+// This is the paragraph above being OBEYED and not the deletion it warns
+// against. D226 records why it had to happen in the same change as the entry,
+// and why the figure moving is the reason a count like this one belongs in a
+// pull request rather than in a sentence of the register.
+//
+// **It went INERT again when #388 merged, hours later**, because 226 is now on
+// the base — so the differential it bought back has already stood down, and the
+// corroboration test says which branch it took. Left alone rather than emptied,
+// which is this list's own prescription for the inert state: it is rewritten by
+// the next change that files a numbered entry, and the change re-deriving the
+// base is not one. A list that oscillates between live and inert on every
+// collection is the design working, not drift.
+export const EXPECTED_NEW = Object.freeze([226]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //
@@ -69,7 +85,7 @@ export const EXPECTED_NEW = Object.freeze([
 // file exists to record, arriving in the file.
 //
 // So the base is data here and git is corroboration. Typed as a RANGE minus
-// the absent numbers because 168 of them in a row is unreadable, and the
+// the absent numbers because 204 of them in a row is unreadable, and the
 // subtraction is over this typed list rather than over the document, so it is
 // not the tautology this check replaced.
 //
@@ -77,11 +93,51 @@ export const EXPECTED_NEW = Object.freeze([
 // of this comment SAID they were while nothing did it — a comment naming a check
 // that is not there, in the file whose write-up is about reading a setting for
 // something it does not say. Main-watch found it by looking for the assertion.
-// So what the check catches is stated rather than implied: `179 - 11 = 168`
-// holds automatically unless an absent number is outside `1..179` or repeated,
-// and those are the two typos that would silently shrink the base.
-const BASE_HIGHEST = 179;
-const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177]);
+// So what the check catches is stated rather than implied: `226 - 22 = 204`
+// holds automatically unless an absent number is outside `1..226` or repeated,
+// and those are the two typos that would silently ENLARGE the base: an absent
+// number that removes nothing leaves 205 where the list claims 204.
+//
+// That read "shrink" until 2026-10-01, which is backwards and contradicted both
+// guards below — each says "larger than it reads" in its own message — and the
+// sabotage test's comment, which says the same. A review bot caught it on a
+// re-derivation that touched the arithmetic beside it. Recorded rather than
+// quietly corrected, because it is this paragraph's own subject one more time:
+// the sentence describing a check disagreed with the check, inside the paragraph
+// about a comment that named a check which was not there.
+//
+// Re-derived 2026-10-01 from `origin/main` at `b9a9ae09`, where it had been
+// `179 - 11 = 168`. What moved on the base branch: #359 landed a collection of
+// thirty-five entries in `181..224`, so the base grew by those thirty-five and
+// by the ten numbers they skipped. Every one of the ten new absent numbers lies
+// in `180..224` and the earlier eleven are unchanged, which is the shape to
+// expect when a collection lands and nothing else has.
+//
+// This is the `BASE_NUMBERS`-goes-stale case the paragraph above distinguishes
+// from `EXPECTED_NEW`-goes-inert, and the two have now been resolved separately
+// twice. That is the pattern rather than an accident: a collection merging both
+// moves the base and leaves its own list a subset, so the base is WRONG and the
+// list is merely INERT, and they come due on different clocks.
+//
+// Re-derived again 2026-10-01 from `origin/main` at `ed32897f`, where it had
+// been `224 - 21 = 203`. What moved on the base branch: #388 merged, landing
+// D226 and nothing else, so the base gained that number and the one it skips.
+// `225` is the only new absent number and the earlier twenty-one are unchanged,
+// which is the #359 re-derivation's shape above in miniature.
+//
+// **That merge was this thread's own, and the base went stale the instant it
+// landed.** Worth stating, because it is not a lapse that more care would have
+// avoided: the base cannot be re-derived in the change that moves it. The merge
+// commit does not exist while that change is being written, and typing the new
+// figure early fails the assertion below against the base the PR actually has.
+// So the window is structural, and its cost is that `main` is red here until a
+// following change closes it — the shape D93 records for a migration merged and
+// not yet applied. What keeps the window short is that the failure is loud and
+// fires on every branch cut from the merge rather than only on `main`: this one
+// was found two minutes after the merge, by the next command that ran.
+const BASE_HIGHEST = 226;
+const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
+  180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);
 for (const absent of BASE_ABSENT) {
   if (!Number.isInteger(absent) || absent < 1 || absent > BASE_HIGHEST) {
     throw new Error(`BASE_ABSENT holds ${absent}, which is outside 1..${BASE_HIGHEST}, `
@@ -105,12 +161,23 @@ if (BASE_NUMBERS.length !== BASE_HIGHEST - BASE_ABSENT.length) {
 // holds those numbers too and the overlap is total. That is the inert state the
 // paragraph above describes, and a disjointness check would turn it into a
 // failure on the one event the design expects.
+//
+// **The overlap has to be collapsed below, and that is where "inert rather than
+// wrong" stopped holding.** Every consumer that reads MEMBERSHIP puts the list
+// through a `Set` and so could not see a repeat, while the one that reads its
+// LENGTH could, so a plain concatenation was right about which numbers the
+// document must hold and wrong about how many — by exactly the size of the
+// merged collection. Measured when #359 merged: 203 base numbers and 35 already
+// among them read as a 238-entry document against a 203-heading file. Nothing
+// caught it for as long as the one test that compares against the real base was
+// skipping, which is the regression this change is about, one level out.
 
 // What the document must hold on this branch: the base plus what the
 // collection adds. This is the whole assertion, and it needs no git, so it
 // runs in every checkout rather than in the ones where a ref happens to exist.
-export const EXPECTED_DOCUMENT = Object.freeze([...BASE_NUMBERS, ...EXPECTED_NEW]
-  .sort((a, b) => a - b));
+export const EXPECTED_DOCUMENT = Object.freeze(
+  [...new Set([...BASE_NUMBERS, ...EXPECTED_NEW])].sort((a, b) => a - b),
+);
 
 // Scoped to `## D<n>` and nothing else: the document is full of deeper
 // headings and they move independently. `\b` makes a malformed `## D191x`
