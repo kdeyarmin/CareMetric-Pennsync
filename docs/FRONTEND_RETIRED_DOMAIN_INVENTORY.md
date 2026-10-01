@@ -5,7 +5,16 @@
 208 entity call sites across 86 files have no destination
 in the owned store: 194 reach a domain the migration decided
 not to carry, and 14 are operations with no destination on
-an entity it DOES carry, read-only. This says what each file loses, so the
+an entity it DOES carry, read-only.
+
+Of that first group, 45 have a row to land in anyway: their
+entity is paused but its schema migrated under D7, so what they wait on is a
+hand-written access contract rather than a product answer about the domain.
+That count is INSIDE the first figure and must never be added to it. A table
+is not an access path, so the verdict for those sites is the same and only the
+reason differs — and the reason is what decides whose work it is.
+
+This page says what each file loses, so the
 hiding work is a series of per-screen decisions rather than one decision about 208
 numbers. It claims nothing about whether a screen is safe to hide: a file
 marked **whole** has no surviving data of its own, and every other file keeps

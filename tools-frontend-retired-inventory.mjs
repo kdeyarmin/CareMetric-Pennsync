@@ -31,6 +31,7 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { carriesTable } from './tools-entity-schema-plan.mjs';
 import { READ_OPERATIONS, REALTIME_OPERATIONS, SERVED, measureDestinations }
   from './tools-frontend-destination.mjs';
 
@@ -66,18 +67,24 @@ const kind = (operation) => {
 };
 
 /**
- * Which dispositions leave a TABLE in the owned store.
+ * Which dispositions mean the migration CARRIED THE DOMAIN.
  *
- * This is the whole content of "the migration carried this domain", and it is
- * a property of the disposition rather than of the destination bucket a call
- * site landed in. `no_realtime_seam` is why the distinction has to be drawn
- * here: today its one site is a `preserved_paused` entity with no table, and a
+ * This doc comment used to open "which dispositions leave a TABLE in the owned
+ * store", and the two are no longer the same question — a `preserved_paused`
+ * entity may carry its schema under D7's own clause while its execution stays
+ * off (D7's 2026-10-01 amendment), so it has a table and an uncarried domain at
+ * once. The disposition answers the DOMAIN. `carriesTable` answers the table,
+ * and nothing here may re-derive that from the disposition field.
+ *
+ * It is still a property of the disposition rather than of the destination
+ * bucket a call site landed in. `no_realtime_seam` is why the distinction has to
+ * be drawn here: today its one site is a `preserved_paused` entity, and a
  * `subscribe` on a PORTED entity would land in the same bucket with its table
  * present — so a list of "carried buckets" would answer that site wrongly the
  * day somebody adds one.
  */
 export const CARRIED_DISPOSITIONS = Object.freeze(['port', 'broker']);
-/** And the ones that leave nothing: the Hub's, the paused, the archived. */
+/** And the ones whose domain the migration decided not to carry. */
 export const UNCARRIED_DISPOSITIONS = Object.freeze(['hub', 'preserved_paused', 'retire']);
 
 /** Throws rather than defaulting, so a new disposition fails the run. */
@@ -85,6 +92,25 @@ export function entityIsCarried(disposition) {
   if (CARRIED_DISPOSITIONS.includes(disposition)) return true;
   if (UNCARRIED_DISPOSITIONS.includes(disposition)) return false;
   throw new Error(`FRONTEND_INVENTORY_UNKNOWN_DISPOSITION:${disposition}`);
+}
+
+/**
+ * Of the sites whose DOMAIN was not carried, which nonetheless have a row to
+ * land in — so what they wait on is an access contract rather than a product
+ * answer about the domain.
+ *
+ * A SUBSET of the uncarried side and reported beside it, never summed with it
+ * and never moved onto the carried side. Folding these into `carried_entity`
+ * was the obvious change and it would have published a false sentence: that
+ * figure's prose is "operations with no destination on an entity it DOES carry,
+ * read-only", and these entities are not served read-only — nothing serves them
+ * at all, the generic family takes `broker` alone, and most of these sites are
+ * reads rather than writes. The two populations have the same verdict (the site
+ * is unserved) and entirely different reasons, which is the distinction this
+ * whole split exists to keep.
+ */
+export function entityHasTableWithoutContract(entity, disposition) {
+  return !entityIsCarried(disposition) && carriesTable(entity, disposition);
 }
 
 export function measureInventory(repository) {
@@ -141,6 +167,13 @@ export function measureInventory(repository) {
   // nine broker writes on the uncarried side, where their entities are served
   // read-only and their tables plainly exist.
   const carriedEntity = dropped.filter(site => entityIsCarried(site.disposition)).length;
+  // Asked of the ENTITY as well as the disposition, because this is the table
+  // question and the disposition cannot answer it. A subset of the uncarried
+  // side: it is reported so a reader can tell "no row exists" from "a row exists
+  // and nothing may reach it yet", which are a product answer and a piece of
+  // engineering respectively.
+  const tableWithoutContract = dropped
+    .filter(site => entityHasTableWithoutContract(site.entity, site.disposition)).length;
 
   return {
     format: FORMAT,
@@ -152,6 +185,9 @@ export function measureInventory(repository) {
     operations,
     carried_entity: carriedEntity,
     uncarried_domain: dropped.length - carriedEntity,
+    // NOT a third term of the sum above: these are counted inside
+    // `uncarried_domain` and the two must never be added together.
+    table_without_contract: tableWithoutContract,
     by_entity: byEntity,
     by_file: byFile,
   };
@@ -167,7 +203,16 @@ export function renderMarkdown(report) {
     `${report.sites} entity call sites across ${report.files} files have no destination`,
     `in the owned store: ${report.uncarried_domain} reach a domain the migration decided`,
     `not to carry, and ${report.carried_entity} are operations with no destination on`,
-    'an entity it DOES carry, read-only. This says what each file loses, so the',
+    'an entity it DOES carry, read-only.',
+    '',
+    `Of that first group, ${report.table_without_contract} have a row to land in anyway: their`,
+    'entity is paused but its schema migrated under D7, so what they wait on is a',
+    'hand-written access contract rather than a product answer about the domain.',
+    'That count is INSIDE the first figure and must never be added to it. A table',
+    'is not an access path, so the verdict for those sites is the same and only the',
+    'reason differs — and the reason is what decides whose work it is.',
+    '',
+    'This page says what each file loses, so the',
     `hiding work is a series of per-screen decisions rather than one decision about ${report.sites}`,
     'numbers. It claims nothing about whether a screen is safe to hide: a file',
     'marked **whole** has no surviving data of its own, and every other file keeps',

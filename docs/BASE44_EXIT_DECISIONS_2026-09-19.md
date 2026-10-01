@@ -507,11 +507,30 @@ documents sized work off D7's sentence and a reader of the tree would have
 concluded it was unimplementable. Neither side was wrong about its own subject:
 **the disposition field was being asked two questions at once — does this entity
 have a table, and does its capability run — and nothing could answer them
-differently.** The confusion had already spread to four places that each
+differently.** The confusion had already spread to FIVE places that each
 reimplemented the first answer off the second: the planner,
 `tools-tenant-path.mjs:115`, `UNCARRIED_DISPOSITIONS` in
-`tools-transition-disposition.mjs:653`, and
-`tools-frontend-retired-inventory.mjs:75`.
+`tools-transition-disposition.mjs:653`,
+`tools-frontend-retired-inventory.mjs:75`, and a second
+`UNCARRIED_DISPOSITIONS` in `tools-pennsync-file-copy.mjs:67`.
+
+**This sentence said four, and the fifth was found by a review of the change
+that wrote it.** The amendment converted the first three, left the fourth and
+never enumerated the fifth — while asserting, a few paragraphs below, that the
+two OASIS locator fields had moved into the rewrite population, which the fifth
+copy was making false. Two things to carry out of it. **Count the copies by
+searching for the ANSWER, never by listing the ones you changed**: a list
+written while converting is a list of what you happened to notice. And note
+where each copy hid. The file-copy one returned a reported skip — `uncarried_entity`,
+"nothing here to re-point" — so the wrong answer arrived labelled, looking
+deliberate, in an artifact an operator reads and acts on; a skip is the quietest
+place in this tree for a wrong reason to sit. The inventory one was not the same
+defect at all: `entityIsCarried` is correct and answers the DOMAIN, which the
+disposition does decide, so folding the 45 sites onto its carried side would
+have published the sentence "operations with no destination on an entity it DOES
+carry, read-only" about entities nothing serves at all. It reports
+`table_without_contract` beside that figure instead, a SUBSET of the uncarried
+side that is never summed with it.
 
 **The wide change was measured first and does not run.** `CARRIED` plus
 `preserved_paused` plans all 54 paused entities and stops at
@@ -522,7 +541,7 @@ first instinct and the refusal is cheaper to read than to re-derive.
 entity whose schema migrates with a reason of at least forty characters, in the
 house form of `DECLARED_UNIQUE`, `CONTRACT_UNIQUE`, `BINDING_TENANCY` and D84's
 `uncarried_legs`; one shared `carriesTable(entity, disposition)` predicate so the
-four copies become one; and `assertSchemaOnly`, which refuses an entry whose
+five copies become one; and `assertSchemaOnly`, which refuses an entry whose
 entity has since been ported, retired, moved to the hub, lost its disposition or
 lost its schema file. **Each refusal is proved by sabotaging a copy of the
 manifest**, because a check nobody has seen bite is a comment.
@@ -582,7 +601,15 @@ apply because `RUNTIME_READER_MODEL` is `uploader_owned` where
 the integration runtime's own authorization model. So a migrated audit's
 attachment still opens from the old side, and giving these two entities tables
 moves two locator fields out of D77's "no row to re-point" group into the rewrite
-population. And the automation stays off, which is the decision rather than a
+population — **which was a claim about the schema and not about the tool until a
+review caught the gap**: `tools-pennsync-file-copy.mjs` keyed its own carried
+check on the disposition, so it went on reporting both fields as having no row to
+re-point after the tables existed. Corrected in the same change, with a test that
+drives each field through the planner by its own name, because
+`OASISAudit.oasis_file_url` is not the usual spelling and a check written against
+`OASISUpload.file_url` alone would pass while the other still landed in
+`unknown_field`. Nothing about the apply changes: the reader-model refusal is
+untouched and no byte moves. And the automation stays off, which is the decision rather than a
 gap: what the eight tables carry is what the app *stores* about an assessment,
 and what stays paused is everything that *fires*.
 
@@ -593,12 +620,34 @@ through them — to a conclusion the pair does not support, because nothing in i
 asked whether the components holding those call sites render. Measured on
 `a227446f`: **all 45 sit in components no user can reach**, by three mechanisms
 across 27 files — 12 files paused at source in the `const X_ENABLED = false` and
-`const X_PAUSED = true` shapes D7, D47 and D75 enumerate for handlers, 13 more
-reached only through a paused ancestor, and 2 that nothing in `src/` imports at
+`const X_PAUSED = true` shapes D7, D47 and D75 enumerate for handlers, **14** more
+reached only through a paused ancestor, and **1** that nothing in `src/` imports at
 all. The script is `measurements/oasis-screen-reachability.mjs` in the project
 library, with its own controls; it was wrong twice before it was right and both
 wrong versions returned the same clean answer, so **re-run it rather than quoting
 the figure**.
+
+**That split first read 13 and 1 — sic, 13 and 2 — and the instruction in the
+sentence above is why it is corrected here rather than defended.** The verdict did
+not move and is not what was wrong: 45 of 45 unreachable with the pauses on, 43 of
+45 live with them off. What was wrong was the per-mechanism SPLIT, and it was found
+by somebody else running the script on a different domain. Its label for "why is
+this file unreachable" ended in a bare `else` reading "every path runs through a
+paused ancestor", which fired for any file that had importers and was not
+reachable — **a default wearing the words of a measurement**. The fax thread hit it
+in the CONTROL run, where pause detection is disabled and nothing is paused at
+all, and the script still blamed a paused ancestor for a component whose importers
+are merely dead themselves. The cause is walked now, upward from the file, and a
+contradiction between the up-walk and the down-walk is labelled loudly rather than
+folded into a real answer.
+
+Two things to carry. **The run whose job is attribution is the run where an
+invented reason does the most damage**, so read the control's labels and not only
+its totals. And the arithmetic error beside it is instructive on its own: the 1 and
+the 3 are both correct readings of the same tree, because a file that is paused AND
+has no importer is labelled by whichever test runs first, so the no-importer count
+is 1 with pauses on and 3 with them off. Reading one figure out of each run and
+splitting the difference is how it became 2.
 
 This leaves the tables exactly as above — D7's schema clause is about what
 migrates and says nothing about whether a screen renders — and moves the piece
