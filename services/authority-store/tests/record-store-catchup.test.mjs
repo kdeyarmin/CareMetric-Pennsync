@@ -11,7 +11,8 @@ import {
   INDEX_CATCHUP_MIGRATION, SCHEMA_ONLY_TABLES, SCHEMA_ONLY_WAVES,
   assertWaveSizes, assertWavesDisjoint,
   assertSkippedDefaultsAreCarried, readColumnDefaults, readDistributionIndex,
-  readProfileBlock, readTableBlock, readTablePolicies,
+  idempotentTableIndex, idempotentTables,
+  readProfileBlock, readTableBlock, readTableIndexes, readTablePolicies,
   renderCatchup, renderDefaultsCatchup, renderIndexCatchup, renderTablesCatchup,
 } from '../../../tools-pennsync-record-catchup.mjs';
 import { assertNewestRecordMigration, recordMigrationNames } from './record-migrations.mjs';
@@ -508,6 +509,47 @@ test('a table belongs to exactly one wave, and each wave\'s size sentence is its
   assert.throws(() => assertWaveSizes(repository,
     [{ ...SCHEMA_ONLY_WAVES[0], size: '1 columns and 1 policies' }]),
     /CATCHUP_WAVE_SIZE_WRONG/);
+});
+
+test('a wave carries its tables\' indexes, and today there are none to carry', () => {
+  // The ZERO is measured, and that is the whole point of this slice: no
+  // schema-only table has an index yet, so a reader added later would have
+  // nothing to prove itself against and every committed file would stay
+  // byte-identical whether it worked or not. An index on one of these tables
+  // would otherwise reach a fresh build and no store that had already applied
+  // the generated migration -- D88 one index at a time, and silently, because
+  // an absent unique index refuses nothing and `select ... for update` locks
+  // nothing when the row does not exist (D78).
+  for (const table of SCHEMA_ONLY_TABLES) {
+    assert.deepEqual(readTableIndexes(repository, table), [], table);
+  }
+  // So it is proved against a table that HAS one. `timesheet` is not in any
+  // wave; this asks only whether `idempotentTables` carries what the reader
+  // finds, which is the half that would have been missing.
+  const carried = idempotentTables(repository, ['timesheet']);
+  const [index] = readTableIndexes(repository, 'timesheet');
+  assert.equal(index.name, 'timesheet_period_unique');
+  assert.ok(carried.includes(idempotentTableIndex(index.sql)));
+  // `if not exists` rather than the drop-and-recreate the policies get:
+  // dropping a unique index on a live table removes the constraint a contract
+  // catches by name for as long as the rebuild takes.
+  assert.ok(carried.includes('create unique index if not exists "timesheet_period_unique"'));
+  assert.ok(!carried.includes('drop index'));
+  // Both forms rewrite, since a non-unique index is representable here too.
+  assert.equal(idempotentTableIndex('create index "i" on "pennsync_records"."t" ("a");'),
+    'create index if not exists "i" on "pennsync_records"."t" ("a");');
+  // And a statement the rewrite cannot reach refuses rather than passing
+  // through unchanged, which is how a shape change in the generator surfaces
+  // here instead of as a missing index on a hosted store.
+  assert.throws(() => idempotentTableIndex('create table "pennsync_records"."t" ();'),
+    /CATCHUP_TABLE_INDEX_REWRITE_MISSED/);
+  // A duplicate name is refused, since taking the first of two would pick one
+  // of two different predicates. Raised by making the pattern match the one
+  // real statement twice, because there is no table in the store with two
+  // indexes of one name to read -- and asserted on the exact error, not on
+  // "it threw", which an invalid pattern would also satisfy.
+  assert.throws(() => readTableIndexes(repository, 'timesheet"|"pennsync_records"."timesheet'),
+    err => err.message.startsWith('CATCHUP_TABLE_INDEX_DUPLICATED:'));
 });
 
 test('a store that applied the record migration before this has none of the schema-only tables', () => {

@@ -660,7 +660,13 @@ test('what the record store permits per entity is read from the policies it emit
   // not the same as their being servable — permitting a write says what the
   // store would allow a definer contract to do, never that a capability exists
   // to do it, and `tools-frontend-destination` keeps those two apart.
-  assert.equal(Object.keys(permits).length, 164, 'every entity with a table is accounted for');
+  //
+  // 170, not 164: D7's six fax and phone tables, read the same way and with
+  // the same caveat. All six are servable by nothing at all today — the
+  // generic broker family serves `broker` alone and D16's ceiling refuses
+  // every one of them on its own account — so this figure moving is exactly
+  // the distinction above arriving a second time.
+  assert.equal(Object.keys(permits).length, 170, 'every entity with a table is accounted for');
   assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
   const readOnly = Object.keys(permits).filter(entity => permits[entity].read && !permits[entity].write).sort();
   // The eight platform reference tables. `User` left this list with D82: the

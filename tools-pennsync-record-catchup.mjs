@@ -613,6 +613,51 @@ export function readTablePolicies(repository, table) {
 }
 
 /**
+ * One table's indexes, in the order the generator emitted them.
+ *
+ * No schema-only table has one today, in either wave, and that is exactly why
+ * this exists: `readTableBlock` closes at the revoke and `readTablePolicies`
+ * reads only policies, so an index on a carried-schema table would have
+ * reached a fresh build and no store that had already applied the generated
+ * file -- D88 one index at a time, and silently, because an absent index
+ * refuses nothing. It is a unique index that makes `select ... for update`
+ * mean anything when the row does not exist (D78), so the first contract over
+ * one of these tables needs it. Empty is therefore a legitimate answer and is
+ * not refused; what is refused is a duplicate name, since taking the first of
+ * two would silently pick one of two different predicates.
+ */
+export function readTableIndexes(repository, table) {
+  const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
+  const statements = [];
+  const pattern = new RegExp(
+    `^create (?:unique )?index "([^"]+)" on "pennsync_records"\\."${table}" .*;$`, 'gm');
+  for (const match of sql.matchAll(pattern)) statements.push({ name: match[1], sql: match[0] });
+  const names = statements.map(entry => entry.name);
+  if (new Set(names).size !== names.length) throw new Error(`CATCHUP_TABLE_INDEX_DUPLICATED:${table}`);
+  return statements;
+}
+
+/**
+ * One index in the form a store that already has the table can apply.
+ *
+ * `if not exists` and not a drop-and-recreate, which is what the policies get:
+ * dropping a unique index on a live table removes the constraint a contract
+ * catches by name for as long as the rebuild takes, and on a large table that
+ * is not instant. The weaker form is accepted for the same reason
+ * `create table if not exists` is -- every name in these waves is new to the
+ * store -- and the hosted comparison is what would catch a same-named index
+ * with a different predicate.
+ */
+export function idempotentTableIndex(statement) {
+  const rewritten = statement.replace(/^create (unique )?index "/,
+    (_, unique) => `create ${unique ?? ''}index if not exists "`);
+  if (!/^create (unique )?index if not exists "/.test(rewritten)) {
+    throw new Error('CATCHUP_TABLE_INDEX_REWRITE_MISSED');
+  }
+  return rewritten;
+}
+
+/**
  * One wave's blocks in the form a store that already ran the generated file
  * can apply.
  *
@@ -635,7 +680,9 @@ export function idempotentTables(repository, tables = SCHEMA_ONLY_TABLES) {
     }
     const policies = readTablePolicies(repository, table).map(entry =>
       `drop policy if exists "${entry.name}" on "pennsync_records"."${table}";\n${entry.sql}`);
-    parts.push([block, ...policies].join('\n'));
+    const indexes = readTableIndexes(repository, table).map(entry =>
+      idempotentTableIndex(entry.sql));
+    parts.push([block, ...policies, ...indexes].join('\n'));
   }
   return parts.join('\n\n');
 }

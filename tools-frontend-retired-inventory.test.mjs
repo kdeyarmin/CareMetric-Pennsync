@@ -132,10 +132,20 @@ test('the sites with a table and no contract are counted inside the uncarried si
   for (const site of expected) {
     assert.equal(carriesTable(site.entity, site.disposition), true);
   }
-  // The destination each lands in is the accurate-reason bucket rather than
+  // The destination each lands in is an accurate-reason bucket rather than
   // `no_table`, which is the half of this that `tools-frontend-destination.mjs`
-  // owns. Named so the two tools cannot drift apart silently.
-  assert.deepEqual([...new Set(expected.map(site => site.destination))], ['no_access_contract']);
+  // owns. The PROPERTY is that `no_table` is absent, and it is asserted that
+  // way round deliberately: this slice pinned the one bucket that happened to
+  // hold them all, and then D7's fax wave gave `FaxLog` a table, so its one
+  // `subscribe` site became a site WITH a table in `no_realtime_seam`. That is
+  // the trap the destination tool's own comment names — a bucket is uncarried
+  // today only because of which entity happens to sit in it — and it arrived
+  // here as a second bucket, not as a wrong count. Pin the absence, and name
+  // the buckets beside it so a THIRD one is still visible in the diff.
+  const buckets = [...new Set(expected.map(site => site.destination))].sort();
+  assert.ok(!buckets.includes('no_table'),
+    'a site with a table must never be reported as having none');
+  assert.deepEqual(buckets, ['no_access_contract', 'no_realtime_seam']);
 });
 
 /**
