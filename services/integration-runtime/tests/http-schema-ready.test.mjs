@@ -31,10 +31,11 @@ test('a ready reserve cannot mask missing later functions; every probe is anonym
     if (name.endsWith('file_record') && seen.get(name) < 2) return missing();
     return denied(url);
   } });
-  assert.deepEqual(Object.fromEntries(seen), {
-    cm_integration_reserve: 1, cm_integration_finish: 1, cm_integration_file_record: 2,
-    cm_integration_file_get: 1, cm_integration_expire_results: 3,
-  });
+  // Derived from the pin rather than retyped beside it: every signature is probed
+  // once, and only the two this double delays are probed again. A hand-kept copy
+  // is a second list to forget, which is how adding D224's pair broke this.
+  assert.deepEqual(Object.fromEntries(seen), Object.fromEntries(runtimeRpcSignatures.map(signature =>
+    [signature.name, { cm_integration_file_record: 2, cm_integration_expire_results: 3 }[signature.name] ?? 1])));
 });
 
 test('permanently missing expire-results never completes readiness', { timeout: 2000 }, async () => {
@@ -43,7 +44,7 @@ test('permanently missing expire-results never completes readiness', { timeout: 
     seen.add(url.pathname);
     return url.pathname.endsWith('expire_results') ? missing() : denied(url);
   } }), rejectCode('NOT_READY'));
-  assert.equal(seen.size, 5);
+  assert.equal(seen.size, runtimeRpcSignatures.length);
 });
 
 for (const [name, response] of [

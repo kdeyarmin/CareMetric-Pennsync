@@ -276,6 +276,20 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reason: 'the second half of that wrapped footnote line, declared separately for the same '
       + 'reason: a quotation is per line, and neither half on its own is a reading of anything',
   },
+  // And the swap the comment above predicted, arriving one port later and from
+  // the other direction: this port moves `files` rather than
+  // `entity_authorization`, so D223's own entry line stops being the
+  // measurement while both halves of the footnote keep the standing they had.
+  // It is a dated reading and says so in its own words — "at the head this
+  // change was written on" — so it is declared rather than corrected. The
+  // figure in a sentence that claims the present tense was corrected instead,
+  // on the three pages carrying one.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
+    reason: "D223's own reading at the head it was written on, which this port's `files` 12 → 11 "
+      + 'turns into history without touching what D223 measured',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {
@@ -1089,9 +1103,20 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // contract exists rather than because anything was reclassified: a ported
   // capability reaches `none` without the blocker classifier being consulted
   // at all.
+  //
+  // `files` 12 → 11 lands on top of that and is NOT D223's kind: it is the third
+  // movement of D153's, the one that leaves the queue SHORTER without anything
+  // having been written. `processPatientFileUpdate` is dispositioned
+  // `preserved_paused` because it is paused at source and its successor would
+  // be a widening nobody has decided, so it is not a file-layer port waiting
+  // on the file layer. Nothing moves to `none`. D47's rule is what puts it in
+  // this change rather than a later one: switching a capability off means
+  // changing its disposition in the same change. The two arrived on separate
+  // branches and the distribution below is the TOOL'S answer on the merged
+  // tree, not D223's figures with one bucket decremented by hand.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    records_schema: 0, files: 11, ported_function: 0, core_integration: 0, pdf_rendering: 0,
     external_secret: 2, none: 79 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -1270,10 +1295,19 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // with sixty-three ports over it, while the file layer is still a data
   // migration and thirty-one call sites. `records_schema` reads as "startable
   // today", and for these six it was not true.
+  //
+  // `processPatientFileUpdate` LEFT this list, and the reason is not the file
+  // layer: it is paused at source — preview goes to one configured address and
+  // apply is 503 for everyone — so it was never a port waiting on `cmfile:`
+  // handles. Its successor would be a widening nobody has decided, which is a
+  // product answer rather than a data migration, so it is `preserved_paused`.
+  // That is the shape D153 and D83 record from the other bucket: a blocked port
+  // and a capability that is not being carried are not the same thing, however
+  // alike they look in a count.
   assert.deepEqual(report.port_blockers.files, ['createAuthorizedDocument',
     'extractClinicalDocument', 'extractPatientDataFromDocument', 'generateAdrPacket',
     'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
-    'preparePDFWithPatientInfo', 'processPatientFileUpdate', 'reorderDeletePDFPages',
+    'preparePDFWithPatientInfo', 'reorderDeletePDFPages',
     'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
