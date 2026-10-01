@@ -41,6 +41,13 @@ export const MIGRATION_CODES = Object.freeze([
   // D35's, for the same reason: a contract that would create functions failing
   // on their first call refuses to apply instead.
   'PENNSYNC_MEMBERSHIP_LIFECYCLE_REQUIRED',
+  // D223's, and the reason is sharper than the two above: the duty contract
+  // carries NO ownership predicate because D82's `user_update` policy and
+  // `user_self_write_guard` trigger are the ownership answer. On a store
+  // missing either, its functions would not fail on their first call — they
+  // would SUCCEED, unbound, which is the failure direction nothing reports. So
+  // it refuses at migration time and names itself.
+  'PENNSYNC_PROFILE_SELF_WRITE_REQUIRED',
   // A correction to a shipped contract refuses to apply where the contract it
   // corrects is absent: `create or replace` would otherwise CREATE it, leaving
   // a store whose library writes have no chart check and no complaint.

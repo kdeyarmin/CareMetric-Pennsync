@@ -69,7 +69,7 @@ export const EXPECTED_NEW = Object.freeze([
 // file exists to record, arriving in the file.
 //
 // So the base is data here and git is corroboration. Typed as a RANGE minus
-// the absent numbers because 168 of them in a row is unreadable, and the
+// the absent numbers because 203 of them in a row is unreadable, and the
 // subtraction is over this typed list rather than over the document, so it is
 // not the tautology this check replaced.
 //
@@ -77,11 +77,25 @@ export const EXPECTED_NEW = Object.freeze([
 // of this comment SAID they were while nothing did it — a comment naming a check
 // that is not there, in the file whose write-up is about reading a setting for
 // something it does not say. Main-watch found it by looking for the assertion.
-// So what the check catches is stated rather than implied: `179 - 11 = 168`
-// holds automatically unless an absent number is outside `1..179` or repeated,
+// So what the check catches is stated rather than implied: `224 - 21 = 203`
+// holds automatically unless an absent number is outside `1..224` or repeated,
 // and those are the two typos that would silently shrink the base.
-const BASE_HIGHEST = 179;
-const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177]);
+//
+// Re-derived 2026-10-01 from `origin/main` at `b9a9ae09`, where it had been
+// `179 - 11 = 168`. What moved on the base branch: #359 landed a collection of
+// thirty-five entries in `181..224`, so the base grew by those thirty-five and
+// by the ten numbers they skipped. Every one of the ten new absent numbers lies
+// in `180..224` and the earlier eleven are unchanged, which is the shape to
+// expect when a collection lands and nothing else has.
+//
+// This is the `BASE_NUMBERS`-goes-stale case the paragraph above distinguishes
+// from `EXPECTED_NEW`-goes-inert, and the two were resolved differently in this
+// change for exactly that reason: the base MOVED, so it was wrong and is
+// re-derived; the collection list is now wholly inside the base, so it is inert
+// and is deliberately left alone.
+const BASE_HIGHEST = 224;
+const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
+  180, 184, 187, 188, 196, 200, 209, 214, 216, 219]);
 for (const absent of BASE_ABSENT) {
   if (!Number.isInteger(absent) || absent < 1 || absent > BASE_HIGHEST) {
     throw new Error(`BASE_ABSENT holds ${absent}, which is outside 1..${BASE_HIGHEST}, `
@@ -105,12 +119,23 @@ if (BASE_NUMBERS.length !== BASE_HIGHEST - BASE_ABSENT.length) {
 // holds those numbers too and the overlap is total. That is the inert state the
 // paragraph above describes, and a disjointness check would turn it into a
 // failure on the one event the design expects.
+//
+// **The overlap has to be collapsed below, and that is where "inert rather than
+// wrong" stopped holding.** Every consumer that reads MEMBERSHIP puts the list
+// through a `Set` and so could not see a repeat, while the one that reads its
+// LENGTH could, so a plain concatenation was right about which numbers the
+// document must hold and wrong about how many — by exactly the size of the
+// merged collection. Measured when #359 merged: 203 base numbers and 35 already
+// among them read as a 238-entry document against a 203-heading file. Nothing
+// caught it for as long as the one test that compares against the real base was
+// skipping, which is the regression this change is about, one level out.
 
 // What the document must hold on this branch: the base plus what the
 // collection adds. This is the whole assertion, and it needs no git, so it
 // runs in every checkout rather than in the ones where a ref happens to exist.
-export const EXPECTED_DOCUMENT = Object.freeze([...BASE_NUMBERS, ...EXPECTED_NEW]
-  .sort((a, b) => a - b));
+export const EXPECTED_DOCUMENT = Object.freeze(
+  [...new Set([...BASE_NUMBERS, ...EXPECTED_NEW])].sort((a, b) => a - b),
+);
 
 // Scoped to `## D<n>` and nothing else: the document is full of deeper
 // headings and they move independently. `\b` makes a malformed `## D191x`
