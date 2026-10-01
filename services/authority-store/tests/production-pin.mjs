@@ -128,41 +128,75 @@ export async function pinLocalStackToProduction() {
   // pass something else.
   if (!/^[a-f0-9]{24}$/.test(PRODUCTION_APP)) fail('PRODUCTION_PIN_APP_MALFORMED');
 
-  // ONE ROUTE, and the two that were MEASURED not to work are recorded here
-  // rather than retried, because each costs a full reset per run:
+  // TWO SCOPES AT ONCE, and the measurement of which one survives is the point.
+  //
+  // Three routes have now been measured and two of them are recorded here rather
+  // than retried, because each costs a full reset per run:
   //
   //   `PGOPTIONS` on the CLI's own process, so the migration would run in a
   //     session that already carried the setting. It reached nothing: the reset
   //     completed and the store came back pinned to staging, so whatever opens
   //     the migration connection does not inherit this process's environment.
   //   `ALTER ROLE ... SET` as the role `supabase status` publishes -- `postgres`
-  //     -- which answered SQLSTATE 42501, insufficient_privilege. A custom
-  //     parameter with no extension behind it is a placeholder, and PostgreSQL
-  //     will not let a non-superuser store one on a role or a database because it
-  //     cannot check who may set it. A local stack's `postgres` is not a
-  //     superuser.
+  //     -- answered SQLSTATE 42501, insufficient_privilege. A custom parameter
+  //     with no extension behind it is a placeholder, and PostgreSQL will not let
+  //     a non-superuser store one on a role or a database because it cannot check
+  //     who may set it. A local stack's `postgres` is not a superuser.
+  //   The same write as the stack's SUPERUSER succeeded, and the store still came
+  //     back pinned to staging. So the write is permitted and something between
+  //     it and the migration loses it -- which is the thing this version
+  //     measures rather than guesses at.
   //
-  // So the write is made by the stack's own SUPERUSER, `supabase_admin`, reached
-  // by taking the published URL and changing only its user. The password is the
-  // stack's, derived from its own status rather than written down here, and this
-  // is a throwaway local cluster either way. Role-scoped rather than
-  // database-scoped so it survives the reset dropping the database, and it is
-  // left behind deliberately: the job owns this stack and stops it at the end.
+  // Both scopes are set, because they fail in opposite directions and neither can
+  // be ruled out from here: role-scoped (`setdatabase = 0`) is not stored inside
+  // the database the reset drops, while database-scoped survives a reset that
+  // restores roles from `roles.sql`. Whichever survives carries the pin, and the
+  // read-back reports WHICH, so a route cannot be believed without having been
+  // seen to work.
   const superuserUrl = new URL(databaseUrl);
   superuserUrl.username = SUPERUSER;
-  await withClient(superuserUrl.href, 'PRODUCTION_PIN_SETTING_WRITE_FAILED', client =>
-    client.query(`alter role postgres set ${PIN_SETTING} = '${PRODUCTION_APP}'`));
+  await withClient(superuserUrl.href, 'PRODUCTION_PIN_SETTING_WRITE_FAILED', async client => {
+    await client.query(`alter role postgres set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
+    const { rows } = await client.query('select current_database() as name');
+    if (!/^[a-z_][a-z0-9_]{0,62}$/.test(rows[0]?.name ?? '')) fail('PRODUCTION_PIN_DATABASE_NAME_UNEXPECTED');
+    await client.query(`alter database ${rows[0].name} set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
+  });
 
   // Recreates the database and re-applies the migrations, so the pin block runs
-  // again -- this time in a session that reads the setting.
+  // again -- this time, if either setting survived, in a session that reads it.
   await cli(['db', 'reset', '--workdir', workdir]);
 
-  // A NEW session: a role setting only reaches sessions opened after it, which
-  // is the whole point of the sequence.
+  // A NEW session: a role or database setting only reaches sessions opened after
+  // it, which is the whole point of the sequence.
   const pin = await readPin(databaseUrl);
-  if (pin.label !== 'production') fail('PRODUCTION_PIN_NOT_APPLIED');
-  return describe(pin, 'superuser-role-setting');
+  const scopes = await survivingScopes(databaseUrl);
+  if (pin.label !== 'production') {
+    // The two failures are different problems and the next step differs, so they
+    // are different codes: nothing survived the reset, or something survived and
+    // the migration still did not read it -- which would mean the CLI applies
+    // migrations as another role or against another database.
+    fail(scopes.length ? 'PRODUCTION_PIN_NOT_APPLIED_SETTING_PRESENT' : 'PRODUCTION_PIN_NOT_APPLIED_NO_SETTING');
+  }
+  if (!scopes.length) fail('PRODUCTION_PIN_SOURCE_UNEXPLAINED');
+  return describe(pin, scopes.join('+'));
 }
+
+/**
+ * Which stored scopes still hold the pin setting after the reset.
+ *
+ * Classified, never quoted: the row's `setconfig` holds the parameter's value,
+ * and only the two literals below ever leave here.
+ */
+const survivingScopes = databaseUrl =>
+  withClient(databaseUrl, 'PRODUCTION_PIN_SCOPE_READ_FAILED', async client => {
+    const { rows } = await client.query(`select (s.setdatabase = 0) as role_wide
+      from pg_db_role_setting s
+      where exists (select 1 from unnest(s.setconfig) as c where c like $1)`, [`${PIN_SETTING}=%`]);
+    const scopes = [];
+    if (rows.some(row => row.role_wide)) scopes.push('role-setting');
+    if (rows.some(row => !row.role_wide)) scopes.push('database-setting');
+    return scopes;
+  });
 
 /** Connect, do one thing, always close. The code names which step failed. */
 async function withClient(databaseUrl, code, body) {
