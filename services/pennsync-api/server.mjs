@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { createHandler } from './app.mjs';
+import { MAX_TRANSPORT_BODY } from './handlers.mjs';
 import { loadConfig, publicReadiness } from './runtime.mjs';
 
 const config = loadConfig();
@@ -10,7 +11,13 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('INVALI
 
 const server = createServer(async (incoming, outgoing) => {
   try {
-    if (Number(incoming.headers['content-length'] || 0) > 1024 * 1024) {
+    // A coarse backstop so an oversized body is refused without being
+    // buffered. The exact per-handler ceiling is `app.mjs`'s, and this figure
+    // is derived from the registry so a handler that raises its own is not
+    // refused out here at a narrower one — which is what happened to
+    // `importProvidersCsv` after its ceiling was raised and only `app.mjs`
+    // was taught to read it.
+    if (Number(incoming.headers['content-length'] || 0) > MAX_TRANSPORT_BODY) {
       outgoing.writeHead(413, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' });
       outgoing.end('{"success":false,"error":"BODY_TOO_LARGE"}');
       return;

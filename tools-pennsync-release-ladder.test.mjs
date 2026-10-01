@@ -1140,7 +1140,7 @@ test('the value an operator sets only ever grows, wave by wave', () => {
 
 const RUNTIME_BODY = Object.freeze({
   ready: true, released: true, configured: true,
-  operations: ['InvokeLLM', 'ExtractDataFromUploadedFile'], missingProviders: [],
+  operations: ['InvokeLLM', 'ExtractDataFromUploadedFile', 'UploadFile'], missingProviders: [],
   authorityMode: 'independent', base44ExecutionDependency: false,
   trafficCutoverVerified: false, revision: 'a'.repeat(40),
   browserContract: 'cm.integrations.v2', browserRevisionBound: true,
@@ -1151,7 +1151,11 @@ test('the wave requirement is read from the allowlist, not typed here', () => {
   // Derived for the same reason the wave's membership is: a second copy of the
   // brokered set would let this gate pass a runtime serving something else.
   const required = brokeredOperationsRequired(REPOSITORY);
-  assert.deepEqual([...required], ['InvokeLLM', 'ExtractDataFromUploadedFile']);
+  assert.deepEqual([...required], ['InvokeLLM', 'ExtractDataFromUploadedFile', 'UploadFile']);
+  // `UploadFile` joined when `extractPatientDataFromDocument` shipped, and the
+  // consequence is the gate's whole point: a runtime serving only the first two
+  // no longer holds this wave, so the capability cannot be released against a
+  // deployment that cannot broker its upload.
   // And NOT the delivery half. That is a DIFFERENT question — whether the value
   // being written releases mail — and `requiredRuntimeOperations` answers it
   // below. This one stays the unconditional set, so a reader of it still sees
@@ -1281,7 +1285,7 @@ test('the emitted wave says what the same write owes, and says nothing where no 
 
 test('a body the runtime does not publish is refused, and so is the other service\'s', () => {
   assert.deepEqual(runtimeReadinessOf(RUNTIME_BODY, 'x').operations,
-    ['InvokeLLM', 'ExtractDataFromUploadedFile']);
+    ['InvokeLLM', 'ExtractDataFromUploadedFile', 'UploadFile']);
   // The business API answers `operations`, `released`, `ready` and `revision`
   // too, so a first draft accepted its body and printed 61 handler names as
   // what "the runtime is serving". Refused BY NAME on `implemented`.

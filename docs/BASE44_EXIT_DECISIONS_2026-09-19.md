@@ -14229,9 +14229,13 @@ external_secret=2 none=79` at both `d8c6be2b` and `4bb0dd8a`. One instrument,
 three trees — so the two figures were never a disagreement, and the resolution
 took one command rather than a reconciliation. **This copy is the unpinned
 one**: a test forces `AGENTS.md` to carry what the tool measures, the go-live
-plan is pinned too, and nothing in this tree reads this document at all. So when
-this line and those two disagree, re-run the command; do not reconcile the
-pages.*
+plan is pinned too, and nothing in this tree read this document at all when that
+was written. **That last clause has since stopped being true, and the correction
+belongs here rather than in a new entry**: a check now reads EVERY markdown page
+for a port-queue reading, and one that is neither the measurement nor declared
+history fails. These four readings are declared, with their heads, in
+`HISTORICAL_PORT_QUEUE_READINGS`. So when this line and those two disagree,
+re-run the command; do not reconcile the pages.*
 
 ### A third reason `offboardUser` cannot be ported, found after the decision
 

@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA, PROFILE_SELF_WRITABLE } from '../../../tools-entity-schema-plan.mjs';
 import {
-  applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames,
+  applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
@@ -67,10 +67,20 @@ before(async () => {
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  // This migration is the newest PENDING one, so the ordering guard is its.
-  // The compliance-writes suite dropped the call when this file arrived, which
-  // is the handover `assertNewestRecordMigration` documents.
-  assertNewestRecordMigration(applied, DUTY_NAME);
+  // The ordering guard is NOT here, and the comment that used to claim it was
+  // is why this is spelled out. This file was the newest pending migration when
+  // it landed on `main`; it stopped being that when this branch's
+  // `20260920700000_contract_reference_writes` merged in, which sorts after it.
+  // So the guard moved on to `contract-reference-writes.test.mjs` and this
+  // suite keeps only the property that is its own.
+  //
+  // Nothing about this file changed. It was OVERTAKEN, which is the rule the
+  // helper's error text does not name — it names merging, the commonest cause.
+  // A suite that kept the call after being overtaken asserts a tree the
+  // overtaking change makes false, and fails for a reason that reads like a
+  // defect in this contract.
+  assert.ok(applied.includes(DUTY_NAME),
+    `the record walk did not apply ${DUTY_NAME}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   // The carried profile rows. The fixtures stop at the authority store, and

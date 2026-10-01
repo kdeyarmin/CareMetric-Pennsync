@@ -51,20 +51,26 @@ before(async () => {
   // it. A forward migration is applied by every suite that adopts this walk,
   // which is the only way a contract suite can see one land on it.
   const applied = await applyRecordMigrations(db);
-  // The ordering guard has moved ON to `contract-duty-status`, and this is the
-  // retirement the helper's own message asks for rather than a weakening of it:
-  // `CANCEL_FORWARD` has MERGED, so it is part of what a store may already
-  // hold, and the duty contract's forward file is the newest PENDING one. The
-  // handover is not cosmetic — the two files shared the prefix `20260920680000`
-  // with different names, so each suite independently believed it held the
-  // guard, and the one whose file does not sort last fails. Only the newest
-  // pending file may carry the call.
+  // The ordering guard was HERE and is now held by
+  // `contract-reference-writes.test.mjs`. Both sides of this merge said it had
+  // moved to `contract-duty-status`, and on this tree that is WRONG — not
+  // because either side misread its own change, but because the destination
+  // was overtaken in turn. `main`'s duty migration sorts at
+  // `20260920690000`; this branch's `20260920700000_contract_reference_writes`
+  // sorts after it, so the newest PENDING file is that one and the guard
+  // belongs there. Taking either side of this conflict whole would have left
+  // the call in a suite whose file no longer sorts last.
   //
-  // What stays is the weaker property this suite actually needs: that the walk
+  // The rule both ways: a file takes the guard by being newest and loses it by
+  // being OVERTAKEN. `planMigration` refuses `MIGRATE_OUT_OF_ORDER` the moment
+  // an applied file sorts after a pending one, so exactly one suite may hold
+  // it; a second holder asserts a tree the first one's own change makes false.
+  // The helper's error text names MERGING, which is only the commonest cause
+  // and sends a reader looking for a merge that did not happen here.
+  //
+  // What stays is the half that IS this suite's own property: that the walk
   // really applied its own forward file, so every refusal below is raised
-  // against it rather than against a store that never got it. Presence, not
-  // position — dropping the position check is not a reason to stop checking the
-  // migration arrived at all.
+  // against a store that got it. Presence, not position.
   assert.ok(applied.includes(CANCEL_FORWARD),
     `the record walk did not apply ${CANCEL_FORWARD}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
