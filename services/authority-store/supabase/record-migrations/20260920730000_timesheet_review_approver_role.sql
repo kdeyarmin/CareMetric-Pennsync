@@ -46,11 +46,24 @@
 --
 -- How that was got wrong is worth more than the conclusion. The review gate was
 -- read, the dropdown was read, and the two were joined — without reading the
--- capability that WRITES the field they share. D45 is usually stated about tests:
--- a capability that writes a row another capability reads is not proved by either
--- suite alone. It is not a rule about tests. Reading the reader and the writer
--- separately and joining them is the same mistake as testing them separately and
--- declaring the pair sound.
+-- capability that WRITES the field they share, which is the only thing that could
+-- say whether a self-asserted label ever reaches `manager_email`. D69 is the entry
+-- that names this shape: a gate that appears to offer three ways in and has one,
+-- whose rule is READ WHAT THE CODE CAN REACH, NOT WHAT IT APPEARS TO OFFER. The
+-- dropdown is that exactly, from the other side — it offers approvers the submit
+-- will refuse — and the escalation story was the same error pointed at the gate,
+-- reading a column a caller may write as an input this gate can be reached with.
+--
+-- THE CITATION HERE WAS D45 IN THE FIRST DRAFT, generalised into a rule about
+-- reading a reader and a writer separately being the same mistake as testing them
+-- separately. That is retracted, and the retraction stays in the header rather
+-- than being tidied out of it, because a wrong citation survives a reading that a
+-- wrong sentence does not. D45 is the authority-envelope entry — tenancy is not
+-- ownership, and a capability that writes a row another capability reads is not
+-- proved by either suite alone — which is a rule about COVERAGE and says nothing
+-- about where to read. Two entries run the other way outright: D58 says to check
+-- the CALL SITE before deciding what a request shape means, and D89 cites it by
+-- name for the same reason.
 --
 -- THE REDUCTION, recorded rather than left to be discovered, and smaller than the
 -- first version of this header claimed. A person named on a sheet who no longer
@@ -83,8 +96,10 @@
 --
 -- NOT RETYPED. The body below is LIFTED from the migration named above with one
 -- substitution — the three-line gate for the longer one — because retyping a
--- seventy-line contract to change one condition is the transcription D12 settled
--- against, and every line retyped is a place this could drift quietly.
+-- contract of this size to change one condition is the transcription D12 settled
+-- against, and every line retyped is a place this could drift quietly. No line
+-- count is quoted here on purpose: a figure in a comment that nothing derives is
+-- the shape this project keeps finding stale, and the test below derives it.
 -- `contract-timesheet-review-approver.test.mjs` re-derives this file from that one
 -- and fails if they stop agreeing, so the lift is checked rather than claimed.
 

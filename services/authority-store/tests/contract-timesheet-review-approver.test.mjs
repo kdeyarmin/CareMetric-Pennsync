@@ -158,8 +158,10 @@ test('the body is the original with ONE region changed, and that region is the g
 
   // Common prefix and suffix, so what is left is exactly what moved. Asserting
   // "one region" rather than diffing line by line: a retype that drifted a
-  // column somewhere else in a seventy-line body would leave TWO regions, and
-  // the whole reason this file is a lift is that such a drift is silent.
+  // column anywhere else in the body would leave TWO regions, and the whole
+  // reason this file is a lift is that such a drift is silent. The body is long
+  // enough for that to be a real risk, and the length is not quoted here because
+  // this test is what reads it.
   let head = 0;
   while (head < mine.length && mine[head] === theirs[head]) head += 1;
   let tail = 0;
