@@ -27,6 +27,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { entityCalls, sourceFiles } from './tools-base44-surface.mjs';
+import { SCHEMA_ONLY } from './tools-entity-schema-plan.mjs';
 
 export const FORMAT = 'pennsync-frontend-destination';
 export const FORMAT_VERSION = 1;
@@ -62,7 +63,7 @@ export const AUDITED_ENTITIES = Object.freeze(['SecurityLog', 'SystemLog', 'User
  */
 export const DESTINATIONS = Object.freeze([
   'record_store', 'broker_family', 'activity_trail',
-  'no_table', 'broker_is_read_only', 'global_reference_is_read_only',
+  'no_table', 'no_access_contract', 'broker_is_read_only', 'global_reference_is_read_only',
   'no_realtime_seam', 'export_archive_only', 'undeclared',
 ]);
 /** Where the tenant decisions say which entities are D83 reference data. */
@@ -85,10 +86,19 @@ export function classifyOperation(operation) {
  * D22), so a `create` on a brokered entity has no destination even though the
  * entity is "served".
  */
-export function destinationFor(disposition, operation) {
+export function destinationFor(disposition, operation, entity = null) {
   const kind = classifyOperation(operation);
   if (!kind) throw new Error(`FRONTEND_DESTINATION_UNKNOWN_OPERATION:${operation}`);
   if (kind === 'realtime') return 'no_realtime_seam';
+  // A `SCHEMA_ONLY` entity has a table and no way in. Reporting it as
+  // `no_table` would be the bucket keeping its name after the reason for it
+  // went, which is the failure this project keeps finding; reporting it as
+  // `record_store` would be worse, because the verdict is the same either way
+  // (the site is unserved) and only the second one is a lie about why. The
+  // generic family cannot serve these — it serves `broker` alone — so the only
+  // path is a hand-written contract, and this bucket empties one entity at a
+  // time as those ship rather than all at once when the tables land.
+  if (entity !== null && Object.hasOwn(SCHEMA_ONLY, entity)) return 'no_access_contract';
   switch (disposition) {
     case 'port':
       return 'record_store';
@@ -165,7 +175,7 @@ export function measureDestinations(repository) {
         disposition,
         destination: disposition
           ? refineGlobalReference(
-            refineRetired(destinationFor(disposition, operation), entity),
+            refineRetired(destinationFor(disposition, operation, entity), entity),
             operation, globalReference.has(entity))
           : 'undeclared',
       });

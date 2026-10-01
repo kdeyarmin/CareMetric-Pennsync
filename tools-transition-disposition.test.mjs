@@ -655,7 +655,12 @@ test('what the record store permits per entity is read from the policies it emit
   // have reported all 39 of `User`'s `port` readers unblocked along with the 7
   // that write it.
   const permits = discoverEntityPolicies(repository);
-  assert.equal(Object.keys(permits).length, 156, 'every carried entity is accounted for');
+  // 164, not 156: this reads the EMITTED policies, so the eight D7 schema-only
+  // OASIS tables are in it the moment they are emitted. That is correct and is
+  // not the same as their being servable — permitting a write says what the
+  // store would allow a definer contract to do, never that a capability exists
+  // to do it, and `tools-frontend-destination` keeps those two apart.
+  assert.equal(Object.keys(permits).length, 164, 'every entity with a table is accounted for');
   assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
   const readOnly = Object.keys(permits).filter(entity => permits[entity].read && !permits[entity].write).sort();
   // The eight platform reference tables. `User` left this list with D82: the

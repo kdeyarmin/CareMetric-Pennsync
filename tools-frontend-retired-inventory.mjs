@@ -47,6 +47,10 @@ export const PAGE_FILE = 'docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md';
  */
 export const OUTCOMES = Object.freeze({
   no_table: 'no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)',
+  no_access_contract:
+    'the table exists — the entity is paused but carries its schema under D7 — and nothing can '
+    + 'reach it yet: the generic broker family serves only `broker`, so the row waits on a '
+    + 'hand-written access contract rather than on a schema or a product answer',
   broker_is_read_only: 'the broker family serves this entity read-only, so the write has no destination',
   global_reference_is_read_only:
     'D83 reference data: the table is written by migration and grants no caller role anything, '

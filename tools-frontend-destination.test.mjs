@@ -104,11 +104,19 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // two ways for a census to be wrong and is not a reason to trust the next one.
   assert.equal(report.unserved, 208);
   assert.equal(report.served + report.unserved, report.total);
+  //
+  // `no_table` 193 split into 148 + 45 when D7's eight OASIS entities got
+  // tables. Nothing moved between served and unserved, which is the property to
+  // check rather than the two new figures: a table is not an access path, and
+  // `no_access_contract` says so instead of letting the bucket keep a name whose
+  // reason had gone. It empties one entity at a time as each contract ships.
   assert.deepEqual(report.by_destination, {
     record_store: 235, broker_family: 7, activity_trail: 3,
-    no_table: 193, broker_is_read_only: 9, global_reference_is_read_only: 5,
+    no_table: 148, no_access_contract: 45,
+    broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
   });
+  assert.equal(report.by_destination.no_table + report.by_destination.no_access_contract, 193);
   // The training domain alone is more call sites than the broker family serves
   // in total, and it is `hub` — a different destination entirely.
   assert.equal(report.by_disposition.hub, 119);
@@ -212,7 +220,8 @@ test('the summary names what cannot land and stays quiet about what can', () => 
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
   assert.match(lines[0], /453 call sites, 245 can land, 208\/208 cannot/);
-  assert.ok(lines.some(line => /no_table: 193/.test(line)));
+  assert.ok(lines.some(line => /no_table: 148/.test(line)));
+  assert.ok(lines.some(line => /no_access_contract: 45/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));
   assert.ok(!lines.some(line => /record_store/.test(line)), 'the served destinations are not the finding');
 });

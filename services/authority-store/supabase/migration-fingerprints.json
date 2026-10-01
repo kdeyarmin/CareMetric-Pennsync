@@ -16,7 +16,7 @@
   "migrations/20260920200000_membership_lifecycle.sql": "58f39e139908345ef5fc7ec259f7ea2be7c871c668a9aacdf6e39a96ae44833c",
   "migrations/20260920600000_locally_verified_identity.sql": "7be382861a25997a66fe2ef5948a9bb3eecac31eed8d504051ec164f958d32b8",
   "migrations/20260920605000_staff_name.sql": "8b85c018d1f4d60eaa0abe1fdc2c6b2a584115ddd93a88f58c2d154599428c38",
-  "record-migrations/20260919170000_record_store.sql": "8f1ff9750ce8c7d02e1b68044e07169db0dc3dac90446b57798cf1c95ee4debd",
+  "record-migrations/20260919170000_record_store.sql": "a8a0aa1dac2aa966ec1a39891d4749017193087faeced6f66eaad22b9b931576",
   "record-migrations/20260919180000_record_brokers.sql": "553c24c42b32deeec637c3c26adf448ed6884c81d03d298860a3eea01c5a489e",
   "record-migrations/20260920000000_contract_policy_library.sql": "b5ed76066b6e62793d35bc0c678ef2a740acf14f1208714e0153e1b0e221091b",
   "record-migrations/20260920010000_activity_audit.sql": "237d69c072469357e2fbba2b8fefde2af4a02a37c6e76f0d57f7855ebb0ce4a4",
