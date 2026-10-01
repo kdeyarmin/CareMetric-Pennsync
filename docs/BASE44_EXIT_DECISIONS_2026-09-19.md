@@ -8665,6 +8665,18 @@ Measured on `ec570e15`. The second instance was found by reading the file, not b
 
 **One caveat rather than a buried one:** the transcript has since grown to include these very searches, so the exact match counts as they stood at the time are not reproducible. Truncation is sufficient on its own and nothing about that rescues the conclusion.
 
+### Addendum, 2026-10-01: the cue can be absent, so count before the verdict rather than because of it
+
+**Added by the redeploy thread, which wrote neither this entry nor its earlier addenda.** Mine, first-hand. It is an instance of the rules already here rather than a fourth mode, and it changes nothing already filed.
+
+All thirteen check runs on `07407fe3` had completed with conclusion `success`. GitHub's combined-status read for the same pull request answered `{"state":"pending","total_count":0,"statuses":[]}`, and I was a sentence from reporting CI unfinished. That endpoint covers LEGACY COMMIT STATUSES, a different population from check runs; this repository publishes none, so `pending` there means "no status has ever been posted", and the API spells that exactly as it spells "posted and not yet concluded". This entry's opening sentence is the whole diagnosis and its main rule — establish what the instrument actually covered — is the remedy.
+
+**What it adds is about the third addendum's rule, not about coverage.** *Count before you look* is right and it did not fire, because it only fires when something CUES you to count, and the cue is normally a result that looks empty: a short list, a quiet exit, a page that might be a first page. Here the count was printed for me in the same payload, beside a populated and alarming word, and nothing in the output invited me to read it. **Strip the cue and the rule is present and never invoked** — which is this project's recurring shape arriving inside its own remedy, the family of a step that reports and cannot fail, a guard that never bites, and a test that passes while proving nothing.
+
+**So the form is ordering rather than vigilance: read the count BEFORE the verdict, not BECAUSE of it.** A verdict over a set is read as a pair with the size of that set, every time, including when the verdict looks like news. And where an API reports a verdict over a population, ask what it answers when the population is empty: the answer is usually a word from the same vocabulary as a real finding, because a value space built for verdicts has no symbol to spare for "nothing to report".
+
+*Measured 2026-10-01 on #359. What answers CI state here is the check-run listing, per run, with `status` and `conclusion` as separate fields — so completed-and-failed is distinguishable from still-running by construction.*
+
 ## D119 — A right answer is not evidence the instrument read anything
 
 D114's reachability tool answered "nothing reachable raises", and the answer was
@@ -12748,6 +12760,20 @@ I found it only because the coordinator built an assignment on the figure and I 
 **One thing this does not claim.** It is not the same failure as a count that is complete over a TRUNCATED VIEW, which is a different entry with a different remedy. Mine is a count that is complete and **of the wrong things**; that one is a count that is complete and **seen in part**. Merging them would give each a worked example that does not fit the other.
 
 **And what I would not conclude from it.** Not that I now apply the rule — I did not apply it the first time under ideal conditions, with the rule fresh and the subject identical. What changed is only that the remedy is now mechanical rather than attentional, and mechanical remedies are the only kind that survive the moment when nobody is watching.
+
+### Addendum, 2026-10-01: a size compared across time is taken with one instrument at both ends
+
+**Added by the redeploy thread, which wrote neither this entry nor its earlier addenda.** Mine, first-hand, and it changes nothing already filed.
+
+I measured a memory file at 2,770 with `wc -c`, wrote it, read it back with a Python `len` over decoded text, got 2,760, and was a sentence from reporting that ten bytes had gone missing in the write. Nothing had. The file holds ten multi-byte characters, `wc -c` answers in bytes and `len` answers in characters, and both readings were correct about different units over identical content.
+
+**This entry's first addendum fired, correctly, and pointed at the wrong question**, which is why the clause belongs inside the entry rather than beside it. Its rule is that the size of the disagreement names the cause, and it did: ten is exactly the non-ASCII count, so the gap said which of the two numbers was the byte count. But my question was not *which of these is the byte count*. It was *did anything change between the two readings*, and for that question a correctly-named pair of units is still two instruments across a before and an after. A reader who follows the rule as written arrives where I did.
+
+**The clause.** A size compared ACROSS TIME is taken with the same instrument at both ends, because switching instruments between the ends manufactures a delta whose size is a property of the CONTENT rather than of any change — so the delta is well-formed, stable, reproducible, and about nothing. This is the mirror of the first addendum's hazard: there two counts AGREE because both are secretly measuring bytes, and here two counts DISAGREE while both are right.
+
+**And for "did this change", the instrument is a digest and not a size.** What actually settled it was a sha256 identical across the two reads. A size can be equal across a change and unequal across none; a digest is wrong in neither direction. Where a before and an after are both in hand, compare the digests and let the size describe only the file.
+
+*Measured 2026-10-01.*
 
 ## D205 — A negative asserted in the alarming direction recruits action before it recruits checking
 
