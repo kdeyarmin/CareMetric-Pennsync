@@ -3216,6 +3216,17 @@ here:
    bypasses anything, the sweep's writes are attributable to a visible and
    revocable member, and the contract needed is the one written here. It costs
    a maintenance identity per agency, in `identity_map` and `membership`.
+   **And that cost makes this decision the OWNER'S, which nothing above says.**
+   A maintenance identity per agency is a person who never held a Base44
+   account, and D6 as extended by D99 admits one only as `locally_verified`
+   with the path refused unless `PENNSYNC_ENROLL_NEW_STAFF` reads exactly
+   `enabled-v1` — his own unanswered question
+   (`docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md` D6 row;
+   `tools-pennsync-enroll.mjs:86`, refusal at `:34`). So the ownership follows
+   from shape 1's cost rather than from anything in this section, and a reader
+   who takes "a decision about identity" as an architecture question will
+   conclude it is unblocked and be wrong. **Do not start shape 1 work on that
+   reading.**
 2. **A `pennsync_private` definer with no caller.** Rejected on inspection: a
    definer does not escape forced RLS either, so it would need a bypass role,
    which is the one thing the record store's design forbids outright.
