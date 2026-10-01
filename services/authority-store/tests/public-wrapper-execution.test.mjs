@@ -392,6 +392,11 @@ const REACHED_HELPERS = Object.freeze([
   'operational_new_id',
   'pdf_search_document_type',
   'pdf_search_row',
+  // Added by `20260920720000_roster_phone_provisioned.sql`, reached through
+  // `roster_entry` by the two roster wrappers. It masks a personal cell to its
+  // last four digits, so a dead one answering the input unchanged would be a
+  // disclosure rather than a page that fails to render.
+  'phone_masked',
   'quality_json_missing',
   'quality_pct',
   'quality_score',

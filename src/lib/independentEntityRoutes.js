@@ -1181,9 +1181,25 @@ const DECLARED_ROUTES = Object.freeze({
    * `agency_name`, `tenant_role`, `is_active`, a DERIVED `is_manager` and
    * `is_approved`, the staff and duty fields, and — for an `agency_admin` or
    * `manager` only — `phone`, `credentials`, `license_number`,
-   * `manager_email`, `profile_completeness_score` and
-   * `ai_content_agreement_accepted`, null rather than absent for everybody
-   * else.
+   * `manager_email`, `profile_completeness_score`,
+   * `ai_content_agreement_accepted` and the four telecom keys below, null
+   * rather than absent for everybody else.
+   *
+   * The telecom keys are `has_work_phone`, `has_personal_cell`,
+   * `work_phone_number` and `personal_cell_masked`
+   * (`20260920720000_roster_phone_provisioned.sql`). It supplies NO
+   * `personal_cell_e164` under any name: the three admin screens that read it
+   * either only COUNT or already print `maskPhone(...)`, so the masked form is
+   * every digit the product displays, and the full number is not worth carrying
+   * through a projection every roster consumer shares. A screen wanting the full
+   * cell is a product question and not a route this file can widen — and the key
+   * is deliberately not the column's name, because `personal_cell_e164` is
+   * self-writable, so a screen that mirrored a roster row back would write the
+   * mask over the real number.
+   *
+   * This paragraph is a second representation of that migration and the
+   * migration is the record; `roster-phone-provisioned.test.mjs` and
+   * `contract-roster.test.mjs` are what fail when the two disagree.
    *
    * It supplies `created_date` and can be read in `created_date` DESCENDING
    * order, which is what `-created_date` asks for and what 25 of the call sites

@@ -1562,9 +1562,9 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 54 | 39 |
-  | `integration` (derived) | 19 | 17 |
+  | `read-only` (derived) | 55 | 28 |
+  | `mutating` (derived) | 54 | 40 |
+  | `integration` (derived) | 19 | 18 |
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1588,6 +1588,23 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   being added to. This row was re-derived on seven bases over the life of one
   pull request; the number above is a reading of the tree it merges onto and of
   no other.
+
+  The roster's telecom keys then added ONE migration to EACH of the three derived
+  waves and no handler to anything: a forward file over `roster_entry` (D88), so
+  every handler reaching a roster contract needs it and no capability arrived. It
+  is the shape the `operational_limit` repair and the crossed-chart control
+  already had — a wave gains a migration without gaining work — and worth saying
+  each time rather than once, because a count that moved for no new capability is
+  the one a reader is likeliest to read as a port.
+
+  Note WHICH waves moved, because the obvious guess is wrong: a roster read is a
+  read, so `read-only` is the expected row and the other two are not. They move
+  because the roster is read by handlers that then WRITE, and by handlers that
+  also reach the runtime, and a wave's migrations are the ones ITS handlers need
+  — so a shared read contract lands in every wave that reaches it. This is the
+  same property the compliance writes recorded from the other side, where one
+  file joined two waves: three rows moving for one file is the derivation
+  working, not a file counted three times.
 
   The five compliance WRITES then took `mutating` to 54 and left `read-only`
   and `integration` where they were. Its migrations rose by **two** for one
