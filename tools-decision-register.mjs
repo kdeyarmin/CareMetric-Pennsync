@@ -95,7 +95,16 @@ export const EXPECTED_NEW = Object.freeze([226]);
 // something it does not say. Main-watch found it by looking for the assertion.
 // So what the check catches is stated rather than implied: `226 - 22 = 204`
 // holds automatically unless an absent number is outside `1..226` or repeated,
-// and those are the two typos that would silently shrink the base.
+// and those are the two typos that would silently ENLARGE the base: an absent
+// number that removes nothing leaves 205 where the list claims 204.
+//
+// That read "shrink" until 2026-10-01, which is backwards and contradicted both
+// guards below — each says "larger than it reads" in its own message — and the
+// sabotage test's comment, which says the same. A review bot caught it on a
+// re-derivation that touched the arithmetic beside it. Recorded rather than
+// quietly corrected, because it is this paragraph's own subject one more time:
+// the sentence describing a check disagreed with the check, inside the paragraph
+// about a comment that named a check which was not there.
 //
 // Re-derived 2026-10-01 from `origin/main` at `b9a9ae09`, where it had been
 // `179 - 11 = 168`. What moved on the base branch: #359 landed a collection of

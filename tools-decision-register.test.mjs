@@ -304,12 +304,19 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // module's own rewrite note and D226, both of which attribute the figure to a
 // pass, which is the whole of D226's ruling.
 //
-// **The third assertion is independent coverage again**, and the divergence that
-// made it so was predicted here rather than discovered: the previous version of
-// this comment kept it on the stated ground that "the two diverge again the
-// moment the list is rewritten for the next collection", while recording that it
-// was not independent coverage that day. The list was rewritten; they diverged.
-// An assertion kept for a future that arrives is worth saying so about.
+// **The third assertion is implied by the first AGAIN, and the round trip is the
+// instructive part.** An older version of this comment kept it on the stated
+// ground that "the two diverge again the moment the list is rewritten for the
+// next collection". The list was rewritten for D226 and they diverged, exactly as
+// predicted. Then #388 merged, the base grew to hold 226, and they converged
+// again hours later. So this assertion is independent only while a collection is
+// PENDING, which is a shorter window than "until the next rewrite" — the same
+// oscillation `EXPECTED_NEW` makes between live and inert, read from the other
+// side. Kept for the reason it always was: it diverges on the next collection,
+// and it is the only one of the three that catches a union built as a
+// concatenation. A review bot caught this paragraph still claiming the divergence
+// after the assertion message below had been rewritten to say the opposite,
+// which is the hazard of a comment that argues about figures it sits beside.
 test('the figures quoted in prose are the figures the lists hold', () => {
   assert.equal(REAL_BASE_NUMBERS.length, 204,
     "the base figure is quoted in the module's dated paragraph and in this file's "

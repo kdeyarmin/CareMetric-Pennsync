@@ -6628,6 +6628,24 @@ filing this inside D88 rather than beside it — the entry is not mistaken, it i
 written from a seat nobody occupies by the time the output is being read — and it
 is the sharper reading of a premise check that NARROWED rather than confirmed.*
 
+*One departure from the author's wording is RECORDED rather than made, on the
+convention that their words go in verbatim and the collector's disagreement goes
+here.* Their gloss "a difference whose file is NOT pending" invites a lookup that
+can answer wrongly, because the DDL behind a single difference can sit in BOTH an
+applied file and a pending one: `user_update` is at
+`20260919170000_record_store.sql:5955`, applied and edited, which is D88's own
+subject — AND at `20260920530000_profile_self_write.sql:81`, the pending forward
+catch-up that repairs it. A reader who finds the first concludes D88 and writes a
+second catch-up for work the pending file already does, which is the duplication
+the paragraph exists to prevent, reached through the paragraph. **The test is
+whether any PENDING migration accounts for the difference, never which file
+contains the DDL** — which is what their own phrase "the pending set" already
+says, so this sharpens the gloss rather than contradicting the sentence. The
+read-only command the paragraph leaves unnamed is
+`PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` with no
+`--apply`, which AGENTS.md names for exactly this question. A review bot raised
+both halves.*
+
 *What the collector verified at its own head, which is the anchor and not the
 measurement: lines 94 and 98 of that migration are, verbatim, `alter table
 "pennsync_records"."agency" alter column "billing_cycle" set default 'monthly';`
