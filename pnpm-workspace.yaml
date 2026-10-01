@@ -3,6 +3,12 @@ allowBuilds:
   esbuild: true
 overrides:
   '@telnyx/video>uuid': 11.1.1
+  # Twelve advisories (7 high, 5 moderate) against axios <1.20.0, every one
+  # reached transitively via @base44/sdk > axios. The SDK declares ^1.18.1, so
+  # 1.20.0 is inside its own range and it does not need to move. See
+  # docs/DEPENDENCY_ADVISORY_BASELINE.md for which of them the browser bundle
+  # can actually reach.
+  axios: 1.20.0
   brace-expansion@^1.1.7: 1.1.18
   esbuild: 0.28.2
   quill: 2.0.3
