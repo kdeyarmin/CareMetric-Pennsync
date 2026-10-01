@@ -205,6 +205,34 @@ export function timeOffSubmittedMessage(request) {
  * notice built from `undefined` renders and sends. The lesson is the fallback:
  * `actor?.email ?? request?.employee_email` cannot fail, so it cannot report
  * that its first operand is never a value.
+ *
+ * **Three defects in this change had one shape, and it is worth collecting.**
+ * Each time, the mechanism keeping something sound was also what hid its own
+ * test failing.
+ *
+ * 1. The `catch {}` every sender below needs — a 503 would throw away a
+ *    committed decision — also swallowed the TEST's errors. A missing import
+ *    made a fixture throw inside the try block, and the sender returned its
+ *    initialised answer, so a broken harness presented as a wrong value rather
+ *    than as an error. The tell is a value equal to the variable's initialiser.
+ * 2. A fake `integration` that THROWS proves nothing against that same catch:
+ *    the answer is identical whether the gate held or the send was attempted
+ *    and failed. The fake counts calls and resolves, and the assertion asks
+ *    whether the operation was ever REQUESTED.
+ * 3. The release gate's own failure mode is an absent value falling into the
+ *    open case — and the test written to prove that did exactly it. Its
+ *    `absent` marker was first `notices === undefined`, and a default parameter
+ *    applies exactly when the argument is `undefined`, so the case labelled
+ *    absent was silently driving the fully released environment. It is a
+ *    `Symbol` now.
+ *
+ * A fourth instance of the shape is outside this module and is CI's rather than
+ * ours, so it is named rather than claimed: a `continue-on-error` step reports
+ * conclusion `success` while its log ends in `##[error]`, which is how an
+ * unexercised check reads as a passing one.
+ *
+ * None of the three was found by reading. All three were found by sabotage, or
+ * by a failure whose first reading was wrong.
  */
 
 /**
