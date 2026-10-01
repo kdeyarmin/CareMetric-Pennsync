@@ -43,8 +43,16 @@ Store Connect/process steps that must be resolved before another native submissi
       that enrolment exists is **unmeasured from this repository**: there is no
       `android/` directory here at all, so nothing in the tree can answer it.
 
-      `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` carries the same conflation in
-      its own words; correcting it belongs to that document's next change.
+      `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` **contradicts itself about this,
+      two hundred lines apart**, which is a different defect from carrying the
+      error. The sentence beginning "App Signing for `com.caremetic.ai` must be
+      RECOVERED, not regenerated" puts both platforms under Android's
+      consequence, while the Stage L row beginning "Recover Android signing, and
+      Apple **account** access" already carries the correction, dated 2026-09-22
+      and citing `docs/MOBILE_RECOVERY_RUNBOOK_2026-09-22.md`. So the fix there is
+      to narrow the earlier sentence and point it at the dated row — not to state
+      the correction a third time. That belongs to that document's next change;
+      read it by those two anchors rather than by line number, which moves.
 - [ ] **IAP/billing continuity.** Reconcile the existing Apple in-app purchases
       and any Google billing configuration with product IDs, purchase/receipt
       validation, restore behavior, entitlements, and server state.
