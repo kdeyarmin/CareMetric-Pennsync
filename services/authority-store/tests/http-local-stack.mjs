@@ -10,6 +10,29 @@ const exec = promisify(execFile);
 export const PROJECT = 'local-pennsync-authority';
 export const API = 'http://127.0.0.1:54321';
 export const workdir = fileURLToPath(new URL('../', import.meta.url));
+/**
+ * A second workdir holding nothing but a DERIVED `config.toml` with
+ * `[db.migrations]` disabled, for the one case that needs the stack up before the
+ * store exists.
+ *
+ * D11 fixes the deployment pin from `pennsync.deployment_app_id` once, in the
+ * first migration, and a mis-pinned database is replaced rather than corrected.
+ * `supabase start` applies the migrations itself, and five measured attempts
+ * established that nothing a caller sets reaches the session it applies them in:
+ * `PGOPTIONS` is not inherited, and a `db reset` leaves no role-wide,
+ * database-scoped or `ALTER SYSTEM` setting behind in the cluster. So a store the
+ * CLI migrates can only ever be the default — staging — and a production-pinned
+ * one has to be built from this side, in a session that carries the setting.
+ *
+ * It is INSIDE this harness's own `.temp`, not a scratch directory somewhere, so
+ * the ownership guards still describe a path this file created. It holds no
+ * migrations at all rather than a copy of them: with `[db.migrations]` disabled
+ * the CLI reads none, and a second copy of a directory nothing applies is a place
+ * for the two to drift.
+ */
+export const unmigratedWorkdir = fileURLToPath(new URL('../supabase/.temp/unmigrated/', import.meta.url));
+/** The two workdirs a stack of ours may have been started from, and no others. */
+const WORKDIRS = Object.freeze({ migrated: workdir, unmigrated: unmigratedWorkdir });
 const marker = new URL('../supabase/.temp/http-harness-owner.json', import.meta.url);
 const CLI = process.env.PENNSYNC_SUPABASE_CLI || 'supabase';
 const EXCLUDED = 'analytics,edge-runtime,functions,imgproxy,meta,realtime,studio,vector';
@@ -214,15 +237,20 @@ export async function assertOwnedStack() {
   await localConfig();
   let owner;
   try { owner = JSON.parse(await readFile(marker, 'utf8')); } catch { fail('LOCAL_STACK_OWNERSHIP_REQUIRED'); }
-  if (owner.project !== PROJECT || owner.workdir !== workdir || owner.version !== 2
+  // The workdir is CHECKED against a value computed here rather than trusted
+  // from the marker, so widening this to a second mode adds one more known path
+  // and no ability to adopt a stack started from anywhere else.
+  if (owner.project !== PROJECT || owner.version !== 3 || !WORKDIRS[owner.mode]
+    || owner.workdir !== WORKDIRS[owner.mode]
     || !localDaemon(owner.daemon)) fail('LOCAL_STACK_OWNERSHIP_MISMATCH');
   if (await resolveLocalDaemon() !== owner.daemon) fail('LOCAL_DOCKER_OWNERSHIP_MISMATCH');
   pinnedDaemon = owner.daemon;
+  return owner;
 }
 export async function localStatus() {
-  await assertOwnedStack();
+  const owner = await assertOwnedStack();
   let status;
-  try { status = JSON.parse(await captured(CLI, ['status', '--workdir', workdir, '-o', 'json'])); }
+  try { status = JSON.parse(await captured(CLI, ['status', '--workdir', owner.workdir, '-o', 'json'])); }
   catch { fail('LOCAL_STATUS_UNAVAILABLE_OUTPUT_REDACTED'); }
   let db;
   try { db = new URL(status.DB_URL); } catch { fail('LOCAL_DATABASE_TARGET_INVALID'); }
@@ -365,9 +393,34 @@ export async function unusedPort(port) {
     }
   }
 }
+/**
+ * Write the derived `config.toml`, and refuse to proceed unless the disable took.
+ *
+ * Derived from the repository's own file by a single targeted replacement, so
+ * everything else about the stack — its project id, ports, excluded services — is
+ * the reviewed configuration and not a second copy of it. The replacement is
+ * asserted rather than assumed: a `config.toml` whose `[db.migrations]` block
+ * moved would otherwise silently produce a MIGRATED store, which is the one thing
+ * this workdir exists to avoid and would present as a store pinned to staging for
+ * no visible reason.
+ */
+async function writeUnmigratedConfig() {
+  const config = await readFile(new URL('../supabase/config.toml', import.meta.url), 'utf8');
+  const derived = config.replace(/(\[db\.migrations\]\s*\nenabled\s*=\s*)true/, '$1false');
+  if (derived === config || !/\[db\.migrations\]\s*\nenabled\s*=\s*false/.test(derived)) {
+    fail('LOCAL_MIGRATIONS_DISABLE_FAILED');
+  }
+  await mkdir(new URL('../supabase/.temp/unmigrated/supabase/', import.meta.url), { recursive: true });
+  await writeFile(new URL('../supabase/.temp/unmigrated/supabase/config.toml', import.meta.url), derived);
+}
 async function main(action) {
   await localConfig();
-  if (action === 'start') {
+  // `start-unmigrated` is a SEPARATE action rather than a flag on `start`, so a
+  // job cannot ask for it by accident: a stack with no store applied is useless
+  // to every other suite here, and would present as a store missing its schema
+  // rather than as the wrong action.
+  const mode = action === 'start-unmigrated' ? 'unmigrated' : 'migrated';
+  if (action === 'start' || action === 'start-unmigrated') {
     pinnedDaemon = await resolveLocalDaemon();
     if ((await captured(CLI, ['--version'])).trim() !== '2.109.1') fail('LOCAL_CLI_VERSION_MISMATCH');
     // Refuse to adopt or destroy a stack or volumes that predate this harness.
@@ -380,17 +433,21 @@ async function main(action) {
     if (marked) fail('LOCAL_STACK_MARKER_EXISTS_USE_SCOPED_STOP');
     for (const port of [54321, 54322, 54324]) await unusedPort(port);
     await mkdir(new URL('../supabase/.temp/', import.meta.url), { recursive: true });
-    await writeFile(marker, JSON.stringify({ version: 2, project: PROJECT, workdir, daemon: pinnedDaemon }), { flag: 'wx' });
+    if (mode === 'unmigrated') await writeUnmigratedConfig();
+    const started = WORKDIRS[mode];
+    await writeFile(marker, JSON.stringify({ version: 3, project: PROJECT, mode, workdir: started, daemon: pinnedDaemon }), { flag: 'wx' });
     // Keep the ownership marker on failure so `stop` can clean only this attempted stack.
-    await captured(CLI, ['start', '--workdir', workdir, '--exclude', EXCLUDED], 12 * 60 * 1000);
+    await captured(CLI, ['start', '--workdir', started, '--exclude', EXCLUDED], 12 * 60 * 1000);
     await localStatus();
-    process.stdout.write('Owned local Supabase Auth/PostgREST stack ready; credentials suppressed.\n');
+    process.stdout.write(mode === 'unmigrated'
+      ? 'Owned local Supabase Auth/PostgREST stack ready with NO store applied; credentials suppressed.\n'
+      : 'Owned local Supabase Auth/PostgREST stack ready; credentials suppressed.\n');
   } else if (action === 'stop') {
     if (!await access(marker).then(() => true, () => false)) {
       process.stdout.write('No stack owned by this harness; cleanup made no changes.\n'); return;
     }
-    await assertOwnedStack();
-    await captured(CLI, ['stop', '--workdir', workdir, '--project-id', PROJECT, '--no-backup']);
+    const owner = await assertOwnedStack();
+    await captured(CLI, ['stop', '--workdir', owner.workdir, '--project-id', PROJECT, '--no-backup']);
     await unlink(marker);
     process.stdout.write('Owned local stack stopped; its disposable data volumes removed.\n');
   } else fail('EXPECTED_START_OR_STOP');

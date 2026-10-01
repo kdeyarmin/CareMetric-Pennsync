@@ -56,13 +56,56 @@ test('remote Docker hosts are refused before any CLI start or ownership claim', 
 test('changed daemon ownership prevents stop before the lifecycle CLI can execute', async () => {
   await fixture(async ({ env, invoke, marker, workdir }) => {
     env.DOCKER_HOST = 'unix:///local/second-daemon.sock';
-    const owner = JSON.stringify({ version: 2, project: PROJECT, workdir, daemon: 'unix:///local/first-daemon.sock' });
+    const owner = JSON.stringify({ version: 3, project: PROJECT, mode: 'migrated', workdir, daemon: 'unix:///local/first-daemon.sock' });
     await writeFile(marker, owner);
     const result = await invoke('stop');
     assert.equal(result.code, 1);
     assert.equal(result.stderr.trim(), 'LOCAL_DOCKER_OWNERSHIP_MISMATCH');
     assert.equal(result.stdout, '');
     assert.equal(await readFile(marker, 'utf8'), owner);
+  });
+});
+
+test('a marker naming a mode or a workdir this file did not choose is refused', async () => {
+  await fixture(async ({ env, invoke, marker, workdir, root }) => {
+    // The second start mode adds one more KNOWN workdir and no ability to adopt a
+    // stack started from anywhere else, so each of these must still be refused
+    // before any CLI lifecycle call. `mode` is the new field, and a marker
+    // without one is a marker from before this change.
+    env.DOCKER_HOST = 'unix:///local/first-daemon.sock';
+    for (const owner of [
+      { version: 3, project: PROJECT, workdir },
+      { version: 3, project: PROJECT, mode: 'invented', workdir },
+      { version: 3, project: PROJECT, mode: 'unmigrated', workdir },
+      { version: 3, project: PROJECT, mode: 'migrated', workdir: resolve(root, 'elsewhere') + sep },
+      { version: 2, project: PROJECT, mode: 'migrated', workdir },
+    ]) {
+      await writeFile(marker, JSON.stringify({ daemon: 'unix:///local/first-daemon.sock', ...owner }));
+      const result = await invoke('stop');
+      assert.equal(result.code, 1);
+      assert.equal(result.stderr.trim(), 'LOCAL_STACK_OWNERSHIP_MISMATCH');
+      assert.equal(result.stdout, '');
+    }
+  });
+});
+
+test('the unmigrated start derives a config with migrations disabled, or refuses', async () => {
+  await fixture(async ({ invoke, root }) => {
+    // The start still fails here -- the Docker endpoint is remote and the CLI
+    // path does not exist -- so what this proves is the ORDER: nothing derives a
+    // config before the endpoint check, and the repository's own file is never
+    // edited in place.
+    const before = await readFile(resolve(root, 'supabase/config.toml'), 'utf8');
+    const result = await invoke('start-unmigrated');
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.trim(), 'LOCAL_DOCKER_ENDPOINT_REQUIRED');
+    assert.equal(await readFile(resolve(root, 'supabase/config.toml'), 'utf8'), before);
+    assert.equal(await access(resolve(root, 'supabase/.temp/unmigrated/supabase/config.toml'))
+      .then(() => true, () => false), false);
+    // And a config whose block this file cannot find is a refusal rather than a
+    // silently MIGRATED store, which is the one outcome that workdir exists to
+    // avoid and would present as a store pinned to staging for no visible reason.
+    assert.match(before, /\[db\.migrations\]\s*\nenabled\s*=\s*true/);
   });
 });
 
