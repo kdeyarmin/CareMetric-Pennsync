@@ -136,6 +136,18 @@ create trigger cm_integration_credential_guard
   before update or delete on public.cm_integration_credential
   for each row execute function public.cm_integration_credential_guard();
 
+-- AFTER the trigger, because `create trigger` is the one thing that checks
+-- EXECUTE on a trigger function; firing it never does. This is the only
+-- function in the directory that would otherwise keep PostgreSQL's default
+-- EXECUTE to PUBLIC, and the restore ratchet is what found that: every other
+-- `cm_integration_%` function here reads false/false/true and this one read
+-- true/true/true. Calling it directly cannot do anything -- plpgsql refuses a
+-- trigger function invoked as a function -- so this closes a discrepancy
+-- rather than a hole, and it is the discrepancy that would have gone on
+-- reading as reviewed. `service_role` is revoked with the rest: the trigger
+-- runs as the table owner through the trigger, so nothing needs to call it.
+revoke all on function public.cm_integration_credential_guard() from public, anon, authenticated, service_role;
+
 alter table public.cm_integration_credential enable row level security;
 alter table public.cm_integration_credential force row level security;
 revoke all on public.cm_integration_credential from public, anon, authenticated, service_role;

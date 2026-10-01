@@ -502,4 +502,18 @@ test('no browser role may reach the credential, through the table or the functio
   // functions are the only way in.
   await role(db);
   await assert.rejects(() => db.query('select * from public.cm_integration_credential'), /permission denied/);
+  // The guard is the directory's only trigger function, so it is the only one
+  // that would keep PostgreSQL's default EXECUTE to PUBLIC. It arrived that
+  // way and the restore ratchet is what noticed. Firing a trigger checks no
+  // privilege -- only `create trigger` does, which is why the revoke sits
+  // after it -- so this costs the guard nothing and the asymmetry is gone.
+  await reset(db);
+  assert.deepEqual((await db.query(`select p.proname as name,
+    has_function_privilege('anon',p.oid,'EXECUTE') as anon,
+    has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated,
+    has_function_privilege('service_role',p.oid,'EXECUTE') as service_role
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'cm_integration_%'
+      and p.prorettype = 'pg_catalog.trigger'::regtype order by p.proname`)).rows,
+  [{ name: 'cm_integration_credential_guard', anon: false, authenticated: false, service_role: false }]);
 }, { forward: true }));
