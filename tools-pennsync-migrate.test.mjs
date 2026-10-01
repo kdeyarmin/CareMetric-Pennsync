@@ -54,8 +54,9 @@ const rejectsWith = code => error => {
 test('a ledger name is the file name without its version, because the two sides do not share one', () => {
   assert.equal(ledgerName('20260918015112_independent_staging_authority.sql'), 'independent_staging_authority');
   // The WHOLE stem, because the timestamp prefix is not unique and `version`
-  // is the ledger's primary key: two pairs of committed migrations share a
-  // prefix, one from each directory.
+  // is the ledger's primary key. This pair is kept as one instance of the
+  // shape; the colliding set itself is derived from the tree below, because
+  // the sentence that used to stand here counted it and went stale.
   assert.equal(ledgerVersion('20260918015112_independent_staging_authority.sql'),
     '20260918015112_independent_staging_authority');
   assert.notEqual(ledgerVersion('20260920180000_chart_assignment_lifecycle.sql'),
@@ -112,6 +113,95 @@ test('the committed migrations carry no ledger-name collision', () => {
   // The guard above is worth nothing if the real tree already violates it.
   const plan = planMigration({ migrations: readMigrations(REPOSITORY), applied: [] });
   assert.ok(plan.pending.length > 60, `expected the whole tree pending, got ${plan.pending.length}`);
+});
+
+/** Every committed migration, grouped by the timestamp prefix it starts with. */
+const committedByPrefix = () => {
+  const groups = new Map();
+  for (const migration of readMigrations(REPOSITORY)) {
+    const [prefix] = migration.name.split('_', 1);
+    groups.set(prefix, [...(groups.get(prefix) ?? []), migration]);
+  }
+  return groups;
+};
+
+test('a shared timestamp prefix reaches neither key the ledger is matched on', () => {
+  // DERIVED, never counted. `ledgerVersion`'s comment used to name the
+  // colliding pairs and call each one cross-directory; more have arrived
+  // since, inside `record-migrations`, and nothing failed. So this asserts
+  // the property that makes a collision harmless for however many exist,
+  // rather than the census that rotted.
+  const colliding = [...committedByPrefix()].filter(([, files]) => files.length > 1);
+  assert.ok(colliding.length, 'expected the tree to still carry a shared prefix; this test is vacuous without one');
+  for (const [prefix, files] of colliding) {
+    const versions = new Set(files.map(file => ledgerVersion(file.name)));
+    const names = new Set(files.map(file => ledgerName(file.name)));
+    assert.equal(versions.size, files.length, `${prefix}: ${files.length} files share a ledger version`);
+    assert.equal(names.size, files.length, `${prefix}: ${files.length} files share a ledger name`);
+  }
+});
+
+test('files at a shared prefix apply in the order the rest of their stem sorts in', () => {
+  // Within a directory the apply order is `readdirSync().sort()` on the whole
+  // file name, so at a shared prefix the tie is broken by what follows it.
+  // Pinned because that ordering is then a reviewable fact rather than an
+  // accident: a migration that has to run after a sibling dated the same
+  // second gets a name that sorts after it, or a later timestamp.
+  for (const [prefix, files] of committedByPrefix()) {
+    if (files.length < 2) continue;
+    for (const directory of new Set(files.map(file => file.from))) {
+      const inDirectory = files.filter(file => file.from === directory).map(file => file.name);
+      assert.deepEqual(inDirectory, [...inDirectory].sort(), `${prefix} in ${directory}`);
+    }
+  }
+});
+
+test('the ledger-version refusal cannot fire while the two keys are derived as they are', () => {
+  // `ledgerVersion` is the whole stem and `ledgerName` is that stem less its
+  // prefix, so equal versions FORCE equal names and `MIGRATE_NAME_COLLISION`
+  // refuses first. The version guard is subsumed.
+  //
+  // **The cross-product below does not earn that, and an earlier version of
+  // this comment claimed it did.** Equal versions mean the same stem today, so
+  // the loop is satisfied by any deterministic `ledgerName` and would stay
+  // green through a rewrite of it — it STATES the implication. What carries it
+  // is the assertion above, and the change that reds that one is the real
+  // route to a reachable version guard: truncate `ledgerVersion` to the bare
+  // prefix and two files dated the same second collide on it while their names
+  // still differ. So `ledgerVersion` is the load-bearing key here, not
+  // `ledgerName`, and whoever narrows it learns the guard has become live and
+  // owes coverage of its own.
+  const probes = [
+    '001_a.sql', '0001_a.sql', '002_a.sql', '001_b.sql',
+    '20260920180000_contract_assignment.sql', '20260920180000_chart_assignment_lifecycle.sql',
+    ...readMigrations(REPOSITORY).map(migration => migration.name),
+  ];
+  for (const probe of probes) {
+    // The premise, and the only one that can be asserted here: the version IS
+    // the whole stem. So two names that differ at all differ in their version,
+    // and equal versions can only ever be one stem.
+    assert.equal(ledgerVersion(probe), probe.replace(/\.sql$/, ''),
+      `${probe}: a ledger version that is not the whole stem can collide`);
+  }
+  // The second premise — `ledgerName` agreeing on names the version maps
+  // together — has NO assertion here on purpose. Given the first, the only
+  // names it could separate are ones differing solely by the `.sql` suffix,
+  // which a migration directory cannot hold, so any test of it would pass on
+  // synthetic input and could not fail on real input. A vacuous assertion
+  // reads exactly like a working one; the acknowledged gap does not.
+  for (const left of probes) {
+    for (const right of probes) {
+      if (ledgerVersion(left) !== ledgerVersion(right)) continue;
+      assert.equal(ledgerName(left), ledgerName(right),
+        `${left} and ${right} share a ledger version and not a ledger name`);
+    }
+  }
+  // And the check order is what makes the subsumption true, so drive it: two
+  // files a version collision would need are refused by NAME.
+  const failure = refusal(
+    () => planMigration({ migrations: [authority('001_a.sql'), record('001_a.sql')], applied: [] }),
+    'MIGRATE_NAME_COLLISION');
+  assert.equal(failure.detail.name, 'a');
 });
 
 test('a local-only migration is skipped with its reason and never pends', () => {

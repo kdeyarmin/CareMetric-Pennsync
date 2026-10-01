@@ -35,7 +35,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA, PROFILE_SELF_WRITABLE } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
+import {
+  applyRecordMigrations, recordMigrationNames,
+} from './record-migrations.mjs';
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
@@ -65,14 +67,23 @@ before(async () => {
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  // The ordering guard is RETIRED here, which is the handover
-  // `assertNewestRecordMigration` documents rather than a weakening of it: this
-  // migration is on `main`, so it is part of what a store already holds, and a
-  // later file sorting after it describes a correct tree. Keeping the call cost
-  // 33 tests in this suite the moment the next pending migration arrived, naming
-  // a file that had done nothing wrong — the same way it once cost 22 in
-  // contract-compliance-writes. The guard now sits on the newest pending file,
-  // in roster-phone-provisioned.
+  // The ordering guard is NOT here, and where it lives is a merge resolution
+  // rather than either branch's answer. This file was the newest pending
+  // migration when it landed on `main`; `main` then recorded the guard as
+  // having moved on to `contract-reference-writes.test.mjs`, which was correct
+  // for `main`. This branch adds `20260920720000_roster_phone_provisioned`,
+  // which sorts after that one, so on THIS tree the newest pending file is
+  // neither of them and the guard is held by `roster-phone-provisioned.test.mjs`
+  // alone. Both sides were right about their own tree, and taking either one
+  // whole leaves two suites holding it, which the helper forbids.
+  //
+  // Nothing about this file changed. It was OVERTAKEN, which is the rule the
+  // helper's error text does not name — it names merging, the commonest cause.
+  // A suite that kept the call after being overtaken asserts a tree the
+  // overtaking change makes false, and fails for a reason that reads like a
+  // defect in this contract.
+  assert.ok(applied.includes(DUTY_NAME),
+    `the record walk did not apply ${DUTY_NAME}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   // The carried profile rows. The fixtures stop at the authority store, and

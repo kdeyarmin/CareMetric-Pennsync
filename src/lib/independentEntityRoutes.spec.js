@@ -1880,6 +1880,12 @@ describe("what batch E's routes take on trust", () => {
     // checks them is `contract_ai_configuration_save`'s own refusals — in
     // particular the two that catch a scope this route derived wrongly, which
     // is why deriving it is safe.
+    // The reference writes added four, and the split is the informative part:
+    // both DELETES and `LibraryDocument.update` pass literals the gate can read,
+    // so they are ADOPTED, while the four saves pass one whole variable each
+    // (`payload` on the rota, `data` on template management). Same three
+    // screens, same three contracts, different answer per call site -- which is
+    // why the disposition is per ROUTE and not per capability.
     expect([...report.unproved_routes].sort()).toEqual([
       'AIConfiguration.create', 'AIConfiguration.update',
       'AdrAuditCase.create',
@@ -1888,12 +1894,15 @@ describe("what batch E's routes take on trust", () => {
       'ClinicalPathway.create', 'ClinicalPathway.update',
       'ComplianceAudit.update',
       'CustomValidationRule.create', 'CustomValidationRule.update',
+      'DocumentTemplate.create', 'DocumentTemplate.update',
       'EducationMaterial.create',
       'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
       'NoteConversion.create',
       'NotificationPreference.create', 'NotificationPreference.update',
+      'OnCallShift.create', 'OnCallShift.update',
       'PatientEducationAssignment.update',
       'PatientRecommendation.create',
+      'Physician.create',
     ]);
     for (const key of report.unproved_routes) {
       expect(ENTITY_ROUTES[key], `${key} must be declared`).toBeDefined();
@@ -1946,6 +1955,21 @@ describe("what batch E's routes take on trust", () => {
       'PENNSYNC_F2F_FORBIDDEN', 'PENNSYNC_F2F_CHART_FORBIDDEN',
       'PENNSYNC_NOTE_CONVERSION_CHART_FORBIDDEN', 'PENNSYNC_TEMPLATE_NAME_REQUIRED']) {
       expect(operational, `${code} must be exercised by the contract suite`).toContain(code);
+    }
+
+    // The reference writes, a FOURTH family. Their four unproved saves lean on
+    // two refusals a screen cannot see coming and one that is a narrowing
+    // rather than a check: an unknown key is refused rather than filtered, a
+    // reserved one likewise, and `PENNSYNC_LIBRARY_FIELD_UNKNOWN` is what a
+    // caller sending `file_url` gets -- the file layer's absence, raised by the
+    // same machinery, so it cannot rot into a silent drop.
+    const reference = readFileSync(
+      'services/authority-store/tests/contract-reference-writes.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_REFERENCE_FORBIDDEN', 'PENNSYNC_REFERENCE_AGENCY_NOT_HELD',
+      'PENNSYNC_ON_CALL_FIELD_UNKNOWN', 'PENNSYNC_ON_CALL_FIELD_INVALID',
+      'PENNSYNC_DOC_TEMPLATE_FIELD_RESERVED', 'PENNSYNC_DOC_TEMPLATE_NOT_FOUND',
+      'PENNSYNC_LIBRARY_FIELD_UNKNOWN']) {
+      expect(reference, `${code} must be exercised by the contract suite`).toContain(code);
     }
 
     // The compliance writes, a THIRD family on the same standing. The two
@@ -2397,5 +2421,38 @@ describe('duplicate route declarations', () => {
       const declarations = source.match(new RegExp(`^const ${blockName} =`, 'gm')) || [];
       expect(declarations).toHaveLength(1);
     }
+  });
+  /**
+   * The increment path discards `referral_count` and REFUSES anything else.
+   *
+   * Discarding was the first version: any key other than the date was dropped,
+   * so `{ referral_count: 2, specialty: 'Cardiology' }` succeeded as an
+   * increment and lost the specialty. The contract guarantees that an unknown
+   * or reserved field is refused by name (D39), and a route that drops keys
+   * before the request is built launders that guarantee — the contract never
+   * sees the key it promises to refuse.
+   *
+   * Today's only caller sends exactly the two keys, so this was not a live
+   * defect. It is the guarantee, asserted where it can be broken.
+   */
+  it('refuses a third key on the referral increment rather than dropping it', () => {
+    const route = ENTITY_ROUTES['Physician.update'];
+
+    // The shape the directory actually sends still works, and still drops the
+    // caller's count: the contract reads the stored value and adds one.
+    expect(route.request('phys-1', { referral_count: 4, last_referral_date: '2026-09-29' }))
+      .toEqual({ id: 'phys-1', action: 'record_referral', referral_date: '2026-09-29' });
+    expect(route.request('phys-1', { referral_count: 4 }))
+      .toEqual({ id: 'phys-1', action: 'record_referral', referral_date: null });
+
+    for (const extra of [{ specialty: 'Cardiology' }, { is_active: false }, { nonsense: 1 }]) {
+      expect(() => route.request('phys-1', { referral_count: 4, ...extra }))
+        .toThrow(ARGUMENTS_UNSUPPORTED);
+    }
+
+    // And the profile path is untouched — it passes its fields through for the
+    // contract to check, which is where the allowlist lives.
+    expect(route.request('phys-1', { specialty: 'Cardiology' }))
+      .toEqual({ id: 'phys-1', action: 'profile', fields: { specialty: 'Cardiology' } });
   });
 });
