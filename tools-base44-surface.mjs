@@ -135,6 +135,20 @@ const withoutComments = text => text
  * Where a file takes an entity HANDLE instead of calling through it: the same
  * characters `ENTITY_CALL` matches, with the following `.` captured rather than
  * required, so one regex decides both halves and they cannot drift apart.
+ *
+ * Three ways of reaching an entity are NOT covered by it, listed because the
+ * next reader will otherwise take the handle set for a closed one. Each is
+ * measured absent from production `src` as of 2026-10-01, which is why they are
+ * recorded rather than matched:
+ *   - `base44?.entities?.Name`, optional chaining anywhere in the path;
+ *   - `base44.entities[expression]`, a computed lookup on the namespace itself,
+ *     as opposed to the indexed lookup on a local map that `agencySettings.js`
+ *     does and this tool does see;
+ *   - `const { Name } = base44.entities` where `Name` is then handed on without
+ *     a call. `entityCalls` resolves that binding when a call DOES follow
+ *     (`NAMESPACE_DESTRUCTURE`); it is only the handed-on handle that is unseen.
+ * Any of them appearing is a reason to widen this regex, not to widen the
+ * allowance below.
  */
 export const ENTITY_HANDLE = /\bbase44\s*\.\s*entities\s*\.\s*([A-Z][A-Za-z0-9_]*)(?![\w$])[ \t\r\n]*(\.)?/g;
 

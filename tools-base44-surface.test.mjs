@@ -189,15 +189,15 @@ test('a comment ABOUT the SDK is not a call site, and line numbers survive the b
     readFileSync(resolve(repository, 'src/lib/independentStagingAdapter.js'), 'utf8')), []);
 });
 
+const committed = () => parseBaseline(readFileSync(resolve(repository, BASELINE_FILE), 'utf8')).allowed_handles;
+
 test('an unaccounted handle is named with its file and line, and an accounted one is not', () => {
-  // The whole finding on this tree, exactly. Four sites in three files; the
-  // reads beside them are visible and the operations through the handle are not.
-  assert.deepEqual(unaccountedHandles(repository), [
-    { file: 'src/components/training/CourseLessonBuilder.jsx', line: 105, entity: 'TrainingModule' },
-    { file: 'src/components/training/CourseQuizBuilder.jsx', line: 177, entity: 'TrainingQuestion' },
-    { file: 'src/lib/agencySettings.js', line: 7, entity: 'PayerRateConfig' },
-    { file: 'src/lib/agencySettings.js', line: 8, entity: 'FaxRetryConfig' },
-  ]);
+  // Pinned against the COMMITTED allowance rather than a second copy of the
+  // list. A hand repairing one of these sites deletes its entry -- which the
+  // gate's STALE refusal tells them to do -- and this assertion moves with it,
+  // instead of being a test that passes only while the defect exists.
+  assert.deepEqual(unaccountedHandles(repository).map(handleKey).sort(), committed());
+  assert.ok(committed().length > 0, 'this tree still has unaccounted handles');
   // `retiredOfflineQueue.js` takes four handles and is ABSENT from that list,
   // which is the half that keeps this from being a count of every alias: its
   // aliased path resolves, so the tool can still see the calls arriving.
@@ -206,11 +206,31 @@ test('an unaccounted handle is named with its file and line, and an accounted on
   assert.equal(unaccountedHandles(repository)
     .some(hit => hit.file === 'src/lib/retiredOfflineQueue.js'), false);
   // And a literal read of the SAME entity does not account for a taken handle --
-  // the case the training builders are. Sharing an entity name with a visible
-  // call is not the aliased path resolving.
-  const builder = readFileSync(resolve(repository, 'src/components/training/CourseLessonBuilder.jsx'), 'utf8');
-  assert.equal([...entityCalls(builder)].length, 1, 'only the literal read is visible');
-  assert.deepEqual([...entityCalls(builder)].map(site => site.entity), ['TrainingModule']);
+  // the case the training builders are. Scoped to the allowance still naming the
+  // file, so repairing the builder retires this case with its entry; the shape
+  // itself is pinned permanently over a fixture below, where no repair reaches it.
+  if (committed().includes('src/components/training/CourseLessonBuilder.jsx::TrainingModule')) {
+    const builder = readFileSync(resolve(repository, 'src/components/training/CourseLessonBuilder.jsx'), 'utf8');
+    assert.equal([...entityCalls(builder)].length, 1, 'only the literal read is visible');
+    assert.deepEqual([...entityCalls(builder)].map(site => site.entity), ['TrainingModule']);
+  }
+});
+
+test('a literal call does not account for a handle of the same entity in the same file', () => {
+  // The discrimination the whole refusal turns on, over a fixture so that it
+  // survives every repair to the four sites this tree happens to hold.
+  const root = mkdtempSync(join(tmpdir(), 'base44-surface-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'builder.jsx'),
+      'const rows = base44.entities.TrainingModule.filter({ id });\n'
+      + 'export const panel = () => useBuilder({ entity: base44.entities.TrainingModule, rows });\n');
+    assert.deepEqual(unaccountedHandles(root),
+      [{ file: 'src/builder.jsx', line: 2, entity: 'TrainingModule' }],
+      'the literal filter is visible and the handed-on handle is still refused');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('this tree\'s unaccounted handles are the committed allowance, so the gate passes', () => {
