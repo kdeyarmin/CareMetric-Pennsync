@@ -35,9 +35,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA, PROFILE_SELF_WRITABLE } from '../../../tools-entity-schema-plan.mjs';
-import {
-  applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames,
-} from './record-migrations.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
