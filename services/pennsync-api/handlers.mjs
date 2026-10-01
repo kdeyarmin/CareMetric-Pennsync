@@ -7,12 +7,19 @@
 //
 // Every handler receives the caller's already-resolved current authority. A
 // handler never resolves its own authority and never widens it.
-import { exactObject, fail, isObject } from './contracts.mjs';
+import { MAX_BODY, exactObject, fail, isObject } from './contracts.mjs';
 import { buildSmartNoteData } from './transforms.mjs';
 import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { MAX_CSV_BYTES, importProviders } from './provider-import.mjs';
+import { EXTRACTION_MAX_BODY, PATIENT_EXTRACTION_SCHEMA } from './patient-extraction.mjs';
+import {
+  CLINICAL_DOCUMENT_MODEL, CLINICAL_DOCUMENT_PROMPT, CLINICAL_DOCUMENT_SCHEMA,
+} from './clinical-document.mjs';
+import {
+  REFERRAL_SPLIT_MODEL, REFERRAL_SPLIT_PROMPT, REFERRAL_SPLIT_SCHEMA,
+} from './referral-split.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
 import { AI_REPORT_PARAMS, generateAiReport } from './ai-report.mjs';
@@ -271,6 +278,84 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, ['agency_code', 'office_name', 'limit'], 'INVALID_PARAMS');
       return contract('getAgencySettings', params);
+    },
+  }),
+  createPhysician: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('createPhysician', params);
+    },
+  }),
+  updatePhysician: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'action', 'fields', 'referral_date'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      // `fields` is required for a profile edit and meaningless for the
+      // increment, so its shape is checked where it is used rather than
+      // demanded here -- the contract refuses an empty patch by name.
+      if (params.fields !== undefined && params.fields !== null
+        && !isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('updatePhysician', params);
+    },
+  }),
+  deletePhysician: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deletePhysician', params);
+    },
+  }),
+  // The three reference writes. `id` is OPTIONAL on a save and required on an
+  // update or a delete, so the save checks its TYPE where it is present and
+  // leaves the empty string to the contract: an empty id is a real refusal
+  // (`..._ID_INVALID`) rather than a malformed request, and answering 400 here
+  // would hide which of the two a screen sent.
+  saveOnCallShift: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (params.id !== undefined && params.id !== null
+        && typeof params.id !== 'string') fail(400, 'ID_REQUIRED');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('saveOnCallShift', params);
+    },
+  }),
+  deleteOnCallShift: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deleteOnCallShift', params);
+    },
+  }),
+  updateLibraryDocument: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('updateLibraryDocument', params);
+    },
+  }),
+  deleteLibraryDocument: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deleteLibraryDocument', params);
+    },
+  }),
+  saveDocumentTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (params.id !== undefined && params.id !== null
+        && typeof params.id !== 'string') fail(400, 'ID_REQUIRED');
+      if (!isObject(params.fields)) fail(400, 'FIELDS_REQUIRED');
+      return contract('saveDocumentTemplate', params);
+    },
+  }),
+  deleteDocumentTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      if (typeof params.id !== 'string' || params.id === '') fail(400, 'ID_REQUIRED');
+      return contract('deleteDocumentTemplate', params);
     },
   }),
   saveAgencySettings: Object.freeze({
@@ -1392,6 +1477,193 @@ export const HANDLERS = Object.freeze({
       return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
     },
   }),
+  extractPatientDataFromDocument: Object.freeze({
+    needsIntegration: true,
+    // The bytes arrive in the request rather than as a locator, so this
+    // capability declares its own ceiling. See `patient-extraction.mjs` for why
+    // the figure is the runtime's `MAX_FILE` encoded rather than a policy of
+    // this service's own.
+    maxBody: EXTRACTION_MAX_BODY,
+    /*
+     * The first port out of the `files` bucket, and the shape is the finding
+     * rather than the code.
+     *
+     * The original takes a `file_url` the browser uploaded to Base44's storage
+     * a moment earlier, checks it against an SSRF allowlist naming that
+     * storage host, and hands it to `ExtractDataFromUploadedFile`. Carrying
+     * that verbatim would carry a Base44 dependency into the service the exit
+     * exists to remove, and repointing the locator at the owned runtime does
+     * not work either: an object there is readable only by the subject that
+     * uploaded it, and a browser and this service are different subjects.
+     *
+     * So the browser sends the BYTES and this handler brokers the upload
+     * itself. One subject writes and reads, which is what
+     * `providers.mjs` already requires — no change to the runtime's
+     * authorization model, and nothing here holds a credential either way.
+     * Measured against what the product does TODAY, it is tighter and not
+     * looser: a stored `file_url` has no expiry and is readable by anyone who
+     * holds the string, while the handle this mints belongs to one subject.
+     *
+     * Two narrowings, both recorded rather than worked around:
+     *
+     * 1. The size ceiling, in `patient-extraction.mjs`.
+     * 2. The failure detail. The original returns the integration's own
+     *    `details` to the caller; this service never lets the runtime's words
+     *    cross back (`integrations.mjs`), so the message is fixed. The caller's
+     *    branch is unchanged, because the SPA switches on `status` and shows
+     *    `details` only as text.
+     */
+    async handle({ params, integration }) {
+      exactObject(params, ['base64', 'content_type'], 'INVALID_PARAMS');
+      // Refused here rather than left to the runtime so the caller is told it
+      // sent the wrong shape, not that an upload failed.
+      if (typeof params.base64 !== 'string' || !params.base64
+        || typeof params.content_type !== 'string' || !params.content_type) {
+        fail(400, 'INVALID_PARAMS');
+      }
+      const upload = await integration('UploadFile', {
+        base64: params.base64, content_type: params.content_type,
+      });
+      if (!isObject(upload) || typeof upload.file_uri !== 'string' || !upload.file_uri) {
+        fail(502, 'DOCUMENT_UPLOAD_FAILED');
+      }
+      const extraction = await integration('ExtractDataFromUploadedFile', {
+        file_uri: upload.file_uri,
+        // Cloned per call: the runtime is handed this object, and a frozen
+        // shared one is not something to hand across a boundary.
+        json_schema: structuredClone(PATIENT_EXTRACTION_SCHEMA),
+      });
+      // The runtime raises rather than answering a failure status, so this
+      // branch is the original's shape kept for a provider that answers one.
+      if (!isObject(extraction) || extraction.status !== 'success') {
+        return {
+          status: 'error',
+          details: 'Failed to extract patient data from document',
+          patient_data: null,
+        };
+      }
+      return {
+        status: 'success',
+        patient_data: extraction.output || {},
+        message: 'Patient data extracted successfully',
+      };
+    },
+  }),
+  extractClinicalDocument: Object.freeze({
+    needsIntegration: true,
+    // The same ceiling as `extractPatientDataFromDocument`, and the same
+    // reason: both send the document's bytes, and both are bounded by the
+    // runtime's `MAX_FILE` rather than by anything this service chooses.
+    maxBody: EXTRACTION_MAX_BODY,
+    /*
+     * The second capability out of the `files` bucket, on the shape the first
+     * one established: the browser sends the BYTES, this handler brokers the
+     * upload, and the subject that mints the object is the subject that reads
+     * it.
+     *
+     * The difference from its sibling is which integration reads the document.
+     * `extractPatientDataFromDocument` brokers `ExtractDataFromUploadedFile`,
+     * which supplies its own prompt; this original calls `InvokeLLM` with a
+     * prompt of its own and the document attached, so the port does the same
+     * and the prompt is the original's text rather than a rewording of it.
+     *
+     * Two narrowings, both recorded rather than worked around:
+     *
+     * 1. The size ceiling, in `patient-extraction.mjs`.
+     * 2. The eight vitals are not schema-checked, in `clinical-document.mjs`.
+     *    That one is forced by the runtime's schema contract and declaring
+     *    them otherwise would fail every document with a missing vital.
+     */
+    async handle({ params, integration }) {
+      exactObject(params, ['base64', 'content_type'], 'INVALID_PARAMS');
+      if (typeof params.base64 !== 'string' || !params.base64
+        || typeof params.content_type !== 'string' || !params.content_type) {
+        fail(400, 'INVALID_PARAMS');
+      }
+      const upload = await integration('UploadFile', {
+        base64: params.base64, content_type: params.content_type,
+      });
+      if (!isObject(upload) || typeof upload.file_uri !== 'string' || !upload.file_uri) {
+        fail(502, 'DOCUMENT_UPLOAD_FAILED');
+      }
+      const extracted = await integration('InvokeLLM', {
+        model: CLINICAL_DOCUMENT_MODEL,
+        prompt: CLINICAL_DOCUMENT_PROMPT,
+        // The runtime's key is `file_uris`; the original's was `file_urls`,
+        // naming a stored object rather than an owned handle. One item,
+        // because one document is what this capability is about.
+        file_uris: [upload.file_uri],
+        // Cloned per call: the runtime is handed this object, and a shared
+        // frozen one is not something to hand across a boundary.
+        response_json_schema: structuredClone(CLINICAL_DOCUMENT_SCHEMA),
+      });
+      // The original returns whatever `InvokeLLM` answered, unchecked. The
+      // runtime has already checked it against the schema above and raises
+      // rather than answering a failure, so an answer that is not an object
+      // here means the shape changed underneath and is refused rather than
+      // handed to the screen as an extraction.
+      if (!isObject(extracted)) fail(502, 'DOCUMENT_EXTRACTION_FAILED');
+      return {
+        success: true,
+        extracted_data: extracted,
+        // The original stamps the answer, and the screen does not read it —
+        // kept because a caller outside this repository might.
+        timestamp: new Date().toISOString(),
+      };
+    },
+  }),
+  splitReferralPDF: Object.freeze({
+    needsIntegration: true,
+    // The third document capability and the same ceiling, for the same reason.
+    maxBody: EXTRACTION_MAX_BODY,
+    /*
+     * The third port on the byte-through-handler shape, and the one where the
+     * narrowing is in the CALLER rather than here.
+     *
+     * The original takes a `fileUrl` the intake screen uploaded to Base44's
+     * storage a moment earlier. That screen keeps uploading on the Base44
+     * path; on the owned path it hands this handler the bytes instead, and the
+     * handler mints the object under the caller's own subject.
+     *
+     * **What this port does NOT carry is the storage beside it.** The same
+     * screen also files that locator as `Referral.document_url`, which a
+     * colleague opens later — and a handle minted under one caller's subject
+     * is not readable by a colleague. That half has its own record,
+     * `CROSS_SUBJECT_DOCUMENT_READ` in Stage H of
+     * `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`, so it cannot be inherited
+     * from this port. This capability only needs the document for the length
+     * of ONE request, which is why it can move and the persistence cannot.
+     *
+     * No schema narrowing: unlike `extractClinicalDocument`, every type here
+     * is one the runtime's schema contract accepts as the original wrote it.
+     */
+    async handle({ params, integration }) {
+      exactObject(params, ['base64', 'content_type'], 'INVALID_PARAMS');
+      if (typeof params.base64 !== 'string' || !params.base64
+        || typeof params.content_type !== 'string' || !params.content_type) {
+        fail(400, 'INVALID_PARAMS');
+      }
+      const upload = await integration('UploadFile', {
+        base64: params.base64, content_type: params.content_type,
+      });
+      if (!isObject(upload) || typeof upload.file_uri !== 'string' || !upload.file_uri) {
+        fail(502, 'DOCUMENT_UPLOAD_FAILED');
+      }
+      const analysis = await integration('InvokeLLM', {
+        model: REFERRAL_SPLIT_MODEL,
+        prompt: REFERRAL_SPLIT_PROMPT,
+        file_uris: [upload.file_uri],
+        response_json_schema: structuredClone(REFERRAL_SPLIT_SCHEMA),
+      });
+      // The original returns whatever the model answered. The runtime has
+      // already checked it against the schema and raises rather than answering
+      // a failure, so anything that is not an object here means the shape
+      // changed underneath — refused rather than shown as a detection of
+      // nothing, which is what the screen would render from an empty answer.
+      if (!isObject(analysis)) fail(502, 'REFERRAL_SPLIT_FAILED');
+      return { analysis, success: true };
+    },
+  }),
   submitStateReportableIncident: Object.freeze({
     // The fifth PARTIAL port. The incident and its notification fan-out ship;
     // the PDF retention (the file layer) and the email (D56's open decision)
@@ -1608,6 +1880,19 @@ export const HANDLERS = Object.freeze({
     // Model, then record contract, then trail (D53). The prompt asks the model
     // to search the internet, so `add_context_from_internet` and the response
     // schema are the original's and pass through the broker unchanged.
+    //
+    // **THAT LAST WORD WAS WRONG ABOUT THE FAR END, measured 2026-09-29.**
+    // "Unchanged" describes what this service sends, not what the runtime
+    // accepts: `validateParams` refuses `gemini_3_1_pro` as
+    // `MODEL_MAPPING_REQUIRED` and `add_context_from_internet: true` as
+    // `WEB_SEARCH_NOT_MIGRATED`.
+    //
+    // So the search leg is PAUSED BY NAME and the capability answers
+    // `WEB_SEARCH_RELEASE_PAUSED` before reaching the model. The reasoning is
+    // in `cms-regulations.mjs`; the short of it is that the only alternative
+    // stores regulations recalled from training as current ones. The
+    // cross-check that keeps a second instance from arriving unnoticed is in
+    // `pennsyncApiOriginalParity.test.js`.
     needsIntegration: true,
     handle({ params, integration, contract, audit }) {
       exactObject(params, [], 'INVALID_PARAMS');
@@ -1824,3 +2109,22 @@ export const HANDLERS = Object.freeze({
 });
 
 export const HANDLER_NAMES = Object.freeze(Object.keys(HANDLERS).sort());
+
+/**
+ * The widest request any handler can legitimately send, for the transport
+ * guard in `server.mjs` to refuse above.
+ *
+ * `app.mjs` already enforces each handler's own ceiling exactly, so this is a
+ * coarse backstop and not a second answer: it exists so the socket can reject
+ * an oversized body without buffering it, and it is DERIVED from the registry
+ * rather than typed, because a typed figure is what went wrong before.
+ *
+ * `importProvidersCsv` raised its ceiling and `app.mjs` was taught to read it,
+ * but `server.mjs` kept refusing at the 1 MiB service default by
+ * `content-length` — so every import between the two figures was still
+ * answered `BODY_TOO_LARGE`, one layer further out than the fix. The test that
+ * proved the fix drove `createHandler` and said it drove "the real request
+ * path"; `server.mjs` was not on it.
+ */
+export const MAX_TRANSPORT_BODY = Object.values(HANDLERS)
+  .reduce((widest, entry) => Math.max(widest, entry.maxBody ?? MAX_BODY), MAX_BODY);

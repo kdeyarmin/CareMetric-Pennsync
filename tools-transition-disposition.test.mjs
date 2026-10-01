@@ -13,7 +13,8 @@ import {
   entitiesTouched, isInertFunction, isPausedFunction, isRefusingHandler, main, parseManifest,
   discoverClaimsOnlyFunctions, TRUSTED_CLAIMS_FENCE,
   invokedFunctions, classifyWithoutInvocations, discoverInvocationFreeBlockers,
-  portQueueLine, markdownPages, portQueueQuotations,
+  portQueueLine, writtenColumns, maskLiteralsAndComments,
+  markdownPages, portQueueQuotations,
 } from './tools-transition-disposition.mjs';
 import { PROFILE_SELF_WRITABLE, RECORD_MIGRATION_FILE } from './tools-entity-schema-plan.mjs';
 
@@ -244,9 +245,10 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
   // carrying them before this check could see it, so they are not new prose
   // somebody wrote past a gate. That is the discovery change working — a
   // roster would have gone on omitting them — and it is also why the entry
-  // itself says "nothing in this tree reads this document at all", which was
-  // true when it was written and is now false. The sentence is its author's to
-  // correct; the readings are declared here either way, because they are
+  // itself said "nothing in this tree reads this document at all", which was
+  // true when it was written and is now false. **That sentence has since been
+  // corrected in the entry itself**, in the same change that added the fourth
+  // reading below; the readings are declared here either way, because they are
   // dated before/afters and not stale copies.
   // The entry that USED to sit here declared `entity_authorization=5 files=12
   // external_secret=2 none=79` as D223's dated reading, and it was right on a
@@ -258,11 +260,37 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
   // declaration, and here it is the historical one. Both readings are correct
   // and which of them is history depends on the tree, so expect this pair to
   // swap again the next time a port moves `entity_authorization`.
+  // **The swap the comment above predicted has HAPPENED, on this tree.** That
+  // paragraph said the pair would trade places the next time a port moved the
+  // queue, and this change moves `files` 12 → 9 and `none` 79 → 82: the three
+  // file capabilities ported, and the duty toggle this branch carried was
+  // WITHDRAWN in favour of the contract `main` already holds. So D223's reading
+  // is history again rather than the measurement, and the entry that was
+  // removed when it became the measurement is back, unchanged. It was deleted
+  // for being correct, not for being wrong, which is why restoring it is the
+  // resolution and not a regression.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
+    reason: 'D223\'s own dated reading, from `--summary` at the head that decision was written '
+      + 'on, which is history again now that the file ports have moved `files` and `none`',
+  },
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
     reason: 'the collector\'s footnote reading on `00ccac41` and on the collection branch, '
       + 'quoted to show one instrument answering on three trees rather than two reports disagreeing',
+  },
+  // The FOURTH, which D223's three do not cover and which is undeclared without
+  // it: the collector's footnote reproduces the OTHER figure in circulation as
+  // well, to show that two readings fifteen minutes apart were one instrument
+  // over three trees rather than a disagreement. It is the reading on
+  // `00ccac41`, and declaring only the `d8c6be2b` pair leaves it failing.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
+    reason: 'the same footnote reproducing the figure on `00ccac41` from the collector\'s own '
+      + 'seat, which is what establishes the two were never in conflict',
   },
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
@@ -372,11 +400,11 @@ test('the pages carrying the port queue carry what the tool measures', () => {
 
   // The counts alone would pass a swap — one capability into a bucket and one
   // out leaves every number where it was — so the startable set is pinned by
-  // NAME as well. It is EMPTY at D91, which is the state this test exists to
-  // stop anybody asserting in prose: D79 wrote "nothing startable left" into
-  // AGENTS.md, D84 then moved three capabilities back in, and nothing failed.
-  // With the bucket at zero the guard is the measured line above, which carries
-  // `records_schema=0` and changes the moment a decision puts work back.
+  // NAME as well. This is the state the test exists to stop anybody asserting
+  // in prose: D79 wrote "nothing startable left" into AGENTS.md, D84 then moved
+  // three capabilities back in, and nothing failed. The bucket reached zero
+  // again at D91 and is back at one, on a correction to `writtenColumns` rather
+  // than on a decision.
   assert.deepEqual(report.port_blockers.records_schema, [],
     'the startable set changed; re-read what each entry now waits on and move AGENTS.md with it');
   for (const name of report.port_blockers.records_schema) {
@@ -1096,6 +1124,28 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // Read it beside D83, which took `MedicareGuideline`'s two writers out of
   // this same bucket the same way: a blocked port and a capability that is not
   // being carried are not the same thing, however alike they look in a count.
+  // Then the first movements out of `files`, and they are PORTS rather than
+  // corrections: `extractPatientDataFromDocument`, `extractClinicalDocument`
+  // and `splitReferralPDF` ship, 12 → 9 and 78 → 81. What unblocked them was
+  // not the byte copy. The bucket's name says "reads or writes an uploaded
+  // file", and the discriminator is where the LOCATOR comes from: a copy
+  // repoints carried rows, and those three take theirs from the request body
+  // seconds after a browser upload, so there is no carried row to repoint. The
+  // ports take the bytes and broker the upload themselves, which puts one
+  // subject on both sides of the runtime's uploader-ownership fence.
+  //
+  // Read that off the EXPRESSION each argument is built from, never off the
+  // call site's shape. `mergePDFs` was classified browser-minted from the
+  // shape and is not: of its three reachable sites two upload a few lines
+  // above the call, and `DocumentFaxSender.jsx` passes a carried `Document`'s
+  // authorized download URL into a variable with the SAME NAME. It is in this
+  // bucket for the ordinary reason.
+  //
+  // And `entity_authorization` 6 → 5 with `records_schema` 0 → 1, which is
+  // neither a port nor a decision but a correction to the READER: see the
+  // payload-assembly test below. Read the three kinds of movement together —
+  // a capability that is not being carried, one carried by asking a different
+  // question of the same module, and one that was never blocked at all.
   // Then D223, which moves the pair the ordinary way after three entries that
   // did not: `setNurseDutyStatus` is WRITTEN, so `entity_authorization` 6 → 5
   // and `none` 78 → 79 — one fewer blocked and one more carried, which is the
@@ -1104,20 +1154,30 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // capability reaches `none` without the blocker classifier being consulted
   // at all.
   //
-  // `files` 12 → 11 lands on top of that and is NOT D223's kind: it is the third
-  // movement of D153's, the one that leaves the queue SHORTER without anything
-  // having been written. `processPatientFileUpdate` is dispositioned
-  // `preserved_paused` because it is paused at source and its successor would
-  // be a widening nobody has decided, so it is not a file-layer port waiting
-  // on the file layer. Nothing moves to `none`. D47's rule is what puts it in
-  // this change rather than a later one: switching a capability off means
-  // changing its disposition in the same change. The two arrived on separate
-  // branches and the distribution below is the TOOL'S answer on the merged
-  // tree, not D223's figures with one bucket decremented by hand.
+  // THREE movements land here at once and no two of them are the same kind, so
+  // the distribution below is the TOOL'S answer on the merged tree rather than
+  // any branch's figures adjusted by hand. Adding the deltas would have been
+  // wrong in both directions.
+  //
+  // `files` 12 → 8 is two different things. THREE of the four are ports: this
+  // branch took the bytes for document extraction, the clinical scanner and the
+  // referral splitter, so each reaches `none`. The FOURTH is D153's third kind,
+  // which leaves the queue SHORTER without anything having been written:
+  // `processPatientFileUpdate` is dispositioned `preserved_paused` because it is
+  // paused at source and its successor would be a widening nobody has decided,
+  // so it is not a file-layer port waiting on the file layer. It moves to
+  // NOTHING. D47's rule is what puts that one in its own change rather than a
+  // later one: switching a capability off means changing its disposition in the
+  // same change.
+  //
+  // So `none` is 82 — 79 plus this branch's three — and NOT 83, which is what a
+  // reader counting four departures from `files` into `none` would write down.
+  // The arithmetic only closes once the paused one is read as leaving the
+  // population instead of crossing it.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 0, files: 11, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 79 });
+    records_schema: 0, files: 8, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    external_secret: 2, none: 82 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -1188,6 +1248,14 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // allowlist, so it was the only one the self-write policy could ever admit.
   // The five that remain each need the administrative path D223 refuses, so
   // this list does not shrink again without a decision rather than a port.
+  //
+  // One note this branch adds, because the mechanism outlives its own port: the
+  // capability that left was never blocked by the STORE. `writtenColumns` knew
+  // one shape of a write payload — an object literal at the call — and not the
+  // second, a local object assembled by member assignment and handed over, so
+  // it answered `null` and the classifier read unknown as outside D82. The
+  // three above are facts about the store; that one was a fact about the
+  // READER, and it failed closed, which is why it survived so long.
   assert.deepEqual(report.port_blockers.entity_authorization,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
       'userManagement', 'userManagementV2']);
@@ -1202,13 +1270,18 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
   //
-  // It went to 3 and is 0, and BOTH directions are the queue reading
-  // correctly: D84 moved three capabilities OUT of `entity_not_carried` by
-  // settling their one uncarried leg, and D89, D90 and D91 then wrote all
-  // three. A bucket that only ever falls is a bucket nobody can move work
-  // into, and one that never falls is a queue nobody is clearing. D75 took it
-  // to zero on a CORRECTION; this is the first time it reaches zero with every
-  // capability in it written.
+  // It went to 3, back to 0, and is 1, and every direction is the queue
+  // reading correctly: D84 moved three capabilities OUT of
+  // `entity_not_carried` by settling their one uncarried leg, D89, D90 and D91
+  // then wrote all three, and `setNurseDutyStatus` arrived and left in one
+  // change when `writtenColumns` learned to read a patch assembled before the
+  // call. A
+  // bucket that only ever falls is a bucket nobody can move work into, and one
+  // that never falls is a queue nobody is clearing.
+  //
+  // The entry it holds now is the one worth reading twice, because it arrived
+  // from `entity_authorization` rather than from a decision or a port: the
+  // capability was never blocked, and the reader said it was.
   assert.deepEqual(report.port_blockers.records_schema, []);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
@@ -1284,8 +1357,12 @@ test('the port queue is work that cannot start yet, and says why', async () => {
     assert.ok(report.port_blockers.none.includes(name), `${name} is written`);
   }
   // Named, because porting one of these verbatim would carry Base44's storage
-  // host into the service, and the `cmfile:` handles that replace those URLs do
-  // not exist yet. They wait on the file layer, not on the runtime.
+  // host into the service. The `cmfile:` handles that replace those URLs DO
+  // exist; what these wait on is the data copy that repoints carried `file_url`
+  // rows at them — and `extractPatientDataFromDocument` left this list by not
+  // needing one, because its locator came from the request body rather than
+  // from a carried row, so the port takes the bytes and brokers the upload
+  // itself.
   // `mergePDFs` and `reorderDeletePDFPages` join them by the refinement: each
   // touches `UserActivity` and nothing else, so the record store is not what
   // either is waiting for.
@@ -1295,9 +1372,15 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // with sixty-three ports over it, while the file layer is still a data
   // migration and thirty-one call sites. `records_schema` reads as "startable
   // today", and for these six it was not true.
+  // `extractClinicalDocument` left on the port that shipped it, by the shape
+  // its sibling established: the browser sends the BYTES and the handler
+  // brokers the upload, so the capability never needed the carried `file_url`
+  // rows the data migration is about. `splitReferralPDF` left the same way, in
+  // the same change.
   //
-  // `processPatientFileUpdate` LEFT this list, and the reason is not the file
-  // layer: it is paused at source — preview goes to one configured address and
+  // `processPatientFileUpdate` LEFT this list for a DIFFERENT reason, and the
+  // two departures are worth keeping apart because a count cannot tell them
+  // apart: it is paused at source — preview goes to one configured address and
   // apply is 503 for everyone — so it was never a port waiting on `cmfile:`
   // handles. Its successor would be a widening nobody has decided, which is a
   // product answer rather than a data migration, so it is `preserved_paused`.
@@ -1305,10 +1388,9 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // and a capability that is not being carried are not the same thing, however
   // alike they look in a count.
   assert.deepEqual(report.port_blockers.files, ['createAuthorizedDocument',
-    'extractClinicalDocument', 'extractPatientDataFromDocument', 'generateAdrPacket',
+    'generateAdrPacket',
     'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
-    'preparePDFWithPatientInfo', 'reorderDeletePDFPages',
-    'splitReferralPDF']);
+    'preparePDFWithPatientInfo', 'reorderDeletePDFPages']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
       'analyzeClinicalEvents', 'analyzeClinicalTrends',
@@ -1319,7 +1401,9 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'createAuthorizedPatient', 'createAuthorizedVisit', 'createNotification',
       'distributePolicyAcknowledgment',
       'expandClinicalPhrase',
+      'extractClinicalDocument',
       'extractClinicalEvents',
+      'extractPatientDataFromDocument',
       'extractReferralDataForSmartNote',
       'generateAIReport', 'generateBagTechniquePDF', 'generateFollowUpTasks',
       'generatePatientChartPDF', 'generatePatientHandout', 'generateReferralTasks',
@@ -1339,8 +1423,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'savePayrollProfile', 'saveVisitPointConfig', 'searchPDFs',
       'sendAccountReadyEmail', 'sendCredentialRenewalReminders',
       'sendExpirationNotifications', 'sendPersonnelExpirationNotifications',
-    'sendWelcomeEmail',
-      'setNurseDutyStatus',
+      'sendWelcomeEmail', 'setNurseDutyStatus', 'splitReferralPDF',
       'submitIncidentReport',
       'submitPersonnelCredential', 'submitStateReportableIncident',
       'submitTimeOffRequest', 'submitTimesheet',
@@ -1483,14 +1566,37 @@ test('what holds each member of `entity_authorization` is measured, not describe
   }
   assert.ok(!PROFILE_SELF_WRITABLE.includes('staff_role'),
     'and the column it reverted is one nobody may write, so it cannot drift');
-  // Six now. `offboardUser` was held by `entity_not_carried` first until D84
+  // Five. `offboardUser` was held by `entity_not_carried` first until D84
   // settled that leg, so it arrives here where the measurement always said it
-  // belonged.
-  assert.deepEqual(Object.keys(held).filter(name => held[name].includes('User')).sort(),
+  // belonged. `setNurseDutyStatus` left: it was never an administrative write,
+  // and it was here because `writtenColumns` could not read a patch assembled
+  // into a local object before the call. Its six columns are all on
+  // `PROFILE_SELF_WRITABLE`.
+  //
+  // The four that remain are held for TWO different reasons, and the split is
+  // worth keeping because only one of them is a decision about D82's open
+  // path. `userManagement` and `userManagementV2` write `role`, `staff_role`,
+  // `full_name` and `credential_type`, none of which a person may assert about
+  // themselves; `offboardUser` hands over a patch that reaches the call as a
+  // parameter, so it is genuinely unreadable. `autoApproveInvitedUser` and
+  // `autoEndDutyDay` write only allowlisted columns and are held by the OTHER
+  // half of the rule — a `schedulerAuth` fence means there is no caller for a
+  // self-scoped policy to admit, which is D49's open decision rather than
+  // this one.
+  const writesUser = Object.keys(held).filter(name => held[name].includes('User')).sort();
+  assert.deepEqual(writesUser,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
-      'setNurseDutyStatus', 'userManagement', 'userManagementV2'],
+      'userManagement', 'userManagementV2'],
     'the administrative write path D82 leaves open');
-  assert.equal(Object.keys(held).filter(name => held[name].includes('User')).length, 6);
+  assert.equal(writesUser.length, 5);
+  for (const scheduled of ['autoApproveInvitedUser', 'autoEndDutyDay']) {
+    assert.ok(discoverEvidence(repository).schedulerAuthFunctions.includes(scheduled),
+      `${scheduled} is held by its missing caller, not by its columns`);
+  }
+  assert.ok(writtenColumns(
+    readFileSync(resolve(repository, 'base44/functions/userManagement/entry.ts'), 'utf8'), 'User')
+    .some(column => !PROFILE_SELF_WRITABLE.includes(column)),
+    'and these two are held by their columns, which are now readable');
   assert.deepEqual(report.port_blockers.entity_authorization.filter(name => !held[name]), [],
     'every member is held by a write this measured');
   // And what holds each of the six, named, so a later widening of the
@@ -1506,9 +1612,21 @@ test('what holds each member of `entity_authorization` is measured, not describe
   assert.ok(scheduled.has('autoEndDutyDay') && !scheduled.has('setNurseDutyStatus'));
   assert.deepEqual(evidence.entityReach.enforceStaffRoleIntegrity.writeColumns.User, ['staff_role'],
     'a column nobody may assert about themselves');
-  for (const opaque of ['autoApproveInvitedUser', 'setNurseDutyStatus', 'userManagement', 'userManagementV2']) {
+  // Two of these were once four. `writtenColumns` now reads a patch assembled
+  // into a local object before the call, so `userManagement` and its V2 are
+  // held by their COLUMNS — `role`, `staff_role`, `full_name`,
+  // `credential_type`, none of them assertable about oneself — rather than by
+  // being unreadable, and `setNurseDutyStatus` left the bucket entirely. The
+  // answer for the pair did not change and its REASON did, which is worth
+  // pinning: a bucket can be right for a reason that is wrong.
+  for (const opaque of ['autoApproveInvitedUser', 'offboardUser']) {
     assert.equal(evidence.entityReach[opaque].writeColumns.User, null,
       `${opaque} assembles its payload, so what it sets cannot be read here`);
+  }
+  for (const readable of ['userManagement', 'userManagementV2']) {
+    assert.deepEqual(evidence.entityReach[readable].writeColumns.User,
+      ['credential_type', 'full_name', 'phone', 'role', 'staff_role'],
+      `${readable} is held by what it writes, not by what cannot be read`);
   }
   assert.ok(report.port_blockers.entity_authorization.includes('offboardUser'));
   assert.deepEqual(report.port_blockers.entity_not_carried, []);
@@ -1665,7 +1783,8 @@ test('nothing in the queue is startable and unwritten', async () => {
   // Batch A's seven reference reads (D101), batch C's fourteen clinical
   // library, patient education and configuration capabilities, batch E's
   // ten screen records, batch D's fourteen over the operational tables and
-  // the five compliance domains' read half are the same kind of thing for
+  // the five compliance domains' read half, and the provider directory's three
+  // writes, are the same kind of thing for
   // the same reason, and
   // they are why this list needs stating rather than deriving. The SPA called
   // `base44.entities.Physician.list(...)` and the rest straight through the
@@ -1686,11 +1805,13 @@ test('nothing in the queue is startable and unwritten', async () => {
   }
   assert.deepEqual(facilities, [
     'createAdrAuditCase', 'createAgencyTask', 'createComplianceAudit',
-    'createNoteConversion', 'deleteAdrAuditCase', 'deletePdfTemplate',
-    'getAgencyRosterMember', 'getAgencySettings',
-    'getMyNotificationPreferences', 'listAdrAuditCases', 'listAgencyIncidents',
-    'listAgencyRoster', 'listAgencyTasks', 'listBrokeredRecords',
-    'listCarePlans', 'listChartClinicalEvents', 'listChartRecommendations',
+    'createNoteConversion', 'createPhysician', 'deleteAdrAuditCase',
+    'deleteDocumentTemplate', 'deleteLibraryDocument', 'deleteOnCallShift',
+    'deletePdfTemplate', 'deletePhysician', 'getAgencyRosterMember',
+    'getAgencySettings', 'getMyNotificationPreferences',
+    'listAdrAuditCases', 'listAgencyIncidents', 'listAgencyRoster',
+    'listAgencyTasks', 'listBrokeredRecords', 'listCarePlans',
+    'listChartClinicalEvents', 'listChartRecommendations',
     'listClinicalLibraryFolders', 'listClinicalLibraryTemplates',
     'listClinicalPathways', 'listComplianceAudits',
     'listCustomValidationRules', 'listDocumentTemplates',
@@ -1699,16 +1820,19 @@ test('nothing in the queue is startable and unwritten', async () => {
     'listMedicareGuidelines', 'listNoteConversions', 'listOcrCorrections',
     'listOcrTrainingRuns', 'listOnCallShifts', 'listPatientDocumentRecords',
     'listPatientEducationAssignments', 'listPdfTemplates',
-    'listPersonnelCredentials', 'listPhysicians', 'listPolicyAcknowledgments',
-    'listSentEducationMaterials', 'listVisitPointConfigs',
-    'lookupComplianceRule', 'manageClinicalLibraryFolder',
-    'manageClinicalLibraryTemplate', 'manageClinicalPathway',
-    'manageCustomValidationRule', 'manageEducationMaterial',
-    'managePatientEducationAssignment', 'readAiConfiguration',
-    'recordChartRecommendation', 'recordSentEducationMaterial',
-    'saveAgencySettings', 'saveAiConfiguration', 'saveCarePlan',
+    'listPersonnelCredentials', 'listPhysicians',
+    'listPolicyAcknowledgments', 'listSentEducationMaterials',
+    'listVisitPointConfigs', 'lookupComplianceRule',
+    'manageClinicalLibraryFolder', 'manageClinicalLibraryTemplate',
+    'manageClinicalPathway', 'manageCustomValidationRule',
+    'manageEducationMaterial', 'managePatientEducationAssignment',
+    'readAiConfiguration', 'recordChartRecommendation',
+    'recordSentEducationMaterial', 'saveAgencySettings',
+    'saveAiConfiguration', 'saveCarePlan', 'saveDocumentTemplate',
     'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
-    'savePdfTemplate', 'updateAdrAuditCase', 'updateComplianceAudit',
+    'saveOnCallShift', 'savePdfTemplate',
+    'updateAdrAuditCase', 'updateComplianceAudit', 'updateLibraryDocument',
+    'updatePhysician',
   ]);
 });
 
@@ -1932,9 +2056,17 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // The bucket reached zero under D75, by finding the last entry had been
   // paused at source all along, went to 3 under D84 — which is the queue
   // working rather than failing, since those are carried capabilities whose
-  // one uncarried leg now has a named successor — and is 0 since D89, D90 and
-  // D91 wrote all three. A count that only ever falls cannot represent work
-  // arriving, and one that only ever rises is a queue nobody is clearing.
+  // one uncarried leg now has a named successor — reached 0 again once D89,
+  // D90 and D91 wrote all three, and went to 1 and back inside one change. A
+  // count that only ever falls cannot represent work arriving, and one that
+  // only ever rises is a queue nobody is clearing.
+  //
+  // That last entry arrived on a correction to `writtenColumns` rather than on
+  // a decision: `setNurseDutyStatus` assembles its patch into a local object
+  // before the call, which the reader could not see, so a capability whose six
+  // columns are all on D82's allowlist was reported as writing something
+  // outside it. It was written the same day it became visible, so the measured
+  // line never carried it and only this comment records that it was there.
   //
   // The label on the last of them was wrong on this page until the module was
   // read. It was filed as carrying "two `Core.SendEmail` behind
@@ -1982,4 +2114,89 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
   // the same change. `processCompletedVisit` was switched off long ago and the
   // disposition never caught up, so the gate contradicted it until it did.
   assert.equal(manifest.functions.processCompletedVisit, 'preserved_paused');
+});
+
+test('a write payload assembled before the call is read, and only when every use is accounted for', () => {
+  // The blind spot: `writtenColumns` knew ONE shape of a payload, an object
+  // literal at the call, and the tree writes in two. `setNurseDutyStatus`
+  // declares `const update = {}` and assigns six members before handing it
+  // over — every one of them on D82's allowlist — and the reader answered
+  // `null`, which the classifier reads as outside the narrowing. The
+  // capability sat in `entity_authorization` on a fact about the READER.
+  //
+  // It is D7, D47 and D75's shape a fourth time and it failed in the opposite
+  // DIRECTION: those three admitted what they should have refused, this one
+  // refused what it should have admitted. Nothing was ever wrong; one
+  // capability was merely reported unstartable, which is why it lasted.
+  const assembled = [
+    'const update = {};',
+    "if (a) update.duty_status = 'on_duty';",
+    'if (b) update.off_duty_message = clean;',
+    'if (Object.keys(update).length === 0) return;',
+    'await base44.asServiceRole.entities.User.update(target.id, update);',
+  ].join('\n');
+  assert.deepEqual(writtenColumns(assembled, 'User'),
+    ['duty_status', 'off_duty_message']);
+
+  // And it stays fail-closed. Each of these is a way the module could put a
+  // column there that nothing here can name, so the answer is `null` — the
+  // same answer the narrow reader gave, for a reason rather than by default.
+  const refuses = {
+    'a computed key': 'update[key] = 1;',
+    'an assign into it': 'Object.assign(update, extra);',
+    'handed to a helper': 'decorate(update);',
+    'declared twice': '{ const update = {}; }',
+  };
+  for (const [label, line] of Object.entries(refuses)) {
+    const sabotaged = assembled.replace('const update = {};', `const update = {};\n${line}`);
+    assert.equal(writtenColumns(sabotaged, 'User'), null, `${label} should not be readable`);
+  }
+  // A payload that is not an object literal at all was never readable and is
+  // not now.
+  assert.equal(writtenColumns(assembled.replace('const update = {};', 'const update = build();'), 'User'),
+    null);
+
+  // A READ of the payload counts as a write, deliberately. Over-reporting a
+  // column can only push a capability back toward `entity_authorization`,
+  // which is the safe direction; missing one would admit a write nobody saw.
+  const reads = assembled.replace('await base44',
+    'log(update.is_approved);\nawait base44');
+  assert.deepEqual(writtenColumns(reads, 'User'),
+    ['duty_status', 'is_approved', 'off_duty_message']);
+
+  // A DELETE names a row, never a payload. Resolving its argument would answer
+  // "writes no columns" about a call that removes every one of them.
+  assert.equal(writtenColumns('const row = {};\nawait entities.User.delete(row);', 'User'), null);
+});
+
+test('a scan for a name reads everything that spells the name', () => {
+  // One line put `setNurseDutyStatus` out of reach of the fix above: it
+  // refuses an empty patch with the message 'Nothing to update', and its
+  // payload is called `update`. The identifier was right, the occurrence was
+  // real, and it was in prose — D73's rule arriving at a string literal.
+  //
+  // The wider claim is the reusable one: the parts of a module that spell
+  // things without meaning them are strings, comments and regular
+  // expressions. Mask them once; an exclusion written for one shape is the
+  // next shape's blind spot.
+  const masked = maskLiteralsAndComments([
+    "const update = {};",
+    "update.duty_status = 'on_duty';",
+    "// update.is_approved would be outside the allowlist",
+    "if (!x) return json({ error: 'Nothing to update' });",
+    "const pattern = /update\\.is_manager/;",
+    'const note = `update.role`;',
+    'await entities.User.update(id, update);',
+  ].join('\n'));
+  assert.equal(masked.length > 0, true);
+  for (const hidden of ['is_approved', 'is_manager', 'role', 'Nothing to']) {
+    assert.equal(masked.includes(hidden), false, `${hidden} should be masked`);
+  }
+  // Indices survive, or every offset computed against the mask would be wrong
+  // about the source it came from.
+  assert.equal(masked.indexOf('const update = {};'), 0);
+  assert.equal(masked.split('\n').length, 7);
+  // And the code around the masked parts is untouched.
+  assert.equal(masked.includes('update.duty_status'), true);
+  assert.equal(masked.includes('entities.User.update(id, update)'), true);
 });
