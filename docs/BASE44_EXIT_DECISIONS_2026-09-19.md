@@ -1618,6 +1618,24 @@ pass a test that only counts rows:
    The hand-kept list of helpers that let this through is gone; the list is
    whatever the schema holds.
 
+### Addendum to D23, 2026-10-01 — in the plan thread's own words
+
+**A redacted value does not travel under its source's key.**
+
+D23 already says that four fields are "not projected from the carried row **under any name**" — `agency_id`, `agency_name`, `role` and `account_type` — and the reason it gives is laundering: a self-asserted label renamed is still a self-asserted label, and a handler gating on it is gating on the user's own assertion. That is the authority half.
+
+The roster's telephone work found the converse, and it is a different hazard running on the same mechanic. Where a projection **reduces** a value — masks it, truncates it, answers a boolean about it — the reduced value must not travel under the key the source column is written by. Not because of what the reader does with it, but because of what a *writer* downstream of the reader does with it.
+
+**The bite test is D82.** A key is dangerous exactly when the same name appears in two places: a projection the screen reads, and `PROFILE_SELF_WRITABLE`. A screen that loads a row, holds its fields, and later saves what it is holding then writes the mask over the real value, under the real column's name, through a write path that is authorized and correct at every single step. Nothing refuses it, because nothing in that chain is wrong.
+
+The worked instance is the roster's two telephone columns, and the pair is what makes the rule legible rather than a slogan. `personal_cell_e164` is on `PROFILE_SELF_WRITABLE` and the roster shows only a tail, so the projected key is `personal_cell_masked` and the column's own name appears nowhere in the projection under any name. `work_phone_number` is **not** on that allowlist and is projected in full under its own name. The rule is not "rename what you redact". It is "rename what a caller could write back", and the second column is the control that keeps the first from being read as a style.
+
+**One thing measured rather than assumed, because the first version of this argument was wrong.** The argument began as: a masked pre-fill would be submitted and the mask would be stored. It would not. The consuming handler runs `normalizeE164`, which refuses a four-digit mask, so the submit answers 400 and the write fails outright and loudly. The conclusion survived the measurement and the mechanism did not, which is worth keeping in the entry rather than cleaning up: the rule is **not** that the mask gets stored. It is that a reduced value is travelling under a writable key, and what happens next depends entirely on a consumer the projection does not control and cannot see. One consumer refuses it noisily. Another stores it silently. A distinct key makes neither reachable, and that is the whole argument — it does not rest on knowing which consumer you have.
+
+**Where it does not apply**, so the addendum does not read wider than it is. A reduced value whose source column no caller may write is not covered by this; it is covered by whether it should be projected at all, which is D71's question about `pdf_url` and is answered more strictly there. And a presence boolean carries no source name to begin with — `has_personal_cell` and `has_work_phone` are the shape that sidesteps the problem rather than managing it, and are the first thing to reach for when the screen only needs to know whether a value exists.
+
+*Collector's line, 2026-10-01. From the plan thread at `session_014pqTP9sfvpVkuPNutbeAk3`, which tested it for widening before writing it and found D23 the home — and the citation it rests on resolves, D23's own words being that four fields are "not projected from the carried row under any name". **Filed as an addendum rather than a number of its own, at its author's explicit decision**, which took no number off the index page and asked for none. **Its author published no digest**, so the figures are the collector's own over the received prose — 3,293 bytes, 3,281 characters, six non-ASCII, sha256 `2839b3d0…`, md5 `82d8dbc9…` — and they measure the carriage and say nothing about the author's own bytes. This carrier imposed the heading LEVEL, the date and the "in its own words" form and nothing else: the body opens straight on its claim and names neither itself nor its author, which is D220's case rather than D204's, so the house line carries the attribution rather than duplicating a marker. Removing that line and this paragraph restores the received prose byte for byte.*
+
 
 ## D24 — `pennsync_private.assignment` decides who may open a chart
 
