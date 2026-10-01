@@ -197,6 +197,41 @@ Two deliberate parity gaps, recorded rather than closed:
 - **`x-robots-tag` goes away on the Base44 subdomain** only, which is Base44's
   header on its own hostname. The custom domain never had it.
 
+## Who built it, and what that changes
+
+Kevin answered on 2026-10-01, in his words: **"built only with base44"**. Base44's
+own documentation then settles several things this file had been treating as
+unknown, and unsettles one it had been treating as known.
+`/mnt/project-files/base44-full-exit/base44-published-the-iphone-app-2026-10-01.md`
+carries the quotations and sources; three consequences belong here.
+
+**The wrapper opens whichever address is the app's primary published one.** Base44
+"automatically chooses the main entry URL for your mobile app based on your
+published app" and "you cannot currently select a different start page just for
+the app" — the custom domain when one is configured, the default Base44 address
+otherwise. So both origins remain possible for the January build and the
+determinant is which was primary when it was generated. **If it is the custom
+domain, step 10 is the event that reaches installed phones**, and the `/login`
+precondition above applies to them as much as to a browser.
+
+**Base44 publishes web changes to installed copies without a store submission**:
+"When you publish most content and design changes in Base44, they also appear in
+your app without sending a new version to the Apple App Store or Google Play."
+That is how a web view behaves and it is why step 11 protects anybody at all.
+
+**And the StoreKit blocker behind step 8 is in doubt.** §5.2 of the recovery
+runbook holds that a build from this tree would remove purchase and restore from
+paying subscribers of four live products. Base44's documentation says it does not
+support store billing — "Apple and Google both require their own billing systems
+for anything digital, and Base44 does not support them yet, so the purchase has to
+happen on the web for now" — and this repository's subscriptions are Stripe, with
+no Apple receipt verification anywhere in the tree. The listing showing four
+products proves they are **configured** in the App Store record, not that the
+binary can sell them. So step 8 may be cheaper than this file has been saying.
+It is not established either way — whether anyone has purchased is not readable
+from outside — and what to do about it is a product question rather than a hosting
+one. Nothing here acts on it; the step is marked in doubt rather than reopened.
+
 ## Order of operations
 
 Steps marked **Kevin** are his and nothing here performs them. Steps marked
@@ -213,7 +248,7 @@ Railway reads and release writes; no other thread writes Railway.
 | 6 | Confirm `/login` no longer belongs to Base44 on this origin (the instrument above) | Claude | n/a, a reading |
 | 7 | Point `APP_PUBLIC_URL` at `https://app.caremetricai.com` in the Base44 function environment | **Kevin** — Base44 account | yes, by restoring the previous value |
 | 7b | Repoint the App Store listing's privacy-policy, Support and EULA URLs off `caremetricai.base44.app` | **Kevin** — App Store Connect metadata, no binary and not blocked by step 8 | yes, by restoring the URLs |
-| 8 | *Blocked, and not on the critical path:* a replacement binary from this tree needs StoreKit purchase and restore first (recovery runbook §5.2), then Apple account continuity for `com.caremetric.ai` | **Kevin** — the in-app-purchase decision, the Apple account, and the no-upload gate in `docs/APP_STORE_SUBMISSION_CHECKLIST.md` | a release can be pulled; an installed update cannot be taken back |
+| 8 | *Not on the critical path, and its blocker is now in doubt:* a replacement binary from this tree was held behind StoreKit purchase and restore (recovery runbook §5.2) — see the note below, because Base44 documents that it does not support store billing at all | **Kevin** — the in-app-purchase question, the Apple account, and the no-upload gate in `docs/APP_STORE_SUBMISSION_CHECKLIST.md` | a release can be pulled; an installed update cannot be taken back |
 | 9 | *Only if step 8 ever happens:* wait for adoption of that build | — | — |
 | 10 | Repoint `app.caremetricai.com` at the owned host in GoDaddy | **Kevin** — DNS | yes, by restoring the A record |
 | 11 | **Keep `caremetricai.base44.app` resolving.** This is what protects installed copies while step 8 is blocked. It does not replace recovering the signing paths — see below | **Kevin** — Base44 account | — |
