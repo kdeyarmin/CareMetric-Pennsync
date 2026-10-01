@@ -33,7 +33,7 @@ export async function runOperatorAcceptance(config, { authorization, fetcher = f
       counts.emailSandboxRequests++;
     } else if(url.origin===config.supabaseUrl) {
       if(url.pathname.startsWith('/rest/v1/rpc/cm_integration_') && !url.search && method==='POST') {
-        if(!['cm_integration_reserve','cm_integration_finish','cm_integration_file_get','cm_integration_file_record'].includes(url.pathname.split('/').at(-1)))fail(403,'ACCEPTANCE_RPC_REJECTED');
+        if(!['cm_integration_reserve','cm_integration_finish','cm_integration_file_get','cm_integration_file_get_authorized','cm_integration_file_record','cm_integration_file_record_owned'].includes(url.pathname.split('/').at(-1)))fail(403,'ACCEPTANCE_RPC_REJECTED');
         const body=JSON.parse(options.body);
         if(body.p_app_id && body.p_app_id!==config.appId)fail(403,'ACCEPTANCE_APP_MISMATCH');
         if(body.p_subject && ![subject,hash(config.hashKey,['synthetic-foreign-subject'])].includes(body.p_subject))fail(403,'ACCEPTANCE_SUBJECT_MISMATCH');
