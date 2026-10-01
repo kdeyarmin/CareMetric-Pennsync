@@ -13,16 +13,17 @@
  *
  *   * the three offline-queue sites are unreachable, proved by the import
  *     graph rather than by the header's own sentence;
- *   * the three `User.list` sites ask for a `full_name` order the roster
+ *   * the two `User.list` sites ask for a `full_name` order the roster
  *     deliberately refuses (`20260920630000_roster_display_name.sql` says why:
  *     the column is empty, so a name-sorted list would read in email order
  *     under a name heading) AND read fields the roster does not project at
  *     all, which is the half nothing else records.
  *
  * That second half is the load-bearing one. Serving the sort is a two-line
- * change and it would turn a loud refusal into a quiet wrong answer: the
- * approver filter reads `role` and `account_type`, which D23 keeps off the
- * roster ON PURPOSE because they are self-editable labels, and the three
+ * change and it would turn a loud refusal into a quiet wrong answer:
+ * `TimeOff.jsx`'s approver filter reads `role` and `account_type`, which D23
+ * keeps off the roster ON PURPOSE because they are self-editable labels,
+ * `Timesheets.jsx`'s employee list reads `role`, and the three
  * Telnyx panels read `work_phone_number` and `personal_cell_e164`, which the
  * projection had never carried. A staffing screen would render nobody and a
  * provisioning screen would render nothing provisioned, both confidently.
@@ -57,10 +58,16 @@
  *     the assertion passed. That entry named the cell alone until this branch
  *     ported the site and removed it; the finding is kept because the
  *     stripping it produced is what the remaining entries rest on.
- *   * a NEIGHBOUR'S read. `Timesheets.jsx` holds TWO refused sites, and a
+ *   * a NEIGHBOUR'S read. `Timesheets.jsx` HELD two refused sites, and a
  *     file-wide search answers identically for both — so the employee list,
  *     which asks nothing about `account_type`, was credited with the approver
- *     filter's read of it. The two entries now carry different field sets.
+ *     filter's read of it. Splitting them into two entries with different field
+ *     sets is what later made the approver site portable on its own: it was the
+ *     one of the two whose fields had a tenant-role answer, and the pair would
+ *     have moved or stayed together. That page now holds ONE site, so no file
+ *     here holds two and the same-expression check below has nothing left to
+ *     catch; it stays because the shape recurs every time a page reads the
+ *     roster twice.
  *
  * Each entry therefore cites the EXPRESSION that reads its fields; the
  * expression must appear exactly once in the comment-stripped source, every
@@ -111,15 +118,9 @@ const REFUSALS = Object.freeze([
   },
   {
     file: 'src/pages/Timesheets.jsx', key: 'User.list', because: 'sort',
-    absent: ['account_type', 'role'],
-    reads: ['u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true'],
-    reason: 'Needs the roster port and a decision: this page\'s approver filter reads `role` and `account_type`, which D23 keeps off the roster deliberately, so who may approve has to be re-expressed as a tenant role.',
-  },
-  {
-    file: 'src/pages/Timesheets.jsx', key: 'User.list', because: 'sort',
     absent: ['role'],
     reads: ['u.email && u.role === "user" && u.is_active !== false'],
-    reason: 'The second of this page\'s two roster reads, and a DIFFERENT field set: the employee list filters `role === "user"`, which the roster cannot answer, and it asks nothing about `account_type`. Listed separately because each call is its own site.',
+    reason: 'The only roster read this page has left: the employee list filters `role === "user"`, which the roster cannot answer. Its neighbour, the approver dropdown, asked for `role` and `account_type` and has been repaired to ask the tenant role instead; this one keeps its refusal deliberately, because serving an order over a field the roster cannot answer would render a staffing screen showing nobody.',
   },
 ]);
 
@@ -210,7 +211,7 @@ test('the three offline-queue sites are unreachable, by the import graph', () =>
     'something now imports the retired queue; these three sites may be live again');
 });
 
-test('the roster sites read fields the roster does not project', () => {
+test('the two roster sites read fields the roster does not project', () => {
   // The half that makes serving the sort a defect rather than a fix. The
   // fields are NAMED above and both halves of each claim are re-checked here:
   // that the roster really does not project it, and that the file really does
@@ -218,20 +219,28 @@ test('the roster sites read fields the roster does not project', () => {
   // when its entry comes out.
   const projected = new Set(rosterProjection());
   const roster = measured().filter(call => call.key === 'User.list');
-  // THREE, not six: this branch ports NumberPoolPanel, PhoneProvisioningPanel and
-  // TelnyxSetupProgress, so their entries came out as the table's own comment
-  // prescribes. The three left are the approver screens, whose blocker is a
-  // decision rather than a projection.
-  assert.equal(roster.length, 3, 'three refused sites read the roster');
+  // TWO, not six, and the fall is the work of two changes rather than one:
+  // `main` ported NumberPoolPanel, PhoneProvisioningPanel and TelnyxSetupProgress,
+  // and this branch ports the timesheet approver's read, so each entry came out as
+  // the table's own comment prescribes. The two left are the leave approver screen
+  // and its sibling, whose blocker is a decision rather than a projection.
+  //
+  // This figure is NOT derivable from either side of the merge: both branches
+  // lowered it from six independently and neither knew the other had, so the
+  // arithmetic agrees with a wrong answer on each side alone. It is re-measured.
+  assert.equal(roster.length, 2, 'two refused sites read the roster');
 
   // `full_name` IS projected — `20260920630000` added it — and is empty until
   // names are loaded. That is the sort's own problem and a different one.
   assert.ok(projected.has('full_name'), 'the roster carries a name key');
 
-  // No two entries for one file may cite the same expression. Two pages here
-  // hold two refused sites each, and without this an entry could point at its
-  // neighbour's evidence and claim to be measured — the same mistake as a
-  // file-wide search, one step down.
+  // No two entries for one file may cite the same expression, so an entry
+  // cannot point at its neighbour's evidence and claim to be measured — the
+  // same mistake as a file-wide search, one step down. It is VACUOUS today,
+  // because `Timesheets.jsx`'s approver site has been ported and no file here
+  // holds two sites any more. Kept rather than deleted: the check is what made
+  // that port possible to measure, and a page reading the roster twice is the
+  // ordinary case rather than the exception.
   const cited = new Map();
   for (const entry of REFUSALS.filter(row => row.key === 'User.list')) {
     for (const snippet of entry.reads ?? []) {

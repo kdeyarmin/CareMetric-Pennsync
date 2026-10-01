@@ -70,13 +70,16 @@ before(async () => {
   // this suite's `before` and took all 22 of its tests down with it, naming a
   // file that had done nothing wrong.
   //
-  // Where it lives now is a merge resolution rather than either branch's answer.
-  // On THIS tree the newest pending record migration is
-  // `20260920720000_roster_phone_provisioned`, so the guard is held by
-  // `roster-phone-provisioned.test.mjs` alone — not by `contract-time-off` and
-  // not by `contract-reference-writes`, each of which was the right answer for
-  // the tree that named it. Two holders is the state the helper forbids, because
-  // the second asserts a tree the first one's own change makes false.
+  // Where it lives now is a merge resolution rather than either branch's answer,
+  // and on THIS tree it is neither side's. `main` sent it to
+  // `contract-duty-status`, then to `contract-reference-writes`, then to
+  // `roster-phone-provisioned` as further forward migrations landed; this branch
+  // adds a record migration sorting after all of them, so the newest pending file
+  // here is the timesheet review approver role and the guard is held by
+  // `contract-timesheet-review-approver.test.mjs` alone. Each claim was right
+  // about the tree that named it, and taking either side whole would have left
+  // two suites holding it — which the helper forbids, because the second holder
+  // asserts a tree the first one's own change makes false.
   //
   // What stays is the set equality above, which is the assertion that actually
   // says this store is the one a deployment gets.

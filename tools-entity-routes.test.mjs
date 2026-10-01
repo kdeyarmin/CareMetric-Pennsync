@@ -814,15 +814,19 @@ test('the landable sites partition exactly, and the audit prose carries the part
   // and a re-derived minimal map is the risky one — which is the opposite of the
   // rule for a figure, and the reason this comment says which kind it is.
   //
-  // Measured on THIS merge result rather than argued: the tool's own `--json`
-  // reports `declared_but_refused` 6 and `declared_but_unreadable` 60. Main's
-  // map carries 60 and not 6; this branch's carried 6 and not 60. So NEITHER
-  // SIDE ALONE PASSES HERE, and the union is not a tidy-up — it is the only
-  // resolution that works.
-  const spelled = { 6: 'Six', 9: 'Nine', 14: 'Fourteen', 17: 'Seventeen',
-    21: 'Twenty-one', 22: 'Twenty-two', 25: 'Twenty-five', 26: 'Twenty-six',
-    29: 'Twenty-nine', 33: 'Thirty-three', 50: 'Fifty', 54: 'Fifty-four',
-    56: 'Fifty-six', 60: 'Sixty' };
+  // Measured on THIS merge result rather than argued, and the union turned out
+  // to be NECESSARY BUT NOT SUFFICIENT here — which is the sharper form of the
+  // rule and the reason to keep the map wide. Each side carried the spellings
+  // its own partition needed and neither carried the other's, so neither side
+  // alone passes. But the merged partition is FIVE, a value NEITHER SIDE EVER
+  // HELD: both branches lowered the refused count independently, so the figure
+  // the merge produces is smaller than either produced alone. A resolution that
+  // merely picked a side, or even unioned the two, still fails — the entry has
+  // to be added because the figure was re-measured.
+  const spelled = { 5: 'Five', 6: 'Six', 8: 'Eight', 9: 'Nine', 14: 'Fourteen',
+    17: 'Seventeen', 21: 'Twenty-one', 22: 'Twenty-two', 25: 'Twenty-five',
+    26: 'Twenty-six', 29: 'Twenty-nine', 33: 'Thirty-three', 34: 'Thirty-four',
+    50: 'Fifty', 54: 'Fifty-four', 56: 'Fifty-six', 60: 'Sixty' };
   for (const [count, word] of [[refused.length, spelled[refused.length]],
     [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
     assert.ok(word,
@@ -895,7 +899,7 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The PAIRS first. Each of these four is what the corresponding ratio below
   // is computed from, so a population that moved without moving its quotient
   // fails here rather than passing silently one line further down.
-  assert.deepEqual(servedSplit, { readSites: 131, readKeys: 50, writeSites: 31, writeKeys: 25 },
+  assert.deepEqual(servedSplit, { readSites: 132, readKeys: 50, writeSites: 31, writeKeys: 25 },
     'the served pool moved. Re-derive the WHOLE bullet — both of its ratios and\n'
     + '  the sentence about past waves — rather than editing the figure that moved.');
   assert.deepEqual(remainder, { readSites: 14, readKeys: 11, writeSites: 3, writeKeys: 3 },
