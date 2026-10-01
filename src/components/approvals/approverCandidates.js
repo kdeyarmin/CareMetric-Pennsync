@@ -3,8 +3,16 @@
  *
  * Two screens ask this question and they asked it with the same wrong predicate,
  * byte for byte: the timesheet's "Send to approver" control and the leave
- * request's. They share this module so a correction to one is a correction to
- * both, which is the thing that did not happen the first time.
+ * request's. This module is the one home for it, so that a correction to one is a
+ * correction to both — which is the thing that did not happen the first time.
+ *
+ * EACH SCREEN MOVES TO IT IN ITS OWN CHANGE, and they are independent
+ * capabilities with no ordering between them, so either may land first. A reader
+ * who finds one screen still carrying the inline predicate is looking at a
+ * migration that is not finished yet, not at one that was missed — and this
+ * paragraph is written to be true at every point in between rather than only at
+ * the end, since the alternative is a module that documents a state no commit
+ * has ever been in.
  *
  * The list is a CORRECTNESS surface, not a security one. Whoever is picked here
  * is validated authoritatively by the submit before it reaches the row, and both

@@ -122,16 +122,28 @@ export default function Timesheets() {
   // offering a colleague the submit would then refuse — which a nurse reads as a
   // broken form. `approverCandidates.js` carries the whole argument.
   //
-  // `src/pages/TimeOff.jsx` carries a byte-identical copy of the old predicate
-  // and is deliberately NOT changed here. Its contract validates a nominee the
-  // same way (`20260920230000_contract_time_off.sql`, `agency_colleague(...)
-  // .tenant_role in ('agency_admin','manager')`), so the same fix applies — it is
-  // a separate capability and belongs in a change somebody decided on.
+  // `src/pages/TimeOff.jsx` asked this with a byte-identical copy of the old
+  // predicate and moves to the same module in its own change. Its contract
+  // validates a nominee the same way (`20260920230000_contract_time_off.sql`,
+  // `agency_colleague(...).tenant_role in ('agency_admin','manager')`), so the
+  // fix is the same one — a separate capability, with no ordering between the
+  // two.
   const { data: approvers = [] } = useQuery({
     queryKey: ["timesheets", "approvers", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
       try {
-        const users = await base44.entities.User.list("full_name", 500);
+        // `email` rather than `full_name`: the owned roster serves email order
+        // and `-created_date` and refuses every other sort before the contract
+        // runs, and the `catch` below turns that refusal into an empty dropdown
+        // — the exact "the form is broken" reading this change exists to stop.
+        // `full_name` is not a sort the owned store can ever learn, because the
+        // carried user table has no name column.
+        //
+        // The employee list below keeps `full_name` ON PURPOSE. Its refusal is
+        // the correct behaviour: it filters `u.role === "user"`, and the roster
+        // does not project `role` at all (D23), so serving it a page would turn
+        // a loud refusal into a staffing screen confidently showing nobody.
+        const users = await base44.entities.User.list("email", 500);
         const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
         // Nurses with an agency only see same-agency approvers (backend enforces too).
         const scoped = filterUsersByCallerAgency(users, currentUser);
