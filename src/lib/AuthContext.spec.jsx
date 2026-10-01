@@ -30,8 +30,18 @@ const mocks = vi.hoisted(() => ({
   sdkRealm: { pin: null, poisoned: false },
 }));
 
+// Both names resolve to the same mock on purpose. The module draws a
+// distinction the app needs -- `ownedBackendAuth` for anything true of any
+// owned backend, `independentStagingAuth` for what is true of synthetic
+// staging alone -- and these tests predate it, driving every owned branch
+// through the one export. Publishing both from one object is what reproduces
+// that exactly. A mock standing in for a module has to publish the surface the
+// module actually has: Vitest throws "No <name> export is defined on the mock"
+// where the missing one is read, which under this suite's 30s timeout and two
+// retries spends the whole job budget rather than naming itself.
 vi.mock('@/lib/independentStagingSession', () => ({
   get independentStagingAuth() { return mocks.independentAuth; },
+  get ownedBackendAuth() { return mocks.independentAuth; },
 }));
 
 vi.mock('sonner', () => ({
