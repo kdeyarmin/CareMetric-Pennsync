@@ -129,7 +129,7 @@ const BROKER_MARKERS = Object.freeze({
     "Base44-App-Id",
     "X-Data-Env",
     "APP_PUBLIC_URL",
-    "createPinnedSdkRequest",
+    "userScopedClientRequest(req, STAGING_APP_ID)",
     "entities.AgencyMembership",
     "StagingReadinessFixture.filter",
     "data_mutations_performed: false",
@@ -1454,8 +1454,21 @@ const REVIEWED_PREFLIGHT_BASE44_FRAGMENTS = Object.freeze([
     source: "// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>",
     count: 1,
   }),
+  // The reviewed pinned-transport helper is shared boilerplate (generated from
+  // base44/_shared/backendHelpers.mjs); it names the platform default origin, so
+  // its block marker and that URL are the only reviewed uses of the "base44" word
+  // the inlined block adds. They are enumerated here exactly as requireActiveUser's
+  // marker is, so the identifier accounting stays exhaustive rather than stripped.
   Object.freeze({
-    source: "const base44 = createClientFromRequest(createPinnedSdkRequest(req));",
+    source: "// <<<BEGIN SHARED HELPER: base44ClientRequest — generated, edit base44/_shared/backendHelpers.mjs>>>",
+    count: 1,
+  }),
+  Object.freeze({
+    source: "'https://base44.app'",
+    count: 1,
+  }),
+  Object.freeze({
+    source: "const base44 = createClientFromRequest(userScopedClientRequest(req, STAGING_APP_ID));",
     count: 1,
   }),
   Object.freeze({ source: "base44.auth.me()", count: 3 }),
@@ -1563,7 +1576,7 @@ function stagingPreflightIsReadOnlyAndTargetBound(source) {
     && source.includes(`const AGENCY_KEYS = [${agencyKeys}] as const;`)
     && agencyCodesPresent
     && source.includes("STAGING_READINESS_PREFLIGHT_RELEASE")
-    && source.includes("createPinnedSdkRequest")
+    && source.includes("userScopedClientRequest(req, STAGING_APP_ID)")
     && source.includes("X-Data-Env")
     && source.includes("StagingReadinessFixture.filter")
     && source.includes("Agency.filter")
