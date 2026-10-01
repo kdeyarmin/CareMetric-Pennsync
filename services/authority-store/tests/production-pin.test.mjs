@@ -36,7 +36,8 @@ test('production pin constants agree with the provisioning tool and the migratio
 test('production pin diagnostics can be printed without carrying CLI output', () => {
   for (const message of ['PRODUCTION_PIN_NOT_APPLIED', 'PRODUCTION_PIN_CLI_FAILED_OUTPUT_REDACTED',
     'PRODUCTION_PIN_RECORDED_AS_DEFAULT', 'PRODUCTION_PIN_CONTAINMENT_WRONG',
-    'PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN', 'LOCAL_TARGET_MISMATCH', 'LOCAL_PORT_ALREADY_IN_USE 54321']) {
+    'PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN', 'PRODUCTION_PIN_INITIAL_READ_FAILED',
+    'PRODUCTION_PIN_APP_MALFORMED', 'LOCAL_TARGET_MISMATCH', 'LOCAL_PORT_ALREADY_IN_USE 54321']) {
     assert.equal(emittableProductionPin(message), true);
   }
   // Anything that could carry a credential, a URL, a command or free text must

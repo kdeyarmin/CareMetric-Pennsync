@@ -86,16 +86,29 @@ export async function pinLocalStackToProduction() {
   // the session would not: the migration runs in a session the CLI opens.
   const setter = clientFor(databaseUrl);
   try {
-    await setter.connect();
-    const { rows: before } = await setter.query(
-      'select pennsync_private.deployment_label() as label');
-    // Guards the premise rather than assuming it: if a CLI start ever stopped
-    // applying our migrations, the reset below would be doing something else.
-    if (before[0]?.label !== 'staging') fail('PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN');
-    await setter.query(`alter role postgres set ${PIN_SETTING} = $1`, [PRODUCTION_APP]);
-  } catch (error) {
-    if (emittableProductionPin(error.message)) throw error;
-    fail('PRODUCTION_PIN_SETTING_WRITE_FAILED');
+    try {
+      await setter.connect();
+      const { rows: before } = await setter.query(
+        'select pennsync_private.deployment_label() as label');
+      // Guards the premise rather than assuming it: if a CLI start ever stopped
+      // applying our migrations, the reset below would be doing something else.
+      if (before[0]?.label !== 'staging') fail('PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN');
+    } catch (error) {
+      if (emittableProductionPin(error.message)) throw error;
+      fail('PRODUCTION_PIN_INITIAL_READ_FAILED');
+    }
+    // `ALTER ROLE` is a utility statement, so it takes NO parameter placeholder:
+    // `set ... = $1` is a syntax error, which is what the first run of this job
+    // reported. The value is this module's own constant rather than anything a
+    // caller supplies, and it is re-checked against the app-id shape here so
+    // that interpolating it cannot become a way to inject one.
+    if (!/^[a-f0-9]{24}$/.test(PRODUCTION_APP)) fail('PRODUCTION_PIN_APP_MALFORMED');
+    try {
+      await setter.query(`alter role postgres set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
+    } catch (error) {
+      if (emittableProductionPin(error.message)) throw error;
+      fail('PRODUCTION_PIN_SETTING_WRITE_FAILED');
+    }
   } finally { await setter.end().catch(() => {}); }
 
   // (2) Recreates the database and re-applies the migrations.
