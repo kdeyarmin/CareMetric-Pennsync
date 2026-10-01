@@ -38,10 +38,21 @@ function mockNetwork({modelFailure=false,foreignFileLeak=false}={}) {
     job.state=body.p_state;job.result=body.p_result;return Response.json(true);
    }
    if(name==='cm_integration_file_record') {
-    files.set(body.p_id,{id:body.p_id,app_id:body.p_app_id,subject:body.p_subject,object_path:body.p_object_path,content_type:body.p_content_type,size_bytes:body.p_size,sha256:body.p_sha256});return Response.json(true);
+    files.set(body.p_id,{id:body.p_id,app_id:body.p_app_id,subject:body.p_subject,owner_kind:'subject',agency_id:null,object_path:body.p_object_path,content_type:body.p_content_type,size_bytes:body.p_size,sha256:body.p_sha256});return Response.json(true);
    }
-   if(name==='cm_integration_file_get') {
-    const f=files.get(body.p_id);return Response.json(f&&(foreignFileLeak||(f.app_id===body.p_app_id&&f.subject===body.p_subject))?f:null);
+   if(name==='cm_integration_file_record_owned') {
+    files.set(body.p_id,{id:body.p_id,app_id:body.p_app_id,subject:body.p_subject,owner_kind:'record',agency_id:body.p_agency_id,object_path:body.p_object_path,content_type:body.p_content_type,size_bytes:body.p_size,sha256:body.p_sha256});return Response.json(true);
+   }
+   if(name==='cm_integration_file_get'||name==='cm_integration_file_get_authorized') {
+    // The predicate migration 006 emits, so the double cannot admit a caller
+    // the database would refuse. `foreignFileLeak` deliberately breaks it: what
+    // that case proves is the RUNTIME refusing a row a leaking store handed
+    // over, which is the layer this acceptance run is about.
+    const f=files.get(body.p_id);
+    const owned=f&&f.owner_kind==='record'
+     ?body.p_agency_id!==null&&body.p_agency_id!==undefined&&f.agency_id===body.p_agency_id
+     :f&&f.subject===body.p_subject;
+    return Response.json(f&&(foreignFileLeak||(f.app_id===body.p_app_id&&owned))?f:null);
    }
    throw new Error('Unexpected RPC');
   }

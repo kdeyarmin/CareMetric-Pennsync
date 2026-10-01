@@ -5,24 +5,163 @@ import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import { entityCalls, sourceFiles } from './tools-base44-surface.mjs';
-
-/** Named row limits the screens pass instead of a literal. */
-export const LIMIT_CONSTANTS_FILE = 'src/lib/queryLimits.js';
+import { codeOnly } from './tools-ported-call-sites.mjs';
 
 /**
- * The constants a call site names, read from the module that declares them.
+ * The file whose constants prove this scan is still working.
  *
- * Refuses an empty read rather than returning one: with no constants every
- * call site naming `ALL_ROWS` would be indeterminate, and the measurement
- * would understate for a reason nothing reports.
+ * It is NOT the population any more — every production source file is. It is
+ * kept by name because it is the one module guaranteed to declare a limit, so
+ * an empty read of it means the matcher or the walk has broken. Widening the
+ * population without keeping a canary would have retired that refusal by
+ * accident: with 33 names across a dozen modules `found.size` can no longer
+ * reach zero, and a guard that cannot fire has stopped guarding.
+ */
+export const LIMIT_CONSTANTS_FILE = 'src/lib/queryLimits.js';
+
+const EXPORTED_LIMIT = /^export const ([A-Z][A-Z0-9_]*)\s*=\s*(\d+)\s*;/gm;
+
+/** `const|let|var NAME =`, with the `export` kept so a local one can be told apart. */
+const PLAIN_BINDING = /(?:^|[^\w.])(export\s+)?(const|let|var)\s+([A-Z][A-Z0-9_]*)\s*=/gm;
+/** `const { A, B: C } =` and `const [A] =`, whose bound name is not the key. */
+const PATTERN_BINDING = /(?:^|[^\w.])(?:export\s+)?(?:const|let|var)\s*[{[]([^}\]]*)[}\]]\s*=/gm;
+/** An import clause, whose bindings are the default, the namespace and the aliases. */
+const IMPORT_CLAUSE = /(?:^|[^\w.])import\s+(?!type\s)([^;'"]*?)\s+from\s/gm;
+
+/**
+ * Every name a module BINDS, with the shape that bound it, so a refusal can say
+ * which one fired.
+ *
+ * `exported` is true only for a binding that could legitimately BE the limit —
+ * an `export const` this file also declares as an integer. Everything else
+ * rebinds the name to something the reader cannot see, which is the defect.
+ * An `export let` is therefore reported rather than exempted: `EXPORTED_LIMIT`
+ * matches `const` alone, so an exported `let ALL_ROWS = 50` never enters the
+ * table and a site importing it gets a number the table denies. So is an
+ * `export const ALL_ROWS = compute()`, for the same reason from the other side
+ * — exported, const, and not an integer, so not the limit it shadows.
+ */
+function* bindingsIn(text, exportedHere) {
+  for (const match of text.matchAll(PLAIN_BINDING)) {
+    const [, exported, keyword, name] = match;
+    if (exported && keyword === 'const' && exportedHere.has(name)) continue;
+    if (keyword !== 'const') yield [name, `${exported ? 'exported ' : ''}${keyword} binding`];
+    else yield [name, exported ? 'exported non-integer const' : 'local const'];
+  }
+  for (const match of text.matchAll(PATTERN_BINDING)) {
+    for (const part of match[1].split(',')) {
+      // `key: bound` binds the right-hand name; `bound = fallback` binds the left.
+      const name = part.split(':').pop().split('=')[0].replace(/[.\s]/g, '');
+      if (/^[A-Z][A-Z0-9_]*$/.test(name)) yield [name, 'destructured binding'];
+    }
+  }
+  for (const match of text.matchAll(IMPORT_CLAUSE)) {
+    const clause = match[1];
+    const named = clause.match(/\{([^}]*)\}/);
+    for (const part of named ? named[1].split(',') : []) {
+      // A plain `{ ALL_ROWS }` re-imports the limit itself and is not a shadow;
+      // `{ X as ALL_ROWS }` binds the name to a different export and is.
+      const alias = part.match(/\bas\s+([A-Za-z_$][\w$]*)/);
+      if (alias && /^[A-Z][A-Z0-9_]*$/.test(alias[1])) yield [alias[1], 'aliased import'];
+    }
+    const outside = clause.replace(/\{[^}]*\}/, '');
+    const namespace = outside.match(/\*\s*as\s+([A-Z][A-Z0-9_]*)/);
+    if (namespace) yield [namespace[1], 'namespace import'];
+    const fallback = outside.match(/^\s*([A-Z][A-Z0-9_]*)\s*,?/);
+    if (fallback && !namespace) yield [fallback[1], 'default import'];
+  }
+}
+
+const limitsIn = text => [...text.matchAll(EXPORTED_LIMIT)]
+  .map(match => [match[1], Number(match[2])]);
+
+/**
+ * The integer constants a call site may name, from EVERY production module
+ * that exports one.
+ *
+ * This used to read exactly one file, and the cost was not the one site it
+ * missed but what every site's classification was DERIVED from.
+ * `ADR_CASE_READ_LIMIT` is declared in `src/components/adr/adrCaseRead.js`, so
+ * `ADRCenter.jsx` read INDETERMINATE — which makes the whole call unreadable
+ * and the site unserved — while its contract existed, was reachable and was
+ * tested. The limit was the SOURCE MODULE and never the module boundary:
+ * `PATIENT_HISTORY_ROWS` has always resolved across files. A screen\'s
+ * classification therefore depended on where somebody had happened to put a
+ * number, and nothing reported it.
+ *
+ * Three properties are load-bearing rather than tidy.
+ *
+ * It refuses AMBIGUITY instead of picking. Two modules exporting one name with
+ * DIFFERENT values means the name does not identify a number, and choosing
+ * either would hand a call site a limit its own import never had. Equal values
+ * are not ambiguous and pass.
+ *
+ * It refuses a SHADOW, which is the same problem from the other side. This
+ * resolves a NAME and does not follow imports, so a module declaring its own
+ * non-exported `const ALL_ROWS = 50` would be read with somebody else\'s 5000.
+ * Both were measured clear on 2026-09-29 (33 names, no collision, no shadow),
+ * and both are refusals here rather than sentences in this comment, because a
+ * reading of a tree on a day is not a property of the tree. Checked every run
+ * is the difference between an assumption and a guarantee.
+ *
+ * The shadow half first covered `const` ALONE, which is a quarter of the shapes
+ * that bind a name. A `let`, a `var`, a destructured `const { ALL_ROWS } = …`
+ * and an `import { X as ALL_ROWS }` each rebind the name identically and each
+ * was read with the exported module\'s number, silently. All four were probed
+ * against the 33 names and all four were absent, so it was latent rather than
+ * live — and latent is the state this repository has been burned by before: the
+ * paused-handler check needed three shapes before it was right, and its own
+ * rule is to re-derive the shapes from the TREE rather than from the check. A
+ * guard written to stop exactly this class, covering a quarter of it, is the
+ * shape that comes back. `bindingsIn` covers all four, plus two the probe found
+ * next door — an `export let`, which `EXPORTED_LIMIT` never admits to the
+ * table, and an `export const` whose value is not an integer literal.
+ *
+ * What it does NOT cover is written here rather than left to be assumed, which
+ * is the same rule from the other side: a binding in a nested destructuring
+ * pattern, and a name bound by a function parameter or a `catch`. Both were
+ * judged not worth the parser, and a reader widening this should re-derive the
+ * shapes from the tree rather than from this list.
+ *
+ * And the canary above keeps the empty-read refusal biting after the widening
+ * made `found.size` unable to reach zero.
+ *
+ * Every file is read through `codeOnly` first, because both scans match raw
+ * text and neither regular expression knows what a binding is. Measured on
+ * 2026-09-29, all three shapes fired: `// Example: const ALL_ROWS = 50;` in a
+ * production module threw `ENTITY_ROUTE_LIMIT_SHADOWED`, and a line-anchored
+ * `export const FAKE_LIMIT = 7;` inside a block comment or a multi-line
+ * template populated the table with a name that binds nothing. The first turns
+ * a comment into a build failure; the second two hand a call site a number no
+ * import could ever resolve. Masking is shared with the call-site ratchet
+ * rather than rewritten here, and the planted controls below keep it biting.
  */
 export function limitConstants(repository) {
-  const source = readFileSync(join(repository, LIMIT_CONSTANTS_FILE), 'utf8');
-  const found = new Map();
-  for (const match of source.matchAll(/^export const ([A-Z][A-Z0-9_]*)\s*=\s*(\d+)\s*;/gm)) {
-    found.set(match[1], Number(match[2]));
+  if (!limitsIn(codeOnly(readFileSync(join(repository, LIMIT_CONSTANTS_FILE), 'utf8'))).length) {
+    throw new Error(`ENTITY_ROUTE_LIMITS_UNREADABLE:${LIMIT_CONSTANTS_FILE}`);
   }
-  if (!found.size) throw new Error(`ENTITY_ROUTE_LIMITS_UNREADABLE:${LIMIT_CONSTANTS_FILE}`);
+  const files = [...sourceFiles(join(repository, 'src'))]
+    .map(file => [relative(repository, file), codeOnly(readFileSync(file, 'utf8'))]);
+
+  const found = new Map();
+  const declaredIn = new Map();
+  for (const [where, text] of files) {
+    for (const [name, value] of limitsIn(text)) {
+      if (found.has(name) && found.get(name) !== value) {
+        throw new Error(`ENTITY_ROUTE_LIMIT_AMBIGUOUS:${name}:${declaredIn.get(name)}:${where}`);
+      }
+      found.set(name, value);
+      if (!declaredIn.has(name)) declaredIn.set(name, where);
+    }
+  }
+  for (const [where, text] of files) {
+    const exportedHere = new Set(limitsIn(text).map(([name]) => name));
+    for (const [name, shape] of bindingsIn(text, exportedHere)) {
+      if (found.has(name)) {
+        throw new Error(`ENTITY_ROUTE_LIMIT_SHADOWED:${name}:${where}:${shape}`);
+      }
+    }
+  }
   return found;
 }
 

@@ -58,7 +58,33 @@ test('an operation no port uses is refused before the network', async () => {
   const never = () => assert.fail('no request may be made');
   await rejects(capability({}, never)('SendEmail', {}), 'INTEGRATION_OPERATION_NOT_BROKERED');
   await rejects(capability({}, never)('UploadPrivateFile', {}), 'INTEGRATION_OPERATION_NOT_BROKERED');
-  assert.deepEqual([...BROKERED_OPERATIONS], ['InvokeLLM', 'ExtractDataFromUploadedFile']);
+  // `UploadFile` joined the list with `extractPatientDataFromDocument`, which
+  // takes a document's bytes and mints the handle under its own subject.
+  assert.deepEqual([...BROKERED_OPERATIONS],
+    ['InvokeLLM', 'ExtractDataFromUploadedFile', 'UploadFile']);
+});
+
+test('every brokered name is one a port actually asks for', async () => {
+  /*
+   * The list's own comment says it is "the subset the ports in this service
+   * actually use", and until now that was a promise rather than a check: a name
+   * added ahead of the port that needs it would have widened the surface with
+   * nothing to say so. Read from the sources rather than asserted against a
+   * second list, which would only be the same claim written twice.
+   *
+   * Only this directory is read: the image copies it as the whole build
+   * context, so a path outside it breaks the build exactly as an import does.
+   */
+  const { readdir, readFile } = await import('node:fs/promises');
+  const here = import.meta.dirname;
+  const sources = (await readdir(here))
+    .filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs')
+      && !['integrations.mjs', 'outbound-delivery.mjs'].includes(name));
+  const bodies = await Promise.all(sources.map(name => readFile(`${here}/${name}`, 'utf8')));
+  for (const operation of BROKERED_OPERATIONS) {
+    assert.ok(bodies.some(body => body.includes(`'${operation}'`)),
+      `${operation} is brokered but no port asks for it`);
+  }
 });
 
 test('an unconfigured deployment and a caller with no bearer both refuse before the network', async () => {

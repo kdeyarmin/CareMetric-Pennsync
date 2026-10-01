@@ -199,8 +199,16 @@ export default function IncidentReportingModule() {
       
       const results = await Promise.all(uploadPromises);
       const urls = results.map(r => r.file_url);
-      
-      setUploadedPhotos(prev => [...prev, ...urls]);
+
+      // Preview from the local file rather than fetching back the copy we just
+      // uploaded. The stored value is unchanged: photo_urls still carries the
+      // uploaded locators, and each preview is paired with its locator so
+      // removePhoto can still clear both lists.
+      const added = urls.map((url, index) => ({
+        url,
+        preview: URL.createObjectURL(files[index]),
+      }));
+      setUploadedPhotos(prev => [...prev, ...added]);
       setFormData(prev => ({
         ...prev,
         photo_urls: [...prev.photo_urls, ...urls]
@@ -214,7 +222,12 @@ export default function IncidentReportingModule() {
   };
 
   const removePhoto = (url) => {
-    setUploadedPhotos(prev => prev.filter(p => p !== url));
+    setUploadedPhotos(prev => {
+      prev.filter(p => p.url === url).forEach(p => {
+        try { URL.revokeObjectURL(p.preview); } catch { /* already revoked */ }
+      });
+      return prev.filter(p => p.url !== url);
+    });
     setFormData(prev => ({
       ...prev,
       photo_urls: prev.photo_urls.filter(p => p !== url)
@@ -255,7 +268,12 @@ export default function IncidentReportingModule() {
       physician_notified: false,
       office_notified: false
     });
-    setUploadedPhotos([]);
+    setUploadedPhotos(prev => {
+      prev.forEach(p => {
+        try { URL.revokeObjectURL(p.preview); } catch { /* already revoked */ }
+      });
+      return [];
+    });
   };
 
   const updateIncidentType = (type) => {
@@ -528,12 +546,12 @@ export default function IncidentReportingModule() {
                     </div>
                     {uploadedPhotos.length > 0 && (
                       <div className="mt-3 grid grid-cols-3 gap-2">
-                        {uploadedPhotos.filter((url) => isSafeExternalUrl(url) || (typeof url === 'string' && url.startsWith('blob:'))).map((url, idx) => (
+                        {uploadedPhotos.filter((photo) => typeof photo?.preview === 'string' && photo.preview.startsWith('blob:')).map((photo, idx) => (
                           <div key={idx} className="relative group">
-                            <img src={url} alt={`Upload ${idx + 1}`} className="w-full h-24 object-cover rounded-lg" />
+                            <img src={photo.preview} alt={`Upload ${idx + 1}`} className="w-full h-24 object-cover rounded-lg" />
                             <button
                               type="button"
-                              onClick={() => removePhoto(url)}
+                              onClick={() => removePhoto(photo.url)}
                               className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                               <X className="w-3 h-3" />

@@ -107,7 +107,7 @@ test('the client exposes offboarding only to the protected owner and cannot invo
 
 test('reactivation is hard-paused before Base44 client creation while source remains preserved', () => {
   const pause = SRC.indexOf("if (action === 'reactivate')");
-  const clientCreation = SRC.indexOf('const base44 = createClientFromRequest(req)');
+  const clientCreation = SRC.indexOf('const base44 = createClientFromRequest(');
   const preservedSource = SRC.indexOf('async function reactivateUser');
   assert.ok(pause !== -1 && pause < clientCreation, 'reactivation must return 503 before client creation');
   assert.ok(preservedSource > clientCreation, 'the dormant implementation source must remain available for review');

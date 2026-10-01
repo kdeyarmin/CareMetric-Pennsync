@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { extractClinicalDocument } from "@/lib/documentExtraction";
+import { usesIndependentBackend } from "@/lib/independentStagingSession";
 import { validateFileUpload } from "@/components/utils/security";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -72,27 +74,30 @@ export default function DocumentIngestionUploader({ onDataExtracted, _patientId 
     setExtractedData(null);
 
     try {
-      // Upload file
-      const uploadResp = await base44.integrations.Core.UploadFile({ file });
-      setUploadedFile({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        url: uploadResp.file_url
+      // The bytes go to the owned service and a locator to Base44; the
+      // transport decides which, and the two functions it is handed are all of
+      // the client it needs. `invoke` keeps the capability's literal name here
+      // so `tools-ported-call-sites.mjs` can still see this site.
+      const data = await extractClinicalDocument({
+        invoke: (params) => base44.functions.invoke('extractClinicalDocument', params),
+        uploadFile: (payload) => base44.integrations.Core.UploadFile(payload),
+      }, file, {
+        independent: usesIndependentBackend,
+        // `url` is the stored locator, which only the Base44 path has. Nothing
+        // on this screen renders it; it is kept where it exists rather than
+        // dropped, and null where there is no stored object to name.
+        onUploaded: (url) => setUploadedFile({
+          name: file.name, size: file.size, type: file.type, url,
+        }),
       });
 
-      // Extract data
-      const extractResp = await base44.functions.invoke('extractClinicalDocument', {
-        file_url: uploadResp.file_url
-      });
-
-      if (extractResp.data?.success) {
-        setExtractedData(extractResp.data.extracted_data);
+      if (data?.success) {
+        setExtractedData(data.extracted_data);
         if (onDataExtracted) {
-          onDataExtracted(extractResp.data.extracted_data);
+          onDataExtracted(data.extracted_data);
         }
       } else {
-        setError("Failed to extract data from document");
+        setError(data?.error || "Failed to extract data from document");
       }
     } catch (err) {
       setError(err.message || "Upload or extraction failed");

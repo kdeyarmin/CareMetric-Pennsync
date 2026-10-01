@@ -41,6 +41,13 @@ export const MIGRATION_CODES = Object.freeze([
   // D35's, for the same reason: a contract that would create functions failing
   // on their first call refuses to apply instead.
   'PENNSYNC_MEMBERSHIP_LIFECYCLE_REQUIRED',
+  // D223's, and the reason is sharper than the two above: the duty contract
+  // carries NO ownership predicate because D82's `user_update` policy and
+  // `user_self_write_guard` trigger are the ownership answer. On a store
+  // missing either, its functions would not fail on their first call — they
+  // would SUCCEED, unbound, which is the failure direction nothing reports. So
+  // it refuses at migration time and names itself.
+  'PENNSYNC_PROFILE_SELF_WRITE_REQUIRED',
   // A correction to a shipped contract refuses to apply where the contract it
   // corrects is absent: `create or replace` would otherwise CREATE it, leaving
   // a store whose library writes have no chart check and no complaint.
@@ -54,6 +61,12 @@ export const MIGRATION_CODES = Object.freeze([
   // D45's notification contract needs D34's `caller_membership`, because the
   // authority envelope it filters on is THIS store's membership.
   'PENNSYNC_CALLER_MEMBERSHIP_REQUIRED',
+  // The three reference tables' writes need the record store's caller helpers
+  // AND the shared field checker the operational tables shipped, because they
+  // call it rather than carrying a fourth copy of it. Applying without it would
+  // create six contracts that fail on their first call instead of at migration
+  // time, which is the same reason every code above this one exists.
+  'PENNSYNC_REFERENCE_WRITES_REQUIRE_RECORD_STORE',
   // D110. Raised by an AUTHORITY migration rather than a record one, which is
   // why it sat outside this list while the scan above read one directory: the
   // deployment pin refuses an app id `known_app` does not carry, so an operator
