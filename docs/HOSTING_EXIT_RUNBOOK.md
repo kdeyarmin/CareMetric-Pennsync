@@ -492,8 +492,33 @@ excluded:
   see a broken image rather than an error anyone reports.
 
 Each is a URL constant rather than a mechanism, so the work is moving the two image
-files to our own host and changing three lines. Nothing here blocks a step, and
-nothing in this runbook's order depends on it.
+files to a host of ours and changing three lines. Nothing here blocks a step, and
+nothing in this runbook's order depends on it. **The order inside the item does
+matter, though, and it is the opposite of the obvious one: the files have to be
+served from the destination, and each new URL read back as actually returning the
+image, before any of the three constants changes.** A constant pointing at an
+address that does not serve the image yet is a broken image in production, and in
+the mail case it is a broken image in somebody's inbox.
+
+**The destination, and what it waits on.** The destination is the application's own
+`public/` bundle, referenced as `https://app.caremetricai.com/<path>`. That name is
+the one address that is correct on both sides of step 10: Base44 serves this
+bundle at it today, and our own host serves the same bundle at it afterwards, so the
+constants never have to change twice. What it waits on is therefore not the owned
+host but a **publish of the frontend carrying the files**, which is a deliberate
+act through `publish-production-frontend.yml` rather than anything automatic. Two
+consequences worth having in writing. Using the owned deployment's own Railway
+hostname instead would work sooner and ties the asset to a hostname nobody has
+promised to keep, so it is the worse choice despite being available earlier. And
+adding a file under `public/` fails `tools-app-store-migration.test.mjs`, which pins
+that directory and `ios/` to an exact inventory of 25 paths — deliberately, so that
+a native-adjacent addition is reviewed rather than absorbed. That is a reviewed
+change to the baseline inventory and belongs in the same pull request as the files.
+
+The code change is **not** this branch's: it belongs in a small pull request of its
+own, after the two this runbook ships with. Merging it ships nothing by itself,
+since `services/pennsync-api` deploys on a release-variable write rather than on a
+merge touching its directory.
 
 **The hosted data, the user accounts and the generated native build**, which are
 the other half of the exit rather than this runbook's, named here only so the list
