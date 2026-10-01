@@ -345,6 +345,47 @@ The build must be made with the same `PENNSYNC_ASSET_REVISION` the image was
 built with, or the asset filenames differ and the comparison cannot run. That is
 why the image build refuses an empty one.
 
+## What the exit leaves Base44 holding
+
+The last step of the hosting exit is a revocation list, not a switch-off, because
+Base44 holds credentials and bindings that keep working after it stops serving
+anything. Everything here is read from this repository or from Base44's own
+documentation; nothing was read from an account.
+
+**An Apple App Store Connect API key.** Base44's documentation says that to
+generate the installable file it takes an Issuer ID, Key ID, Team ID and the `.p8`
+key file, and that "Base44 keeps your credentials saved, so they are ready the next
+time you generate files." That key can create and upload builds for the app record,
+so it is the most consequential item on this list. Revoking it is one action in
+Apple's own developer portal, and Apple only lets a `.p8` be downloaded once, so
+the copy Base44 holds may be the only one — revoke rather than try to retrieve it.
+
+**The function-environment secrets.** Read from every `Deno.env.get` in
+`base44/functions/` and `base44/_shared/`, the secret-bearing names are
+`INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET`, `SIGNATURE_HMAC_KEYRING`,
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `HEYGEN_API_KEY`. `APP_PUBLIC_URL`,
+`SUPER_ADMIN_EMAIL` and the various `*_RELEASE` names are configuration rather than
+credentials and need no revocation, only the move step 7 already covers. Each
+secret is rotated at the provider that issued it, not inside Base44 — a value
+deleted from Base44's environment is still a live key at OpenAI, Anthropic or
+HeyGen until it is rotated there.
+
+**The Telnyx credentials**, which per `AGENTS.md` are configured in-app through the
+`IntegrationSecret` entity rather than the environment, so they live in Base44's
+data and leave with it.
+
+**The custom-domain binding.** Base44 holds the configuration and the TLS
+certificate for `app.caremetricai.com` while it serves that hostname. After step 10
+moves the record, remove the binding there too, or two places keep claiming the
+same name.
+
+**The hosted data, the user accounts and the generated native build**, which are
+the other half of the exit rather than this runbook's, named here only so the list
+is not read as complete on its own.
+
+Nothing in this repository can verify any of these from outside, so this is a list
+to work through in the accounts rather than a measurement.
+
 ## What this runbook does not cover
 
 The Android half. There is no `android/` directory in this repository, so the
