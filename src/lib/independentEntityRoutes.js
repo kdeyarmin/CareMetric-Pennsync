@@ -1188,14 +1188,24 @@ const DECLARED_ROUTES = Object.freeze({
    * The telecom keys are `has_work_phone`, `has_personal_cell`,
    * `work_phone_number` and `personal_cell_masked`
    * (`20260920720000_roster_phone_provisioned.sql`). It supplies NO
-   * `personal_cell_e164` under any name: the three admin screens that read it
-   * either only COUNT or already print `maskPhone(...)`, so the masked form is
-   * every digit the product displays, and the full number is not worth carrying
-   * through a projection every roster consumer shares. A screen wanting the full
-   * cell is a product question and not a route this file can widen — and the key
-   * is deliberately not the column's name, because `personal_cell_e164` is
-   * self-writable, so a screen that mirrored a roster row back would write the
-   * mask over the real number.
+   * `personal_cell_e164` under any name. No digit the product DISPLAYS is lost
+   * by that: every screen printing the cell already prints `maskPhone(...)`, so
+   * the masked form is the whole of what a reader ever saw, and the full number
+   * is not worth carrying through a projection every roster consumer shares. A
+   * screen wanting the full cell is a product question and not a route this file
+   * can widen — and the key is deliberately not the column's name, because
+   * `personal_cell_e164` is self-writable, so a screen that mirrored a roster row
+   * back would write the mask over the real number.
+   *
+   * WHAT THAT REASONING MISSED, recorded because the omission is the
+   * interesting part. Three screens do not display the cell at all; they TEST
+   * it, to count who is provisioned. An omitted key is a fine answer to a screen
+   * that prints a masked number and the WRONG answer to one asking whether a
+   * number exists — it does not render blank there, it inverts, reporting every
+   * provisioned nurse as missing a bridge cell. "They only count" was offered as
+   * the reason the omission was safe and was the reason it was not. All four
+   * consumers now read `rosterTelecom.js`, which answers from `has_personal_cell`
+   * on this path and falls back to the raw column on the Base44 one.
    *
    * This paragraph is a second representation of that migration and the
    * migration is the record; `roster-phone-provisioned.test.mjs` and

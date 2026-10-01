@@ -40,7 +40,14 @@ export default function NumberPoolPanel() {
   const { data: users = [] } = useQuery({
     queryKey: ["phone-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list("full_name", 200);
+      // `email` rather than `full_name`: the owned roster serves two orders, email
+      // with the user id as the tiebreaker and `-created_date`, and refuses every
+      // other sort outright rather than answering it in the default order
+      // (`independentEntityRoutes.js`). `full_name` is not a sort it can ever
+      // learn — the carried user table has no name column at all — so this call
+      // asked for a page the owned backend has no way to serve and was refused
+      // before the roster contract ran.
+      const _rows = await base44.entities.User.list("email", 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },

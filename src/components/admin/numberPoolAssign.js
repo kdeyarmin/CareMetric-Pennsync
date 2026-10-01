@@ -1,4 +1,4 @@
-import { maskPhone } from "../voice/phoneUtils.js";
+import { hasPersonalCell, personalCellTail } from "./rosterTelecom.js";
 
 /**
  * numberPoolAssign — what NumberPoolPanel reads about a nurse's bridge cell, and
@@ -12,9 +12,13 @@ import { maskPhone } from "../voice/phoneUtils.js";
  * (`20260920720000_roster_phone_provisioned.sql`). It answers
  * `has_personal_cell` and `personal_cell_masked` instead, so the panel can say
  * whether a cell is on file and show its last four digits without the number
- * itself travelling. The Base44 path still sends the raw column, so both
- * readers fall back to it and mask in the browser — the same `maskPhone` the
- * panel this one is nested inside already uses.
+ * itself travelling.
+ *
+ * Both of those answers now come from `rosterTelecom.js`, which three other
+ * screens read too. What stays here is the EMAIL LOOKUP, which is this panel's
+ * own: it holds a pool row naming a nurse by address and has to find them in a
+ * roster it fetched separately. The two-shape reading underneath is not this
+ * panel's and was the reason the other three consumers could not share it.
  */
 
 const find = (users, email) => users.find((user) => user.email === email);
@@ -22,21 +26,16 @@ const find = (users, email) => users.find((user) => user.email === email);
 /**
  * Whether a bridge cell is on file for `email`.
  *
- * `typeof === "boolean"` rather than a truthiness test on the key: the owned
- * store answers `false` for a nurse with no cell and `null` for a caller who may
- * not see it, and `false` is a real answer that `??` would discard.
+ * The two-shape reading is `rosterTelecom.hasPersonalCell`; this adds only the
+ * lookup by address.
  */
 export function cellOnFile(users, email) {
-  const user = find(users, email);
-  if (typeof user?.has_personal_cell === "boolean") return user.has_personal_cell;
-  return !!user?.personal_cell_e164;
+  return hasPersonalCell(find(users, email));
 }
 
 /** The last four digits of that cell, masked, or "" when there is nothing to show. */
 export function cellTail(users, email) {
-  const user = find(users, email);
-  if (user?.personal_cell_masked) return user.personal_cell_masked;
-  return user?.personal_cell_e164 ? maskPhone(user.personal_cell_e164) : "";
+  return personalCellTail(find(users, email));
 }
 
 /**

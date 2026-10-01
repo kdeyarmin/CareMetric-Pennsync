@@ -3442,18 +3442,20 @@ byte for byte, so paste what the tool prints and never retype, rewrap or
 re-indent it.
 
 ```
-entity routes: 86 declared, 152/245 landable call sites SERVED, 93 still to adopt
-  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
+entity routes: 86 declared, 155/245 landable call sites SERVED, 90 still to adopt
+  6 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
   18 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
-  of those 93, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 92 need a named capability
+  of those 90, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 89 need a named capability
 ```
 
 **It is one printer run over one merged tree, so read it as a reading and not as
 a sum.** The five compliance write keys are the difference from the block above
-it, and the nine refused sites and fifty unreadable arguments come from the route
-and allowlist work, not from these five — the two branches were open at once and
-neither could see the other's effect on these totals, which is why this is
-re-measured here rather than added up.
+it, and the refused and unreadable buckets come from the route and allowlist
+work, not from these five — the two branches were open at once and neither could
+see the other's effect on these totals, which is why this is re-measured here
+rather than added up. Their counts are deliberately not restated in this
+sentence: the block above is the reading, and a figure repeated beside it is a
+second copy that nothing checks.
 
 **Two of the three matcher-fix refusals are in a module nothing imports, and that
 changes what they cost rather than whether they are real.**
@@ -3567,20 +3569,30 @@ which is how a bucket comes to claim more than it measured.
 Beside the served sites, the remainder is three populations and they are three
 different kinds of work:
 
-- **Nine are REFUSED by a declared route.** Six are `User.list` asking for a
-  sort, across five files; three are the offline queue's, described above.
-  These are the only sites where the Base44 fallback is already gone — but nine
-  refusals are FIVE screens. They fall across six files, and the sixth is not a
-  screen: `retiredOfflineQueue.js` is a lib module no production file imports.
-  Nine, six and five are three different counts of one bucket, and the one that
-  sizes the work is the smallest. **And this line is progress-shaped, so a rise
-  in it reads backwards**: it was six when #309 merged and is nine now, and all
-  three arrivals came from `c90ad9ae` — two keys became refusals by being
-  DECLARED, where an undeclared key is skipped rather than refused, and the
-  third became visible when the shared matcher stopped being a regular
-  expression. A refusal cannot be counted until a route exists to do the
-  refusing, so plotting this bucket over time measures the audit's reach and not
-  the product's health.
+- **Six are REFUSED by a declared route.** Three are `User.list` asking for a
+  `full_name` sort, across two files; three are the offline queue's, described
+  above. These are the only sites where the Base44 fallback is already gone — but
+  six refusals are TWO screens. They fall across three files, and the third is
+  not a screen: `retiredOfflineQueue.js` is a lib module no production file
+  imports. Six, three and two are three different counts of one bucket, and the
+  one that sizes the work is the smallest. **This line moves in BOTH directions
+  for reasons that are not opposites, so neither direction can be read off the
+  number.** It was six when #309 merged, rose to nine on `c90ad9ae` — two keys
+  became refusals by being DECLARED, where an undeclared key is skipped rather
+  than refused, and the third became visible when the shared matcher stopped
+  being a regular expression — and is six again now for a different reason
+  entirely: three admin screens stopped asking for an order the roster cannot
+  serve, so those sites moved into SERVED rather than out of the audit. A rise
+  measures the audit's reach; this fall measures three call sites repaired; and a
+  fall could equally mean a route was withdrawn. Read the cause, never the
+  direction.
+- **The three that remain are the two approver screens**, `TimeOff.jsx` and
+  `Timesheets.jsx` (twice), and they are deliberately not repaired here. Both
+  files are open in other pull requests at the time of writing, and moving a line
+  in them from this one would trade a measured refusal for a merge conflict. The
+  `full_name` sort is not servable in either store — the carried user table has
+  no name column at all — so this is a repair somebody owes, not a question
+  anybody has to answer first.
 - **Fifty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
