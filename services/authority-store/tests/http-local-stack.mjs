@@ -240,7 +240,12 @@ export async function assertOwnedStack() {
   // The workdir is CHECKED against a value computed here rather than trusted
   // from the marker, so widening this to a second mode adds one more known path
   // and no ability to adopt a stack started from anywhere else.
-  if (owner.project !== PROJECT || owner.version !== 3 || !WORKDIRS[owner.mode]
+  // `Object.hasOwn` rather than a truthiness test on the lookup: with a plain
+  // lookup the guard was safe only because no member of `Object.prototype` is a
+  // string, so `mode: 'constructor'` could never equal a workdir. That held by a
+  // property nobody chose, and a reviewer had to run nine planted markers to
+  // establish it. One token makes it structural.
+  if (owner.project !== PROJECT || owner.version !== 3 || !Object.hasOwn(WORKDIRS, owner.mode)
     || owner.workdir !== WORKDIRS[owner.mode]
     || !localDaemon(owner.daemon)) fail('LOCAL_STACK_OWNERSHIP_MISMATCH');
   if (await resolveLocalDaemon() !== owner.daemon) fail('LOCAL_DOCKER_OWNERSHIP_MISMATCH');
@@ -248,9 +253,20 @@ export async function assertOwnedStack() {
   return owner;
 }
 export async function localStatus() {
-  const owner = await assertOwnedStack();
+  // The assertion is what this call is for; nothing from the marker is used to
+  // address the stack, which is the point of the comment below.
+  await assertOwnedStack();
   let status;
-  try { status = JSON.parse(await captured(CLI, ['status', '--workdir', owner.workdir, '-o', 'json'])); }
+  // THE REPOSITORY WORKDIR, not `owner.workdir`, and the reason is a reviewer's
+  // finding rather than tidiness: the derived workdir lives under `.temp`, which
+  // `.gitignore` covers, so a `git clean`, a cache miss or a fresh container with
+  // a surviving marker would leave `status` and `stop` pointing at a config that
+  // is gone: the CLI call would fail, the marker would never be unlinked, and
+  // the stack would be left running. The derived config is a one-token derivation
+  // of this one and declares the same project id and the same ports, so reading
+  // the stack from here answers identically for either mode. Only `start` needs
+  // the second path.
+  try { status = JSON.parse(await captured(CLI, ['status', '--workdir', workdir, '-o', 'json'])); }
   catch { fail('LOCAL_STATUS_UNAVAILABLE_OUTPUT_REDACTED'); }
   let db;
   try { db = new URL(status.DB_URL); } catch { fail('LOCAL_DATABASE_TARGET_INVALID'); }
@@ -393,23 +409,85 @@ export async function unusedPort(port) {
     }
   }
 }
+const MIGRATIONS_ENABLED = 'db.migrations.enabled';
+const CONFIG_HEADER = /^\[([^[\]]+)\]$/;
+const CONFIG_PAIR = /^([A-Za-z0-9_.-]+)\s*=\s*(.*)$/;
+/** Lines with their terminators kept, so a derived file keeps the original's. */
+const splitLines = text => text.split(/(?<=\n)/);
 /**
- * Write the derived `config.toml`, and refuse to proceed unless the disable took.
+ * Each line as the fully qualified key it sets, or null where it sets none.
  *
- * Derived from the repository's own file by a single targeted replacement, so
- * everything else about the stack — its project id, ports, excluded services — is
- * the reviewed configuration and not a second copy of it. The replacement is
- * asserted rather than assumed: a `config.toml` whose `[db.migrations]` block
- * moved would otherwise silently produce a MIGRATED store, which is the one thing
- * this workdir exists to avoid and would present as a store pinned to staging for
- * no visible reason.
+ * Line by line and table by table rather than by one regular expression over the
+ * whole file, on a reviewer's finding and then a second defect of my own: a
+ * character class bounded by `[` stops at the bracket inside an ARRAY value, so
+ * `[db.migrations]` followed by `schema_paths = []` and then `enabled = true`
+ * read as a file with no such key and was derived unchanged — migrations still
+ * on, no refusal, which is the direction that does not announce itself. Walking
+ * lines also gets the dotted spelling (`migrations.enabled` under `[db]`) for
+ * free, since both forms qualify to the same name.
  */
+function qualifyLines(lines) {
+  let table = '';
+  return lines.map(raw => {
+    const line = raw.replace(/\r?\n$/, '').trim();
+    // Any header, including an array-of-tables this file does not use: an
+    // unparseable one clears the table rather than leaving the previous one in
+    // force, so a key after it is never attributed to the wrong table.
+    if (line.startsWith('[')) { table = CONFIG_HEADER.exec(line)?.[1].trim() ?? ''; return null; }
+    const pair = CONFIG_PAIR.exec(line);
+    return pair ? { name: `${table ? `${table}.` : ''}${pair[1]}`, value: pair[2].trim() } : null;
+  });
+}
+/**
+ * Whether any spelling this configuration could take still enables migrations.
+ *
+ * EXPORTED so the derivation can be tested against planted files. It was not,
+ * and the first version of it shipped with a defect a reviewer found by running
+ * ten planted configs against a copy — a refusal the start flow depends on wants
+ * a test on the side that raises it.
+ */
+export function migrationsStillEnabled(text) {
+  return qualifyLines(splitLines(text)).some(entry => entry && (
+    (entry.name === MIGRATIONS_ENABLED && /^true\b/.test(entry.value))
+    // Or a shape this cannot rewrite at all. An inline table mentioning the key
+    // (`db = { migrations = { enabled = true } }`) sets it under a name the walk
+    // never sees, so leaving it alone would produce a MIGRATED store with
+    // nothing refusing. Answering "still enabled" for a file it cannot read is
+    // the only direction that fails loudly, and the repository's own config uses
+    // no inline tables, so the conservative answer costs nothing here.
+    || (entry.value.startsWith('{') && /\benabled\b/.test(entry.value))));
+}
+/**
+ * The repository's own `config.toml` with migrations off, or a refusal.
+ *
+ * Derived from the reviewed file by rewriting the one key, so everything else
+ * about the stack — its project id, ports, excluded services — is that file and
+ * not a second copy of it. A file this cannot fully disable is a refusal rather
+ * than a silently MIGRATED store, which is the one outcome the second workdir
+ * exists to avoid and would present as a store pinned to staging for no visible
+ * reason.
+ */
+export function deriveUnmigratedConfig(config) {
+  const lines = splitLines(config);
+  const entries = qualifyLines(lines);
+  const derived = lines.map((raw, index) => entries[index]?.name === MIGRATIONS_ENABLED
+    ? raw.replace(/\btrue\b/, 'false') : raw).join('');
+  // THE GOAL, NOT THE EDIT. The first version of this asserted that the text had
+  // CHANGED and that some block now said false, which is a different claim in
+  // both directions. A file with two `[db.migrations]` tables had only its first
+  // one rewritten and passed, because a replace without `/g` takes one match and
+  // the second test then found the one it had just made — the only thing
+  // refusing that file was TOML forbidding duplicate tables, so the check's
+  // safety was the parser's and not its own. And a repository config already
+  // carrying `enabled = false`, exactly the state this mode wants, was REFUSED
+  // for not having changed. Asking whether anything still enables migrations
+  // answers both.
+  if (migrationsStillEnabled(derived)) fail('LOCAL_MIGRATIONS_DISABLE_FAILED');
+  return derived;
+}
 async function writeUnmigratedConfig() {
-  const config = await readFile(new URL('../supabase/config.toml', import.meta.url), 'utf8');
-  const derived = config.replace(/(\[db\.migrations\]\s*\nenabled\s*=\s*)true/, '$1false');
-  if (derived === config || !/\[db\.migrations\]\s*\nenabled\s*=\s*false/.test(derived)) {
-    fail('LOCAL_MIGRATIONS_DISABLE_FAILED');
-  }
+  const derived = deriveUnmigratedConfig(
+    await readFile(new URL('../supabase/config.toml', import.meta.url), 'utf8'));
   await mkdir(new URL('../supabase/.temp/unmigrated/supabase/', import.meta.url), { recursive: true });
   await writeFile(new URL('../supabase/.temp/unmigrated/supabase/config.toml', import.meta.url), derived);
 }
@@ -446,8 +524,12 @@ async function main(action) {
     if (!await access(marker).then(() => true, () => false)) {
       process.stdout.write('No stack owned by this harness; cleanup made no changes.\n'); return;
     }
-    const owner = await assertOwnedStack();
-    await captured(CLI, ['stop', '--workdir', owner.workdir, '--project-id', PROJECT, '--no-backup']);
+    await assertOwnedStack();
+    // Same reason as `localStatus`: the repository workdir always has a config,
+    // the derived one is gitignored, and `--project-id` is what names the stack.
+    // The assertion above still runs, because refusing a stack this harness did
+    // not start is the whole point of reading the marker at all.
+    await captured(CLI, ['stop', '--workdir', workdir, '--project-id', PROJECT, '--no-backup']);
     await unlink(marker);
     process.stdout.write('Owned local stack stopped; its disposable data volumes removed.\n');
   } else fail('EXPECTED_START_OR_STOP');

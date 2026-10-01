@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, mkdir, copyFile, writeFile, readFile, readdir, rm, access } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve, sep } from 'node:path';
+import { deriveUnmigratedConfig, migrationsStillEnabled } from './http-local-stack.mjs';
 const exec = promisify(execFile);
 const base = fileURLToPath(new URL('../supabase/.temp/', import.meta.url));
 const PROJECT = 'local-pennsync-authority';
@@ -79,6 +80,12 @@ test('a marker naming a mode or a workdir this file did not choose is refused', 
       { version: 3, project: PROJECT, mode: 'unmigrated', workdir },
       { version: 3, project: PROJECT, mode: 'migrated', workdir: resolve(root, 'elsewhere') + sep },
       { version: 2, project: PROJECT, mode: 'migrated', workdir },
+      // The two shapes that reach the lookup as a property name rather than a
+      // mode. They were refused before `Object.hasOwn` too, but only because no
+      // member of `Object.prototype` is a string, so the second comparison could
+      // never be true. Pinned here so the guard's safety is its own.
+      { version: 3, project: PROJECT, mode: 'constructor', workdir },
+      { version: 3, project: PROJECT, mode: '__proto__', workdir },
     ]) {
       await writeFile(marker, JSON.stringify({ daemon: 'unix:///local/first-daemon.sock', ...owner }));
       const result = await invoke('stop');
@@ -89,7 +96,7 @@ test('a marker naming a mode or a workdir this file did not choose is refused', 
   });
 });
 
-test('the unmigrated start derives a config with migrations disabled, or refuses', async () => {
+test('the unmigrated start checks the Docker endpoint before it derives anything', async () => {
   await fixture(async ({ invoke, root }) => {
     // The start still fails here -- the Docker endpoint is remote and the CLI
     // path does not exist -- so what this proves is the ORDER: nothing derives a
@@ -102,11 +109,52 @@ test('the unmigrated start derives a config with migrations disabled, or refuses
     assert.equal(await readFile(resolve(root, 'supabase/config.toml'), 'utf8'), before);
     assert.equal(await access(resolve(root, 'supabase/.temp/unmigrated/supabase/config.toml'))
       .then(() => true, () => false), false);
-    // And a config whose block this file cannot find is a refusal rather than a
-    // silently MIGRATED store, which is the one outcome that workdir exists to
-    // avoid and would present as a store pinned to staging for no visible reason.
-    assert.match(before, /\[db\.migrations\]\s*\nenabled\s*=\s*true/);
+    // A ratchet on the repository's own configuration, which is what makes the
+    // second workdir necessary in the first place: migrations are ON here, so a
+    // stack started from this file applies the store and pins it to staging.
+    assert.equal(migrationsStillEnabled(before), true);
   });
+});
+
+test('the derived configuration disables migrations, or refuses to be derived', async () => {
+  // THE DERIVE ITSELF, against planted files. Nothing executed it before: the
+  // test above dies at the endpoint check, so `LOCAL_MIGRATIONS_DISABLE_FAILED`
+  // could not be raised by any test here and the first execution of the derive
+  // anywhere would have been a real CI job. Two defects were in it, each found by
+  // running a table like this one rather than by reading the code -- a replace
+  // without `/g` left a second `[db.migrations]` table enabled, and a character
+  // class bounded by `[` stopped at the bracket inside an array value, so a key
+  // after `schema_paths = []` was never seen. Both left migrations ON with no
+  // refusal, which is the direction that does not announce itself.
+  for (const [name, text, expected] of [
+    ['the plain shape', '[db.migrations]\nenabled = true\n', '[db.migrations]\nenabled = false\n'],
+    ['CRLF line endings', '[db.migrations]\r\nenabled = true\r\n', '[db.migrations]\r\nenabled = false\r\n'],
+    ['no spaces around the equals', '[db.migrations]\nenabled=true\n', '[db.migrations]\nenabled=false\n'],
+    ['a comment between header and key', '[db.migrations]\n# why\nenabled = true\n',
+      '[db.migrations]\n# why\nenabled = false\n'],
+    ['an array value before the key', '[db.migrations]\nschema_paths = []\nenabled = true\n',
+      '[db.migrations]\nschema_paths = []\nenabled = false\n'],
+    ['two tables of the same name', '[db.migrations]\nenabled = true\n[x]\ny=1\n[db.migrations]\nenabled = true\n',
+      '[db.migrations]\nenabled = false\n[x]\ny=1\n[db.migrations]\nenabled = false\n'],
+    ['a file already disabled', '[db.migrations]\nenabled = false\n', '[db.migrations]\nenabled = false\n'],
+    ['the dotted spelling', '[db]\nmigrations.enabled = true\n', '[db]\nmigrations.enabled = false\n'],
+    ['the fully dotted spelling', 'db.migrations.enabled = true\n', 'db.migrations.enabled = false\n'],
+    ['an inline comment after the value', '[db.migrations]\nenabled = true # on\n',
+      '[db.migrations]\nenabled = false # on\n'],
+    ['a commented-out key', '[db.migrations]\n# enabled = true\n', '[db.migrations]\n# enabled = true\n'],
+    // Another table's own `enabled` is not this key and must survive untouched; a
+    // derive that disabled it would turn off the API the acceptance run needs.
+    ['another table that also has enabled', '[db.migrations]\nenabled = true\n[api]\nenabled = true\n',
+      '[db.migrations]\nenabled = false\n[api]\nenabled = true\n'],
+  ]) {
+    assert.equal(deriveUnmigratedConfig(text), expected, name);
+    assert.equal(migrationsStillEnabled(expected), false, name);
+  }
+  // And a shape the derive cannot rewrite is a refusal rather than a quietly
+  // migrated store. This is the only way to raise that code, so without it the
+  // refusal the start flow depends on is asserted by nothing.
+  assert.throws(() => deriveUnmigratedConfig('[db]\nmigrations = { enabled = true }\n'),
+    /^Error: LOCAL_MIGRATIONS_DISABLE_FAILED$/);
 });
 
 test('no ownership marker makes stop a no-op even with a nonlocal Docker environment', async () => {
