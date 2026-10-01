@@ -76,7 +76,7 @@ test('sendBatchFax preserves user authorization and internal capability ordering
   const handler = source.slice(source.indexOf('Deno.serve'));
   const capability = handler.indexOf('input = await parseBatchRequest(req)');
   const internalGate = handler.indexOf("input.action === 'dispatch_scheduled'");
-  const sdk = handler.indexOf('const base44 = createClientFromRequest(req)');
+  const sdk = handler.indexOf('const base44 = createClientFromRequest(');
   assert.ok(capability < internalGate, 'the signed internal request is verified before the gate');
   assert.ok(internalGate < sdk, 'internal delivery is gated before SDK construction or claims');
   assert.match(handler, /if \(result instanceof Response\) return result;/);

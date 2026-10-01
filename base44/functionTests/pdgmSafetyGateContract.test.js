@@ -76,9 +76,9 @@ test("calculatePDGM returns before client creation, body parsing, or service rea
   assert.match(source, /LEGACY_FACTORIZED_PDGM_MODEL_RETIRED\s*=\s*true/);
   const gate = handler.indexOf("if (!PDGM_LEGACY_SURFACES_ENABLED)");
   assert.ok(gate >= 0, "handler must check the global gate");
-  assert.ok(gate < handler.indexOf("createClientFromRequest(req)"));
+  assert.ok(gate < handler.indexOf("createClientFromRequest("));
   assert.ok(gate < handler.indexOf("req.json()"));
-  assert.match(handler.slice(gate, handler.indexOf("createClientFromRequest(req)")), /status:\s*409/);
+  assert.match(handler.slice(gate, handler.indexOf("createClientFromRequest(")), /status:\s*409/);
 });
 
 test("every backend raw reimbursement-flag consumer carries the retirement lock", async () => {
@@ -142,7 +142,7 @@ test("OASIS/clinical AI endpoints stop before auth, data, AI, or writes", async 
     assert.match(source, new RegExp(`${flag}\\s*=\\s*false`));
     const handler = source.slice(source.indexOf("Deno.serve"));
     const gate = handler.indexOf(`if (!${flag})`);
-    const client = handler.indexOf("createClientFromRequest(req)");
+    const client = handler.indexOf("createClientFromRequest(");
     assert.ok(gate >= 0 && client > gate, `${path} must gate before Base44 client creation`);
     const preClient = handler.slice(gate, client);
     assert.ok(preClient.includes(reason));

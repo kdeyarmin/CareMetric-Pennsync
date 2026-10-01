@@ -59,7 +59,7 @@ function fixture(options = {}) {
   const code = source.replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/, 'const createClientFromRequest = () => client;')
     .replace('const SIGNATURE_REMINDER_RELEASE_ENABLED = false;', 'const SIGNATURE_REMINDER_RELEASE_ENABLED = true;')
     .replace('const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;', 'const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;');
-  runInNewContext(transpileTs(code).outputText, { client, crypto, Date, TextEncoder, Response, Request,
+  runInNewContext(transpileTs(code).outputText, { client, crypto, Date, TextEncoder, Response, Request, Headers,
     Deno: { serve: candidate => { handler = candidate; }, env: { get: () => undefined } } });
   const request = { agency_id: 'agency-1', package_id: 'package-1', document_id: 'signature-1', signer_id: 'signer-1',
     client_request_id: 'request-1', send_at: new Date(Date.now() + 3600_000).toISOString() };
