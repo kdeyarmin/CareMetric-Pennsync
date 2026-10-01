@@ -31,6 +31,29 @@
  * reads an absent field, and it names the fields in the failure. It also fails
  * when a site stops reading them — that is a real port, and the entry comes
  * out in the same change.
+ *
+ * **The evidence is per SITE, and the first version of it was not.** It searched
+ * the whole file for each field name, which accepted two kinds of false
+ * evidence and was found in review rather than by this file:
+ *
+ *   * a PROSE mention. `NumberPoolPanel.jsx` names `work_phone_number` only in
+ *     its header comment, so the table claimed a read that does not exist and
+ *     the assertion passed. That entry now names the cell alone.
+ *   * a NEIGHBOUR'S read. `Timesheets.jsx` holds TWO refused sites, and a
+ *     file-wide search answers identically for both — so the employee list,
+ *     which asks nothing about `account_type`, was credited with the approver
+ *     filter's read of it. The two entries now carry different field sets.
+ *
+ * Each entry therefore cites the EXPRESSION that reads its fields; the
+ * expression must appear exactly once in the comment-stripped source, every
+ * named field must be inside one of them, and no two entries for one file may
+ * cite the same expression. The stripping is what makes the first case bite:
+ * with comments left in, citing that header line passes.
+ *
+ * Worth noticing where the defect was: the import-graph test below already
+ * stripped comments, and the roster projection parse strips comment lines and
+ * says why. The technique was in this file twice and the one assertion that
+ * needed it most did not use it.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -64,37 +87,55 @@ const REFUSALS = Object.freeze([
   },
   {
     file: 'src/components/admin/NumberPoolPanel.jsx', key: 'User.list', because: 'sort',
-    absent: ['personal_cell_e164', 'work_phone_number'],
-    reason: 'Needs the roster port, not the sort: it reads work and cell numbers the projection does not carry.',
+    absent: ['personal_cell_e164'],
+    reads: ['return u?.personal_cell_e164 || "";'],
+    reason: 'Needs the roster port, not the sort: it reads the personal cell the projection does not carry. `work_phone_number` is NOT listed: this file mentions it only in its header comment, which the first version of this table counted as a read.',
   },
   {
     file: 'src/components/admin/PhoneProvisioningPanel.jsx', key: 'User.list', because: 'sort',
     absent: ['personal_cell_e164', 'work_phone_number'],
+    reads: ['users.filter((u) => !u.work_phone_number)', '{u.personal_cell_e164 && ('],
     reason: 'Needs the roster port, not the sort: it reads work and cell numbers the projection does not carry.',
   },
   {
     file: 'src/components/admin/TelnyxSetupProgress.jsx', key: 'User.list', because: 'sort',
     absent: ['personal_cell_e164', 'work_phone_number'],
+    reads: ['users.filter((u) => u.work_phone_number)', 'withWork.filter((u) => !u.personal_cell_e164)'],
     reason: 'Needs the roster port, not the sort: its provisioning counts read fields the projection does not carry.',
   },
   {
     file: 'src/pages/TimeOff.jsx', key: 'User.list', because: 'sort',
     absent: ['account_type', 'role'],
+    reads: ['u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true'],
     reason: 'Needs the roster port and a decision: its approver filter reads `role` and `account_type`, which D23 keeps off the roster deliberately, so who may approve has to be re-expressed as a tenant role.',
   },
   {
     file: 'src/pages/Timesheets.jsx', key: 'User.list', because: 'sort',
     absent: ['account_type', 'role'],
-    reason: 'Needs the roster port and the same decision: approvers read `role` and `account_type`, and the employee list filters `role === "user"`, which would match nobody.',
+    reads: ['u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true'],
+    reason: 'Needs the roster port and a decision: this page\'s approver filter reads `role` and `account_type`, which D23 keeps off the roster deliberately, so who may approve has to be re-expressed as a tenant role.',
   },
   {
     file: 'src/pages/Timesheets.jsx', key: 'User.list', because: 'sort',
-    absent: ['account_type', 'role'],
-    reason: 'The second of this page\'s two roster reads, listed separately because each is its own site.',
+    absent: ['role'],
+    reads: ['u.email && u.role === "user" && u.is_active !== false'],
+    reason: 'The second of this page\'s two roster reads, and a DIFFERENT field set: the employee list filters `role === "user"`, which the roster cannot answer, and it asks nothing about `account_type`. Listed separately because each call is its own site.',
   },
 ]);
 
 const identity = site => `${site.file} ${site.key}:${site.because}`;
+
+/**
+ * Source with block and line comments removed.
+ *
+ * The import-graph test below already did this and the roster projection parse
+ * strips comment lines for the same reason; the field evidence did not, and a
+ * review caught it. `NumberPoolPanel.jsx` names `work_phone_number` ONLY in its
+ * header comment, so the table claimed a read that does not exist and the
+ * assertion passed. A prose mention is not a read.
+ */
+const withoutComments = source => source
+  .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 
 function measured() {
   const calls = callArguments(REPOSITORY);
@@ -183,15 +224,50 @@ test('the six roster sites read fields the roster does not project', () => {
   // names are loaded. That is the sort's own problem and a different one.
   assert.ok(projected.has('full_name'), 'the roster carries a name key');
 
+  // No two entries for one file may cite the same expression. Two pages here
+  // hold two refused sites each, and without this an entry could point at its
+  // neighbour's evidence and claim to be measured — the same mistake as a
+  // file-wide search, one step down.
+  const cited = new Map();
+  for (const entry of REFUSALS.filter(row => row.key === 'User.list')) {
+    for (const snippet of entry.reads ?? []) {
+      const at = `${entry.file} :: ${snippet}`;
+      assert.equal(cited.has(at), false,
+        `${identity(entry)} cites an expression another entry for the same file already cites;`
+        + ' each site owns its own evidence or neither is measured');
+      cited.set(at, entry);
+    }
+  }
+
   for (const entry of REFUSALS.filter(row => row.key === 'User.list')) {
     assert.ok(Array.isArray(entry.absent) && entry.absent.length > 0,
       `${identity(entry)} must name what the roster cannot give it`);
-    const text = readFileSync(resolve(REPOSITORY, entry.file), 'utf8');
+    assert.ok(Array.isArray(entry.reads) && entry.reads.length > 0,
+      `${identity(entry)} must carry the expression that reads them`);
+    const text = withoutComments(readFileSync(resolve(REPOSITORY, entry.file), 'utf8'));
+
+    // The evidence is the SITE'S OWN expression, and it has to be the only one
+    // like it in the file. Two pages here hold two refused `User.list` sites
+    // each, so a file-wide search answers the same way for both and cannot tell
+    // a ported site from an unported one beside it.
+    const seen = new Map();
+    for (const snippet of entry.reads) {
+      const count = text.split(snippet).length - 1;
+      assert.equal(count, 1,
+        `${identity(entry)}: its evidence ${JSON.stringify(snippet)} appears ${count} times`
+        + ' in the comment-stripped source, and must appear exactly once');
+      for (const field of entry.absent) if (snippet.includes(field)) seen.set(field, snippet);
+    }
     for (const field of entry.absent) {
       assert.equal(projected.has(field), false,
         `${entry.file} claims the roster lacks ${field}, and it projects it`);
-      assert.match(text, new RegExp(`\\b${field}\\b`),
-        `${entry.file} no longer reads ${field}; if it is ported, drop its entry above`);
+      // Every named field has to be IN one of those expressions, so the entry
+      // cannot name a field this site does not read. A field appearing anywhere
+      // else in the file — in a header comment, or at the page's other site —
+      // is no longer evidence for this one.
+      assert.ok(seen.has(field),
+        `${identity(entry)} names ${field}, and none of its own expressions reads it;`
+        + ' if this site is ported, drop the field or the entry in the same change');
     }
   }
 });
