@@ -986,9 +986,17 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // administrative path that would permit any of it is REFUSED there, because
   // D23 had already moved every one of those columns to the membership, the
   // credential contract or the identity map. `autoEndDutyDay` is the one to
-  // read twice: both columns it writes ARE on D82's allowlist and it stays
-  // here because `schedulerAuth` means it has no caller at all, which is
-  // D49's open question and not this one.
+  // read twice, and it has TWO blockers rather than the one this file first
+  // named. Both columns it writes ARE on D82's allowlist, so neither of those
+  // is a reason. The first is D49's open question, though not quite as it was
+  // put here: `getSchedulerAuthError` admits an admin triggering the job
+  // manually as well as an unattended run carrying `x-internal-secret`, so
+  // `schedulerAuth` means there MAY be no caller, not that there is none.
+  // The second does not turn on who calls it at all — the module reads every
+  // `duty_status: 'on_duty'` row in the deployment and updates each one, so
+  // `user_update`'s `id = caller_user_id()` refuses it whatever caller it
+  // gets, an admin included. Routing it to D49 alone would say a scheduler
+  // identity unblocks it, and it would not.
   assert.deepEqual(report.port_blockers.entity_authorization,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
       'userManagement', 'userManagementV2']);

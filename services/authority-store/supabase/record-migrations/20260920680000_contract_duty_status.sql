@@ -58,9 +58,17 @@
 --    `caller_tenant_role(p_agency)` here, which is one question with one answer.
 --
 -- 3. **The audit entry carries no `user_name`.** The original stamps
---    `user.full_name`, and the carried `user` table has no name column at all
---    (D38 found the same); D25's trail stamps its actor from the caller helpers
---    and refuses a payload naming one, so there is nothing to pass.
+--    `user.full_name`, and the carried `user` table has no name column (D38
+--    found the same). Read that half narrowly, because "no column at all"
+--    reads as a property of the STORE and is not one: the store does hold a
+--    name, `pennsync_private.staff_name`, keyed per person. It is force-RLS
+--    with NO policy, so nobody reads or writes it by any path, the record
+--    owner included, and its `like 'Synthetic %'` check keeps the real-names
+--    hold in the database rather than by hand. So that leg rests on a HOLD,
+--    which can lift, and not on an absence, which reads as permanent.
+--    The leg that does not move either way is D25's: the trail stamps its
+--    actor from the caller helpers and refuses a payload naming one, so there
+--    is nothing to pass whatever becomes of the hold.
 --
 -- 4. **The off-duty message's cap folds UTF-16 CODE UNITS.** The original does
 --    `slice(0, 320)`, which counts code units, so an astral character costs two

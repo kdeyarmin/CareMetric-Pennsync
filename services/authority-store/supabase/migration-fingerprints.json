@@ -88,5 +88,5 @@
   "record-migrations/20260920650000_revoke_nonauthorizing_helpers.sql": "e8d319fd6f523a4fb24042bfe2b2f4846b10949da4b22d214d8e265dbe1f5e0e",
   "record-migrations/20260920660000_contract_compliance_reads.sql": "d2cc381af88fe304d86fa867375ce74fd0605f177e34c1fdc9b36e22da6046ab",
   "record-migrations/20260920670000_contract_compliance_writes.sql": "a3b8ff5c778b7082b8eaf06f5def1bf4586734a0d73a110630e82eed879d20ab",
-  "record-migrations/20260920680000_contract_duty_status.sql": "8f6faea10a92ff50127a05fa1ee07446c74c1a847662e26da32c1512dcc08633"
+  "record-migrations/20260920680000_contract_duty_status.sql": "a2e8fea2d7466daf4d167e773d0b52bb08146095caa1d08ed4f18ee8b5fa70bf"
 }

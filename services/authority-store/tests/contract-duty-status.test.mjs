@@ -547,9 +547,13 @@ test('a refused write leaves no audit entry behind', async () => {
 });
 
 test('the trail carries no name, because the carried table has no name column', async () => {
-  // Divergence 3. The original stamps `user.full_name`; there is no such
-  // column here, and D25's trail stamps its actor from the caller helpers and
-  // refuses a payload naming one, so there is nothing to pass.
+  // Divergence 3. The original stamps `user.full_name`; the carried table has
+  // no such column, which is what this test pins. It does NOT pin that the
+  // store holds no name — `pennsync_private.staff_name` does, under a policyless
+  // force-RLS table and the real-names hold — so read the absence as local to
+  // this table. What makes the trail's silence independent of that hold is
+  // D25: it stamps its actor from the caller helpers and refuses a payload
+  // naming one, so there is nothing to pass either way.
   const { rows } = await db.query(
     `select "detail" from ${SCHEMA}."activity_audit" where "action" = $1
      order by "occurred_at" desc, "id" desc limit 1`, ['duty_status_changed']);
