@@ -14,6 +14,17 @@ const membershipKeys = MEMBERSHIP_KEYS;
 
 export function readIndependentStagingConfig(env = {}) {
   if (!env.VITE_PENNSYNC_BACKEND || env.VITE_PENNSYNC_BACKEND === 'base44') return null;
+  // `independent` is a KNOWN mode this reader does not serve, so it answers
+  // null -- "not mine" -- rather than refusing. The distinction is load-bearing:
+  // `independentStagingSession.js` calls this reader first and unconditionally,
+  // so throwing here stopped module evaluation and a production build could not
+  // boot at all. Returning null for a known sibling mode, rather than reordering
+  // the two calls, is what makes both readers safe in EITHER order and at every
+  // other call site; reordering would only have moved the hazard.
+  //
+  // A value that is neither still fails closed, which is the behaviour this line
+  // exists for: a typo in the mode name must not quietly select the Base44 path.
+  if (env.VITE_PENNSYNC_BACKEND === 'independent') return null;
   if (env.VITE_PENNSYNC_BACKEND !== 'independent-staging') fail('INVALID_STAGING_CONFIGURATION');
   let actors;
   try { actors = JSON.parse(env.VITE_PENNSYNC_STAGING_ACTORS); } catch { fail('INVALID_STAGING_CONFIGURATION'); }
