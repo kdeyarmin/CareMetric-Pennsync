@@ -304,21 +304,16 @@ test('the pages carrying the port queue carry what the tool measures', () => {
   // measured 6, in TWO places, with every suite green. A roster of pages is a
   // mechanism for omitting the next page, so the pages are discovered now and
   // only the history below is declared.
-  // The transition plan joins them, and the gap it closes is DELETION rather
-  // than staleness: the discovery walk below already caught a stale copy there,
-  // and would have whether or not the page were pinned, so nothing about that
-  // page was passing by coincidence. What the walk cannot see is a line that is
-  // GONE — it only inspects quotations that exist — and two of that page's
-  // sentences SAY the figure is held to the tool, which a reader can only check
-  // while the figure is still on the page. Pinning it makes removing the line
-  // fail as well as changing it. Those sentences are also corrected, because
-  // one of them reasoned about which copy could be the stale one, and that
-  // reasoning was about the wrong mechanism. The cost is that a port now edits
-  // three pages, which is the right trade: an unpinned page fails with a
-  // message offering to declare the stale copy as HISTORY, and for a
-  // present-tense sentence that remedy blesses the defect instead of fixing it.
-  for (const path of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md',
-    'docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md']) {
+  // The transition plan was nearly pinned here as a third page, and was not,
+  // because what it needed was a sentence deleted rather than a pin. Two of its
+  // clauses claimed the figure was held to the tool when only these two pages
+  // were; the discovery walk below already catches a copy that has gone WRONG
+  // there, which is the case that bites, so a pin would have bought only the
+  // case where somebody removes the line. Against that: pinning a page makes a
+  // MISSING line fail, which reds every open branch's merge ref at once on a
+  // base state nobody caused. The false clauses are gone from that page and no
+  // pin was added.
+  for (const path of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md']) {
     const page = readFileSync(resolve(repository, path), 'utf8');
     assert.ok(page.includes(line),
       `${path} does not carry the measured port queue.\n  measured: ${line}\n`
