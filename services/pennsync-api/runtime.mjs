@@ -5,7 +5,10 @@
 import { HANDLERS, HANDLER_NAMES } from './handlers.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 import { validIntegrationTarget } from './integrations.mjs';
-import { deliveryReleased as readDeliveryRelease } from './outbound-delivery.mjs';
+import {
+  deliveryReleased as readDeliveryRelease,
+  workforceNoticesReleased as readWorkforceNoticeRelease,
+} from './outbound-delivery.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
 const ALLOWED_APPS = new Set([DEFAULT_APP, '6a9881683dc68a0bd54f1ef7']);
@@ -88,6 +91,12 @@ export function loadConfig(env = process.env) {
     authorityUrl, authorityKey, authorityConfigured, released, documentLogoDataUrl,
     integrationsUrl, integrationsConfigured,
     deliveryReleased: delivery,
+    // The five workforce staff notices' own release, read independently and
+    // NOT validated against `delivery` here: this flag alone opens nothing, so
+    // setting it on a deployment with delivery unset is inert rather than
+    // incomplete, and refusing that pairing would turn a harmless ordering into
+    // a boot failure. `workforceNoticeDeliverable` is where the two meet.
+    workforceNoticesReleased: readWorkforceNoticeRelease(env),
     revision: /^[0-9a-f]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA || '') ? env.RAILWAY_GIT_COMMIT_SHA : 'unbound',
   });
 }
@@ -138,6 +147,12 @@ export function publicReadiness(config) {
     // project is checked by probing the running deployment rather than by
     // reading a plan, and this is the state where that matters most.
     deliveryReleased: config.deliveryReleased === true,
+    // Published for the same reason `deliveryReleased` is, and with more need:
+    // this is a SECOND switch over the same channel, so an operator holding a
+    // release write who read only the first would conclude these five senders
+    // are live when they are shut. Stated from outside, it cannot be missed by
+    // somebody who never reads the diff.
+    workforceNoticesReleased: config.workforceNoticesReleased === true,
     authorityMode: 'independent',
     // Which app this deployment keys into the owned store with, and whether
     // that was chosen. The id is not a secret — both reviewed ids are literals

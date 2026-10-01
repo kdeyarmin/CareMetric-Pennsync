@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile, unlink } from 'node:fs/promises';
+import { readFile, readdir, writeFile, unlink } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -20,6 +20,17 @@ import {
   AUDIT_CODES, AUDIT_LIST_CODES, SUBJECT_KINDS,
 } from '../../services/pennsync-api/audit.mjs';
 import { RECORD_CONTRACTS } from '../../services/pennsync-api/record-contracts.mjs';
+import {
+  PATIENT_EXTRACTION_SCHEMA,
+} from '../../services/pennsync-api/patient-extraction.mjs';
+import {
+  CLINICAL_DOCUMENT_MODEL, CLINICAL_DOCUMENT_PROMPT, CLINICAL_DOCUMENT_SCHEMA,
+} from '../../services/pennsync-api/clinical-document.mjs';
+import { validateSchema } from '../../services/integration-runtime/contracts.mjs';
+import { validateParams } from '../../services/integration-runtime/providers.mjs';
+import {
+  REFERRAL_SPLIT_MODEL, REFERRAL_SPLIT_PROMPT, REFERRAL_SPLIT_SCHEMA,
+} from '../../services/pennsync-api/referral-split.mjs';
 import { insightPrompt } from '../../services/pennsync-api/ai-report.mjs';
 import { reportMetrics, reportTrend } from '../../services/pennsync-api/report-metrics.mjs';
 import {
@@ -1247,4 +1258,248 @@ test('each account email s message is the original s, byte for byte', async () =
     assert.equal(answer.success, true, relative);
     assert.equal(answer.message, expected, relative);
   }
+});
+
+test('the patient extraction schema is the original s, field for field', async () => {
+  /*
+   * Every `description` here is a sentence the model reads, so a rephrasing
+   * changes what comes back from a document about a real person. Evaluated out
+   * of the original rather than transcribed — D12's rule, and the reason
+   * `patient-extraction.mjs` says it is copied rather than reworded.
+   */
+  const relative = 'base44/functions/extractPatientDataFromDocument/entry.ts';
+  const original = await readFile(resolve(repository, relative), 'utf8');
+  const start = original.indexOf('const PATIENT_SCHEMA = {');
+  assert.ok(start > 0, 'the original still carries the schema');
+  const end = original.indexOf('\n};', start);
+  assert.ok(end > start, 'and it still ends where it did');
+  const block = `export ${original.slice(start, end + 3)}`;
+  const file = join(tmpdir(), `schema_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(block).outputText);
+  let PATIENT_SCHEMA;
+  try { ({ PATIENT_SCHEMA } = await import(pathToFileURL(file).href)); }
+  finally { await unlink(file).catch(() => {}); }
+
+  // Sanity on the extraction itself, so a block that failed to parse into
+  // something empty cannot pass as agreement.
+  assert.equal(PATIENT_SCHEMA.type, 'object');
+  assert.ok(Object.keys(PATIENT_SCHEMA.properties).length > 15);
+  assert.deepEqual(PATIENT_EXTRACTION_SCHEMA, PATIENT_SCHEMA);
+  // Order too: a model reads the fields in the order it is given them.
+  assert.deepEqual(Object.keys(PATIENT_EXTRACTION_SCHEMA.properties),
+    Object.keys(PATIENT_SCHEMA.properties));
+});
+
+test('the clinical document prompt and schema are the original s', async () => {
+  /*
+   * Lifted as ONE object rather than two, because the prompt, the model and
+   * the schema are the original's single `InvokeLLM` argument and pulling them
+   * out separately is three chances to pick up the wrong block. The argument
+   * closes over `file_url`, so it is wrapped in a function over that name —
+   * D57's trick for a block that was never a named export.
+   */
+  const relative = 'base44/functions/extractClinicalDocument/entry.ts';
+  const original = await readFile(resolve(repository, relative), 'utf8');
+  const open = original.indexOf('await base44.integrations.Core.InvokeLLM({');
+  assert.ok(open > 0, 'the original still calls InvokeLLM');
+  const start = original.indexOf('{', open);
+  const end = original.indexOf('\n    });', start);
+  assert.ok(end > start, 'and its argument still ends where it did');
+  const block = `export const CALL = (file_url) => (${original.slice(start, end + 6)});`;
+  const file = join(tmpdir(), `clinical_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(block).outputText);
+  let CALL;
+  try { ({ CALL } = await import(pathToFileURL(file).href)); }
+  finally { await unlink(file).catch(() => {}); }
+  const call = CALL('https://qtrypzzcjebvfcihiynt.supabase.co/original.pdf');
+
+  // Sanity first, so a block that parsed into something empty cannot pass as
+  // agreement.
+  assert.equal(Object.keys(call.response_json_schema.properties).length, 5);
+  assert.ok(call.prompt.length > 1000);
+
+  assert.equal(CLINICAL_DOCUMENT_MODEL, call.model);
+  assert.equal(CLINICAL_DOCUMENT_PROMPT, call.prompt);
+  // The original names the document with `file_urls`; the port uses the
+  // runtime's `file_uris` and its own handle. Asserted so the rename stays a
+  // decision rather than a typo nobody notices.
+  assert.deepEqual(call.file_urls, ['https://qtrypzzcjebvfcihiynt.supabase.co/original.pdf']);
+
+  // THE ONE NARROWING, asserted on both sides rather than described.
+  const { vitals, ...carried } = call.response_json_schema.properties;
+  const { vitals: ported, ...portedRest } = CLINICAL_DOCUMENT_SCHEMA.properties;
+  assert.deepEqual(portedRest, carried, 'everything but the vitals is the original s');
+  assert.deepEqual(Object.keys(portedRest), Object.keys(carried), 'in the original s order');
+  assert.deepEqual(ported, { type: 'object' });
+
+  // And the reason: the original's own vitals are union-typed, which the owned
+  // runtime's schema contract refuses outright. Driven through that contract
+  // rather than asserted about it, so restoring the union fails here.
+  assert.equal(Object.keys(vitals.properties).length, 8);
+  for (const [name, field] of Object.entries(vitals.properties)) {
+    assert.deepEqual(field.type, ['number', 'null'], name);
+  }
+  assert.throws(() => validateSchema(structuredClone(call.response_json_schema)),
+    error => error.code === 'UNSUPPORTED_SCHEMA');
+  validateSchema(structuredClone(CLINICAL_DOCUMENT_SCHEMA));
+});
+
+test('every ported model call is one the owned runtime will actually accept', async () => {
+  /*
+   * D96's pattern, and the reason this is an ASSERTION rather than a sentence
+   * on a page: the business API builds a model call and the integration
+   * runtime decides whether to make it, and nothing crossed the two. A port
+   * can name a model the runtime has no mapping for, or ask for a web search
+   * the runtime refuses by name, and every suite stays green because neither
+   * half is wrong on its own.
+   *
+   * What this pins is the CROSS. The population is read from the directory, so
+   * a new port joins it without anybody remembering to.
+   *
+   * ONE capability is a known exception and it is named here with its reason
+   * rather than excluded: `syncCMSRegulations` sends `gemini_3_1_pro` and
+   * `add_context_from_internet: true`, and the runtime refuses both —
+   * `MODEL_MAPPING_REQUIRED` and `WEB_SEARCH_NOT_MIGRATED`.
+   *
+   * **Its search leg is now paused by name** (`WEB_SEARCH_RELEASE_PAUSED`,
+   * raised before the model is reached; `cms-regulations.test.mjs` proves it),
+   * so no caller reaches those params today. They are kept as the original
+   * wrote them rather than edited down to match the pause, because restoring
+   * the capability when a web search provider exists is deleting one guard.
+   * That is exactly why this check has to stay: the constants are still there
+   * to be un-paused, and the runtime still refuses them, so the pairing is the
+   * only thing recording that the two do not fit.
+   */
+  const directory = resolve(repository, 'services/pennsync-api');
+  const modules = (await readdir(directory)).filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));
+  assert.ok(modules.length > 40, 'the port directory is being read at all');
+
+  const models = [];
+  const searchers = [];
+  for (const name of modules) {
+    // Read first, import second, and only import a module that declares one.
+    // `server.mjs` binds a port on import, so importing the directory whole is
+    // not something this suite can do.
+    const source = await readFile(join(directory, name), 'utf8');
+    // Comments stripped first — D73's lesson, and it bit here immediately: the
+    // handler's own note EXPLAINING that the runtime refuses this flag matched
+    // the scan for the flag. Whole-line comments only, so a `//` inside a
+    // prompt's template literal is left alone.
+    const code = source.split('\n')
+      .filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
+    if (/add_context_from_internet:\s*true/.test(code)) searchers.push(name);
+    if (!/export const [A-Z_]*_MODEL\s*=/.test(source)) continue;
+    const exported = await import(pathToFileURL(join(directory, name)).href);
+    for (const [key, value] of Object.entries(exported)) {
+      if (key.endsWith('_MODEL')) models.push({ name, key, value });
+    }
+  }
+  assert.ok(models.length > 10, 'and the model constants are being found');
+
+  // The runtime admits `automatic` or the one model an operator configured. A
+  // port naming anything else cannot be served whatever that configuration is,
+  // because the second name is the operator's and not the port's to predict.
+  const mapped = models.filter(entry => entry.value !== 'automatic');
+  assert.deepEqual(mapped.map(entry => `${entry.name}:${entry.key}=${entry.value}`),
+    ['cms-regulations.mjs:REGULATION_MODEL=gemini_3_1_pro']);
+  assert.deepEqual(searchers, ['cms-regulations.mjs']);
+
+  // Driven through the runtime's own validator rather than asserted about it,
+  // on the real constants, so this says what a deployment would do.
+  const { CMS_REGULATION_PROMPT, CMS_REGULATION_SCHEMA, REGULATION_MODEL } =
+    await import(pathToFileURL(join(directory, 'cms-regulations.mjs')).href);
+  const params = {
+    model: REGULATION_MODEL, prompt: CMS_REGULATION_PROMPT,
+    add_context_from_internet: true, response_json_schema: CMS_REGULATION_SCHEMA,
+  };
+  for (const [configured, code] of [
+    ['claude-sonnet-4', 'MODEL_MAPPING_REQUIRED'],
+    // Even if an operator named that model, the web search is refused after it.
+    [REGULATION_MODEL, 'WEB_SEARCH_NOT_MIGRATED'],
+  ]) {
+    assert.throws(() => validateParams('InvokeLLM', params, { model: configured, anthropicKey: 'k' }),
+      error => error.code === code, `${configured} -> ${code}`);
+  }
+
+  // And every other port's model IS accepted, so the exception above is the
+  // whole of it rather than the first one somebody happened to look at.
+  for (const entry of models.filter(one => one.value === 'automatic')) {
+    validateParams('InvokeLLM', { model: entry.value, prompt: 'x' },
+      { model: 'claude-sonnet-4', anthropicKey: 'k' });
+  }
+});
+
+test('the referral split prompt and schema are the original s', async () => {
+  // Same technique as the clinical document above: the original's single
+  // `InvokeLLM` argument, lifted whole and closed over `fileUrl`.
+  const relative = 'base44/functions/splitReferralPDF/entry.ts';
+  const original = await readFile(resolve(repository, relative), 'utf8');
+  const open = original.indexOf('await base44.integrations.Core.InvokeLLM({');
+  assert.ok(open > 0, 'the original still calls InvokeLLM');
+  const start = original.indexOf('{', open);
+  const end = original.indexOf('\n    });', start);
+  assert.ok(end > start, 'and its argument still ends where it did');
+  const block = `export const CALL = (fileUrl) => (${original.slice(start, end + 6)});`;
+  const file = join(tmpdir(), `split_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(block).outputText);
+  let CALL;
+  try { ({ CALL } = await import(pathToFileURL(file).href)); }
+  finally { await unlink(file).catch(() => {}); }
+  const call = CALL('https://qtrypzzcjebvfcihiynt.supabase.co/packet.pdf');
+
+  assert.equal(Object.keys(call.response_json_schema.properties).length, 4);
+  assert.ok(call.prompt.length > 500);
+
+  assert.equal(REFERRAL_SPLIT_MODEL, call.model);
+  assert.equal(REFERRAL_SPLIT_PROMPT, call.prompt);
+  assert.deepEqual(REFERRAL_SPLIT_SCHEMA, call.response_json_schema);
+  // Order too: a model reads the fields in the order it is given them.
+  assert.deepEqual(Object.keys(REFERRAL_SPLIT_SCHEMA.properties),
+    Object.keys(call.response_json_schema.properties));
+  // The original's key is `fileUrl`, which is what the Base44 path still
+  // sends. Pinned because the browser transport carries that spelling per
+  // capability and a wrong one is a request the original refuses as missing.
+  assert.deepEqual(call.file_urls, ['https://qtrypzzcjebvfcihiynt.supabase.co/packet.pdf']);
+
+  // NO narrowing here, unlike its sibling — the original's own schema is one
+  // the owned runtime accepts as written. Driven rather than asserted, so this
+  // stops being true out loud if either side moves.
+  validateSchema(structuredClone(call.response_json_schema));
+});
+
+/**
+ * Which workforce originals create an in-app `Notification` row, read from the
+ * originals themselves. It lives here rather than beside the port because D60
+ * keeps a test in `services/pennsync-api` from reading a file outside that
+ * directory — the image is built from it alone.
+ *
+ * The measurement changed the scope of the work: the notification gap was
+ * described as five senders and is two, because the two credential modules
+ * create no notification at all.
+ */
+test('only the three time-off originals create an in-app notification', async () => {
+  const roots = fileURLToPath(new URL('../functions/', import.meta.url));
+  const creates = {};
+  for (const name of ['submitTimeOffRequest', 'reviewTimeOffRequest', 'cancelTimeOffRequest',
+    'reviewPersonnelCredential', 'submitPersonnelCredential']) {
+    creates[name] = await readFile(join(roots, name, 'entry.ts'), 'utf8');
+  }
+  for (const name of ['reviewPersonnelCredential', 'submitPersonnelCredential']) {
+    // Not "creates none": names none, anywhere in the module. A port that
+    // minted a row for either would be inventing behaviour the product has
+    // never had.
+    assert.equal(/Notification/.test(creates[name]), false,
+      `${name} names Notification, so the ported handler owes one`);
+  }
+  for (const name of ['submitTimeOffRequest', 'reviewTimeOffRequest', 'cancelTimeOffRequest']) {
+    assert.ok(creates[name].includes('Notification.create'), `${name} creates one`);
+  }
+  // And the cancel one is behind the SAME condition as its email, which is why
+  // its row is blocked on the status the contract no longer carries rather than
+  // on anything the notification path needs.
+  const cancel = creates.cancelTimeOffRequest;
+  const guard = cancel.indexOf('if (emailEligible) {');
+  assert.ok(guard > 0, 'the cancel original still guards on emailEligible');
+  assert.ok(cancel.indexOf('Notification.create') > guard,
+    'and its notification is inside that guard, not before it');
 });

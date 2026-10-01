@@ -7,7 +7,11 @@ import { readFileSync, lstatSync } from 'node:fs';
 // Never regenerate this value just to make an unexpected native change pass.
 // An intentional native release needs separate review and device acceptance.
 const BASELINE = '1ff6018cbd94d89c98dea9a95f9e48f340faf249';
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
+// execFileSync's default maxBuffer is 1 MiB; keep this in step with the same
+// helper in tools-decision-register.test.mjs, where a register that crossed a
+// megabyte made every base read die with ENOBUFS.
+const git = (...args) =>
+  execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const paths = output => output.split('\0').filter(Boolean).sort();
 
 test('all existing iOS wrapper and packaged public assets are byte-preserved', () => {

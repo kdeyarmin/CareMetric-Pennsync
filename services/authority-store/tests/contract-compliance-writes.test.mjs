@@ -62,16 +62,21 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // The ordering guard was HERE while this migration was pending, and is retired
-  // now that it has merged — which is what `assertNewestRecordMigration`'s own
-  // rule prescribes: a suite whose migration has merged drops the call rather
-  // than widening it with an exception list. It was not dropped at the merge, so
-  // the next forward migration to arrive in the tree failed this suite's `before`
-  // and took all 22 of its tests down with it, naming a file that had done nothing
-  // wrong. The guard now travels with whichever change is pending.
+  // The ordering guard has MOVED ON, and this is the retirement the helper's
+  // own docstring asks for rather than a weakening of it: this migration is on
+  // `main`, so it is part of what a store already holds, and a later file
+  // sorting after it is a correct tree rather than a base that moved.
   //
-  // What stays is the set equality above, which is the assertion that actually
-  // says this store is the one a deployment gets.
+  // Where it lives now is a merge resolution rather than either branch's
+  // answer, and on THIS tree it is neither side's. `main` sent it to
+  // `contract-duty-status`, then to `contract-reference-writes` as further
+  // forward migrations landed; this branch adds a record migration sorting
+  // after all of them, so the newest pending file here is the timesheet review
+  // approver role and the guard is held by
+  // `contract-timesheet-review-approver.test.mjs` alone. Each claim was right
+  // about its own tree, and taking either side whole would have left two suites
+  // holding it — which the helper forbids, because the second holder asserts a
+  // tree the first one's own change makes false.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [

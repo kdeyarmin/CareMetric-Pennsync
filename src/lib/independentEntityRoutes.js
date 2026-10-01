@@ -409,6 +409,72 @@ function libraryWrite({ capability, action }) {
   };
 }
 
+/**
+ * `AIConfiguration.create(fields)` and `.update(id, fields)` onto
+ * `saveAiConfiguration`, which takes `{ scope, id, fields }`.
+ *
+ * It is not `libraryWrite` because the contract takes no action — the presence
+ * of an id is what decides create from update in SQL — and because it takes a
+ * SCOPE this file has to supply. That scope is the whole of the declaration's
+ * difficulty and is worth reading twice.
+ *
+ * `ENTITY_ROUTES` is keyed on the entity and the operation, so ONE
+ * `AIConfiguration.create` route serves both screens that create one, and the
+ * two screens mean different things. `AIConfigurationManager.jsx` writes the
+ * agency's settings; `UserSettings.jsx` writes the caller's own preferences.
+ * The reads already split the same way and could BIND their scope, because
+ * each is called from one screen: `.list` is bound `agency` and `.filter` is
+ * bound `mine`. A write cannot, so the scope is derived from the payload —
+ * `user_email` is the column that DEFINES a personal row, an agency row is
+ * defined by its absence, and the two screens have always sent exactly that.
+ *
+ * **What makes deriving it safe is that a wrong answer cannot write the wrong
+ * row.** The contract re-decides the same question against the stored row and
+ * refuses a mismatch by name: a `mine` save landing on an agency setting and
+ * an `agency` save landing on somebody's preferences both raise
+ * `PENNSYNC_AI_CONFIG_OWNER_FORBIDDEN`, and on the create path an `agency`
+ * scope refuses a payload naming `user_email` at all. So the worst case of a
+ * mis-derived scope is a refusal the screen reports, never a write somewhere
+ * the caller did not mean. A derivation that failed OPEN would not belong
+ * here whatever its accuracy.
+ *
+ * One narrowing, recorded rather than worked around: the `agency` branch
+ * admits an `agency_admin` only, where the Base44 entity write had no role
+ * gate of its own. That is D40's successor to `role === 'admin'`, and the
+ * admin manager is an administrator's screen, but a `manager` who could write
+ * an agency setting in Base44 is refused here.
+ */
+function aiConfigurationWrite({ action }) {
+  const verb = LIBRARY_VERBS[action];
+  // `libraryWrite`'s reason: an unknown action fails at DECLARATION, because
+  // `result[undefined] !== true` is satisfied by every answer and the route
+  // would refuse every call with `answer` instead.
+  if (verb === undefined) throw new Error(`ENTITY_ROUTE_LIBRARY_ACTION_UNKNOWN:${action}`);
+  const withId = action !== 'create';
+  return {
+    function: 'saveAiConfiguration',
+    projection: 'library_row',
+    // Declared for `brokeredRead`'s reason: a rest parameter hides the count.
+    arity: withId ? 2 : 1,
+    request: (...args) => {
+      const [id, fields] = withId ? args : [undefined, args[0]];
+      if (withId && (typeof id !== 'string' || id === '')) unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return {
+        scope: Object.hasOwn(fields, 'user_email') ? 'mine' : 'agency',
+        ...(withId ? { id } : {}),
+        fields,
+      };
+    },
+    response: (result) => {
+      if (!result || result[verb] !== true) unsupported('answer');
+      return result.row;
+    },
+  };
+}
+
 /** The compliance read contracts' own ceilings (`least(greatest(limit, 1), N)`). */
 export const COMPLIANCE_MAXIMUM = Object.freeze({
   listAgencyIncidents: 5000,
@@ -991,6 +1057,74 @@ const operationalRoutes = Object.freeze({
     reason: 'Both fax dialogs read the documents already held for one chart.',
   }),
 
+  /**
+   * The referral directory's three writes.
+   *
+   * `Physician.update` carries TWO statements and the route is what tells them
+   * apart, because the browser has one method for both: `PhysicianForm` saves a
+   * profile, and `PhysicianDirectory` records a referral with
+   * `{referral_count: count + 1, last_referral_date}`. The contract takes a
+   * named action and refuses an unknown one, so the mapping is here, in one
+   * place, rather than inferred inside the service.
+   *
+   * The discriminator is the presence of `referral_count`, which is the only
+   * key the increment sends that a profile save cannot: the contract REFUSES
+   * `referral_count` as a profile field by name, so the two shapes are disjoint
+   * by construction rather than by convention. The count itself is DROPPED --
+   * the contract adds one to the stored value, so a number computed in the
+   * browser has nothing to say.
+   */
+  'Physician.create': Object.freeze({
+    function: 'createPhysician',
+    projection: 'operational_row',
+    reason: 'The provider form adds a referral source to the agency directory.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'Physician.update': Object.freeze({
+    function: 'updatePhysician',
+    projection: 'operational_row',
+    reason: 'The provider form edits a referral source and the directory records a referral against one.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      if (Object.hasOwn(fields, 'referral_count')) {
+        // The increment. `referral_count` is DISCARDED — the contract reads the
+        // stored value and adds one, which is the whole point of the port — but
+        // any OTHER key is REFUSED rather than dropped.
+        //
+        // Dropping was the first version and it is the shape D39 exists to stop:
+        // `{ referral_count: 2, specialty: 'Cardiology' }` would have succeeded
+        // as an increment and lost the specialty, with the contract never seeing
+        // the key it guarantees to refuse. A route that discards silently
+        // launders the guarantee before the thing that makes it is reached.
+        for (const key of Object.keys(fields)) {
+          if (key !== 'referral_count' && key !== 'last_referral_date') unsupported('fields');
+        }
+        return { id, action: 'record_referral', referral_date: fields.last_referral_date ?? null };
+      }
+      return { id, action: 'profile', fields };
+    },
+    response: (result) => result,
+  }),
+  'Physician.delete': Object.freeze({
+    function: 'deletePhysician',
+    projection: 'operational_row',
+    reason: 'The directory removes a referral source an administrator has retired.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
   'AgencySettings.create': operationalSave({
     fn: 'saveAgencySettings', key: 'settings', withId: false,
     reason: 'Three admin panels write the agency\u2019s settings row the first time there is none.',
@@ -1706,6 +1840,114 @@ const DECLARED_ROUTES = Object.freeze({
       servedPage(result.entries, limit, REFERENCE_MAXIMUM.OnCallShift, 'OnCallShift'),
   }),
   /**
+   * The writes for the same three tables. The saves take the id the screens
+   * already hold — an absent one is a create — which is how each screen's own
+   * create-or-update mutation is one route rather than two.
+   *
+   * `LibraryDocument.create` is deliberately NOT here. Its entity requires
+   * `file_url`, the contract refuses that column until D77's file copy has run,
+   * and the call site's first statement is `Core.UploadFile`, which the
+   * independent adapter refuses before the entity write is reached. Declaring a
+   * route that could only refuse would read as a capability rather than as the
+   * file layer's absence.
+   */
+  'OnCallShift.create': Object.freeze({
+    function: 'saveOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen assigns a shift an administrator has just filled in.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'OnCallShift.update': Object.freeze({
+    function: 'saveOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen reassigns a shift that already exists.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'OnCallShift.delete': Object.freeze({
+    function: 'deleteOnCallShift',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen clears a shift an administrator has emptied.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  'LibraryDocument.update': Object.freeze({
+    function: 'updateLibraryDocument',
+    projection: 'library_document_row',
+    reason: 'The template library retires or restores one of the agency\'s documents.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'LibraryDocument.delete': Object.freeze({
+    function: 'deleteLibraryDocument',
+    projection: 'library_document_row',
+    reason: 'The template library deletes a document an administrator has removed.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.create': Object.freeze({
+    function: 'saveDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management adds a document template for the agency.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.update': Object.freeze({
+    function: 'saveDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management edits an existing document template.',
+    arity: 2,
+    request: (id, fields) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { id, fields };
+    },
+    response: (result) => result,
+  }),
+  'DocumentTemplate.delete': Object.freeze({
+    function: 'deleteDocumentTemplate',
+    projection: 'document_template_row',
+    reason: 'Template management deletes a template an administrator has removed.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result,
+  }),
+  /**
    * The visit point schedule. Both call sites live in one `queryFn`, and the
    * filtered one is D43's derived scope in miniature: it asks for the rows whose
    * `agency_name` string matches the caller's own profile field. The contract
@@ -1938,6 +2180,14 @@ const DECLARED_ROUTES = Object.freeze({
     }),
     reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
   }),
+  'AIConfiguration.create': Object.freeze({
+    ...aiConfigurationWrite({ action: 'create' }),
+    reason: 'Both screens file a new configuration; the payload says whose, and the contract re-checks it.',
+  }),
+  'AIConfiguration.update': Object.freeze({
+    ...aiConfigurationWrite({ action: 'update' }),
+    reason: 'Both screens save over an existing row, and a scope that disagrees with it is refused.',
+  }),
   // `operationalRoutes` used to be SPREAD here and is now merged below by
   // `withoutCollisions`, because a spread inside an object literal is the one
   // place a duplicate route can be declared and do nothing. See that function.
@@ -2028,34 +2278,33 @@ const DECLARED_ROUTES = Object.freeze({
     reason: 'The ADR Center deletes a case, which only its author or an agency_admin may do.',
   }),
   /*
-   * `AdrAuditCase.list` is deliberately NOT declared, and the reason is worth
-   * writing down because it is not about the contract. `listAdrAuditCases`
-   * exists, is reachable and is tested; its only call site
-   * (`src/pages/ADRCenter.jsx`) passes `ADR_CASE_READ_LIMIT`, and the argument
-   * reader cannot evaluate it — so it reads the site as unserved, and a
-   * declaration here would be a route that moves no screen, which is the exact
-   * thing that gate was rebuilt to refuse.
+   * `AdrAuditCase.list` was deliberately NOT declared until the reader that
+   * classifies its call site was widened, and what that cost is worth keeping.
+   * `listAdrAuditCases` existed, was reachable and was tested throughout; the
+   * one thing stopping the route was that `src/pages/ADRCenter.jsx` passes
+   * `ADR_CASE_READ_LIMIT`, declared in `src/components/adr/adrCaseRead.js`,
+   * while `limitConstants()` read exactly one file. So the site read
+   * INDETERMINATE, which makes the whole call unreadable and the site
+   * unserved, and declaring a route while the gate said zero would have been
+   * arguing with the instrument.
    *
-   * **The earlier version of this comment named the wrong cause, and the wrong
-   * cause was the broader one.** It said `check:entity-routes` "cannot resolve
-   * a constant across modules". It does: `LIMIT_CONSTANTS_FILE` in
-   * `tools-entity-call-arguments.mjs` is `src/lib/queryLimits.js`, and
-   * `src/components/admin/QuickHealthOverview.jsx` passes `PATIENT_HISTORY_ROWS`
-   * imported from there, which the reader resolves to 1000 at that site and at
-   * three others. What it cannot do is resolve a constant declared ANYWHERE
-   * ELSE: `limitConstants()` reads one file, its table is exactly
-   * `ALL_ROWS, PATIENT_HISTORY_ROWS`, and `ADR_CASE_READ_LIMIT` is declared in
-   * `src/components/adr/adrCaseRead.js`. Feeding the same argument text a table
-   * widened by that one name reads it as `["-created_date", 200]`; the table as
-   * it stands reads INDETERMINATE, which makes the whole call unreadable and
-   * the site unserved. So the limit is the SOURCE MODULE, not the module
-   * boundary — a distinction that decides what would fix it.
-   *
-   * It lands when `ADR_CASE_READ_LIMIT` moves into `src/lib/queryLimits.js`,
-   * when that reader takes more than one declaring module, or when the screen
-   * passes a literal. Declaring it while the gate says zero would be arguing
-   * with the instrument.
+   * The limit was the SOURCE MODULE and never the module boundary — an earlier
+   * comment here named the broader cause and was wrong, since
+   * `PATIENT_HISTORY_ROWS` has always resolved across files. `limitConstants()`
+   * now reads every production module that exports an integer, refusing an
+   * ambiguous name and a local shadow rather than picking, so a screen's
+   * classification no longer depends on where somebody happened to put a
+   * number. That change moves the RULER: a route-audit figure taken before it
+   * and one taken after are not comparable and must not be differenced.
    */
+  'AdrAuditCase.list': Object.freeze({
+    ...contractRead({
+      handler: 'listAdrAuditCases',
+      sortable: ['created_date'],
+      filtered: false,
+    }),
+    reason: 'The ADR Center lists its agency\'s cases; the contract shows a nurse their own and an agency_admin all of them.',
+  }),
   'PersonnelCredential.list': Object.freeze({
     ...contractRead({
       handler: 'listPersonnelCredentials',

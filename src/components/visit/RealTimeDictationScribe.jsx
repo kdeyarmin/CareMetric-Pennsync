@@ -9,7 +9,12 @@ import {
   Mic, MicOff, Loader2, FileText, Copy, Check, RefreshCw,
   Stethoscope, ClipboardList, AlertCircle, Wand2
 } from "lucide-react";
-import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
+import {
+  createAuthorityBoundSpeechRecognition,
+  preferLocalSpeechRecognition,
+  LOCAL_SPEECH_REFUSED_MESSAGE,
+  SPEECH_LOCALITY,
+} from '@/lib/tenantMediaDevices';
 
 const VISIT_TYPES = [
   { value: "skilled_nursing", label: "Skilled Nursing Visit", tag: "SN" },
@@ -97,6 +102,24 @@ export default function RealTimeDictationScribe({ currentUser }) {
 
   const recognitionRef = useRef(null);
   const transcriptRef = useRef("");
+  // The on-device check is asynchronous and this recognizer is configured in an
+  // effect but STARTED from a click, so the promise is held and awaited at the
+  // click rather than raced: a nurse who taps the moment the panel opens still
+  // gets the local requirement applied before `start()`.
+  // Both refs are widened to `string` deliberately: seeding one from a single
+  // member of SPEECH_LOCALITY narrows it to that literal, and checkJs then calls
+  // the comparison below always-false — which the typecheck gate catches as a
+  // real defect even though the ref is reassigned at runtime.
+  const localityRef = useRef(/** @type {Promise<string>} */ (Promise.resolve(SPEECH_LOCALITY.NO_FLAG)));
+  // The settled value, written before `start()` so the synchronous error handler
+  // can read it without resolving a promise of its own.
+  const resolvedLocalityRef = useRef(/** @type {string} */ (SPEECH_LOCALITY.NO_FLAG));
+  // Only the newest tap may start. While the on-device check is still pending
+  // `isListening` is false and the button is live, so two taps both reach the
+  // start branch with the same stale render state; both continuations would then
+  // call `start()` on the SAME recognizer, and the second throws
+  // `InvalidStateError` from an async callback with nothing to catch it.
+  const startGenerationRef = useRef(0);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -117,6 +140,8 @@ export default function RealTimeDictationScribe({ currentUser }) {
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognition.maxAlternatives = 1;
+    // Keep the audio on the device where this browser can.
+    localityRef.current = preferLocalSpeechRecognition(recognition, SpeechRecognition, recognition.lang);
 
     recognition.onresult = (event) => {
       if (!binding.isCurrent()) return;
@@ -139,10 +164,22 @@ export default function RealTimeDictationScribe({ currentUser }) {
 
     recognition.onerror = (event) => {
       if (!binding.isCurrent()) return;
-      if (event.error !== "no-speech") {
-        setError(`Microphone error: ${event.error}. Please allow microphone access.`);
-        setIsListening(false);
+      if (event.error === "no-speech") return;
+      // A refusal cannot succeed on retry, and `onend` below restarts whenever
+      // `_shouldBeListening` is still true — so clear it here or a permission or
+      // service refusal spins, re-reporting itself every cycle.
+      if (event.error === "service-not-allowed" || event.error === "not-allowed") {
+        recognition._shouldBeListening = false;
       }
+      // Only OUR local requirement gets the plain-language sentence.
+      // `service-not-allowed` also means the user agent declined the requested
+      // service for its own reasons, which is not the same thing to say.
+      if (resolvedLocalityRef.current === SPEECH_LOCALITY.LOCAL && event.error === "service-not-allowed") {
+        setError(LOCAL_SPEECH_REFUSED_MESSAGE);
+      } else {
+        setError(`Microphone error: ${event.error}. Please allow microphone access.`);
+      }
+      setIsListening(false);
     };
 
     recognition.onend = () => {
@@ -167,16 +204,33 @@ export default function RealTimeDictationScribe({ currentUser }) {
     };
   }, []);
 
-  const toggleListening = useCallback(() => {
+  const toggleListening = useCallback(async () => {
     if (!recognitionRef.current) return;
     if (isListening) {
+      // Also retires any start still pending, so stopping wins over a tap whose
+      // availability check has not come back yet.
+      startGenerationRef.current += 1;
       recognitionRef.current._shouldBeListening = false;
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
       setError("");
+      const generation = (startGenerationRef.current += 1);
+      // Settle the on-device decision before starting, so the requirement is in
+      // place for the first session rather than the second.
+      resolvedLocalityRef.current = await localityRef.current;
+      // Unmounted, or superseded by a later tap while this one was pending.
+      if (!recognitionRef.current || startGenerationRef.current !== generation) return;
       recognitionRef.current._shouldBeListening = true;
-      recognitionRef.current.start();
+      try {
+        recognitionRef.current.start();
+      } catch {
+        // An already-started recognizer throws here. Do not leave the restart
+        // flag set, or `onend` would spin on it.
+        recognitionRef.current._shouldBeListening = false;
+        setError("Unable to start dictation. Please try again.");
+        return;
+      }
       setIsListening(true);
     }
   }, [isListening]);

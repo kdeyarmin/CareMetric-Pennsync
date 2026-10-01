@@ -39,6 +39,14 @@ const AGENCY = 'agency-a';
  * A `pennsync_contract_*` function the service does not call, with the reason.
  * A contract with no caller is dead SQL — the same rule the purpose policies
  * follow — so a new one has to be wired or named here.
+ *
+ * READ WHAT AN ENTRY BUYS. It exempts a name from the caller requirement below.
+ * It used to exempt it from the two grant assertions as well, because those run
+ * over `captured` and an uncalled function is not in it — an exemption from a
+ * check nobody was asking for, handed out by a list whose name and reason are
+ * about something else. The grants are asserted over the whole public function
+ * set in `public-wrapper-execution.test.mjs` now, so an entry here buys the one
+ * thing it says it buys.
  */
 const UNCALLED = Object.freeze({
   pennsync_contract_activity_list: 'D25\'s read of the trail. Its codes are declared as AUDIT_LIST_CODES '
@@ -145,6 +153,10 @@ test('every call the service makes resolves by name against the migrations', asy
     assert.deepEqual(keys.filter(key => !signature.args.includes(key)), [], `${where} is sent keys it has no parameter for`);
     const required = signature.args.slice(0, signature.args.length - signature.defaults);
     assert.deepEqual(required.filter(arg => !keys.includes(arg)), [], `${where} is not sent a parameter it requires`);
+    // These two are about the calls THIS suite captured. The same property over
+    // every public wrapper, called or not, is asserted in
+    // `public-wrapper-execution.test.mjs`, which says there why the populations
+    // differ; keeping the reasoning in one place rather than in both.
     assert.equal(signature.authenticated, true, `${where} is not executable by a signed-in caller`);
     assert.equal(signature.anon, false, `${where} is executable anonymously`);
     // `service_role` is the third role the wrappers revoke, and until now this
@@ -171,6 +183,86 @@ test('every call the service makes resolves by name against the migrations', asy
     // Nothing here measures that, so nothing here should be read as having.
     assert.equal(signature.service_role, false, `${where} is executable by the service role`);
   }
+});
+
+test('no public function this store exposes is reachable anonymously, exempt or not', async () => {
+  // **The privilege pair in the test above runs over `captured` — the names the
+  // SERVICE calls — and that is not the whole population.** `UNCALLED` exempts a
+  // contract from needing a caller, which is what its docblock says it buys. It
+  // also, silently, buys exemption from `has_function_privilege('anon', ...)`,
+  // because an exempt name is exposed and not captured and so never enters that
+  // loop at all. So the one sanctioned way to sit outside the checked population
+  // is also the one place a hand-written revoke is load-bearing and unwatched.
+  //
+  // There is no defect today and this is an unasserted property rather than a
+  // fix: `pennsync_contract_activity_list` is revoked correctly in
+  // `20260920010000_activity_audit.sql`. The point is that nothing would have
+  // noticed if it were not, and the next entry is written by somebody who has
+  // not read this comment.
+  //
+  // It is worth stating why the omission was easy. A wrapper is `security
+  // invoker`, so locking the inner `pennsync_records.contract_*` function
+  // protects nothing — an anonymous caller reaches the WRAPPER and never the
+  // function it would have been refused by. Revoking on the inner function
+  // reads like the whole job. That is how the three `physician` wrappers in
+  // `20260920690000_contract_physician_write.sql` shipped open, and the loop
+  // above caught them only because the service calls them.
+  //
+  // The population here is every `public.pennsync_contract_*` the store
+  // exposes, union the names the service calls — the first covers the exempt,
+  // the second covers the authority, audit and broker RPCs, which carry no
+  // contract prefix.
+  const { rows: exposedRows } = await db.query(`
+    select p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname like 'pennsync\\_contract\\_%'`);
+  const population = [...new Set([...exposedRows.map(row => row.name), ...captured.keys()])].sort();
+  assert.ok(population.length > captured.size,
+    'this population is no wider than `captured`, so it re-runs the loop above and proves nothing');
+
+  //
+  // **Three roles, not two.** The loop above reads `authenticated` and `anon`;
+  // the house revoke block names `public, anon, service_role`, and a check that
+  // reads two of the three roles a wrapper is granted over reports a clean
+  // surface while one stays open. `service_role` is the one that was missing.
+  //
+  // **A first version of this comment said `service_role` was the role that
+  // matters most if it is ever wrong, and that was wrong in the direction that
+  // makes the finding sound bigger.** Another session measured it rather than
+  // reasoning about it: grant a wrapper to `service_role`, take that role and
+  // call it, and the answer is `permission denied for schema pennsync_records`.
+  // The wrapper is `security invoker`, so reaching the inner function needs the
+  // CALLER to hold `usage` on that schema. `authenticated` has it and
+  // `service_role` does not, so a service-role caller handed the wrapper grant
+  // is still refused one layer above both the `caller_*` helpers and RLS.
+  //
+  // So the ordering inverts: **`anon` is the role where this grant is the only
+  // thing standing there**, because `anon` does hold schema usage.
+  // `service_role` is revoked because it is the house form, because an outlier
+  // costs a reviewer, and because granting that schema usage later would turn
+  // a wrapper grant into reach. Not because it is worse today.
+  //
+  // One half of that is unmeasured and is named rather than assumed: the test
+  // harness creates `service_role` without `BYPASSRLS` (`tests/bootstrap.sql`)
+  // and real Supabase's holds it, so nothing here can see that case.
+  //
+  // Measured before asserting: all of these are already false, so this pins a
+  // property that holds rather than announcing a defect. Proved by granting
+  // `service_role` on one wrapper and watching it come back by name.
+  const { rows } = await db.query(`
+    select p.proname as name,
+      has_function_privilege('authenticated', p.oid, 'execute') as authenticated,
+      has_function_privilege('anon', p.oid, 'execute') as anon,
+      has_function_privilege('service_role', p.oid, 'execute') as service_role
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = any($1::text[])`, [population]);
+  const open = rows.filter(row => row.anon).map(row => row.name).sort();
+  assert.deepEqual(open, [],
+    'a public function is executable anonymously; revoke on the WRAPPER, not only on the inner contract');
+  const serviceRole = rows.filter(row => row.service_role).map(row => row.name).sort();
+  assert.deepEqual(serviceRole, [],
+    'a public function is executable by the service role, which carries no caller identity');
+  const shut = rows.filter(row => !row.authenticated).map(row => row.name).sort();
+  assert.deepEqual(shut, [], 'a public function is not executable by a signed-in caller');
 });
 
 test('every contract function the migrations expose has a caller, or a stated reason', async () => {

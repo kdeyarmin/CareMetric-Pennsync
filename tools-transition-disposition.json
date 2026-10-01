@@ -244,7 +244,7 @@
     "processFaxOCR": "preserved_paused",
     "processInboundFaxes": "preserved_paused",
     "processOASISBatch": "preserved_paused",
-    "processPatientFileUpdate": "port",
+    "processPatientFileUpdate": "preserved_paused",
     "processScheduledFaxes": "preserved_paused",
     "processScheduledFaxesByPriority": "preserved_paused",
     "processTrainingRenewals": "hub",
@@ -609,6 +609,7 @@
     "UploadFile": "port",
     "UploadPrivateFile": "port",
     "CreateFileSignedUrl": "port",
+    "UploadRecordFile": "port",
     "GenerateImage": "retire"
   },
   "broker_ceiling": {},

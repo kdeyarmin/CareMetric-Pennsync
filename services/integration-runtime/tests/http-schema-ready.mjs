@@ -21,6 +21,17 @@ export const runtimeRpcSignatures = Object.freeze([
   { name: 'cm_integration_file_get', args: [
     arg('p_id', 'uuid', uuid), arg('p_app_id', 'text', 'synthetic-readiness'), arg('p_subject', 'text', 'a'.repeat(64)),
   ] },
+  // D224's pair. Both are revoked from anon and authenticated exactly as the two
+  // above them are, which is what the caller's privilege check proves.
+  { name: 'cm_integration_file_get_authorized', args: [
+    arg('p_id', 'uuid', uuid), arg('p_app_id', 'text', 'synthetic-readiness'), arg('p_subject', 'text', 'a'.repeat(64)),
+    arg('p_agency_id', 'text', 'synthetic-readiness'),
+  ] },
+  { name: 'cm_integration_file_record_owned', args: [
+    arg('p_id', 'uuid', uuid), arg('p_app_id', 'text', 'synthetic-readiness'), arg('p_subject', 'text', 'a'.repeat(64)),
+    arg('p_agency_id', 'text', 'synthetic-readiness'), arg('p_object_path', 'text', 'synthetic-readiness'),
+    arg('p_content_type', 'text', 'text/plain'), arg('p_size', 'bigint', '1'), arg('p_sha256', 'text', 'c'.repeat(64)),
+  ] },
   { name: 'cm_integration_expire_results', args: [] },
 ].map(signature => Object.freeze({ ...signature, args: Object.freeze(signature.args) })));
 

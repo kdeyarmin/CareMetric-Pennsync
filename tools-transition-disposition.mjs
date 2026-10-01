@@ -320,51 +320,232 @@ export function entitiesTouched(source, known = null) {
 }
 
 /**
- * The column names a module passes to a mutating call on one entity, or `null`
- * when any of those calls hands over something this cannot read.
+ * The source with every string literal, template literal, comment and regular
+ * expression body replaced by spaces of the same length, so that an index into
+ * the result is an index into the original.
  *
- * Deliberately shallow: it takes the top-level keys of an object literal and
- * refuses anything else — a spread, an identifier, a call. A nested object is
- * a column holding JSON, so its own keys are not columns and are not walked.
+ * It exists because of one line. `setNurseDutyStatus` refuses an empty patch
+ * with `'Nothing to update'`, and the payload it assembles is called `update`,
+ * so a scan for that identifier found it inside a message to the caller and
+ * answered that the module does something it cannot account for. The identifier
+ * was correct, the occurrence was real, and it was in prose.
+ *
+ * That is D73's rule — a comment is not the code — arriving at a string
+ * literal, and it is worth naming as the wider claim: **a scan for a NAME reads
+ * everything that spells the name, and the parts of a module that spell things
+ * without meaning them are strings, comments and regular expressions.** Mask
+ * them once rather than excluding them case by case; every exclusion written
+ * for one shape is the next shape's blind spot.
+ *
+ * The `/` disambiguation is the usual approximation: a slash opens a regular
+ * expression unless the previous meaningful character could end a value.
  */
-export function writtenColumns(source, escaped) {
-  const found = new Set();
-  const call = new RegExp(`\\b${escaped}\\s*\\.\\s*(?:${MUTATING.join('|')})\\s*\\(`, 'g');
-  for (const match of source.matchAll(call)) {
-    const open = source.indexOf('{', match.index + match[0].length - 1);
-    const stop = source.indexOf(')', match.index + match[0].length - 1);
-    // A mutating call with no object literal before its closing paren is
-    // passing a variable, a spread or nothing readable.
-    if (open < 0 || (stop >= 0 && stop < open)) return null;
-    let depth = 0; let end = -1;
-    for (let i = open; i < source.length; i += 1) {
-      if (source[i] === '{') depth += 1;
-      else if (source[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+export function maskLiteralsAndComments(source) {
+  const out = source.split('');
+  const blank = (from, to) => {
+    for (let i = from; i < to && i < out.length; i += 1) {
+      if (out[i] !== '\n') out[i] = ' ';
     }
-    if (end < 0) return null;
-    const body = source.slice(open + 1, end);
-    // Top level only: strip nested braces, brackets and parentheses so a JSON
-    // column's own keys and a helper call's arguments are not mistaken for
-    // columns of this table.
-    let level = 0; let flat = '';
-    for (const character of body) {
-      if ('{[('.includes(character)) level += 1;
-      else if (')]}'.includes(character)) level -= 1;
-      else if (level === 0) flat += character;
-      if (level === 0 && ')]}'.includes(character)) flat += ' ';
+  };
+  let i = 0; let previous = '';
+  while (i < source.length) {
+    const character = source[i];
+    if (character === '/' && source[i + 1] === '/') {
+      let end = source.indexOf('\n', i);
+      if (end < 0) end = source.length;
+      blank(i, end); i = end; continue;
     }
-    for (const part of flat.split(',')) {
-      const key = part.split(':')[0].trim();
-      if (!key) continue;
-      // A spread, a shorthand or a computed key: the payload is not fully
-      // readable, so the whole call is unknown rather than partly known.
-      if (!/^[A-Za-z_$][\w$]*$/.test(key) && !/^'[a-z_][a-z0-9_]*'$/.test(key)) return null;
-      found.add(key.replace(/'/g, ''));
+    if (character === '/' && source[i + 1] === '*') {
+      let end = source.indexOf('*/', i + 2);
+      end = end < 0 ? source.length : end + 2;
+      blank(i, end); i = end; continue;
     }
+    if (character === '"' || character === "'" || character === '`') {
+      let j = i + 1;
+      while (j < source.length) {
+        if (source[j] === '\\') { j += 2; continue; }
+        if (source[j] === character) break;
+        j += 1;
+      }
+      blank(i + 1, j); i = Math.min(j + 1, source.length); previous = character; continue;
+    }
+    if (character === '/' && !/[A-Za-z0-9_$)\]]/.test(previous)) {
+      let j = i + 1; let inClass = false;
+      while (j < source.length && source[j] !== '\n') {
+        if (source[j] === '\\') { j += 2; continue; }
+        if (source[j] === '[') inClass = true;
+        else if (source[j] === ']') inClass = false;
+        else if (source[j] === '/' && !inClass) break;
+        j += 1;
+      }
+      if (j < source.length && source[j] === '/') {
+        blank(i + 1, j); i = j + 1; previous = '/'; continue;
+      }
+    }
+    if (!/\s/.test(character)) previous = character;
+    i += 1;
+  }
+  return out.join('');
+}
+
+/**
+ * The top-level keys of an object literal starting at `open`, with the index
+ * just past its closing brace, or `null` when the literal is not fully
+ * readable.
+ *
+ * Deliberately shallow: a nested object is a column holding JSON, so its own
+ * keys are not columns and are not walked.
+ */
+export function objectLiteralKeys(source, open) {
+  if (source[open] !== '{') return null;
+  let depth = 0; let end = -1;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+  }
+  if (end < 0) return null;
+  const body = source.slice(open + 1, end);
+  // Top level only: strip nested braces, brackets and parentheses so a JSON
+  // column's own keys and a helper call's arguments are not mistaken for
+  // columns of this table.
+  let level = 0; let flat = '';
+  for (const character of body) {
+    if ('{[('.includes(character)) level += 1;
+    else if (')]}'.includes(character)) level -= 1;
+    else if (level === 0) flat += character;
+    if (level === 0 && ')]}'.includes(character)) flat += ' ';
+  }
+  const keys = [];
+  for (const part of flat.split(',')) {
+    const key = part.split(':')[0].trim();
+    if (!key) continue;
+    // A spread, a shorthand or a computed key: the payload is not fully
+    // readable, so the whole literal is unknown rather than partly known.
+    if (!/^[A-Za-z_$][\w$]*$/.test(key) && !/^'[a-z_][a-z0-9_]*'$/.test(key)) return null;
+    keys.push(key.replace(/'/g, ''));
+  }
+  return { keys, end };
+}
+
+/**
+ * The last argument of a call whose opening parenthesis has just been consumed,
+ * as `{ name, index }` when it is a bare identifier and `null` otherwise.
+ */
+export function lastCallArgument(source, afterOpenParen) {
+  let depth = 1; let end = -1;
+  const commas = [];
+  for (let i = afterOpenParen; i < source.length; i += 1) {
+    const character = source[i];
+    if ('([{'.includes(character)) depth += 1;
+    else if (')]}'.includes(character)) { depth -= 1; if (depth === 0) { end = i; break; } }
+    else if (character === ',' && depth === 1) commas.push(i);
+  }
+  if (end < 0) return null;
+  const from = commas.length ? commas[commas.length - 1] + 1 : afterOpenParen;
+  const text = source.slice(from, end);
+  const match = /^(\s*)([A-Za-z_$][\w$]*)\s*$/.exec(text);
+  return match ? { name: match[2], index: from + match[1].length } : null;
+}
+
+/** Call forms that read a payload object without being able to add to it. */
+export const PAYLOAD_SAFE_READS = Object.freeze(['Object.keys', 'Object.entries',
+  'Object.values', 'JSON.stringify']);
+
+/**
+ * The columns of a payload ASSEMBLED into a local object before the call, which
+ * is the second shape a write takes and the one this could not read.
+ *
+ * `setNurseDutyStatus` declares `const update = {}` and then assigns six
+ * members before handing it over. Every one of those columns is on D82's
+ * allowlist, so the store permits the write — but `writtenColumns` saw an
+ * identifier, answered `null`, and the classifier reads unknown as outside the
+ * narrowing. The capability sat in `entity_authorization` on a fact about the
+ * READER rather than about the module.
+ *
+ * That is D7, D47 and D75's lesson in a fourth place — when a check exists to
+ * stop a class of mistake, re-derive the shapes from the tree rather than from
+ * the check — and it differs from those three in the DIRECTION it failed, which
+ * is the part worth keeping. Those three ADMITTED something they should have
+ * refused, so each one was a wrong answer somebody could act on. This one
+ * REFUSED something it should have admitted: nothing was ever wrong, and one
+ * capability was merely reported unstartable. **A fail-closed blind spot costs
+ * work rather than correctness, which is exactly why it survives longer —
+ * nothing it does looks like a defect, and the queue it distorts is the thing
+ * a reader consults instead of re-measuring.**
+ *
+ * So the widening stays fail-closed itself. It answers only when EVERY bare
+ * occurrence of the identifier is accounted for, and **a READ counts as a
+ * write**: over-reporting a column can only push a capability back toward
+ * `entity_authorization`, which is the safe direction, while missing one would
+ * admit a write nobody had seen. Anything unaccounted for — a computed key, an
+ * `Object.assign` into it, the identifier handed to anything but the mutating
+ * call — answers `null` exactly as before.
+ */
+export function assembledPayloadColumns(source, identifier, accounted) {
+  if (!/^[A-Za-z_$][\w$]*$/.test(identifier)) return null;
+  const escaped = identifier.replace(/[$]/g, '\\$&');
+  const declarations = [...source.matchAll(
+    new RegExp(`(?:const|let|var)\\s+${escaped}\\s*=\\s*`, 'g'))];
+  // Exactly one, or two names in two scopes are being read as one object.
+  if (declarations.length !== 1) return null;
+  const opens = declarations[0].index + declarations[0][0].length;
+  const literal = objectLiteralKeys(source, opens);
+  if (!literal) return null;
+  const found = new Set(literal.keys);
+  const declared = declarations[0].index
+    + declarations[0][0].search(new RegExp(`(?<![.\\w$])${escaped}\\b`));
+  const masked = maskLiteralsAndComments(source);
+  for (const use of masked.matchAll(new RegExp(`(?<![.\\w$])${escaped}\\b`, 'g'))) {
+    if (use.index === declared || accounted.has(use.index)) continue;
+    const after = masked.slice(use.index + identifier.length);
+    const member = /^\s*\.\s*([A-Za-z_$][\w$]*)/.exec(after);
+    if (member) { found.add(member[1]); continue; }
+    // A spread READ of the payload takes keys out of it and cannot put any in.
+    if (/^\s*[,}\])]/.test(after) && /\.\.\.\s*$/.test(masked.slice(0, use.index))) continue;
+    const before = masked.slice(0, use.index).replace(/\s+$/, '');
+    if (/^\s*\)/.test(after)
+      && PAYLOAD_SAFE_READS.some(read => before.endsWith(`${read}(`))) continue;
+    return null;
   }
   return [...found].sort();
 }
 
+/**
+ * The column names a module passes to a mutating call on one entity, or `null`
+ * when any of those calls hands over something this cannot read.
+ *
+ * Two shapes: an object literal at the call, and a local object assembled
+ * before it. A DELETE is neither — it names a row, so its payload is not a
+ * narrowed write but the absence of one, and it is never resolved.
+ */
+export function writtenColumns(source, escaped) {
+  const found = new Set();
+  const call = new RegExp(`\\b${escaped}\\s*\\.\\s*(${MUTATING.join('|')})\\s*\\(`, 'g');
+  const assembled = new Map();
+  const accounted = new Set();
+  for (const match of source.matchAll(call)) {
+    const afterOpenParen = match.index + match[0].length;
+    const open = source.indexOf('{', afterOpenParen - 1);
+    const stop = source.indexOf(')', afterOpenParen - 1);
+    if (open < 0 || (stop >= 0 && stop < open)) {
+      if (match[1].startsWith('delete')) return null;
+      const argument = lastCallArgument(source, afterOpenParen);
+      if (!argument) return null;
+      accounted.add(argument.index);
+      assembled.set(argument.name, true);
+      continue;
+    }
+    const literal = objectLiteralKeys(source, open);
+    if (!literal) return null;
+    for (const key of literal.keys) found.add(key);
+  }
+  for (const identifier of assembled.keys()) {
+    const columns = assembledPayloadColumns(source, identifier, accounted);
+    if (columns === null) return null;
+    for (const key of columns) found.add(key);
+  }
+  return [...found].sort();
+}
 export function discoverEntityReach(repository, known = null) {
   const root = join(repository, 'base44/functions');
   const reach = {};
@@ -403,8 +584,11 @@ export function discoverInertFunctions(repository) {
  * - `ported_function` — calls another Base44 function, so it waits on that one.
  * - `files` — reads or writes an uploaded file. The SSRF allowlist these
  *   handlers use names Base44's own storage host, so porting one verbatim would
- *   carry a Base44 dependency into the service the exit exists to remove, and
- *   the `cmfile:` handles that replace those URLs do not exist yet. It waits on
+ *   carry a Base44 dependency into the service the exit exists to remove. The
+ *   `cmfile:` handles that replace those URLs DO exist — `providers.mjs` mints
+ *   one from both `UploadFile` and `UploadPrivateFile` — so what a handler in
+ *   this bucket waits on is the data copy that repoints carried `file_url`
+ *   rows at those handles (D56, D77), not the handles themselves. It waits on
  *   the file layer, which is a phase of its own, rather than on the record
  *   store or the runtime.
  * - `core_integration` — calls a Core integration (an LLM, an extraction, a
@@ -1297,6 +1481,102 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
 export function portQueueLine(report) {
   const queue = Object.entries(report.port_blockers).filter(([, names]) => names.length);
   return `port queue: ${queue.map(([blocker, names]) => `${blocker}=${names.length}`).join(' ') || 'empty'}`;
+}
+
+const MARKDOWN_SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'coverage', '.git']);
+
+/**
+ * Every markdown page in the tree, discovered rather than listed.
+ *
+ * Test directories are NOT skipped here, unlike `sourceFiles`: a page is a page
+ * wherever it sits, and skipping a directory is how the omission this exists to
+ * stop gets reintroduced one level down.
+ */
+export function markdownPages(repository) {
+  const found = [];
+  const walk = (root, prefix) => {
+    let entries;
+    try { entries = readdirSync(root, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (entry.isSymbolicLink()) continue;
+      const path = join(root, entry.name);
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (MARKDOWN_SKIPPED_DIRECTORIES.has(entry.name)) continue;
+        walk(path, relative);
+      } else if (entry.name.endsWith('.md')) {
+        found.push(relative);
+      }
+    }
+  };
+  walk(repository, '');
+  return found;
+}
+
+/**
+ * Only whitespace, a comma, a backtick or an asterisk may sit between two
+ * bucket tokens of one reading. Anything else ends the run, which is what keeps
+ * a table's BEFORE column from being read as one reading with its AFTER column.
+ */
+const PORT_QUEUE_GLUE = /^[\s,`*]*$/;
+
+/**
+ * Every port-queue reading a page quotes, as the run of bucket tokens it holds.
+ *
+ * `portQueueLine` gave these counts one form, and the pin over that form was a
+ * literal list of pages: AGENTS.md at first, then AGENTS.md and the go-live plan
+ * after the plan drifted to `none=75` with nothing able to notice. A roster of
+ * pages is a mechanism for omitting the next page, and it omitted one — the
+ * transition plan quotes the whole four-bucket payload TWICE, once inside a
+ * fence and once backticked mid-sentence, and stood at `entity_authorization=7`
+ * against a measured 6 while every suite was green. Extending the list would fix
+ * that instance and guarantee a fourth.
+ *
+ * So the pages are DISCOVERED and only the history is DECLARED. That split is
+ * the whole point: a page written later is covered before anybody remembers it
+ * exists, while a deliberate before/after reading is exactly the case somebody
+ * should have to declare out loud. The bucket names come from the report's own
+ * keys, so the scan widens when a blocker is added.
+ *
+ * Keyed on the bucket tokens and NOT on the `port queue:` prefix, because the
+ * prefix is the half a page drops: the transition plan's mid-sentence copy is
+ * the complete payload with only the prefix missing, and a prefix-keyed check
+ * would read it as prose.
+ *
+ * What this CANNOT see, said here rather than left for somebody to discover: a
+ * figure a page restates as a BARE NUMBER in prose. AGENTS.md carried the
+ * release ladder's handler count as "126 of them over six waves", ten behind the
+ * tree, with no `handlers=` token anywhere near it — the same class of defect
+ * this function exists to stop, in the one shape it is blind to by
+ * construction, because a bare figure is indistinguishable from every other
+ * number on the page. `tools-entity-routes.mjs` records the same limit about its
+ * own single-digit figures.
+ *
+ * That gap was SIZED rather than left open, so nobody re-asks it as though the
+ * answer were unknown: there is no cheap version. A discovery over bare numbers
+ * cannot exist, and the expensive version is a documentation convention — every
+ * page quotes the instrument's line instead of restating its figure, which makes
+ * the text pinnable and is then covered by exactly this function. AGENTS.md's
+ * ladder reading was converted to that form when it was re-dated, as one
+ * instance and not a campaign. The rest is a decision for a session with room.
+ */
+export function portQueueQuotations(text, bucketNames) {
+  const token = new RegExp(`(?:${bucketNames.join('|')})=\\d+`, 'g');
+  const quotations = [];
+  text.split('\n').forEach((line, index) => {
+    const hits = [...line.matchAll(token)];
+    if (!hits.length) return;
+    let run = [hits[0]];
+    const close = () => quotations.push({ line: index + 1, reading: run.map(hit => hit[0]).join(' ') });
+    for (let at = 1; at < hits.length; at += 1) {
+      const previous = hits[at - 1];
+      const between = line.slice(previous.index + previous[0].length, hits[at].index);
+      if (PORT_QUEUE_GLUE.test(between)) run.push(hits[at]);
+      else { close(); run = [hits[at]]; }
+    }
+    close();
+  });
+  return quotations;
 }
 
 export function main(args = process.argv.slice(2), { repository = resolve(dirname(fileURLToPath(import.meta.url))), log = console.log } = {}) {
