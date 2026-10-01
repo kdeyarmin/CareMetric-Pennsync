@@ -304,6 +304,20 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reason: 'the second half of that wrapped footnote line, declared separately for the same '
       + 'reason: a quotation is per line, and neither half on its own is a reading of anything',
   },
+  // And the swap the comment above predicted, arriving one port later and from
+  // the other direction: this port moves `files` rather than
+  // `entity_authorization`, so D223's own entry line stops being the
+  // measurement while both halves of the footnote keep the standing they had.
+  // It is a dated reading and says so in its own words — "at the head this
+  // change was written on" — so it is declared rather than corrected. The
+  // figure in a sentence that claims the present tense was corrected instead,
+  // on the three pages carrying one.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
+    reason: "D223's own reading at the head it was written on, which this port's `files` 12 → 11 "
+      + 'turns into history without touching what D223 measured',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {
@@ -1140,15 +1154,29 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // capability reaches `none` without the blocker classifier being consulted
   // at all.
   //
-  // Both movements above are real and neither side of this base merge could see
-  // the other, so the pair below is RE-DERIVED on the merged tree. `files` is 9
-  // because this branch ported the three file capabilities; `none` is 82
-  // because those three arrived and `setNurseDutyStatus` is written by the
-  // contract `main` carries. Adding the two branches' deltas would have been
+  // THREE movements land here at once and no two of them are the same kind, so
+  // the distribution below is the TOOL'S answer on the merged tree rather than
+  // any branch's figures adjusted by hand. Adding the deltas would have been
   // wrong in both directions.
+  //
+  // `files` 12 → 8 is two different things. THREE of the four are ports: this
+  // branch took the bytes for document extraction, the clinical scanner and the
+  // referral splitter, so each reaches `none`. The FOURTH is D153's third kind,
+  // which leaves the queue SHORTER without anything having been written:
+  // `processPatientFileUpdate` is dispositioned `preserved_paused` because it is
+  // paused at source and its successor would be a widening nobody has decided,
+  // so it is not a file-layer port waiting on the file layer. It moves to
+  // NOTHING. D47's rule is what puts that one in its own change rather than a
+  // later one: switching a capability off means changing its disposition in the
+  // same change.
+  //
+  // So `none` is 82 — 79 plus this branch's three — and NOT 83, which is what a
+  // reader counting four departures from `files` into `none` would write down.
+  // The arithmetic only closes once the paused one is read as leaving the
+  // population instead of crossing it.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 0, files: 9, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    records_schema: 0, files: 8, ported_function: 0, core_integration: 0, pdf_rendering: 0,
     external_secret: 2, none: 82 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -1347,11 +1375,22 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // `extractClinicalDocument` left on the port that shipped it, by the shape
   // its sibling established: the browser sends the BYTES and the handler
   // brokers the upload, so the capability never needed the carried `file_url`
-  // rows the data migration is about.
+  // rows the data migration is about. `splitReferralPDF` left the same way, in
+  // the same change.
+  //
+  // `processPatientFileUpdate` LEFT this list for a DIFFERENT reason, and the
+  // two departures are worth keeping apart because a count cannot tell them
+  // apart: it is paused at source — preview goes to one configured address and
+  // apply is 503 for everyone — so it was never a port waiting on `cmfile:`
+  // handles. Its successor would be a widening nobody has decided, which is a
+  // product answer rather than a data migration, so it is `preserved_paused`.
+  // That is the shape D153 and D83 record from the other bucket: a blocked port
+  // and a capability that is not being carried are not the same thing, however
+  // alike they look in a count.
   assert.deepEqual(report.port_blockers.files, ['createAuthorizedDocument',
     'generateAdrPacket',
     'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
-    'preparePDFWithPatientInfo', 'processPatientFileUpdate', 'reorderDeletePDFPages']);
+    'preparePDFWithPatientInfo', 'reorderDeletePDFPages']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
       'analyzeClinicalEvents', 'analyzeClinicalTrends',

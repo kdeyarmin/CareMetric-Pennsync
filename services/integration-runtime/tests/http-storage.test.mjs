@@ -53,7 +53,7 @@ test('real synthetic private file preserves ownership, expiry and restored bytes
     else if (method === 'POST' && !url.search && [
       '/rest/v1/rpc/pennsync_staging_context', '/rest/v1/rpc/cm_integration_reserve',
       '/rest/v1/rpc/cm_integration_finish', '/rest/v1/rpc/cm_integration_file_record',
-      '/rest/v1/rpc/cm_integration_file_get',
+      '/rest/v1/rpc/cm_integration_file_get', '/rest/v1/rpc/cm_integration_file_get_authorized',
     ].includes(url.pathname)) allowed = true;
     else {
       const prefix = `/storage/v1/object/${BUCKET}/${APP}/${ownerSubject}/`;
@@ -151,8 +151,16 @@ test('real synthetic private file preserves ownership, expiry and restored bytes
       for (const kind of ['authenticated', 'public']) await deniedResponse(await localFetch(`${API}/storage/v1/object/${kind}/${BUCKET}/${ownedPath}`, { headers }));
       await deniedResponse(await localFetch(`${API}/storage/v1/object/sign/${BUCKET}/${ownedPath}`, {
         method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 60 }) }));
-      const denied = await jsonCall('/rest/v1/rpc/cm_integration_file_get', { p_id: ownedPath.split('/').at(-1), p_app_id: APP, p_subject: ownerSubject }, false, actor ? sessions.get(actor.email) : undefined);
-      check([401, 403].includes(denied.status) && denied.value.code === '42501', 'LOCAL_FILE_RPC_PRIVILEGES_NOT_DENIED');
+      // Both getters, because D224's is the one the runtime now reads through:
+      // proving the old one locked and not the new one would say nothing about
+      // the path every signed URL actually takes.
+      for (const [name, body] of [
+        ['cm_integration_file_get', { p_id: ownedPath.split('/').at(-1), p_app_id: APP, p_subject: ownerSubject }],
+        ['cm_integration_file_get_authorized', { p_id: ownedPath.split('/').at(-1), p_app_id: APP, p_subject: ownerSubject, p_agency_id: actors[0].agency }],
+      ]) {
+        const denied = await jsonCall(`/rest/v1/rpc/${name}`, body, false, actor ? sessions.get(actor.email) : undefined);
+        check([401, 403].includes(denied.status) && denied.value.code === '42501', 'LOCAL_FILE_RPC_PRIVILEGES_NOT_DENIED');
+      }
     }
   };
   try {
