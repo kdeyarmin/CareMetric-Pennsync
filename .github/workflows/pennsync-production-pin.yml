@@ -32,7 +32,7 @@ jobs:
   production-pin:
     name: Verify a local store can be pinned to production
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -66,11 +66,14 @@ jobs:
           printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
           tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase supabase-go
           printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
-      # This job owns its own fresh stack and re-migrates it. Do not reuse
-      # another job's state: the reset below drops and recreates the database.
-      - name: Start fresh owned local Auth and API
-        run: node services/authority-store/tests/http-local-stack.mjs start
-      - name: Pin the local store to production and read it back
+      # `start-unmigrated`, not `start`: the CLI must bring Auth and PostgREST up
+      # over an EMPTY database, because D11 fixes the deployment pin in the first
+      # migration and five measured attempts established that nothing a caller
+      # sets reaches the session the CLI applies migrations in. The store is
+      # applied by the step below, in one session carrying the setting.
+      - name: Start fresh owned local Auth and API with no store applied
+        run: node services/authority-store/tests/http-local-stack.mjs start-unmigrated
+      - name: Build a production-pinned store on it and read the pin back
         run: node --test --test-name-pattern='a local stack can be pinned' services/authority-store/tests/production-pin.test.mjs
       - name: Stop owned local stack
         if: always()

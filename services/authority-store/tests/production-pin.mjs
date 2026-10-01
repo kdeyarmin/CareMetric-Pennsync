@@ -1,67 +1,65 @@
-// Local-only CLI boundary, same rule as `http-local-stack.mjs`: CLI and status
+// Local-only boundary, same rule as `http-local-stack.mjs`: the stack's status
 // output carries credentials and is NEVER forwarded. Only literals from
 // `emittableProductionPin` below are ever printed.
 //
-// WHY THIS EXISTS, and why it is a separate module rather than a third action on
-// `http-local-stack.mjs`: the production acceptance run needs a local store
-// pinned to the PRODUCTION app id, and D11 makes that pin a generated IMMUTABLE
-// constant decided once, before the first migration runs, and uneditable
-// afterwards (`20260919090000_deployment_app_pin.sql`). `supabase start` applies
-// `supabase/migrations` itself, with `[db.migrations] enabled = true`, and the
-// pin block defaults to STAGING when the setting is unset — the restrictive
-// outcome, deliberately. So a stack the CLI started is already pinned to staging
-// and cannot be corrected: a mis-pinned database is replaced, not edited.
+// WHY THIS EXISTS: the production acceptance run needs a local store pinned to
+// the PRODUCTION app id, and D11 makes that pin a generated IMMUTABLE constant
+// decided once, in the first migration, from `pennsync.deployment_app_id`, and
+// uneditable afterwards (`20260919090000_deployment_app_pin.sql`, which defaults
+// to STAGING — the restrictive outcome, deliberately). A mis-pinned database is
+// replaced, not corrected.
 //
-// The route taken here is the one that needs no second project directory and no
-// change to the shared `config.toml` that every staging job depends on:
+// WHY THE STORE IS BUILT HERE RATHER THAN BY THE CLI, which is the whole design
+// and was arrived at by measurement rather than by reading. `supabase start`
+// applies `supabase/migrations` itself, and FIVE runs of this job established
+// that nothing a caller sets reaches the session it applies them in:
 //
-//   1. set the pin setting on the ROLE rather than on the database, which puts a
-//      row in `pg_db_role_setting` with `setdatabase = 0` — cluster-scoped, so
-//      it is NOT stored inside the database that is about to be dropped. The
-//      write is made as the stack's SUPERUSER, because storing a custom
-//      placeholder parameter on a role or a database is a superuser-only write
-//      and a local stack's `postgres` is not one; the function below records the
-//      two routes that were measured not to work, and why;
-//   2. `supabase db reset`, which recreates the database and re-applies the
-//      migrations, so the pin block runs again and now reads the setting;
-//   3. read `deployment_app_id()` and `deployment_label()` back FROM A NEW
-//      SESSION and refuse unless they say production.
+//   `PGOPTIONS` on the CLI's process is not inherited by it.
+//   `ALTER ROLE ... SET` as the published `postgres` role answers SQLSTATE 42501,
+//     insufficient_privilege — a custom parameter with no extension behind it is
+//     a placeholder, and PostgreSQL will not let a non-superuser store one,
+//     because it cannot check who may set it.
+//   The same write as the stack's own superuser SUCCEEDS, and the store still
+//     comes back pinned to staging.
+//   Both stored scopes at once, role-wide (`setdatabase = 0`) and
+//     database-scoped, leave NEITHER row in `pg_db_role_setting` after a
+//     `db reset`, and an `ALTER SYSTEM` setting proved visible beforehand is not
+//     read either.
 //
-// Step 3 is `tools-pennsync-provision.mjs`'s step 4 and earns its keep for the
-// same reason: a setting write that did not stick leaves the store pinned to
-// staging — the DEFAULT — and nothing downstream would say so. A production
-// acceptance run against a staging-pinned store would pass its sign-in and
-// prove nothing about containment, which is the failure direction that does not
-// announce itself.
+// So `supabase db reset` leaves nothing behind in the cluster, and there is no
+// hook between cluster creation and migration application that the CLI exposes.
+// The store is therefore applied from HERE, in one session carrying the setting,
+// onto a stack started with `[db.migrations]` disabled — which also keeps Auth and
+// PostgREST live over it, which is what an acceptance run needs and what a second
+// database on the side could never have given.
 //
 // This module asserts the FOUNDATION only. It signs nobody in and reads no
 // business row; the acceptance run that stands on it is separate.
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { localStatus, workdir } from './http-local-stack.mjs';
+import { localStatus } from './http-local-stack.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
-const exec = promisify(execFile);
-const CLI = process.env.PENNSYNC_SUPABASE_CLI || 'supabase';
 const fail = code => { throw new Error(code); };
 
 export const PRODUCTION_APP = '694ec16e72e01b60d22f7cbf';
 export const STAGING_APP = '6a9881683dc68a0bd54f1ef7';
 /** The setting the pin migration reads once. Mirrors `tools-pennsync-provision.mjs`. */
 export const PIN_SETTING = 'pennsync.deployment_app_id';
-/**
- * The local stack's superuser.
- *
- * Needed because storing a placeholder parameter on a role is a superuser-only
- * write, and the role `supabase status` publishes is not one. Local stacks only:
- * nothing hosted is ever reached from here.
- */
-export const SUPERUSER = 'supabase_admin';
+/** The authority half of the store, applied before the record half. */
+export const AUTHORITY_MIGRATIONS = new URL('../supabase/migrations/', import.meta.url);
 
 /**
  * What may be printed when this module throws. Everything else becomes the
- * redacted verdict, because the CLI's output carries credentials. Tested for the
- * reason `emittable` is: this is where a diagnostic goes to die.
+ * redacted verdict, because the stack's own output carries credentials. Tested
+ * for the reason `emittable` is: this is where a diagnostic goes to die.
+ *
+ * The optional five-character suffix is a SQLSTATE and nothing else. An earlier
+ * run of this job was spent on a bare code with no way to tell a privilege
+ * refusal from a bad parameter name, because the message a redaction rule cannot
+ * pass is also the message the author needs — and a SQLSTATE is five characters
+ * from a fixed set defined by the standard, carrying no identifier, no URL and no
+ * free text.
  */
 export const emittableProductionPin = message =>
   /^(PRODUCTION_PIN_[A-Z_]+( [0-9A-Z]{5})?|LOCAL_[A-Z_]+( [0-9]{1,5})?)$/.test(message);
@@ -69,25 +67,11 @@ export const emittableProductionPin = message =>
 /**
  * A failing statement's SQLSTATE, and nothing else.
  *
- * The first run of this job spent its whole diagnosis on
- * `PRODUCTION_PIN_SETTING_WRITE_FAILED` with no way to tell a privilege refusal
- * from a bad parameter name, because the message a redaction rule cannot pass is
- * also the message the author needs. A SQLSTATE is five characters from a fixed
- * set defined by the standard — it carries no identifier, no URL and no free
- * text — so it is the one part of a driver error that is safe to print, and
- * `emittableProductionPin` admits exactly that shape and no more.
- *
  * An error with no code (a socket failure, a thrown string) adds nothing, which
  * keeps the bare code the empty case rather than a second meaning for one value.
  */
 const withSqlstate = (code, error) =>
   fail(/^[0-9A-Z]{5}$/.test(error?.code ?? '') ? `${code} ${error.code}` : code);
-
-async function cli(args, { timeout = 12 * 60 * 1000, env } = {}) {
-  try {
-    await exec(CLI, args, { timeout, maxBuffer: 64 * 1024 * 1024, env: env ?? process.env });
-  } catch { fail('PRODUCTION_PIN_CLI_FAILED_OUTPUT_REDACTED'); }
-}
 
 /**
  * A client against the running stack's own database.
@@ -100,85 +84,6 @@ function clientFor(databaseUrl) {
   let pg;
   try { pg = require('pg'); } catch { fail('PRODUCTION_PIN_PG_UNAVAILABLE'); }
   return new pg.Client({ connectionString: databaseUrl, application_name: 'pennsync-production-pin' });
-}
-
-/**
- * Apply the setting and re-migrate, then prove the result.
- *
- * Returns only the two pin values. The status object it reads carries the
- * publishable and secret keys and the database URL, so it never leaves here.
- */
-export async function pinLocalStackToProduction() {
-  const status = await localStatus();
-  const databaseUrl = status.DB_URL;
-
-  // The initial state is GUARDED rather than assumed: if a CLI start ever
-  // stopped applying our migrations, every reset below would be doing something
-  // other than what this module claims.
-  await withClient(databaseUrl, 'PRODUCTION_PIN_INITIAL_READ_FAILED', async client => {
-    const { rows } = await client.query('select pennsync_private.deployment_label() as label');
-    if (rows[0]?.label !== 'staging') fail('PRODUCTION_PIN_UNEXPECTED_INITIAL_PIN');
-  });
-
-  // Interpolated rather than bound, because `ALTER ROLE` is a utility statement
-  // and takes no parameter placeholder -- `set ... = $1` is a syntax error,
-  // which is what the first run of this job reported. The value is this module's
-  // own constant rather than anything a caller supplies, and it is re-checked
-  // against the app-id shape so that interpolating it cannot become a way to
-  // pass something else.
-  if (!/^[a-f0-9]{24}$/.test(PRODUCTION_APP)) fail('PRODUCTION_PIN_APP_MALFORMED');
-
-  // `ALTER SYSTEM`, because every STORED scope is measured not to survive.
-  //
-  // Four routes have been measured and the three that do not work are recorded
-  // here rather than retried, since each costs a full reset per run:
-  //
-  //   `PGOPTIONS` on the CLI's own process, so the migration would run in a
-  //     session that already carried the setting. It reached nothing: the reset
-  //     completed and the store came back pinned to staging, so whatever opens
-  //     the migration connection does not inherit this process's environment.
-  //   `ALTER ROLE ... SET` as the role `supabase status` publishes -- `postgres`
-  //     -- answered SQLSTATE 42501, insufficient_privilege. A custom parameter
-  //     with no extension behind it is a placeholder, and PostgreSQL will not let
-  //     a non-superuser store one on a role or a database because it cannot check
-  //     who may set it. A local stack's `postgres` is not a superuser.
-  //   The same write as the stack's SUPERUSER succeeded and the store still came
-  //     back pinned to staging, which said the write is permitted and something
-  //     loses it between there and the migration.
-  //   Both stored scopes at once -- role-wide (`setdatabase = 0`) and
-  //     database-scoped -- answered `PRODUCTION_PIN_NOT_APPLIED_NO_SETTING`:
-  //     after the reset, NEITHER row was left in `pg_db_role_setting`. So
-  //     `supabase db reset` rebuilds the roles as well as the database, and no
-  //     stored scope is a place to leave this.
-  //
-  // What is left is the one scope the reset cannot reach through SQL:
-  // `postgresql.auto.conf` in the data directory, written by `ALTER SYSTEM` and
-  // picked up on reload. It also sidesteps the question the third route raised,
-  // because it does not matter which role or database the CLI applies migrations
-  // as -- a system setting reaches every session. Superuser-only, like the
-  // others, so it is still the stack's own superuser making the write.
-  const superuserUrl = new URL(databaseUrl);
-  superuserUrl.username = SUPERUSER;
-  await withClient(superuserUrl.href, 'PRODUCTION_PIN_SETTING_WRITE_FAILED', async client => {
-    await client.query(`alter system set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
-    await client.query('select pg_reload_conf()');
-  });
-
-  // Proved visible BEFORE the reset, in a session of its own, because a reload
-  // that did not take would otherwise present as the migration not reading it --
-  // two different problems that were already confused once here.
-  await withClient(databaseUrl, 'PRODUCTION_PIN_SYSTEM_READ_FAILED', async client => {
-    const { rows } = await client.query('select current_setting($1, true) as value', [PIN_SETTING]);
-    if (rows[0]?.value !== PRODUCTION_APP) fail('PRODUCTION_PIN_SYSTEM_SETTING_NOT_VISIBLE');
-  });
-
-  // Recreates the database and re-applies the migrations, so the pin block runs
-  // again -- this time in a session that reads the setting.
-  await cli(['db', 'reset', '--workdir', workdir]);
-
-  const pin = await readPin(databaseUrl);
-  if (pin.label !== 'production') fail('PRODUCTION_PIN_NOT_APPLIED');
-  return describe(pin, 'system-setting');
 }
 
 /** Connect, do one thing, always close. The code names which step failed. */
@@ -194,11 +99,56 @@ async function withClient(databaseUrl, code, body) {
 }
 
 /**
- * The pin, from a NEW session.
+ * Build a production-pinned store on the running stack, and prove it.
  *
- * A new connection is the whole point of the sequence in the role-setting case:
- * a role setting only reaches sessions opened after it.
+ * Returns only the pin values. The status object it reads carries the publishable
+ * and secret keys and the database URL, so it never leaves here.
  */
+export async function pinLocalStackToProduction() {
+  const status = await localStatus();
+  const databaseUrl = status.DB_URL;
+
+  // The premise is GUARDED rather than assumed. If the stack were started with
+  // migrations enabled, this function would already exist, the store would
+  // already be pinned to staging, and applying the migrations below would fail
+  // somewhere in the middle for reasons that read as a broken migration.
+  await withClient(databaseUrl, 'PRODUCTION_PIN_EMPTY_READ_FAILED', async client => {
+    const { rows } = await client.query(`select to_regprocedure(
+      'pennsync_private.deployment_app_id()') is not null as pinned`);
+    if (rows[0]?.pinned !== false) fail('PRODUCTION_PIN_STORE_ALREADY_APPLIED');
+  });
+
+  // ONE session for the setting and the whole store, because `set_config` with
+  // `is_local` false is session-scoped: the `do` block that bakes the pin into an
+  // IMMUTABLE function body has to run in the same session that carries it.
+  // Bound rather than interpolated -- `set_config` is an ordinary function, unlike
+  // the `ALTER ROLE` this replaces.
+  await withClient(databaseUrl, 'PRODUCTION_PIN_STORE_BUILD_FAILED', async client => {
+    const { rows } = await client.query('select set_config($1, $2, false) as value',
+      [PIN_SETTING, PRODUCTION_APP]);
+    if (rows[0]?.value !== PRODUCTION_APP) fail('PRODUCTION_PIN_SETTING_NOT_VISIBLE');
+    for (const name of (await readdir(AUTHORITY_MIGRATIONS)).filter(f => f.endsWith('.sql')).sort()) {
+      await client.query(await readFile(new URL(name, AUTHORITY_MIGRATIONS), 'utf8'));
+    }
+    // The record half, in the order a deployment applies it, through the helper
+    // that owns that order rather than a second copy of it.
+    await applyRecordMigrations({ exec: sql => client.query(sql) });
+  });
+
+  // A NEW session, because the pin is only worth anything if it is a property of
+  // the STORE rather than of the session that built it.
+  const pin = await readPin(databaseUrl);
+  if (pin.app_id !== PRODUCTION_APP || pin.label !== 'production') fail('PRODUCTION_PIN_NOT_APPLIED');
+  // `setting` rather than `default` is what distinguishes a pin that was CHOSEN
+  // from one that merely happens to match.
+  if (pin.source !== 'setting') fail('PRODUCTION_PIN_RECORDED_AS_DEFAULT');
+  // The containment the pin exists for, read from the store rather than inferred
+  // from the label.
+  if (pin.admits_production !== true || pin.admits_staging !== false) fail('PRODUCTION_PIN_CONTAINMENT_WRONG');
+  return Object.freeze({ app_id: pin.app_id, label: pin.label, source: pin.source });
+}
+
+/** The pin, read back from a session that did not set anything. */
 const readPin = databaseUrl =>
   withClient(databaseUrl, 'PRODUCTION_PIN_READBACK_FAILED', async client => {
     const { rows } = await client.query(`select pennsync_private.deployment_app_id() as app_id,
@@ -209,15 +159,3 @@ const readPin = databaseUrl =>
     if (!rows[0]) fail('PRODUCTION_PIN_READBACK_EMPTY');
     return rows[0];
   });
-
-/** The checks that make a production label mean containment, not just a string. */
-function describe(pin, via) {
-  if (pin.app_id !== PRODUCTION_APP) fail('PRODUCTION_PIN_NOT_APPLIED');
-  // `setting` rather than `default` is what distinguishes a pin that was CHOSEN
-  // from one that merely happens to match.
-  if (pin.source !== 'setting') fail('PRODUCTION_PIN_RECORDED_AS_DEFAULT');
-  // The containment the pin exists for, read from the store rather than
-  // inferred from the label.
-  if (pin.admits_production !== true || pin.admits_staging !== false) fail('PRODUCTION_PIN_CONTAINMENT_WRONG');
-  return Object.freeze({ app_id: pin.app_id, label: pin.label, source: pin.source, via });
-}
