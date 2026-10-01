@@ -128,10 +128,10 @@ export async function pinLocalStackToProduction() {
   // pass something else.
   if (!/^[a-f0-9]{24}$/.test(PRODUCTION_APP)) fail('PRODUCTION_PIN_APP_MALFORMED');
 
-  // TWO SCOPES AT ONCE, and the measurement of which one survives is the point.
+  // `ALTER SYSTEM`, because every STORED scope is measured not to survive.
   //
-  // Three routes have now been measured and two of them are recorded here rather
-  // than retried, because each costs a full reset per run:
+  // Four routes have been measured and the three that do not work are recorded
+  // here rather than retried, since each costs a full reset per run:
   //
   //   `PGOPTIONS` on the CLI's own process, so the migration would run in a
   //     session that already carried the setting. It reached nothing: the reset
@@ -142,61 +142,44 @@ export async function pinLocalStackToProduction() {
   //     with no extension behind it is a placeholder, and PostgreSQL will not let
   //     a non-superuser store one on a role or a database because it cannot check
   //     who may set it. A local stack's `postgres` is not a superuser.
-  //   The same write as the stack's SUPERUSER succeeded, and the store still came
-  //     back pinned to staging. So the write is permitted and something between
-  //     it and the migration loses it -- which is the thing this version
-  //     measures rather than guesses at.
+  //   The same write as the stack's SUPERUSER succeeded and the store still came
+  //     back pinned to staging, which said the write is permitted and something
+  //     loses it between there and the migration.
+  //   Both stored scopes at once -- role-wide (`setdatabase = 0`) and
+  //     database-scoped -- answered `PRODUCTION_PIN_NOT_APPLIED_NO_SETTING`:
+  //     after the reset, NEITHER row was left in `pg_db_role_setting`. So
+  //     `supabase db reset` rebuilds the roles as well as the database, and no
+  //     stored scope is a place to leave this.
   //
-  // Both scopes are set, because they fail in opposite directions and neither can
-  // be ruled out from here: role-scoped (`setdatabase = 0`) is not stored inside
-  // the database the reset drops, while database-scoped survives a reset that
-  // restores roles from `roles.sql`. Whichever survives carries the pin, and the
-  // read-back reports WHICH, so a route cannot be believed without having been
-  // seen to work.
+  // What is left is the one scope the reset cannot reach through SQL:
+  // `postgresql.auto.conf` in the data directory, written by `ALTER SYSTEM` and
+  // picked up on reload. It also sidesteps the question the third route raised,
+  // because it does not matter which role or database the CLI applies migrations
+  // as -- a system setting reaches every session. Superuser-only, like the
+  // others, so it is still the stack's own superuser making the write.
   const superuserUrl = new URL(databaseUrl);
   superuserUrl.username = SUPERUSER;
   await withClient(superuserUrl.href, 'PRODUCTION_PIN_SETTING_WRITE_FAILED', async client => {
-    await client.query(`alter role postgres set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
-    const { rows } = await client.query('select current_database() as name');
-    if (!/^[a-z_][a-z0-9_]{0,62}$/.test(rows[0]?.name ?? '')) fail('PRODUCTION_PIN_DATABASE_NAME_UNEXPECTED');
-    await client.query(`alter database ${rows[0].name} set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
+    await client.query(`alter system set ${PIN_SETTING} = '${PRODUCTION_APP}'`);
+    await client.query('select pg_reload_conf()');
+  });
+
+  // Proved visible BEFORE the reset, in a session of its own, because a reload
+  // that did not take would otherwise present as the migration not reading it --
+  // two different problems that were already confused once here.
+  await withClient(databaseUrl, 'PRODUCTION_PIN_SYSTEM_READ_FAILED', async client => {
+    const { rows } = await client.query('select current_setting($1, true) as value', [PIN_SETTING]);
+    if (rows[0]?.value !== PRODUCTION_APP) fail('PRODUCTION_PIN_SYSTEM_SETTING_NOT_VISIBLE');
   });
 
   // Recreates the database and re-applies the migrations, so the pin block runs
-  // again -- this time, if either setting survived, in a session that reads it.
+  // again -- this time in a session that reads the setting.
   await cli(['db', 'reset', '--workdir', workdir]);
 
-  // A NEW session: a role or database setting only reaches sessions opened after
-  // it, which is the whole point of the sequence.
   const pin = await readPin(databaseUrl);
-  const scopes = await survivingScopes(databaseUrl);
-  if (pin.label !== 'production') {
-    // The two failures are different problems and the next step differs, so they
-    // are different codes: nothing survived the reset, or something survived and
-    // the migration still did not read it -- which would mean the CLI applies
-    // migrations as another role or against another database.
-    fail(scopes.length ? 'PRODUCTION_PIN_NOT_APPLIED_SETTING_PRESENT' : 'PRODUCTION_PIN_NOT_APPLIED_NO_SETTING');
-  }
-  if (!scopes.length) fail('PRODUCTION_PIN_SOURCE_UNEXPLAINED');
-  return describe(pin, scopes.join('+'));
+  if (pin.label !== 'production') fail('PRODUCTION_PIN_NOT_APPLIED');
+  return describe(pin, 'system-setting');
 }
-
-/**
- * Which stored scopes still hold the pin setting after the reset.
- *
- * Classified, never quoted: the row's `setconfig` holds the parameter's value,
- * and only the two literals below ever leave here.
- */
-const survivingScopes = databaseUrl =>
-  withClient(databaseUrl, 'PRODUCTION_PIN_SCOPE_READ_FAILED', async client => {
-    const { rows } = await client.query(`select (s.setdatabase = 0) as role_wide
-      from pg_db_role_setting s
-      where exists (select 1 from unnest(s.setconfig) as c where c like $1)`, [`${PIN_SETTING}=%`]);
-    const scopes = [];
-    if (rows.some(row => row.role_wide)) scopes.push('role-setting');
-    if (rows.some(row => !row.role_wide)) scopes.push('database-setting');
-    return scopes;
-  });
 
 /** Connect, do one thing, always close. The code names which step failed. */
 async function withClient(databaseUrl, code, body) {
