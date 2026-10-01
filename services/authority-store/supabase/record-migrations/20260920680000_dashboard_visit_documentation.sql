@@ -40,7 +40,7 @@ begin
   if to_regprocedure(
       'pennsync_records.dashboard_visit(pennsync_records.visit)') is null then
     raise exception using errcode='42501',
-      message='PENNSYNC_DASHBOARD_CONTRACT_REQUIRED';
+      message='PENNSYNC_DASHBOARD_CAPABILITY_REQUIRED';
   end if;
 end $$;
 
