@@ -102,7 +102,7 @@ jobs:
       # default "so a lint failure above still stops everything". That last clause
       # was FALSE, and measured so: `!cancelled()` is true after an earlier step
       # has failed and goes false only on cancellation, so a red lint took out
-      # this one step and the nine after the block, while the eleven that were guarded
+      # this one step and the eight after the block, while the ten that were guarded
       # then ran regardless. It stopped one script, not everything — and that script
       # was the worst one to lose. `test:pennsync-transfer` is first in the list
       # of five with no second runner, and `tools-pennsync-migrate.test.mjs`'s
