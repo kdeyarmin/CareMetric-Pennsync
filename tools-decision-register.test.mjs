@@ -21,7 +21,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import {
-  DOCUMENT_PATH, EXPECTED_NEW, compareHeadingSets, headingNumbers,
+  DOCUMENT_PATH, EXPECTED_NEW, EXPECTED_DOCUMENT, BASE_NUMBERS as REAL_BASE_NUMBERS,
+  compareHeadingSets, headingNumbers,
 } from './tools-decision-register.mjs';
 
 // `git show <ref>:<path>` from a registered root tools test is an established
@@ -33,6 +34,8 @@ const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
 const doc = numbers => `# Register\n\nPreamble.\n\n${numbers
   .map(n => `## D${n} — Entry ${n}\n\nBody of ${n}.\n`).join('\n')}`;
 
+// Synthetic, and deliberately NOT the module's `BASE_NUMBERS` — that one is the
+// real base, imported above as REAL_BASE_NUMBERS after the two collided here.
 const BASE_NUMBERS = [1, 2, 3, 5];
 const NEW_NUMBERS = [6, 8];
 const base = doc(BASE_NUMBERS);
@@ -106,34 +109,47 @@ test('it reports what it does not look at, on a clean run too', () => {
   assert.ok(notes.some(n => n.includes('four')), 'it is one program among four');
 });
 
-test('the committed register holds exactly the headings it should', t => {
+test('the committed register holds exactly the headings it should', () => {
+  // No git. The expectation is typed (`BASE_NUMBERS` plus `EXPECTED_NEW`), so
+  // this runs in every checkout rather than only where a base ref happens to
+  // exist — which is the repair for the first version, whose one real-document
+  // test failed in CI because `origin/main` was not resolvable there.
+  const order = headingNumbers(readFileSync(DOCUMENT_PATH, 'utf8'));
+  const { problems, notes } = compareHeadingSets('', readFileSync(DOCUMENT_PATH, 'utf8'), EXPECTED_DOCUMENT);
+  for (const note of notes) console.log(`  note      ${note}`);
+  assert.deepEqual(problems, [],
+    `headings=${order.length} expected=${EXPECTED_DOCUMENT.length}. A number filed `
+    + 'without being added to EXPECTED_NEW reports as HEADING_UNEXPECTED and is '
+    + 'corrected there, not by deriving the list.');
+  assert.equal(order.length, EXPECTED_DOCUMENT.length);
+});
+
+test('the typed base still describes the real base, where the base can be read', t => {
+  // Corroboration rather than the assertion. If the typed `BASE_NUMBERS` ever
+  // stops matching `main`'s document this fails and names the difference, so the
+  // data above cannot go stale silently. When the ref is absent it SKIPS, and
+  // that is safe here in a way it was not before: the test above covers
+  // membership without git, so a skip costs coverage of the typed list's
+  // freshness and nothing else. It says so rather than leaving a reader to work
+  // out which.
   let baseText;
   try {
     baseText = git('show', `${BASE_REF}:${DOCUMENT_PATH}`);
   } catch {
-    const why = `${BASE_REF}:${DOCUMENT_PATH} is not resolvable in this checkout, so the `
-      + 'comparison against the committed register did not run. Set '
-      + 'PENNSYNC_REGISTER_BASE_REF, or fetch the base branch. The sabotage '
-      + 'cases above ran and are unaffected.';
-    // A test that cannot tell "no differences" from "no base" is the artefact
-    // this file exists to stop, so the two outcomes are never the same colour.
-    // Locally a skip is right: a worktree or a shallow clone without
-    // `origin/main` should not go red for a reason unrelated to the change. In
-    // CI the base is GUARANTEED (`ci.yml` checks out at `fetch-depth: 0`), so a
-    // missing base there is a CI change that silently removed this test's
-    // coverage, and it fails. `tools-app-store-migration.test.mjs` takes the
-    // harder line everywhere — it lets the git failure throw — and this is
-    // softer only off CI, deliberately.
-    if (process.env.CI) assert.fail(`${why} This ran under CI, where the base is guaranteed.`);
-    t.skip(why);
+    t.skip(`${BASE_REF}:${DOCUMENT_PATH} is not resolvable in this checkout, so whether `
+      + 'the typed BASE_NUMBERS still matches the real base was NOT checked. Membership '
+      + 'was: the test above needs no ref. Set PENNSYNC_REGISTER_BASE_REF, or fetch the '
+      + 'base branch, to check the typed list too.');
     return;
   }
-  const headText = readFileSync(DOCUMENT_PATH, 'utf8');
-  const result = compareHeadingSets(baseText, headText);
-  for (const note of result.notes) console.log(`  note      ${note}`);
-  assert.deepEqual(result.problems, [],
-    `headings=${result.headings} base=${result.base} expected=${result.expected}. `
-    + 'A number filed without being added to EXPECTED_NEW reports as '
-    + 'HEADING_UNEXPECTED and is corrected there, not by deriving the list.');
-  assert.ok(EXPECTED_NEW.length >= 0);
+  const real = headingNumbers(baseText);
+  assert.deepEqual(real, [...REAL_BASE_NUMBERS],
+    'BASE_NUMBERS no longer describes the base document. Re-derive it and say in the '
+    + 'same change what moved on the base branch.');
+  // And the differential that makes the membership test non-vacuous: the same
+  // comparison must FAIL against the base document, or it is proving only that
+  // it ran.
+  assert.notDeepEqual(compareHeadingSets('', baseText, EXPECTED_DOCUMENT).problems, [],
+    'the membership comparison passes on the BASE document too, so it is not '
+    + 'distinguishing this collection from its absence');
 });

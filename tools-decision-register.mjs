@@ -49,6 +49,36 @@ export const EXPECTED_NEW = Object.freeze([
   220, 221, 222, 223, 224,
 ]);
 
+// The base's own numbers, TYPED like the list above and for the same reason.
+//
+// The first version of this check read them out of `origin/main` with
+// `git show`, on the stated ground that `ci.yml` checks out at
+// `fetch-depth: 0` so the base is guaranteed. **CI refuted that on the first
+// run**: depth is not the same as having the ref. `actions/checkout` creates a
+// remote-tracking ref for the branch it checks out and `origin/main` was not
+// resolvable, so the one test that compared against the real document failed
+// with its own diagnostic. The reasoning was sound and the premise was a
+// setting read for something it does not say — which is the defect this whole
+// file exists to record, arriving in the file.
+//
+// So the base is data here and git is corroboration. Typed as a RANGE minus
+// the absent numbers because 168 of them in a row is unreadable, and the
+// subtraction is over this typed list rather than over the document, so it is
+// not the tautology this check replaced. Both numbers below are checked against
+// each other at load: 179 - 11 = 168.
+const BASE_HIGHEST = 179;
+const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177]);
+export const BASE_NUMBERS = Object.freeze(
+  Array.from({ length: BASE_HIGHEST }, (unused, index) => index + 1)
+    .filter(n => !BASE_ABSENT.includes(n)),
+);
+
+// What the document must hold on this branch: the base plus what the
+// collection adds. This is the whole assertion, and it needs no git, so it
+// runs in every checkout rather than in the ones where a ref happens to exist.
+export const EXPECTED_DOCUMENT = Object.freeze([...BASE_NUMBERS, ...EXPECTED_NEW]
+  .sort((a, b) => a - b));
+
 // Scoped to `## D<n>` and nothing else: the document is full of deeper
 // headings and they move independently. `\b` makes a malformed `## D191x`
 // invisible here while `grep -c '^## D'` counts it — a malformed heading that

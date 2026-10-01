@@ -179,14 +179,31 @@ cost is how somebody comes to delete the list. It is also one program among
 four, and its clean run says nothing about the other three; the reason to add
 it is the question none of them asks, not the coverage it supplies.
 
-**A base that cannot be resolved skips locally and fails under CI**, where the
-checkout is unshallow and one is guaranteed: a test that cannot tell "no
-differences" from "no base" is the artefact this write-up is about. Both
-branches were measured against a nonexistent ref. **And the real-document
-comparison is non-vacuous, which is worth stating rather than assuming**: it
-fails on the base — `headings=168 base=168 expected=203` — and passes on the
-collection — `203 / 168 / 203`, no problems. A check that passed in both places
-would have proved only that it ran.
+**The first version of the check read the base out of `origin/main`, and CI
+refuted that on the first run.** Its stated ground was that `ci.yml` checks out
+at `fetch-depth: 0`, so the base is guaranteed — and depth is not the same as
+having the ref. `actions/checkout` creates a remote-tracking ref for the branch
+it checks out; `origin/main` was not resolvable, so the one test that compared
+against the real document failed in CI with its own diagnostic. **That reasoning
+was sound and its premise was a setting read for something it does not say**,
+which is this write-up's own subject arriving inside it, and the fourth time
+tonight. It is also the argument for the hardening rather than against it: the
+original skipped on a missing base, so under that version CI would have gone
+green with the only real-document assertion silently not running.
+
+**The repair removes the dependency instead of hardening it.** The base's 168
+numbers are typed beside the collection's thirty-five — as a range minus a typed
+list of absent numbers, the subtraction being over that list rather than over
+the document, so it is not the tautology above — and the membership assertion
+needs no git at all. Measured in a directory with no repository in it: the
+assertion runs, and dropping one heading from a copy of this document fails it
+with `HEADING_MISSING:D190`. The git read survives as CORROBORATION, checking
+that the typed base still describes the base document, and it skips when the ref
+is absent — which is safe in a way it was not before, because what a skip now
+costs is coverage of the typed list's freshness and not coverage of membership.
+The skip says exactly that rather than leaving a reader to work it out. **And the
+corroboration carries the differential**: the same comparison must FAIL against
+the base document, or it is proving only that it ran.
 
 **One page had to be corrected in the same change, and the reason generalises.**
 `AGENTS.md` described the test-wiring contract as covering `services/` alone and
