@@ -39,6 +39,14 @@ const AGENCY = 'agency-a';
  * A `pennsync_contract_*` function the service does not call, with the reason.
  * A contract with no caller is dead SQL — the same rule the purpose policies
  * follow — so a new one has to be wired or named here.
+ *
+ * READ WHAT AN ENTRY BUYS. It exempts a name from the caller requirement below.
+ * It used to exempt it from the two grant assertions as well, because those run
+ * over `captured` and an uncalled function is not in it — an exemption from a
+ * check nobody was asking for, handed out by a list whose name and reason are
+ * about something else. The grants are asserted over the whole public function
+ * set in `public-wrapper-execution.test.mjs` now, so an entry here buys the one
+ * thing it says it buys.
  */
 const UNCALLED = Object.freeze({
   pennsync_contract_activity_list: 'D25\'s read of the trail. Its codes are declared as AUDIT_LIST_CODES '
@@ -145,6 +153,10 @@ test('every call the service makes resolves by name against the migrations', asy
     assert.deepEqual(keys.filter(key => !signature.args.includes(key)), [], `${where} is sent keys it has no parameter for`);
     const required = signature.args.slice(0, signature.args.length - signature.defaults);
     assert.deepEqual(required.filter(arg => !keys.includes(arg)), [], `${where} is not sent a parameter it requires`);
+    // These two are about the calls THIS suite captured. The same property over
+    // every public wrapper, called or not, is asserted in
+    // `public-wrapper-execution.test.mjs`, which says there why the populations
+    // differ; keeping the reasoning in one place rather than in both.
     assert.equal(signature.authenticated, true, `${where} is not executable by a signed-in caller`);
     assert.equal(signature.anon, false, `${where} is executable anonymously`);
     // `service_role` is the third role the wrappers revoke, and until now this
