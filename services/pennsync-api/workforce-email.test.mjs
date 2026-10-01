@@ -5,10 +5,48 @@ import { AUTHORITY_CONTRACT } from './authority.mjs';
 import { createHandler } from './app.mjs';
 import { HANDLERS, HANDLER_NAMES } from './handlers.mjs';
 import { loadConfig } from './runtime.mjs';
-import { DELIVERY_RELEASE_ENV, DELIVERY_RELEASE_VALUE } from './outbound-delivery.mjs';
+import {
+  DELIVERY_RELEASE_ENV,
+  DELIVERY_RELEASE_VALUE,
+  WORKFORCE_NOTICE_RELEASE_ENV,
+  workforceNoticeDeliverable,
+} from './outbound-delivery.mjs';
+
+/**
+ * The environment that opens the channel, in ONE place.
+ *
+ * Both switches, because these five need `PENNSYNC_API_DELIVERY` AND their own
+ * `PENNSYNC_API_WORKFORCE_NOTICES`. Defined once so a harness cannot release
+ * one and forget the other — three harnesses in this file build a released
+ * deployment, and three copies of a two-flag environment is how one of them
+ * ends up testing the paused path while claiming to test the released one.
+ *
+ * `notices` is a parameter so the adversarial table below can drive this with
+ * every value that is NOT the release word, through the same code path a real
+ * deployment uses.
+ *
+ * **`ABSENT` is a symbol and not `undefined`, and that is not fussiness.** The
+ * first version of this helper used `notices === undefined` to mean "set
+ * nothing", which cannot work: a default parameter is applied exactly when the
+ * argument is `undefined`, so `releasedEnv(undefined)` returned the FULLY
+ * RELEASED environment and the case labelled `absent` was silently testing the
+ * opposite of what it claimed. The test below caught it. It is the same defect
+ * the gate itself exists to prevent — an absent value falling into the open
+ * case rather than the closed one — arriving in the harness written to prove
+ * the gate, so the marker is a value no caller can produce by accident.
+ */
+const ABSENT = Symbol('the notices switch is set to nothing at all');
+const releasedEnv = (notices = DELIVERY_RELEASE_VALUE) => ({
+  [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE,
+  ...(notices === ABSENT ? {} : { [WORKFORCE_NOTICE_RELEASE_ENV]: notices }),
+});
 import {
   credentialRenewalMessage,
   notifyTimeOffCancelled,
+  notifyTimeOffSubmitted,
+  notifyTimeOffReviewed,
+  notifyCredentialReviewed,
+  notifyCredentialRenewal,
   credentialReviewedMessage,
   timeOffCancelledMessage,
   timeOffReviewedMessage,
@@ -96,13 +134,14 @@ const member = (email, tenant_role = 'agency_admin', is_active = true) => ({
  * real one can.
  */
 const serve = ({
-  delivery = false, row = request(), roster = [() => rosterPage([])], mail = () => ({ ok: true }),
+  delivery = false, notices = DELIVERY_RELEASE_VALUE,
+  row = request(), roster = [() => rosterPage([])], mail = () => ({ ok: true }),
   mint = () => ({ ok: true }),
 } = {}) => {
   const sent = [];
   const asked = [];
   const minted = [];
-  const config = loadConfig(env(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}));
+  const config = loadConfig(env(delivery ? releasedEnv(notices) : {}));
   const handler = createHandler(config, {
     fetcher: async (url, init) => {
       const target = String(url);
@@ -395,13 +434,16 @@ const reviewed = (patch = {}) => request({
   reviewer_name: 'manager@example.test', reviewed_at: '2026-09-30T12:00:00Z',
   review_notes: 'Enjoy it', ...patch,
 });
-const serveReview = ({ delivery = false, row = reviewed(), mail = () => ({ ok: true }) } = {}) => {
+const serveReview = ({
+  delivery = false, notices = DELIVERY_RELEASE_VALUE,
+  row = reviewed(), mail = () => ({ ok: true }),
+} = {}) => {
   const sent = [];
   const rosterReads = [];
   const minted = [];
   const config = loadConfig(env({
     PENNSYNC_API_FUNCTIONS: REVIEW,
-    ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
+    ...(delivery ? releasedEnv(notices) : {}),
   }));
   const handler = createHandler(config, {
     fetcher: async (url, init) => {
@@ -525,7 +567,8 @@ const credential = (patch = {}) => ({
 });
 
 const serveCredential = ({
-  name, rpc, params: callParams, delivery = false, row = credential(),
+  name, rpc, params: callParams, delivery = false, notices = DELIVERY_RELEASE_VALUE,
+  row = credential(),
   roster = [() => Response.json(rosterPage([]))], mail = () => ({ ok: true }), tenantRole = 'agency_admin',
 }) => {
   const sent = [];
@@ -533,7 +576,7 @@ const serveCredential = ({
   const minted = [];
   const config = loadConfig(env({
     PENNSYNC_API_FUNCTIONS: name,
-    ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
+    ...(delivery ? releasedEnv(notices) : {}),
   }));
   const handler = createHandler(config, {
     fetcher: async (url, init) => {
@@ -923,13 +966,14 @@ const CANCEL_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_time_off_cancel`;
 const cancelled = (patch = {}) => request({ status: 'cancelled', ...patch });
 
 const serveCancel = ({
-  delivery = false, row = cancelled(), previous = 'approved', mail = () => ({ ok: true }),
+  delivery = false, notices = DELIVERY_RELEASE_VALUE,
+  row = cancelled(), previous = 'approved', mail = () => ({ ok: true }),
 } = {}) => {
   const sent = [];
   const minted = [];
   const config = loadConfig(env({
     PENNSYNC_API_FUNCTIONS: CANCEL,
-    ...(delivery ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
+    ...(delivery ? releasedEnv(notices) : {}),
   }));
   const handler = createHandler(config, {
     fetcher: async (url, init) => {
@@ -1067,4 +1111,142 @@ test('the withdrawal message names the employee, the type and the dates', () => 
   assert.match(message.body, /previously approved paid time off/);
   assert.match(message.body, /2026-10-05/);
   assert.match(message.body, /team calendar/);
+});
+
+/**
+ * The five senders' own release gate, which is the thing that keeps them shut
+ * while `PENNSYNC_API_DELIVERY` is open.
+ *
+ * `PENNSYNC_API_DELIVERY` was released for the two account emails and a live
+ * `/readyz` read on 2026-10-01 reports it still true, so on the day these five
+ * were written the ONLY thing between them and a real manager's inbox was a
+ * deployment nobody had done yet. This block is what replaces that accident.
+ *
+ * **Every case drives `loadConfig`**, so what is proved is the whole chain from
+ * the environment an operator sets to the branch in the sender — not a hand-made
+ * config object, which would pass with the env read deleted.
+ *
+ * **The fake integration COUNTS CALLS and never throws.** Every one of the five
+ * wraps its body in `catch {}`, so a throwing fake is swallowed and the answer
+ * is identical whether the gate held or the send was attempted and failed. An
+ * assertion both paths satisfy proves nothing, which is the whole defect this
+ * gate exists to prevent, so the assertion is on the call count.
+ */
+const NOT_THE_RELEASE_WORD = Object.freeze([
+  ['absent', ABSENT],
+  ['empty', ''],
+  ['the string true', 'true'],
+  ['a boolean-ish 1', '1'],
+  ['wrong case', 'enabled-V1'],
+  ['shouted', 'ENABLED-V1'],
+  ['a leading space', ' enabled-v1'],
+  ['a trailing space', 'enabled-v1 '],
+  ['explicitly disabled', 'disabled'],
+  ['a later version nobody has defined', 'enabled-v2'],
+  ["the OTHER switch's name", DELIVERY_RELEASE_ENV],
+]);
+
+test('the gate reads paused for every value that is not exactly the release word', () => {
+  for (const [label, value] of NOT_THE_RELEASE_WORD) {
+    const config = loadConfig(env(releasedEnv(value)));
+    assert.equal(config.deliveryReleased, true, `${label}: delivery itself must be open`);
+    assert.equal(config.workforceNoticesReleased, false, `${label}: must not read released`);
+    assert.equal(workforceNoticeDeliverable(config), false, `${label}: must not be deliverable`);
+  }
+  // The positive control. Without it this test passes with the comparison
+  // inverted, or with `releasedEnv` quietly setting nothing at all.
+  const open = loadConfig(env(releasedEnv()));
+  assert.equal(open.workforceNoticesReleased, true);
+  assert.equal(workforceNoticeDeliverable(open), true);
+});
+
+test('the gate can never open a channel PENNSYNC_API_DELIVERY has left shut', () => {
+  // It narrows and cannot widen: with delivery unset, the notices switch set to
+  // the release word still reaches no provider.
+  const config = loadConfig(env({ [WORKFORCE_NOTICE_RELEASE_ENV]: DELIVERY_RELEASE_VALUE }));
+  assert.equal(config.deliveryReleased, false);
+  assert.equal(config.workforceNoticesReleased, true);
+  assert.equal(workforceNoticeDeliverable(config), false);
+});
+
+test('a config object missing the field entirely is paused rather than undefined', () => {
+  // The shape a caller built before this flag existed. `?.` makes the absent
+  // case the paused case rather than a case nobody thought about.
+  assert.equal(workforceNoticeDeliverable({ deliveryReleased: true }), false);
+  assert.equal(workforceNoticeDeliverable({}), false);
+  assert.equal(workforceNoticeDeliverable(undefined), false);
+  assert.equal(workforceNoticeDeliverable(null), false);
+});
+
+/** One agency administrator, so the roster-reading senders have a recipient. */
+const rosterContract = () => async name => (name === 'listAgencyRoster'
+  ? { entries: [{ tenant_role: 'agency_admin', is_active: true, email: 'admin@example.test' }], next: null }
+  : {});
+/** A RENEWAL, which is the only shape `notifyCredentialRenewal` notifies on. */
+const renewalParams = () => ({ credential_id: 'cred-1', renews_credential_id: 'cred-0' });
+
+/**
+ * Each of the five, driven with a config and a call-counting integration.
+ *
+ * Every fixture here is deliberately one that WOULD send on a released
+ * deployment — a designated manager, an addressable employee, an administrator
+ * on the roster, a genuine renewal, a cancellation of an approved request by
+ * somebody other than the manager. A fixture with no recipient would make every
+ * assertion below pass for the wrong reason, which the control test proves this
+ * table does not do.
+ */
+const FIVE_SENDERS = [
+  ['notifyTimeOffSubmitted', (config, integration) => notifyTimeOffSubmitted({
+    request: request(), actor: { userEmail: 'nurse@example.test' },
+    config, integration, contract: rosterContract(),
+  })],
+  ['notifyTimeOffReviewed', (config, integration) => notifyTimeOffReviewed({
+    request: reviewed(), config, integration, contract: rosterContract(),
+  })],
+  ['notifyCredentialReviewed', (config, integration) => notifyCredentialReviewed({
+    credential: credential(), actor: { userEmail: 'admin@example.test' }, config, integration,
+  })],
+  ['notifyCredentialRenewal', (config, integration) => notifyCredentialRenewal({
+    credential: credential(), params: renewalParams(),
+    config, integration, contract: rosterContract(),
+  })],
+  ['notifyTimeOffCancelled', (config, integration) => notifyTimeOffCancelled({
+    request: cancelled(), previousStatus: 'approved',
+    actor: { userEmail: 'someone.else@example.test' },
+    config, integration, contract: rosterContract(),
+  })],
+];
+
+/** Counts and RESOLVES: a throwing fake is swallowed by each sender's `catch {}`. */
+const countingIntegration = calls => async (operation, payload) => {
+  calls.push({ operation, payload });
+  return { ok: true };
+};
+
+test('NONE of the five reaches a provider while the notices switch is not released', async () => {
+  for (const [label, value] of NOT_THE_RELEASE_WORD) {
+    const config = loadConfig(env(releasedEnv(value)));
+    for (const [name, drive] of FIVE_SENDERS) {
+      const calls = [];
+      const answer = await drive(config, countingIntegration(calls));
+      assert.deepEqual(calls, [], `${name} reached a provider with the switch ${label}`);
+      assert.equal(answer.email, false, `${name} claimed a send with the switch ${label}`);
+    }
+  }
+});
+
+test('and the same five DO send once both switches are the release word', async () => {
+  // The control for the test above. Without it, a fixture that silently lost
+  // its recipient would make every case there pass with the gate deleted —
+  // which is this project's own recurring defect, not a hypothetical one.
+  const config = loadConfig(env(releasedEnv()));
+  for (const [name, drive] of FIVE_SENDERS) {
+    const calls = [];
+    const answer = await drive(config, countingIntegration(calls));
+    assert.ok(calls.length > 0, `${name} sent nothing on a fully released deployment`);
+    assert.ok(calls.every(call => call.operation === 'SendEmail'),
+      `${name} asked for something other than SendEmail`);
+    assert.equal(answer.email, true, `${name} did not report the send`);
+    assert.equal(answer.delivery_paused, false, `${name} claimed a paused channel`);
+  }
 });

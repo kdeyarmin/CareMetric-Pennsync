@@ -72,6 +72,7 @@
 // the capability keeps its current answer until that change takes it.
 
 import { renderBrandedEmail } from './branded-email.mjs';
+import { workforceNoticeDeliverable } from './outbound-delivery.mjs';
 
 /**
  * The same page budget as `account-email.mjs`'s, for the same reason: a
@@ -329,7 +330,7 @@ export async function notifyTimeOffSubmitted({ request, actor, config, integrati
     // still writes it, because a notification is a row (D51).
     await mintNotifications(contract,
       manager.map(recipient => timeOffSubmittedNotification(request, recipient)));
-    deliveryPaused = manager.length > 0 && config?.deliveryReleased !== true;
+    deliveryPaused = manager.length > 0 && !workforceNoticeDeliverable(config);
     if (manager.length > 0 && !deliveryPaused) {
       const message = timeOffSubmittedMessage(request);
       email = await deliverNotices({
@@ -402,7 +403,7 @@ export async function notifyTimeOffReviewed({ request, config, integration, cont
       ? [request.employee_email]
       : [];
     await mintNotifications(contract, to.map(() => timeOffReviewedNotification(request)));
-    deliveryPaused = to.length > 0 && config?.deliveryReleased !== true;
+    deliveryPaused = to.length > 0 && !workforceNoticeDeliverable(config);
     if (to.length > 0 && !deliveryPaused) {
       const message = timeOffReviewedMessage(request);
       email = await deliverNotices({
@@ -501,7 +502,7 @@ export async function notifyCredentialReviewed({ credential, actor, config, inte
     const to = typeof credential?.user_id === 'string' && credential.user_id.trim() !== ''
       ? [credential.user_id]
       : [];
-    deliveryPaused = to.length > 0 && config?.deliveryReleased !== true;
+    deliveryPaused = to.length > 0 && !workforceNoticeDeliverable(config);
     if (to.length > 0 && !deliveryPaused) {
       const message = credentialReviewedMessage(credential, actor?.userEmail);
       email = await deliverNotices({
@@ -576,7 +577,7 @@ export async function notifyCredentialRenewal({ credential, params, config, inte
       && params.renews_credential_id !== params?.credential_id;
     if (!renews) return { email, delivery_paused: deliveryPaused };
     const admins = await agencyAdminRecipients(contract, null);
-    deliveryPaused = admins.length > 0 && config?.deliveryReleased !== true;
+    deliveryPaused = admins.length > 0 && !workforceNoticeDeliverable(config);
     if (admins.length > 0 && !deliveryPaused) {
       const message = credentialRenewalMessage(credential);
       email = await deliverNotices({
@@ -674,7 +675,7 @@ export async function notifyTimeOffCancelled({
       && manager.toLowerCase() !== canceller.toLowerCase();
     if (!eligible) return { email, delivery_paused: deliveryPaused };
     await mintNotifications(contract, [timeOffCancelledNotification(request)]);
-    deliveryPaused = config?.deliveryReleased !== true;
+    deliveryPaused = !workforceNoticeDeliverable(config);
     if (!deliveryPaused) {
       const message = timeOffCancelledMessage(request);
       email = await deliverNotices({
