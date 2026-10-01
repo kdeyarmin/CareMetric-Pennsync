@@ -43,6 +43,13 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // than these. Inert is not spent: rewrite the list for the next collection,
 // and do not delete it because it has become a subset — that reading is the
 // plausible wrong move and this paragraph is the whole defence against it.
+//
+// **This paragraph governs THIS list only.** `BASE_NUMBERS` below is typed too
+// and runs on a different clock: the collection list goes inert when this
+// collection merges, the base list goes stale when `main`'s own copy of the
+// document changes, and a reader who carries "inert, not wrong" across to it
+// gets the wrong answer. A base that has moved is wrong rather than inert, and
+// the corroboration test is what says so.
 export const EXPECTED_NEW = Object.freeze([
   181, 182, 183, 185, 186, 189, 190, 191, 192, 193, 194, 195, 197, 198, 199,
   201, 202, 203, 204, 205, 206, 207, 208, 210, 211, 212, 213, 215, 217, 218,
@@ -64,14 +71,40 @@ export const EXPECTED_NEW = Object.freeze([
 // So the base is data here and git is corroboration. Typed as a RANGE minus
 // the absent numbers because 168 of them in a row is unreadable, and the
 // subtraction is over this typed list rather than over the document, so it is
-// not the tautology this check replaced. Both numbers below are checked against
-// each other at load: 179 - 11 = 168.
+// not the tautology this check replaced.
+//
+// The two numbers are checked against each other below, and an earlier version
+// of this comment SAID they were while nothing did it — a comment naming a check
+// that is not there, in the file whose write-up is about reading a setting for
+// something it does not say. Main-watch found it by looking for the assertion.
+// So what the check catches is stated rather than implied: `179 - 11 = 168`
+// holds automatically unless an absent number is outside `1..179` or repeated,
+// and those are the two typos that would silently shrink the base.
 const BASE_HIGHEST = 179;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177]);
+for (const absent of BASE_ABSENT) {
+  if (!Number.isInteger(absent) || absent < 1 || absent > BASE_HIGHEST) {
+    throw new Error(`BASE_ABSENT holds ${absent}, which is outside 1..${BASE_HIGHEST}, `
+      + 'so it removes nothing and the base is one number larger than it reads');
+  }
+}
+if (new Set(BASE_ABSENT).size !== BASE_ABSENT.length) {
+  throw new Error('BASE_ABSENT repeats a number, so the base is larger than it reads');
+}
 export const BASE_NUMBERS = Object.freeze(
   Array.from({ length: BASE_HIGHEST }, (unused, index) => index + 1)
     .filter(n => !BASE_ABSENT.includes(n)),
 );
+if (BASE_NUMBERS.length !== BASE_HIGHEST - BASE_ABSENT.length) {
+  throw new Error(`BASE_NUMBERS is ${BASE_NUMBERS.length} and ${BASE_HIGHEST} - `
+    + `${BASE_ABSENT.length} is ${BASE_HIGHEST - BASE_ABSENT.length}`);
+}
+
+// There is deliberately NO check that EXPECTED_NEW and BASE_NUMBERS are
+// disjoint, and the absence is the point: once a collection merges, the base
+// holds those numbers too and the overlap is total. That is the inert state the
+// paragraph above describes, and a disjointness check would turn it into a
+// failure on the one event the design expects.
 
 // What the document must hold on this branch: the base plus what the
 // collection adds. This is the whole assertion, and it needs no git, so it

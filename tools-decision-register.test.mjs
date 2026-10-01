@@ -18,8 +18,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 import {
   DOCUMENT_PATH, EXPECTED_NEW, EXPECTED_DOCUMENT, BASE_NUMBERS as REAL_BASE_NUMBERS,
   compareHeadingSets, headingNumbers,
@@ -152,4 +155,59 @@ test('the typed base still describes the real base, where the base can be read',
   assert.notDeepEqual(compareHeadingSets('', baseText, EXPECTED_DOCUMENT).problems, [],
     'the membership comparison passes on the BASE document too, so it is not '
     + 'distinguishing this collection from its absence');
+});
+
+// The module's own load-time guards, proved to bite. They exist because the
+// comment above them claimed a check that was not there, and main-watch found
+// it by looking for the assertion rather than by reading the sentence. A check
+// believed because it is written down is this file's whole subject, so the
+// guards get the same treatment as the predicate: sabotage, and watch it refuse.
+//
+// The arithmetic `179 - 11 = 168` cannot fail on its own — the base is DERIVED
+// as the range minus the absent list — so what the guards catch is the two
+// typos that would make the derivation quietly produce a larger base than the
+// list reads: an absent number outside the range, which removes nothing, and a
+// repeat, which removes one number twice.
+test('the base refuses the two typos that would silently enlarge it', async () => {
+  const source = readFileSync(new URL('./tools-decision-register.mjs', import.meta.url), 'utf8');
+  const dir = mkdtempSync(join(tmpdir(), 'register-guard-'));
+  const load = (name, text) => {
+    const file = join(dir, `${name}.mjs`);
+    writeFileSync(file, text);
+    return import(pathToFileURL(file).href);
+  };
+
+  // The control first. If the copy did not load on its own the two refusals
+  // below would be throwing for an unrelated reason and would read as a pass.
+  const control = await load('control', source);
+  assert.deepEqual([...control.BASE_NUMBERS], [...REAL_BASE_NUMBERS],
+    'the unmutated copy does not load to the same base, so a refusal below proves nothing');
+
+  const CASES = [
+    ['outside-the-range', '177]', '277]', /outside 1\.\.179/],
+    ['repeated', ', 177]', ', 175]', /repeats a number/],
+  ];
+  for (const [name, from, to, message] of CASES) {
+    assert.equal(source.split(from).length - 1, 1,
+      `the anchor ${from} is not unique in the module, so this sabotage may land elsewhere`);
+    const mutated = source.replace(from, to);
+    assert.notEqual(mutated, source, `the sabotage ${name} did not apply`);
+    await assert.rejects(() => load(name, mutated), message, name);
+  }
+});
+
+// The figures prose quotes, pinned where moving a list surfaces them. Measured
+// rather than assumed: the write-up in the register carries 168 and
+// thirty-five, and #359's description carries 203 eight times, 168 five times
+// and thirty-five twice. Nothing re-derives a figure in prose, so without this
+// a number added to either list leaves two documents quietly wrong with every
+// test green — which is the defect this whole change is about, one level out.
+//
+// Not a tautology: the lists are typed and these are typed separately, so they
+// disagree the moment one of them moves. When this fails, the lists are right
+// and the prose is what needs the edit.
+test('the figures quoted in prose are the figures the lists hold', () => {
+  assert.equal(REAL_BASE_NUMBERS.length, 168, "the base figure is quoted in the register's own write-up");
+  assert.equal(EXPECTED_NEW.length, 35, "the collection figure is quoted in the write-up and in #359's description");
+  assert.equal(EXPECTED_DOCUMENT.length, 203, "the document figure is quoted throughout #359's description");
 });
