@@ -14412,6 +14412,20 @@ reader who acts on the paragraph beside it. That sentence is repaired here to
 state the property, which is what the same paragraph's closing clause already
 instructs: *state the property and let the diff carry the count.*
 
+**It is a different species from the other findings this collection carries, and
+the contrast is the reusable part.** The others are instruments answering a
+narrower question than the one asked: a failure array truncated to ten of 632, a
+`head` bound the reader chose and then reported as the population, a differential
+standing down in a branch that cannot fail. In all of those the reading is true
+about a population nobody picked and looks exactly like a complete one. This is
+the inverse. No instrument was involved and no population was narrowed — a claim
+was made about a sentence and nobody opened the sentence. What protected it was
+that the pair read as self-consistent: a rule, and immediately before it an
+example of obeying the rule, which was the violation. **So the check here is not
+a better instrument. It is reading the referent**, and it costs nothing but the
+thought that a claim about a neighbouring sentence is a claim one can go and
+check.
+
 **The ordinal half is why the history needs this document rather than better
 prose.** That write-up is built on deictics that were exact in the pass they were
 written in — "this collection", "this entry's own subject arriving inside it",
