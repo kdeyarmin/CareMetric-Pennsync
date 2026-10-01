@@ -18,12 +18,34 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
  * happened to read both would pass against a merged fixture and still invert in
  * the browser, since the owned projection omits the raw column entirely.
  */
+/**
+ * The owned projection, typed with the raw column as an ABSENT optional.
+ *
+ * `checkJs` runs over this file, and the annotation is doing real work: it is
+ * what makes `row.personal_cell_e164` a readable expression whose value is
+ * `undefined`, which is the thing the inversion case below has to observe. Drop
+ * the annotation and `typecheck:utils` refuses the read outright — a static
+ * proof of the same absence, but one that would have taken the runtime case with
+ * it.
+ *
+ * @param {Record<string, unknown>} [over]
+ * @returns {{ email: string, has_personal_cell: boolean|null,
+ *   personal_cell_masked: string|null, personal_cell_e164?: string }}
+ */
 const owned = (over = {}) => ({
   email: "nurse@example.invalid",
   has_personal_cell: true,
   personal_cell_masked: "(•••) •••-0199",
   ...over,
 });
+
+/**
+ * The Base44 entity row: the raw column and neither replacement key.
+ *
+ * @param {Record<string, unknown>} [over]
+ * @returns {{ email: string, personal_cell_e164: string,
+ *   has_personal_cell?: boolean, personal_cell_masked?: string }}
+ */
 const base44 = (over = {}) => ({ email: "nurse@example.invalid", personal_cell_e164: "+15555550199", ...over });
 
 test("hasPersonalCell reads the owned roster's boolean", () => {
