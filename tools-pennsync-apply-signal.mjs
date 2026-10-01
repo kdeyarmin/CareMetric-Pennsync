@@ -59,7 +59,11 @@
  * do". On a push to `main` the same comparison against the previous commit is
  * "what did merging just do". The tool takes a ref and refuses one it cannot
  * read rather than defaulting to a name that may not exist in a shallow
- * checkout.
+ * checkout. Both of those bases are ANCESTORS of the head by construction, and
+ * the tool checks it rather than assuming it, because the failure when it does
+ * not hold is not a quiet one: the head's missing commits read as withdrawn
+ * migrations and raise the loudest alarm here. That check is in `measure`, with
+ * the reason beside it.
  */
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -179,6 +183,50 @@ export function measure({ base, repository = here }) {
   const unpinnedAtBase = migrationNamesAt(base, repository).filter(key => !(key in basePin));
   if (unpinnedAtBase.length) {
     refuse('APPLY_SIGNAL_BASE_PIN_INCOMPLETE', { ref: base, files: unpinnedAtBase });
+  }
+
+  // The base must be an ANCESTOR of the head, and the header above says why it
+  // always is when the caller is the one this tool was written for: a
+  // `pull_request` merge commit's first parent, or the previous commit on a push
+  // to main. A base the head does not descend from breaks that premise, and the
+  // consequence is not a smaller count but the loudest alarm the tool has —
+  // every migration the base has and the head lacks lands in `withdrawing`, so a
+  // branch that is merely BEHIND its base is told that deployments will refuse
+  // further migration with MIGRATE_LEDGER_UNKNOWN. That reads as a withdrawal
+  // somebody performed, the documented response to it is serious, and nothing in
+  // the output distinguishes it from the real thing. So it refuses, and says
+  // which direction the misfire hid.
+  const ancestry = git(['merge-base', '--is-ancestor', base, 'HEAD'], repository);
+  if (typeof ancestry !== 'string') {
+    // 1 is git's answer to the question; anything else means it could not answer
+    // it. Read from `status` rather than from stderr text, and never fall
+    // through — a check that silently stands down when it cannot run restores
+    // the defect exactly where it is hardest to notice.
+    if (ancestry.failed.status !== 1) {
+      refuse('APPLY_SIGNAL_ANCESTRY_UNREADABLE', {
+        ref: base,
+        status: ancestry.failed.status ?? null,
+        message: ancestry.failed.message,
+      });
+    }
+    // The refusal carries the comparison rather than discarding it, because
+    // "not an ancestor" is several situations at once and this tool cannot
+    // tell them apart: a branch behind its base, a branch that diverged, and a
+    // ref that was genuinely this branch's previous tip before a forced
+    // update. Only the last makes `behind` a WITHDRAWAL, and nothing available
+    // here establishes which one you have — a push payload's `forced` says the
+    // ancestry premise broke, not that `before` still describes this history.
+    // So it names both readings and refuses, which is louder than the exit-0
+    // annotation it replaces and asserts neither as fact.
+    refuse('APPLY_SIGNAL_BASE_NOT_ANCESTOR', {
+      ref: base,
+      behind: Object.keys(basePin).filter(key => !(key in pin)).sort(),
+      reading: 'These are pinned at the base and absent from the head. If this ref really was '
+        + 'a previous tip of this branch, they are withdrawn and every deployment that applied '
+        + 'one refuses further migration with MIGRATE_LEDGER_UNKNOWN. If it is another line of '
+        + 'history, they are merely commits this head does not carry. Establish which before '
+        + 'acting; nothing in this comparison decides it.',
+    });
   }
 
   return Object.freeze({ base, ...applySignal({ base: basePin, head: pin }) });
