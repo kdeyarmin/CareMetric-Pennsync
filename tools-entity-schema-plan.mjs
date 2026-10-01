@@ -1304,7 +1304,7 @@ export function renderDdl(repository) {
  * not a `SUPERUSER` or `BYPASSRLS` role, which bypasses RLS however it is
  * declared. The authority store's migrations require exactly such an
  * administrator (`PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED`), so leaving
- * these tables owned by the migration role would leave all 589 policies
+ * these tables owned by the migration role would leave all 590 policies
  * decorative: anything running as that role reads every agency's rows.
  *
  * So the migration creates a role with neither attribute, and the tables are

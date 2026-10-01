@@ -556,12 +556,24 @@ test('every contract key is caught by name in the contract that names it', () =>
 });
 
 test('an entity whose schema calls the ROW immutable gets no update or delete policy', () => {
-  // Twelve entity descriptions mention immutability and four of them say it
-  // about the ROW. The other eight say it about a field inside a row that is
-  // otherwise versioned — `AgencyMembership` binds "an immutable Base44 User
-  // id" and then transitions through a whole lifecycle — so a regular
-  // expression cannot tell them apart and all twelve are enumerated.
+  // Twelve entity descriptions mention immutability. SEVEN say it about the
+  // ROW and FIVE say it about a field inside a row that is otherwise versioned
+  // — `AgencyMembership` binds "an immutable Base44 User id" and then
+  // transitions through a whole lifecycle — so a regular expression cannot
+  // tell them apart and all twelve are enumerated.
+  //
+  // **This comment said "four" and "eight", and the assertion three lines
+  // below it has enumerated seven the whole time.** Four is the count of
+  // CARRIED append-only tables, asserted at the end of this test; seven is the
+  // count of row-kind CLAIMS, three of whose entities have no table. Merging
+  // the two populations is what produced the eight, and the wrong number was
+  // copied into AGENTS.md from here. So the split is now asserted rather than
+  // described, because a count in prose beside a passing assertion is exactly
+  // what nothing measures.
   const rows = declaredImmutability(repository);
+  const byKind = Object.values(DECLARED_IMMUTABLE).reduce(
+    (counts, claim) => ({ ...counts, [claim.kind]: (counts[claim.kind] ?? 0) + 1 }), {});
+  assert.deepEqual(byKind, { row: 7, field: 5 });
   assert.deepEqual([...rows].sort(), ['ContentScopeBinding', 'DocumentTenantBinding',
     'FleetServiceReview', 'PatientNoteHistoryEntry', 'SignatureArtifactBinding',
     'SignatureAuditEvent', 'SmsConsent']);
@@ -619,4 +631,24 @@ test('the append-only policies are an absence, not a predicate that says no', ()
   assert.equal(two.filter(line => line.startsWith('create policy')).length, 2);
   assert.match(two.at(-1), /^-- probe: append-only by its own schema/);
   for (const line of two) assert.equal(/for (update|delete)/.test(line), false);
+});
+
+test('the committed migration carries one policy per name, and the count is pinned', () => {
+  // The figure three documents quote — AGENTS.md, this generator's own
+  // `RECORD_OWNER` docstring and D14 — is the number of policies a
+  // non-bypass owner has to obey, and nothing measured it. It was 589 in all
+  // three and the migration has 590; the docstring next to the role that
+  // makes the number matter was one of the three. So pin it here rather than
+  // describing it, which is what leaves a count free to drift.
+  //
+  // Read from the committed SQL rather than from the plan on purpose: the
+  // plan carries no policy total, and what the claim is ABOUT is what a
+  // caller's role meets in the store, which is the emitted file.
+  const sql = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8')
+    .split('\n').filter(line => !line.trimStart().startsWith('--')).join('\n');
+  const names = [...sql.matchAll(/create policy "([^"]+)"/g)].map(match => match[1]);
+  assert.equal(names.length, 590);
+  // A duplicate name would apply twice and read as one policy in any count
+  // taken by eye, so the distinctness is the half a grep cannot give you.
+  assert.equal(new Set(names).size, names.length);
 });
