@@ -35,7 +35,11 @@ function fixture(overrides = {}) {
     requests: [], user: {
       id: AUTH_USER_ID, email: EMAIL, role: 'authenticated', is_anonymous: false,
       email_confirmed_at: '2026-10-01T00:00:00Z',
-    }, context: null, apiResponse: null, ...overrides,
+    }, context: null, apiResponse: null,
+    // Link tokens this fixture will honour, and the passwords it was asked to
+    // write. Both are the fixture's own strings: nothing real is involved.
+    links: new Set(['invite:invitetoken-aaaaaa', 'recovery:recoverytoken-bbbbbb']),
+    passwords: [], password: PASSWORD, consumeLinks: true, refuseLogout: false, ...overrides,
   };
   let next = 0;
   const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -61,15 +65,37 @@ function fixture(overrides = {}) {
     }
     if (!url.startsWith(`${PROJECT_URL}/`)) throw new Error('FIXTURE_FOREIGN_DESTINATION');
     const body = options.body ? JSON.parse(options.body) : {};
+    if (url.endsWith('/verify')) {
+      // A fake transport, and deliberately a STRICT one: the exchange has to name
+      // this address, one of the two link kinds, and a token this fixture minted.
+      // No real address and no real link is used anywhere, and nothing here sends.
+      if (body.email !== EMAIL || !['invite', 'recovery'].includes(body.type)
+        || !state.links.has(`${body.type}:${body.token}`)) return json({}, 401);
+      if (state.consumeLinks) state.links.delete(`${body.type}:${body.token}`);
+      const bearer = `production.link${++next}.token`;
+      live.set(bearer, true);
+      return json({ user: state.user, access_token: bearer, token_type: 'bearer' });
+    }
     if (url.endsWith('/token?grant_type=password')) {
-      if (body.email !== EMAIL || body.password !== PASSWORD) return json({}, 401);
+      // The CURRENT password, so a grant after a link write has to use what the
+      // write set rather than what the fixture started with.
+      if (body.email !== EMAIL || body.password !== state.password) return json({}, 401);
       const bearer = `production.session${++next}.token`;
       live.set(bearer, true);
       return json({ user: state.user, access_token: bearer, token_type: 'bearer' });
     }
     const bearer = options.headers.Authorization?.slice(7);
     if (!live.has(bearer)) return json({}, 401);
-    if (url.endsWith('/logout?scope=local')) { live.delete(bearer); return new Response(null, { status: 204 }); }
+    if (url.endsWith('/logout?scope=local')) {
+      if (state.refuseLogout) return json({}, 500);
+      live.delete(bearer); return new Response(null, { status: 204 });
+    }
+    if (url.endsWith('/user') && options.method === 'PUT') {
+      if (typeof body.password !== 'string' || body.password.length < 12) return json({}, 422);
+      state.passwords.push(body.password);
+      state.password = body.password;
+      return json(state.user);
+    }
     if (url.endsWith('/user')) return json(state.user);
     if (url.endsWith('/pennsync_staging_context')) {
       return json(state.context ?? context(body.p_agency_id));
@@ -230,5 +256,91 @@ test('only the two authority methods are reachable, and a ported handler still n
 test('a short credential never reaches the project', async () => {
   const state = fixture();
   await assert.rejects(client(state).signIn('short'), { code: 'INVALID_PRODUCTION_CREDENTIAL' });
+  assert.deepEqual(state.requests, []);
+});
+
+test('a link sets the password and never becomes a session', async () => {
+  const state = fixture();
+  const api = client(state);
+  const identity = await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(identity, { id: AUTH_USER_ID, email: EMAIL, provider: 'supabase', app_id: APP_ID });
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // The write is a PUT on the user, not a second grant, and the exchange named
+  // this address. Both are asserted from the requests the transport actually saw.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user', 'POST /auth/v1/logout?scope=local',
+  ]);
+  // THE PROPERTY THIS METHOD EXISTS FOR: the grant that came out of a mailbox was
+  // revoked, and no RPC can be made on it. A caller signs in afterwards with the
+  // password it just set, which is the only path that produces a session.
+  await assert.rejects(api.rpc('context', { p_agency_id: 'agency-real' }), { code: 'AUTHENTICATION_REQUIRED' });
+  await assert.doesNotReject(api.signIn('a-new-long-password').then(() => api.rpc('context', { p_agency_id: 'agency-real' })));
+});
+
+test('a recovery link works the same way, and a consumed link cannot be replayed', async () => {
+  const state = fixture();
+  const api = client(state);
+  await api.setPasswordFromLink('recovery', 'recoverytoken-bbbbbb', 'another-long-password');
+  assert.deepEqual(state.passwords, ['another-long-password']);
+  // The fixture consumes the token, as GoTrue does, so the second attempt is the
+  // real replay case rather than a simulated one.
+  await assert.rejects(api.setPasswordFromLink('recovery', 'recoverytoken-bbbbbb', 'third-long-password'),
+    { code: 'AUTHENTICATION_FAILED' });
+  assert.deepEqual(state.passwords, ['another-long-password']);
+});
+
+test('a link this client will not exchange never leaves the browser', async () => {
+  const state = fixture();
+  const api = client(state);
+  for (const [label, args] of [
+    // The absent GoTrue types, each of which would be a way to get a session
+    // with no password, or to move the address the target is built around.
+    ['a magic link', ['magiclink', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['a signup link', ['signup', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['an email change', ['email_change', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['no type at all', [undefined, 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['a token with a space', ['invite', 'invite token', 'a-new-long-password']],
+    ['a token carrying a path', ['invite', '../../etc/passwd', 'a-new-long-password']],
+    ['a token too short to be one', ['invite', 'abc', 'a-new-long-password']],
+    ['a token over the bound', ['invite', 'a'.repeat(513), 'a-new-long-password']],
+    ['no token', ['invite', null, 'a-new-long-password']],
+  ]) {
+    await assert.rejects(api.setPasswordFromLink(...args), { code: 'INVALID_PRODUCTION_LINK' }, label);
+  }
+  // The same bounds as a sign-in, and the same code: this is the same credential
+  // being written rather than a second kind of secret.
+  for (const password of ['short', '', null, 'a'.repeat(513)]) {
+    await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', password),
+      { code: 'INVALID_PRODUCTION_CREDENTIAL' });
+  }
+  assert.deepEqual(state.requests, []);
+  assert.deepEqual(state.passwords, []);
+});
+
+test('a link session whose revocation fails is reported rather than left quiet', async () => {
+  const state = fixture({ refuseLogout: true });
+  const api = client(state);
+  // A cleanup failure on the success path means a session minted from a mailbox
+  // is still live, so it is raised rather than swallowed by the return -- and the
+  // password was still written, which is why the code says cleanup and not write.
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHORITY_SESSION_CLEANUP_FAILED' });
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+});
+
+test('a staging client has no link exchange at all', async () => {
+  const { createStagingAuthorityClient } = await import('./client.mjs');
+  const state = fixture();
+  // The staging target's own reviewed values: a synthetic actor's address and one
+  // of the two approved reference/origin pairs. Nothing real appears here either.
+  const staging = createStagingAuthorityClient({
+    appId: STAGING_APP_ID, projectRef: 'local-pennsync-authority', projectUrl: 'http://127.0.0.1:54321',
+    publishableKey: 'sb_publishable_synthetic_test_key',
+    email: 'info+pennsync-admin-a@caremetricai.com', authUserId: '10000000-0000-4000-8000-000000000001',
+  }, { fetchImpl: state.fetch });
+  // Staging's four actors are fixed and their credentials are build
+  // configuration, so there is no invitation to accept and nothing to set.
+  await assert.rejects(staging.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'STAGING_OPERATION_UNAVAILABLE' });
   assert.deepEqual(state.requests, []);
 });

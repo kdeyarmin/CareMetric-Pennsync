@@ -576,6 +576,23 @@ export function createProductionAuthorityClient(input, options = {}) {
   return createAuthorityClient(validateProductionTarget(input), 'production', options);
 }
 
+/**
+ * The two email link kinds this client will exchange, and nothing else.
+ *
+ * `invite` is a new member accepting; `recovery` is an existing one who has
+ * forgotten their password. The other GoTrue types are deliberately absent:
+ * `magiclink` and `signup` would each be a way to obtain a session without a
+ * password, and `email_change` moves the address this client's target is built
+ * around.
+ */
+const LINK_TYPES = Object.freeze(new Set(['invite', 'recovery']));
+/**
+ * The shape of a link's token. Bounded and character-restricted because it is
+ * read out of a URL the caller arrived on, so it is the least trusted input this
+ * module takes.
+ */
+const LINK_TOKEN = /^[A-Za-z0-9_-]{6,512}$/;
+
 function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
   const staging = mode === 'staging';
   const targetCode = staging ? 'INVALID_STAGING_TARGET' : 'INVALID_PRODUCTION_TARGET';
@@ -711,6 +728,67 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
         if (candidate) await revokeKnown(candidate);
         throw error;
       }
+    },
+    /**
+     * Set this account's password from an invitation or a recovery link.
+     *
+     * PRODUCTION ONLY. Staging's four actors are fixed and their credentials are
+     * build configuration, so there is no invitation to accept there and nothing
+     * a caller could set.
+     *
+     * A LINK NEVER BECOMES A SESSION. The grant the exchange returns is used for
+     * exactly one request — the password write — and then revoked, and the epoch
+     * is bumped either way, so this method cannot leave a caller signed in and no
+     * RPC can be made on a token that came from a mailbox. The caller signs in
+     * afterwards with the password they just set, through `signIn` above, which is
+     * the only path that produces a working session. A link arriving twice
+     * therefore cannot be replayed into a session either.
+     *
+     * The identity checks are `signIn`'s: the grant has to be for this client's
+     * own address with a confirmed email, and the user the write answers with has
+     * to be the same one. Nothing here sends anything — the halves that send, a
+     * `/invite` and a `/recover`, are not in this client at all.
+     */
+    async setPasswordFromLink(type, linkToken, password) {
+      if (staging) fail('STAGING_OPERATION_UNAVAILABLE');
+      invalidate();
+      const lease = epoch;
+      let candidate = null;
+      try {
+        await revokeAllKnown(); current(lease);
+        if (!LINK_TYPES.has(type) || typeof linkToken !== 'string' || !LINK_TOKEN.test(linkToken)) {
+          fail('INVALID_PRODUCTION_LINK');
+        }
+        // The same bounds as a sign-in, and the same code, because this is the
+        // same credential being written rather than a second kind of secret.
+        if (typeof password !== 'string' || password.length < 12 || password.length > 512) {
+          fail('INVALID_PRODUCTION_CREDENTIAL');
+        }
+        const session = await request('/auth/v1/verify', {
+          lease, body: { type, token: linkToken, email: config.email },
+          receivedGrant: async (value, canceled) => {
+            if (validGrant(value)) {
+              candidate = value.access_token;
+              if (!knownSessions.has(candidate)) knownSessions.set(candidate, { revoking: null });
+              if (canceled) await revokeKnown(candidate);
+            }
+          } });
+        if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        authUserId = session.user.id;
+        const updated = await request('/auth/v1/user', { lease, bearer: session.access_token, method: 'PUT', body: { password } });
+        if (!sameUser(updated)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        const identity = Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
+        // Not in the `finally`: a cleanup failure on the success path means a
+        // live session minted from a mailbox is still out there, which the caller
+        // has to hear about rather than have swallowed by a return.
+        await revokeKnown(candidate);
+        return identity;
+      } catch (error) {
+        if (candidate) await revokeKnown(candidate).catch(() => {});
+        throw error;
+      } finally { invalidate(); }
     },
     async rpc(method, input = {}) {
       const params = staging

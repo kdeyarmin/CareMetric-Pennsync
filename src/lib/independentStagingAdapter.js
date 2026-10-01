@@ -272,6 +272,18 @@ export function createIndependentStagingAdapter(config,
 
   const auth = Object.freeze({
     hasSession: () => signedIn,
+    /**
+     * Refused here, by name.
+     *
+     * Staging's four actors are fixed and their credentials are build
+     * configuration, so there is no invitation to accept and no password a caller
+     * could set. The name exists so a screen can ask the owned backend for it
+     * rather than branching on which mode it is in.
+     */
+    // `async` so the refusal is a REJECTION like every other method here: a
+    // caller that awaits one and a caller that attaches a handler must not get
+    // different shapes from the same name.
+    setPasswordFromLink: async () => fail(UNAVAILABLE),
     async signIn(email, password, signal) {
       const lease = ++generation; signedIn = false;
       client = null;

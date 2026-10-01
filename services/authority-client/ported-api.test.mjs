@@ -222,8 +222,14 @@ test('a ported handler gets longer than an authority RPC, because it is not one'
 test('the capability exposes no token and adds no new surface', async () => {
   const { client } = harness();
   await client.signIn(password);
+  // `setPasswordFromLink` is on the surface and is NOT a staging capability: it
+  // is one name that refuses here by name rather than a method a staging caller
+  // finds missing, which would be a TypeError instead of a code. Asserted right
+  // below, so this list growing by a name that does nothing cannot pass.
   assert.deepEqual(Object.keys(client).sort(),
-    ['callFunction', 'invalidate', 'rpc', 'signIn', 'signOut']);
+    ['callFunction', 'invalidate', 'rpc', 'setPasswordFromLink', 'signIn', 'signOut']);
+  await assert.rejects(() => client.setPasswordFromLink('invite', 'invitetoken-aaaaaa',
+    'a-new-long-password'), { code: 'STAGING_OPERATION_UNAVAILABLE' });
   assert.ok(!JSON.stringify(Object.getOwnPropertyDescriptors(client)).includes('synthetic.access.token'));
   assert.ok(Object.isFrozen(client));
 });

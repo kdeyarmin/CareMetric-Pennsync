@@ -174,4 +174,45 @@ describe('the production backend mode', () => {
     expect(adapter.auth.hasSession()).toBe(false);
     expect(fixture.live.size).toBe(0);
   });
+  it('a link sets a password and leaves this adapter signed out', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture);
+    const identity = await adapter.auth.setPasswordFromLink(
+      productionEmail, 'invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+    expect(identity.email).toBe(productionEmail);
+    expect(fixture.passwords).toEqual(['a-new-long-password']);
+    // A LINK NEVER BECOMES A SESSION. The client revokes the grant the link
+    // bought and this adapter deliberately does not bind it, so nothing is live
+    // and no authority call can be made until somebody signs in.
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(fixture.live.size).toBe(0);
+    await expect(adapter.authority.me()).rejects.toMatchObject({ code: 'AUTHENTICATION_REQUIRED' });
+    // And the password that was set is the one that now signs in.
+    await adapter.auth.signIn(productionEmail, 'a-new-long-password');
+    expect(adapter.auth.hasSession()).toBe(true);
+  });
+
+  it('a spent link cannot be replayed, and a failed one leaves nothing live', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture);
+    await adapter.auth.setPasswordFromLink(productionEmail, 'recovery', 'recoverytoken-bbbbbb', 'another-long-password');
+    // The fixture consumes the token as the real exchange does, so this is the
+    // replay case rather than a simulated one.
+    await expect(adapter.auth.setPasswordFromLink(
+      productionEmail, 'recovery', 'recoverytoken-bbbbbb', 'a-third-long-password'))
+      .rejects.toMatchObject({ code: 'AUTHENTICATION_FAILED' });
+    expect(fixture.passwords).toEqual(['another-long-password']);
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(fixture.live.size).toBe(0);
+  });
+
+  it('a link kind this app does not exchange never leaves the browser', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture);
+    for (const type of ['magiclink', 'signup', 'email_change']) {
+      await expect(adapter.auth.setPasswordFromLink(productionEmail, type, 'invitetoken-aaaaaa', 'a-new-long-password'))
+        .rejects.toMatchObject({ code: 'INVALID_PRODUCTION_LINK' });
+    }
+    expect(fixture.requests).toEqual([]);
+  });
 });

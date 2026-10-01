@@ -236,6 +236,31 @@ export function createIndependentProductionAdapter(config,
         throw error;
       } finally { signal?.removeEventListener('abort', cancel); }
     },
+    /**
+     * Set a staff account's password from an invitation or recovery link.
+     *
+     * The address is TYPED by the person rather than read out of the link, so a
+     * link carries no identity and nothing has to put an address in a URL. The
+     * client is constructed with it here, exactly as `signIn` does.
+     *
+     * It deliberately leaves this adapter SIGNED OUT, and `client` null, on
+     * success as well as on failure: the underlying method revokes the grant a
+     * link bought, and binding it here would undo the one property that method
+     * exists for — a link never becomes a session. The caller signs in
+     * afterwards with the password they just set.
+     */
+    async setPasswordFromLink(email, type, linkToken, password) {
+      const lease = ++generation; signedIn = false;
+      client = null;
+      await Promise.all([...clients.values()].map(value => value.signOut()));
+      current(lease);
+      const normalized = String(email ?? '').trim().toLowerCase();
+      const next = clients.get(normalized)
+        ?? createProductionAuthorityClient({ ...config.target, email: normalized }, { fetchImpl });
+      clients.set(normalized, next);
+      try { return await next.setPasswordFromLink(type, linkToken, password); }
+      finally { signedIn = false; client = null; }
+    },
     signOut,
   });
   const unavailable = () => fail(UNAVAILABLE);
