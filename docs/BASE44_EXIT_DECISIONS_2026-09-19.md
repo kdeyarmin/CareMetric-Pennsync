@@ -191,19 +191,47 @@ tonight. It is also the argument for the hardening rather than against it: the
 original skipped on a missing base, so under that version CI would have gone
 green with the only real-document assertion silently not running.
 
-**The repair removes the dependency instead of hardening it.** The base's 168
-numbers are typed beside the collection's thirty-five — as a range minus a typed
-list of absent numbers, the subtraction being over that list rather than over
-the document, so it is not the tautology above — and the membership assertion
-needs no git at all. Measured in a directory with no repository in it: the
+**The repair removes the dependency instead of hardening it.** The base's
+numbers are typed alongside the numbers the collection in hand adds — as a
+range minus a typed list of absent numbers, the subtraction being over that
+list rather than over the document, so it is not the tautology above — and the
+membership assertion needs no git at all. **Neither total is written here, and the reason is
+this entry's own rule.** This sentence carried the base's as `168` and it was
+wrong within the night: #359 merged, the base grew to 203, and the figure sat
+here describing a list it no longer described. Worse than stale, the word it
+carried was `beside`, and once a collection merges its numbers are INSIDE the
+base rather than next to it — so renumbering alone would have left 203 beside
+thirty-five, which a reader adds to 238. Read both off `BASE_NUMBERS` and
+`EXPECTED_NEW`; state the property and let the diff carry the count. Measured in a directory with no repository in it: the
 assertion runs, and dropping one heading from a copy of this document fails it
 with `HEADING_MISSING:D190`. The git read survives as CORROBORATION, checking
 that the typed base still describes the base document, and it skips when the ref
 is absent — which is safe in a way it was not before, because what a skip now
 costs is coverage of the typed list's freshness and not coverage of membership.
 The skip says exactly that rather than leaving a reader to work it out. **And the
-corroboration carries the differential**: the same comparison must FAIL against
-the base document, or it is proving only that it ran.
+corroboration carries a differential**: the same comparison must FAIL against the
+base document, or it is proving only that it ran.
+
+**That differential stands down when the collection merges, and finding out cost
+one more correction in this same entry.** The collection list's paragraph promises
+it goes INERT rather than wrong — once a collection merges, the base holds its
+numbers and the membership check simply guards every entry instead of these. The
+promise does not reach the differential: inert means the base document satisfies
+the expected set, so a flat assertion that the comparison must fail turns the one
+event the design expects into a red. It now branches, reports which branch ran,
+and in the inert branch asserts the complement — that the base does satisfy the
+set — because a differential that silently stops differentiating is this write-up's
+subject in miniature. **The same promise did not reach the expected set's
+ARITHMETIC either, and that one was already wrong when it was read.** The set was
+built by concatenating the base with the collection, so with the overlap total it
+counted the merged numbers twice: a 203-heading document checked against a
+238-entry expectation. Membership was unharmed, because every consumer of it
+builds a `Set`; only the LENGTH was wrong, and only two assertions read the
+length. **The sentence above this one predicted that number** — it says a reader
+adds 203 and thirty-five to 238 — and it was written without anyone checking
+whether the code did the addition it was warning a reader against. It did.
+**Naming a hazard is not measuring for it**, and the gap between the two was one
+paragraph.
 
 **One page had to be corrected in the same change, and the reason generalises.**
 `AGENTS.md` described the test-wiring contract as covering `services/` alone and
@@ -226,7 +254,7 @@ the useful half, so the check was written rather than the sentence deleted, and
 it now states what it catches instead of implying it — that arithmetic cannot
 fail on its own, because the base is derived as the range minus the absent list
 and both sides move together, so what the guards catch is an absent number
-outside `1..179`, which removes nothing, or one repeated, which removes a number
+outside `1..224`, which removes nothing, or one repeated, which removes a number
 twice. **Cutting both guards out of the module fails exactly one test and leaves
 the other thirteen green**, which is why they were worth asserting: nothing else
 in the suite can see their absence.
@@ -3554,6 +3582,17 @@ here:
    bypasses anything, the sweep's writes are attributable to a visible and
    revocable member, and the contract needed is the one written here. It costs
    a maintenance identity per agency, in `identity_map` and `membership`.
+   **And that cost makes this decision the OWNER'S, which nothing above says.**
+   A maintenance identity per agency is a person who never held a Base44
+   account, and D6 as extended by D99 admits one only as `locally_verified`
+   with the path refused unless `PENNSYNC_ENROLL_NEW_STAFF` reads exactly
+   `enabled-v1` — his own unanswered question
+   (`docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md` D6 row;
+   `tools-pennsync-enroll.mjs:86`, refusal at `:34`). So the ownership follows
+   from shape 1's cost rather than from anything in this section, and a reader
+   who takes "a decision about identity" as an architecture question will
+   conclude it is unblocked and be wrong. **Do not start shape 1 work on that
+   reading.**
 2. **A `pennsync_private` definer with no caller.** Rejected on inspection: a
    definer does not escape forced RLS either, so it would need a bypass role,
    which is the one thing the record store's design forbids outright.
@@ -6088,6 +6127,40 @@ a table of regulatory citations is the behaviour you want.
 
 Port queue: 7 / **6** / 0 / 0 / 12 / 0 / 2 / 0 / 2 / 73.
 
+### Addendum to D83, 2026-10-01 — the cost is three pages, not one
+
+**Addendum to D83 — the cost is three pages, not one.** Contributed by the operational-table contracts thread, 2026-10-01, measured at `20d575c1` and equivalent on main at `677bd381`.
+
+D83's cost paragraph opens "What this costs, said plainly rather than left to be discovered" and then names one page of three. That is this project's house defect arriving inside the sentence written to prevent it, and it is the most instructive thing in the entry: the paragraph is accurate about what it names, and the discovery it was meant to foreclose happened anyway, two pages over, days later. It is recorded here as a finding and deliberately not tidied away. The original paragraph stands exactly as written.
+
+Three production pages lose a runtime write to a `global` reference table, not one. Measured per call site: of 453 entity call sites in production `src/`, fourteen cannot land in the owned store, and five of the fourteen are writes to the three `global` entities.
+
+`MedicareGuidelinesLibrary.jsx:110` — `MedicareGuideline.update(is_active:false)`, the "retire this guideline" control. One site. Named in the original paragraph, which also names its sibling "add a guideline by URL". Nothing to add.
+
+`MedicareRuleSeeder.jsx:35/48` — `MedicareComplianceRule` create and update. Two sites. **Nothing of substance is lost.** The control loads `DEFAULT_MEDICARE_RULES`, twelve rules committed at `src/components/compliance/defaultMedicareRules.js:30`, which is precisely the case D83 reasons about: content reviewed once, versioned with the schema, identical in every deployment. The content survives the move intact. What goes is the one-click load.
+
+`RegulatoryMonitor.jsx:346/354` — `ComplianceRule` create and update. Two sites. **This is a real loss and it was unrecorded.** An administrator can today turn a reviewed regulatory update into a live compliance rule from the browser — the gate on the control is `isAdminLike` (`src/lib/superAdmin.js:58`), Base44's built-in `role === 'admin'` rather than the stricter `isSuperAdmin` beside it, and the page it sits on is route-gated more narrowly still — behind an explicit "confirm rule changes" checkbox, with a traceable `rule_code` encoding the source update and the check name so an auditor can match the rule back to its origin. Under D83 they cannot. D83's reasoning covers the case rather than being contradicted by it — the content is a model's summary of a regulator's page, which is content preparation — so nothing is reopened here. It is a cost that belonged in the paragraph and was not in it.
+
+The distinction to carry: the first two pages lose a convenience, the third loses a capability. Doing less than Base44 does is neither the restoration case nor the doing-more case, and it is the one a user notices. It was also not dropped for being riskier. What decides whether these writes are permitted today is each entity's own permission block, and that is identical across all six: `create` and `update` to Base44's built-in `role === 'admin'`, with `delete` the same on the four that allow it and refused outright on `ComplianceRule` and `MedicareComplianceRule`. So the only thing separating the nine restored sites from these two is the tenant kind — `agency` for Announcement, FacilityDocumentationRule and RegulatoryUpdate, `global` for ComplianceRule, MedicareComplianceRule and MedicareGuideline — which is the kind D83 attaches to.
+
+And a note on why reading the entry could not have found this. The original cost paragraph is page-shaped — a page and its two controls — while the measurement that found the other two is call-site-shaped. Those six entities carry 31 call sites between them; every read and filter lands and only the writes do not, so a per-entity or per-page reading reports a table as served or unserved and loses which operations went with it. The unit is the call, not the table or the page.
+
+*Carried by the register's collector, 2026-10-01, from the operational-table contracts thread at `session_01Lv4CGaHHREnft6MAYfCQEU`, routed as prose because the write route for a decision entry is the collector's hand. **One structural departure, the collector's and nothing else**: the body arrived with no heading, so the `###` heading above is imposed at the level `### Addendum to D23, 2026-10-01` and `### Amendment to D7, 2026-09-30` already use, with the date in the house form. The author's own bold lead-in is kept beneath it rather than folded into the heading, so the body reads exactly as sent. **A second departure, added later and also the collector's**: the author's substituted aside ended "and nothing more", which the route-gate measurement two notes below makes false for this control, so that clause is replaced with "and the page it sits on is route-gated more narrowly still". Their reading of the component gate is untouched; what is removed is a claim of exhaustiveness their own later measurement withdrew. Recorded because the rest of their words are applied verbatim and this one is not. The cross-session transport indents every line by four spaces; that indentation is stripped and nothing else is touched.*
+
+*What the collector verified, which is the anchor and not the measurement: D83 is at line 6047, its cost paragraph does open "What this costs, said plainly rather than left to be discovered", and it names `MedicareGuidelinesLibrary.jsx` and its two controls and no other page — so the addendum's premise holds against the file at `677bd381`. No addendum or amendment to D83 existed before this one. **The collector took no part in the call-site measurement and makes no claim here about whether it is right**; the 453, the fourteen, the five, the 31 and the three file positions are that thread's, in that thread's words.*
+
+*Corrected before merge, 2026-10-01, at the author's own instruction, and the substitution above is the author's words applied verbatim.*
+
+*The sentence read "A protected administrator can today turn a reviewed regulatory update…", which the author withdrew on reading the gate: the phrase came off the product's own error strings and the module name `superAdmin.js` rather than off the function. **The general shape is worth more than the fix — an error message is not a permission**, which is D36's "a comment is not a permission" arriving through a different surface; it caught two threads in one evening on the same strings. The collector checked the anchors the substitution names and they hold: `isAdminLike` is three lines at `src/lib/superAdmin.js:58` (`user.role === "admin"`), the stricter `isSuperAdmin` sits at `:49` and this path does not call it, and `src/components/hub-tabs/RegulatoryCompliance.jsx:14` passes `isAdminLike(currentUser)` into `RegulatoryMonitor` at `:22`. One figure in the author's note is understated and is corrected here rather than carried: that error string is not two strings but **seven, across four files** in `src/` — and "five files" was this collector's own miscount of a list it had just enumerated correctly in the same sentence, which the author caught. The author then measured the three gates nobody had read: `OnCallSchedule.jsx:30`, `TemplateManagement.jsx:51` and `AdminUserSetup.jsx:40` each gate on `isAdminLike`, and `OnCallShift` and `DocumentTemplate` carry `create`, `update` and `delete` at `{"user_condition":{"role":"admin"}}`, so the misleading word sits over a sound and unforgeable gate rather than over an exposure — `role` is Base44's built-in and is protected from `updateMe`. One exception, found only because the note below had taught the collector to read the route table first: `AdminUserSetup` is `adminOnly: true`, so that page's effective gate is the narrower tenant-bound one and the "no exceptions" reading would have been one layer short for a third time.*
+
+***A second sentence arrived with this correction and is deliberately NOT filed, because the correction's own shape recurs one layer down.** It would have said that all six entities are gated on exactly that same built-in role today, leaving the tenant kind as the only thing separating the nine restored sites from these two. The collector checked that before filing it and it does not hold for `MedicareComplianceRule`: `MedicareRuleSeeder` is mounted at `src/pages/ComplianceCenter.jsx:671` behind `isAdminView(currentUser)` (`:144`), which is a different module — `src/lib/roles.js:223` over `getRoleView` at `:168` — and admits a built-in admin only once a trusted tenant context has bound one exact ACTIVE membership. So one of the six carries a tenant condition inside its own gate, which is the axis that sentence names as the only difference. The direction matters and is the reason nothing in the entry needs widening: `isAdminView` is NARROWER than `isAdminLike`, so the loss is not understated above. Returned to the author to re-derive, because it is their measurement and not the collector's to rewrite. `MedicareGuideline`'s own page was checked too and the author's reading holds there: `src/pages/MedicareGuidelinesLibrary.jsx` imports both helpers, and the write guard at `:86` and `:107` is `canManageGuidelines` from `isAdminLike` at `:76`, while `adminView` at `:73` only decides whether a cannot-do-this notice renders at `:302`.*
+
+*That last addition is the author's second attempt at a sentence the collector had returned, and it is filed because its claim was measured here directly: the six `rls` blocks in `base44/entities/` do carry `create` and `update` at `{"user_condition":{"role":"admin"}}` with no variation, `delete` the same on Announcement, FacilityDocumentationRule, RegulatoryUpdate and MedicareGuideline, and `delete: false` on the other two — the only asymmetry among the six being that `ComplianceRule` also gates its READ, where the other five read `true`. Their re-derivation found a second error their first check had not looked for, which is worth recording beside the first.*
+
+*What is NOT filed from it is its account of the SPA's own gates, and the reason is the fourth instance of the same shape in one evening — this time the collector's own.* The clause would have said that `src/pages/FacilityDocumentationRules.jsx` carries no gate at all, so the entity policy is the whole of it there, and that `MedicareRuleSeeder` is the lone narrower case. The page file really is eighteen lines with no gate in it, and its manager component reads `currentUser` only to stamp `created_by`. But `src/lib/nav.manifest.js:737` marks that page `adminOnly: true`, and `adminOnly` gates the ROUTE rather than the navigation link: `src/App.jsx:325` refuses it as `blockedAdmin` against `isAdmin` at `:313`, which is `getRoleView(user)` resolving to `super_admin` or `facility_admin` — the same tenant-bound predicate as `isAdminView`, and narrower than the built-in role. **So the effective gate is the outermost layer, and in this application that is the route table rather than anything visible in the page.** Measured: `ComplianceCenter` is `adminOnly: true` and hosts BOTH writes at `:671` and `:673`, so `RegulatoryMonitor`'s inner `isAdminLike` is not its effective gate either; `FacilityDocumentationRules` is `adminOnly: true`; and only `MedicareGuidelinesLibrary` and `NotificationSettings` are `adminOnly: false`, which is where a component's `isAdminLike` really is the whole of the SPA's answer. **The collector's own earlier check was one layer short in exactly that way** — it confirmed that `RegulatoryCompliance.jsx:14` reaches `RegulatoryMonitor` through `isAdminLike` and nothing else, which is true of the prop and false of the capability. Four of the six are therefore reached through a gate that additionally requires one bound ACTIVE membership, so **how many people lose the capability does not reduce to how many hold the built-in role**. That it is also unmeasured in the live app is the author's own note and stands: reading the production user rows is refused in the measuring session, and no way round that refusal was sought.*
+
+*No digest of this region is stored, and that is deliberate rather than an omission. D204's second re-anchor settled the reason: a stored digest travels stale with a region that moves, and it then reads exactly like one that was checked, while an extraction a later reader can re-run costs a second and cannot go stale. A reader wanting the author's own bytes should ask that thread rather than compare against a hash taken on this side of a transport that reshapes the text.*
+
 ## D84 — A capability is not blocked because one of its nine legs is leaving
 
 **Decision.** The seven capabilities `entity_not_carried` held are settled, and
@@ -6495,6 +6568,110 @@ moves a capability; it carries a policy that had already been decided to the
 store that was missing it. The store itself still needs the migration applied —
 one pending file, DDL only — and until it is, the hosted comparison stays red
 on the ledger count as well as the three objects.
+
+### Addendum to D88, 2026-10-01 — the discriminator is the pending set
+
+**Addendum to D88 — the discriminator is the pending set.** Contributed by the
+main-watch thread, 2026-10-01, from its own reading of `main`'s hosted-store
+failure at `700b4d24`.
+
+> A difference between the committed tree and a hosted store does not by itself
+> distinguish a file the ledger will skip forever from a file the ledger has not
+> yet run, and the remedies are opposite: the first needs a forward catch-up
+> written, the second needs nothing but an apply. The failure output cannot tell
+> them apart, because it reports the difference and not the file. D88 does not
+> say how to tell them apart. Its author did not need to: they had just written
+> the pending file, so for their own change the three differences and the pending
+> file were the same thing, and the closing paragraph says so. A reader arriving
+> at a red run weeks later has the opposite problem — the same output, no
+> knowledge of which files are pending, and two opposite remedies. **The
+> discriminator is the pending set: D88's signature is a difference whose file is
+> NOT pending.** If the file is pending, a catch-up is a duplicate of work already
+> in the tree. Checking costs one read-only command, and the cost of not checking
+> is concrete rather than abstract — two migrations with different names creating
+> the same object merge with no conflict, and the loser has to be deleted before
+> either lands. The worked example is `20260920590000_column_defaults.sql`, which
+> is itself a derived catch-up, is on `main`, and was in the pending set at
+> `700b4d24`: the five column-default differences printed in that run read exactly
+> like D88 standing alone, and the catch-up D88 would call for was the pending
+> file itself.
+
+*Carried by the register's collector, 2026-10-01, from the main-watch thread at
+`session_014Rj741CnDBeZPn16bE65LK`, routed as prose because the write route for a
+decision entry is the collector's hand. The author's words are quoted whole and
+unaltered; the `###` heading above and the block quotation are the collector's,
+imposed at the level `### Addendum to D83, 2026-10-01` already uses, and the
+cross-session transport's four-space indentation is stripped. **It takes no
+decision number, and that was ruled rather than assumed**: both threads declined
+to rule on it and put the question up, and the ruling is that D88's anchor is a
+hosted-store difference whose file is not pending, which will persist and
+therefore needs a forward catch-up — so a test for recognising that signature
+makes D88's own sentence true and sits inside it. A rule for recognising an
+existing decision's signature decides nothing that was open, and a number would
+make the discriminator read as a separate finding a reader could apply without
+D88, which is the opposite of what it is.*
+
+*The three vantage sentences in that paragraph were added at the author's
+request and are theirs, after this collector put a narrowing to them: D88's own
+closing paragraph already holds the distinction in a single instance, so an
+addendum implying the entry does not know it would be wrong about the entry.* The
+paragraph they refer to without quoting is D88's last, verbatim — "The store
+itself still needs the migration applied — one pending file, DDL only — and until
+it is, the hosted comparison stays red on the ledger count as well as the three
+objects." The collector's part was finding that sentence and asking whether the
+premise survived it; the author's answer is that the output property stands
+exactly as written, because it is a property of the output, and what needed
+repair was the implicature around it. **Their generalisation is the durable half
+and is theirs: an entry that is correct and unusable from the reader's seat is a
+different defect from an entry that is wrong.** That is also the argument for
+filing this inside D88 rather than beside it — the entry is not mistaken, it is
+written from a seat nobody occupies by the time the output is being read — and it
+is the sharper reading of a premise check that NARROWED rather than confirmed.*
+
+*One departure from the author's wording is RECORDED rather than made, on the
+convention that their words go in verbatim and the collector's disagreement goes
+here.* Their gloss "a difference whose file is NOT pending" invites a lookup that
+can answer wrongly, because the DDL behind a single difference can sit in BOTH an
+applied file and a pending one: `user_update` is at
+`20260919170000_record_store.sql:5955`, applied and edited, which is D88's own
+subject — AND at `20260920530000_profile_self_write.sql:81`, the pending forward
+catch-up that repairs it. A reader who finds the first concludes D88 and writes a
+second catch-up for work the pending file already does, which is the duplication
+the paragraph exists to prevent, reached through the paragraph. **The test is
+whether any PENDING migration accounts for the difference, never which file
+contains the DDL** — which is what their own phrase "the pending set" already
+says, so this sharpens the gloss rather than contradicting the sentence. The
+read-only command the paragraph leaves unnamed is
+`PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` with no
+`--apply`, which AGENTS.md names for exactly this question. A review bot raised
+both halves.*
+
+*What the collector verified at its own head, which is the anchor and not the
+measurement: lines 94 and 98 of that migration are, verbatim, `alter table
+"pennsync_records"."agency" alter column "billing_cycle" set default 'monthly';`
+and `… "auto_billing_enabled" set default true;`, matching the printed
+`committed "'monthly'::text"` and `committed "true"`; the file holds 425 `set
+default` statements; and `LOCAL_ONLY_MIGRATIONS` read off `tools-pennsync-migrate.mjs`
+is 1, so 91 pinned migrations less that one is the 90 the hosted suite itself
+reports against a ledger holding 74. The run's own totals, read from the
+assertion messages rather than from the printed array, are **632 differences** and
+`74 !== 90`.*
+
+*Two bounds the contributing thread corrected in its own material before handing
+the prose over, both kept here because each is a way a reader goes wrong.* **The
+printed sample cannot tell you how the rest are distributed, and it cannot even
+tell you how it was ordered.** Ten entries were printed of 632: a missing table,
+its four missing columns, then three and two column defaults. Ordering by
+qualified name, by finding kind and by dimension each predict exactly that
+sequence, so those ten do not discriminate between them — the first two tables
+appearing first is an artefact of some ordering and is not evidence that the
+differences cluster anywhere. That is the display-bound lesson one level up: the
+sample does not merely undercount, it cannot distinguish the hypotheses a reader
+would use it for. **And 425 bounds what one file contributes, not the remainder.**
+632 less the ten printed is 622 unprinted, and the printed ten already mix two
+pending files, so the remainder is an unknown mixture of at least those two and
+probably more of the sixteen. A reader who crosses 425 against 622 will believe
+they have accounted for most of the total and will not have.
 
 ## D89 — Distributing a policy version, and a key declared before its race shipped
 
@@ -12757,7 +12934,15 @@ Same instrument, same corpus, one hour apart, once too narrow and once too wide.
 
 Two properties from the first addendum repeated exactly, which is the reason I trust the diagnosis rather than merely accepting it. What caught it was a second instrument — another session counting the same sha with `^## D` and getting 195 — and not the declarative rule. And the size of the disagreement named the cause: 197 against 195 is a gap of two, and the document holds exactly two `### D` subheads. As with the sixteen-byte gap over eight em-dashes, the number did not merely say something was wrong; it said what.
 
-**The clause this adds is about the control.** I ran a positive control before reporting, and it agreed: both patterns return 168 on `main`. They agree there because `main` carries zero `### D` subheads, so the control was executed on the one ref where the two methods cannot differ. A control run where the discriminating case does not exist is not a weak control, it is not a control — it establishes that two instruments agree about a corpus that cannot separate them, and then that agreement is spent as though it were evidence about a corpus that can. D156 states the general form and got there first, on a catch-up forward that a suite building from nothing cannot see; this is the same mechanism on a document rather than a store, and it is worth having both populations under it.
+**The clause this adds is about the control.** I ran a positive control before reporting, and it agreed: both patterns returned 168 on `main` at that ref. They agreed there because `main` carried zero `### D` subheads, so the control was executed on the one ref where the two methods cannot differ. A control run where the discriminating case does not exist is not a weak control, it is not a control — it establishes that two instruments agree about a corpus that cannot separate them, and then that agreement is spent as though it were evidence about a corpus that can. D156 states the general form and got there first, on a catch-up forward that a suite building from nothing cannot see; this is the same mechanism on a document rather than a store, and it is worth having both populations under it.
+
+**The discriminating case has since arrived, so the control has now been run for real. Measured on `677bd381`, 2026-10-01.** `^## D[0-9]+\b` returns **203** and `^#+ D[0-9]+\b` returns **207**, a gap of **four**, against exactly four `### D` subheads present at that ref: D190 (line 12157), the D210 addendum (13035), D221 amendment 1 (13664) and D224 amendment 1 (14166). `^#### D[0-9]+\b` returns **0**, and that zero is a real one rather than a vacuous one — the depth genuinely does not occur, and unlike a literal probe over one's own transcript the document is not a corpus that records the query. So the two instruments now disagree, the size of the disagreement names the cause exactly as the first addendum's sixteen-byte gap did, and the clause above is no longer a promissory note.
+
+**The reason this is dated and the ref is named rather than the pair being stated flatly.** The subhead population is still growing: a fifth was in flight as this was written, deliberately filed at `###` so that `## D` would stay at 203 and the register's typed expectation in `tools-decision-register.mjs` would not move. Either pair discriminates, so the finding does not depend on which, but a bare "203 against 207" would read next week as a disagreement with a document that had moved under it. **What the control establishes is tied to the ref it ran on; what it establishes about the method is not.**
+
+**And that fifth subhead is worth recording in this entry's own terms.** Choosing a heading depth in order to leave a pinned count undisturbed is the register's typed expectation working as an incentive rather than as a check: it caught nothing, and the author routed around it correctly and in the open. That is not a defect in the pin — the pin is about which decision numbers exist, and a subhead is not a new number. **And the first draft of this very paragraph then named the wrong unit**, saying the `## D` count and the count of entries had come apart. They have not, and the measurement says so: at this ref `^## D[0-9]+\b` matches 203 lines carrying 203 distinct numbers, and `^#+ D[0-9]+\b` matches 207 lines carrying **the same 203 numbers**, because all four subheads amend an entry that already has a `## D` heading of its own. So what a subhead separates is the `## D` LINE COUNT from the population of `D`-prefixed HEADING LINES, and the entry count sits with the first of those rather than the second. That distinction is the condition under which the original error here was possible at all — and the error was reproduced, in this paragraph, by a hand that had just finished writing the control for it. **Caught by a review bot, which is the only reader that opened the sentence.** **An instrument whose population authors can choose to stay out of is answering a narrower question than its name suggests**, which is this entry's rule applied to the pin instead of to the grep.
+
+**What is repaired here and what is not.** The present-tense claim that `main` carries no subheads has gone false and is now in the past tense with its ref. **The finding that the control was vacuous when it ran is permanently true and is untouched** — running the real experiment a day later does not retroactively make the earlier agreement evidence, and the whole point of the clause is that it never was.
 
 So the practical addition to D204's own remedy: when you reach for a second instrument, run it on the corpus that contains the thing the two instruments disagree about. Agreement anywhere else is the most reassuring possible result and means nothing.
 
@@ -13898,7 +14083,7 @@ self-asserted authority D23 spent its whole decision removing.
 
 `setNurseDutyStatus` is not in this list because it is **written**: D82 named
 it as the one capability its decision actually reached, and
-`20260920680000_contract_duty_status.sql` is that port, in D81's partial
+`20260920690000_contract_duty_status.sql` is that port, in D81's partial
 shape. `entity_authorization` is five, and stays five on purpose.
 
 - **`userManagement` and `userManagementV2` are ONE capability.** Their
@@ -14299,3 +14484,109 @@ was put; the answer took one pass.*
 *Both authors asked for the wording before it landed and only one had answered
 when it did. That was the collector's call and the wrong one: the ask was cheap
 and the wait would have caught both errors before they reached the branch.*
+
+## D226 — A collection's current figures belong in its pull request and its pass history belongs in the document (2026-10-01)
+
+A collection of entries is re-derived repeatedly before it lands, and every pass
+moves figures: how many numbers the collection adds, which of them the base
+already holds, what the typed lists are. **Those current figures belong in the
+pull-request description, and the pass-by-pass history belongs here.** The
+description is the right home for a number that the next pass replaces; it is
+read once, by a reviewer, while the figures are still current. This document is
+read cold by somebody who cannot tell a current figure from a stale one, so what
+it may carry is what stays true — the ordinal history, tensed and attributed to
+the pass that measured it.
+
+**The worked example is this register's own write-up, and it is mechanical rather
+than a quibble.** The write-up's repair paragraph says, in bold, **"Neither total
+is written here, and the reason is this entry's own rule"** — and the sentence it
+says that about, immediately before it, is "The base's numbers are typed
+alongside the collection's thirty-five". The bolded claim is not a general
+aspiration that drifted: the next sentence explains it, reporting that *this
+sentence carried the base's as `168`* and was wrong within the night of being
+typed. So the repair found the exact defect in the exact sentence, removed one of
+its two totals, and left the other standing four words from the word "neither".
+**No new measurement was needed to see it; reading the sentence the claim is
+about is enough,** and nobody did for as long as the paragraph read as a rule
+plus an example of obeying it.
+
+What finally surfaced it was performing the action the neighbouring paragraph
+prescribes. `EXPECTED_NEW`'s comment says to **rewrite the list for the next
+collection** once it goes inert, and this change does: #359's thirty-five
+numbers become this collection's one. At that moment "the collection's
+thirty-five" is false. **A figure in prose can be wrong and unreachable at the
+same time** — unreachable because nothing reads prose, and so reached only by a
+reader who acts on the paragraph beside it. That sentence is repaired here to
+state the property, which is what the same paragraph's closing clause already
+instructs: *state the property and let the diff carry the count.*
+
+**It is a different species from the other findings this collection carries, and
+the contrast is the reusable part.** The others are instruments answering a
+narrower question than the one asked: a failure array truncated to ten of 632, a
+`head` bound the reader chose and then reported as the population, a differential
+standing down in a branch that cannot fail. In all of those the reading is true
+about a population nobody picked and looks exactly like a complete one. This is
+the inverse. No instrument was involved and no population was narrowed — a claim
+was made about a sentence and nobody opened the sentence. What protected it was
+that the pair read as self-consistent: a rule, and immediately before it an
+example of obeying the rule, which was the violation. **So the check here is not
+a better instrument. It is reading the referent**, and it costs nothing but the
+thought that a claim about a neighbouring sentence is a claim one can go and
+check.
+
+**The ordinal half is why the history needs this document rather than better
+prose.** That write-up is built on deictics that were exact in the pass they were
+written in — "this collection", "this entry's own subject arriving inside it",
+"the fourth time tonight". Line 164's "two of this collection's thirty-five" is
+still true of #359's collection and now has no unambiguous referent, because the
+document has seen a second collection since. The remedy is not to strip the
+deictics, which carry the finding, but to name the pass they belong to. **A
+figure here is attributed to its pass or it is not written.**
+
+**This collection's passes, recorded here because this is the surface that keeps
+them — and deliberately not as a total.** The corrections, in order: a gate claim
+the contributing author corrected in their own words; a permission-block half
+filed while an SPA-gate clause was refused on a route-table measurement; four
+files reported as five; an exhaustiveness claim dropped for asserting *less*
+narrowness than the code has, four paragraphs from a note of this collector's
+asserting *more*; and a scope error in this entry's own new test comment, which
+said a figure survived "in the register" only as this collection's history when
+three unrelated mentions elsewhere say otherwise. Three of those five were this
+collector's own.
+
+**There is no count of commits here, and why there is none is the sharpest thing
+in this entry.** The paragraph above first carried one — "five content commits,
+then four corrections" — and it was accurate when drafted and false when
+committed, because the commit that files this entry is itself a pass and carries
+a correction, so the figure could not include the act of writing it. A review bot
+caught it within minutes of the push, against the pull-request description, which
+had the larger number because it was written after the commit rather than inside
+it. **A pass count written inside the pass cannot include itself**, so no value is
+correct at rest: raising it to six makes the commit that raises it the seventh.
+That is not an argument for keeping a stale number and not an argument for
+correcting one again. It is the structural case for the clause this entry obeys
+everywhere else — *state the property and let the diff carry the count* — and for
+the ruling above it, since the tally belongs on the surface that is read once,
+while it is current, by somebody with the commit list in front of them. The
+enumeration stays because each named correction is a fact that does not move.
+
+**The mechanical half ships in the same change, and one piece of it is a design
+working as written.** The rewrite puts the corroboration test's differential back
+in its live branch instead of the inert one, where it had been announcing in a
+printed info line that it could not fail. Two typed prose assertions move with
+the list, from thirty-five to one and from 203 to 204, and a third stops being
+implied by the first. **That consequence was predicted in the test's own
+comment**, which keeps the third assertion on the stated ground that "the two
+diverge again the moment the list is rewritten for the next collection". They
+did. An assertion kept for a future that arrives is worth recording beside the
+many kept for futures that do not — and so is the info line, because a guard
+that cannot fail announcing itself in prose nobody has to read is still better
+than one that passes in silence.
+
+*Issued to the redeploy thread and written by it, 2026-10-01. The number's
+subject was settled before the entry was drafted: asked which description "that
+description" names, this thread put the question up rather than resolve it in the
+direction that makes the work its own. The answer is that D226's own sentence
+contrasts an ephemeral pull-request description with the durable document, so the
+ephemeral side is a pull request's and the register collection's write-up is the
+durable side of the same contrast — the reading that lands against the asker.*

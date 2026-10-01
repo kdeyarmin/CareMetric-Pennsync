@@ -120,3 +120,15 @@ jobs:
       - name: Production audit (informational baseline)
         run: pnpm run audit:prod
         continue-on-error: true
+
+      # The step above carries continue-on-error, so it reports and can never
+      # fail a build: on 2026-09-30 it went from one low advisory to fourteen,
+      # seven of them high, across green runs. Keep it for the printed tables and
+      # gate on the baseline instead, which fails on an advisory that is new, that
+      # escalated, that reached a new dependency path, or whose baseline entry is
+      # now stale. The known ones are recorded in audit-advisory-baseline.json
+      # with a reason each, so this is green on a repository whose advisories have
+      # all been read. It fails closed: an audit that cannot run is reported as
+      # unmeasured rather than as nothing found.
+      - name: Dependency advisory baseline
+        run: pnpm run check:audit-advisories

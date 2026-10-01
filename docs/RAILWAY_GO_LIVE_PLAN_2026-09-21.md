@@ -126,13 +126,23 @@ in #250 and this page did not:
 port queue: entity_authorization=5 files=9 external_secret=2 none=82
 ```
 
-98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
-The carried total falls by one here rather than the written total rising,
-because D153 retired `enforceStaffRoleIntegrity` instead of porting it: the
-owned store constrains `staff_role` on both tables and lets nobody write it, so
-the sweep that reverted a spoofed value has no work left. **A bucket shrinking
-is not the same event as a port landing, and this page should not let the two
-read alike** — a written count that did not move is the tell.
+98 carried capabilities, **79 written, 19 blocked** (2026-09-30, after D223),
+which is the line above summed — `none` is the written total and the other
+three buckets are the blocked one. Derive it that way rather than carrying it
+forward: this paragraph read 78 and 20 for a day after the queue line beside it
+had moved, so the page carried two measurements of one thing that disagreed,
+which is the defect its own next sentence is about.
+
+The previous reading was **78 written, 20 blocked** (2026-09-29, after D153),
+and it is kept because of what it shows rather than for the numbers. The
+carried total fell by one there rather than the written total rising, because
+D153 retired `enforceStaffRoleIntegrity` instead of porting it: the owned store
+constrains `staff_role` on both tables and lets nobody write it, so the sweep
+that reverted a spoofed value has no work left. **A bucket shrinking is not the
+same event as a port landing, and this page should not let the two read
+alike** — a written count that did not move is the tell. D223 is the other
+shape: `setNurseDutyStatus` was really written, so `none` rose and the carried
+total did not.
 `records_schema` is absent from that line rather than zero in it,
 because `portQueueLine` omits an empty bucket — and that bucket is empty with
 every capability in it BUILT, which is the first time. Three of the buckets
@@ -1671,6 +1681,12 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   both waves. A wave's migration count is therefore not a partition of the
   directory and the six rows do not sum to it — read each row as what that
   wave's operator must have applied, never as a share of the whole.
+  The duty-status port (D223) then took `mutating` to 55 and its migrations to
+  40, and left `read-only` and `integration` where they were. One handler, one
+  migration, and both counts move by one — which is what a plain port looks
+  like, and is worth recording precisely because the two rows above it each
+  move by something other than one for reasons that are not miscounts.
+
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
@@ -3742,16 +3758,59 @@ different rule, not that it grew or shrank. Anything still reading
 INDETERMINATE after this is unreadable for a reason other than where its
 constant lives.
 
-**The reading on THIS tree**, after the base merge that brought the widened
-limit reader in beside the duty toggle. This is the PINNED block:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what `pnpm run check:entity-routes` prints and never retype, rewrap or
-re-indent it.
+**That block records `00ccac41` read by the WIDENED instrument, and what follows
+is the same tree again with the two `AIConfiguration` write routes declared.**
+It is a third printer run and not an adjustment of either block above it. The
+limit reader and these two routes were open at the same time and neither branch
+could see the other's effect on these totals, so the figures below were
+re-measured on the merged tree; adding the two deltas would have invented a
+number no rule produced.
+
+**Read the served count first, because it did not move, and that is the honest
+result rather than a disappointing one.** All four call sites those routes serve
+build their payload in a variable, so the argument reader cannot evaluate them
+and they move from the unrouted pool into the population it declines to answer
+about. The routes are declared and UNPROVED, and what checks them is the
+contract's own refusals — the state eighteen write routes were already in before
+these two. The gate cannot say these screens now work; it can only say they are
+no longer refused before reaching the store, which is what declaring them buys.
+`routedEntities` refuses an undeclared entity operation on this backend with no
+Base44 fallback, so every one of those four sites refused until this landed.
+
+So the move to read here is the unrouted pool falling by four and the unreadable
+population rising by the same four. That rise is the check working: it grows
+every time a route is declared over a site of that shape, and reading it as a
+regression would be reading the instrument's own honesty as a fault.
 
 ```
-entity routes: 98 declared, 159/245 landable call sites SERVED, 86 still to adopt
-  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 56 pass arguments this cannot read
-  23 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+entity routes: 89 declared, 153/245 landable call sites SERVED, 92 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 54 pass arguments this cannot read
+  20 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+The scope those routes send is derived from the payload rather than bound, for
+a reason that is about this file's key shape rather than about the contract:
+one `AIConfiguration.create` route serves an administrator writing the agency's
+settings and a nurse writing their own preferences, and `user_email` is the
+column that tells them apart. The contract re-decides the same question against
+the stored row and refuses a mismatch by name, so a mis-derived scope is a
+refusal the screen reports rather than a write to somebody else's row. And one
+narrowing rides with it: the agency branch admits an `agency_admin` only, where
+the Base44 entity write had no role gate at all.
+
+**That block, and every one above it, is a DATED record. What follows is this
+tree again after the duty toggle was WITHDRAWN — superseded by the contract
+`main` already carries — and after the reference writes landed. It is another
+printer run, not an adjustment of anything above it.** This is the PINNED
+block: `tools-entity-routes.test.mjs` fails unless the page carries it byte for
+byte, so paste what `pnpm run check:entity-routes` prints and never retype,
+rewrap or re-indent it.
+
+```
+entity routes: 100 declared, 159/245 landable call sites SERVED, 86 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
   of those 86, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 85 need a named capability
 ```
 
@@ -3883,23 +3942,27 @@ different kinds of work:
   expression. A refusal cannot be counted until a route exists to do the
   refusing, so plotting this bucket over time measures the audit's reach and not
   the product's health.
-- **Fifty-six pass arguments the scan cannot read**, because the call builds
+- **Sixty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Twenty-one have no route declared at all**, over sixteen entity and
-  operation keys: fourteen reads over eleven keys, and seven writes over five.
+- **Seventeen have no route declared at all**, over fourteen entity and
+  operation keys: fourteen reads over eleven keys, and three writes over three.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
-  adding two branches' deltas is wrong in both directions. The reason the shape
-  keeps moving is measurable on the sites already served: a read key there
-  carries 2.56 call sites and a write key 1.24, so a read port has historically
-  served many screens per route while a write port served the one form that
-  calls it. **Do not carry that ratio into the remainder, though**: inside this
-  pool a read key covers 1.27 sites and a write key 1.40, which is nothing like
-  the served spread and points the other way.
+  adding two branches' deltas is wrong in both directions. **The write half fell
+  furthest, and not because anyone worked on it** — the reference writes took
+  eight sites out of this pool and the withdrawn duty toggle put nothing back,
+  so a bucket nobody touched moved twice. That is what a remainder does: it is a
+  property of what is LEFT. The reason the shape keeps moving is measurable on
+  the sites already served: a read key there carries 2.56 call sites and a write
+  key 1.24, so a read port has historically served many screens per route while
+  a write port served the one form that calls it. **Do not carry that ratio into
+  the remainder, though**: inside this pool a read key covers 1.27 sites and a
+  write key 1.00, which is nothing like the served spread — a write key there
+  now covers exactly one site each, so the ratio has no spread left to read.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it

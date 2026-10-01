@@ -32,7 +32,22 @@ import {
 // shape here: `tools-app-store-migration.test.mjs` does the same, and
 // `ci.yml` checks out at `fetch-depth: 0`.
 const BASE_REF = process.env.PENNSYNC_REGISTER_BASE_REF || 'origin/main';
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
+// `git show` of a tracked file is bounded by the repository, but execFileSync's
+// default maxBuffer is 1 MiB and this register crossed that on 2026-09-__, so
+// every read of the base document died with ENOBUFS. The bound stays finite and
+// generous; what makes it safe is that overflowing it now FAILS rather than
+// being read as an absent ref — see the catch below.
+const GIT_MAX_BUFFER = 64 * 1024 * 1024;
+const git = (...args) =>
+  execFileSync('git', args, { encoding: 'utf8', maxBuffer: GIT_MAX_BUFFER });
+
+// Git exits 128, with its reason on stderr, when a ref or a path inside one
+// cannot be resolved. Anything else — ENOBUFS, a missing git (ENOENT), a
+// signal — is a failure of the harness rather than an absent base, and a bare
+// catch reports all of them as "fetch the base branch", which is advice that
+// cannot work. Measured: an unknown ref gives status 128 and code undefined; a
+// buffer overflow gives code ENOBUFS and status null.
+const isUnresolvableRef = error => error?.status === 128;
 
 const doc = numbers => `# Register\n\nPreamble.\n\n${numbers
   .map(n => `## D${n} — Entry ${n}\n\nBody of ${n}.\n`).join('\n')}`;
@@ -138,11 +153,19 @@ test('the typed base still describes the real base, where the base can be read',
   let baseText;
   try {
     baseText = git('show', `${BASE_REF}:${DOCUMENT_PATH}`);
-  } catch {
+  } catch (error) {
+    // Only an absent ref or path is a skip. The first version caught
+    // everything, so when this document crossed a megabyte and every read died
+    // with ENOBUFS, the skip reported the ref as unresolvable and advised
+    // fetching the base branch — advice that could not work, on a ref that
+    // resolved fine. It had been standing down everywhere, CI included, for an
+    // unknown number of runs while reading as a pass.
+    if (!isUnresolvableRef(error)) throw error;
     t.skip(`${BASE_REF}:${DOCUMENT_PATH} is not resolvable in this checkout, so whether `
       + 'the typed BASE_NUMBERS still matches the real base was NOT checked. Membership '
       + 'was: the test above needs no ref. Set PENNSYNC_REGISTER_BASE_REF, or fetch the '
-      + 'base branch, to check the typed list too.');
+      + `base branch, to check the typed list too. git said: ${
+        String(error.stderr || '').trim() || '(nothing)'}`);
     return;
   }
   const real = headingNumbers(baseText);
@@ -152,9 +175,68 @@ test('the typed base still describes the real base, where the base can be read',
   // And the differential that makes the membership test non-vacuous: the same
   // comparison must FAIL against the base document, or it is proving only that
   // it ran.
+  //
+  // **It stands down when the collection merges, and that is the one thing
+  // `EXPECTED_NEW`'s "inert rather than wrong" paragraph does not cover.** Inert
+  // means the base holds every number in the list, so the base document itself
+  // satisfies EXPECTED_DOCUMENT and a flat `notDeepEqual` turns the event the
+  // design expects into a red. So branch on it, report which branch ran, and
+  // assert the complement rather than nothing — a differential that silently
+  // stops differentiating is this file's whole subject.
+  const onBase = new Set(real);
+  const pending = EXPECTED_NEW.filter(n => !onBase.has(n));
+  if (pending.length === 0) {
+    t.diagnostic(`EXPECTED_NEW is INERT: all ${EXPECTED_NEW.length} of its numbers are on `
+      + `${BASE_REF} already, so the differential below cannot run and membership above is `
+      + 'guarding every entry rather than this collection. Rewrite the list for the next '
+      + 'collection; do not delete it for having become a subset.');
+    assert.deepEqual(compareHeadingSets('', baseText, EXPECTED_DOCUMENT).problems, [],
+      'EXPECTED_NEW is wholly on the base, so the base document must already satisfy '
+      + 'EXPECTED_DOCUMENT. It does not, so the base moved in some way the typed list '
+      + 'does not describe.');
+    return;
+  }
   assert.notDeepEqual(compareHeadingSets('', baseText, EXPECTED_DOCUMENT).problems, [],
     'the membership comparison passes on the BASE document too, so it is not '
-    + 'distinguishing this collection from its absence');
+    + `distinguishing this collection from its absence, although D${pending[0]} and `
+    + `${pending.length - 1} others are not on the base`);
+});
+
+test('the git helper can carry this document, and a skip means an absent ref and nothing else', () => {
+  // The regression, stated as the property rather than as the symptom: this
+  // document is larger than execFileSync's 1 MiB default, so a helper without
+  // maxBuffer cannot read it at all. Drop `maxBuffer` from `git` and this
+  // fails, which is what the skip above was silently standing in for.
+  const EXEC_DEFAULT_MAX_BUFFER = 1024 * 1024;
+  // HEAD resolves in every checkout, shallow ones included, so this needs no
+  // fetch — unlike the corroboration above, which is why that one may skip and
+  // this one may not. The bound is measured on what GIT hands back rather than
+  // on the file on disk: a first version asserted the two were equal in length
+  // and failed on the very branch introducing it, where the working tree holds
+  // edits that are not committed yet. Equality with the working tree was never
+  // the property. The property is that a blob this size survives the helper.
+  const viaGit = git('show', `HEAD:${DOCUMENT_PATH}`);
+  assert.ok(viaGit.length > EXEC_DEFAULT_MAX_BUFFER,
+    `this test is vacuous while the register is under ${EXEC_DEFAULT_MAX_BUFFER} bytes `
+    + `(HEAD's copy is ${viaGit.length}). If the register is ever split, assert the size `
+    + 'of whichever document the base read actually carries instead of deleting this.');
+
+  // And the discriminator, both ways, because a skip that cannot be told from a
+  // failure is how this went unnoticed. Measured rather than assumed: git exits
+  // 128 with its reason on stderr for a ref or path it cannot resolve, while a
+  // buffer overflow arrives as ENOBUFS with a null status.
+  const thrown = fn => { try { fn(); } catch (error) { return error; } return null; };
+  for (const args of [['show', `no/such/ref:${DOCUMENT_PATH}`],
+    ['show', 'HEAD:docs/no-such-file-here.md']]) {
+    const error = thrown(() => git(...args));
+    assert.equal(isUnresolvableRef(error), true, `${args.join(' ')} should read as absent`);
+  }
+  const overflow = thrown(() => execFileSync('git', ['show', `HEAD:${DOCUMENT_PATH}`],
+    { encoding: 'utf8', maxBuffer: EXEC_DEFAULT_MAX_BUFFER }));
+  assert.equal(overflow?.code, 'ENOBUFS');
+  assert.equal(isUnresolvableRef(overflow), false,
+    'a buffer overflow must not read as an absent ref: that substitution is the '
+    + 'defect this test exists for, and it reported as a pass');
 });
 
 // The module's own load-time guards, proved to bite. They exist because the
@@ -163,7 +245,7 @@ test('the typed base still describes the real base, where the base can be read',
 // believed because it is written down is this file's whole subject, so the
 // guards get the same treatment as the predicate: sabotage, and watch it refuse.
 //
-// The arithmetic `179 - 11 = 168` cannot fail on its own — the base is DERIVED
+// The arithmetic `226 - 22 = 204` cannot fail on its own — the base is DERIVED
 // as the range minus the absent list — so what the guards catch is the two
 // typos that would make the derivation quietly produce a larger base than the
 // list reads: an absent number outside the range, which removes nothing, and a
@@ -184,8 +266,8 @@ test('the base refuses the two typos that would silently enlarge it', async () =
     'the unmutated copy does not load to the same base, so a refusal below proves nothing');
 
   const CASES = [
-    ['outside-the-range', '177]', '277]', /outside 1\.\.179/],
-    ['repeated', ', 177]', ', 175]', /repeats a number/],
+    ['outside-the-range', '225]', '325]', /outside 1\.\.226/],
+    ['repeated', ', 216,', ', 214,', /repeats a number/],
   ];
   for (const [name, from, to, message] of CASES) {
     assert.equal(source.split(from).length - 1, 1,
@@ -196,18 +278,55 @@ test('the base refuses the two typos that would silently enlarge it', async () =
   }
 });
 
-// The figures prose quotes, pinned where moving a list surfaces them. Measured
-// rather than assumed: the write-up in the register carries 168 and
-// thirty-five, and #359's description carries 203 eight times, 168 five times
-// and thirty-five twice. Nothing re-derives a figure in prose, so without this
-// a number added to either list leaves two documents quietly wrong with every
-// test green — which is the defect this whole change is about, one level out.
+// The figures the lists hold, pinned so that moving a list has to be noticed.
 //
-// Not a tautology: the lists are typed and these are typed separately, so they
-// disagree the moment one of them moves. When this fails, the lists are right
-// and the prose is what needs the edit.
+// **What this pin is FOR changed in the same commit that re-derived the base,
+// and the old reason is left here because it is the instructive half.** It read
+// that the register's own write-up carried 168 and thirty-five, so a list moving
+// would leave prose quietly wrong. Re-measured when #359 merged: the base figure
+// is now in NO live sentence of the register, because the write-up's totals were
+// removed rather than renumbered — a figure that was wrong within the night of
+// being typed is not made safe by being corrected. So the base pin no longer
+// guards prose. What it guards is the module's own dated paragraph and this
+// file's sabotage range `1..226`: both say what the lists are, neither is
+// derived from them, and a silent re-derivation makes all three disagree.
+//
+// The collection figure no longer guards a sentence describing the design, and
+// that changed in the same pass as the list. Re-measured 2026-10-01 after the
+// rewrite, and SCOPED, because the document is not the write-up: within this
+// check's own write-up `thirty-five` survives at three places and all three
+// report what #359's collection was, while the one sentence that carried it in
+// the present tense — "the base's numbers are typed alongside the collection's
+// thirty-five" — is the one the rewrite falsified and D226 repaired. Elsewhere
+// the document carries the same word about three unrelated populations, which is
+// why this is scoped: a first draft of this comment said "in the register" and
+// was false by those three. So this pin guards the
+// module's own rewrite note and D226, both of which attribute the figure to a
+// pass, which is the whole of D226's ruling.
+//
+// **The third assertion is implied by the first AGAIN, and the round trip is the
+// instructive part.** An older version of this comment kept it on the stated
+// ground that "the two diverge again the moment the list is rewritten for the
+// next collection". The list was rewritten for D226 and they diverged, exactly as
+// predicted. Then #388 merged, the base grew to hold 226, and they converged
+// again hours later. So this assertion is independent only while a collection is
+// PENDING, which is a shorter window than "until the next rewrite" — the same
+// oscillation `EXPECTED_NEW` makes between live and inert, read from the other
+// side. Kept for the reason it always was: it diverges on the next collection,
+// and it is the only one of the three that catches a union built as a
+// concatenation. A review bot caught this paragraph still claiming the divergence
+// after the assertion message below had been rewritten to say the opposite,
+// which is the hazard of a comment that argues about figures it sits beside.
 test('the figures quoted in prose are the figures the lists hold', () => {
-  assert.equal(REAL_BASE_NUMBERS.length, 168, "the base figure is quoted in the register's own write-up");
-  assert.equal(EXPECTED_NEW.length, 35, "the collection figure is quoted in the write-up and in #359's description");
-  assert.equal(EXPECTED_DOCUMENT.length, 203, "the document figure is quoted throughout #359's description");
+  assert.equal(REAL_BASE_NUMBERS.length, 204,
+    "the base figure is quoted in the module's dated paragraph and in this file's "
+    + 'sabotage range, and in no live sentence of the register');
+  assert.equal(EXPECTED_NEW.length, 1,
+    'the collection figure: D226 alone, now wholly on the base, and the figure is quoted '
+    + "in the module's rewrite note and in D226, each attributing it to a pass");
+  assert.equal(EXPECTED_DOCUMENT.length, 204,
+    'the union, which equals the base figure again now that the collection is inert — so '
+    + 'this is implied by the first assertion once more, and is kept for the same stated '
+    + 'reason as before: it diverges on the next collection. It still catches a union '
+    + 'built as a concatenation, which neither other assertion would.');
 });

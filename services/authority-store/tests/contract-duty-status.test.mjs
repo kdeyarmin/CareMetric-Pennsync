@@ -1,3 +1,32 @@
+/**
+ * The duty-status contract, against the real migration.
+ *
+ * Four things about this suite are load-bearing rather than shape.
+ *
+ * It applies the WHOLE record directory, so the store it writes against is the
+ * one a deployment gets — and here that matters more than usual, because the
+ * thing this contract relies on is not in its own file. D82's `user_update`
+ * policy and `user_self_write_guard` trigger live in the generated migration
+ * and its catch-up; a suite that applied only this contract's SQL would be
+ * asserting against a table with no policy at all, where every write succeeds
+ * and nothing is proved. Two tests below fail if either object is missing, and
+ * the migration itself refuses to install without them.
+ *
+ * It COMMITS every write, because the read-back is the assertion: a contract
+ * that answered correctly and wrote nothing would pass every check made on its
+ * answer alone.
+ *
+ * Its callers are seeded so tenancy and ownership DIFFER — two colleagues in
+ * one agency, an admin in another — because the whole question this contract
+ * leans on is whether sharing an agency is the same as owning a row. A suite
+ * whose callers each held their own agency would pass with D82's policy
+ * deleted.
+ *
+ * And the refused leg is asserted by its CODE, not merely by "it refused". The
+ * target leg refuses, and so does a body naming a column nobody may
+ * self-write — for entirely different reasons, one in this file and one in
+ * D82's trigger. An assertion both satisfy proves neither.
+ */
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
@@ -7,361 +36,576 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA, PROFILE_SELF_WRITABLE } from '../../../tools-entity-schema-plan.mjs';
 import {
-  applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames,
+  applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
 
-/**
- * The duty toggle, the scheduled window and the off-duty message —
- * `setNurseDutyStatus`, and the FIRST caller of D82's profile-write path.
- *
- * That is what makes this suite worth more than its own capability. D82 gave
- * `pennsync_records.user` an update policy naming `caller_user_id()` and a
- * trigger admitting only `PROFILE_SELF_WRITABLE`, and nothing had ever written
- * that table, so both halves were built and unexercised. Every test below that
- * writes a row is also the first evidence either one works against a database.
- */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const MIGRATION = 'services/authority-store/supabase/record-migrations/'
-  + '20260920710000_contract_duty_status.sql';
-const ORIGINAL = 'base44/functions/setNurseDutyStatus/entry.ts';
+const RECORDS = 'services/authority-store/supabase/record-migrations/';
+const DUTY_NAME = '20260920690000_contract_duty_status.sql';
+const DUTY = resolve(repository, RECORDS + DUTY_NAME);
+const ORIGINAL = resolve(repository, 'base44/functions/setNurseDutyStatus/entry.ts');
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const rid = n => `6aac00000000${String(n).padStart(12, '0')}`;
-const ADMIN_A = 1; const CLINICIAN_A = 2; const ADMIN_B = 4;
-const SET = 'select "public"."pennsync_contract_duty_status_set"($1,$2,$3) as result';
+const bid = n => `6aac00000000${String(n).padStart(12, '0')}`;
+const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b'][n]
+  + '@example.invalid';
+const ADMIN_A = 1; const CLINICIAN_A = 2; const CLINICIAN_EMPTY = 3; const ADMIN_B = 4;
 const A = 'agency-a'; const B = 'agency-b';
-let db; let original;
+
+const SET = 'select "public"."pennsync_contract_duty_status_set"($1,$2) as result';
+
+let db;
 
 before(async () => {
-  original = await readFile(resolve(repository, ORIGINAL), 'utf8');
   db = new PGlite();
   await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
   const dir = new URL('../supabase/migrations/', import.meta.url);
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The whole record directory in the deployment's own order, so a forward
-  // migration that lands on this contract is applied by this suite too, and
-  // then both halves of the check: that what was applied IS the directory, so
-  // a file added beside this one cannot be silently skipped, and that this
-  // migration sorts LAST, so `planMigration` will not refuse
-  // MIGRATE_OUT_OF_ORDER on a store that has already applied an earlier one.
-  //
-  // The ordering guard belongs to whichever migration is the newest PENDING
-  // one and is never held by two suites at once. It arrived here from
-  // `contract-reference-writes.test.mjs`, which is still unmerged — so the
-  // move was not that suite's migration merging, the usual reason, but this
-  // one overtaking it inside the same change. A held guard whose file has been
-  // overtaken asserts a tree that the overtaking change makes false, which is
-  // exactly the red it produced.
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  assertNewestRecordMigration(applied, '20260920710000_contract_duty_status.sql');
+  // The ordering guard is NOT here, and the comment that used to claim it was
+  // is why this is spelled out. This file was the newest pending migration when
+  // it landed on `main`; it stopped being that when this branch's
+  // `20260920700000_contract_reference_writes` merged in, which sorts after it.
+  // So the guard moved on to `contract-reference-writes.test.mjs` and this
+  // suite keeps only the property that is its own.
+  //
+  // Nothing about this file changed. It was OVERTAKEN, which is the rule the
+  // helper's error text does not name — it names merging, the commonest cause.
+  // A suite that kept the call after being overtaken asserts a tree the
+  // overtaking change makes false, and fails for a reason that reads like a
+  // defect in this contract.
+  assert.ok(applied.includes(DUTY_NAME),
+    `the record walk did not apply ${DUTY_NAME}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
-  // Carried profile rows for three people in two agencies. Every authority
-  // label on them is a lie, as everywhere else here, because D23's whole point
-  // is that the roster answers from membership and never from these columns.
-  await db.exec(`insert into ${SCHEMA}."user"
-    ("source_app_id","id","agency_id","agency_name","account_type","role",
-     "duty_status","off_duty_message") values
-    ('${APP}','${rid(ADMIN_A)}','agency-z','Claimed Z','platform_admin','admin',
-     'off_duty','original message'),
-    ('${APP}','${rid(CLINICIAN_A)}','agency-z','Claimed Z','platform_admin','admin',
-     'off_duty',null),
-    ('${APP}','${rid(ADMIN_B)}','agency-z','Claimed Z','platform_admin','admin',
-     'on_duty',null);`);
-});
-after(async () => db?.close());
 
-async function as(n, sql, params = [], commit = false) {
+  // The carried profile rows. The fixtures stop at the authority store, and
+  // this is the first contract that writes `pennsync_records.user`.
+  //
+  // There is no `email` column to seed and that is not an oversight: Base44
+  // keeps the address on the platform ACCOUNT, so the carried table has
+  // neither a name nor an address. `caller_email()` reads
+  // `identity_map.expected_email`, which the fixtures do seed, and that is
+  // what the target-leg comparison below comes from.
+  for (const n of [ADMIN_A, CLINICIAN_A, CLINICIAN_EMPTY, ADMIN_B]) {
+    await db.query(`insert into ${SCHEMA}."user"
+      ("source_app_id","id","duty_status") values ($1,$2,$3)`,
+    [APP, bid(n), 'off_duty']);
+  }
+});
+
+after(async () => { await db?.close(); });
+
+/** Run as a caller and COMMIT, because the read-back is the assertion. */
+async function as(n, sql, params = []) {
   await db.exec('begin');
   try {
     await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
-      sub: uid(n), session_id: sid(n), role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600,
+      sub: uid(n), session_id: sid(n), role: 'authenticated',
+      exp: Math.floor(Date.now() / 1000) + 3600,
     })]);
     await db.exec('set local role authenticated');
     const { rows } = await db.query(sql, params);
-    await db.exec(commit ? 'commit' : 'rollback');
-    return rows[0]?.result;
-  } catch (error) {
-    await db.exec('rollback');
-    throw error;
-  }
+    await db.exec('commit');
+    return rows[0].result;
+  } catch (error) { await db.exec('rollback'); throw error; }
 }
-const refusal = async (n, params, code, commit = false) => {
-  await assert.rejects(() => as(n, SET, params, commit),
-    error => String(error.message).includes(code),
-    `expected ${code} for ${JSON.stringify(params)}`);
-};
-const rowOf = async n => (await db.query(
-  `select * from ${SCHEMA}."user" where "id" = $1`, [rid(n)])).rows[0];
 
-test('the toggle writes the caller\'s own row, which nothing had ever done', async () => {
-  const answer = await as(CLINICIAN_A, SET, [A, null, { duty_status: 'on_duty' }], true);
-  assert.deepEqual(answer, { success: true, duty_status: 'on_duty' });
-  const row = await rowOf(CLINICIAN_A);
-  assert.equal(row.duty_status, 'on_duty');
-  // `duty_on_since` is STAMPED, never sent. The inbound call and SMS webhooks
-  // treat a toggle stamped on an earlier day as expired, so a caller who could
-  // send it could hold themselves on duty indefinitely.
-  assert.ok(row.duty_on_since instanceof Date || typeof row.duty_on_since === 'string');
-  assert.ok(!PROFILE_SELF_WRITABLE.includes('id'),
-    'and the allowlist is the one this write had to pass');
+/** The refusal's own message, which is what the HTTP boundary classifies. */
+async function refusal(n, sql, params = []) {
+  try {
+    await as(n, sql, params);
+  } catch (error) { return error.message; }
+  throw new Error(`expected a refusal from ${sql}`);
+}
 
-  const off = await as(CLINICIAN_A, SET, [A, null, { duty_status: 'off_duty' }], true);
-  assert.deepEqual(off, { success: true, duty_status: 'off_duty' });
-  assert.equal((await rowOf(CLINICIAN_A)).duty_on_since, null,
-    'cleared on the way off, as the original clears it');
+const set = (n, agency, updates) => as(n, SET, [agency, JSON.stringify(updates)]);
+const refuse = (n, agency, updates) => refusal(n, SET, [agency, JSON.stringify(updates)]);
+
+/** Read the profile row back through the store rather than through the answer. */
+async function profile(n) {
+  const { rows } = await db.query(
+    `select * from ${SCHEMA}."user" where "source_app_id" = $1 and "id" = $2`, [APP, bid(n)]);
+  return rows[0];
+}
+
+/* --------------------------------------------------------------- the toggle */
+
+test('a clinician toggles their own duty status, and the row moves', async () => {
+  const answer = await set(CLINICIAN_A, A, { duty_status: 'on_duty' });
+  assert.equal(answer.success, true);
+  assert.equal(answer.duty_status, 'on_duty');
+  const stored = await profile(CLINICIAN_A);
+  assert.equal(stored.duty_status, 'on_duty');
+  // The stamp is what makes an on-duty toggle expire overnight on its own.
+  assert.ok(stored.duty_on_since instanceof Date, 'duty_on_since was not stamped');
 });
 
-test('a colleague\'s row is refused by name rather than silently not written', async () => {
-  // D14 and D22 removed the platform tier the original's cross-user leg runs
-  // on, and `user_update` would refuse this write anyway — as a row that did
-  // not update, which reaches the caller as success. The contract raises first.
-  await refusal(ADMIN_A, [A, 'clinician-a@example.invalid', { duty_status: 'on_duty' }],
-    'PENNSYNC_DUTY_STATUS_TARGET_UNSUPPORTED');
-  assert.equal((await rowOf(CLINICIAN_A)).duty_status, 'off_duty');
-
-  // The original's own gate is what this replaces, so it is read out of the
-  // original rather than described: the only branch that admits a target is
-  // the protected platform owner's.
-  assert.ok(/isProtectedSuperAdmin\(user\)/.test(original)
-    && /SUPER_ADMIN_EMAIL/.test(original),
-    'the leg being refused is the platform owner\'s, in the original\'s own words');
-
-  // What is underneath the refusal, said accurately rather than assumed. The
-  // first draft of this asserted that a direct update of a colleague's row, as
-  // `authenticated`, touches zero rows — and it does not touch the table at
-  // all: `user_update` calls `deployment_app()`, a policy expression runs with
-  // the QUERYING role's privileges, and that role holds no execute on it. So
-  // the refusal is `permission denied for function deployment_app` and the
-  // contract is the only path to the table. A stronger result than the one
-  // being asked for, and a different one.
-  await assert.rejects(() => as(ADMIN_A, `with w as (
-      update ${SCHEMA}."user" set "duty_status" = 'on_duty'
-      where "id" = '${rid(CLINICIAN_A)}' returning 1)
-    select count(*)::int as result from w`),
-  error => /permission denied for function deployment_app/.test(String(error.message)),
-  'a caller does not reach the table to be refused by its policy');
-
-  // Which leaves the policy's own narrowing proved by nothing here, and that
-  // is worth saying rather than implying. The contract's UPDATE carries
-  // `where u."id" = v_user`, so it reaches the caller's row before the policy
-  // has to, and this suite cannot make `user_update` be the thing that
-  // refuses. That predicate is deliberate — D51's rule, that a policy is not a
-  // predicate a contract may leave unstated — so the catalog is asserted
-  // instead, and the claim is only that the policy says what D82 says it does.
-  const { rows: [policy] } = await db.query(
-    `select qual, with_check from pg_policies
-     where schemaname = 'pennsync_records' and tablename = 'user' and policyname = 'user_update'`);
-  for (const expression of [policy.qual, policy.with_check]) {
-    assert.match(String(expression), /caller_user_id\(\)/);
-  }
-
-  // And the caller's OWN address is not a cross-user write, so a client that
-  // always sends the field keeps working.
-  const answer = await as(ADMIN_A, SET, [A, 'admin-a@example.invalid', { duty_status: 'on_duty' }]);
-  assert.deepEqual(answer, { success: true, duty_status: 'on_duty' });
+test('toggling off CLEARS the stamp rather than leaving yesterday pointing at today', async () => {
+  await set(CLINICIAN_A, A, { duty_status: 'on_duty' });
+  await set(CLINICIAN_A, A, { duty_status: 'off_duty' });
+  const stored = await profile(CLINICIAN_A);
+  assert.equal(stored.duty_status, 'off_duty');
+  assert.equal(stored.duty_on_since, null);
 });
 
-test('membership decides, and it is the agency named in the call', async () => {
-  await refusal(ADMIN_B, [A, null, { duty_status: 'on_duty' }],
-    'PENNSYNC_DUTY_STATUS_AGENCY_NOT_HELD');
-  // The narrowing this carries: the original admits the platform owner INSTEAD
-  // of an active membership, and here membership is the only way in.
-  assert.ok(/active agency membership required/.test(original));
-  const answer = await as(ADMIN_B, SET, [B, null, { duty_status: 'off_duty' }]);
-  assert.deepEqual(answer, { success: true, duty_status: 'off_duty' });
+test('an unnamed field is left alone rather than wiped', async () => {
+  await set(CLINICIAN_A, A, { off_duty_message: 'Back Monday' });
+  await set(CLINICIAN_A, A, { duty_status: 'on_duty' });
+  const stored = await profile(CLINICIAN_A);
+  assert.equal(stored.off_duty_message, 'Back Monday',
+    'a body naming only duty_status wiped a field it did not name');
 });
 
-test('a field the server decides, and a field nobody named, are both refused', async () => {
-  for (const patch of [{ duty_on_since: '2026-01-01T00:00:00Z' }, { is_approved: true },
-    { role: 'admin' }, { dutyStatus: 'on_duty' }]) {
-    await refusal(CLINICIAN_A, [A, null, patch], 'PENNSYNC_DUTY_STATUS_FIELD_UNSUPPORTED');
-  }
-  // Refused rather than filtered, which is D39: a silent filter is what keeps a
-  // caller away from a field it must not set AND what loses a misspelling.
-  await refusal(CLINICIAN_A, [A, null, {}], 'PENNSYNC_DUTY_STATUS_PATCH_INVALID');
-  await refusal(CLINICIAN_A, [A, null, null], 'PENNSYNC_DUTY_STATUS_PATCH_INVALID');
-  for (const bad of ['ON_DUTY', 'on duty', '', 'active']) {
-    await refusal(CLINICIAN_A, [A, null, { duty_status: bad }],
-      'PENNSYNC_DUTY_STATUS_VALUE_INVALID');
+test('an empty body is refused rather than treated as a no-op write', async () => {
+  assert.match(await refuse(CLINICIAN_A, A, {}), /PENNSYNC_DUTY_NOTHING_TO_UPDATE/);
+});
+
+test('duty_status outside the pair is refused', async () => {
+  assert.match(await refuse(CLINICIAN_A, A, { duty_status: 'on_call' }),
+    /PENNSYNC_DUTY_STATUS_INVALID/);
+  // The original tests truthiness first, so an empty string is "not supplied"
+  // and falls through to the empty-body refusal rather than the enum's.
+  assert.match(await refuse(CLINICIAN_A, A, { duty_status: '' }),
+    /PENNSYNC_DUTY_NOTHING_TO_UPDATE/);
+});
+
+/* ------------------------------------------------------- whose row, and D82 */
+
+test('a colleague in the same agency cannot move my duty status', async () => {
+  // Both callers hold agency-a, so this is the assertion that sharing an
+  // agency is not owning the row. The contract names the caller's own row and
+  // D82's policy is what refuses anything else, so what this proves is that
+  // naming somebody else never reaches a row at all.
+  const before = await profile(CLINICIAN_A);
+  await set(CLINICIAN_EMPTY, A, { duty_status: 'on_duty' });
+  const after = await profile(CLINICIAN_A);
+  assert.equal(after.duty_status, before.duty_status,
+    'one colleague changed another colleague\'s duty status');
+  assert.equal((await profile(CLINICIAN_EMPTY)).duty_status, 'on_duty');
+});
+
+test('naming somebody else is refused BY NAME, not silently dropped', async () => {
+  // D81's shape: the leg whose performer D14 and D22 removed answers with its
+  // own code, so a caller who believed it took effect is told otherwise. The
+  // code is asserted rather than the refusal, because a body naming a column
+  // nobody may self-write also refuses — for a different reason, in D82's
+  // trigger — and an assertion both satisfy proves neither.
+  assert.match(
+    await refuse(CLINICIAN_A, A, { duty_status: 'on_duty', target_user_email: email(CLINICIAN_EMPTY) }),
+    /PENNSYNC_DUTY_TARGET_FORBIDDEN/);
+});
+
+test('naming YOURSELF is accepted, because the original accepts it', async () => {
+  // The original's guard is `target_user_email && target_user_email !== user.email`,
+  // so an address equal to the caller's own never reaches the super-admin gate.
+  // Refusing it here would be a narrowing nobody decided.
+  const answer = await set(CLINICIAN_A, A, {
+    duty_status: 'off_duty', target_user_email: email(CLINICIAN_A),
+  });
+  assert.equal(answer.success, true);
+});
+
+test('and the comparison is EXACT, because the original\'s is', async () => {
+  // `!==` on two strings folds no case and trims no padding, so an address
+  // differing only in case goes down the protected-owner branch and an
+  // ordinary caller is refused there. Accepting it here would be a widening,
+  // and the direction matters: this is the only check standing between a
+  // caller and somebody else's row.
+  for (const named of [
+    email(CLINICIAN_A).toUpperCase(),
+    ` ${email(CLINICIAN_A)} `,
+  ]) {
+    assert.match(
+      await refuse(CLINICIAN_A, A, { duty_status: 'off_duty', target_user_email: named }),
+      /PENNSYNC_DUTY_TARGET_FORBIDDEN/,
+      `${JSON.stringify(named)} is not the caller's address`);
   }
 });
 
-test('the window is paired, ordered, and bounded only when it repeats', async () => {
-  const start = '2026-03-02T09:00:00Z'; const end = '2026-03-03T09:00:00Z';
-  for (const patch of [{ scheduled_off_duty_start: start }, { scheduled_off_duty_end: end },
-    { scheduled_off_duty_start: start, scheduled_off_duty_end: null },
-    { scheduled_off_duty_start: null, scheduled_off_duty_end: end }]) {
-    await refusal(CLINICIAN_A, [A, null, patch], 'PENNSYNC_DUTY_STATUS_WINDOW_INCOMPLETE');
+test('a truthy NON-STRING target is refused rather than ignored', async () => {
+  // `5 !== 'someone@example.invalid'` is true in the original, so a number or
+  // an object reaches the protected-owner gate and is refused there. A type
+  // check that simply skipped a non-string would silently write the caller's
+  // own row for a body that asked for somebody else's.
+  for (const named of [5, { email: email(CLINICIAN_EMPTY) }, [email(CLINICIAN_EMPTY)]]) {
+    assert.match(
+      await refuse(CLINICIAN_A, A, { duty_status: 'off_duty', target_user_email: named }),
+      /PENNSYNC_DUTY_TARGET_FORBIDDEN/,
+      `${JSON.stringify(named)} is truthy and is not the caller's address`);
   }
-  await refusal(CLINICIAN_A, [A, null,
-    { scheduled_off_duty_start: end, scheduled_off_duty_end: start }],
-  'PENNSYNC_DUTY_STATUS_WINDOW_INVALID');
-  await refusal(CLINICIAN_A, [A, null,
-    { scheduled_off_duty_start: start, scheduled_off_duty_end: start }],
-  'PENNSYNC_DUTY_STATUS_WINDOW_INVALID');
-  // D38's reason for parsing a TEXT date rather than taking a `date`
-  // parameter: an impossible one is this contract's refusal, in its own
-  // vocabulary, rather than the transport's.
-  await refusal(CLINICIAN_A, [A, null,
-    { scheduled_off_duty_start: '2026-02-31T09:00:00Z', scheduled_off_duty_end: end }],
-  'PENNSYNC_DUTY_STATUS_WINDOW_INVALID');
+  // …while a FALSY one is "not supplied" and writes the caller's own row, which
+  // is what `target_user_email &&` does.
+  for (const named of [null, '', false, 0]) {
+    assert.equal((await set(CLINICIAN_A, A, {
+      duty_status: 'off_duty', target_user_email: named,
+    })).success, true, `${JSON.stringify(named)} is falsy, so no target was named`);
+  }
+});
 
-  // Eight days is fine when it does not repeat and refused when it does, which
-  // is the original's rule and not a length limit on windows.
-  const long = { scheduled_off_duty_start: start, scheduled_off_duty_end: '2026-03-10T09:00:00Z' };
-  assert.deepEqual(await as(CLINICIAN_A, SET, [A, null, long]),
-    { success: true, duty_status: 'off_duty' });
-  await refusal(CLINICIAN_A, [A, null, { ...long, scheduled_off_duty_recurring: true }],
-    'PENNSYNC_DUTY_STATUS_WINDOW_TOO_LONG');
+test('an agency the caller does not hold is refused', async () => {
+  assert.match(await refuse(CLINICIAN_A, B, { duty_status: 'on_duty' }),
+    /PENNSYNC_DUTY_AGENCY_NOT_HELD/);
+});
 
-  // Clearing drops the recurrence with the window, so it cannot linger on a
-  // window that no longer exists.
-  await as(CLINICIAN_A, SET, [A, null, { scheduled_off_duty_start: start,
-    scheduled_off_duty_end: end, scheduled_off_duty_recurring: true }], true);
-  assert.equal((await rowOf(CLINICIAN_A)).scheduled_off_duty_recurring, true);
-  await as(CLINICIAN_A, SET, [A, null,
-    { scheduled_off_duty_start: null, scheduled_off_duty_end: null }], true);
-  const cleared = await rowOf(CLINICIAN_A);
+test('D82 is what this contract writes through, and it is really there', async () => {
+  // The contract adds no ownership predicate because the policy carries it.
+  // That is only true while the policy exists, so the suite asserts the
+  // premise rather than the consequence — the failure mode otherwise is a
+  // store where every write succeeds and every test above still passes.
+  const { rows: policies } = await db.query(`select polname from pg_catalog.pg_policy p
+    join pg_catalog.pg_class c on c.oid = p.polrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = $1 and c.relname = 'user' order by polname`, [SCHEMA]);
+  assert.deepEqual(policies.map(r => r.polname), ['user_read', 'user_update'],
+    'the profile table gained or lost a policy; D82 says one update policy and no more');
+  const { rows: triggers } = await db.query(`select tgname, tgenabled from pg_catalog.pg_trigger t
+    join pg_catalog.pg_class c on c.oid = t.tgrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = $1 and c.relname = 'user' and not t.tgisinternal`, [SCHEMA]);
+  assert.deepEqual(triggers, [{ tgname: 'user_self_write_guard', tgenabled: 'O' }],
+    'the self-write guard is missing or disabled; a disabled trigger deparses identically (D95)');
+});
+
+test('a caller role cannot reach this table at all, so a definer is the only way in', async () => {
+  // The REACHABILITY condition, not a second copy of the guard's refusals.
+  //
+  // The first draft of this test tried to drive `update … set role = 'admin'`
+  // directly and assert the guard's message. It cannot work, and the reason is
+  // worth keeping: run as `authenticated`, the statement is refused for want
+  // of a privilege on `deployment_app` before any policy is read; run as
+  // `pennsync_records_owner`, `caller_user_id()` is NULL — the caller helpers
+  // resolve an identity from the session's claims through
+  // `pennsync_private`, which the owner does not hold — so D82's policy
+  // matches no rows and the update silently affects none. Either way the
+  // trigger never fires, and asserting "it refused" would have passed for a
+  // reason that has nothing to do with the guard.
+  //
+  // So the guard's own refusals stay where they can be raised —
+  // `record-store-migration.test.mjs` drives them through a broker — and what
+  // this suite proves is the premise those refusals rest on: no caller role
+  // holds a grant here, so the only path to this table is a SECURITY DEFINER
+  // contract, and every such contract is reviewed.
+  const { rows } = await db.query(`select grantee, privilege_type
+    from information_schema.role_table_grants
+    where table_schema = $1 and table_name = 'user'
+      and grantee in ('anon','authenticated','service_role','public','PUBLIC')`, [SCHEMA]);
+  assert.deepEqual(rows, [],
+    'a caller role was granted something on the profile table; D82\'s guard and policy '
+    + 'are the only things between it and a self-asserted role, and a direct grant '
+    + 'routes around the contract that was reviewed');
+});
+
+test('every column this contract writes is on PROFILE_SELF_WRITABLE', async () => {
+  // The contract's `update` list and D82's allowlist are two files, and the
+  // guard is what would catch a disagreement — at runtime, on a real caller.
+  // Deriving the list from the SQL rather than retyping it is D82's own rule
+  // about a second copy kept by hand.
+  const sql = readFileSync(DUTY, 'utf8');
+  const columns = [...sql.matchAll(/^ +(?:set )?"([a-z_]+)" = /gm)].map(m => m[1]);
+  assert.ok(columns.length >= 7, `read ${columns.length} written columns, expected the whole set`);
+  for (const column of columns) {
+    assert.ok(PROFILE_SELF_WRITABLE.includes(column),
+      `${column} is written by this contract and is not on PROFILE_SELF_WRITABLE`);
+  }
+});
+
+/* ------------------------------------------------------------ the schedule */
+
+test('start and end move together, and a one-sided body is refused', async () => {
+  assert.match(
+    await refuse(CLINICIAN_A, A, { scheduled_off_duty_start: '2026-10-03T09:00:00Z' }),
+    /PENNSYNC_DUTY_SCHEDULE_PAIR_REQUIRED/);
+  assert.match(
+    await refuse(CLINICIAN_A, A, { scheduled_off_duty_end: '2026-10-03T09:00:00Z' }),
+    /PENNSYNC_DUTY_SCHEDULE_PAIR_REQUIRED/);
+});
+
+test('one null and one date is refused rather than half-persisted', async () => {
+  assert.match(await refuse(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-10-03T09:00:00Z', scheduled_off_duty_end: null,
+  }), /PENNSYNC_DUTY_SCHEDULE_INCOMPLETE/);
+});
+
+test('a window is stored, and clearing it drops the recurrence with it', async () => {
+  const answer = await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+    scheduled_off_duty_end: '2026-10-05T09:00:00Z',
+    scheduled_off_duty_recurring: true,
+  });
+  assert.equal(answer.scheduled_off_duty_recurring, true);
+  assert.ok((await profile(CLINICIAN_A)).scheduled_off_duty_start instanceof Date);
+
+  const cleared = await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: null, scheduled_off_duty_end: null,
+  });
   assert.equal(cleared.scheduled_off_duty_start, null);
+  assert.equal(cleared.scheduled_off_duty_end, null);
+  // A repeat must not outlive the dates it was repeating.
   assert.equal(cleared.scheduled_off_duty_recurring, false);
 });
 
-test('the recurrence flag is a boolean here and is coerced in the original', async () => {
-  // The original writes `!!scheduled_off_duty_recurring`, so the string
-  // "false" creates a repeating window. Refused instead. A NARROWING, and the
-  // original's own expression is read rather than described.
-  assert.ok(/!!scheduled_off_duty_recurring/.test(original));
-  await refusal(CLINICIAN_A, [A, null, { scheduled_off_duty_start: '2026-03-02T09:00:00Z',
-    scheduled_off_duty_end: '2026-03-03T09:00:00Z', scheduled_off_duty_recurring: 'false' }],
-  'PENNSYNC_DUTY_STATUS_VALUE_INVALID');
-});
-
-test('the off-duty message is sanitized in SQL, because a service cannot be the boundary', async () => {
-  // The original's comment says why this is a disclosure control rather than
-  // shaping: the message is spoken to callers by TTS and sent as an SMS
-  // auto-reply. A control the service applies is one a direct RPC call skips.
-  assert.ok(/SSML\/markup injection/.test(original));
-  await as(CLINICIAN_A, SET, [A, null,
-    { off_duty_message: 'back <b>soon</b>\u0007 ok' }], true);
-  assert.equal((await rowOf(CLINICIAN_A)).off_duty_message, 'back bsoon/b  ok');
-
-  // Cut at 320 UTF-16 code units, counted the way D33's `bounded_reason`
-  // counts them — an astral character weighs two — so a message of 160 emoji
-  // is already at the bound and the 161st is dropped whole rather than split.
-  // PostgreSQL text cannot hold a lone surrogate, so the original's mid-pair
-  // cut has no representation here; this is one character shorter in that one
-  // case, and identical everywhere else.
-  const { rows: [{ b }] } = await db.query(
-    `select "pennsync_records".duty_message_bounded($1) as b`, ['a'.repeat(400)]);
-  assert.equal(b.length, 320);
-  const { rows: [{ e }] } = await db.query(
-    `select "pennsync_records".duty_message_bounded($1) as e`, ['\u{1F600}'.repeat(200)]);
-  assert.equal([...e].length, 160, 'an astral character weighs two');
-  assert.equal(e.length, 320, 'which is the count the original slices on');
-
-  // Nulling it is a clear, not a no-op.
-  await as(CLINICIAN_A, SET, [A, null, { off_duty_message: null }], true);
-  assert.equal((await rowOf(CLINICIAN_A)).off_duty_message, null);
-  await refusal(CLINICIAN_A, [A, null, { off_duty_message: 7 }],
-    'PENNSYNC_DUTY_STATUS_VALUE_INVALID');
-});
-
-test('the change and its trail entry are one transaction', async () => {
-  // D37's shape. The original writes `UserActivity` with `.catch()`, so a
-  // failed audit leaves the change made and unrecorded; here neither half can
-  // exist without the other. Stricter than the original, and deliberate.
-  assert.ok(/\.catch\(\(err\) => console\.error\('Failed to log activity/.test(original));
-  const before = (await db.query(
-    "select count(*)::int as n from pennsync_records.activity_audit where action = 'duty_status_changed'"
-  )).rows[0].n;
-  await as(ADMIN_A, SET, [A, null, { duty_status: 'on_duty' }], true);
-  const after = (await db.query(
-    "select count(*)::int as n from pennsync_records.activity_audit where action = 'duty_status_changed'"
-  )).rows[0].n;
-  assert.equal(after, before + 1);
-
-  // And a refused change appends nothing, which is the same property from the
-  // other side: an entry recording a duty change nobody made is worse than
-  // none. Asserted on a refusal AFTER the write would have happened, so it
-  // exercises the rollback rather than an early return.
-  await refusal(ADMIN_A, [A, null, { duty_status: 'on_duty', scheduled_off_duty_start: 'x' }],
-    'PENNSYNC_DUTY_STATUS_WINDOW_INCOMPLETE');
-  assert.equal((await db.query(
-    "select count(*)::int as n from pennsync_records.activity_audit where action = 'duty_status_changed'"
-  )).rows[0].n, after);
-});
-
-test('the contract is reachable by a member and by nobody else', async () => {
-  for (const [role, expected] of [['anon', false], ['authenticated', true], ['service_role', false]]) {
-    const { rows: [{ ok }] } = await db.query(
-      "select has_function_privilege($1,'public.pennsync_contract_duty_status_set(text,text,jsonb)','execute') as ok",
-      [role]);
-    assert.equal(ok, expected, `${role} should ${expected ? '' : 'not '}reach the wrapper`);
-  }
-  // The helpers are the record owner's alone: a caller who could ask
-  // `duty_message_bounded` directly learns nothing, and one who could ask for
-  // the writable field list would be reading the gate rather than passing it.
-  for (const helper of ['pennsync_records.duty_status_writable_fields()',
-    'pennsync_records.duty_message_bounded(text)']) {
-    const { rows: [{ ok }] } = await db.query(
-      "select has_function_privilege('authenticated',$1,'execute') as ok", [helper]);
-    assert.equal(ok, false, `${helper} is not a caller's to ask`);
+test('an end at or before the start is refused', async () => {
+  for (const end of ['2026-10-03T09:00:00Z', '2026-10-02T09:00:00Z']) {
+    assert.match(await refuse(CLINICIAN_A, A, {
+      scheduled_off_duty_start: '2026-10-03T09:00:00Z', scheduled_off_duty_end: end,
+    }), /PENNSYNC_DUTY_SCHEDULE_BACKWARDS/);
   }
 });
 
-test('every column the contract writes is one D82 admits', async () => {
-  // The reason this capability was in the wrong bucket, asserted rather than
-  // narrated: all six are on the allowlist, so the trigger admits the write and
-  // the port was never blocked. If a later change adds a seventh that is not,
-  // this fails here rather than at a caller's first toggle.
-  const { rows: [{ fields }] } = await db.query(
-    'select "pennsync_records".duty_status_writable_fields() as fields');
-  const written = [...fields, 'duty_on_since'];
-  for (const column of written) {
-    assert.ok(PROFILE_SELF_WRITABLE.includes(column),
-      `${column} must be on PROFILE_SELF_WRITABLE or the trigger refuses the write`);
-  }
-  // And the derived one is NOT in the caller's set, which is the other half.
-  assert.equal(fields.includes('duty_on_since'), false);
-  const migration = await readFile(resolve(repository, MIGRATION), 'utf8');
-  assert.equal(/p_patch ->> 'duty_on_since'/.test(migration), false,
-    'the stamp is never read from the patch');
+test('a repeating window of a week or more is refused, and a shorter one is not', async () => {
+  // The original's bound is `e - s >= WEEK_MS`, so exactly seven days is out
+  // and a minute under it is in. Both sides are asserted because a `>` written
+  // for a `>=` passes every test that only checks the far side.
+  assert.match(await refuse(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+    scheduled_off_duty_end: '2026-10-10T09:00:00Z',
+    scheduled_off_duty_recurring: true,
+  }), /PENNSYNC_DUTY_SCHEDULE_TOO_LONG/);
+  const ok = await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+    scheduled_off_duty_end: '2026-10-10T08:59:00Z',
+    scheduled_off_duty_recurring: true,
+  });
+  assert.equal(ok.success, true);
+  // And the bound is the RECURRING one only: a one-off month off is allowed
+  // there and has to be allowed here.
+  const long = await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+    scheduled_off_duty_end: '2026-11-03T09:00:00Z',
+    scheduled_off_duty_recurring: false,
+  });
+  assert.equal(long.success, true);
 });
 
-test('the original serves only a caller with exactly one membership, and this does not', () => {
-  // The divergence the call-site review turned up, recorded rather than
-  // discovered later. `hasExactActiveAgencyMembership` filters for `status:
-  // 'active'` with a limit of 2 and refuses unless it gets back EXACTLY ONE
-  // row, so a person who holds two agencies cannot use this capability in
-  // Base44 at all.
-  assert.match(original, /rows\.length !== 1/);
-  assert.match(original, /undefined,\s*\n\s*2,/);
+test('an impossible date is refused as a date, not stored as one PostgreSQL rounded', async () => {
+  // D38's reason for parsing text rather than taking a timestamptz parameter:
+  // the driver would decide what this means before the contract saw it.
+  assert.match(await refuse(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-02-31T09:00:00Z',
+    scheduled_off_duty_end: '2026-03-05T09:00:00Z',
+  }), /PENNSYNC_DUTY_SCHEDULE_INVALID/);
+  assert.match(await refuse(CLINICIAN_A, A, {
+    scheduled_off_duty_start: 'next tuesday', scheduled_off_duty_end: '2026-03-05T09:00:00Z',
+  }), /PENNSYNC_DUTY_SCHEDULE_INVALID/);
+});
 
-  // Here the request names its tenant -- the business API's invariant -- and
-  // the gate is membership in THAT agency, so a two-agency caller is served.
-  // That is a WIDENING, and it is D68's shape rather than a decision taken
-  // here: the exact-one check is how a handler with no envelope establishes a
-  // tenant at all, and it is a compensation the envelope removes.
-  //
-  // What the agency actually decides is worth naming, because it is the whole
-  // of the widening's blast radius: the row being written is the caller's own
-  // profile, which carries no agency, so the only agency-scoped effect is
-  // which agency's activity trail the entry lands in -- and they hold both.
-  //
-  // The scan below strips comments first, and that is not tidiness: the first
-  // version of it failed on this contract's OWN HEADER, which names the check
-  // it deletes in the sentence explaining why it is deleted. A check that reads
-  // a file for an absent name must say whether it means absent from the CODE or
-  // absent from the PAGE. This one means the code. (The same defect the
-  // state-incident port recorded, arriving in the test written to avoid it.)
-  const migration = readFileSync(resolve(repository, MIGRATION), 'utf8')
-    .split('\n').filter(line => !/^\s*--/.test(line)).join('\n');
-  assert.match(migration, /caller_tenant_role\(p_agency\)/);
-  assert.equal(/rows\.length|exactly one|limit 2/i.test(migration), false,
-    'the compensation is deleted rather than reimplemented');
+test('PostgreSQL\'s eight special time literals are refused, because `new Date` refuses them', async () => {
+  // This is the one direction `::timestamptz` is WIDER than the original's
+  // parser, and both halves of it are real. `infinity` persists a window that
+  // never ends; `today` and its neighbours persist one that means something
+  // different every day it is read — and the webhooks read this window live,
+  // so a context-dependent value would answer a caller differently tomorrow
+  // with nothing in the row having changed. Every one of them is `NaN` to
+  // `new Date()` and refused by the original.
+  for (const literal of [
+    'infinity', '+infinity', '-infinity', 'INFINITY', '  infinity  ',
+    'now', 'today', 'tomorrow', 'yesterday', 'epoch', 'allballs',
+  ]) {
+    assert.match(await refuse(CLINICIAN_A, A, {
+      scheduled_off_duty_start: literal,
+      scheduled_off_duty_end: '2026-10-05T09:00:00Z',
+    }), /PENNSYNC_DUTY_SCHEDULE_INVALID/, `${JSON.stringify(literal)} as a start`);
+    assert.match(await refuse(CLINICIAN_A, A, {
+      scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+      scheduled_off_duty_end: literal,
+    }), /PENNSYNC_DUTY_SCHEDULE_INVALID/, `${JSON.stringify(literal)} as an end`);
+  }
+});
+
+test('the recurrence flag follows JAVASCRIPT truthiness, not a boolean cast', async () => {
+  // The original writes `!!scheduled_off_duty_recurring`, and `::boolean`
+  // disagrees with it in both directions: the strings "false" and "0" are
+  // truthy in JavaScript and false to PostgreSQL, while an object or an array
+  // makes the cast raise instead of answering. The week bound reads this
+  // value, so the disagreement decides whether a window is refused.
+  for (const truthy of ['false', '0', 'no', {}, [], 'x', 1, -1, 0.5]) {
+    assert.match(await refuse(CLINICIAN_A, A, {
+      scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+      scheduled_off_duty_end: '2026-10-10T09:00:00Z',
+      scheduled_off_duty_recurring: truthy,
+    }), /PENNSYNC_DUTY_SCHEDULE_TOO_LONG/, `${JSON.stringify(truthy)} is truthy`);
+  }
+  for (const falsy of [false, 0, '', null]) {
+    const answer = await set(CLINICIAN_A, A, {
+      scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+      scheduled_off_duty_end: '2026-10-10T09:00:00Z',
+      scheduled_off_duty_recurring: falsy,
+    });
+    assert.equal(answer.success, true, `${JSON.stringify(falsy)} is falsy`);
+    assert.equal(answer.scheduled_off_duty_recurring, false,
+      `${JSON.stringify(falsy)} is stored as false, the way \`!!x\` stores it`);
+  }
+  // And a truthy non-boolean is STORED as true rather than raising.
+  const stored = await set(CLINICIAN_A, A, { scheduled_off_duty_recurring: 'false' });
+  assert.equal(stored.scheduled_off_duty_recurring, true);
+});
+
+/* ------------------------------------------------------- the off-duty message */
+
+test('the message is sanitized on WRITE, in the original\'s own order', async () => {
+  // It is spoken to callers by TTS and sent as an SMS auto-reply, which is why
+  // the original sanitizes going in rather than coming out. Stripping the
+  // angle brackets FIRST means a control character between them survives as a
+  // space rather than being eaten with them, so the input below distinguishes
+  // the two orders.
+  const answer = await set(CLINICIAN_A, A, { off_duty_message: 'Away <break\u0007time="2s"> back soon' });
+  assert.equal(answer.off_duty_message, 'Away break time="2s" back soon');
+});
+
+test('the message cap folds UTF-16 code units, as slice(0, 320) does', async () => {
+  // Divergence 4. An astral character costs two units there and one character
+  // here, so a naive `left(x, 320)` would store 320 emoji where the original
+  // stores 160 — a widening, in a field that is read aloud to callers.
+  const answer = await set(CLINICIAN_A, A, { off_duty_message: '\u{1F600}'.repeat(400) });
+  assert.equal([...answer.off_duty_message].length, 160);
+  assert.equal(answer.off_duty_message.length, 320, 'the cap did not count code units');
+  // And the plain case still counts characters, because there they agree.
+  const plain = await set(CLINICIAN_A, A, { off_duty_message: 'a'.repeat(400) });
+  assert.equal(plain.off_duty_message.length, 320);
+});
+
+test('a message whose cut falls inside a surrogate pair drops the character whole', async () => {
+  // The one respect in which the cap is not byte-exact, and a narrowing:
+  // PostgreSQL will not store a lone surrogate, so 319 units of text followed
+  // by an emoji ends at 319 rather than at a half character.
+  const answer = await set(CLINICIAN_A, A, { off_duty_message: `${'a'.repeat(319)}\u{1F600}b` });
+  assert.equal(answer.off_duty_message.length, 319);
+  assert.ok(!/[\uD800-\uDFFF]/.test(answer.off_duty_message), 'a lone surrogate was stored');
+});
+
+test('a non-string message is refused rather than coerced', async () => {
+  assert.match(await refuse(CLINICIAN_A, A, { off_duty_message: 42 }),
+    /PENNSYNC_DUTY_MESSAGE_INVALID/);
+});
+
+test('null clears the message and absent leaves it', async () => {
+  await set(CLINICIAN_A, A, { off_duty_message: 'Back Monday' });
+  const cleared = await set(CLINICIAN_A, A, { off_duty_message: null });
+  assert.equal(cleared.off_duty_message, null);
+});
+
+/* ------------------------------------------------------------------ the trail */
+
+test('the write and its audit entry are one transaction', async () => {
+  // D37's reading: the original writes `UserActivity` behind a `.catch(() => {})`,
+  // which is a compensation for two round trips. Here neither half can exist
+  // without the other, so there is no `audit_recorded` flag to report (D53).
+  const before = await db.query(
+    `select count(*)::int as n from ${SCHEMA}."activity_audit" where "action" = $1`,
+    ['duty_status_changed']);
+  await set(CLINICIAN_A, A, { duty_status: 'on_duty' });
+  const after = await db.query(
+    `select "actor_user_id","subject_kind","subject_id","detail" from ${SCHEMA}."activity_audit"
+     where "action" = $1 order by "occurred_at" desc, "id" desc limit 1`, ['duty_status_changed']);
+  assert.equal(after.rows.length, 1);
+  assert.equal(after.rows[0].actor_user_id, bid(CLINICIAN_A));
+  assert.equal(after.rows[0].subject_kind, 'user');
+  assert.equal(after.rows[0].subject_id, bid(CLINICIAN_A));
+  assert.equal(after.rows[0].detail.duty_status, 'on_duty');
+  const { rows } = await db.query(
+    `select count(*)::int as n from ${SCHEMA}."activity_audit" where "action" = $1`,
+    ['duty_status_changed']);
+  assert.equal(rows[0].n, before.rows[0].n + 1);
+});
+
+test('the trail names recurrence only when this call WROTE recurrence', async () => {
+  // The original records `update.scheduled_off_duty_recurring`, which is
+  // `undefined` unless the field was supplied or a window was cleared, and
+  // `JSON.stringify` drops an undefined value rather than storing it. Reading
+  // the row's standing value instead would make a duty-status-only change read
+  // as though recurrence took part in it — a false entry in a compliance trail,
+  // which is the thing D42 says is worse than an absent one.
+  const detail = async () => (await db.query(
+    `select "detail" from ${SCHEMA}."activity_audit" where "action" = $1
+     order by "occurred_at" desc, "id" desc limit 1`, ['duty_status_changed'])).rows[0].detail;
+
+  await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: '2026-10-03T09:00:00Z',
+    scheduled_off_duty_end: '2026-10-05T09:00:00Z',
+    scheduled_off_duty_recurring: true,
+  });
+  assert.equal((await detail()).scheduled_off_duty_recurring, true,
+    'supplied, so it is recorded');
+
+  await set(CLINICIAN_A, A, { duty_status: 'off_duty' });
+  assert.ok(!('scheduled_off_duty_recurring' in await detail()),
+    'not supplied and nothing cleared, so the key is absent rather than restated');
+
+  // Clearing the window writes recurrence without the caller naming it, so the
+  // key IS present — the original's `if (clearingSchedule)` puts it in `update`.
+  await set(CLINICIAN_A, A, {
+    scheduled_off_duty_start: null, scheduled_off_duty_end: null,
+  });
+  assert.equal((await detail()).scheduled_off_duty_recurring, false,
+    'clearing writes recurrence, so the entry says so');
+});
+
+test('a refused write leaves no audit entry behind', async () => {
+  const before = await db.query(
+    `select count(*)::int as n from ${SCHEMA}."activity_audit" where "action" = $1`,
+    ['duty_status_changed']);
+  await refuse(CLINICIAN_A, A, { duty_status: 'on_call' });
+  const { rows } = await db.query(
+    `select count(*)::int as n from ${SCHEMA}."activity_audit" where "action" = $1`,
+    ['duty_status_changed']);
+  assert.equal(rows[0].n, before.rows[0].n);
+});
+
+test('the trail carries no name, because the carried table has no name column', async () => {
+  // Divergence 3. The original stamps `user.full_name`; the carried table has
+  // no such column, which is what this test pins. It does NOT pin that the
+  // store holds no name — `pennsync_private.staff_name` does, under a policyless
+  // force-RLS table and the real-names hold — so read the absence as local to
+  // this table. What makes the trail's silence independent of that hold is
+  // D25: it stamps its actor from the caller helpers and refuses a payload
+  // naming one, so there is nothing to pass either way.
+  const { rows } = await db.query(
+    `select "detail" from ${SCHEMA}."activity_audit" where "action" = $1
+     order by "occurred_at" desc, "id" desc limit 1`, ['duty_status_changed']);
+  assert.ok(!('user_name' in rows[0].detail), 'the trail carries a name it cannot have');
+  const { rows: columns } = await db.query(
+    `select 1 from information_schema.columns
+     where table_schema = $1 and table_name = 'user' and column_name = 'full_name'`, [SCHEMA]);
+  assert.equal(columns.length, 0, 'the carried profile gained a name column; re-read divergence 3');
+});
+
+/* ------------------------------------------- what the original still says today */
+
+test('the original\'s constants are read from the original, not retyped', async () => {
+  // D12's discipline. Each of these is a number or a pair this contract
+  // reproduces, and a change upstream should fail here rather than pass
+  // quietly against a copy.
+  const source = readFileSync(ORIGINAL, 'utf8');
+  assert.match(source, /\['on_duty', 'off_duty'\]\.includes\(duty_status\)/,
+    'the duty_status pair moved');
+  assert.match(source, /const WEEK_MS = 7 \* 24 \* 60 \* 60 \* 1000;/, 'the recurring bound moved');
+  assert.match(source, /e - s >= WEEK_MS/, 'the recurring bound changed direction');
+  assert.match(source, /\.replace\(\/\[<>\]\/g, ""\)\.replace\(\/\[\\u0000-\\u001F\\u007F\]\/g, " "\)\.slice\(0, 320\)/,
+    'the sanitizer or its order moved');
+  assert.match(source, /if \(!isProtectedSuperAdmin\(user\)\) \{/,
+    'the target leg\'s gate moved; the refusal above is keyed to it being the platform tier');
+});
+
+test('the migration refuses to install on a store without D82', async () => {
+  // The contract carries no ownership check because the policy does. A store
+  // missing the policy would accept every write this makes and enforce
+  // nothing, so the migration refuses rather than running unbound. Proved by
+  // dropping the policy in a fresh store and re-applying this file.
+  const scratch = new PGlite();
+  try {
+    await scratch.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+    const dir = new URL('../supabase/migrations/', import.meta.url);
+    for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
+      await scratch.exec(await readFile(new URL(name, dir), 'utf8'));
+    }
+    await applyRecordMigrations(scratch, { omit: [DUTY_NAME] });
+    await scratch.exec(`drop policy "user_update" on ${SCHEMA}."user"`);
+    await assert.rejects(scratch.exec(readFileSync(DUTY, 'utf8')),
+      /PENNSYNC_PROFILE_SELF_WRITE_REQUIRED/);
+  } finally { await scratch.close(); }
 });

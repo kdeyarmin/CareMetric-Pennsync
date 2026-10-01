@@ -7,8 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import {
-  applyRecordMigrations, recordMigrationNames,
+  applyRecordMigrations, recordMigrationNames, assertNewestRecordMigration,
 } from './record-migrations.mjs';
+
+// The migration this suite owns, and the newest record migration on this tree,
+// which is why the ordering guard above is held here.
+const WRITES_FORWARD = '20260920700000_contract_reference_writes.sql';
 
 /**
  * The writes for three reference tables whose reads ship in
@@ -55,15 +59,24 @@ before(async () => {
   // half of the check this suite still holds: that what was applied is the
   // directory, so a file added beside this one cannot be silently skipped.
   //
-  // The ORDERING half was here and has moved to `contract-duty-status.test.mjs`.
-  // It belongs to whichever migration is the newest PENDING one, and this file
-  // stopped being that the moment a newer one arrived in the same change — the
-  // guard is never held by two suites at once, because the second holder is a
-  // check asserting a tree the first one's own change makes false. Merging is
-  // the usual reason it moves and is not the rule; being overtaken is the rule.
+  // The ORDERING guard is back HERE, and the round trip is the lesson rather
+  // than the bookkeeping. It belongs to whichever migration is the newest
+  // PENDING one. It left this suite for `contract-duty-status` when this
+  // branch's own duty migration sorted after this file; that migration has
+  // since been WITHDRAWN, superseded by the one `main` carries at
+  // `20260920690000_contract_duty_status.sql`, and this file sorts after THAT.
+  // So the guard came back without this suite's own file ever moving.
+  //
+  // Both directions are the same rule and neither is merging: a file takes the
+  // guard by being newest and loses it by being OVERTAKEN. The helper's error
+  // text names merging, which is only the commonest cause, and a reader who
+  // trusts it goes looking for a merge that did not happen in either direction
+  // here. It is never held by two suites at once, because the second holder
+  // asserts a tree the first one's own change makes false.
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
+  assertNewestRecordMigration(applied, WRITES_FORWARD);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await seed();
 });

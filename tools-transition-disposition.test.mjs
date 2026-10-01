@@ -250,11 +250,36 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
   // corrected in the entry itself**, in the same change that added the fourth
   // reading below; the readings are declared here either way, because they are
   // dated before/afters and not stale copies.
+  // The entry that USED to sit here declared `entity_authorization=5 files=12
+  // external_secret=2 none=79` as D223's dated reading, and it was right on a
+  // tree without this port. With the duty contract present that reading IS the
+  // measurement, quotations equal to the measurement are skipped before any
+  // declaration is consulted, and a declaration nothing matches fails the
+  // check below. So the entry went, and the one under it arrived: on main the
+  // footnote's OTHER figure was the live measurement and needed no
+  // declaration, and here it is the historical one. Both readings are correct
+  // and which of them is history depends on the tree, so expect this pair to
+  // swap again the next time a port moves `entity_authorization`.
+  // **The swap the comment above predicted has HAPPENED, on this tree.** That
+  // paragraph said the pair would trade places the next time a port moved the
+  // queue, and this change moves `files` 12 → 9 and `none` 79 → 82: the three
+  // file capabilities ported, and the duty toggle this branch carried was
+  // WITHDRAWN in favour of the contract `main` already holds. So D223's reading
+  // is history again rather than the measurement, and the entry that was
+  // removed when it became the measurement is back, unchanged. It was deleted
+  // for being correct, not for being wrong, which is why restoring it is the
+  // resolution and not a regression.
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
-    reason: 'D223\'s "What it does to the queue" reading at `d8c6be2b`, the head that decision '
-      + 'was written on: the before column for the one bucket its refusal moved',
+    reason: 'D223\'s own dated reading, from `--summary` at the head that decision was written '
+      + 'on, which is history again now that the file ports have moved `files` and `none`',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=6 files=12 external_secret=2 none=78',
+    reason: 'the collector\'s footnote reading on `00ccac41` and on the collection branch, '
+      + 'quoted to show one instrument answering on three trees rather than two reports disagreeing',
   },
   // The FOURTH, which D223's three do not cover and which is undeclared without
   // it: the collector's footnote reproduces the OTHER figure in circulation as
@@ -307,6 +332,15 @@ test('the pages carrying the port queue carry what the tool measures', () => {
   // measured 6, in TWO places, with every suite green. A roster of pages is a
   // mechanism for omitting the next page, so the pages are discovered now and
   // only the history below is declared.
+  // The transition plan was nearly pinned here as a third page, and was not,
+  // because what it needed was a sentence deleted rather than a pin. Two of its
+  // clauses claimed the figure was held to the tool when only these two pages
+  // were; the discovery walk below already catches a copy that has gone WRONG
+  // there, which is the case that bites, so a pin would have bought only the
+  // case where somebody removes the line. Against that: pinning a page makes a
+  // MISSING line fail, which reds every open branch's merge ref at once on a
+  // base state nobody caused. The false clauses are gone from that page and no
+  // pin was added.
   for (const path of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md']) {
     const page = readFileSync(resolve(repository, path), 'utf8');
     assert.ok(page.includes(line),
@@ -1098,6 +1132,20 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // payload-assembly test below. Read the three kinds of movement together —
   // a capability that is not being carried, one carried by asking a different
   // question of the same module, and one that was never blocked at all.
+  // Then D223, which moves the pair the ordinary way after three entries that
+  // did not: `setNurseDutyStatus` is WRITTEN, so `entity_authorization` 6 → 5
+  // and `none` 78 → 79 — one fewer blocked and one more carried, which is the
+  // movement D153's comment above contrasts itself with. It moves because the
+  // contract exists rather than because anything was reclassified: a ported
+  // capability reaches `none` without the blocker classifier being consulted
+  // at all.
+  //
+  // Both movements above are real and neither side of this base merge could see
+  // the other, so the pair below is RE-DERIVED on the merged tree. `files` is 9
+  // because this branch ported the three file capabilities; `none` is 82
+  // because those three arrived and `setNurseDutyStatus` is written by the
+  // contract `main` carries. Adding the two branches' deltas would have been
+  // wrong in both directions.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
     records_schema: 0, files: 9, ported_function: 0, core_integration: 0, pdf_rendering: 0,
@@ -1163,15 +1211,23 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // generalises past this bucket: `enforceStaffRoleIntegrity` reverted a
   // spoofed `User.staff_role`, and in this store the column is constrained on
   // both tables and writable by nobody, so the sweep has no work left rather
-  // than no permission.
+  // than no permission. Six remain that write somebody else's row, a column
+  // outside D82's set, or a payload nothing can read.
   //
-  // A FOURTH left for a reason none of those shares, and it is the one to
-  // read twice, because it was never blocked: `setNurseDutyStatus` writes six
-  // columns that are ALL on D82's allowlist, and it was here because
-  // `writtenColumns` could not read a patch assembled into a local object
-  // before the call. The three above are facts about the store; this one was a
-  // fact about the reader. Five remain that write somebody else's row, a
-  // column outside D82's set, or a payload nothing can read.
+  // D223 then took `setNurseDutyStatus` out by WRITING it, which is the only
+  // way a capability has left this bucket since D82: it was the one of the six
+  // that writes the caller's own row and nothing but columns on D82's
+  // allowlist, so it was the only one the self-write policy could ever admit.
+  // The five that remain each need the administrative path D223 refuses, so
+  // this list does not shrink again without a decision rather than a port.
+  //
+  // One note this branch adds, because the mechanism outlives its own port: the
+  // capability that left was never blocked by the STORE. `writtenColumns` knew
+  // one shape of a write payload — an object literal at the call — and not the
+  // second, a local object assembled by member assignment and handed over, so
+  // it answered `null` and the classifier read unknown as outside D82. The
+  // three above are facts about the store; that one was a fact about the
+  // READER, and it failed closed, which is why it survived so long.
   assert.deepEqual(report.port_blockers.entity_authorization,
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'offboardUser',
       'userManagement', 'userManagementV2']);
@@ -1328,7 +1384,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'savePayrollProfile', 'saveVisitPointConfig', 'searchPDFs',
       'sendAccountReadyEmail', 'sendCredentialRenewalReminders',
       'sendExpirationNotifications', 'sendPersonnelExpirationNotifications',
-    'sendWelcomeEmail', 'setNurseDutyStatus', 'splitReferralPDF',
+      'sendWelcomeEmail', 'setNurseDutyStatus', 'splitReferralPDF',
       'submitIncidentReport',
       'submitPersonnelCredential', 'submitStateReportableIncident',
       'submitTimeOffRequest', 'submitTimesheet',
