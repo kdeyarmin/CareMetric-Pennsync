@@ -145,6 +145,10 @@ test('the two predicates classifySuites cannot produce are proved on a crafted r
 // shape of the set it belongs to.
 const PAGE_NAMED_UNNAMED_APPLIER = 'public-wrapper-execution.test.mjs';
 
+// The clause the retraction turns on. Short on purpose: a long pin fails on an edit
+// that improved the sentence, which teaches a hand to delete the pin.
+const RESIDUAL_GAP_CLAUSE = 'applying a file is not asserting against it';
+
 test('the real tree closes, and the exceptions are named rather than counted', () => {
   const result = classifySuites();
   console.log(`  ${coverageLine(result)}`);
@@ -190,4 +194,18 @@ test('AGENTS.md does not reassert the form that cannot be measured', () => {
       + 'build a store from that directory. Run tools-record-migration-coverage.mjs and '
       + 'state the closure, not a pair of numbers.');
   }
+
+  // The two forbidden strings above are the negative half, and a grep cannot tell a
+  // quotation from a claim — which is why the retraction in the page paraphrases the
+  // old wording rather than quoting it. The negative half is also the one rephrasing
+  // defeats: restoring the false claim in other words passes it. So pin the two
+  // things a rewrite has to keep for the page to stay worth reading.
+  assert.ok(page.includes('tools-record-migration-coverage.mjs'),
+    'AGENTS.md no longer names the tool that answers this, so the paragraph tells a reader '
+    + 'what is true without telling them how to check it. Name the tool, whatever the prose.');
+  assert.ok(page.includes(RESIDUAL_GAP_CLAUSE),
+    `AGENTS.md no longer carries "${RESIDUAL_GAP_CLAUSE}". That clause is the narrow true `
+    + 'claim that replaced the retracted one: the closure covers the BUILD, and whether a '
+    + 'forward migration breaks another contract is still only as good as each suite\'s own '
+    + 'assertions. Rephrasing it is fine and this pin moves with it; losing it is not.');
 });
