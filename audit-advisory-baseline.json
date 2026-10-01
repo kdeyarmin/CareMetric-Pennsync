@@ -1,0 +1,18 @@
+{
+  "note": "Advisories `pnpm audit --prod` reports and this repository accepts, each with the reason it is accepted and the date it was recorded. Checked by tools-audit-advisory-baseline.mjs (`pnpm run check:audit-advisories`): an advisory absent from here fails, as does an entry whose advisory is gone. Re-record with `node tools-audit-advisory-baseline.mjs --write`, which keeps these reasons. The advisory database is remote and moves on its own, so every entry here is a reading of its recordedAt date rather than a property of the tree.",
+  "recordedAt": "2026-10-01",
+  "advisories": [
+    {
+      "ghsa": "GHSA-v3m3-f69x-jf25",
+      "module": "quill",
+      "severity": "low",
+      "title": "Quill is vulnerable to XSS via HTML export feature",
+      "patchedVersions": null,
+      "paths": [
+        ".>react-quill-new>quill"
+      ],
+      "reason": "No patched version exists. The advisory names =2.0.3 vulnerable and 2.0.3 is the latest quill published, so no version move fixes it and the `quill: 2.0.3` override in pnpm-workspace.yaml is already at the ceiling. It is against quill's HTML export, reached only through react-quill-new, whose single call site is src/components/documents/VisualPDFTemplateEditor.jsx:383 - that site already passes the exported HTML through sanitizeHtml (DOMPurify) before it reaches app state or storage, naming this advisory in its own comment. Re-check when quill publishes a fix.",
+      "recordedAt": "2026-10-01"
+    }
+  ]
+}
