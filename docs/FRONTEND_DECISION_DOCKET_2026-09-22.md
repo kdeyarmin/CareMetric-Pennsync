@@ -1,12 +1,35 @@
-# Frontend decision docket — the 203 call sites with nowhere to land
+# Frontend decision docket — the call sites with nowhere to land
 
-`pnpm run check:frontend-destination` finds 203 of the frontend's 445 production
-entity call sites reaching an entity the owned store will have **no table for**
-(D80). Each one needs a product answer before Stage J can finish, not an edit.
-This lays out what is already decided, what is not, and a recommendation for
-each — so the owner can answer rather than defer.
+`pnpm run check:frontend-destination` finds production entity call sites
+reaching an entity the owned store will have **no table for** (D80). This lays
+out what is already decided, what is not, and a recommendation for each — so the
+owner can answer rather than defer.
 
-Two things are true of all 203 today, measured:
+**Every count on this page is a reading of 2026-09-22 and none has been
+re-measured into the prose below.** The "203 of 445" this page opened with was
+taken from D80 and was already wrong there, and note **which** way: it was
+described here as the sites with no table, and it is not that bucket either.
+D80's entry carries 203 in the sentence directly under a table listing
+`broker_is_read_only` 9 as a row of its own, so the uncarried-domain figure was
+194 in the same entry and has never been anything else — what moved is the
+total. On `36c828a0`, 2026-09-30, the same gate reads **453 sites, 208 with no
+destination, of which `no_table` is 193 and the uncarried domain is 194**.
+Re-run the gate before quoting any number here; the domain proportions below are
+what this page is for, not its totals.
+
+**"Each one needs a product answer before Stage J can finish, not an edit" was
+wrong, and this page already disagreed with itself about it — twice.** The first
+bullet below says the dispositions *are* decided and "what is open is narrower";
+§4's recommendation says in its own words that it "needs no product judgment,
+only work". D8 gave the training domain its destination and D7 exempts the
+schema-and-data half of `preserved_paused` in its own words, so what is open for
+most of this block is **activation and sequencing, which are engineering and
+ours**. Measured 2026-09-30 by Plan against `tools-frontend-retired-inventory.mjs`,
+`src/lib/nav.manifest.js`, `discoverPausedFunctions` and `auditBrokerCeiling`;
+the same correction was made in the go-live plan at the two places that carried
+the claim and in `AGENTS.md`.
+
+Two things are true of all of them today, measured:
 
 - **The dispositions themselves are decided.** Learning moves to the Support Hub
   (D8); fax, OASIS, calls and the other paused domains are carried paused (D7).

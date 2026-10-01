@@ -5,7 +5,10 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { SERVED, measureDestinations } from './tools-frontend-destination.mjs';
-import { OUTCOMES, PAGE_FILE, measureInventory, renderMarkdown } from './tools-frontend-retired-inventory.mjs';
+import {
+  CARRIED_DISPOSITIONS, OUTCOMES, PAGE_FILE, UNCARRIED_DISPOSITIONS,
+  entityIsCarried, measureInventory, renderMarkdown,
+} from './tools-frontend-retired-inventory.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 
@@ -53,18 +56,26 @@ test('the committed page is what the tree produces', () => {
 
 /**
  * The page said every site here "reaches a domain the migration decided not to
- * carry", and five of them do not: they are writes to D83 reference tables it
- * carries for READS. It also hard-coded the old total in a sentence beside a
- * derived one, which is the shape that goes stale where nothing can notice.
+ * carry", and fourteen of them do not: their entity IS carried and it is the
+ * OPERATION that has no destination. It also hard-coded the old total in a
+ * sentence beside a derived one, which is the shape that goes stale where
+ * nothing can notice.
+ *
+ * The first version of the split counted five — the D83 reference writes —
+ * because it asked the DESTINATION bucket instead of the disposition, and left
+ * the nine broker writes on the uncarried side although the family serves
+ * their three entities read-only. The test below pins the split against the
+ * dispositions for that reason: a page pinned to a tool agrees with the tool,
+ * which is consistency and not correctness.
  */
 test('the two reasons a site has no destination are counted apart', () => {
   const report = measureInventory(repository);
-  assert.equal(report.uncarried_domain + report.carried_for_reads, report.sites);
-  assert.ok(report.carried_for_reads > 0,
+  assert.equal(report.uncarried_domain + report.carried_entity, report.sites);
+  assert.ok(report.carried_entity > 0,
     'with none of them, this test would pass without the distinction existing');
   const page = renderMarkdown(report);
   assert.match(page, new RegExp(`${report.uncarried_domain} reach a domain`));
-  assert.match(page, new RegExp(`${report.carried_for_reads} are writes to D83`));
+  assert.match(page, new RegExp(`${report.carried_entity} are operations with no destination`));
   // Named on its own, because the literal that was here was 203 — which is
   // still a real number in this report, so a check by VALUE alone cannot tell
   // the hard-coded one from the derived one.
@@ -73,7 +84,7 @@ test('the two reasons a site has no destination are counted apart', () => {
   // be right today is the defect, so no digit may appear that the report does
   // not hold.
   const derived = new Set([report.sites, report.files, report.entities,
-    report.entirely_dropped_files, report.carried_for_reads, report.uncarried_domain,
+    report.entirely_dropped_files, report.carried_entity, report.uncarried_domain,
     report.operations.read, report.operations.write, report.operations.realtime,
     ...report.by_file.map(file => file.sites), ...report.by_entity.map(entry => entry.sites)]
     .map(String));
@@ -81,4 +92,34 @@ test('the two reasons a site has no destination are counted apart', () => {
   for (const number of page.split('\n').slice(0, 13).join('\n').match(/(?<![A-Za-z])\d+/g) ?? []) {
     assert.ok(derived.has(number), `${number} in the summary is not from the report`);
   }
+});
+
+/**
+ * The split is about whether a TABLE exists, so it is proved against the
+ * dispositions rather than against the destination buckets it was first
+ * (wrongly) derived from. Both sides are asserted non-empty, because a
+ * predicate that matched nothing would satisfy the sum above on its own.
+ */
+test('the carried side is exactly the sites whose entity has a table', () => {
+  const report = measureInventory(repository);
+  const dropped = measureDestinations(repository).sites
+    .filter(site => !SERVED.includes(site.destination));
+  const carried = dropped.filter(site => CARRIED_DISPOSITIONS.includes(site.disposition));
+  const uncarried = dropped.filter(site => UNCARRIED_DISPOSITIONS.includes(site.disposition));
+  assert.ok(carried.length > 0 && uncarried.length > 0);
+  assert.equal(carried.length + uncarried.length, dropped.length,
+    'every dropped site is on exactly one side, or a disposition is in neither list');
+  assert.equal(report.carried_entity, carried.length);
+  assert.equal(report.uncarried_domain, uncarried.length);
+  // Named, because the nine that were miscounted are the broker writes and a
+  // reader checking this needs to see them rather than take the totals.
+  assert.deepEqual([...new Set(carried.map(site => site.destination))].sort(),
+    ['broker_is_read_only', 'global_reference_is_read_only']);
+});
+
+test('an unknown disposition is refused rather than bucketed', () => {
+  assert.throws(() => entityIsCarried('something_new'),
+    /FRONTEND_INVENTORY_UNKNOWN_DISPOSITION:something_new/);
+  assert.equal(entityIsCarried('broker'), true);
+  assert.equal(entityIsCarried('hub'), false);
 });
