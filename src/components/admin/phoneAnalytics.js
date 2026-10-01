@@ -6,6 +6,8 @@
  * the math is verifiable in isolation, like the other *Utils modules.
  */
 
+import { hasPersonalCell } from "./rosterTelecom.js";
+
 const last10 = (raw) => String(raw || "").replace(/[^\d]/g, "").slice(-10);
 const pct = (n, d) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
 
@@ -97,7 +99,10 @@ export function summarizePhoneActivity({ smsMessages = [], callLogs = [], consen
 
   // --- Provisioning coverage ---
   const withWork = users.filter((u) => u.work_phone_number);
-  const fullyProvisioned = withWork.filter((u) => u.personal_cell_e164);
+  // See `rosterTelecom.js`: the owned roster answers `has_personal_cell` and
+  // sends no raw column, so this count reads 0 for every agency if it tests
+  // `personal_cell_e164` directly.
+  const fullyProvisioned = withWork.filter((u) => hasPersonalCell(u));
   const provisioning = {
     totalUsers: users.length,
     withWorkNumber: withWork.length,

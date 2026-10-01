@@ -65,18 +65,24 @@ before(async () => {
   // The ordering guard has MOVED ON, and this is the retirement the helper's
   // own docstring asks for rather than a weakening of it: this migration is on
   // `main`, so it is part of what a store already holds, and a later file
-  // sorting after it is a correct tree rather than a base that moved.
+  // sorting after it is a correct tree rather than a base that moved. It was not
+  // dropped at its own merge, and the next forward migration to arrive failed
+  // this suite's `before` and took all 22 of its tests down with it, naming a
+  // file that had done nothing wrong.
   //
-  // Where it lives now is a merge resolution rather than either branch's
-  // answer, and on THIS tree it is neither side's. `main` sent it to
-  // `contract-duty-status`, then to `contract-reference-writes` as further
-  // forward migrations landed; this branch adds a record migration sorting
-  // after all of them, so the newest pending file here is the timesheet review
-  // approver role and the guard is held by
+  // Where it lives now is a merge resolution rather than either branch's answer,
+  // and on THIS tree it is neither side's. `main` sent it to
+  // `contract-duty-status`, then to `contract-reference-writes`, then to
+  // `roster-phone-provisioned` as further forward migrations landed; this branch
+  // adds a record migration sorting after all of them, so the newest pending file
+  // here is the timesheet review approver role and the guard is held by
   // `contract-timesheet-review-approver.test.mjs` alone. Each claim was right
-  // about its own tree, and taking either side whole would have left two suites
-  // holding it — which the helper forbids, because the second holder asserts a
-  // tree the first one's own change makes false.
+  // about the tree that named it, and taking either side whole would have left
+  // two suites holding it — which the helper forbids, because the second holder
+  // asserts a tree the first one's own change makes false.
+  //
+  // What stays is the set equality above, which is the assertion that actually
+  // says this store is the one a deployment gets.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [
