@@ -60,8 +60,11 @@ export function productionFixture() {
     if (!url.startsWith(`${productionProjectUrl}/`)) throw new Error('FIXTURE_FOREIGN_DESTINATION');
     const input = options.body ? JSON.parse(options.body) : {};
     if (url.endsWith('/verify')) {
-      if (input.email !== productionEmail || !['invite', 'recovery'].includes(input.type)
-        || !fixture.links.delete(`${input.type}:${input.token}`)) return json({}, 401);
+      // No address and no bare token: the redemption happens here, by hash. See
+      // `production-client.test.mjs`'s own handler for why that shape is the one.
+      if (input.email !== undefined || input.token !== undefined
+        || !['invite', 'recovery'].includes(input.type)
+        || !fixture.links.delete(`${input.type}:${input.token_hash}`)) return json({}, 401);
       const bearer = `production.link${++next}.token`;
       live.set(bearer, true);
       return json({ user, access_token: bearer, token_type: 'bearer' });

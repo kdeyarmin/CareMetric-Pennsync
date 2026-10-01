@@ -17,6 +17,23 @@
  * safely, and a URL is the least trusted input the app takes.
  */
 
+/**
+ * Every parameter a provider link can carry a secret in, scrubbed from the query
+ * AND the fragment on load whether or not this app acts on it.
+ *
+ * WHICH SHAPE WE SEND IS A DECISION, and this list is the other half of it. A
+ * default GoTrue invitation mails `{{ .ConfirmationURL }}`, which redeems the
+ * link server-side and lands on the app with `access_token` and `refresh_token`
+ * IN THE FRAGMENT -- so the link IS a session, which is the one property this
+ * whole path exists to deny. Ours therefore link with `{{ .TokenHash }}`, which
+ * arrives as `?type=...&token_hash=...` and is redeemed here, by a client that
+ * revokes what it buys. The other shapes are still scrubbed rather than trusted:
+ * a link somebody configured the other way must leave nothing in the address bar,
+ * and it reaches no screen because nothing below reads those names.
+ */
+const SCRUBBED = Object.freeze(['token', 'token_hash', 'access_token', 'refresh_token',
+  'provider_token', 'provider_refresh_token', 'code', 'type', 'expires_in', 'expires_at']);
+
 /** The two link kinds a screen may act on. Mirrors the client's own set. */
 export const LINK_TYPES = Object.freeze(['invite', 'recovery']);
 /**
@@ -34,15 +51,40 @@ const TOKEN = /^[A-Za-z0-9_-]{6,512}$/;
  * Exported for the tests, and for a caller that has a URL rather than a window.
  *
  * @param {string} search a query string, with or without its leading `?`.
- * @returns {{type: string, token: string} | null}
+ * @returns {{type: string, tokenHash: string} | null}
  */
 export function readLinkParams(search) {
   let params;
   try { params = new URLSearchParams(String(search ?? '')); } catch { return null; }
   const type = params.get('type');
-  const token = params.get('token');
-  if (!LINK_TYPES.includes(type) || typeof token !== 'string' || !TOKEN.test(token)) return null;
-  return Object.freeze({ type, token });
+  // `token_hash` and nothing else. A bare `token` is the shape a server-side
+  // redemption uses, and accepting it here would mean accepting a link whose
+  // other half puts a session in the URL.
+  const tokenHash = params.get('token_hash');
+  if (!LINK_TYPES.includes(type) || typeof tokenHash !== 'string' || !TOKEN.test(tokenHash)) return null;
+  return Object.freeze({ type, tokenHash });
+}
+
+/**
+ * A fragment with every scrubbed name removed, and whether anything went.
+ *
+ * The fragment needs its own pass: it never reaches a server, so nothing else
+ * strips it, and it is where a server-side redemption leaves a whole session. It
+ * can also be an ordinary route (`#/visits/3`), optionally with a query of its
+ * own, so a fragment carrying no `=` is left exactly as it is.
+ */
+export function scrubFragment(hash) {
+  const raw = String(hash ?? '').replace(/^#/, '');
+  if (!raw.includes('=')) return { hash: raw ? `#${raw}` : '', removed: false };
+  const cut = raw.indexOf('?');
+  const path = cut === -1 ? '' : raw.slice(0, cut);
+  const params = new URLSearchParams(cut === -1 ? raw : raw.slice(cut + 1));
+  let removed = false;
+  for (const name of SCRUBBED) if (params.has(name)) { params.delete(name); removed = true; }
+  if (!removed) return { hash: `#${raw}`, removed };
+  const rest = params.toString();
+  const kept = rest ? `${path}?${rest}` : path;
+  return { hash: kept ? `#${kept}` : '', removed: true };
 }
 
 /**
@@ -56,15 +98,19 @@ function takeFromLocation() {
   if (typeof window === 'undefined' || !window.location) return null;
   const url = new URL(window.location.href);
   const found = readLinkParams(url.search);
-  // Removed whether or not the pair was USABLE: a malformed token is still a
-  // token, and leaving it behind because this module would not act on it is the
+  // Removed whether or not the pair was USABLE, and whether or not this app reads
+  // the name: a malformed token is still a token, and a shape we do not act on is
+  // the one most worth taking out of the address bar, because nothing downstream
+  // will. Leaving a parameter behind because this module would not use it is the
   // worst of both.
-  const had = url.searchParams.has('type') || url.searchParams.has('token');
-  if (!had) return found;
-  url.searchParams.delete('type');
-  url.searchParams.delete('token');
+  let removed = false;
+  for (const name of SCRUBBED) {
+    if (url.searchParams.has(name)) { url.searchParams.delete(name); removed = true; }
+  }
+  const fragment = scrubFragment(url.hash);
+  if (!removed && !fragment.removed) return found;
   try {
-    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${fragment.hash}`);
   } catch { /* A build with no history still gets the value; the URL keeps it. */ }
   return found;
 }

@@ -67,11 +67,14 @@ function fixture(overrides = {}) {
     const body = options.body ? JSON.parse(options.body) : {};
     if (url.endsWith('/verify')) {
       // A fake transport, and deliberately a STRICT one: the exchange has to name
-      // this address, one of the two link kinds, and a token this fixture minted.
-      // No real address and no real link is used anywhere, and nothing here sends.
-      if (body.email !== EMAIL || !['invite', 'recovery'].includes(body.type)
-        || !state.links.has(`${body.type}:${body.token}`)) return json({}, 401);
-      if (state.consumeLinks) state.links.delete(`${body.type}:${body.token}`);
+      // one of the two link kinds and a hash this fixture minted, and must carry
+      // NO address and no bare token -- the shape where the provider redeems the
+      // link and hands back a session is the one this path refuses to use. No real
+      // address and no real link is used anywhere, and nothing here sends.
+      if (body.email !== undefined || body.token !== undefined
+        || !['invite', 'recovery'].includes(body.type)
+        || !state.links.has(`${body.type}:${body.token_hash}`)) return json({}, 401);
+      if (state.consumeLinks) state.links.delete(`${body.type}:${body.token_hash}`);
       const bearer = `production.link${++next}.token`;
       live.set(bearer, true);
       return json({ user: state.user, access_token: bearer, token_type: 'bearer' });

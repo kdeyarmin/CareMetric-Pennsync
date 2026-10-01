@@ -749,14 +749,14 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
      * to be the same one. Nothing here sends anything — the halves that send, a
      * `/invite` and a `/recover`, are not in this client at all.
      */
-    async setPasswordFromLink(type, linkToken, password) {
+    async setPasswordFromLink(type, tokenHash, password) {
       if (staging) fail('STAGING_OPERATION_UNAVAILABLE');
       invalidate();
       const lease = epoch;
       let candidate = null;
       try {
         await revokeAllKnown(); current(lease);
-        if (!LINK_TYPES.has(type) || typeof linkToken !== 'string' || !LINK_TOKEN.test(linkToken)) {
+        if (!LINK_TYPES.has(type) || typeof tokenHash !== 'string' || !LINK_TOKEN.test(tokenHash)) {
           fail('INVALID_PRODUCTION_LINK');
         }
         // The same bounds as a sign-in, and the same code, because this is the
@@ -765,7 +765,15 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
           fail('INVALID_PRODUCTION_CREDENTIAL');
         }
         const session = await request('/auth/v1/verify', {
-          lease, body: { type, token: linkToken, email: config.email },
+          // `token_hash` rather than `token` and an address, because the hash is
+          // the half of a link that is redeemed HERE. The other shape is redeemed
+          // by the provider, which then hands the browser a whole session in the
+          // URL -- the one thing this method exists to avoid. The typed address is
+          // still checked, by `sameUser` against the grant's own, so a person who
+          // mistypes it is refused rather than quietly setting somebody's
+          // password: the link decides whose account, and the address has to
+          // agree with it.
+          lease, body: { type, token_hash: tokenHash },
           receivedGrant: async (value, canceled) => {
             if (validGrant(value)) {
               candidate = value.access_token;

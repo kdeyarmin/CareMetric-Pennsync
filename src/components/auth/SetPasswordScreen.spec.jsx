@@ -13,8 +13,8 @@ vi.mock('@/lib/independentStagingSession', () => ({
   get independentStagingAuth() { return null; },
 }));
 
-const INVITE = Object.freeze({ type: 'invite', token: 'invitetoken-aaaaaa' });
-const RECOVERY = Object.freeze({ type: 'recovery', token: 'recoverytoken-bbbbbb' });
+const INVITE = Object.freeze({ type: 'invite', tokenHash: 'invitetoken-aaaaaa' });
+const RECOVERY = Object.freeze({ type: 'recovery', tokenHash: 'recoverytoken-bbbbbb' });
 const ADDRESS = 'nurse@agency.example';
 const PASSWORD = 'a-new-long-password';
 
@@ -37,7 +37,7 @@ describe('setting a password from a link', () => {
     await fill(user);
     await user.click(screen.getByRole('button', { name: 'Accept invitation' }));
     await waitFor(() => expect(setPasswordFromLink).toHaveBeenCalledWith(
-      ADDRESS, 'invite', INVITE.token, PASSWORD));
+      ADDRESS, 'invite', INVITE.tokenHash, PASSWORD));
   });
 
   it('hands the person to sign-in rather than signing them in', async () => {
@@ -54,6 +54,28 @@ describe('setting a password from a link', () => {
     // screen, so performing it on success would take the confirmation away in the
     // same tick as it appeared.
     expect(onPasswordSet).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Go to sign in' }));
+    await waitFor(() => expect(onPasswordSet).toHaveBeenCalledWith(ADDRESS));
+  });
+
+  it('tells a person whose password WAS written that it was, when only cleanup failed', async () => {
+    // A REVIEWER'S FINDING, and the worst reachable outcome in this screen. The
+    // client raises this code only after the password is written, from its own
+    // revoke; reported as a failure it sent the person to retry, the retry found
+    // the link spent, and its answer sent them to an administrator for a new
+    // invitation to an account that already had a password.
+    const onPasswordSet = vi.fn();
+    const user = userEvent.setup();
+    setPasswordFromLink.mockRejectedValue(Object.assign(new Error('AUTHORITY_SESSION_CLEANUP_FAILED'),
+      { code: 'AUTHORITY_SESSION_CLEANUP_FAILED' }));
+    render(<SetPasswordScreen link={INVITE} onPasswordSet={onPasswordSet} />);
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Accept invitation' }));
+    expect(await screen.findByText(/Your password is set\. Sign in with it to continue\./)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // And the part they cannot fix is said once, addressed to the person who can.
+    expect(screen.getByText(/One last step did not finish/)).toBeInTheDocument();
+    expect(screen.getByText(/tell your administrator/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Go to sign in' }));
     await waitFor(() => expect(onPasswordSet).toHaveBeenCalledWith(ADDRESS));
   });

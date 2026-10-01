@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   setPasswordFromLink: vi.fn(),
   signIn: vi.fn(),
   checkAppState: vi.fn(),
-  link: { type: 'invite', token: 'invitetoken-aaaaaa' },
+  link: { type: 'invite', tokenHash: 'invitetoken-aaaaaa' },
 }));
 
 vi.mock('@/lib/independentStagingSession', () => ({
@@ -45,7 +45,7 @@ vi.mock('@/lib/base44AxiosClient', () => ({ createAxiosClient: () => ({ post: vi
 describe('arriving on an invitation or recovery link', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.link = { type: 'invite', token: 'invitetoken-aaaaaa' };
+    mocks.link = { type: 'invite', tokenHash: 'invitetoken-aaaaaa' };
     mocks.setPasswordFromLink.mockResolvedValue({ email: 'nurse@agency.example' });
     mocks.signIn.mockResolvedValue(undefined);
   });
@@ -59,7 +59,7 @@ describe('arriving on an invitation or recovery link', () => {
   });
 
   it('says what a recovery link is for, in its own words', () => {
-    mocks.link = { type: 'recovery', token: 'recoverytoken-bbbbbb' };
+    mocks.link = { type: 'recovery', tokenHash: 'recoverytoken-bbbbbb' };
     render(<SignInScreen />);
     expect(screen.getByRole('button', { name: 'Set password' })).toBeInTheDocument();
   });

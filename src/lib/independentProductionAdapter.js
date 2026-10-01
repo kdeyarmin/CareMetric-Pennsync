@@ -249,7 +249,7 @@ export function createIndependentProductionAdapter(config,
      * exists for — a link never becomes a session. The caller signs in
      * afterwards with the password they just set.
      */
-    async setPasswordFromLink(email, type, linkToken, password) {
+    async setPasswordFromLink(email, type, tokenHash, password) {
       const lease = ++generation; signedIn = false;
       client = null;
       await Promise.all([...clients.values()].map(value => value.signOut()));
@@ -258,7 +258,7 @@ export function createIndependentProductionAdapter(config,
       const next = clients.get(normalized)
         ?? createProductionAuthorityClient({ ...config.target, email: normalized }, { fetchImpl });
       clients.set(normalized, next);
-      try { return await next.setPasswordFromLink(type, linkToken, password); }
+      try { return await next.setPasswordFromLink(type, tokenHash, password); }
       finally { signedIn = false; client = null; }
     },
     signOut,

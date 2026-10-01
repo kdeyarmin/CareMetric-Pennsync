@@ -43,6 +43,10 @@ const SetPasswordScreen = ({ link, onPasswordSet }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  // Set alongside `done` when the password was written but the client could not
+  // revoke what the link bought. Nothing the person does fixes that, so the note
+  // is for their administrator rather than an instruction to them.
+  const [stale, setStale] = useState(false);
   const operationRef = useRef(0);
   const invite = link?.type === 'invite';
 
@@ -69,7 +73,7 @@ const SetPasswordScreen = ({ link, onPasswordSet }) => {
     // a password through whatever the failure turns out to be.
     setPassword(''); setConfirmation('');
     try {
-      await ownedBackendAuth.setPasswordFromLink(email, link.type, link.token, submitted);
+      await ownedBackendAuth.setPasswordFromLink(email, link.type, link.tokenHash, submitted);
       if (operation !== operationRef.current) return;
       // The handover is NOT performed here. This screen's parent takes the
       // handover as the cue to unmount it, so calling it on success would replace
@@ -81,6 +85,13 @@ const SetPasswordScreen = ({ link, onPasswordSet }) => {
     } catch (caught) {
       if (operation !== operationRef.current) return;
       const code = caught?.code;
+      // THE PASSWORD WAS WRITTEN. This code is raised only by the client's own
+      // cleanup, after the write succeeded, so telling the person it failed is
+      // false twice over: they would retry, the link is spent, and the retry's
+      // answer sends them to an administrator for a new invitation to an account
+      // that already has a password. A reviewer walked exactly that path. So this
+      // is the done state, with the one sentence they can act on.
+      if (code === 'AUTHORITY_SESSION_CLEANUP_FAILED') { setDone(true); setStale(true); return; }
       const rejected = code === 'AUTHENTICATION_FAILED' || caught?.status === 401;
       setError(
         rejected
@@ -128,6 +139,12 @@ const SetPasswordScreen = ({ link, onPasswordSet }) => {
                   <p className="text-sm text-slate-700">
                     Your password is set. Sign in with it to continue.
                   </p>
+                  {stale && (
+                    <p className="text-sm text-slate-500">
+                      One last step did not finish. Your password is set and you can sign in now;
+                      if you did not just do this yourself, tell your administrator.
+                    </p>
+                  )}
                   <Button type="button" className="w-full" onClick={() => onPasswordSet?.(email.trim().toLowerCase())}>
                     Go to sign in
                   </Button>
