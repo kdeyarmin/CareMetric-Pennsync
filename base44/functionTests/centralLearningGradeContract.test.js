@@ -47,7 +47,10 @@ test('only the original source prompt/rubric are graded, with a durable result b
  const f=await fixture();const response=await f.handler(f.request());assert.equal(response.status,200);assert.equal(f.dispatches.length,1);assert.equal(f.completions.length,1);
  const prompt=f.dispatches[0].prompt;assert.ok(prompt.includes('Rubric from the original course'));assert.ok(prompt.includes('Synthetic learner response'));assert.ok(!prompt.includes('PRIVATE_SOURCE_KEY'));
  assert.equal(f.dispatches[0].model,'automatic');assert.equal(f.completions[0].result.outcome,'graded');assert.equal(f.completions[0].result.evaluations[0].scoreAwarded,0.75);
- assert.equal(f.factories[0].url,'https://caremetricai.base44.app/');assert.deepEqual([...f.factories[0].headers.keys()],['base44-app-id','base44-service-authorization']);
+ // Cosmetic URL only: the SDK reads serverUrl from the (dropped) Base44-Api-Url
+ // header, not from here, so the shared serviceRoleClientRequest pins the platform
+ // default base44.app. The two forwarded headers are what decide the request.
+ assert.equal(f.factories[0].url,'https://base44.app/');assert.deepEqual([...f.factories[0].headers.keys()],['base44-app-id','base44-service-authorization']);
  assert.equal((await f.handler(f.request())).status,409);assert.equal(f.dispatches.length,1);
 });
 test('retries a lost completion callback with identical bytes but invokes the provider only once',async()=>{
