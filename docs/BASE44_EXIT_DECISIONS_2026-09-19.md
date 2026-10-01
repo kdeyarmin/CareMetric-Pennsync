@@ -14039,9 +14039,8 @@ preserved; they flagged it so a strip-back would not read it as a mismatch.*
 collector reproduced both figures in circulation from its own seat rather than
 arbitrating between two reports of them: `node tools-transition-disposition.mjs
 --summary` answers `entity_authorization=6 files=12 external_secret=2 none=78`
-on `00ccac41` and on this branch, and
-`entity_authorization=5 files=12 external_secret=2 none=79` at both `d8c6be2b`
-and `4bb0dd8a`. One instrument,
+on `00ccac41` and on this branch, and `entity_authorization=5 files=12
+external_secret=2 none=79` at both `d8c6be2b` and `4bb0dd8a`. One instrument,
 three trees — so the two figures were never a disagreement, and the resolution
 took one command rather than a reconciliation. **This copy is the unpinned
 one**: a test forces `AGENTS.md` to carry what the tool measures, the go-live

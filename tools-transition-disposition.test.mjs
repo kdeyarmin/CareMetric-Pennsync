@@ -239,12 +239,32 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reading: 'records_schema=80',
     reason: 'the queue an earlier conclusion was true of, quoted to say why that conclusion expired',
   },
+  // D223's three, which arrived in this list the moment the pages became
+  // discovered rather than listed: the decisions document was in the tree
+  // carrying them before this check could see it, so they are not new prose
+  // somebody wrote past a gate. That is the discovery change working — a
+  // roster would have gone on omitting them — and it is also why the entry
+  // itself says "nothing in this tree reads this document at all", which was
+  // true when it was written and is now false. The sentence is its author's to
+  // correct; the readings are declared here either way, because they are
+  // dated before/afters and not stale copies.
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=5 files=12 external_secret=2 none=79',
-    reason: 'the reading at `d8c6be2b` that the entry was written on, carried unedited by the '
-      + 'register\'s collector, whose own note beside it reproduces this figure and the current '
-      + 'one from one instrument over three trees and says to re-run rather than reconcile',
+    reason: 'D223\'s "What it does to the queue" reading at `d8c6be2b`, the head that decision '
+      + 'was written on: the before column for the one bucket its refusal moved',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12',
+    reason: 'the first half of the collector\'s footnote reproducing that same reading from its '
+      + 'own seat, which wraps mid-line, so the parser sees one quotation in two pieces',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'external_secret=2 none=79',
+    reason: 'the second half of that wrapped footnote line, declared separately for the same '
+      + 'reason: a quotation is per line, and neither half on its own is a reading of anything',
   },
 ];
 
