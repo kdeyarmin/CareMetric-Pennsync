@@ -87,25 +87,37 @@ test("the option carries a name, and the roles the form may label with", () => {
   assert.equal(nameless.name, "c@x.invalid");
 });
 
-test("the role set is the one the contract validates against", () => {
-  // Re-derived from the migration rather than trusted from the comment beside the
-  // constant. Divergence 4 of the submit is what refuses a nominee, and if its
-  // role set ever moves, this list has to move with it or the form starts
-  // offering people the submit refuses again — which is the whole defect.
-  const migration = readFileSync(new URL(
-    "../../../services/authority-store/supabase/record-migrations/"
-    + "20260920360000_contract_timesheet.sql", import.meta.url), "utf8");
-  const gate = /if v_manager\.tenant_role not in \(([^)]*)\) then/.exec(migration);
-  assert.ok(gate, "the submit's approver role gate must be findable");
+const recordMigration = (name) => readFileSync(new URL(
+  `../../../services/authority-store/supabase/record-migrations/${name}`,
+  import.meta.url), "utf8");
+
+test("the role set is the one BOTH contracts validate against", () => {
+  // Re-derived from the migrations rather than trusted from the comment beside
+  // the constant. Each submit is what refuses a nominee, and if either role set
+  // moves, this list has to move with it or that form starts offering people its
+  // submit refuses again — which is the whole defect.
+  //
+  // Both are asserted because they are INDEPENDENT declarations in SQL. Nothing
+  // in the store makes them move together, and a check of only the timesheet's
+  // would pass while the leave form drifted, which is the shape this module
+  // exists to stop.
+  const timesheet = recordMigration("20260920360000_contract_timesheet.sql");
+  const gate = /if v_manager\.tenant_role not in \(([^)]*)\) then/.exec(timesheet);
+  assert.ok(gate, "the timesheet submit's approver role gate must be findable");
   const roles = [...gate[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
   assert.deepEqual([...roles].sort(), [...APPROVER_TENANT_ROLES].sort());
 
+  const timeOff = recordMigration("20260920230000_contract_time_off.sql");
+  const leave = /if v_manager_role not in \(([^)]*)\) then/.exec(timeOff);
+  assert.ok(leave, "the leave submit's approver role gate must be findable");
+  const leaveRoles = [...leave[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  assert.deepEqual([...leaveRoles].sort(), [...APPROVER_TENANT_ROLES].sort());
+
   // And the REVIEW gate's named-approver leg must admit the same role, or a
   // colleague this list offers could be sent a sheet they cannot then review.
-  const review = /or \(v_role = '([a-z_]+)' and v_email is not null/.exec(migration)
-    ?? /or \(v_role = '([a-z_]+)' and v_email is not null/.exec(readFileSync(new URL(
-      "../../../services/authority-store/supabase/record-migrations/"
-      + "20260920730000_timesheet_review_approver_role.sql", import.meta.url), "utf8"));
+  const review = /or \(v_role = '([a-z_]+)' and v_email is not null/.exec(timesheet)
+    ?? /or \(v_role = '([a-z_]+)' and v_email is not null/.exec(
+      recordMigration("20260920730000_timesheet_review_approver_role.sql"));
   assert.ok(review, "the review gate's named-approver role must be findable");
   assert.ok(APPROVER_TENANT_ROLES.includes(review[1]),
     `the review gate names ${review[1]}, which this list does not offer`);

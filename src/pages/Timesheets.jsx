@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, loadAgencyRoster } from '@/lib/agencyRoster';
-import { approverOptions } from "@/components/timesheet/approverCandidates";
+import { approverOptions } from "@/components/approvals/approverCandidates";
 import { filterRowsByStaffAgency, filterUsersByCallerAgency } from '@/lib/agencyScope';
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
