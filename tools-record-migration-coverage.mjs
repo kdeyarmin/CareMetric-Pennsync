@@ -53,8 +53,24 @@ export const RECORD_DIRECTORY = 'record-migrations';
 // `max - |absent| == |headings|`, which could not fail.
 const BUILDS_STORE = /new PGlite\b|\bdb\.exec\(|new Pool\b/;
 
-/** Reaching it through the shared helper, which is how most of them do it. */
-const HELPER_CALL = /\b(applyRecordMigrations|recordMigrationNames)\b/;
+/**
+ * Reaching it through the shared helper, which is how most of them do it.
+ *
+ * `applyRecordMigrations` ONLY, and the omission is the point: `recordMigrationNames`
+ * merely ENUMERATES the directory, as does `assertNewestRecordMigration`, so matching
+ * either would let a suite that lists filenames and builds a store for an unrelated
+ * reason be counted as applying one. No suite in the tree has that shape today — every
+ * file naming `recordMigrationNames` also names `applyRecordMigrations` — so this
+ * narrowing changes no current classification and removes a way the count could become
+ * wrong without anything failing.
+ *
+ * What this proves is bounded, and the bound is worth stating: the applying call appears
+ * in the source of a suite that builds a store. Static source cannot prove the call was
+ * reached at run time, and this does not claim to. Such a suite lands in `appliers`
+ * rather than in the closure's text half, and the remaining way to be wrong is a call
+ * that is present and dead.
+ */
+const HELPER_CALL = /\bapplyRecordMigrations\b/;
 
 /**
  * Iterating the authority and record directories as a literal pair, which four

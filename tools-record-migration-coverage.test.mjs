@@ -50,7 +50,8 @@ const FIXTURE = {
     + 'export const buildStore = async () => {\n  const db = new PGlite();\n'
     + '  await applyRecordMigrations(db);\n  return db;\n};\n',
   // Present so the sibling walk has the module the two helpers import.
-  'record-migrations.mjs': 'export const applyRecordMigrations = async () => {};\n',
+  'record-migrations.mjs': 'export const applyRecordMigrations = async () => {};\n'
+    + 'export const recordMigrationNames = () => [];\n',
 };
 
 const plant = (extra = {}) => {
@@ -96,6 +97,34 @@ test('it refuses: a namer that applies the directory by an unknown route', () =>
   assert.notDeepEqual(result.unclassified, clean.unclassified,
     'the planted suite changed nothing in the classification, so this case proves nothing');
   assert.deepEqual(result.unclassified, ['rogue.test.mjs']);
+  assert.deepEqual(codes(coverageProblems(result)), ['CLOSURE_BROKEN', 'UNCLASSIFIED_NAMER']);
+});
+
+test('it refuses: enumerating the directory beside an unrelated store', () => {
+  // Raised on #391 by a review bot, and the mechanism was right: the two
+  // predicates are searched independently, so a suite that merely LISTS the
+  // migration filenames and builds a store for some other reason would have
+  // satisfied both and been counted as applying them. No suite in the tree has
+  // that shape, so nothing was miscounted — which is precisely why it needed a
+  // test rather than a re-measurement.
+  const enumerator = {
+    // Imports from a module that ONLY enumerates, so nothing this suite reaches
+    // carries the applying call. That isolates the predicate under test: if the
+    // suite is an applier here, it is because a NAME was matched.
+    'migration-names.mjs': 'export const recordMigrationNames = () => [];\n',
+    'enumerate.test.mjs':
+      "import { recordMigrationNames } from './migration-names.mjs';\n"
+      + "const names = recordMigrationNames('../supabase/record-migrations/');\n"
+      + 'const db = new PGlite();\n'
+      + "await db.exec('create table unrelated (id int)');\n"
+      + 'assert.ok(names.length > 0);\n',
+  };
+  const result = classifySuites(plant(enumerator));
+  assert.equal(result.appliers.includes('enumerate.test.mjs'), false,
+    'enumerating the migration names is not applying them, and counting it as applying '
+    + 'is how this tool would overstate the closure without anything failing');
+  // It is a namer in neither half, so the closure REFUSES rather than guessing.
+  assert.deepEqual(result.unclassified, ['enumerate.test.mjs']);
   assert.deepEqual(codes(coverageProblems(result)), ['CLOSURE_BROKEN', 'UNCLASSIFIED_NAMER']);
 });
 
@@ -148,6 +177,30 @@ const PAGE_NAMED_UNNAMED_APPLIER = 'public-wrapper-execution.test.mjs';
 // The clause the retraction turns on. Short on purpose: a long pin fails on an edit
 // that improved the sentence, which teaches a hand to delete the pin.
 const RESIDUAL_GAP_CLAUSE = 'applying a file is not asserting against it';
+
+test('the transitive route over-captures, and that bound is stated rather than hidden', () => {
+  // Found by the fixture above failing on its first run. The two own-source routes
+  // match an applying CALL; the transitive route matches a module the suite imports
+  // that CONTAINS one — so a suite importing a module which both applies and
+  // enumerates, and calling only the enumerator, counts as an applier. Telling those
+  // apart needs real binding analysis, not a regex, and this is the safe direction:
+  // the closure's text half stays honest and `appliers` can be one too generous.
+  const borrower = {
+    'borrow.test.mjs':
+      "import { recordMigrationNames } from './record-migrations.mjs';\n"
+      + "const names = recordMigrationNames('../supabase/record-migrations/');\n"
+      + 'const db = new PGlite();\n'
+      + "await db.exec('create table unrelated (id int)');\n"
+      + 'assert.ok(names.length > 0);\n',
+  };
+  const result = classifySuites(plant(borrower));
+  assert.ok(result.appliers.includes('borrow.test.mjs'),
+    'the bound this test records has moved. If the transitive route now tells an imported '
+    + 'applying call apart from an imported enumerating one, delete this test and say so.');
+  assert.equal(result.byRoute.transitive.includes('borrow.test.mjs'), true);
+  // It is NOT silent: the closure still holds, so a reader is never told more than this.
+  assert.deepEqual(coverageProblems(result), []);
+});
 
 test('the real tree closes, and the exceptions are named rather than counted', () => {
   const result = classifySuites();
