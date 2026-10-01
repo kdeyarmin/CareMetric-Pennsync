@@ -67,6 +67,31 @@ https://<service-host>`. Released means a send is **attempted**, not that mail
 arrives, and invitations are not covered by it: their `delivery_paused: true`
 is a literal on an audit entry (D42), not a switch.
 
+**The five workforce staff notices have a SECOND switch of their own**,
+`PENNSYNC_API_WORKFORCE_NOTICES`, read exactly and untrimmed against the same
+`enabled-v1` word. `workforceNoticeDeliverable` is an AND of both flags, so it
+can only narrow: it cannot open a channel `PENNSYNC_API_DELIVERY` has left
+shut, and with it absent the five branch to the originals' own
+`delivery_paused` answer rather than refusing — a 503 there would throw away a
+time-off request or a compliance decision the contract has already committed.
+It exists because delivery was released on 2026-09-25 for the two account
+emails, which is not a decision about staff notices. `/readyz` publishes
+`workforceNoticesReleased` beside `deliveryReleased`, and the same caution
+applies to both: ask the deployment, not this page.
+
+Two of those five fan out across the agency's administrators, and their answer
+carries `recipients_truncated` — `null` for a whole set, `approver_limit` for
+the originals' own 500 ceiling, `page_budget` for the roster walk running out
+of pages. Neither bound may refuse, because the record is already written, so
+the answer is where an incomplete fan-out is reported. A recipient these five
+send to is never one a caller named: three read a column a contract wrote
+(`manager_email` resolved through `pennsync_private.agency_colleague` and
+stored as the identity map's `expected_email`, plus `employee_email` and
+`personnel_credential.user_id`, both `caller_email()`), and two ask the roster.
+That is why they do not go through `agencyRecipient` and do not need to — the
+rule being that a sender HANDED a recipient must, and a sender that READS one a
+contract wrote need not, provided nothing rewrites that column afterwards.
+
 **Do not read the release state from this file.** A variable change here is a
 deploy that rebuilds from `main`'s tip, so both the running code and the
 served surface move without this paragraph changing. `curl

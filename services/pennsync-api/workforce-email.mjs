@@ -79,7 +79,7 @@ import { workforceNoticeDeliverable } from './outbound-delivery.mjs';
  * contract answering a cursor equal to its own input would spin, and the walk
  * has to end somewhere it can say why it ended.
  */
-const PAGE_BUDGET = 200;
+export const PAGE_BUDGET = 200;
 
 /**
  * The original's own ceiling (`WORKFORCE_RECIPIENT_LIMIT`, 500), kept. It is a
@@ -88,7 +88,7 @@ const PAGE_BUDGET = 200;
  * the original put it instead of being deleted the way D50's paged-client
  * limits were.
  */
-const APPROVER_LIMIT = 500;
+export const APPROVER_LIMIT = 500;
 
 /**
  * Every active `agency_admin` of the caller's own agency, by verified address.
@@ -103,6 +103,18 @@ const APPROVER_LIMIT = 500;
  * (`row.user_id !== caller.id`): an approver notice to the person who just
  * submitted the request is noise, and here the exclusion is by address because
  * that is what this layer holds.
+ *
+ * **It answers whether the set is WHOLE, and that is the point of the shape.**
+ * Both bounds here under-send rather than mis-send, so neither is a disclosure
+ * question — but a renewal notice that quietly reaches three of five
+ * administrators is still a defect, and the earlier version of this function
+ * reported nothing either time. `account-email.mjs`'s walk can say why it
+ * stopped because it is allowed to refuse; this one may not refuse, since the
+ * record is already written, so saying why it stopped is the only honest
+ * option left. `truncated` is `null` for a whole set, `'approver_limit'` for
+ * the original's own 500 ceiling and `'page_budget'` for the walk running out
+ * of pages with more to read. The two are kept apart because the first is a
+ * rule the original states and the second is this service's incapacity.
  */
 export async function agencyAdminRecipients(contract, excludeEmail) {
   const skip = typeof excludeEmail === 'string' ? excludeEmail.trim().toLowerCase() : '';
@@ -118,17 +130,23 @@ export async function agencyAdminRecipients(contract, excludeEmail) {
       found.push(entry.email);
       // Stops at the ceiling rather than collecting and then refusing: the
       // original throws past 500 and loses the notice entirely, and a notice
-      // to the first 500 administrators of an agency is the same notice.
-      if (found.length >= APPROVER_LIMIT) return found;
+      // to the first 500 administrators of an agency is the same notice. What
+      // is new is that it SAYS so.
+      if (found.length >= APPROVER_LIMIT) {
+        return { recipients: found, truncated: 'approver_limit' };
+      }
     }
-    if (!answer?.next || answer.next === after) return found;
+    // The roster ended, or the contract answered its own cursor back. Either
+    // way the walk saw the whole of what there is to see.
+    if (!answer?.next || answer.next === after) return { recipients: found, truncated: null };
     after = answer.next;
   }
   // The budget ran out with pages left. Unlike `account-email.mjs`'s walk this
   // asserts nothing about the agency and refuses nothing — the notice is
   // best-effort in every original, so an incomplete look answers with what it
-  // found rather than failing a request that has already been recorded.
-  return found;
+  // found. It now also reports that the look was incomplete, because a caller
+  // cannot otherwise tell a complete fan-out from a clipped one.
+  return { recipients: found, truncated: 'page_budget' };
 }
 
 /**
@@ -322,10 +340,19 @@ export function timeOffReviewedNotification(request) {
 export async function notifyTimeOffSubmitted({ request, actor, config, integration, contract }) {
   let email = false;
   let deliveryPaused = false;
+  // `null` means the recipient set is whole, which is also the answer when the
+  // row named its approver and no roster walk happened at all.
+  let truncated = null;
   try {
-    const manager = typeof request?.manager_email === 'string' && request.manager_email.trim() !== ''
-      ? [request.manager_email]
-      : await agencyAdminRecipients(contract, actor?.userEmail ?? request?.employee_email);
+    let manager;
+    if (typeof request?.manager_email === 'string' && request.manager_email.trim() !== '') {
+      manager = [request.manager_email];
+    } else {
+      const walk = await agencyAdminRecipients(
+        contract, actor?.userEmail ?? request?.employee_email);
+      manager = walk.recipients;
+      truncated = walk.truncated;
+    }
     // The row first and ungated, in the original's order. A paused deployment
     // still writes it, because a notification is a row (D51).
     await mintNotifications(contract,
@@ -341,7 +368,7 @@ export async function notifyTimeOffSubmitted({ request, actor, config, integrati
     // Best-effort, and the same silence the original keeps: the dashboard is
     // the source of truth for a request that exists.
   }
-  return { email, delivery_paused: deliveryPaused };
+  return { email, delivery_paused: deliveryPaused, recipients_truncated: truncated };
 }
 
 /**
@@ -571,12 +598,19 @@ export function credentialRenewalMessage(credential) {
 export async function notifyCredentialRenewal({ credential, params, config, integration, contract }) {
   let email = false;
   let deliveryPaused = false;
+  let truncated = null;
   try {
     const renews = typeof params?.renews_credential_id === 'string'
       && params.renews_credential_id.trim() !== ''
       && params.renews_credential_id !== params?.credential_id;
-    if (!renews) return { email, delivery_paused: deliveryPaused };
-    const admins = await agencyAdminRecipients(contract, null);
+    // An ordinary first submission is not eligible, so no walk happens and the
+    // set is whole by virtue of there being nothing to look for.
+    if (!renews) {
+      return { email, delivery_paused: deliveryPaused, recipients_truncated: truncated };
+    }
+    const walk = await agencyAdminRecipients(contract, null);
+    const admins = walk.recipients;
+    truncated = walk.truncated;
     deliveryPaused = admins.length > 0 && !workforceNoticeDeliverable(config);
     if (admins.length > 0 && !deliveryPaused) {
       const message = credentialRenewalMessage(credential);
@@ -587,7 +621,7 @@ export async function notifyCredentialRenewal({ credential, params, config, inte
   } catch {
     // Best-effort: the original logs and answers, and the credential stands.
   }
-  return { email, delivery_paused: deliveryPaused };
+  return { email, delivery_paused: deliveryPaused, recipients_truncated: truncated };
 }
 
 /**

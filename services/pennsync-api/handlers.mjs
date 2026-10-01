@@ -1068,6 +1068,14 @@ export const HANDLERS = Object.freeze({
     // `role`, `account_type` and `agency_name` — the reconstruction whose
     // earlier version, its own comment records, mailed one tenant's staff names
     // to every other tenant's admins.
+    //
+    // `recipients_truncated` is new in the answer and is `null` for a whole
+    // fan-out. Both bounds on that walk under-send rather than mis-send, so
+    // neither is a disclosure question — but a renewal notice that quietly
+    // reaches three of five administrators is still a defect, and the walk may
+    // not refuse, because the credential is already recorded. So it says which
+    // bound clipped it instead: the original's own 500 ceiling, or this
+    // service's page budget running out.
     needsIntegration: true,
     async handle({ params, config, integration, contract }) {
       exactObject(params, ['credential_id', 'renews_credential_id', 'credential'],

@@ -41,6 +41,9 @@ const releasedEnv = (notices = DELIVERY_RELEASE_VALUE) => ({
   ...(notices === ABSENT ? {} : { [WORKFORCE_NOTICE_RELEASE_ENV]: notices }),
 });
 import {
+  APPROVER_LIMIT,
+  PAGE_BUDGET,
+  agencyAdminRecipients,
   credentialRenewalMessage,
   notifyTimeOffCancelled,
   notifyTimeOffSubmitted,
@@ -1248,5 +1251,211 @@ test('and the same five DO send once both switches are the release word', async 
       `${name} asked for something other than SendEmail`);
     assert.equal(answer.email, true, `${name} did not report the send`);
     assert.equal(answer.delivery_paused, false, `${name} claimed a paused channel`);
+  }
+});
+
+/**
+ * A roster that never ends: every page answers a NEW cursor, so the walk runs
+ * out of pages rather than out of entries. One administrator per page, which is
+ * what makes the clipped set observable — `PAGE_BUDGET` pages of one.
+ */
+const endlessRoster = () => {
+  let page = 0;
+  return async name => {
+    if (name !== 'listAgencyRoster') return {};
+    page += 1;
+    return {
+      entries: [{ tenant_role: 'agency_admin', is_active: true, email: `admin${page}@example.test` }],
+      next: `cursor-${page}`,
+    };
+  };
+};
+
+/** One page holding more administrators than the original's own ceiling. */
+const crowdedRoster = () => async name => (name === 'listAgencyRoster'
+  ? {
+    entries: Array.from({ length: APPROVER_LIMIT + 1 }, (unused, index) => ({
+      tenant_role: 'agency_admin', is_active: true, email: `admin${index}@example.test`,
+    })),
+    next: null,
+  }
+  : {});
+
+test('a clipped fan-out SAYS it was clipped, and says which bound clipped it', async () => {
+  // The defect this closes: both bounds under-sent and reported nothing, so a
+  // renewal notice reaching three of five administrators was indistinguishable
+  // from one reaching all five. Neither bound may refuse — the credential is
+  // already recorded — so saying why the walk stopped is the only honest
+  // option, and the two reasons are kept apart because one is the original's
+  // stated rule and the other is this service's incapacity.
+  const whole = await agencyAdminRecipients(rosterContract(), null);
+  assert.deepEqual(whole, { recipients: ['admin@example.test'], truncated: null });
+
+  const pages = await agencyAdminRecipients(endlessRoster(), null);
+  assert.equal(pages.truncated, 'page_budget');
+  assert.equal(pages.recipients.length, PAGE_BUDGET,
+    'the walk should have read one administrator per page until the budget ran out');
+
+  const crowd = await agencyAdminRecipients(crowdedRoster(), null);
+  assert.equal(crowd.truncated, 'approver_limit');
+  assert.equal(crowd.recipients.length, APPROVER_LIMIT,
+    'the ceiling is the stated one and the set stops exactly there');
+});
+
+test('and the senders carry that answer out to their caller', async () => {
+  const config = loadConfig(env(releasedEnv()));
+  const integration = async () => ({ ok: true });
+
+  // The renewal walks whenever it is eligible, so both bounds reach its answer.
+  const clipped = await notifyCredentialRenewal({
+    credential: credential(), params: renewalParams(),
+    config, integration, contract: endlessRoster(),
+  });
+  assert.equal(clipped.recipients_truncated, 'page_budget');
+
+  const capped = await notifyCredentialRenewal({
+    credential: credential(), params: renewalParams(),
+    config, integration, contract: crowdedRoster(),
+  });
+  assert.equal(capped.recipients_truncated, 'approver_limit');
+
+  // A first submission is not eligible, so no walk happens and the set is whole
+  // by virtue of there being nothing to look for. `null` and not `undefined`:
+  // an absent key would read as a question nobody asked rather than as an
+  // answer, which is the distinction this field exists to make.
+  const notARenewal = await notifyCredentialRenewal({
+    credential: credential(), params: { credential_id: 'cred-1', renews_credential_id: '' },
+    config, integration, contract: endlessRoster(),
+  });
+  assert.equal(notARenewal.recipients_truncated, null);
+
+  // The submit fan-out walks ONLY when the row named no approver, so the row's
+  // own manager is a whole set without a page being read.
+  const named = await notifyTimeOffSubmitted({
+    request: request(), actor: { userEmail: 'nurse@example.test' },
+    config, integration, contract: endlessRoster(),
+  });
+  assert.equal(named.recipients_truncated, null);
+
+  const fellBack = await notifyTimeOffSubmitted({
+    request: { ...request(), manager_email: '' },
+    actor: { userEmail: 'nurse@example.test' },
+    config, integration, contract: endlessRoster(),
+  });
+  assert.equal(fellBack.recipients_truncated, 'page_budget');
+});
+
+/**
+ * The INVARIANT behind the D98 reading, pinned so a sixth sender cannot lose it.
+ *
+ * D98 exists because `sendAccountReadyEmail` is HANDED its recipient:
+ * `params.email` is a caller parameter, so the roster walk in
+ * `account-email.mjs` is the only thing between an agency administrator and any
+ * address on the internet, and it refuses `RECIPIENT_NOT_IN_AGENCY`.
+ *
+ * None of the five here goes through that walk, and none needs to, because none
+ * is handed an address. Three read a column a contract wrote — `manager_email`
+ * resolved through `pennsync_private.agency_colleague` and stored as the
+ * identity map's own `expected_email`, `employee_email` and
+ * `personnel_credential.user_id` both written as `caller_email()` — and two ask
+ * the roster. So the guarantee D98 establishes at SEND time in the service is
+ * established here at WRITE time in SQL.
+ *
+ * That is a STRUCTURAL guarantee, which is exactly the kind that breaks in
+ * silence: a sixth sender reading `params.email` would reintroduce the hole
+ * with every existing test still green. The rule is therefore the thing
+ * asserted — a sender that is GIVEN a recipient must go through
+ * `agencyRecipient`; a sender that READS one a contract wrote need not, so long
+ * as nothing rewrites that column afterwards.
+ */
+const SENDER_SOURCE = readFileSync(new URL('./workforce-email.mjs', import.meta.url), 'utf8');
+
+test('no sender reads any caller-supplied parameter except the renewal condition', () => {
+  // The whole module, deliberately: the point is that a NEW sender cannot
+  // quietly start reading `params`, so scoping this to the five that exist
+  // today would exempt the case it is written for.
+  const read = new Set(
+    [...SENDER_SOURCE.matchAll(/\bparams\s*\??\.\s*([A-Za-z_$][\w$]*)/g)].map(hit => hit[1]));
+  // `renews_credential_id` against `credential_id` is the original's own
+  // eligibility test and names no recipient. Nothing else may be read, and in
+  // particular nothing that could BE an address.
+  assert.deepEqual([...read].sort(), ['credential_id', 'renews_credential_id']);
+});
+
+test('and the handler wiring hands `params` to exactly one of the five', () => {
+  // The other half of the same invariant: a sender cannot read what it is never
+  // given, so the call sites are where a future change would have to widen the
+  // reach first. Read from `handlers.mjs` rather than asserted about it.
+  const handlers = readFileSync(new URL('./handlers.mjs', import.meta.url), 'utf8');
+  const given = [];
+  for (const name of [
+    'notifyTimeOffSubmitted', 'notifyTimeOffReviewed', 'notifyCredentialReviewed',
+    'notifyCredentialRenewal', 'notifyTimeOffCancelled',
+  ]) {
+    // The call's own argument object, up to the closing brace of the `await`.
+    const call = handlers.match(new RegExp(`${name}\\(\\{([^}]*)\\}`));
+    assert.ok(call, `${name} is not called in handlers.mjs at all`);
+    if (/\bparams\b/.test(call[1])) given.push(name);
+  }
+  assert.deepEqual(given, ['notifyCredentialRenewal']);
+});
+
+test('a hostile address in the request reaches no provider', async () => {
+  // The behavioural half. Every sender is driven on a fully released
+  // deployment, with an attacker-controlled address planted in every field a
+  // caller could plausibly reach — including the keys `account-email.mjs`
+  // legitimately reads — and the assertion is that the provider never sees it.
+  const HOSTILE = 'attacker@evil.test';
+  const planted = row => ({
+    ...row,
+    email: HOSTILE, to: HOSTILE, recipient: HOSTILE, recipient_email: HOSTILE,
+    user_email: HOSTILE, notify_email: HOSTILE, full_name: HOSTILE,
+  });
+  const hostileParams = {
+    credential_id: 'cred-1', renews_credential_id: 'cred-0',
+    email: HOSTILE, to: HOSTILE, recipient: HOSTILE, manager_email: HOSTILE,
+    employee_email: HOSTILE, user_id: HOSTILE,
+  };
+  const config = loadConfig(env(releasedEnv()));
+  const drives = [
+    ['notifyTimeOffSubmitted', integration => notifyTimeOffSubmitted({
+      request: planted(request()), params: hostileParams,
+      actor: { userEmail: 'nurse@example.test' },
+      config, integration, contract: rosterContract(),
+    })],
+    ['notifyTimeOffReviewed', integration => notifyTimeOffReviewed({
+      request: planted(reviewed()), params: hostileParams,
+      config, integration, contract: rosterContract(),
+    })],
+    ['notifyCredentialReviewed', integration => notifyCredentialReviewed({
+      credential: planted(credential()), params: hostileParams,
+      actor: { userEmail: 'admin@example.test' }, config, integration,
+    })],
+    ['notifyCredentialRenewal', integration => notifyCredentialRenewal({
+      credential: planted(credential()), params: hostileParams,
+      config, integration, contract: rosterContract(),
+    })],
+    ['notifyTimeOffCancelled', integration => notifyTimeOffCancelled({
+      request: planted(cancelled()), params: hostileParams, previousStatus: 'approved',
+      actor: { userEmail: 'someone.else@example.test' },
+      config, integration, contract: rosterContract(),
+    })],
+  ];
+  for (const [name, drive] of drives) {
+    const calls = [];
+    await drive(countingIntegration(calls));
+    // A send must have happened, or the assertion below holds vacuously —
+    // the same control the released-path test carries.
+    assert.ok(calls.length > 0, `${name} sent nothing, so this proves nothing`);
+    for (const call of calls) {
+      assert.notEqual(call.payload.to, HOSTILE,
+        `${name} sent a notice to an address its caller supplied`);
+    }
+    // And the body must not carry it either: a recipient is not the only way an
+    // address leaks, and `full_name` is interpolated into one of these documents.
+    for (const call of calls) {
+      assert.ok(!String(call.payload.body ?? '').includes(HOSTILE),
+        `${name} put a caller-supplied address in the message body`);
+    }
   }
 });
