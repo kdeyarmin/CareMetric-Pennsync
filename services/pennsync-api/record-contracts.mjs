@@ -1086,6 +1086,17 @@ export const RECORD_CONTRACTS = Object.freeze({
   // and "one I may review" are the contract's rules (D45). The employee and
   // approver notifications mint through the facility (D48); their EMAIL halves
   // are `Core.SendEmail`, which nothing brokers.
+  //
+  // One known ANSWER-SHAPE wrinkle, not a wrong stored value: a daily entry's
+  // date is guarded by `time_off_date(...) is null` and cast twice in the same
+  // `or`, and PostgreSQL does not guarantee `or` evaluation order — so
+  // `2026-02-31` may surface as a raw `22008` (`datetime_field_overflow`, the
+  // code for a well-formed date that is not a day) rather than
+  // `PENNSYNC_TIMESHEET_DAILY_INVALID`. Measured, not inferred: `22007`
+  // (`invalid_datetime_format`) is what malformed text like `notadate` raises,
+  // and the regex in `time_off_date` refuses that shape before any cast, so
+  // `22007` is the one code this site cannot produce. Either way the entry is
+  // refused.
   submitTimesheet: Object.freeze({
     rpc: 'pennsync_contract_timesheet_submit',
     params: Object.freeze(['timesheet_id', 'timesheet']),
@@ -1659,6 +1670,26 @@ export const RECORD_CONTRACTS = Object.freeze({
     }),
     codes: REFERRAL_CODES,
   }),
+  // One recorded NARROWING, in the follow-up dedupe rather than in the field
+  // set. `referral_instant` is a `::timestamptz` cast in a block, and
+  // PostgreSQL's special literals — `infinity`, `now`, `today`, `tomorrow`,
+  // `yesterday`, `epoch` — are not cast errors, so it parses text the
+  // original's `validInstant` refuses, that being
+  // `Number.isFinite(Date.parse(value))`. The parsed value is never stored;
+  // it only compares a stored `generated_at` against a requested one. So the
+  // behaviour differs whenever the two texts denote the SAME INSTANT to
+  // PostgreSQL and at least one of them is NaN to `Date.parse` — which is
+  // wider than both sides carrying the same literal: `'epoch'` against
+  // `'1970-01-01T00:00:00Z'` is equal here and refused there, so a MIXED pair
+  // diverges too. Do not read the condition off the matching case. The
+  // port then PRESERVES the reserved follow-up fields where the original
+  // drops them, so a caller can no longer wipe a portal token or a
+  // stale-notification claim by sending `generated_at: 'now'` twice. That is
+  // narrower for the caller, which is why it stands. `generated_at` is
+  // neither reserved nor shape-checked, so the literal does reach the store.
+  // Recorded here rather than in the migration because the file has been
+  // applied: an edit to it reaches no store that ran it (D88) and would cost
+  // a fingerprint re-pin and an apply-signal entry for a comment.
   updateAuthorizedReferral: Object.freeze({
     rpc: 'pennsync_contract_referral_update',
     params: Object.freeze(['referral_id', 'changes']),
@@ -2477,6 +2508,19 @@ export const RECORD_CONTRACTS = Object.freeze({
     }),
     codes: SCREEN_CHART_CODES,
   }),
+  // A DEBT for whoever adds the first reader of `expires_at`, and they will
+  // not find it by reading the diff that created the column. The contract
+  // casts `p_recommendation->>'expires_at'` to `timestamptz` with no shape
+  // check: malformed text raises and is caught, but PostgreSQL's special
+  // literals are not errors, so `infinity` stores a recommendation that never
+  // expires and `now` one already expired. Two things make that tolerable
+  // TODAY and neither is permanent. There is no function original to have
+  // diverged from — the contract's own header says the original is the entity
+  // — and NOTHING reads the column: not the list contract's projection, not
+  // this service, not the SPA. The only production caller sends
+  // `new Date(...).toISOString()`, and a call site is not a fence, which is
+  // the reasoning the contract already applies to `suggested_by_user`. Add a
+  // reader and the shape check is owed in the same change.
   recordChartRecommendation: Object.freeze({
     rpc: 'pennsync_contract_patient_recommendation_record',
     params: Object.freeze(['patient_id', 'recommendation']),
@@ -2622,6 +2666,112 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_POLICY_ACK_READ_AGENCY_NOT_HELD',
       'PENNSYNC_POLICY_ACK_READ_ORDER_INVALID',
       'PENNSYNC_POLICY_ACK_READ_SUBJECT_FORBIDDEN',
+    ]),
+  }),
+
+  /**
+   * The write half of the two compliance domains the frontend writes.
+   *
+   * The authorization is the read half's exactly, because both `rls` blocks
+   * name the same two terms for every command — the row's own person, or the
+   * built-in `role === 'admin'` whose successor is an `agency_admin` of that
+   * agency (D40, D45). None of it is restated here: the contract decides, and
+   * this module carries no authorization (D11).
+   *
+   * The payload is ONE `jsonb` parameter rather than a parameter per column.
+   * That is not a shortcut: the contract refuses an unknown key and names the
+   * reserved ones it will not take, so the field set is decided in SQL where
+   * the refusals can be tested against the real migration. A parameter list
+   * here would be a second copy of it, and a column added to the contract's
+   * writable set would validate and then never arrive.
+   */
+  createComplianceAudit: Object.freeze({
+    rpc: 'pennsync_contract_compliance_audit_create',
+    params: Object.freeze(['audit']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_audit: args.audit ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_AUDIT_WRITE_AGENCY_NOT_HELD',
+      'PENNSYNC_AUDIT_WRITE_PAYLOAD_INVALID',
+      'PENNSYNC_AUDIT_WRITE_FIELD_RESERVED',
+      'PENNSYNC_AUDIT_WRITE_FIELD_UNKNOWN',
+      'PENNSYNC_AUDIT_WRITE_REQUIRED',
+      'PENNSYNC_AUDIT_WRITE_STATUS_INVALID',
+      'PENNSYNC_AUDIT_WRITE_TYPE_INVALID',
+      'PENNSYNC_AUDIT_WRITE_VISIT_NOT_VISIBLE',
+      'PENNSYNC_AUDIT_WRITE_CHART_ELSEWHERE',
+    ]),
+  }),
+  updateComplianceAudit: Object.freeze({
+    rpc: 'pennsync_contract_compliance_audit_update',
+    params: Object.freeze(['audit_id', 'patch']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_audit_id: args.audit_id ?? null,
+      p_patch: args.patch ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_AUDIT_WRITE_AGENCY_NOT_HELD',
+      'PENNSYNC_AUDIT_WRITE_ID_INVALID',
+      'PENNSYNC_AUDIT_WRITE_PAYLOAD_INVALID',
+      'PENNSYNC_AUDIT_WRITE_FIELD_RESERVED',
+      'PENNSYNC_AUDIT_WRITE_FIELD_UNKNOWN',
+      'PENNSYNC_AUDIT_WRITE_NOT_FOUND',
+      'PENNSYNC_AUDIT_WRITE_NOT_OWNED',
+      'PENNSYNC_AUDIT_WRITE_STATUS_INVALID',
+      'PENNSYNC_AUDIT_WRITE_TYPE_INVALID',
+      'PENNSYNC_AUDIT_WRITE_SCORE_INVALID',
+    ]),
+  }),
+  createAdrAuditCase: Object.freeze({
+    rpc: 'pennsync_contract_adr_case_create',
+    params: Object.freeze(['case']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_case: args.case ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_ADR_WRITE_AGENCY_NOT_HELD',
+      'PENNSYNC_ADR_WRITE_PAYLOAD_INVALID',
+      'PENNSYNC_ADR_WRITE_FIELD_RESERVED',
+      'PENNSYNC_ADR_WRITE_FIELD_UNKNOWN',
+      'PENNSYNC_ADR_WRITE_STATUS_INVALID',
+      'PENNSYNC_ADR_WRITE_TYPE_INVALID',
+      'PENNSYNC_ADR_WRITE_OUTCOME_INVALID',
+      'PENNSYNC_ADR_WRITE_LOCATOR_UNSUPPORTED',
+      'PENNSYNC_ADR_WRITE_CHART_ELSEWHERE',
+    ]),
+  }),
+  updateAdrAuditCase: Object.freeze({
+    rpc: 'pennsync_contract_adr_case_update',
+    params: Object.freeze(['case_id', 'patch']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_case_id: args.case_id ?? null,
+      p_patch: args.patch ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_ADR_WRITE_AGENCY_NOT_HELD',
+      'PENNSYNC_ADR_WRITE_ID_INVALID',
+      'PENNSYNC_ADR_WRITE_PAYLOAD_INVALID',
+      'PENNSYNC_ADR_WRITE_FIELD_RESERVED',
+      'PENNSYNC_ADR_WRITE_FIELD_UNKNOWN',
+      'PENNSYNC_ADR_WRITE_NOT_FOUND',
+      'PENNSYNC_ADR_WRITE_NOT_OWNED',
+      'PENNSYNC_ADR_WRITE_STATUS_INVALID',
+      'PENNSYNC_ADR_WRITE_TYPE_INVALID',
+      'PENNSYNC_ADR_WRITE_OUTCOME_INVALID',
+      'PENNSYNC_ADR_WRITE_LOCATOR_UNSUPPORTED',
+      'PENNSYNC_ADR_WRITE_CHART_ELSEWHERE',
+      'PENNSYNC_ADR_WRITE_FAXES_TRUNCATED',
+      'PENNSYNC_ADR_WRITE_NOTES_TRUNCATED',
+    ]),
+  }),
+  deleteAdrAuditCase: Object.freeze({
+    rpc: 'pennsync_contract_adr_case_delete',
+    params: Object.freeze(['case_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_case_id: args.case_id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_ADR_WRITE_AGENCY_NOT_HELD',
+      'PENNSYNC_ADR_WRITE_ID_INVALID',
+      'PENNSYNC_ADR_WRITE_NOT_FOUND',
+      'PENNSYNC_ADR_WRITE_NOT_OWNED',
     ]),
   }),
 
