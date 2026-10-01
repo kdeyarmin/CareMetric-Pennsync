@@ -180,11 +180,13 @@ arrives.
   call each half is.** Restoring what Base44's wrapper already does is
   engineering: a shell that opens the primary address, camera and microphone,
   blob downloads, an app-bound domain list. `ios/` plus #399 is already that, and
-  it is the half that needs no decision. Doing *more* than Base44's wrapper does
-  is Kevin's: StoreKit purchase and restore, which Base44's documentation says it
-  does not support at all ("the purchase has to happen on the web for now"), and
-  the declared minimum OS, which this tree lowers to 15.0 against the live 15.6.
-  The recovery runbook's §5.2 blocker is entirely in that second half.
+  it is the half that needs no decision. The declared minimum OS belongs here too,
+  not in the half below: this tree targets 15.0 against the live 15.6, and raising
+  it back is the deployment target in `ios/project.yml`, declared there twice
+  (`options.deploymentTarget.iOS` and the target's own `deploymentTarget`). Doing *more* than Base44's wrapper
+  does is Kevin's, and it is one item — StoreKit purchase and restore, which
+  Base44's documentation says it does not support at all ("the purchase has to
+  happen on the web for now"). The recovery runbook's §5.2 blocker is that item.
 - **Keep the purchase question out of this.** Whether anyone has ever bought a
   subscription inside the app is an App Store Connect sales reading, not
   something a phone or this repository can answer. It decides how much the
