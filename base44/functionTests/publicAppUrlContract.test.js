@@ -70,7 +70,7 @@ test('APP_PUBLIC_URL is resolved before each affected outbound side effect', asy
     ['autoApproveInvitedUser', 'const appUrl = getAppBaseUrl();', '// Process invitations sequentially'],
     ['createNotification', 'appBase = input.actionUrl ? getAppBaseUrl() : null;', 'await entities.Notification.create('],
     ['createUserWithTempPassword', 'const appUrl = getAppBaseUrl();', 'await base44.users.inviteUser('],
-    ['generateFollowUpPortalToken', 'const portalOrigin = getAppBaseUrl();', 'base44 = createClientFromRequest(req);'],
+    ['generateFollowUpPortalToken', 'const portalOrigin = getAppBaseUrl();', 'base44 = createClientFromRequest('],
     ['resetUserPassword', 'const appUrl = getAppBaseUrl();', 'await base44.asServiceRole.auth.updateUserPassword('],
     ['userManagement', 'getAppBaseUrl();', 'const invitation = await base44.asServiceRole.entities.UserInvitation.create('],
   ];

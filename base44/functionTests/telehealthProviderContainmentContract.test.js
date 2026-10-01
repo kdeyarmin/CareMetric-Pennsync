@@ -12,7 +12,7 @@ test('createTelehealthToken is literally paused before SDK construction or provi
 
   const handler = source.slice(source.indexOf('Deno.serve'));
   const pauseGate = handler.indexOf('if (TELEHEALTH_PROVIDER_MIGRATION_PAUSED)');
-  const clientCreation = handler.indexOf('createClientFromRequest(req)');
+  const clientCreation = handler.indexOf('createClientFromRequest(');
   const sessionRead = handler.indexOf('entities.TelehealthSession');
   const providerCall = handler.indexOf('findOrCreateRoom(');
 

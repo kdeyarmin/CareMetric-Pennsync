@@ -41,7 +41,7 @@ test('all PennSync2 legacy workflows remain explicitly reviewed and undeployed',
         assert.match(source, /const secureMessageUnavailable = \(\) => json\(\{[\s\S]*?temporarily unavailable[\s\S]*?\},\s*503\);/);
         const handlerIndex = source.indexOf('Deno.serve(async (req) =>');
         const guardIndex = source.indexOf('if (SECURE_MESSAGE_DOMAIN_PAUSED) return secureMessageUnavailable();', handlerIndex);
-        const clientIndex = source.indexOf('createClientFromRequest(req)', handlerIndex);
+        const clientIndex = source.indexOf('createClientFromRequest(', handlerIndex);
         assert.ok(handlerIndex !== -1 && handlerIndex < guardIndex && guardIndex < clientIndex,
           'notifyUrgentMessage must return its HTTP 503 helper before SDK construction');
       } else {

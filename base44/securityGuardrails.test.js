@@ -285,9 +285,9 @@ test('the outcome worker and native-workflow dispatcher remain runtime-gated by 
   const dispatcher = read('base44/functions/dispatchNightlyOutcomeMeasures/entry.ts');
   const workflow = JSON5.parse(read('base44/workflows/Nightly Outcome Measure Computation.jsonc'));
   const gate = src.indexOf('if (!OUTCOME_COMPUTATION_ENABLED())');
-  const client = src.indexOf('createClientFromRequest(req)');
+  const client = src.indexOf('createClientFromRequest(');
   const dispatchGate = dispatcher.indexOf('if (!OUTCOME_DISPATCH_ENABLED())');
-  const dispatchClient = dispatcher.indexOf('createClientFromRequest(req)');
+  const dispatchClient = dispatcher.indexOf('createClientFromRequest(');
 
   assert.match(src, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
   assert.match(src, /=== 'enabled-v1'/);
@@ -373,7 +373,7 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   assert.ok(/const OASIS_V2_WRITES_PAUSED = true;/.test(oasisWriter));
   const handler = oasisWriter.slice(oasisWriter.indexOf('Deno.serve'));
   assert.ok(
-    handler.indexOf('if (OASIS_V2_WRITES_PAUSED)') < handler.indexOf('createClientFromRequest(req)'),
+    handler.indexOf('if (OASIS_V2_WRITES_PAUSED)') < handler.indexOf('createClientFromRequest('),
     'saveOasisResponses must return 503 before client creation or any data access.',
   );
   assert.ok(!/base44|useQuery|useAgencyScopedQuery|useScopedPatients|\.entities\./.test(dashboard));
@@ -428,7 +428,7 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   assert.match(dedupe, /const PATIENT_DEDUPLICATION_PAUSED = true;/);
   assert.ok(
     dedupeHandler.indexOf('if (PATIENT_DEDUPLICATION_PAUSED)')
-      < dedupeHandler.indexOf('createClientFromRequest(req)'),
+      < dedupeHandler.indexOf('createClientFromRequest('),
     'deduplicatePatients must return 503 before client creation, auth, or service-role PHI reads.',
   );
   assert.ok(
@@ -504,7 +504,7 @@ for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORM
     assert.match(src, /npm:\@base44\/sdk\@0\.8\.46/);
     const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
     const guardIndex = src.indexOf(`if (!${releaseMarker}`, handlerIndex);
-    const clientIndex = src.indexOf('createClientFromRequest(req)', handlerIndex);
+    const clientIndex = src.indexOf('createClientFromRequest(', handlerIndex);
     assert.notEqual(handlerIndex, -1);
     assert.notEqual(guardIndex, -1);
     assert.notEqual(clientIndex, -1);
@@ -915,7 +915,7 @@ test('processCompletedVisit delegates PHI reads and Visit writes through updateA
   const markerIndex = src.indexOf('const PROCESS_COMPLETED_VISIT_PAUSED = true;');
   const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
   const guardIndex = src.indexOf('if (PROCESS_COMPLETED_VISIT_PAUSED)', handlerIndex);
-  const clientIndex = src.indexOf('createClientFromRequest(req)', handlerIndex);
+  const clientIndex = src.indexOf('createClientFromRequest(', handlerIndex);
   assert.ok(markerIndex !== -1 && markerIndex < handlerIndex
     && handlerIndex < guardIndex && guardIndex < clientIndex,
   'processCompletedVisit must pause before SDK construction');
