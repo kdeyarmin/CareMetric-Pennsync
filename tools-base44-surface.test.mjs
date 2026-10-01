@@ -252,7 +252,7 @@ test('this tree\'s unaccounted handles are the committed allowance, so the gate 
   main([], { repository, log: line => json.push(String(line)) });
   const report = JSON.parse(json.join('\n'));
   assert.deepEqual(report.unaccounted_handles, unaccounted);
-  assert.deepEqual(report.refused_handles, []);
+  assert.deepEqual(report.refused_keys, []);
 });
 
 test('a handle the allowance does not name fails the gate, and naming it clears it', () => {
@@ -268,7 +268,8 @@ test('a handle the allowance does not name fails the gate, and naming it clears 
     const refused = [];
     assert.equal(main(['--summary'], { repository: root, log: line => refused.push(String(line)) }), 1);
     assert.match(refused.join('\n'), /within baseline/, 'it fails on the handle, not on the ratchet');
-    assert.equal(refused.some(line => line.startsWith('  REFUSED HANDLE src/screen.jsx:1')), true);
+    assert.equal(refused.some(line =>
+      line.startsWith('  REFUSED src/screen.jsx::Visit is taken 1 time(s) at line(s) 1 and declared 0')), true);
 
     writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit'] }));
     const allowed = [];
@@ -292,9 +293,13 @@ test('a handle the allowance does not name fails the gate, and naming it clears 
     writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit'] }));
     const second = [];
     assert.equal(main(['--summary'], { repository: root, log: line => second.push(String(line)) }), 1);
-    assert.equal(second.some(line => line.startsWith('  REFUSED HANDLE src/screen.jsx:3')), true);
-    assert.equal(second.some(line => line.startsWith('  allowed HANDLE src/screen.jsx:1')), true,
-      'the declared occurrence is still the first one, not whichever the surplus is');
+    // Reported per KEY with both lines, not pinned to one of them. Found by
+    // review: a handle inserted ABOVE a declared one would otherwise take the
+    // declared slot and the refusal would name the reviewed site instead.
+    assert.equal(second.some(line =>
+      line.startsWith('  REFUSED src/screen.jsx::Visit is taken 2 time(s) at line(s) 1, 3 and declared 1')), true);
+    assert.equal(second.some(line => line.startsWith('  allowed HANDLE')), false,
+      'and an over-subscribed key does not also print one of its sites as allowed');
     // And declaring it twice admits both.
     writeFileSync(join(root, BASELINE_FILE),
       JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit', 'src/screen.jsx::Visit'] }));

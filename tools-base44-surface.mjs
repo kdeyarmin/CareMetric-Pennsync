@@ -330,30 +330,44 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
   // Counted, not matched. A key says which file-and-entity pair is known; the
   // COUNT says how many, so a second handle of a declared entity in a declared
   // file is refused rather than admitted by its neighbour's entry.
+  //
+  // Refused PER KEY, with every line listed, never pinned to one occurrence.
+  // Found by review: assigning the surplus by order of discovery means a handle
+  // INSERTED ABOVE a declared one takes the declared slot, and the refusal then
+  // names the long-standing reviewed site -- sending a contributor to fix the one
+  // line that was already accounted for. Nothing in the file says which
+  // occurrence the entry was written for, so the tool must not pretend it does.
   const declared = new Map();
   for (const key of baseline.allowed_handles) declared.set(key, (declared.get(key) ?? 0) + 1);
   const found = new Map();
-  report.unaccounted_handles = unaccounted;
-  report.refused_handles = unaccounted.filter(handle => {
+  for (const handle of unaccounted) {
     const key = handleKey(handle);
-    const nth = (found.get(key) ?? 0) + 1;
-    found.set(key, nth);
-    return nth > (declared.get(key) ?? 0);
-  });
+    if (!found.has(key)) found.set(key, []);
+    found.get(key).push(handle.line);
+  }
+  report.unaccounted_handles = unaccounted;
+  report.refused_keys = [...found].sort(([a], [b]) => (a < b ? -1 : 1))
+    .filter(([key, lines]) => lines.length > (declared.get(key) ?? 0))
+    .map(([key, lines]) => ({ key, taken: lines.length, declared: declared.get(key) ?? 0, lines }));
   // A stale entry FAILS rather than passing with a note. It means somebody has
   // repaired one of the recorded handles, and the gate is the only thing that
   // will tell them the record of it must go: a passing report says it on a line
   // nobody reads, and the allowance then outlives the defect it describes.
   report.stale_allowance = [...declared].sort(([a], [b]) => (a < b ? -1 : 1))
-    .filter(([key, count]) => count > (found.get(key) ?? 0))
-    .map(([key, count]) => ({ key, declared: count, found: found.get(key) ?? 0 }));
+    .filter(([key, count]) => count > (found.get(key)?.length ?? 0))
+    .map(([key, count]) => ({ key, declared: count, found: found.get(key)?.length ?? 0 }));
   if (args.includes('--summary')) {
     log(`base44 surface ${report.within_baseline ? 'within baseline' : 'REGRESSED'}: `
       + METRICS.map(metric => `${metric}=${report.counts[metric]}/${baseline.maximum[metric]}`).join(' '));
+    const refusedKeys = new Set(report.refused_keys.map(entry => entry.key));
     for (const handle of report.unaccounted_handles) {
-      const refused = report.refused_handles.includes(handle);
-      log(`  ${refused ? 'REFUSED' : 'allowed'} HANDLE ${handle.file}:${handle.line} takes ${handle.entity}`
+      if (refusedKeys.has(handleKey(handle))) continue;
+      log(`  allowed HANDLE ${handle.file}:${handle.line} takes ${handle.entity}`
         + ' and no call through it is visible');
+    }
+    for (const entry of report.refused_keys) {
+      log(`  REFUSED ${entry.key} is taken ${entry.taken} time(s) at line(s) ${entry.lines.join(', ')}`
+        + ` and declared ${entry.declared}. Account for one of them, or declare it.`);
     }
     for (const entry of report.stale_allowance) {
       log(`  STALE ALLOWANCE ${entry.key} is declared ${entry.declared} time(s) and taken ${entry.found}.`
@@ -362,7 +376,7 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
   } else {
     log(JSON.stringify(report, null, 2));
   }
-  return report.within_baseline && report.refused_handles.length === 0
+  return report.within_baseline && report.refused_keys.length === 0
     && report.stale_allowance.length === 0 ? 0 : 1;
 }
 
