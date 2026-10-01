@@ -141,6 +141,10 @@ test('the two predicates classifySuites cannot produce are proved on a crafted r
     'the failure must print both sides, because the two numbers are the finding');
 });
 
+// The page cites this suite by name, so the pin below is on it rather than on the
+// shape of the set it belongs to.
+const PAGE_NAMED_UNNAMED_APPLIER = 'public-wrapper-execution.test.mjs';
+
 test('the real tree closes, and the exceptions are named rather than counted', () => {
   const result = classifySuites();
   console.log(`  ${coverageLine(result)}`);
@@ -153,10 +157,20 @@ test('the real tree closes, and the exceptions are named rather than counted', (
     'the set of suites that only read the record SQL as text has moved. That set is what '
     + "AGENTS.md's residual-gap sentence is about, so read the paragraph before editing this.");
 
-  // The applier outside the namers. One is enough to make the subset form
-  // unmeasurable, and this is the one.
-  assert.deepEqual(result.appliers.filter(suite => !result.namers.includes(suite)),
-    ['public-wrapper-execution.test.mjs']);
+  // The applier outside the namers. ONE is enough to make the subset form
+  // unmeasurable, and the page names this one, so what has to hold is that this
+  // suite is still an applier and still names the directory nowhere. Deliberately
+  // NOT an equality: a second unnamed applier arriving would fail this from a diff
+  // that never touches this file or the page, and with nothing for that hand to do
+  // about it. Existence is already asserted three lines up, where an empty
+  // coverageProblems() rules out NO_UNNAMED_APPLIER.
+  assert.ok(result.appliers.includes(PAGE_NAMED_UNNAMED_APPLIER),
+    `${PAGE_NAMED_UNNAMED_APPLIER} no longer applies the record directory. AGENTS.md names `
+    + 'it as the applier that makes the subset form unmeasurable, so fix the page with it.');
+  assert.equal(result.namers.includes(PAGE_NAMED_UNNAMED_APPLIER), false,
+    `${PAGE_NAMED_UNNAMED_APPLIER} now names ${RECORD_DIRECTORY}, so it is no longer the `
+    + "counter-example AGENTS.md cites. Another may have taken its place — read the page's "
+    + 'sentence about the subset form before repointing this.');
 
   // Every route populated, so none of the three is dead code being carried.
   for (const [route, suites] of Object.entries(result.byRoute)) {
