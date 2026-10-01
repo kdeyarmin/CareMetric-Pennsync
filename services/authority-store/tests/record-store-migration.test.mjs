@@ -18,7 +18,7 @@ import { OWNER_ROLE, RECORD_MIGRATION_FILE, SCHEMA, renderMigration } from '../.
  * 1. **Who owns the tables.** `force row level security` binds a table's owner
  *    — but never a `SUPERUSER` or `BYPASSRLS` role. The authority store's
  *    migrations require exactly such an administrator, so tables left owned by
- *    the migration role would carry 596 policies that nothing obeys. Both
+ *    the migration role would carry every one of its policies and obey none. Both
  *    reviewers of the policy work raised this, and it was recorded as open
  *    because the migration that creates the store did not exist. It does now.
  *

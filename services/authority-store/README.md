@@ -192,7 +192,11 @@ the people to have accepted their Supabase Auth invitations first.
 
 `supabase/record-migrations/20260919170000_record_store.sql` creates
 `pennsync_records`: the 156 carried entities, with forced row level security
-and the 596 policies derived from their tenant paths and decisions (D13, D14).
+and the policies derived from their tenant paths and decisions (D13, D14) —
+592 live when last derived, 2026-10-01 at `543a0271`, by
+`select count(*) from pg_policies` against a store built from
+`record-migrations/`; 590 of them are created in this file and the rest in the
+forward migrations beside it.
 It is **generated** — regenerate with
 `node tools-entity-schema-plan.mjs --write-migration` and never edit the SQL by
 hand; a test fails if the committed file and the generator disagree.
@@ -213,8 +217,8 @@ Two properties of the file are the decision it carries (D15), not incidental:
 **The tables are owned by `pennsync_records_owner`, which holds neither
 `SUPERUSER` nor `BYPASSRLS`.** `force row level security` binds a table's owner
 — but never a role with either attribute, and every migration here requires
-exactly such an administrator. Under the administrator the 596 policies would
-be decorative. The migration creates the role if it is absent, and refuses
+exactly such an administrator. Under the administrator every one of those policies
+would be decorative. The migration creates the role if it is absent, and refuses
 outright (`PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS`) if a role of that name
 already exists carrying either attribute, rather than adopting it and emitting
 policies nothing obeys.
@@ -280,7 +284,7 @@ Two properties it is worth stating plainly:
   `caller_agencies()`, the membership roster, not against the request.
 - **A broker never re-implements a policy.** It narrows a read to the one agency
   the request named and refuses to write reference data. Every other question of
-  who may see what stays in the 596 policies.
+  who may see what stays in the policies.
 
 Generated, not written: change the dispositions, the tenant decisions or
 `tools-record-brokers.mjs` and re-run `node tools-record-brokers.mjs --write`.
