@@ -14,11 +14,31 @@
 // failed". `cm_integration_file_record` (`001_integration_state.sql:57`) either
 // returns `true` or RAISES, and a raise comes back as a non-ok response that
 // `rpc` already turns into `INTEGRATION_STATE_UNAVAILABLE` before this line is
-// reached. So the values below are the ones that arrive from a 200 whose body is
-// not `true`: an empty body read as `null`, a return type changed by a later
-// migration, a gateway answering in its own shape. `!== true` rather than
-// `=== false` is the load-bearing part, and the cases are chosen to prove that
-// distinction rather than to enumerate plausible bugs.
+// reached.
+//
+// Two things, then, about what can actually arrive here, and the second was a
+// review finding against a first draft of this comment rather than something it
+// got right. An EMPTY response body is NOT one of them: `rpc` hands a successful
+// body to `readJson`, whose `JSON.parse('')` throws and becomes a 502
+// `INVALID_UPSTREAM_RESPONSE` (`safety.mjs`), so it never reaches this line as
+// `null` or as anything else. What does produce `null` is the JSON literal
+// `null`, which is what PostgREST serializes a SQL NULL return as. A first
+// draft of THIS sentence said a plpgsql body falling out without `return true`
+// is that case, and it is not: plpgsql raises `control reached end of function
+// without RETURN`, measured on PostgreSQL 17.11, so it becomes
+// `INTEGRATION_STATE_UNAVAILABLE` like any other raise. What really returns NULL
+// is an explicit `return null`, or a `language sql` body whose expression is
+// NULL — both measured. A `setof boolean` returning no rows is the other shape,
+// and PostgREST renders it `[]`, which is why an array is in the case list. The
+// rest is a return type changed by a later migration or a gateway answering in
+// its own shape.
+//
+// So `!== true` rather than `=== false` is the load-bearing part, and the case
+// list below is deliberately WIDER than the transport: `undefined` cannot cross
+// JSON at all and is reachable only from a store implementation that returns
+// nothing, which is a real way for `createStore` to be changed. The cases are
+// chosen to prove the strict-equality distinction, not to enumerate the bugs
+// most likely to occur.
 //
 // Synthetic fixed destinations and an injected store and fetcher; no
 // credentials, no network, no bytes leaving the process.
@@ -53,10 +73,13 @@ const uncertain = error => error.status === 503 && error.code === 'FILE_RECEIPT_
 
 for (const operation of ['UploadFile', 'UploadPrivateFile']) {
   test(`${operation} refuses to hand back a handle for an unacknowledged receipt`, async () => {
-    // Every value a 200 can carry that is not the boolean `true`. `false` and
-    // `null` are the ones to expect; the rest exist because `=== false` would
-    // let them through, and a truthy non-boolean is the one a reader is most
-    // likely to think is fine — `'true'` is what a body read as text looks like.
+    // `false` and `null` are the ones to expect, and `null` is the SQL NULL
+    // return rather than an empty body — see the header. The rest exist because
+    // `=== false` would let them through, and a truthy non-boolean is the one a
+    // reader is most likely to think is fine. Not all of them can cross JSON:
+    // `undefined` reaches here only from a store that returns nothing, and that
+    // is on purpose, because the property under test is the comparison and not
+    // the transport.
     for (const saved of [false, null, undefined, 0, '', 'true', 1, {}, { ok: true }, []]) {
       const storage = uploads();
       let recorded = null;
