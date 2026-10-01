@@ -69,13 +69,21 @@ export default function TimeOff() {
   // validates the nominee either way and refuses what does not hold up, so what
   // the old list did was offer colleagues the submit would then refuse, which a
   // nurse reads as the form being broken. `Timesheets.jsx` carried this predicate
-  // byte for byte and shares the module now, which is why the correction reaches
-  // both screens instead of whichever one somebody was looking at.
+  // byte for byte and moves to the same module in its own change — the two are
+  // independent with no ordering between them, so on this branch that screen is
+  // still on the inline copy. The module is the reason the correction reaches
+  // both rather than whichever one somebody happened to be looking at.
   const { data: approvers = [] } = useQuery({
     queryKey: ["timeoff", "approvers", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
       try {
-        const users = await base44.entities.User.list("full_name", 500);
+        // `email` rather than `full_name`: the owned roster serves email order
+        // and `-created_date` and refuses every other sort before the contract
+        // runs, and the `catch` below turns that refusal into an empty list —
+        // so without this the dropdown could never see `tenant_role` at all on
+        // the path this change is for. `full_name` is not a sort the owned store
+        // can ever learn, because the carried user table has no name column.
+        const users = await base44.entities.User.list("email", 500);
         const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
         const scoped = filterUsersByCallerAgency(users, currentUser);
         return approverOptions(scoped, currentUser?.email);

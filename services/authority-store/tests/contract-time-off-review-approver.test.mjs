@@ -5,6 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import {
   RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, assertNewestRecordMigration,
+  recordMigrationNames,
 } from './record-migrations.mjs';
 
 /**
@@ -65,6 +66,14 @@ before(async () => {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
   applied = await applyRecordMigrations(db);
+  // The applied set is the WHOLE directory, which is the invariant the sibling
+  // contract suites carry and the one that makes a forward file's effect on
+  // anything else observable at all. `includes` alone would pass against a store
+  // built from two files, so the pair is load-bearing in both directions: the
+  // equality says nothing was skipped, and the `includes` below say which two
+  // files this suite is actually about.
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the applied set is the record directory, sorted, and nothing else');
   for (const name of [ORIGINAL, NAME]) {
     assert.ok(applied.includes(name), `${name} must be applied: this suite measures it`);
   }

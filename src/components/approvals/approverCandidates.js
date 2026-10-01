@@ -3,8 +3,16 @@
  *
  * Two screens ask this question and they asked it with the same wrong predicate,
  * byte for byte: the timesheet's "Send to approver" control and the leave
- * request's. They share this module so a correction to one is a correction to
- * both, which is the thing that did not happen the first time.
+ * request's. This module is the one home for it, so that a correction to one is a
+ * correction to both — which is the thing that did not happen the first time.
+ *
+ * EACH SCREEN MOVES TO IT IN ITS OWN CHANGE, and they are independent
+ * capabilities with no ordering between them, so either may land first. A reader
+ * who finds one screen still carrying the inline predicate is looking at a
+ * migration that is not finished yet, not at one that was missed — and this
+ * paragraph is written to be true at every point in between rather than only at
+ * the end, since the alternative is a module that documents a state no commit
+ * has ever been in.
  *
  * The list is a CORRECTNESS surface, not a security one. Whoever is picked here
  * is validated authoritatively by the submit before it reaches the row, and both
@@ -86,4 +94,35 @@ export function approverOptions(users, callerEmail) {
       role: user.role,
       tenant_role: user.tenant_role,
     }));
+}
+
+/**
+ * Which approver address a form should hold, once the list is known.
+ *
+ * BOTH forms pre-select `currentUser.manager_email` — a self-editable profile
+ * field — and both then submit whatever they hold. The Select renders its
+ * PLACEHOLDER for a value matching no item, so a stale address makes the control
+ * look unset while still travelling with the request, and the contract refuses
+ * `PENNSYNC_TIMESHEET_APPROVER_INVALID` or `PENNSYNC_TIME_OFF_APPROVER_INVALID`
+ * naming somebody the employee never picked. That is the same "the form is
+ * broken" reading the list itself was corrected to stop, surviving in the field
+ * the list feeds — so the reconciliation lives here beside the list rather than
+ * being written out twice, which is how the predicate above came to be
+ * duplicated in the first place.
+ *
+ * AN EMPTY LIST IS NOT AN AUTHORITY TO CLEAR ANYTHING, and that is the whole of
+ * why this is not a one-line filter. Empty means the query has not resolved, or
+ * the roster read is not permitted for this caller and the screen is falling back
+ * to routing to administrators. Only a list with entries in it says who may
+ * approve, so an empty one leaves every value exactly as it found it.
+ *
+ * @param {{ current?: string, offered?: Array<{ email?: string, [key: string]: unknown }>,
+ *   fallback?: string }} input
+ * @returns {string} the address the form should hold
+ */
+export function reconcileApprover({ current = '', offered = [], fallback = '' } = {}) {
+  const emails = new Set((offered || []).map(option => option?.email).filter(Boolean));
+  if (emails.size === 0) return current || fallback;
+  if (current) return emails.has(current) ? current : '';
+  return emails.has(fallback) ? fallback : '';
 }
