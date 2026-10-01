@@ -184,6 +184,21 @@ jobs:
       - name: Check Base44 function syntax
         run: pnpm run check:backend-transpile
 
+      # BLOCKING gate. A duplicate data key in an object literal is legal, so
+      # two branches each adding the same key to one registry literal merge with
+      # no conflict, the later silently wins, and node --check passes — the merge
+      # is the only tree the defect exists in, so neither branch's own green sees
+      # it. esbuild already parses it (and reads JSX and TS, where a plain-JS
+      # parser would go blind on most of the tree); this keeps the warning the
+      # transpile gate discards. The gate scans every tracked .js/.cjs/.mjs/.jsx/
+      # .ts/.tsx — the hazard is the same in all of them — and fails closed on a
+      # file it cannot parse, so a population that shrank through a parse failure
+      # can never produce a clean line. tools-duplicate-object-keys.test.mjs runs
+      # in test:utils; naming it here makes a hit legible instead of one
+      # assertion among thousands.
+      - name: Check for duplicate object keys
+        run: pnpm run check:duplicate-keys
+
       # BLOCKING gates for the Base44 exit. These also run inside the utility
       # suite above (tools-transition-disposition.test.mjs and its siblings in
       # test:utils); naming them separately makes a migration regression legible
