@@ -33,10 +33,13 @@ import {
 // `ci.yml` checks out at `fetch-depth: 0`.
 const BASE_REF = process.env.PENNSYNC_REGISTER_BASE_REF || 'origin/main';
 // `git show` of a tracked file is bounded by the repository, but execFileSync's
-// default maxBuffer is 1 MiB and this register crossed that on 2026-09-__, so
-// every read of the base document died with ENOBUFS. The bound stays finite and
-// generous; what makes it safe is that overflowing it now FAILS rather than
-// being read as an absent ref — see the catch below.
+// default maxBuffer is 1 MiB and this register crossed that at `296a2205` on
+// 2026-10-01, so every read of the base document died with ENOBUFS. Measured
+// rather than recalled: the placeholder this replaces read `2026-09-__`, and the
+// September was already wrong when it was typed — the first commit over
+// 1,048,576 bytes is in October. The bound stays finite and generous; what makes
+// it safe is that overflowing it now FAILS rather than being read as an absent
+// ref — see the catch below.
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
 const git = (...args) =>
   execFileSync('git', args, { encoding: 'utf8', maxBuffer: GIT_MAX_BUFFER });
