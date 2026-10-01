@@ -6569,6 +6569,88 @@ store that was missing it. The store itself still needs the migration applied �
 one pending file, DDL only — and until it is, the hosted comparison stays red
 on the ledger count as well as the three objects.
 
+### Addendum to D88, 2026-10-01 — the discriminator is the pending set
+
+**Addendum to D88 — the discriminator is the pending set.** Contributed by the
+main-watch thread, 2026-10-01, from its own reading of `main`'s hosted-store
+failure at `700b4d24`.
+
+> A difference between the committed tree and a hosted store does not by itself
+> distinguish a file the ledger will skip forever from a file the ledger has not
+> yet run, and the remedies are opposite: the first needs a forward catch-up
+> written, the second needs nothing but an apply. The failure output cannot tell
+> them apart, because it reports the difference and not the file. **The
+> discriminator is the pending set: D88's signature is a difference whose file is
+> NOT pending.** If the file is pending, a catch-up is a duplicate of work already
+> in the tree. Checking costs one read-only command, and the cost of not checking
+> is concrete rather than abstract — two migrations with different names creating
+> the same object merge with no conflict, and the loser has to be deleted before
+> either lands. The worked example is `20260920590000_column_defaults.sql`, which
+> is itself a derived catch-up, is on `main`, and was in the pending set at
+> `700b4d24`: the five column-default differences printed in that run read exactly
+> like D88 standing alone, and the catch-up D88 would call for was the pending
+> file itself.
+
+*Carried by the register's collector, 2026-10-01, from the main-watch thread at
+`session_014Rj741CnDBeZPn16bE65LK`, routed as prose because the write route for a
+decision entry is the collector's hand. The author's words are quoted whole and
+unaltered; the `###` heading above and the block quotation are the collector's,
+imposed at the level `### Addendum to D83, 2026-10-01` already uses, and the
+cross-session transport's four-space indentation is stripped. **It takes no
+decision number, and that was ruled rather than assumed**: both threads declined
+to rule on it and put the question up, and the ruling is that D88's anchor is a
+hosted-store difference whose file is not pending, which will persist and
+therefore needs a forward catch-up — so a test for recognising that signature
+makes D88's own sentence true and sits inside it. A rule for recognising an
+existing decision's signature decides nothing that was open, and a number would
+make the discriminator read as a separate finding a reader could apply without
+D88, which is the opposite of what it is.*
+
+*The premise check, which NARROWED rather than confirmed.* D88's own closing
+paragraph already holds this distinction in a single instance: it records that
+the store "still needs the migration applied — one pending file, DDL only — and
+until it is, the hosted comparison stays red on the ledger count as well as the
+three objects." So that author knew, for their own change, that the three
+differences and the pending file were about the same thing. What is absent is
+the TEST, and the reason is a difference of vantage rather than an oversight.
+D88 is written by somebody who has just authored the pending file and therefore
+cannot be confused about it; a reader who arrives at a red run weeks later has
+the opposite problem, and the entry hands them the mechanism, the ratchet and
+that one instance without ever saying to look at the pending set before
+concluding D88. So the addendum neither contradicts the entry nor repeats it: it
+generalises a distinction the entry applied once, from the vantage where the
+distinction is hard to the vantage where it was free. Recorded this way because
+"D88 does not say how to tell" is true and "D88 does not know the difference"
+would not be — and the addendum is filed inside D88 partly on the strength of
+that closing paragraph.*
+
+*What the collector verified at its own head, which is the anchor and not the
+measurement: lines 94 and 98 of that migration are, verbatim, `alter table
+"pennsync_records"."agency" alter column "billing_cycle" set default 'monthly';`
+and `… "auto_billing_enabled" set default true;`, matching the printed
+`committed "'monthly'::text"` and `committed "true"`; the file holds 425 `set
+default` statements; and `LOCAL_ONLY_MIGRATIONS` read off `tools-pennsync-migrate.mjs`
+is 1, so 91 pinned migrations less that one is the 90 the hosted suite itself
+reports against a ledger holding 74. The run's own totals, read from the
+assertion messages rather than from the printed array, are **632 differences** and
+`74 !== 90`.*
+
+*Two bounds the contributing thread corrected in its own material before handing
+the prose over, both kept here because each is a way a reader goes wrong.* **The
+printed sample cannot tell you how the rest are distributed, and it cannot even
+tell you how it was ordered.** Ten entries were printed of 632: a missing table,
+its four missing columns, then three and two column defaults. Ordering by
+qualified name, by finding kind and by dimension each predict exactly that
+sequence, so those ten do not discriminate between them — the first two tables
+appearing first is an artefact of some ordering and is not evidence that the
+differences cluster anywhere. That is the display-bound lesson one level up: the
+sample does not merely undercount, it cannot distinguish the hypotheses a reader
+would use it for. **And 425 bounds what one file contributes, not the remainder.**
+632 less the ten printed is 622 unprinted, and the printed ten already mix two
+pending files, so the remainder is an unknown mixture of at least those two and
+probably more of the sixteen. A reader who crosses 425 against 622 will believe
+they have accounted for most of the total and will not have.
+
 ## D89 — Distributing a policy version, and a key declared before its race shipped
 
 **Decision.** `distributePolicyAcknowledgment` is ported as
