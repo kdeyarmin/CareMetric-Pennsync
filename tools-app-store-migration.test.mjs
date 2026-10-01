@@ -67,14 +67,42 @@ test('the established app identities remain exact', () => {
   const project = readFileSync('ios/project.yml', 'utf8');
   const invitation = readFileSync('base44/functions/createUserWithTempPassword/entry.ts', 'utf8');
   assert.match(project, /PRODUCT_BUNDLE_IDENTIFIER: com\.caremetric\.ai\s/);
-  // Store LISTING links, not the hosted app origin — they are unaffected by a
-  // hosting move and must not drift with one. `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md`
-  // listed this file as something the domain move has to edit; measured on
-  // 2026-10-01 it holds no app origin at all, only these two store URLs.
+  // Store LISTING links. A hosting move does not touch them and must not drift
+  // them, and the Apple id is what makes an upload an update rather than a new
+  // app (read 2026-10-01, the public record's seller is the repository owner).
   assert.ok(invitation.includes('play.google.com/store/apps/details?id=com.caremetic.ai'));
   assert.ok(invitation.includes('6757097720'));
-  assert.ok(!invitation.includes('caremetricai.base44.app'));
-  assert.ok(!invitation.includes('app.caremetricai.com'));
+});
+
+test('the invitation takes the app origin from configuration, never a literal', () => {
+  // `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` names this file as something the
+  // domain move has to edit, at lines that hold a generated SDK helper. A first
+  // version of this test concluded from that that the file "holds no app origin
+  // at all" and asserted the absence of two literals, which passed for the
+  // wrong reason: the file DOES carry the app origin, from `APP_PUBLIC_URL`
+  // (`getAppBaseUrl`), and every emailed link is built on it. So the plan's
+  // intent was right and its line reference was not, and the assertion worth
+  // having is about the MECHANISM: the origin stays configuration, so moving
+  // the domain is one value rather than an edit here.
+  const source = readFileSync('base44/functions/createUserWithTempPassword/entry.ts', 'utf8');
+  assert.match(source, /Deno\.env\.get\('APP_PUBLIC_URL'\)/);
+  assert.match(source, /APP_PUBLIC_URL is required for outbound app links/);
+  // An origin and nothing else: no path, query, fragment or credentials, which
+  // is what lets `originOf` build the manual links from it.
+  assert.match(source, /APP_PUBLIC_URL must be an absolute HTTPS origin/);
+  assert.match(source, /parsed\.protocol !== 'https:'/);
+
+  // The generated shared-helper regions are excluded on purpose, and this is
+  // the distinction the first version missed: `base44ClientRequest` hard-codes
+  // `https://base44.app` as the SDK's BACKEND, which is not the app's public
+  // origin and does not move with the domain. Outside those regions no app
+  // origin may be hard-coded, or the configured one would be bypassed.
+  const own = source.replace(/\/\/ <<<BEGIN SHARED HELPER[\s\S]*?\/\/ <<<END SHARED HELPER[^\n]*\n/g, '');
+  assert.ok(own.includes('getAppBaseUrl'), 'the helper strip must not remove the resolver');
+  assert.ok(own.length < source.length, 'the generated regions must actually be stripped');
+  for (const origin of ['caremetricai.base44.app', 'app.caremetricai.com']) {
+    assert.ok(!own.includes(origin), `${origin} is hard-coded where APP_PUBLIC_URL should decide`);
+  }
 });
 
 test('the transitional build loads the custom domain and keeps it reachable', () => {
