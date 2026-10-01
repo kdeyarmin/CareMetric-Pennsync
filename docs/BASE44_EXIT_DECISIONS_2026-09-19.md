@@ -214,6 +214,23 @@ rots.** Same family as a table read as a suite and a printed figure read as an
 assertion, and the commonest of the three, because documentation is written
 once and checks keep changing.
 
+**A second page in that family was the check's own COMMENT, and it is worse than
+a page.** The module's typed base carried a sentence saying the two numbers were
+checked against each other at load — `179 - 11 = 168` — and nothing in the module
+did it: no assertion, no throw, nothing reading either against the other.
+Main-watch found it by looking for the assertion rather than by reading the
+sentence, which is the only way it could be found: **a comment naming a check
+that is not there reads exactly like one naming a check that is**, and it sits
+closer to the code than any page does, so it is believed harder. The sentence was
+the useful half, so the check was written rather than the sentence deleted, and
+it now states what it catches instead of implying it — that arithmetic cannot
+fail on its own, because the base is derived as the range minus the absent list
+and both sides move together, so what the guards catch is an absent number
+outside `1..179`, which removes nothing, or one repeated, which removes a number
+twice. **Cutting both guards out of the module fails exactly one test and leaves
+the other thirteen green**, which is why they were worth asserting: nothing else
+in the suite can see their absence.
+
 **The worked example of all of it is the resolution sentence this write-up
 replaced.** One session measured both variants of a cross-check over the real
 bytes, reported which reading was right on which branch, and concluded that one
