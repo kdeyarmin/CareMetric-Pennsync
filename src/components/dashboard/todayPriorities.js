@@ -70,13 +70,21 @@ const ALERT_SEVERITY_RANK = { critical: 2, high: 1 };
 // neither has a single writer anywhere in this repository. `PatientAlert` is
 // what the product actually populates, and it is what HighRiskPatientsWidget
 // on this same dashboard already reads.
+//
+// `status` is the only lifecycle check here, and a first draft also skipped a
+// row carrying `resolved_date`. No such field exists: the entity declares
+// `resolved_at` (base44/entities/PatientAlert.jsonc) and so does the contract's
+// projection (20260920160000_contract_alert.sql). Nor is the real field worth
+// reading — it has exactly one writer on each path, and both set
+// `status = 'resolved'` in the same statement, so the check could never fire.
+// A row that somehow disagreed would be counted, deliberately: `status` is
+// what every other reader of this entity filters on.
 function highRiskPatientIds(patientAlerts) {
   const bySeverity = new Map();
   for (const alert of patientAlerts) {
     const rank = ALERT_SEVERITY_RANK[String(alert?.severity || '').toLowerCase()];
     if (!rank) continue;
     if (String(alert?.status || '').toLowerCase() !== 'active') continue;
-    if (alert?.resolved_date) continue;
     const patientId = alert?.patient_id;
     if (!patientId) continue;
     if ((bySeverity.get(patientId) ?? 0) < rank) bySeverity.set(patientId, rank);
@@ -99,6 +107,7 @@ export function buildTodayPriorities({
   patients = [],
   incidents = [],
   patientAlerts = [],
+  patientAlertsTruncated = false,
   noteConversions = [],
   noteConversionsAvailable = true,
   messages = [],
@@ -156,9 +165,15 @@ export function buildTodayPriorities({
 
   const highRiskIds = highRiskPatientIds(patientAlerts);
   if (highRiskIds.length > 0) {
+    // "at least" when the alert page came back full: the read is capped at 500
+    // ALERTS before anything reduces them to one per patient, so a patient
+    // whose alert fell outside that page is missing from this count. See
+    // useHighRiskPatientAlerts. The qualified phrasing is true either way — a
+    // full page of exactly 500 is still "at least" what it says.
+    const countLabel = patientAlertsTruncated ? `at least ${highRiskIds.length}` : `${highRiskIds.length}`;
     priorities.push(createPriority({
       id: 'high-risk-patients',
-      title: `${highRiskIds.length} high-risk patient${highRiskIds.length === 1 ? '' : 's'} to review`,
+      title: `${countLabel} high-risk patient${highRiskIds.length === 1 ? '' : 's'} to review`,
       description: `Prioritize ${patientName(patientById.get(highRiskIds[0]))} and confirm follow-up, education, and escalation plans.`,
       actionLabel: 'Review patients',
       to: '/Patients',

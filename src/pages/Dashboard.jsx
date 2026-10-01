@@ -114,15 +114,25 @@ export default function Dashboard() {
     () => dashboardData.carePlans || [],
     [dashboardData.carePlans],
   );
+  // The high-risk priority and HighRiskPatientsWidget ask one question through
+  // one query key, so react-query serves both from a single request.
+  const { data: highRiskPage, error: patientAlertsError } = useHighRiskPatientAlerts();
+  const patientAlerts = highRiskPage?.alerts ?? [];
+  const patientAlertsTruncated = highRiskPage?.truncated ?? false;
+
   const visitsError = dashboardError;
   const patientsError = dashboardError;
 
   // Handle errors gracefully with user feedback
-  if (visitsError || patientsError) {
-    console.error('Dashboard data loading error:', visitsError || patientsError);
+  if (visitsError || patientsError || patientAlertsError) {
+    console.error('Dashboard data loading error:', visitsError || patientsError || patientAlertsError);
   }
 
-  const hasDataError = visitsError || patientsError;
+  // The alert read is counted here too. It feeds the high-risk priority, and a
+  // failed read is indistinguishable from an empty one once it reaches the
+  // builder — the tile would report no high-risk patients rather than saying it
+  // could not tell.
+  const hasDataError = visitsError || patientsError || patientAlertsError;
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -141,10 +151,6 @@ export default function Dashboard() {
     : careScope === "both"
     ? "Home Health & Hospice"
     : "Home Health";
-  // The high-risk priority and HighRiskPatientsWidget ask one question through
-  // one query key, so react-query serves both from a single request.
-  const { data: patientAlerts = [] } = useHighRiskPatientAlerts();
-
   const clinical = isClinicalUser(currentUser);
   const patientAccess = canViewPatients(currentUser);
   const eyebrow = clinical ? careScopeLabel : staffRoleLabel(getStaffRole(currentUser));
@@ -225,8 +231,9 @@ export default function Dashboard() {
             patients={patients}
             incidents={incidents}
             patientAlerts={patientAlerts}
+            patientAlertsTruncated={patientAlertsTruncated}
             noteConversionsAvailable={false}
-            dashboardError={dashboardError}
+            dashboardError={hasDataError}
           />
 
           <CoreWorkQueuesStrip

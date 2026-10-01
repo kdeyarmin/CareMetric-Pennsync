@@ -23,8 +23,8 @@ export default function HighRiskPatientsWidget() {
   // so the "N high-risk patients to review" priority on this same page asks
   // the same question through the same key. The hook returns every matching
   // patient; this widget shows the ten most severe, as it always has.
-  const { data: allHighRiskAlerts = [] } = useHighRiskPatientAlerts();
-  const highRiskAlerts = allHighRiskAlerts.slice(0, 10);
+  const { data: highRiskPage } = useHighRiskPatientAlerts();
+  const highRiskAlerts = (highRiskPage?.alerts ?? []).slice(0, 10);
 
   const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 500 });
 

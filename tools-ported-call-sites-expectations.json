@@ -7,7 +7,7 @@
     "src/components/alerts/RiskAlertWidget.jsx:40 getScopedPatientAlerts",
     "src/components/alerts/RiskAlertWidget.jsx:52 updateScopedPatientAlert",
     "src/components/alerts/RiskAlertWidget.jsx:66 updateScopedPatientAlert",
-    "src/components/dashboard/useHighRiskPatientAlerts.js:53 getScopedPatientAlerts",
+    "src/components/dashboard/useHighRiskPatientAlerts.js:78 getScopedPatientAlerts",
     "src/components/documents/PDFSearchInterface.jsx:42 searchPDFs",
     "src/components/documents/PDFSearchInterface.jsx:62 searchPDFs",
     "src/components/personnel/AdminCredentialApproval.jsx:60 reviewPersonnelCredential",
