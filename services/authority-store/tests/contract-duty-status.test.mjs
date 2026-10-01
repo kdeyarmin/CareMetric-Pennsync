@@ -41,7 +41,7 @@ import {
 
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
-const DUTY_NAME = '20260920680000_contract_duty_status.sql';
+const DUTY_NAME = '20260920690000_contract_duty_status.sql';
 const DUTY = resolve(repository, RECORDS + DUTY_NAME);
 const ORIGINAL = resolve(repository, 'base44/functions/setNurseDutyStatus/entry.ts');
 const APP = '6a9881683dc68a0bd54f1ef7';

@@ -62,11 +62,11 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // The ordering guard MOVED to `contract-duty-status.test.mjs` when this
-  // migration merged. See `assertNewestRecordMigration`: the check belongs to
-  // the newest PENDING file, and a suite whose migration is on `main` drops
-  // the call rather than widening it with an exception list — keeping it here
-  // would refuse a correct tree the moment any later migration arrives.
+  // The ordering guard has MOVED ON, and this is the retirement the helper's
+  // own docstring asks for rather than a weakening of it: this migration is on
+  // `main`, so it is part of what a store already holds, and a later file
+  // sorting after it is a correct tree rather than a base that moved. The
+  // check now lives on the newest pending file, in `contract-time-off`.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [

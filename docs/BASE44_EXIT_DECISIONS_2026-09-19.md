@@ -13909,7 +13909,7 @@ self-asserted authority D23 spent its whole decision removing.
 
 `setNurseDutyStatus` is not in this list because it is **written**: D82 named
 it as the one capability its decision actually reached, and
-`20260920680000_contract_duty_status.sql` is that port, in D81's partial
+`20260920690000_contract_duty_status.sql` is that port, in D81's partial
 shape. `entity_authorization` is five, and stays five on purpose.
 
 - **`userManagement` and `userManagementV2` are ONE capability.** Their
