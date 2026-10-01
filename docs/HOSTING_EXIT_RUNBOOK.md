@@ -91,17 +91,58 @@ Railway reads and release writes; no other thread writes Railway.
 | 4 | Deploy and read `/healthz`: expect `"released": false` | release thread | yes |
 | 5 | Set `PENNSYNC_SITE_RELEASED=enabled-v1` and verify asset-for-asset against the deployment's own hostname | release thread | yes — unset it |
 | 6 | Confirm `/login` no longer belongs to Base44 on this origin (the instrument above) | Claude | n/a, a reading |
-| 7 | Recover Apple signing continuity for `com.caremetric.ai`, then build, submit and ship the transitional binary | **Kevin** — Apple account, and the no-upload gate in `docs/APP_STORE_SUBMISSION_CHECKLIST.md` | a release can be pulled; an installed update cannot be taken back |
-| 8 | Wait for adoption of that build | — | — |
-| 9 | Repoint `app.caremetricai.com` at the owned host in GoDaddy | **Kevin** — DNS | yes, by restoring the A record |
-| 10 | Keep `caremetricai.base44.app` reachable until old-binary adoption is negligible | **Kevin** — Base44 account | — |
+| 7 | Point `APP_PUBLIC_URL` at `https://app.caremetricai.com` in the Base44 function environment | **Kevin** — Base44 account | yes, by restoring the previous value |
+| 8 | Recover Apple signing continuity for `com.caremetric.ai`, then build, submit and ship the transitional binary | **Kevin** — Apple account, and the no-upload gate in `docs/APP_STORE_SUBMISSION_CHECKLIST.md` | a release can be pulled; an installed update cannot be taken back |
+| 9 | Wait for adoption of that build | — | — |
+| 10 | Repoint `app.caremetricai.com` at the owned host in GoDaddy | **Kevin** — DNS | yes, by restoring the A record |
+| 11 | Keep `caremetricai.base44.app` reachable until old-binary adoption is negligible | **Kevin** — Base44 account | — |
 
-Step 7 is the long one and nothing in this repository shortens it. The three
+Step 8 is the long one and nothing in this repository shortens it. The three
 recovery problems the plan names — signing assets, the absent `android/`
 project, and the four live in-app purchases with no implementation here — gate
 it regardless of how the migration goes.
 
-### Step 9 in detail
+### Step 7 in detail
+
+`APP_PUBLIC_URL` is the single value that decides where every emailed link
+points, and it is the one piece of the move that lives outside this repository.
+Thirteen Base44 functions read it — `adminResetPassword`,
+`autoApproveInvitedUser`, `checkAllIntegrations`, `createNotification`,
+`createUserWithTempPassword`, `createUserWithTempPasswordV2`,
+`dispatchScheduledSignatureReminders`, `generateFollowUpPortalToken`,
+`generateSignerToken`, `preflightStagingReadinessFixture`, `resetUserPassword`,
+`userManagement` and `userManagementV2` — so an invitation, a password reset, a
+signature reminder and a provider follow-up link are all built from it.
+
+It fails closed by design: `.env.example:85-88` records that there is no
+`APP_URL` or production fallback, and each function's `getAppBaseUrl` refuses a
+value that is not one exact absolute HTTPS origin.
+`base44/functionTests/publicAppUrlContract.test.js` is the assertion.
+
+Two things follow, and together they are why this has a step of its own rather
+than a line in step 10:
+
+- **It can move early and safely.** Both origins already serve the same
+  application, so pointing it at the custom domain while Base44 is still hosting
+  changes which hostname a recipient sees and nothing else.
+- **It must move before step 11.** Once `caremetricai.base44.app` stops being
+  reachable, a value still naming it makes every outbound link in all thirteen
+  functions dead — and these are the links by which a new member first reaches
+  the product, so the failure lands on people who cannot work around it.
+
+Setting it ahead of step 8 is the tidier order, for a weaker reason than it
+first looks: once the shell loads `app.caremetricai.com`, a link on that origin
+is the same origin the app itself uses, so nothing a recipient opens points at a
+hostname the product is leaving. It does **not** mean the link opens the
+installed app — that needs a universal-link association, and there is none in
+`ios/PennSync/` to measure.
+
+Instrument: there is none from here. This is a value in Kevin's Base44 function
+environment, not in the tree, and nothing in this repository can read it — so
+confirm it by sending one invitation to an address he controls and reading the
+link, which is his to do and is also a message to a real person.
+
+### Step 10 in detail
 
 The record is an **A** record at GoDaddy, so the change is: replace the A record
 for `app` with the CNAME the owned host asks for (Railway issues one per custom
@@ -116,7 +157,7 @@ hand before touching it:
    five minutes rather than thirty.
 
 Rollback is restoring the A record to `216.24.57.1`. That works for as long as
-Base44 still serves the app, which is step 10's whole point.
+Base44 still serves the app, which is step 11's whole point.
 
 ## Verifying, at each point
 
@@ -143,5 +184,5 @@ why the image build refuses an empty one.
 The Android half. There is no `android/` directory in this repository, so the
 Play listing (`com.caremetic.ai` — that spelling is the real package id) cannot
 be rebuilt from here at all. Whatever the installed Android app binds to is
-unmeasured here and needs the original project before step 9 can be called safe
+unmeasured here and needs the original project before step 10 can be called safe
 for both platforms.
