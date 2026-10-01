@@ -95,3 +95,34 @@ export function approverOptions(users, callerEmail) {
       tenant_role: user.tenant_role,
     }));
 }
+
+/**
+ * Which approver address a form should hold, once the list is known.
+ *
+ * BOTH forms pre-select `currentUser.manager_email` — a self-editable profile
+ * field — and both then submit whatever they hold. The Select renders its
+ * PLACEHOLDER for a value matching no item, so a stale address makes the control
+ * look unset while still travelling with the request, and the contract refuses
+ * `PENNSYNC_TIMESHEET_APPROVER_INVALID` or `PENNSYNC_TIME_OFF_APPROVER_INVALID`
+ * naming somebody the employee never picked. That is the same "the form is
+ * broken" reading the list itself was corrected to stop, surviving in the field
+ * the list feeds — so the reconciliation lives here beside the list rather than
+ * being written out twice, which is how the predicate above came to be
+ * duplicated in the first place.
+ *
+ * AN EMPTY LIST IS NOT AN AUTHORITY TO CLEAR ANYTHING, and that is the whole of
+ * why this is not a one-line filter. Empty means the query has not resolved, or
+ * the roster read is not permitted for this caller and the screen is falling back
+ * to routing to administrators. Only a list with entries in it says who may
+ * approve, so an empty one leaves every value exactly as it found it.
+ *
+ * @param {{ current?: string, offered?: Array<{ email?: string, [key: string]: unknown }>,
+ *   fallback?: string }} input
+ * @returns {string} the address the form should hold
+ */
+export function reconcileApprover({ current = '', offered = [], fallback = '' } = {}) {
+  const emails = new Set((offered || []).map(option => option?.email).filter(Boolean));
+  if (emails.size === 0) return current || fallback;
+  if (current) return emails.has(current) ? current : '';
+  return emails.has(fallback) ? fallback : '';
+}

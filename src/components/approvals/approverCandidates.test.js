@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { APPROVER_TENANT_ROLES, approverOptions, mayApprove } from "./approverCandidates.js";
+import { APPROVER_TENANT_ROLES, approverOptions, mayApprove, reconcileApprover } from "./approverCandidates.js";
 
 /** A roster page as the OWNED store answers it: a tenant role, no `role`. */
 const owned = (email, tenant_role, extra = {}) =>
@@ -121,4 +121,64 @@ test("the role set is the one BOTH contracts validate against", () => {
   assert.ok(review, "the review gate's named-approver role must be findable");
   assert.ok(APPROVER_TENANT_ROLES.includes(review[1]),
     `the review gate names ${review[1]}, which this list does not offer`);
+});
+
+/**
+ * `reconcileApprover`, and the two states an empty list conflates.
+ *
+ * The cases are written against the FORM'S question — what value survives — and
+ * not against the set arithmetic, because the defect was never the arithmetic.
+ * It was that nobody asked the question at all once the list arrived.
+ */
+const option = (email) => ({ email, name: email });
+const OFFERED = [option("manager@example.invalid"), option("admin@example.invalid")];
+
+test("an offered choice survives, and a stale one is cleared", () => {
+  assert.equal(reconcileApprover({ current: "manager@example.invalid", offered: OFFERED }),
+    "manager@example.invalid");
+  // The demoted manager: still on the profile, no longer on the list. Left in
+  // place the control shows its placeholder and submits this anyway, and the
+  // contract refuses it naming somebody the employee never picked.
+  assert.equal(reconcileApprover({ current: "demoted@example.invalid", offered: OFFERED }), "");
+});
+
+test("an EMPTY list changes nothing, because it is not an answer", () => {
+  // Before the query resolves, and when the roster read is not permitted, the
+  // list is `[]` either way — so clearing on empty would wipe a valid default on
+  // every first render and break the route-to-administrators fallback.
+  assert.equal(reconcileApprover({ current: "anybody@example.invalid", offered: [] }),
+    "anybody@example.invalid");
+  assert.equal(reconcileApprover({ current: "", offered: [], fallback: "boss@example.invalid" }),
+    "boss@example.invalid");
+});
+
+test("the profile default is pre-selected only when the list offers it", () => {
+  assert.equal(reconcileApprover({ current: "", offered: OFFERED, fallback: "admin@example.invalid" }),
+    "admin@example.invalid");
+  assert.equal(reconcileApprover({ current: "", offered: OFFERED, fallback: "demoted@example.invalid" }),
+    "");
+});
+
+test("a choice the employee made is never replaced by the profile default", () => {
+  assert.equal(reconcileApprover({
+    current: "manager@example.invalid", offered: OFFERED, fallback: "admin@example.invalid",
+  }), "manager@example.invalid");
+});
+
+test("it answers for the shapes a form actually hands it", () => {
+  assert.equal(reconcileApprover(), "");
+  assert.equal(reconcileApprover({ offered: null }), "");
+  // An option with no address cannot be picked, so it cannot keep a value alive.
+  assert.equal(reconcileApprover({ current: "x@example.invalid", offered: [{ name: "No address" }] }),
+    "x@example.invalid", "a list of unpickable options is still an empty list of addresses");
+});
+
+test("the timesheet form reconciles rather than carrying a stale default", () => {
+  const form = readFileSync(new URL("../timesheet/MyTimesheetForm.jsx", import.meta.url), "utf8");
+  assert.match(form, /reconcileApprover\(\{/, "the form must ask the shared reducer");
+  // The pre-select that used to stand alone is gone: it set the profile default
+  // without consulting the list, which is the defect. And `editing` is now a
+  // dependency rather than a guard, so loading a saved sheet reconciles too.
+  assert.doesNotMatch(form, /if \(defaultManagerEmail && !editing\)/);
+  assert.match(form, /\}, \[approvers, defaultManagerEmail, editing\]\);/);
 });
