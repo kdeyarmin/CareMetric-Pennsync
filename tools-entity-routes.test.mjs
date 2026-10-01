@@ -808,7 +808,11 @@ test('the landable sites partition exactly, and the audit prose carries the part
   assert.equal(landable.length, report.landable_sites);
 
   const page = readFileSync(resolve(repository, PLAN), 'utf8');
-  const spelled = { 6: 'Six', 9: 'Nine', 34: 'Thirty-four', 50: 'Fifty' };
+  // Re-derived on the merged tree, not unioned from the two sides: this branch had
+  // {6, 9, 34, 50} and main {9, 29, 54}, and a hand-union would carry three entries
+  // no partition count matches any more. The tool reads refused 6, unreadable 54,
+  // noRoute 29 here, so those are the three and there are no others.
+  const spelled = { 6: 'Six', 29: 'Twenty-nine', 54: 'Fifty-four' };
   for (const [count, word] of [[refused.length, spelled[refused.length]],
     [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
     assert.ok(word,

@@ -139,6 +139,10 @@ const STOPS = Object.freeze({
   pennsync_contract_compliance_audit_update: 'PENNSYNC_AUDIT_WRITE_ID_INVALID',
   pennsync_contract_document_get: 'PENNSYNC_DOCUMENT_PURPOSE_INVALID',
   pennsync_contract_document_list: 'PENNSYNC_DOCUMENT_PURPOSE_INVALID',
+  // The sweep sends no body, and a null `p_updates` is not an empty update:
+  // the contract refuses it before it can decide the update is empty, which is
+  // a different code and deliberately so.
+  pennsync_contract_duty_status_set: 'PENNSYNC_DUTY_BODY_INVALID',
   pennsync_contract_education_material_write: 'PENNSYNC_EDUCATION_MATERIAL_ACTION_INVALID',
   pennsync_contract_face_to_face_save: 'PENNSYNC_F2F_FIELDS_INVALID',
   pennsync_contract_fleet_entry_add: 'PENNSYNC_FLEET_REQUEST_INVALID',

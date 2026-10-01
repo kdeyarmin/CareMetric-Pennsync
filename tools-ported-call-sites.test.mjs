@@ -89,6 +89,36 @@ test('blanking preserves offsets so a reported line does not shift', () => {
   assert.equal(sitesIn(source)[0].line, 2);
 });
 
+test('blanking keeps the newlines, so a masked line is still that line', () => {
+  // A block comment and a multi-line template both span lines. Blanking their
+  // newlines joined the line before to the line after, which made `lineOf` —
+  // run here over the MASKED text — report a number too small by however many
+  // lines the comment took, and hid a line-anchored declaration from the limit
+  // reader. Both failures are silent.
+  const source = 'a/*x\ny*/b\nconst Z = `p\nq`;\nconst R = 1;\n';
+  const masked = codeOnly(source);
+  assert.equal(masked.length, source.length);
+  assert.equal(masked.split('\n').length, source.split('\n').length);
+  assert.equal(masked.split('\n')[4], 'const R = 1;');
+});
+
+test('a regex literal is masked, so a quote inside one swallows nothing', () => {
+  // `videoNarration.js:35` holds `.replace(/[*_#`~]/g, '')`. With no regex
+  // handling that backtick opened a template literal and blanked everything to
+  // the next one twelve lines down, taking a real declaration with it — the
+  // direction that loses code rather than the one that keeps a comment.
+  const source = "const clean = (s) => s.replace(/[*_#`~]/g, '');\nconst R = 1;\n";
+  assert.equal(codeOnly(source).split('\n')[1], 'const R = 1;');
+  // Division is not a regex: the `/` after a value divides, and masking to the
+  // next `/` would eat the rest of the expression.
+  assert.equal(codeOnly('const q = a / b / c;').trim(), 'const q = a / b / c;');
+  // A keyword before it is the case that looks like division and is not.
+  assert.ok(!codeOnly("const t = () => { return /a'b/.test(s); };").includes("a'b"));
+  // A regex is still only masked, never removed, so offsets hold.
+  const withRegex = "x.replace(/ab/g, '');";
+  assert.equal(codeOnly(withRegex).length, withRegex.length);
+});
+
 test('an unbalanced call refuses rather than reporting a truncated payload', () => {
   let failure = null;
   try { callText("invoke('x', { a: 1 ", 6); } catch (error) { failure = error; }

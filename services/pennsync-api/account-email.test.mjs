@@ -441,3 +441,51 @@ test('with the runtime configured but delivery unreleased, the broker refuses th
     assert.equal(sent.length, 0, name);
   }
 });
+
+/**
+ * The README's delivery section, which is the one place a reader goes to ask
+ * *can this service send mail to a real person*.
+ *
+ * It answered that question with a claim about the fleet — "unset, which is
+ * every deployment today" — and the claim was false when measured: `/readyz`
+ * answered `deliveryReleased: true` on 2026-09-30. The section three
+ * paragraphs above had ALREADY been corrected for saying the same thing, so
+ * prose was corrected once and rotted again a few lines down, with nothing
+ * failing either time. **The remedy is an assertion, because that is the half
+ * that notices.**
+ *
+ * What this can and cannot do, stated because a phrase scan invites the wrong
+ * confidence: it catches the forms that have actually been written here, and it
+ * cannot catch a fleet claim phrased in words nobody has used yet. It is a
+ * ratchet on a known defect, not a proof of honesty — so when a new form does
+ * appear, add it here rather than only fixing the sentence.
+ */
+test('the README delivery section claims no deployment state, and names the instrument', () => {
+  const readme = readFileSync(new URL('./README.md', import.meta.url), 'utf8');
+  const heading = '## Outbound delivery is released separately';
+  const start = readme.indexOf(heading);
+  assert.ok(start >= 0, `services/pennsync-api/README.md no longer has a "${heading}" section`);
+  const rest = readme.slice(start + heading.length);
+  const next = rest.indexOf('\n## ');
+  const section = next === -1 ? rest : rest.slice(0, next);
+
+  // Each of these asserts something only a deployment can answer. The first is
+  // the form that was actually here; the rest are its neighbours.
+  for (const claim of [
+    /which is every deployment/i,
+    /every deployment (?:today|now)/i,
+    /no deployment (?:has|sets|is|today)/i,
+    /currently (?:unset|set|released|paused)/i,
+    /(?:is|stays|remains) unset (?:today|now)/i,
+  ]) {
+    assert.equal(section.match(claim), null,
+      `the delivery section asserts a deployment's state (${claim}).\n`
+      + 'State it as a dated reading naming its instrument — an unauthenticated GET of\n'
+      + '<service>/readyz, with the time and the revision — or not at all.\n');
+  }
+
+  // And the positive half: a reader who is told not to trust the page must be
+  // told where to look instead, in the same section.
+  assert.ok(/\/readyz/.test(section),
+    'the delivery section must name `/readyz`, which is the only thing that answers it');
+});
