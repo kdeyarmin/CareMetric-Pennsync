@@ -83,7 +83,18 @@ function clientFor(databaseUrl) {
   const require = createRequire(import.meta.url);
   let pg;
   try { pg = require('pg'); } catch { fail('PRODUCTION_PIN_PG_UNAVAILABLE'); }
-  return new pg.Client({ connectionString: databaseUrl, application_name: 'pennsync-production-pin' });
+  const client = new pg.Client({ connectionString: databaseUrl, application_name: 'pennsync-production-pin' });
+  // WHY A NO-OP LISTENER IS THE FIX RATHER THAN A SHRUG. When the socket dies
+  // mid-query, `pg` rejects the in-flight query AND emits `'error'` on the
+  // client. With nothing listening, that second half is an unhandled `'error'`
+  // event, which node:test reports as the raw `Connection terminated
+  // unexpectedly` before this module's catch can reach the rejection — so the
+  // position and liveness code added to say WHICH file died, and whether the
+  // server went with it, never printed once. The rejection carries the same
+  // failure, and `withClient` classifies it; this listener only stops the
+  // duplicate from pre-empting that.
+  client.on('error', () => {});
+  return client;
 }
 
 /** Connect, do one thing, always close. The code names which step failed. */
