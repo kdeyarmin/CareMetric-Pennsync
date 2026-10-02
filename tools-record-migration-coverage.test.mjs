@@ -49,6 +49,15 @@ const FIXTURE = {
     "import { applyRecordMigrations } from './record-migrations.mjs';\n"
     + 'export const buildStore = async () => {\n  const db = new PGlite();\n'
     + '  await applyRecordMigrations(db);\n  return db;\n};\n',
+  // Route `file_constant`: execs the text of a NAMED record migration read
+  // through the generator's exported path constant, which is neither the shared
+  // helper nor the literal pair. `record-store-catchup.test.mjs` is the real
+  // one, and it spent a while in `transitive` for a reason that was not true.
+  'constant.test.mjs':
+    "import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';\n"
+    + '// the generated file in the record-migrations directory\n'
+    + 'const db = new PGlite();\n'
+    + "await db.exec(readFileSync(RECORD_MIGRATION_FILE, 'utf8'));\n",
   // Present so the sibling walk has the module the two helpers import.
   'record-migrations.mjs': 'export const applyRecordMigrations = async () => {};\n'
     + 'export const recordMigrationNames = () => [];\n',
@@ -69,14 +78,18 @@ const plant = (extra = {}) => {
 // all would read exactly like a working check.
 test('the synthetic tree is the shape the real one is, and passes clean', () => {
   const result = classifySuites(plant());
-  assert.deepEqual(result.suites, ['helper.test.mjs', 'inline.test.mjs', 'text.test.mjs', 'transitive.test.mjs']);
-  assert.deepEqual(result.namers, ['helper.test.mjs', 'inline.test.mjs', 'text.test.mjs']);
-  assert.deepEqual(result.appliers, ['helper.test.mjs', 'inline.test.mjs', 'transitive.test.mjs']);
+  assert.deepEqual(result.suites, ['constant.test.mjs', 'helper.test.mjs', 'inline.test.mjs',
+    'text.test.mjs', 'transitive.test.mjs']);
+  assert.deepEqual(result.namers, ['constant.test.mjs', 'helper.test.mjs', 'inline.test.mjs',
+    'text.test.mjs']);
+  assert.deepEqual(result.appliers, ['constant.test.mjs', 'helper.test.mjs', 'inline.test.mjs',
+    'transitive.test.mjs']);
   assert.deepEqual(result.textReaders, ['text.test.mjs']);
   assert.deepEqual(result.byRoute, {
     helper: ['helper.test.mjs'],
     inline_pair: ['inline.test.mjs'],
     transitive: ['transitive.test.mjs'],
+    file_constant: ['constant.test.mjs'],
   });
   assert.deepEqual(result.unclassified, []);
   assert.deepEqual(coverageProblems(result), []);
