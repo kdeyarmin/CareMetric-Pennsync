@@ -192,3 +192,29 @@ from it. What remains is the owner running Inspect, Preserve and Review, and
 then settling what the review reports, for example audience and agency mapping,
 media that is not carried, and courses that do not convert. Those are decisions
 and hub-side work, not a build here.
+
+## Four scheduled learning jobs and the release variable, read 2026-10-02
+
+Step 5 says assignment and annual-plan automation still needs retiring. A
+separate change (pull request #413, a draft when this was written) stands four
+scheduled jobs down behind the same `CENTRAL_LEARNING_RELEASE=hub-runtime-v1`
+check the other guarded functions use: `autoEnrollAnnualPlans`,
+`sendRenewalReminders`, `processTrainingRenewals` and
+`processAnnualEducationRenewals`. Each would return an authenticated skipped
+result before touching course data.
+
+Read this together with whichever of that change and this one lands second:
+
+- **Once that change is on `main`**, setting `CENTRAL_LEARNING_RELEASE` to
+  `hub-runtime-v1` also stops those four jobs. The step 5 list of guarded
+  functions above does not name them, because this document was written without
+  them.
+- **Until it is on `main`**, they keep running when the variable is set, and
+  still create assignments and reminders from the Base44 course data.
+- **Not established in either repository:** whether the Hub covers
+  auto-enrollment and renewals. Setting the variable therefore may stop the
+  automation before anything central replaces it. That has to be settled before
+  step 6, not after it.
+
+The user-called assigners (`assignAnnualLearningPlan`, `assignInService`) and the
+legacy player writes are outside that change and are unchanged.
