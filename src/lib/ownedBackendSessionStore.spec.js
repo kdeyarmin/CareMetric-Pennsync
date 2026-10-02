@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   OWNED_SESSION_STORAGE_KEY as KEY, clearStoredOwnedSession, createOwnedSessionPort,
-  storedOwnedSessionEmail,
+  ownedSessionEventChangesIdentity, storedOwnedSessionEmail,
 } from '@/lib/ownedBackendSessionStore';
 
 const EMAIL = 'nurse@agency.example';
@@ -124,5 +124,21 @@ describe('the device record', () => {
       if (own) Object.defineProperty(window, 'localStorage', own);
       else delete window.localStorage;
     }
+  });
+});
+
+describe('which storage events change who this browser is', () => {
+  const rec = (email, token) => JSON.stringify({ v: 1, email, refresh_token: token });
+  it('a rotation for the same address does not', () => {
+    expect(ownedSessionEventChangesIdentity({ oldValue: rec(EMAIL, 'a-token-12345'), newValue: rec(EMAIL, 'b-token-12345') })).toBe(false);
+  });
+  it('a removal, an appearance and another address all do', () => {
+    expect(ownedSessionEventChangesIdentity({ oldValue: rec(EMAIL, 'a-token-12345'), newValue: null })).toBe(true);
+    expect(ownedSessionEventChangesIdentity({ oldValue: null, newValue: rec(EMAIL, 'a-token-12345') })).toBe(true);
+    expect(ownedSessionEventChangesIdentity({ oldValue: rec(EMAIL, 'a-token-12345'), newValue: rec('x@agency.example', 'b-token-12345') })).toBe(true);
+  });
+  it('anything unreadable fails toward closing', () => {
+    expect(ownedSessionEventChangesIdentity({ oldValue: 'junk', newValue: 'junk' })).toBe(true);
+    expect(ownedSessionEventChangesIdentity({})).toBe(true);
   });
 });

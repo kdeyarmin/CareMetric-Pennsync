@@ -92,6 +92,10 @@ vi.mock('@/lib/query-client', () => ({
 }));
 
 vi.mock('@/lib/phiStorage', () => ({
+  // Real values: the storage handler reads both keys once the owned key's own
+  // test falls through, which no earlier test reached.
+  DRAFT_AUTHORITY_MARKER_KEY: 'pennsync.draft_authority.sha256.v1',
+  DRAFT_LOGOUT_TOMBSTONE_KEY: 'pennsync.draft_logout_purge_required.v1',
   invalidateAuthorityDraftLeaseForTransition: mocks.invalidateDraftLease,
   invalidatePersistedAuthorityDraftMarkersForLogout: mocks.invalidatePersistedDraftMarkers,
   purgeAuthorityBoundDrafts: mocks.purgeAuthorityDrafts,
@@ -326,8 +330,8 @@ describe('AuthProvider tenant authority state machine', () => {
       // reasons: after one of them a copied record can mint a session until the
       // person signs out, and an access token already elsewhere cannot be
       // invalidated early. A persisted `pageshow` is the third ordinary reason and
-      // is covered by the BFCache test below rather than here, because restoring a
-      // document also drives the reload path.
+      // has its own test below, because restoring a document also drives the
+      // reload path.
       expect(signOut).toHaveBeenCalledOnce();
       expect(signOut).toHaveBeenCalledWith({ forget: false });
       expect(session.active).toBe(false);
@@ -367,6 +371,49 @@ describe('AuthProvider tenant authority state machine', () => {
     // the next boot asks for a password, which is what this case should cost.
     expect(session.native).toBe(false);
     expect(result.current.tenantContextError.type).toBe('browser_authority_change_requires_restart');
+  });
+
+  it('a persisted pageshow is an ORDINARY closure: it keeps the record and leaves the session live', async () => {
+    const { result, session, signOut } = await readyIndependent();
+    signOut.mockImplementation(({ forget = true } = {}) => {
+      session.active = false;
+      return Promise.resolve().then(() => { if (forget) session.native = false; });
+    });
+    await act(async () => {
+      const event = new Event('pageshow'); event.persisted = true;
+      window.dispatchEvent(event);
+    });
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(signOut).toHaveBeenCalledWith({ forget: false });
+    expect(session.native).toBe(true);
+    expect(result.current.tenantContextError.type).toBe('browser_authority_change_requires_restart');
+  });
+
+  const recordFor = (email, token) => JSON.stringify({ v: 1, email, refresh_token: token });
+
+  it('another tab ROTATING the owned record for the same address does not close this realm', async () => {
+    const { signOut } = await readyIndependent();
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'pennsync_owned_session',
+        oldValue: recordFor('nurse@example.test', 'old-token-12345'),
+        newValue: recordFor('nurse@example.test', 'new-token-12345'),
+      }));
+    });
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a sign-out elsewhere removes the record', recordFor('nurse@example.test', 'old-token-12345'), null],
+    ['another address signing in replaces it', recordFor('nurse@example.test', 'old-token-12345'), recordFor('other@example.test', 'new-token-12345')],
+    ['a record appears where there was none', null, recordFor('other@example.test', 'new-token-12345')],
+  ])('control: %s still closes this realm', async (_name, oldValue, newValue) => {
+    const { signOut } = await readyIndependent();
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'pennsync_owned_session', oldValue, newValue }));
+    });
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(signOut).toHaveBeenCalledWith({ forget: true });
   });
 
   it('independent public entry awaits exact cleanup and cannot resume authority on return', async () => {

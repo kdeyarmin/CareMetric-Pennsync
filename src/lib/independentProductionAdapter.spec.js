@@ -245,6 +245,26 @@ describe('a session this device already holds', () => {
     expect(await adapterFor(fixture, productionEnv, { device }).auth.resume()).toBe(true);
   });
 
+  it('a boot whose exchange is refused forgets only the token it spent, so a winning tab keeps its record', async () => {
+    // The loser of a two-tab race read the OLD token, and the winner has since
+    // rotated the record. The loser's exchange is refused, and its cleanup must
+    // go through `clearSpent`: an unconditional `clear` here would delete the
+    // record the provider still honours.
+    const fixture = productionFixture();
+    const device = productionDevice();
+    await (await signedIn(fixture, { device })).auth.signOut({ forget: false });
+    const winnersToken = device.state.token;
+    const staleDevice = {
+      ...device,
+      port: address => ({ ...device.port(address), read: () => 'refresh-already-spent-by-winner' }),
+    };
+    const loser = adapterFor(fixture, productionEnv, { device: staleDevice });
+    expect(await loser.auth.resume()).toBe(false);
+    expect(device.state.token).toBe(winnersToken);
+    expect(device.state.email).toBe(productionEmail);
+    expect(device.state.clears).toBe(0);
+  });
+
   it('answers false, and reaches no project, when this device holds nothing', async () => {
     const fixture = productionFixture();
     const adapter = adapterFor(fixture, productionEnv, { device: productionDevice() });

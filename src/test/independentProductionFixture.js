@@ -36,6 +36,12 @@ export function productionDevice(email = null, token = null) {
       read: () => (state.email === address ? state.token : null),
       write: value => { state.email = address; state.token = value; state.writes.push(value); return true; },
       clear: () => { state.clears += 1; state.email = null; state.token = null; },
+      // Forget only what was spent, as the real port does: a loser of a two-tab
+      // race must leave the winner's rotated record alone.
+      clearSpent: spent => {
+        if (state.email !== address || state.token !== spent) return false;
+        state.clears += 1; state.email = null; state.token = null; return true;
+      },
     }),
   };
 }

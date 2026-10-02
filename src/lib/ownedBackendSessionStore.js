@@ -161,3 +161,32 @@ export function createOwnedSessionPort(email) {
     },
   });
 }
+
+const emailOfSerialised = raw => {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4096) return null;
+  try {
+    const value = JSON.parse(raw);
+    return value && typeof value === 'object' && typeof value.email === 'string' ? value.email : null;
+  } catch { return null; }
+};
+
+/**
+ * Whether a `storage` event on the record's key means ANOTHER tab changed who
+ * this browser is.
+ *
+ * A rotation does not. `resume()` writes this key on every exchange, so a tab
+ * that resumes fires the event in every other tab; closing those tabs'
+ * realms with a forgetting closure would delete the record the resuming tab just
+ * wrote and retire the chain it holds — the eviction the client's `clearSpent`
+ * exists to prevent, reintroduced one layer up and in the two-tab case the
+ * feature serves. So an event only closes the realm when the record was REMOVED
+ * (a sign-out or forget elsewhere), appeared where none was, or now names a
+ * different address. A write that replaces a record with another for the SAME
+ * address is a rotation, and a rotation changes no identity.
+ */
+export function ownedSessionEventChangesIdentity(event) {
+  const before = emailOfSerialised(event?.oldValue);
+  const after = emailOfSerialised(event?.newValue);
+  if (after === null) return true;
+  return before === null || before !== after;
+}

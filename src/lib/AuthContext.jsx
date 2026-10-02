@@ -37,7 +37,7 @@ import {
   poisonTenantSdkRealm,
 } from '@/lib/tenantSdkRealmGate';
 import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch';
-import { OWNED_SESSION_STORAGE_KEY } from '@/lib/ownedBackendSessionStore';
+import { OWNED_SESSION_STORAGE_KEY, ownedSessionEventChangesIdentity } from '@/lib/ownedBackendSessionStore';
 import {
   bindTrustedTenantContext,
   clearTrustedTenantContext,
@@ -1095,8 +1095,10 @@ export const AuthProvider = ({ children }) => {
         || event.key === 'token'
         // The owned device record, for the same reason as the Base44 keys beside
         // it: another tab signing in or out has changed who this browser is, and
-        // a READY realm here was established under the previous answer.
-        || event.key === OWNED_SESSION_STORAGE_KEY
+        // a READY realm here was established under the previous answer. A
+        // ROTATION for the same address is not that: `resume()` writes this key
+        // on every exchange, so it must not evict the tab that wrote it.
+        || (event.key === OWNED_SESSION_STORAGE_KEY && ownedSessionEventChangesIdentity(event))
         || isBrowserAuthorityEpochStorageKey(event.key)
         || event.key === DRAFT_AUTHORITY_MARKER_KEY
         || event.key === DRAFT_LOGOUT_TOMBSTONE_KEY
