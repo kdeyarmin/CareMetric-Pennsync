@@ -121,3 +121,56 @@ discriminator against the seeded set, run over an export of the production
 Base44 app that the owner makes, because no credential here reaches it. Size
 step 2 from that export when it exists, and until then treat the population as
 non-empty and unmeasured — not as a number.
+
+## The destination already defines the import shape, read 2026-10-02
+
+This section is a reading of **another repository**, `kdeyarmin/caremetric-support-hub`,
+at head `9f4fdf25` (committed 2026-09-25), attached read-only to answer one
+question: what shape does the carry in step 2 have to produce? The answer is
+that it is not ours to invent, and most of it is already built over there.
+
+**The contract exists and is named.** The Hub carries
+`docs/PENNSYNC_LEARNING_MIGRATION.md` and `docs/PENNSYNC_LEARNING_CONTRACT.md`,
+a source envelope `pennsync.learning-source.v1`, a decoder
+(`src/imports/pennsyncLearningSource.ts`), a course importer
+(`src/imports/pennsyncCourseImport.ts`), a reviewed field inventory
+(`src/imports/pennsyncSourceFields.json`) and a server-side reader
+(`server/pennsync-learning-migration.mjs`). The field inventory names ten
+learning entities plus three identity ones: TrainingCourse, TrainingModule,
+TrainingQuestion, TrainingCompletion, TrainingAssignment, TrainingAttempt,
+TrainingAttestation, TrainingCertificate, LearningPlan, LearningPlanCourse,
+User, Agency, AgencyMembership. Those are the PennSync entities this repository
+dispositions `hub`, which is D8 holding from the far side.
+
+**The export is not a screen the owner clicks.** The migration doc pins the
+source to Base44 app `694ec16e72e01b60d22f7cbf` — the id this repository holds
+as `ARCHIVE_SOURCE_APPS.production` — and reads it through the Hub's own native
+reader under its own authority, not through anything here. So the sentence
+above about an export the owner makes describes a route this repository can
+see; the route the destination actually implements is the Hub's migration
+panel. Confirm which one is live before asking him for anything.
+
+**A cohort has already been preserved and counted, over there.** The contract
+doc's "Current source findings" reports 19 courses, 23 modules (six
+standalone), 55 questions, six plans, 48 plan-course links and 20 legacy
+history records, with sixteen published courses carrying lessons, two published
+shells and one draft carrying none. **Do not quote that as the count of what is
+in the live app today.** It is a dated finding in another repository about a
+cohort preserved at some earlier moment, it is not re-derivable from this tree,
+and nothing here can check it. It is recorded because it is the first evidence
+that the authored population is non-empty that does not depend on asking the
+owner — consistent with his answer, and not a substitute for measuring.
+
+**Two things in it bear on steps 3 and 4 and are flagged, not settled here.**
+Those findings mention 20 legacy history records and one legacy learner with no
+registered-user match, which sits beside the owner's "Nobody" on finished
+training; the two may well be about different populations, and this document
+does not adjudicate that. And the contract's grading-provider section routes
+freeform grading back through a PennSync function, so step 7's removal of
+`HEYGEN_API_KEY` is not the only credential question left in this domain.
+
+**What this changes about step 2.** It stops being "seed the catalog and invent
+a carry". The carry's shape is `pennsync.learning-source.v1`, the conversion
+target is `caremetric.learning-document.v2`, and the Hub's own contract says in
+its first line that a preserved source is not a published course. So the work
+on this side is to satisfy that contract's inputs, not to design a format.
