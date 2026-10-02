@@ -89,3 +89,21 @@ is the discriminator available. Counting it needs a read of the production
 Base44 app. **No credential in this repository or its CI reaches that app**, and
 `tools-pennsync-acquire.mjs` is pinned to the staging app at its `APP` constant,
 so the count is an export the owner makes, not a tool anyone here can run.
+
+**Who could have authored one, measured rather than assumed.** The owner's
+second answer, 2026-10-02, was "Only the super admin can create their own
+course" — which says who *could* have made one, not whether any exist, so it is
+not a count either. Against the code it holds, and the gate is the built-in
+platform role rather than the owner specifically: `TrainingCourse`'s entity
+policy makes `create`, `update` and `delete` all `user_condition.role: admin`,
+and `isSuperAdmin` is that same role **plus** the configured owner email, so the
+enforced gate is at least as wide as his sentence and no wider than `role ===
+"admin"`. The screens agree with one exception worth knowing about, because it
+is D69's shape: `AIComplianceInServices.jsx` gates on `role === 'admin'` and
+says in its own comment that it does so to match the entity policy, while
+`AdminTraining.jsx` also admits `account_type === "agency_admin"` and
+`account_type === "super_admin"` — self-editable labels that the entity policy
+does not honour, so such a caller reaches the authoring screen and the create
+fails underneath it. **So the authored-course population is bounded by whoever
+holds the built-in `admin` role**, and sizing step 2 at zero is a default taken
+on that bound, not a measurement of the rows.
