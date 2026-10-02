@@ -37,8 +37,14 @@ after(async () => db?.close());
 test('the entire generated schema applies to a real PostgreSQL', async () => {
   const { rows } = await db.query(
     'select count(*)::integer as count from information_schema.tables where table_schema = $1', [SCHEMA]);
-  assert.equal(rows[0].count, plan.totals.carried);
+  // `tables` and not `carried`: the plan emits a table for a CARRIED
+  // disposition and for a `SCHEMA_ONLY` paused entity, and the two halves are
+  // reported apart on purpose, so the figure a database can be compared against
+  // is the sum the plan computes rather than either half.
+  assert.equal(rows[0].count, plan.totals.tables);
+  assert.equal(plan.totals.tables, plan.totals.carried + plan.totals.schema_only);
   assert.ok(plan.totals.carried > 100, 'expected the carried set to be substantial');
+  assert.ok(plan.totals.schema_only > 0, 'expected at least one schema-only table');
 });
 
 test('every table forces row level security and carries exactly the policies its decision calls for', async () => {
@@ -49,8 +55,10 @@ test('every table forces row level security and carries exactly the policies its
            (select count(*) from pg_policy p where p.polrelid = c.oid)::integer as policies
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = $1 and c.relkind = 'r'`, [SCHEMA]);
-  assert.equal(rows.length, plan.totals.carried);
-  assert.deepEqual(rows.filter(row => !row.enabled || !row.forced), [], 'every carried table must force RLS');
+  assert.equal(rows.length, plan.totals.tables);
+  assert.deepEqual(rows.filter(row => !row.enabled || !row.forced), [],
+    'every table must force RLS, a schema-only one included: a paused entity is '
+    + 'not a reason for a record table to be readable across tenants');
 
   // Three shapes, and every one of them refuses by ABSENCE rather than by a
   // predicate that evaluates false — forced RLS with nothing to permit an

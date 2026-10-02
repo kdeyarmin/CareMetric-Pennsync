@@ -30,7 +30,7 @@ import {
   useAuth,
 } from '@/lib/AuthContext';
 import SignInScreen from '@/components/auth/SignInScreen';
-import { independentStagingAuth } from '@/lib/independentStagingSession';
+import { independentStagingAuth, ownedBackendAuth } from '@/lib/independentStagingSession';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AIContentResponsibilityAgreement from '@/components/compliance/AIContentResponsibilityAgreement';
 import Layout from '@/components/Layout';
@@ -271,7 +271,7 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
             <button
               type="button"
               onClick={requiresReload
-                ? independentStagingAuth ? onSignOut : () => window.location.reload()
+                ? ownedBackendAuth ? onSignOut : () => window.location.reload()
                 : onRetry}
               className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
             >
@@ -472,9 +472,9 @@ const AuthenticatedApp = () => {
 
   // A controlled public transition must retain the document and its cleanup
   // credential on failure, even though public pages precede staff auth gates.
-  if (independentStagingAuth && authError?.type === 'staging_cleanup_unavailable') return (
+  if (ownedBackendAuth && authError?.type === 'staging_cleanup_unavailable') return (
     <div className="p-6" role="alert">
-      <h1>Staging access is closed</h1><p>{authError.message}</p>
+      <h1>{independentStagingAuth ? 'Staging access is closed' : 'Access is closed'}</h1><p>{authError.message}</p>
       <button type="button" onClick={() => { void logout(); }}>Retry sign out</button>
     </div>
   );
@@ -590,6 +590,10 @@ const AuthenticatedApp = () => {
         {/* Both agents can observe protected navigation/DOM. Keep them in the
             exact keyed realm so a tenant switch, logout, or public-route entry
             unmounts their effects and releases every captured reference. */}
+        {/* STAGING only, and deliberately not `ownedBackendAuth`: the synthetic
+            workspace REPLACES the app's own screens, so a production build
+            taking this branch would sign a nurse in and then show them a
+            synthetic roster instead of PennSync. */}
         {independentStagingAuth ? <Suspense fallback={<RoutePageLoader />}><IndependentStagingWorkspace /></Suspense> : <>
           <NavigationTracker />
           <VisualEditAgent />

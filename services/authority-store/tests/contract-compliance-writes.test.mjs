@@ -71,15 +71,17 @@ before(async () => {
   // file that had done nothing wrong.
   //
   // Where it lives now is a merge resolution rather than either branch's answer,
-  // and on THIS tree it is neither side's. `main` sent it to
-  // `contract-duty-status`, then to `contract-reference-writes`, then to
-  // `roster-phone-provisioned` as further forward migrations landed; this branch
-  // adds a record migration sorting after all of them, so the newest pending file
-  // here is the timesheet review approver role and the guard is held by
-  // `contract-timesheet-review-approver.test.mjs` alone. Each claim was right
-  // about the tree that named it, and taking either side whole would have left
-  // two suites holding it — which the helper forbids, because the second holder
-  // asserts a tree the first one's own change makes false.
+  // and on THIS tree it is neither side's. The chain runs
+  // `contract-duty-status`, `contract-reference-writes`,
+  // `roster-phone-provisioned`, `contract-timesheet-review-approver`,
+  // `contract-time-off-review-approver`; this branch adds
+  // `20260920745000_dashboard_visit_documentation`, which sorts after all of
+  // them, so the holder on this tree is `contract-dashboard.test.mjs` alone.
+  // Each side's claim was right about the tree that named it, and taking either
+  // whole would have left two suites holding it, which the helper forbids,
+  // because the second holder asserts a tree the first one's own change makes
+  // false. On this merge both sides' named holders were wrong, which is why the
+  // answer is re-derived from the directory rather than carried from a side.
   //
   // What stays is the set equality above, which is the assertion that actually
   // says this store is the one a deployment gets.

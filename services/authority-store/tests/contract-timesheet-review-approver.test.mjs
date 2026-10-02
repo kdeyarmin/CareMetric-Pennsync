@@ -5,8 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { readdir } from 'node:fs/promises';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import {
-  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, assertNewestRecordMigration,
-  recordMigrationNames,
+  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
 
 /**
@@ -77,9 +76,22 @@ before(async () => {
   for (const name of [ORIGINAL, NAME]) {
     assert.ok(applied.includes(name), `${name} must be applied: this suite measures it`);
   }
-  // A guard on this PENDING change; it retires when the change merges. See
-  // `assertNewestRecordMigration`.
-  assertNewestRecordMigration(applied, NAME);
+  // The guard is RETIRED here, by the helper's own instruction: this migration
+  // has MERGED, and `20260920740000_time_off_review_approver_role` — which this
+  // merge brings in — now sorts after it. The helper admits exactly one holder,
+  // so the call moves on to `contract-time-off-review-approver.test.mjs` and is
+  // held there alone; keeping it would fail this `before` and take every test in
+  // this suite down with it, naming a contract that had done nothing wrong.
+  //
+  // Note that git could not tell anybody this. Neither side of the merge touched
+  // this file, so it merged clean while still holding a call its own migration
+  // had just made false — the red would have arrived with no conflict marker
+  // pointing at it. The two sibling suites that carry this comment were each
+  // found the same way.
+  //
+  // Retiring it is NOT asserting nothing. The set equality and the two
+  // `includes` above are this suite's own properties and are what still catch
+  // this file, or the contract it measures, being renamed away.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values
