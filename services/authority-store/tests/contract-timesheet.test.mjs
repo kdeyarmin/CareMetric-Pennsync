@@ -18,12 +18,19 @@ import { applyRecordMigrations, recordMigrationNames } from './record-migrations
  * And `timesheet_read`/`timesheet_update` are agency-WIDE, so every ownership
  * rule here is the contract's (D45).
  */
-// The file whose BEHAVIOUR this suite measures; it no longer decides what is
-// applied. The store is the whole record directory now, so a forward migration
-// over this contract is in the build the moment it is committed — there is none
-// today, measured rather than assumed, which makes this the case where the swap
-// should change nothing at all.
-const MEASURED = ['20260920360000_contract_timesheet.sql'];
+// The files whose BEHAVIOUR this suite measures; they no longer decide what is
+// applied. The store is the whole record directory, so a forward migration over
+// this contract is in the build the moment it is committed.
+//
+// There is one now. `20260920730000_timesheet_review_approver_role.sql` replaces
+// `contract_timesheet_review`'s approver gate, which is why the swap to the
+// directory mattered: a suite applying three files by name would have measured
+// the OLD gate with the new one committed beside it. Its own behaviour is in
+// `contract-timesheet-review-approver.test.mjs`; it is named here so that if it
+// stopped being applied, this suite fails on the file rather than on an
+// assertion about an approver.
+const MEASURED = ['20260920360000_contract_timesheet.sql',
+  '20260920730000_timesheet_review_approver_role.sql'];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -388,14 +395,20 @@ test('the swap widened the store and left this contract reachable unchanged', as
   // The surface is matched by NAME, and the population stays the STORE rather
   // than being derived from the declarations in this contract's own migration.
   //
-  // Measured 2026-09-29: all TEN `%timesheet%` functions are declared in
+  // Measured 2026-09-29: all TEN `%timesheet%` functions were declared in
   // `20260920360000_contract_timesheet.sql` and nowhere else, so a derivation
-  // here is a true no-op today — and that is the argument against making it,
-  // not for it. Pattern and declaration agree by COINCIDENCE, not by
-  // construction. D88 makes a forward file the only legal way to change an
-  // applied store, so the first timesheet-named function to arrive in one
-  // would silently leave a derived population while this comparison stayed
-  // green: the whole surface this test guards would stop being the surface.
+  // here would have been a true no-op — and that was the argument against making
+  // it, not for it. Pattern and declaration agreed by COINCIDENCE, not by
+  // construction.
+  //
+  // That future has now arrived, which is the sentence to read rather than the
+  // one above: `contract_timesheet_review` is ALSO declared in
+  // `20260920730000_timesheet_review_approver_role.sql`, under D88's rule that a
+  // forward file is the only legal way to change an applied store. A population
+  // derived from the original's declarations would now be missing nothing —
+  // `create or replace` adds no name — but it would be derived from a file that
+  // is no longer the whole truth about this surface, and the next forward file to
+  // add a function would be silently absent from it.
   // `contract-roster.test.mjs` is that future already arrived — `caller_roster`
   // is declared in the record store migration and `contract_roster_report` in a
   // file of its own, and its narrowed population would have lost both.
@@ -430,6 +443,11 @@ test('the swap widened the store and left this contract reachable unchanged', as
         '20260920170000_contract_note_history.sql', '20260920230000_contract_time_off.sql',
         '20260920285000_notification_mint.sql', '20260920300000_contract_notification.sql',
         '20260920360000_contract_timesheet.sql',
+        // The forward file over this contract belongs in the CONTROL too. Its
+        // signature does not move, so the comparison below would pass either way
+        // — which is exactly why it is easy to leave out, and why a control built
+        // from the superseded gate would stop being a control over this contract.
+        '20260920730000_timesheet_review_approver_role.sql',
       ].includes(name)),
     });
     assert.deepEqual(derived, await timesheetSurface(control),

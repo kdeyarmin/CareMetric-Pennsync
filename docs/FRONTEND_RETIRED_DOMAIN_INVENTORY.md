@@ -5,7 +5,16 @@
 208 entity call sites across 86 files have no destination
 in the owned store: 194 reach a domain the migration decided
 not to carry, and 14 are operations with no destination on
-an entity it DOES carry, read-only. This says what each file loses, so the
+an entity it DOES carry, read-only.
+
+Of that first group, 45 have a row to land in anyway: their
+entity is paused but its schema migrated under D7, so what they wait on is a
+hand-written access contract rather than a product answer about the domain.
+That count is INSIDE the first figure and must never be added to it. A table
+is not an access path, so the verdict for those sites is the same and only the
+reason differs — and the reason is what decides whose work it is.
+
+This page says what each file loses, so the
 hiding work is a series of per-screen decisions rather than one decision about 208
 numbers. It claims nothing about whether a screen is safe to hide: a file
 marked **whole** has no surviving data of its own, and every other file keeps
@@ -19,15 +28,15 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 | --- | ---: | ---: | --- |
 | `TrainingCourse` | 28 | 15 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `TrainingAssignment` | 21 | 21 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
-| `OASISUpload` | 17 | 13 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
+| `OASISUpload` | 17 | 13 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `TrainingModule` | 15 | 12 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `LearningPlanCourse` | 12 | 3 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `FaxContact` | 11 | 3 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `LearningPlan` | 10 | 5 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `TrainingCertificate` | 10 | 10 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `FaxLog` | 7 | 5 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
-| `OASISAudit` | 7 | 5 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
-| `OASISAutomationRule` | 7 | 3 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
+| `OASISAudit` | 7 | 5 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
+| `OASISAutomationRule` | 7 | 3 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `MicroLearningProgress` | 6 | 5 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `TrainingQuestion` | 6 | 4 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `FaxTemplate` | 5 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
@@ -35,15 +44,15 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 | `FacilityDocumentationRule` | 4 | 1 | the broker family serves this entity read-only, so the write has no destination |
 | `TrainingAttempt` | 4 | 4 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `Announcement` | 3 | 1 | the broker family serves this entity read-only, so the write has no destination |
-| `OASISActionItem` | 3 | 2 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
-| `OASISAssessment` | 3 | 3 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
-| `OASISScenario` | 3 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
-| `OASISWorkflowExecution` | 3 | 2 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
+| `OASISActionItem` | 3 | 2 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
+| `OASISAssessment` | 3 | 3 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
+| `OASISScenario` | 3 | 1 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
+| `OASISWorkflowExecution` | 3 | 2 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `PlanEnrollment` | 3 | 3 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `ComplianceRule` | 2 | 1 | D83 reference data: the table is written by migration and grants no caller role anything, so the write is refused by the GRANT rather than by a policy |
 | `FaxRetryConfig` | 2 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `MedicareComplianceRule` | 2 | 1 | D83 reference data: the table is written by migration and grants no caller role anything, so the write is refused by the GRANT rather than by a policy |
-| `OASISFeedback` | 2 | 2 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
+| `OASISFeedback` | 2 | 2 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `RegulatoryUpdate` | 2 | 1 | the broker family serves this entity read-only, so the write has no destination |
 | `TrainingRecommendation` | 2 | 2 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `TrainingTemplate` | 2 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
@@ -99,7 +108,7 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/components/oasis/OASISAutomationSettings.jsx` — **whole**
 
-- `OASISAutomationRule` (create, delete, list, update) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAutomationRule` (create, delete, list, update) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/training/MyTrainingDashboard.jsx` — **whole**
 
@@ -165,16 +174,16 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/components/hub-tabs/OASISAnalyzer.jsx` — **whole**
 
-- `OASISUpload` (create, update) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (create, update) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/OASISScenarioManager.jsx` — **whole**
 
-- `OASISScenario` (create, delete, filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISScenario` (create, delete, filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/WorkflowExecutionEngine.jsx`
 
-- `OASISAutomationRule` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
-- `OASISWorkflowExecution` (create, filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAutomationRule` (filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
+- `OASISWorkflowExecution` (create, filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/training/LearnerMemoryBoosters.jsx` — **whole**
 
@@ -226,7 +235,7 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/components/hub-tabs/OASISAuditDashboard.jsx`
 
-- `OASISAudit` (list, update) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAudit` (list, update) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/learning/CourseRosterReport.jsx` — **whole**
 
@@ -235,34 +244,34 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/components/oasis/AIAuditRiskPredictor.jsx` — **whole**
 
-- `OASISAudit` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
-- `OASISUpload` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAudit` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
+- `OASISUpload` (filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/ComprehensiveOASISReviewer.jsx` — **whole**
 
-- `OASISActionItem` (bulkCreate, filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISActionItem` (bulkCreate, filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/OASISApprovalWorkflow.jsx` — **whole**
 
-- `OASISUpload` (filter, update) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (filter, update) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/OASISAutoFlagger.jsx` — **whole**
 
-- `OASISAudit` (create, filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAudit` (create, filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/PDGMAnalyticsDashboard.jsx` — **whole**
 
-- `OASISActionItem` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
-- `OASISUpload` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISActionItem` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
+- `OASISUpload` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/PredictiveOutcomesAnalyzer.jsx`
 
-- `OASISUpload` (filter, list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (filter, list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/WorkflowMonitoringDashboard.jsx` — **whole**
 
-- `OASISAutomationRule` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
-- `OASISWorkflowExecution` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAutomationRule` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
+- `OASISWorkflowExecution` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/training/CourseForm.jsx`
 
@@ -295,11 +304,11 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/components/clinical/OASISQuickUpdate.jsx` — **whole**
 
-- `OASISAssessment` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAssessment` (filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/compliance/AIComplianceAuditor.jsx`
 
-- `OASISUpload` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/fax/FaxRecipientFields.jsx`
 
@@ -323,7 +332,7 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/components/hub-tabs/OASISAnalyticsDashboard.jsx` — **whole**
 
-- `OASISUpload` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/learning/AnnualTranscriptCenter.jsx` — **whole**
 
@@ -351,47 +360,47 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/components/oasis/AIGroupAssignmentValidator.jsx` — **whole**
 
-- `OASISAudit` (create) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAudit` (create) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/AIProactiveOASISAssistant.jsx`
 
-- `OASISUpload` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/AdvancedComplianceAnalyzer.jsx`
 
-- `OASISUpload` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/AutomatedPDGMNavigator.jsx` — **whole**
 
-- `OASISUpload` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/OASISAuditReportGenerator.jsx` — **whole**
 
-- `OASISAudit` (update) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAudit` (update) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/OASISComparisonView.jsx` — **whole**
 
-- `OASISUpload` (update) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (update) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/OASISPDFComparison.jsx` — **whole**
 
-- `OASISFeedback` (create) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISFeedback` (create) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/PDGMTrendDashboard.jsx` — **whole**
 
-- `OASISUpload` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/oasis/PatientMatchSelector.jsx` — **whole**
 
-- `OASISFeedback` (create) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISFeedback` (create) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/reports/OASISComplianceReport.jsx`
 
-- `OASISAssessment` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAssessment` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/reports/PDGMReimbursementReport.jsx` — **whole**
 
-- `OASISAssessment` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISAssessment` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 
 ### `src/components/training/AIComplianceQuizGenerator.jsx` — **whole**
 
@@ -443,5 +452,5 @@ Reads 123, writes 84, subscriptions 1. 59 of the 86 files lose everything they r
 
 ### `src/pages/PredictiveAnalytics.jsx`
 
-- `OASISUpload` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `OASISUpload` (list) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
 

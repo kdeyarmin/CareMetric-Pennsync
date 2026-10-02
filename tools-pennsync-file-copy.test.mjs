@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
-  COPY_CONTRACT, LIMITS, SKIPS, STORAGE_HOSTS, UNCARRIED_DISPOSITIONS, FileCopyError,
+  COPY_CONTRACT, LIMITS, SKIPS, STORAGE_HOSTS, FileCopyError,
   REQUIRED_READER_MODEL, RUNTIME_READER_MODEL, assertReaderModel, assertPlanApplicable,
   applyFileCopy, fileCopyRows, isStorageLocator, locatorKey, locatorPaths, main, planFileCopy,
   writeFileObjects,
   readExport, summarize,
 } from './tools-pennsync-file-copy.mjs';
+import { SCHEMA_ONLY, carriesTable } from './tools-entity-schema-plan.mjs';
 
 const census = JSON.parse(readFileSync('tools-file-reference-census-expectations.json', 'utf8'));
 const manifest = JSON.parse(readFileSync('tools-transition-disposition.json', 'utf8'));
@@ -151,13 +152,53 @@ test('an unfamiliar path on a paused entity is still reported as unfamiliar', ()
   assert.equal(result.skips.uncarried_entity, 0);
 });
 
+/**
+ * A `SCHEMA_ONLY` entity's locator IS in the rewrite population, which is the
+ * claim this tool was contradicting while the amendment and its pull request
+ * both asserted it. Both fields are named rather than one, because the two
+ * entities differ in the way that matters here — `OASISUpload.file_url` is the
+ * usual spelling and `OASISAudit.oasis_file_url` is not, so a check written
+ * against the first alone would pass with the second still landing in
+ * `unknown_field`. Read from the census for D72's reason.
+ */
+test('a paused entity that carries its schema has its locators planned', () => {
+  const schemaOnlyLocators = Object.keys(SCHEMA_ONLY)
+    .flatMap(entity => (census.entities[entity] ?? [])
+      .filter(field => field.kind === 'locator')
+      .map(field => [entity, field.path]));
+  assert.ok(schemaOnlyLocators.length >= 2,
+    'the two OASIS locator fields are the population this test exists for');
+  for (const [entity, path] of schemaOnlyLocators) {
+    assert.equal(carriesTable(entity, manifest.entities[entity]), true,
+      `${entity} is in SCHEMA_ONLY, so a table exists for its rows`);
+    // Each on its own plan, so one entity passing cannot carry the other.
+    const result = plan([ref({ entity, path, row_id: `${entity}-1` })]);
+    assert.equal(result.skips.uncarried_entity, 0, `${entity}.${path} was skipped as uncarried`);
+    assert.equal(result.skips.unknown_field, 0, `${entity}.${path} is not the census's path`);
+    assert.equal(result.copies.length, 1, `${entity}.${path} produced no copy to re-point`);
+    assert.equal(result.copies[0].locator, STORAGE);
+    assert.equal(result.uncarried_locators, 0);
+  }
+  // And the planner still refuses the apply, so none of this moves a byte: the
+  // reader model is the hold and a locator becoming plannable does not lift it.
+  assert.equal(RUNTIME_READER_MODEL === REQUIRED_READER_MODEL, false);
+});
+
 test('the uncarried half is reported beside the copy set, never merged into it', () => {
-  // The census lists 66 locator fields; 34 are on entities with a table here.
-  // An inventory is complete, a rewrite has nothing to rewrite for the rest.
-  const uncarried = Object.entries(census.entities)
-    .filter(([entity, fields]) => fields.some(field => field.kind === 'locator')
-      && UNCARRIED_DISPOSITIONS.includes(manifest.entities[entity]));
+  // The census lists every locator field and only some are on entities with a
+  // table here. An inventory is complete, a rewrite has nothing to rewrite for
+  // the rest. Derived through `carriesTable` rather than off the disposition,
+  // which is the whole of the correction: the figures that used to be written
+  // into this comment (66 and 34) are a reading of a tree that has since gained
+  // eight tables, so they are computed below and not quoted.
+  const locatorEntities = Object.entries(census.entities)
+    .filter(([, fields]) => fields.some(field => field.kind === 'locator'))
+    .map(([entity]) => entity);
+  const uncarried = locatorEntities
+    .filter(entity => !carriesTable(entity, manifest.entities[entity]));
   assert.ok(uncarried.length > 0, 'the split this tool reports must exist');
+  assert.ok(uncarried.length < locatorEntities.length,
+    'and the other side must exist too, or the planner copies nothing at all');
   const result = plan([
     ref({ entity: 'FaxLog', path: PAUSED, locator: SECOND }),
     ref(),

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { reconcileApprover } from "@/components/approvals/approverCandidates";
 import { submitTimesheet } from "@/functions/submitTimesheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -159,12 +160,27 @@ export default function MyTimesheetForm({
     if (editing) setForm(fromExisting(editing));
   }, [editing]);
 
-  // Pre-select the profile manager once known, without clobbering a choice.
+  // Pre-select the profile manager once known, without clobbering a choice — and
+  // without carrying one the authoritative list does not offer.
+  //
+  // `reconcileApprover` carries why, including why an EMPTY list clears nothing.
+  // `RequestTimeOffForm.jsx` has the same shape and the same stale default, which
+  // is why the rule lives in the module beside the list rather than here.
+  //
+  // `editing` is a dependency rather than a guard now. Loading an existing sheet
+  // sets its stored approver, and that address can have gone stale since it was
+  // saved; the reconcile has to see it. It cannot clobber the loaded choice,
+  // because it only replaces a value the list does not offer — and for such a
+  // value the Select was already drawing its placeholder, so clearing it makes
+  // the form's model agree with what the screen was showing all along.
   useEffect(() => {
-    if (defaultManagerEmail && !editing) {
-      setForm((prev) => (prev.manager_email ? prev : { ...prev, manager_email: defaultManagerEmail }));
-    }
-  }, [defaultManagerEmail, editing]);
+    setForm((prev) => {
+      const next = reconcileApprover({
+        current: prev.manager_email, offered: approvers, fallback: defaultManagerEmail,
+      });
+      return next === prev.manager_email ? prev : { ...prev, manager_email: next };
+    });
+  }, [approvers, defaultManagerEmail, editing]);
 
   // Keep the (admin-set) service line in sync once the profile resolves.
   useEffect(() => {

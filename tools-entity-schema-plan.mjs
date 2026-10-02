@@ -41,6 +41,104 @@ export const SCHEMA = 'pennsync_records';
 export const CARRIED = Object.freeze(['port', 'broker']);
 export const MAX_IDENTIFIER = 63;
 
+/** The one disposition `SCHEMA_ONLY` may name, so a stale entry cannot pass. */
+export const SCHEMA_ONLY_DISPOSITION = 'preserved_paused';
+/** Long enough that an entry has to say something. Same bound as D84's legs. */
+export const SCHEMA_ONLY_REASON_MINIMUM = 40;
+
+/**
+ * Paused entities that get a table anyway, named one at a time.
+ *
+ * D7 carries the paused domains as `preserved_paused` and says in its own
+ * words: "Their schemas and data still migrate; only their execution stays
+ * off." `CARRIED` answers a DIFFERENT question from the one that sentence
+ * answers, and conflating them is why a reader of the tree concludes the
+ * decision is unimplementable. The disposition field is asked two things —
+ * does this entity have a table, and does its capability run — and before this
+ * list there was no way to answer them differently. Four places reimplemented
+ * the first answer off the second: here, `tools-tenant-path.mjs`,
+ * `tools-transition-disposition.mjs` and `tools-frontend-retired-inventory.mjs`.
+ *
+ * So the narrow thing is an enumeration rather than a widened disposition
+ * list. Widening `CARRIED` to admit `preserved_paused` was measured first and
+ * refused: it plans all 54 paused entities at once and stops at
+ * `TENANT_PATH_MISSING:AgencyKPI`, so it cannot be the narrow change even
+ * where the decision would permit the wide one.
+ *
+ * A table here does NOT make an entity reachable, and nothing in this list
+ * says it does. The broker family serves only `broker` (D22's ceiling refuses
+ * all eight of these on its own account), so the only path to one of these
+ * tables is a hand-written contract, and until one ships the call sites have
+ * no destination — which `tools-frontend-destination.mjs` reports as
+ * `no_access_contract` rather than letting the table's existence read as
+ * service. D7's execution half is untouched: every capability over these
+ * entities stays `preserved_paused`.
+ *
+ * Each entry owes a reason of at least `SCHEMA_ONLY_REASON_MINIMUM`
+ * characters saying what the rows are and why carrying them RESTORES rather
+ * than adds. An entry whose entity is not `preserved_paused` is refused: the
+ * entity has since been ported (and belongs in `CARRIED`'s answer) or retired
+ * (and has no schema to migrate), and either way the entry is stale.
+ */
+export const SCHEMA_ONLY = Object.freeze({
+  OASISUpload: 'The record of an uploaded OASIS document: 17 of the 45 OASIS screen reads, '
+    + 'and the row staff see in the review queue. The rows carry across; the bytes behind '
+    + '`file_url` stay on Base44 storage until D77\'s copy is unblocked, so a legacy locator '
+    + 'resolves to null here rather than to itself.',
+  OASISAudit: 'The audit a reviewer writes against an upload, documentation gaps included. '
+    + 'Created and updated directly by the audit dashboard, so leaving it out loses review '
+    + 'work staff have already done. Its `oasis_file_url` is the second locator and carries '
+    + 'the same caveat as OASISUpload.',
+  OASISAutomationRule: 'The agency\'s own automation rules, which staff author, edit and '
+    + 'delete from the settings screen. The rules are data; FIRING them is the automation '
+    + 'half D7 keeps switched off, and no capability over this entity is activated here.',
+  OASISActionItem: 'The review queue\'s action items, bulk-created from an audit. It names a '
+    + 'subject as `patient_name` and carries no `patient_id` at all, so D24 cannot narrow it '
+    + 'to a chart and it takes a tenant key of its own instead.',
+  OASISAssessment: 'The assessment record itself. The only one of the eight whose tenancy and '
+    + 'chart subject both resolve from its own schema: it declares `agency_id` and requires '
+    + '`patient_id`, so D61\'s nullable-reference problem does not arise.',
+  OASISScenario: 'Saved what-if scenarios a clinician creates and deletes from the scenario '
+    + 'manager. Stored work with no capability behind it, which is exactly the shape that '
+    + 'survives in Base44 today and would be lost by carrying nothing.',
+  OASISWorkflowExecution: 'The history of an automation run against an upload: which rule '
+    + 'fired, on what, and why. The row is the record of a run and not the run, so carrying '
+    + 'it restores a log without activating anything that writes to it.',
+  OASISFeedback: 'Correction feedback on a note-to-OASIS mapping, created from two screens. '
+    + 'Its patient references are all optional, so it takes a tenant key of its own.',
+});
+
+/**
+ * Whether one entity gets a table, which is the question every consumer of
+ * `CARRIED` was really asking. Exported so the four copies of this answer
+ * become one: a list that admits an entity for the planner and not for the
+ * tenant-path gate would emit a table with no resolvable owner.
+ */
+export function carriesTable(entity, disposition) {
+  return CARRIED.includes(disposition) || Object.hasOwn(SCHEMA_ONLY, entity);
+}
+
+/**
+ * Refuses a stale or unreasoned `SCHEMA_ONLY` entry.
+ *
+ * Checked against the manifest rather than against this file, because the
+ * failure to catch is a disposition that MOVED underneath an entry nobody
+ * re-read. A missing entity is refused for the same reason: an entry naming a
+ * deleted schema would quietly plan nothing.
+ */
+export function assertSchemaOnly(dispositions, schemas = null) {
+  for (const [entity, because] of Object.entries(SCHEMA_ONLY)) {
+    if (CARRIED.includes(dispositions[entity])) throw new Error(`SCHEMA_ONLY_ALREADY_CARRIED:${entity}`);
+    if (dispositions[entity] !== SCHEMA_ONLY_DISPOSITION) {
+      throw new Error(`SCHEMA_ONLY_NOT_PAUSED:${entity}:${dispositions[entity] ?? 'missing'}`);
+    }
+    if (typeof because !== 'string' || because.trim().length < SCHEMA_ONLY_REASON_MINIMUM) {
+      throw new Error(`SCHEMA_ONLY_REASON_TOO_SHORT:${entity}`);
+    }
+    if (schemas && !schemas.has(entity)) throw new Error(`SCHEMA_ONLY_SCHEMA_MISSING:${entity}`);
+  }
+}
+
 /**
  * Columns every carried row has, independent of its entity definition.
  *
@@ -661,12 +759,15 @@ function planAll(repository) {
   // entity that gets no table is still accounted for.
   const claims = declaredUniqueness(repository);
   const appendOnly = declaredImmutability(repository);
+  // Before any table is planned, for the same reason the claims are: an entry
+  // whose disposition moved would otherwise plan a table and say nothing.
+  assertSchemaOnly(dispositions, new Set(files.map(file => file.replace(/\.jsonc?$/, ''))));
   const plans = [];
   const excluded = [];
   for (const file of files) {
     const name = file.replace(/\.jsonc?$/, '');
     const disposition = dispositions[name];
-    if (!CARRIED.includes(disposition)) { excluded.push({ entity: name, disposition: disposition ?? 'missing' }); continue; }
+    if (!carriesTable(name, disposition)) { excluded.push({ entity: name, disposition: disposition ?? 'missing' }); continue; }
     plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition,
       decisions[name] ?? null, claims.get(name) ?? [], appendOnly.has(name)));
   }
@@ -694,7 +795,16 @@ export function buildPlan(repository, prepared = null) {
     schema_version: FORMAT_VERSION,
     target_schema: SCHEMA,
     totals: {
-      carried: plans.length,
+      // `carried` counts the tables a CARRIED disposition earned, and
+      // `schema_only` the ones D7's schema clause did. Kept apart rather than
+      // summed into one figure, because a single number would have gone from
+      // 156 to 164 with nothing saying which half moved — and the tables are
+      // reachable on entirely different terms. `tables` is the sum, derived
+      // here so no reader has to add them and no reader has to guess which of
+      // the three a quoted figure was.
+      carried: plans.filter(plan => CARRIED.includes(plan.disposition)).length,
+      schema_only: plans.filter(plan => !CARRIED.includes(plan.disposition)).length,
+      tables: plans.length,
       excluded: excluded.length,
       columns: plans.reduce((sum, plan) => sum + plan.columns, 0),
       constrained_columns: plans.reduce((sum, plan) => sum + plan.constrained, 0),
@@ -1380,8 +1490,14 @@ export function renderMigration(repository) {
     + `${quote(SCHEMA)}.caller_opens_every_chart(text), ${quote(SCHEMA)}.caller_assigned_patients(text), `
     + `${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app()`;
   const statements = [
-    `-- The record store: ${plan.totals.carried} carried entities, ${plan.totals.columns} columns,
+    `-- The record store: ${plan.totals.tables} tables, ${plan.totals.columns} columns,
 -- under an owner that row level security actually binds.
+--
+-- ${plan.totals.carried} are carried entities. ${plan.totals.schema_only} are PAUSED entities
+-- carrying their schema under D7's "their schemas and data still migrate" clause
+-- (\`SCHEMA_ONLY\` in the generator). A table here is not an access path: those
+-- entities are served by no capability and by no generic family, so the only way
+-- to a row is a hand-written contract.
 --
 -- GENERATED by \`node tools-entity-schema-plan.mjs --write-migration\`. Do not edit
 -- by hand: a test regenerates this file and fails if it differs. Change the
@@ -1554,7 +1670,12 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
   const report = comparePlan(plan, expectations);
   if (args.includes('--summary')) {
     log(`entity schema plan ${report.matches_expectations ? 'unchanged' : 'CHANGED'}: `
-      + `${plan.totals.carried} tables, ${plan.totals.columns} columns, `
+      // `tables`, not `carried`: this line said "156 tables" off the carried
+      // count while the file held 164, which is the one reading a contributor
+      // actually sees. The split is printed beside it so a quoted figure says
+      // which question it answered.
+      + `${plan.totals.tables} tables (${plan.totals.carried} carried + `
+      + `${plan.totals.schema_only} schema-only), ${plan.totals.columns} columns, `
       + `${plan.totals.constrained_columns} constrained, ${plan.totals.tenant_scoped} tenant-scoped; `
       + `added=${report.added.length} removed=${report.removed.length} changed=${report.changed.length}`);
   } else {

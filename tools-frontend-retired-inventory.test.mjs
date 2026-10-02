@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { SERVED, measureDestinations } from './tools-frontend-destination.mjs';
 import {
   CARRIED_DISPOSITIONS, OUTCOMES, PAGE_FILE, UNCARRIED_DISPOSITIONS,
-  entityIsCarried, measureInventory, renderMarkdown,
+  entityHasTableWithoutContract, entityIsCarried, measureInventory, renderMarkdown,
 } from './tools-frontend-retired-inventory.mjs';
+import { carriesTable } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 
@@ -85,22 +86,69 @@ test('the two reasons a site has no destination are counted apart', () => {
   // not hold.
   const derived = new Set([report.sites, report.files, report.entities,
     report.entirely_dropped_files, report.carried_entity, report.uncarried_domain,
+    report.table_without_contract,
     report.operations.read, report.operations.write, report.operations.realtime,
     ...report.by_file.map(file => file.sites), ...report.by_entity.map(entry => entry.sites)]
     .map(String));
-  // Not a number in a name: `D83` is a decision, not a count.
-  for (const number of page.split('\n').slice(0, 13).join('\n').match(/(?<![A-Za-z])\d+/g) ?? []) {
+  // Not a number in a name: `D83` and `D7` are decisions, not counts.
+  //
+  // The slice is taken to the summary's own end rather than to a line count,
+  // because widening the summary by six lines moved the boundary and a fixed
+  // `13` would have stopped checking the digits that were added — the guard
+  // going quiet in exactly the change that gave it more to read.
+  const summary = page.split('\n## ')[0];
+  assert.ok(summary.includes(String(report.table_without_contract)),
+    'the summary must carry the figure, or this slice is checking the wrong text');
+  for (const number of summary.match(/(?<![A-Za-z])\d+/g) ?? []) {
     assert.ok(derived.has(number), `${number} in the summary is not from the report`);
   }
 });
 
 /**
- * The split is about whether a TABLE exists, so it is proved against the
- * dispositions rather than against the destination buckets it was first
- * (wrongly) derived from. Both sides are asserted non-empty, because a
- * predicate that matched nothing would satisfy the sum above on its own.
+ * The figure that is a SUBSET, asserted as one. Its whole purpose is to say
+ * which of the uncarried sites have a row, and the two mistakes available are
+ * summing it with the figure it sits inside and moving it onto the carried
+ * side — so both are refused here rather than described in a comment.
  */
-test('the carried side is exactly the sites whose entity has a table', () => {
+test('the sites with a table and no contract are counted inside the uncarried side', () => {
+  const report = measureInventory(repository);
+  const dropped = measureDestinations(repository).sites
+    .filter(site => !SERVED.includes(site.destination));
+  const expected = dropped.filter(site =>
+    entityHasTableWithoutContract(site.entity, site.disposition));
+  assert.ok(expected.length > 0,
+    'with none of them this test would pass without the distinction existing');
+  assert.equal(report.table_without_contract, expected.length);
+  // Inside, not beside: every one of them is on the uncarried side.
+  assert.ok(report.table_without_contract <= report.uncarried_domain);
+  for (const site of expected) {
+    assert.equal(entityIsCarried(site.disposition), false,
+      `${site.entity} is counted here, so its domain must be uncarried`);
+  }
+  // And the sum the page rests on is still the two-way one.
+  assert.equal(report.uncarried_domain + report.carried_entity, report.sites);
+  // Every one of them has a table, measured through the generator's predicate
+  // and not through this tool's disposition lists.
+  for (const site of expected) {
+    assert.equal(carriesTable(site.entity, site.disposition), true);
+  }
+  // The destination each lands in is the accurate-reason bucket rather than
+  // `no_table`, which is the half of this that `tools-frontend-destination.mjs`
+  // owns. Named so the two tools cannot drift apart silently.
+  assert.deepEqual([...new Set(expected.map(site => site.destination))], ['no_access_contract']);
+});
+
+/**
+ * The split is about whether the migration carried the DOMAIN, so it is proved
+ * against the dispositions rather than against the destination buckets it was
+ * first (wrongly) derived from. Both sides are asserted non-empty, because a
+ * predicate that matched nothing would satisfy the sum above on its own.
+ *
+ * This test's name said "whose entity has a table", which was the same sentence
+ * while a paused entity could not have one and is now a different claim — the
+ * table question is `carriesTable`'s and is asserted in its own test below.
+ */
+test('the carried side is exactly the sites whose domain the migration carried', () => {
   const report = measureInventory(repository);
   const dropped = measureDestinations(repository).sites
     .filter(site => !SERVED.includes(site.destination));

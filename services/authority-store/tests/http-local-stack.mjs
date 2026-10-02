@@ -83,6 +83,14 @@ export const MIGRATION_CODES = Object.freeze([
   // the term reading it would keep every row — a control that applies cleanly
   // and does nothing.
   'PENNSYNC_CHART_AGENCY_ADMIN_MUST_BYPASS_RLS',
+  // The dashboard's documentation signal is a forward migration over the
+  // dashboard capability, so it refuses a store without it rather than letting
+  // `create or replace` CREATE a `dashboard_visit` that nothing projects
+  // through — the same reason `PENNSYNC_CLINICAL_LIBRARY_REQUIRED` is here.
+  // CAPABILITY and not CONTRACT in the name, for the reason
+  // `PENNSYNC_OPERATIONAL_CAPABILITIES_REQUIRED` gives above: the assertion
+  // below this list forbids a migration code that reads as a runtime refusal.
+  'PENNSYNC_DASHBOARD_CAPABILITY_REQUIRED',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
