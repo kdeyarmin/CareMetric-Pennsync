@@ -70,7 +70,7 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     // -- it needs the local stack -- so the reminder is CI's. That is how 007
     // reached a red "Verify independent Auth and API" with every local script green.
     const files = (await readdir(directory)).filter(file => /^\d{3}_.+\.sql$/.test(file)).sort();
-    assert.equal(files.length, 7);
+    assert.equal(files.length, 8);
     for (const file of files) {
       phase = `apply ${file} to actual platform`;
       if (file === '002_storage_isolation.sql') {
