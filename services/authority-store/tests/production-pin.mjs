@@ -143,6 +143,17 @@ export async function pinLocalStackToProduction() {
   // position is a stage letter and a four-digit index into that directory's own
   // sorted listing, which is five characters from a fixed set, like a SQLSTATE,
   // and names no file or statement.
+  //
+  // WHAT THE SQL ITSELF DOES, measured here rather than guessed at from CI: the
+  // authority half and all of the record half apply cleanly, in that order and in
+  // one session carrying this setting, onto a plain PostgreSQL 16 cluster with
+  // `tests/bootstrap.sql`'s `auth` prelude in front of them — the authority half
+  // in about 180 ms, the first record file (the generated store, the largest
+  // single batch by far) in about 650 ms, the whole build in about 1.3 s. So a
+  // build that dies at `R0000` inside the CLI's own container, at a wall time
+  // consistent with that first file still running, is a fact about the container
+  // rather than about the migration, which is why the step above reads the
+  // server's log on failure instead of this module reporting more.
   const started = await withClient(databaseUrl, 'PRODUCTION_PIN_START_TIME_UNREADABLE',
     async client => (await client.query('select pg_postmaster_start_time() as at')).rows[0]?.at);
   let position = 'A0000';
@@ -168,11 +179,21 @@ export async function pinLocalStackToProduction() {
     // same start time the session was lost under a running server, and if the
     // time moved the backend went down and came back. Either way the position
     // goes out, because without it the next run starts where this one did.
+    //
+    // AND IT KEEPS THE BUILD'S OWN CODE. The first version replaced it with a
+    // bare `PRODUCTION_PIN_SERVER_UNREACHABLE`, which threw away the SQLSTATE of
+    // the statement that died in the one case where the author needs it most —
+    // the run that produced this comment said only that a reconnect failed, so
+    // whether the statement had answered at all was unknowable. The liveness
+    // verdict is a SUFFIX on the build's code, never a substitute for it.
     let after = null;
     try {
       after = await withClient(databaseUrl, 'PRODUCTION_PIN_START_TIME_UNREADABLE',
         async client => (await client.query('select pg_postmaster_start_time() as at')).rows[0]?.at);
-    } catch { fail(`PRODUCTION_PIN_SERVER_UNREACHABLE ${position}`); }
+    } catch {
+      const [base, sqlstate] = error.message.split(' ');
+      fail(`${base}_SERVER_UNREACHABLE${sqlstate ? ` ${sqlstate}` : ''} ${position}`);
+    }
     // The liveness verdict is added ONLY where the failure carried no SQLSTATE.
     // A statement that failed and said why is already diagnosed, and replacing
     // its code with `_SESSION_LOST` would both lose the SQLSTATE and assert a

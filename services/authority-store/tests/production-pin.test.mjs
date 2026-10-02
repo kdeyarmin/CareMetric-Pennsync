@@ -50,7 +50,12 @@ test('production pin diagnostics can be printed without carrying CLI output', ()
     // naming one. A diagnosed failure carries both its SQLSTATE and the position.
     'PRODUCTION_PIN_STORE_BUILD_FAILED_SESSION_LOST R0000',
     'PRODUCTION_PIN_STORE_BUILD_FAILED_SERVER_RESTARTED A0012',
-    'PRODUCTION_PIN_SERVER_UNREACHABLE R0003',
+    // The liveness verdict is a SUFFIX on the build's own code, so the SQLSTATE
+    // survives a reconnect that failed. A run spent on the earlier shape, a bare
+    // `PRODUCTION_PIN_SERVER_UNREACHABLE` with a position, could not say whether
+    // the statement had answered at all.
+    'PRODUCTION_PIN_STORE_BUILD_FAILED_SERVER_UNREACHABLE R0000',
+    'PRODUCTION_PIN_STORE_BUILD_FAILED_SERVER_UNREACHABLE 42501 R0000',
     'PRODUCTION_PIN_STORE_BUILD_FAILED 42501 R0001']) {
     assert.equal(emittableProductionPin(message), true);
   }

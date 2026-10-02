@@ -75,6 +75,26 @@ jobs:
         run: node services/authority-store/tests/http-local-stack.mjs start-unmigrated
       - name: Build a production-pinned store on it and read the pin back
         run: node --test --test-name-pattern='a local stack can be pinned' services/authority-store/tests/production-pin.test.mjs
+      # ONLY on failure, and only the lines that name a cause. The step above
+      # reports a code, a SQLSTATE where the statement supplied one, and a
+      # position; what it cannot see is a backend that died without answering,
+      # because the reason for that is in the server's own log and nowhere else.
+      # The grep is the redaction: a matched line is a server lifecycle or
+      # out-of-memory line, so no statement text, no connection string and no key
+      # is printed, and the step says plainly when it matched nothing rather than
+      # passing quietly.
+      - name: Say what the database server logged, if the build died
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          name="$(docker ps --all --filter name=supabase_db --format '{{.Names}}' | head -n 1)"
+          if [ -z "$name" ]; then echo 'NO_DATABASE_CONTAINER'; exit 0; fi
+          docker inspect --format 'state={{.State.Status}} oom_killed={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name"
+          matched="$(docker logs --tail 400 "$name" 2>&1 \
+            | grep -Ei 'PANIC|FATAL|out of memory|terminated by signal|server process|in recovery|database system is|shutting down|shutdown request' \
+            | tail -n 40)"
+          if [ -z "$matched" ]; then echo 'NO_SERVER_LIFECYCLE_LINES_IN_LAST_400'; else printf '%s\n' "$matched"; fi
       - name: Stop owned local stack
         if: always()
         run: node services/authority-store/tests/http-local-stack.mjs stop
