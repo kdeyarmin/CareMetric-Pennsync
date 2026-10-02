@@ -506,7 +506,7 @@ async function inspectArchive({ archiveDir, key, expectedPlanSha256 }, consume) 
   } finally { derived.fill(0); }
 }
 
-function readKey(env) {
+export function readKey(env) {
   const fromEnv = env.PENNSYNC_ARCHIVE_KEY_BASE64;
   const fdText = env.PENNSYNC_ARCHIVE_KEY_FD;
   delete env.PENNSYNC_ARCHIVE_KEY_BASE64;
