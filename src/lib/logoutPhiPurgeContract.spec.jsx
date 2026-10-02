@@ -26,8 +26,12 @@ const mocks = vi.hoisted(() => ({
   setQueryData: vi.fn(),
 }));
 
+// This suite is the Base44 path, where neither is present. Both are declared
+// rather than left off, because an absent export is a thrown error at the call
+// site rather than the `null` this suite means.
 vi.mock('@/lib/independentStagingSession', () => ({
   get independentStagingAuth() { return null; },
+  get ownedBackendAuth() { return null; },
 }));
 
 vi.mock('sonner', () => ({ toast: { dismiss: vi.fn() } }));

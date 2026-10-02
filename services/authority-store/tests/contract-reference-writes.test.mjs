@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import {
-  applyRecordMigrations, recordMigrationNames, assertNewestRecordMigration,
+  applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
 
-// The migration this suite owns, and the newest record migration on this tree,
-// which is why the ordering guard above is held here.
+// The migration this suite owns. It is no longer the newest on this tree, so the
+// ordering guard has moved on and this suite asserts only that its own file ran.
 const WRITES_FORWARD = '20260920700000_contract_reference_writes.sql';
 
 /**
@@ -59,24 +59,38 @@ before(async () => {
   // half of the check this suite still holds: that what was applied is the
   // directory, so a file added beside this one cannot be silently skipped.
   //
-  // The ORDERING guard is back HERE, and the round trip is the lesson rather
-  // than the bookkeeping. It belongs to whichever migration is the newest
-  // PENDING one. It left this suite for `contract-duty-status` when this
-  // branch's own duty migration sorted after this file; that migration has
-  // since been WITHDRAWN, superseded by the one `main` carries at
-  // `20260920690000_contract_duty_status.sql`, and this file sorts after THAT.
-  // So the guard came back without this suite's own file ever moving.
+  // The ORDERING guard has LEFT this suite again, and the round trip is still
+  // the lesson rather than the bookkeeping. It belongs to whichever migration is
+  // the newest PENDING one, and this branch adds one that sorts after this file,
+  // so the holder is `contract-time-off-review-approver.test.mjs`. A file takes
+  // the guard by being newest and loses it by being OVERTAKEN; the helper's error
+  // text names merging, which is only the commonest cause. It is never held by
+  // two suites at once, because the second holder asserts a tree the first one's
+  // own change makes false — which is why retiring the call here is part of the
+  // same change that adds the newer migration, not a follow-up.
   //
-  // Both directions are the same rule and neither is merging: a file takes the
-  // guard by being newest and loses it by being OVERTAKEN. The helper's error
-  // text names merging, which is only the commonest cause, and a reader who
-  // trusts it goes looking for a merge that did not happen in either direction
-  // here. It is never held by two suites at once, because the second holder
-  // asserts a tree the first one's own change makes false.
+  // Retiring it is NOT asserting nothing. The set equality below pins the two
+  // lists EQUAL and implies no MEMBERSHIP, so the `includes` is the only thing
+  // left that fails if this suite's own migration is renamed out from under it.
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  assertNewestRecordMigration(applied, WRITES_FORWARD);
+  // This file has now been OVERTAKEN THREE TIMES, which is why neither side of
+  // this merge named the right holder: `main` handed the guard to
+  // `roster-phone-provisioned.test.mjs` when `20260920720000` landed and to
+  // `contract-timesheet-review-approver.test.mjs` when `20260920730000` did,
+  // and this branch adds `20260920740000`, which sorts after both. So the holder
+  // on this tree is `contract-time-off-review-approver.test.mjs` alone, and the
+  // timesheet suite drops it in this same change — one holder, which is what the
+  // helper admits.
+  //
+  // Nothing about this file changed and nothing about it is wrong. Keeping the
+  // call would have failed this suite's `before` and taken every test in it down
+  // with it, naming a contract that had done nothing — which is the cost the
+  // comment above records twice already. What is kept is the half that is this
+  // suite's own property rather than the tree's.
+  assert.ok(applied.includes(WRITES_FORWARD),
+    `the record walk did not apply ${WRITES_FORWARD}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await seed();
 });
