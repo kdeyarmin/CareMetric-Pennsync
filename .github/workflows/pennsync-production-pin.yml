@@ -1,0 +1,100 @@
+name: PennSync production pin
+
+# Proves the FOUNDATION the production-mode acceptance run needs: that a local
+# owned store can be pinned to the PRODUCTION app id at all.
+#
+# It is a job of its own, and small on purpose. D11 makes the deployment pin a
+# generated IMMUTABLE constant decided once, before the first migration runs, so
+# a store the Supabase CLI started is already pinned to STAGING — the
+# restrictive default — and cannot be corrected afterwards. Everything the
+# production acceptance run will do stands on getting that pin right, and a
+# production run against a staging-pinned store would sign in happily and prove
+# nothing about containment. That is the failure direction which does not
+# announce itself, so it is measured here by itself rather than inside a longer
+# run whose green would be read as covering it.
+#
+# No Chromium and no app build: this job reads two functions out of the store.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pennsync-production-pin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-pin:
+    name: Verify a local store can be pinned to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            services/authority-store/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated authority test dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      # Runs before any stack exists, so a drift between the three copies of the
+      # app ids, or a diagnostic that could carry CLI output, fails in seconds
+      # rather than after a twelve-minute start.
+      - name: Verify pin constants and redaction without a stack
+        run: node --test --test-name-pattern='^production pin' services/authority-store/tests/production-pin.test.mjs
+      - name: Install pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d "$RUNNER_TEMP/pennsync-production-pin-supabase.XXXXXX")"
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
+            https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_linux_amd64.tar.gz \
+            --output "$cli_dir/cli.tar.gz"
+          printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
+          tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase supabase-go
+          printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
+      # `start-unmigrated`, not `start`: the CLI must bring Auth and PostgREST up
+      # over an EMPTY database, because D11 fixes the deployment pin in the first
+      # migration and five measured attempts established that nothing a caller
+      # sets reaches the session the CLI applies migrations in. The store is
+      # applied by the step below, in one session carrying the setting.
+      - name: Start fresh owned local Auth and API with no store applied
+        run: node services/authority-store/tests/http-local-stack.mjs start-unmigrated
+      - name: Build a production-pinned store on it and read the pin back
+        run: node --test --test-name-pattern='a local stack can be pinned' services/authority-store/tests/production-pin.test.mjs
+      # ONLY on failure, and only the lines that name a cause. The step above
+      # reports a code, a SQLSTATE where the statement supplied one, and a
+      # position; what it cannot see is a backend that died without answering,
+      # because the reason for that is in the server's own log and nowhere else.
+      # The grep is the redaction: a matched line is a server lifecycle or
+      # out-of-memory line, so no statement text, no connection string and no key
+      # is printed, and the step says plainly when it matched nothing rather than
+      # passing quietly.
+      - name: Say what the database server logged, if the build died
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          name="$(docker ps --all --filter name=supabase_db --format '{{.Names}}' | head -n 1)"
+          if [ -z "$name" ]; then echo 'NO_DATABASE_CONTAINER'; exit 0; fi
+          docker inspect --format 'state={{.State.Status}} oom_killed={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name"
+          matched="$(docker logs --tail 400 "$name" 2>&1 \
+            | grep -Ei 'PANIC|FATAL|out of memory|terminated by signal|server process|in recovery|database system is|shutting down|shutdown request' \
+            | tail -n 40)"
+          if [ -z "$matched" ]; then echo 'NO_SERVER_LIFECYCLE_LINES_IN_LAST_400'; else printf '%s\n' "$matched"; fi
+      - name: Stop owned local stack
+        if: always()
+        run: node services/authority-store/tests/http-local-stack.mjs stop
