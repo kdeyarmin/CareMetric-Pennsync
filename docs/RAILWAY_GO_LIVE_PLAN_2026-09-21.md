@@ -4485,7 +4485,7 @@ them.**
 
 - **Training and learning — `hub`, twelve entities.** Their product answer was
   already given: D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` send them to
-  `kdeyarmin/caremetric-support-hub`, both controls unset behind a five-step
+  `kdeyarmin/caremetric-support-hub`, both controls unset behind a seven-step
   pre-cutover checklist. **They are neither his to decide nor ours to port**,
   and porting their tables into the owned store would build precisely what D8
   decided not to build. They also pass a restoration test outright — F19 in
