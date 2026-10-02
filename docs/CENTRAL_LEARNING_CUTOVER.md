@@ -53,3 +53,39 @@ build and `CENTRAL_LEARNING_RELEASE=hub-runtime-v1` in Base44:
 
 Other provider credentials are independent of this migration. This code change
 does not verify or replace them and is not a completed secret audit.
+
+## What the owner answered, 2026-10-02 — and what it does not settle
+
+Asked whether anyone on staff had finished a training course in the live app,
+the owner answered **"Nobody"**. Read it narrowly: it is about **finished
+courses**, in his words, and nothing else.
+
+**What it settles.** Step 3's evidence to preserve is empty. There are no
+completions, attestations, certificates or credits to map to Hub identities,
+so there is nothing for "preserve the original evidence and provide historical
+access before changing the learning entry point" to protect. The same holds for
+step 6's "existing TrainingCoursePlayer bookmarks and report data", to the
+extent those are completion records.
+
+**What it does not settle, and do not read it as settling.**
+
+- **Started-but-unfinished records are outside his answer.** Assignments,
+  in-progress attempts and `ComplianceTrainingProgress` rows can exist with no
+  finished course behind them. If step 3 is to be closed rather than shrunk,
+  that is a second count, not an inference from this one.
+- **Authored content is a different question from completed training.** An
+  agency can write a course nobody takes. Step 2 is unchanged by this answer,
+  and it is the step that now decides the size of the move.
+- **Step 4 does not collapse either.** A HeyGen video belongs to a course being
+  built, not to a course being finished, so "nobody finished one" says nothing
+  about how many videos exist or how many jobs are in flight.
+
+**The instrument for step 2, named rather than built.** The two seeders key on
+`(title, annual_cycle_year)` and carry their content as literal source, so the
+standard catalog is reproducible from this repository. An agency-authored course
+is therefore any `TrainingCourse` row whose `(title, annual_cycle_year)` is
+outside the seeded set — `TrainingCourse` carries no provenance field, so this
+is the discriminator available. Counting it needs a read of the production
+Base44 app. **No credential in this repository or its CI reaches that app**, and
+`tools-pennsync-acquire.mjs` is pinned to the staging app at its `APP` constant,
+so the count is an export the owner makes, not a tool anyone here can run.
