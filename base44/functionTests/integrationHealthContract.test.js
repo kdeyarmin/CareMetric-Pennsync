@@ -156,6 +156,20 @@ for (const name of retiredLearningAutomation) {
   }
 }
 
+test('autoEnrollAnnualPlans leaves the person-clicked scope all action alone after the central cutover', async () => {
+  const entrySource = await readFile(new URL('../functions/autoEnrollAnnualPlans/entry.ts', import.meta.url), 'utf8');
+  let reachedCourseData = false;
+  const client = {
+    auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+    get asServiceRole() { reachedCourseData = true; throw new Error('reached service-owned data'); },
+  };
+  const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+  const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: JSON.stringify({ scope: 'all' }) }));
+  const data = await response.json().catch(() => ({}));
+  assert.equal(reachedCourseData, true, 'scope all must proceed to its data');
+  assert.notEqual(data.reason, 'central_learning');
+});
+
 test('central learning cutover removes HeyGen from provider requirements and probes', async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
