@@ -256,13 +256,21 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
+
+    const body = await req.json().catch(() => ({}));
+    const scope = body.scope === 'all' ? 'all' : 'auto';
+
+    // Hub cutover guard: once learning is released to the Support Hub, the
+    // scheduled (default `auto`) run must not create assignments against Base44
+    // course data. The person-clicked `scope: 'all'` action is left alone.
+    if (scope === 'auto' && Deno.env.get('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1') {
+      return Response.json({ success: true, skipped: true, reason: 'central_learning' });
+    }
     {
       const _agencyAdminGate = agencyAdminMissingAgencyResponse(me);
       if (_agencyAdminGate) return _agencyAdminGate;
     }
 
-    const body = await req.json().catch(() => ({}));
-    const scope = body.scope === 'all' ? 'all' : 'auto';
     const svc = base44.asServiceRole.entities;
 
     const today = new Date();

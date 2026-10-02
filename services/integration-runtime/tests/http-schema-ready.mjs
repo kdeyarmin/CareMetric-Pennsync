@@ -32,6 +32,22 @@ export const runtimeRpcSignatures = Object.freeze([
     arg('p_agency_id', 'text', 'synthetic-readiness'), arg('p_object_path', 'text', 'synthetic-readiness'),
     arg('p_content_type', 'text', 'text/plain'), arg('p_size', 'bigint', '1'), arg('p_sha256', 'text', 'c'.repeat(64)),
   ] },
+  // 007's three. `_put` writes, `_active` returns the sealed key and `_status`
+  // is the same row with that column left out -- a separate function rather
+  // than a flag, because the projection is the control.
+  { name: 'cm_integration_credential_put', args: [
+    arg('p_id', 'uuid', uuid), arg('p_app_id', 'text', 'synthetic-readiness'), arg('p_provider', 'text', 'telnyx'),
+    arg('p_api_key_sealed', 'text', 'synthetic-readiness'), arg('p_api_key_last_four', 'text', '0000'),
+    arg('p_public_key', 'text', 'synthetic-readiness'), arg('p_messaging_profile_id', 'text', 'synthetic-readiness'),
+    arg('p_voice_connection_id', 'text', 'synthetic-readiness'), arg('p_fax_connection_id', 'text', 'synthetic-readiness'),
+    arg('p_updated_by', 'text', 'synthetic-readiness'),
+  ] },
+  { name: 'cm_integration_credential_active', args: [
+    arg('p_app_id', 'text', 'synthetic-readiness'), arg('p_provider', 'text', 'telnyx'),
+  ] },
+  { name: 'cm_integration_credential_status', args: [
+    arg('p_app_id', 'text', 'synthetic-readiness'), arg('p_provider', 'text', 'telnyx'),
+  ] },
   { name: 'cm_integration_expire_results', args: [] },
 ].map(signature => Object.freeze({ ...signature, args: Object.freeze(signature.args) })));
 

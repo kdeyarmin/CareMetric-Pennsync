@@ -105,6 +105,12 @@ before(async () => {
   // same guard in `record-migrations.mjs`, and the newest PENDING migration
   // calls it. What stays here is the set equality above, which is the
   // assertion that actually says this store is the one a deployment gets.
+  //
+  // The write half then KEPT its copy after it merged, and the next forward
+  // migration to land in the tree failed that suite's `before` and took all 22 of
+  // its tests with it, naming a file that had done nothing wrong. So "it moves"
+  // is a step somebody has to take AT the merge, and a retirement left undone
+  // fails a suite with no connection to the change that exposed it.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   await db.exec(`insert into auth.users(id,email,email_confirmed_at)

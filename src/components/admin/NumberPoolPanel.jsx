@@ -16,6 +16,7 @@ import {
 import { Hash, Plus, Loader2, Trash2, UserPlus, UserMinus, CheckCircle2, Search, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { formatPhoneDisplay, normalizeE164 } from "@/components/voice/phoneUtils";
+import { assignPayload, cellOnFile, cellTail } from "@/components/admin/numberPoolAssign";
 import { isAdminLike } from "@/lib/superAdmin";
 
 /**
@@ -39,7 +40,14 @@ export default function NumberPoolPanel() {
   const { data: users = [] } = useQuery({
     queryKey: ["phone-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list("full_name", 200);
+      // `email` rather than `full_name`: the owned roster serves two orders, email
+      // with the user id as the tiebreaker and `-created_date`, and refuses every
+      // other sort outright rather than answering it in the default order
+      // (`independentEntityRoutes.js`). `full_name` is not a sort it can ever
+      // learn — the carried user table has no name column at all — so this call
+      // asked for a page the owned backend has no way to serve and was refused
+      // before the roster contract ran.
+      const _rows = await base44.entities.User.list("email", 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
@@ -64,14 +72,10 @@ export default function NumberPoolPanel() {
     onError: (err) => toast.error(err?.message || "Failed to add number"),
   });
   const assign = useMutation({
-    mutationFn: ({ id, email, cell }) => call({
-      action: "assign",
-      id,
-      target_user_email: email,
-      // Set the private bridge cell at the same time so masked calling works
-      // immediately; omitted when left blank (keeps the nurse's existing cell).
-      ...(cell && cell.trim() ? { personal_cell_e164: cell.trim() } : {}),
-    }),
+    // The bridge cell is set in the same step so masked calling works
+    // immediately, and OMITTED when left blank, which keeps the nurse's existing
+    // cell. `numberPoolAssign.js` carries why, and its tests pin it.
+    mutationFn: (vars) => call(assignPayload(vars)),
     onSuccess: (_res, vars) => {
       invalidate();
       setPickedCell((p) => ({ ...p, [vars.id]: "" }));
@@ -147,10 +151,12 @@ export default function NumberPoolPanel() {
     const u = users.find((x) => x.email === email);
     return u?.full_name || email;
   };
-  const userCell = (email) => {
-    const u = users.find((x) => x.email === email);
-    return u?.personal_cell_e164 || "";
-  };
+  // Whether a bridge cell is on file, and the last four digits of it — never the
+  // number itself. Both live in `numberPoolAssign.js`, with the payload builder,
+  // because the three belong together and the third decides whether a nurse's
+  // stored number survives an assignment.
+  const onFile = (email) => cellOnFile(users, email);
+  const tail = (email) => cellTail(users, email);
   const newNumberValid = !newNumber || !!normalizeE164(newNumber);
   const busy = add.isPending || assign.isPending || release.isPending || remove.isPending;
 
@@ -302,9 +308,14 @@ export default function NumberPoolPanel() {
                         <span className="text-slate-500">Available</span>
                       )}
                     </p>
-                    {assigned && !userCell(n.assigned_to_email) && (
+                    {assigned && !onFile(n.assigned_to_email) && (
                       <p className="text-xs text-amber-700 inline-flex items-center gap-1 mt-0.5">
                         <UserPlus className="w-3 h-3" /> No bridge cell on file — masked calls won&apos;t connect. Set it in Nurse Work Numbers.
+                      </p>
+                    )}
+                    {assigned && onFile(n.assigned_to_email) && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Bridge cell on file ending {tail(n.assigned_to_email)}
                       </p>
                     )}
                   </div>
@@ -319,8 +330,9 @@ export default function NumberPoolPanel() {
                           value={pickedUser[n.id] || ""}
                           onValueChange={(v) => {
                             setPickedUser((p) => ({ ...p, [n.id]: v }));
-                            // Reset any typed bridge cell so the new nurse's stored
-                            // cell is pre-filled rather than the previous entry.
+                            // Clear anything typed for the previous nurse, so a
+                            // number entered for one person cannot be submitted
+                            // for another. The field starts empty either way.
                             const numberId = String(n.id);
                             setPickedCell((prev) => {
                               const { [numberId]: _removed, ...rest } = prev;
@@ -336,18 +348,31 @@ export default function NumberPoolPanel() {
                           </SelectContent>
                         </Select>
                         {/* Private bridge cell captured at assign time so masked
-                            calling works immediately. Pre-filled when the chosen
-                            nurse already has one on file. */}
-                        <Input
-                          value={pickedCell[n.id] ?? (pickedUser[n.id] ? (userCell(pickedUser[n.id]) || "") : "")}
-                          onChange={(e) => setPickedCell((p) => ({ ...p, [n.id]: e.target.value }))}
-                          placeholder="Nurse cell (masked bridge)"
-                          className="h-9 w-44"
-                        />
+                            calling works immediately. Starts EMPTY, including for
+                            a nurse who already has one: `assign` omits the field
+                            when it is blank and keeps the stored number, while a
+                            pre-filled mask is a truthy string and would be
+                            written over the real one. The placeholder says what
+                            empty means, and the hint below says which number is
+                            already there. */}
+                        <div>
+                          <Input
+                            value={pickedCell[n.id] ?? ""}
+                            onChange={(e) => setPickedCell((p) => ({ ...p, [n.id]: e.target.value }))}
+                            placeholder={pickedUser[n.id] && onFile(pickedUser[n.id])
+                              ? "Leave blank to keep" : "Nurse cell (masked bridge)"}
+                            className="h-9 w-44"
+                          />
+                          {pickedUser[n.id] && onFile(pickedUser[n.id]) && (
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              On file, ending {tail(pickedUser[n.id])}
+                            </p>
+                          )}
+                        </div>
                         <Button
                           size="sm"
                           disabled={busy || !pickedUser[n.id]}
-                          onClick={() => assign.mutate({ id: n.id, email: pickedUser[n.id], cell: pickedCell[n.id] ?? userCell(pickedUser[n.id]) })}
+                          onClick={() => assign.mutate({ id: n.id, email: pickedUser[n.id], cell: pickedCell[n.id] })}
                           className="bg-indigo-600 hover:bg-indigo-700"
                         >
                           <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Assign

@@ -1,38 +1,18 @@
 import { createStagingAuthorityClient, PORTED_FUNCTIONS, STAGING_APP_ID } from '../../services/authority-client/client.mjs';
 import { createFeedSubscriber, feedFor, intervalSchedule } from './independentEntityFeeds.js';
 import { routeFor } from './independentEntityRoutes.js';
+import {
+  CONTEXT_KEYS, MEMBERSHIP_KEYS, exact, failWith, refusingNamespace, pick, scopeOf, refusalFor,
+} from './ownedBackendSeam.js';
 
 const EMAILS = Object.freeze(['admin-a', 'clinician-a', 'clinician-empty', 'admin-b']
   .map(name => `info+pennsync-${name}@caremetricai.com`));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const fail = (code, status = 403) => { const error = new Error(code); error.code = code; error.status = status; throw error; };
-/**
- * Every entity and Core-integration call in this build refuses by name.
- *
- * Both namespaces were `{}`, so an entity call such as `.TrainingCourse.list()`
- * read `.list` of `undefined` and threw a raw TypeError — measured by driving it
- * through the realm gate, not inferred. That failed closed in the sense that
- * matters (nothing can reach Base44 from here), but as an unclassified
- * TypeError no caller could tell from a bug, at every one of the frontend's
- * entity and integration call sites.
- *
- * The refusal carries the code every other unsupported operation here uses
- * and is a REJECTED PROMISE, not a throw: the SDK methods it stands in for
- * return promises, and the realm gate refuses a closed realm the same way, so
- * "unavailable" and "realm closed" now reach a caller in one shape rather
- * than two. `operation` names the call for a staging report; it is a method
- * name, never an argument.
- *
- * There is deliberately no GENERIC route to the record store behind this.
- * pennsync-api has no generic entity route by design — an entity reaches the
- * owned store only through a ported handler — so a generic route added here
- * would be one that service refuses to have. What `routedEntities` adds is the
- * opposite of generic: a DECLARED map from one entity operation to one named
- * ported handler (`independentEntityRoutes.js`), which is the seam Stage J
- * adopts a call site at a time. Everything undeclared refuses exactly as it
- * did, so the refusal above is still what the overwhelming majority of the
- * frontend's entity call sites get.
- */
+/** Staging's published refusal code. Screens and the acceptance suites read it by name. */
+const UNAVAILABLE = 'STAGING_OPERATION_UNAVAILABLE';
+const fail = (code, status = 403) => failWith(code, status);
+const contextKeys = CONTEXT_KEYS;
+const membershipKeys = MEMBERSHIP_KEYS;
 // `then` must read as absent: a function there would make the namespace, or an
 // entity, a thenable, and `await base44.entities` would call it.
 const NOT_AN_OPERATION = new Set(['then', 'toJSON']);
@@ -50,15 +30,6 @@ const refusingLevel = (resolve) => {
     },
   });
 };
-const refusal = (root, group, operation) => {
-  const error = new Error('STAGING_OPERATION_UNAVAILABLE');
-  error.code = 'STAGING_OPERATION_UNAVAILABLE';
-  error.status = 403;
-  error.operation = `${root}.${group}.${operation}`;
-  return error;
-};
-const refusingNamespace = (root) => refusingLevel(group => refusingLevel(operation => () =>
-  Promise.reject(refusal(root, group, operation))));
 /**
  * The entity namespace, which refuses exactly as before except where a route
  * is DECLARED.
@@ -68,29 +39,30 @@ const refusingNamespace = (root) => refusingLevel(group => refusingLevel(operati
  * call it becomes — this level adds no authorization and can remove none.
  * Everything without a declaration keeps the refusal above, unchanged, which
  * is what lets Stage J adopt one call site at a time.
+ *
+ * `subscribe` is the one entity operation a route cannot be: it returns an
+ * unsubscribe FUNCTION synchronously, straight into a `useEffect` cleanup,
+ * where every route here is promise-shaped. So it is declared as a feed
+ * instead, and answered before the route lookup — a feed and a route for the
+ * same entity operation cannot both exist, because `subscribe` is never a
+ * route key. With no feed declared the refusal below is unchanged, which is
+ * what lets this land before any entity has one.
  */
-const routedEntities = (serve, configured) => refusingLevel(entity => refusingLevel(operation => (...args) => {
+const routedEntities = (code, serve, configured) => refusingLevel(entity => refusingLevel(operation => (...args) => {
   // `configured` is the same condition `routesPorted` applies to a function
   // call: with no service to ask, a declared route is not a route. Refusing
   // here rather than inside `serve` keeps a misconfigured build answering
   // "unavailable" instead of a transport error.
-  // `subscribe` is the one entity operation a route cannot be: it returns an
-  // unsubscribe FUNCTION synchronously, straight into a `useEffect` cleanup,
-  // where every route here is promise-shaped. So it is declared as a feed
-  // instead, and answered before the route lookup — a feed and a route for the
-  // same entity operation cannot both exist, because `subscribe` is never a
-  // route key. With no feed declared the refusal below is unchanged, which is
-  // what lets this land before any entity has one.
   if (operation === 'subscribe') {
     const feed = configured() ? feedFor(entity) : null;
     // The UNDECLARED case keeps the existing rejection exactly, rather than
     // throwing: that behaviour is asserted today and no feed exists yet, so
     // this branch changes nothing until one is declared.
-    if (!feed) return Promise.reject(refusal('entities', entity, operation));
+    if (!feed) return Promise.reject(refusalFor(code, 'entities', entity, operation));
     return createFeedSubscriber({ entity, feed, serve, schedule: intervalSchedule })(...args);
   }
   const route = configured() ? routeFor(entity, operation) : null;
-  if (!route) return Promise.reject(refusal('entities', entity, operation));
+  if (!route) return Promise.reject(refusalFor(code, 'entities', entity, operation));
   // `request` refuses an argument it cannot express, synchronously. Keep the
   // whole path promise-shaped: these stand in for SDK methods, and a caller
   // that gets a throw where every sibling rejects has to handle two shapes.
@@ -101,17 +73,20 @@ const routedEntities = (serve, configured) => refusingLevel(entity => refusingLe
   // whether the page it got was the whole set.
   return serve(route.function, input).then(answer => route.response(answer, ...args));
 }));
-const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
-  && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
-const contextKeys = ['user_id', 'user_email', 'membership_id', 'membership_key', 'membership_version',
-  'agency_id', 'tenant_role', 'membership_status', 'is_platform_owner', 'agency'];
-const membershipKeys = ['membership_id', 'membership_key', 'membership_version', 'agency_id',
-  'tenant_role', 'membership_status', 'agency'];
-const pick = (value, keys) => Object.fromEntries(keys.map(key => [key, value[key]]));
-const scopeOf = context => pick(context, ['agency_id', 'membership_id', 'membership_version', 'tenant_role']);
 
 export function readIndependentStagingConfig(env = {}) {
   if (!env.VITE_PENNSYNC_BACKEND || env.VITE_PENNSYNC_BACKEND === 'base44') return null;
+  // `independent` is a KNOWN mode this reader does not serve, so it answers
+  // null -- "not mine" -- rather than refusing. The distinction is load-bearing:
+  // `independentStagingSession.js` calls this reader first and unconditionally,
+  // so throwing here stopped module evaluation and a production build could not
+  // boot at all. Returning null for a known sibling mode, rather than reordering
+  // the two calls, is what makes both readers safe in EITHER order and at every
+  // other call site; reordering would only have moved the hazard.
+  //
+  // A value that is neither still fails closed, which is the behaviour this line
+  // exists for: a typo in the mode name must not quietly select the Base44 path.
+  if (env.VITE_PENNSYNC_BACKEND === 'independent') return null;
   if (env.VITE_PENNSYNC_BACKEND !== 'independent-staging') fail('INVALID_STAGING_CONFIGURATION');
   let actors;
   try { actors = JSON.parse(env.VITE_PENNSYNC_STAGING_ACTORS); } catch { fail('INVALID_STAGING_CONFIGURATION'); }
@@ -396,7 +371,8 @@ export function createIndependentStagingAdapter(config,
   return Object.freeze({ auth,
     raw: Object.freeze({ auth: Object.freeze({ me, logout: signOut, redirectToLogin: unavailable, setToken: unavailable }),
       functions: Object.freeze({ invoke, fetch: fetchFunction }),
-      entities: routedEntities(portedCall, () => !!config.target.apiUrl), integrations: refusingNamespace('integrations'),
+      entities: routedEntities(UNAVAILABLE, portedCall, () => !!config.target.apiUrl),
+      integrations: refusingNamespace(UNAVAILABLE, 'integrations'),
       cleanup: () => { generation++; signedIn = false; for (const value of clients.values()) value.invalidate(); } }),
     authority: Object.freeze({ me, getMyTenantContext: getContext, listMyTenantMemberships: memberships }),
   });
