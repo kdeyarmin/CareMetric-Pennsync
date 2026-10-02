@@ -9,5 +9,11 @@
     "function_wrappers": 83,
     "core_integration_sites": 41,
     "sdk_importers": 4
-  }
+  },
+  "allowed_handles": [
+    "src/components/training/CourseLessonBuilder.jsx::TrainingModule",
+    "src/components/training/CourseQuizBuilder.jsx::TrainingQuestion",
+    "src/lib/agencySettings.js::FaxRetryConfig",
+    "src/lib/agencySettings.js::PayerRateConfig"
+  ]
 }
