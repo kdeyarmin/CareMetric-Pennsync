@@ -86,9 +86,13 @@ standard catalog is reproducible from this repository. An agency-authored course
 is therefore any `TrainingCourse` row whose `(title, annual_cycle_year)` is
 outside the seeded set — `TrainingCourse` carries no provenance field, so this
 is the discriminator available. Counting it needs a read of the production
-Base44 app. **No credential in this repository or its CI reaches that app**, and
-`tools-pennsync-acquire.mjs` is pinned to the staging app at its `APP` constant,
-so the count is an export the owner makes, not a tool anyone here can run.
+Base44 app, and nothing in this repository or its CI can make that read:
+**no credential here reaches that app**, and `tools-pennsync-acquire.mjs` is
+pinned to the staging app at its `APP` constant. The count does not need an
+export, though. The Support Hub reads the live source itself through its own
+migration panel, and the panel's Inspect step returns the counts (see the
+section below on the destination's import path), so the owner presses a button
+in the hub rather than producing a file.
 
 **Who could have authored one, measured rather than assumed.** The owner's
 second answer, 2026-10-02, was "Only the super admin can create their own
@@ -112,22 +116,23 @@ what.
 whether he had built any courses himself, he said "There are ones there". So
 agency-authored courses exist. An earlier draft of this section ended by sizing
 step 2 at zero as a default taken on the bound above; that default is
-falsified and is withdrawn. Step 2 is real work, and carrying authored content
-across is built work rather than a contingency held against the possibility.
+falsified and is withdrawn. Step 2 is real work, but the carry itself is not
+work to build on this side: the Support Hub already carries authored content
+through its own panel (see the section below), so what is left is the owner
+running that panel and then deciding what it reports.
 
 What his answer does **not** supply is a count, a list, or any property of the
 rows. The instrument is unchanged: the `(title, annual_cycle_year)`
-discriminator against the seeded set, run over an export of the production
-Base44 app that the owner makes, because no credential here reaches it. Size
-step 2 from that export when it exists, and until then treat the population as
-non-empty and unmeasured — not as a number.
+discriminator against the seeded set. The panel's Inspect result is what sizes
+step 2, and until it has been run the population is non-empty and unmeasured,
+not a number.
 
 ## The destination already defines the import shape, read 2026-10-02
 
 This section is a reading of **another repository**, `kdeyarmin/caremetric-support-hub`,
 at head `9f4fdf25` (committed 2026-09-25), attached read-only to answer one
-question: what shape does the carry in step 2 have to produce? The answer is
-that it is not ours to invent, and most of it is already built over there.
+question: how do the courses reach the hub? The answer is that the carry is
+not ours to build or to shape, and it is already built over there.
 
 **The contract exists and is named.** The Hub carries
 `docs/PENNSYNC_LEARNING_MIGRATION.md` and `docs/PENNSYNC_LEARNING_CONTRACT.md`,
@@ -142,13 +147,22 @@ TrainingAttestation, TrainingCertificate, LearningPlan, LearningPlanCourse,
 User, Agency, AgencyMembership. Those are the PennSync entities this repository
 dispositions `hub`, which is D8 holding from the far side.
 
-**The export is not a screen the owner clicks.** The migration doc pins the
-source to Base44 app `694ec16e72e01b60d22f7cbf` — the id this repository holds
-as `ARCHIVE_SOURCE_APPS.production` — and reads it through the Hub's own native
-reader under its own authority, not through anything here. So the sentence
-above about an export the owner makes describes a route this repository can
-see; the route the destination actually implements is the Hub's migration
-panel. Confirm which one is live before asking him for anything.
+**There is no export step; the hub's own panel is the route.** The migration
+doc pins the source to Base44 app `694ec16e72e01b60d22f7cbf` — the id this
+repository holds as `ARCHIVE_SOURCE_APPS.production` — and reads it through the
+Hub's own native reader under its own authority, not through anything here. The
+hub's text rules a file route out: "The browser cannot submit source content,
+learner identities or an alternate endpoint" (`docs/PENNSYNC_LEARNING_MIGRATION.md`,
+hub head `9f4fdf25`). The panel takes the source only from PennSync, in the
+order Inspect, then Preserve, then Review. Inspect returns totals and course
+metadata, Preserve makes a private read-only copy that publishes nothing, and
+Review converts that preserved copy for reading. This repository's half of the
+route is the reader that answers the hub, `base44/_shared/pennsyncLearningSource.ts`
+(documented in `docs/PENNSYNC_LEARNING_SOURCE.md`), reached through
+`centralAdminRead`'s `learning.source.snapshot` operation. Whether that
+operation is deployed in the live app, and whether the hub is deployed at that
+head, are production facts this document does not establish; the panel's first
+Inspect is the check on both.
 
 **A cohort has already been preserved and counted, over there.** The contract
 doc's "Current source findings" reports 19 courses, 23 modules (six
@@ -169,8 +183,12 @@ does not adjudicate that. And the contract's grading-provider section routes
 freeform grading back through a PennSync function, so step 7's removal of
 `HEYGEN_API_KEY` is not the only credential question left in this domain.
 
-**What this changes about step 2.** It stops being "seed the catalog and invent
-a carry". The carry's shape is `pennsync.learning-source.v1`, the conversion
+**What this changes about step 2.** It stops being "seed the catalog and carry
+the rest across". The source is `pennsync.learning-source.v1`, the conversion
 target is `caremetric.learning-document.v2`, and the Hub's own contract says in
-its first line that a preserved source is not a published course. So the work
-on this side is to satisfy that contract's inputs, not to design a format.
+its first line that a preserved source is not a published course. Nothing on
+this side produces or satisfies an input: the reader exists and the hub pulls
+from it. What remains is the owner running Inspect, Preserve and Review, and
+then settling what the review reports, for example audience and agency mapping,
+media that is not carried, and courses that do not convert. Those are decisions
+and hub-side work, not a build here.
