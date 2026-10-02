@@ -56,6 +56,11 @@ test('production pin diagnostics can be printed without carrying CLI output', ()
     // the statement had answered at all.
     'PRODUCTION_PIN_STORE_BUILD_FAILED_SERVER_UNREACHABLE R0000',
     'PRODUCTION_PIN_STORE_BUILD_FAILED_SERVER_UNREACHABLE 42501 R0000',
+    // The split pass's own codes. A statement index is in the same alphabet as a
+    // SQLSTATE and a file position, and names no statement — it is an index into
+    // the splitter's own list for the file the file position already names.
+    'PRODUCTION_PIN_STORE_SPLIT_FAILED S0421', 'PRODUCTION_PIN_STORE_SPLIT_FAILED 42501 S0421',
+    'PRODUCTION_PIN_BATCH_SPLIT_APPLIED R0000 S0590',
     'PRODUCTION_PIN_STORE_BUILD_FAILED 42501 R0001']) {
     assert.equal(emittableProductionPin(message), true);
   }

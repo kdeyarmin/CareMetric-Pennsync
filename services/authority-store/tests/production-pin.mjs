@@ -39,6 +39,11 @@ import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { localStatus } from './http-local-stack.mjs';
 import { applyRecordMigrations } from './record-migrations.mjs';
+// The SAME splitter the migrate tooling records a ledger row with, never a
+// second parser: it splits by offset into the original and the result is checked
+// to reconstruct it exactly. Its module imports nothing but the shape reader, so
+// it is reachable from this directory's isolated install.
+import { splitStatements } from '../../../tools-pennsync-ledger-statements.mjs';
 
 const fail = code => { throw new Error(code); };
 
@@ -158,21 +163,61 @@ export async function pinLocalStackToProduction() {
     async client => (await client.query('select pg_postmaster_start_time() as at')).rows[0]?.at);
   let position = 'A0000';
   const at = (stage, index) => { position = `${stage}${String(index).padStart(4, '0')}`; };
-  try {
-    await withClient(databaseUrl, 'PRODUCTION_PIN_STORE_BUILD_FAILED', async client => {
-      const { rows } = await client.query('select set_config($1, $2, false) as value',
-        [PIN_SETTING, PRODUCTION_APP]);
-      if (rows[0]?.value !== PRODUCTION_APP) fail('PRODUCTION_PIN_SETTING_NOT_VISIBLE');
+  // WHAT THE CONTAINER'S OWN LOG SAID, which is why there is a second pass below
+  // at all. The failure step added to this job reported
+  // `server process (PID …) was terminated by signal 11: Segmentation fault`,
+  // `oom_killed=false`, and the server reinitializing — a BACKEND CRASH inside
+  // the CLI's bundled image while the first record file was in flight. The same
+  // file applies in about 650 ms on a plain PostgreSQL 16 cluster here and has
+  // been applied by the hosted Supabase project, so the SQL is not the thing that
+  // crashes; a 480 KiB multi-statement string reaching that image is.
+  //
+  // So the batch is tried FIRST, because one string per file is the shape a
+  // deployment uses (`tools-pennsync-migrate.mjs` sends each file whole), and the
+  // split is a documented FALLBACK rather than the normal path. It is not silent:
+  // a run that falls back prints which file it fell back on and how many
+  // statements it took, and a split that dies too reports the statement's index,
+  // which is the one thing the previous instrument could not say.
+  let statementPosition = null;
+  const splitApply = async (client, sql, index) => {
+    const statements = splitStatements(sql);
+    for (const [statement, text] of statements.entries()) {
+      statementPosition = `S${String(statement).padStart(4, '0')}`;
+      await client.query(text);
+    }
+    statementPosition = null;
+    console.log(`PRODUCTION_PIN_BATCH_SPLIT_APPLIED R${String(index).padStart(4, '0')} `
+      + `S${String(statements.length).padStart(4, '0')}`);
+  };
+  const build = async (client, { splitRecordFrom = null } = {}) => {
+    const { rows } = await client.query('select set_config($1, $2, false) as value',
+      [PIN_SETTING, PRODUCTION_APP]);
+    if (rows[0]?.value !== PRODUCTION_APP) fail('PRODUCTION_PIN_SETTING_NOT_VISIBLE');
+    if (splitRecordFrom === null) {
       const authority = (await readdir(AUTHORITY_MIGRATIONS)).filter(f => f.endsWith('.sql')).sort();
       for (const [index, name] of authority.entries()) {
         at('A', index);
         await client.query(await readFile(new URL(name, AUTHORITY_MIGRATIONS), 'utf8'));
       }
-      // The record half, in the order a deployment applies it, through the helper
-      // that owns that order rather than a second copy of it.
-      let record = 0;
-      await applyRecordMigrations({ exec: sql => { at('R', record++); return client.query(sql); } });
+    }
+    // The record half, in the order a deployment applies it, through the helper
+    // that owns that order rather than a second copy of it — on the recovery pass
+    // too, which SKIPS what already committed instead of reading the directory
+    // itself. A crash rolls back the file that was in flight and nothing else.
+    let record = 0;
+    await applyRecordMigrations({
+      exec: sql => {
+        const index = record++;
+        at('R', index);
+        if (splitRecordFrom === null) return client.query(sql);
+        if (index < splitRecordFrom) return Promise.resolve(null);
+        return splitApply(client, sql, index);
+      },
     });
+  };
+  try {
+    await withClient(databaseUrl, 'PRODUCTION_PIN_STORE_BUILD_FAILED',
+      client => build(client));
   } catch (error) {
     if (!emittableProductionPin(error.message)) throw error;
     // The server's own liveness, read on a NEW connection: if it answers with the
@@ -186,22 +231,64 @@ export async function pinLocalStackToProduction() {
     // the run that produced this comment said only that a reconnect failed, so
     // whether the statement had answered at all was unknowable. The liveness
     // verdict is a SUFFIX on the build's code, never a substitute for it.
+    //
+    // THE RECONNECT IS BOUNDED RATHER THAN SINGLE. A crashed backend leaves the
+    // server reinitializing, and a connection during recovery is refused with
+    // `the database system is in recovery mode` — the log in this job shows two
+    // other clients getting exactly that in the same second. A single attempt
+    // therefore reported the server unreachable when it was coming back, which is
+    // a different fault from the one that occurred.
+    const liveness = async () => withClient(databaseUrl, 'PRODUCTION_PIN_START_TIME_UNREADABLE',
+      async client => (await client.query('select pg_postmaster_start_time() as at')).rows[0]?.at);
     let after = null;
-    try {
-      after = await withClient(databaseUrl, 'PRODUCTION_PIN_START_TIME_UNREADABLE',
-        async client => (await client.query('select pg_postmaster_start_time() as at')).rows[0]?.at);
-    } catch {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try { after = await liveness(); break; } catch {
+        await new Promise(resolve => { setTimeout(resolve, 1000); });
+      }
+    }
+    if (after === null) {
       const [base, sqlstate] = error.message.split(' ');
       fail(`${base}_SERVER_UNREACHABLE${sqlstate ? ` ${sqlstate}` : ''} ${position}`);
+    }
+    // THE SECOND PASS, and only for the one failure it is about: a record file
+    // that was in flight when the BACKEND went down, with no SQLSTATE of its own.
+    // Anything that answered with a SQLSTATE is already diagnosed and is not
+    // retried — a refusal does not become a different refusal when it is sent
+    // twice, and retrying it would hide it behind the split's own outcome.
+    const crashed = !error.message.includes(' ') && position.startsWith('R')
+      && String(after) !== String(started);
+    let recovered = false;
+    if (crashed) {
+      const from = Number(position.slice(1));
+      try {
+        await withClient(databaseUrl, 'PRODUCTION_PIN_STORE_SPLIT_FAILED',
+          client => build(client, { splitRecordFrom: from }));
+        // It applied statement by statement. The store is built, so this falls
+        // through to the same verification every run does — the pin still read
+        // from a NEW session — and the printed line above says the batch was the
+        // thing the container could not take.
+        recovered = true;
+      } catch (splitError) {
+        if (!emittableProductionPin(splitError.message)) throw splitError;
+        // WHICH STATEMENT, which is the thing the first instrument could not say.
+        // The file's position is already in the code; the statement index goes
+        // where the liveness verdict would have gone, because a split that died
+        // has answered the liveness question by arriving here.
+        const [base, sqlstate] = splitError.message.split(' ');
+        fail(`${base}${sqlstate ? ` ${sqlstate}` : ''} `
+          + `${statementPosition ?? position}`);
+      }
     }
     // The liveness verdict is added ONLY where the failure carried no SQLSTATE.
     // A statement that failed and said why is already diagnosed, and replacing
     // its code with `_SESSION_LOST` would both lose the SQLSTATE and assert a
     // cause that is not the one that occurred -- the server is plainly fine if a
     // statement answered. The position goes on either way.
-    const diagnosed = error.message.includes(' ');
-    const kind = String(after) === String(started) ? 'SESSION_LOST' : 'SERVER_RESTARTED';
-    fail(diagnosed ? `${error.message} ${position}` : `${error.message}_${kind} ${position}`);
+    if (!recovered) {
+      const diagnosed = error.message.includes(' ');
+      const kind = String(after) === String(started) ? 'SESSION_LOST' : 'SERVER_RESTARTED';
+      fail(diagnosed ? `${error.message} ${position}` : `${error.message}_${kind} ${position}`);
+    }
   }
 
   // A NEW session, because the pin is only worth anything if it is a property of
