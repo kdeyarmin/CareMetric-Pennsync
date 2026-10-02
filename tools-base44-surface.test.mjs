@@ -197,7 +197,6 @@ test('an unaccounted handle is named with its file and line, and an accounted on
   // gate's STALE refusal tells them to do -- and this assertion moves with it,
   // instead of being a test that passes only while the defect exists.
   assert.deepEqual(unaccountedHandles(repository).map(handleKey).sort(), committed());
-  assert.ok(committed().length > 0, 'this tree still has unaccounted handles');
   // `retiredOfflineQueue.js` takes four handles and is ABSENT from that list,
   // which is the half that keeps this from being a count of every alias: its
   // aliased path resolves, so the tool can still see the calls arriving.
@@ -233,11 +232,26 @@ test('a literal call does not account for a handle of the same entity in the sam
   }
 });
 
+test('a commented-out alias call does not account for a real handle', () => {
+  const root = mkdtempSync(join(tmpdir(), 'base44-surface-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'queue.js'),
+      'const q = { Task: base44.entities.Task };\n'
+      + '// q.Task.list();\n'
+      + '/* q.Task.create({}); */\n'
+      + 'export const handle = () => useThing(base44.entities.Task);\n');
+    assert.deepEqual(unaccountedHandles(root).map(hit => hit.line), [1, 4],
+      'the only calls through the alias are in comments, so neither handle is accounted for');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('this tree\'s unaccounted handles are the committed allowance, so the gate passes', () => {
   const lines = [];
   const code = main(['--summary'], { repository, log: line => lines.push(String(line)) });
   const unaccounted = unaccountedHandles(repository);
-  assert.equal(unaccounted.length > 0, true, 'this tree still has unaccounted handles');
   assert.equal(code, 0, 'a handle the committed baseline records does not fail the gate');
   // Named anyway, every one of them: the allowance records an undercount, and a
   // reader of this output has to be able to see which counts are short.

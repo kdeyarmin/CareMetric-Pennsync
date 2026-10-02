@@ -188,7 +188,10 @@ export function takenHandles(text) {
 export function unaccountedHandles(repository) {
   const unaccounted = [];
   for (const file of sourceFiles(join(repository, 'src'))) {
-    const text = readFileSync(file, 'utf8');
+    // Comment-blanked once and used for all three scans: a commented-out alias
+    // call must not account for a real handle any more than it may be reported
+    // as one. Blanking keeps offsets, so the lines below still point at their own.
+    const text = withoutComments(readFileSync(file, 'utf8'));
     const taken = takenHandles(text);
     if (taken.length === 0) continue;
     const literals = new Set();
