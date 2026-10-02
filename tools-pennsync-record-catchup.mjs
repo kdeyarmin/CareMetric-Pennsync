@@ -303,6 +303,21 @@ const TABLE_OPENS = /^create table "pennsync_records"\."([a-z_0-9]+)" \($/;
  * on a fresh store and on no existing one, with both files agreeing and
  * nothing able to see the difference -- which is D88 all over again, one
  * column at a time.
+ *
+ * It SKIPS the schema-only tables, and the reason is the whole of why this
+ * exclusion exists rather than being a tidy-up. This catch-up file has already
+ * been applied, and an applied migration is frozen: `planMigration` matches on
+ * the NAME and holds no content hash, so re-emitting this file with eight new
+ * tables' defaults in it would have shipped an edit that reaches no store that
+ * ran it, while every local suite stayed green — exactly the defect D88 names,
+ * arriving inside the tool written to prevent it. It was caught because the
+ * fingerprint pin reported the file CHANGED rather than added.
+ *
+ * Those defaults are not lost. They arrive inline in each table's own
+ * `create table`, carried by `TABLES_CATCHUP_MIGRATION`, and
+ * `assertSkippedDefaultsAreCarried` proves it statement by statement rather
+ * than asserting it here — because "they are in the other file" is the kind of
+ * claim that stays true until somebody narrows the other file.
  */
 export function readColumnDefaults(repository = here) {
   const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
@@ -312,7 +327,11 @@ export function readColumnDefaults(repository = here) {
     const opens = TABLE_OPENS.exec(line);
     if (opens) { [, table] = opens; continue; }
     if (table === null) continue;
+    // The closer is read BEFORE the skip, so a skipped table still ends. With
+    // the two the other way round `table` stayed set past the block and every
+    // line after it was scanned as though it were inside one.
     if (line === ');') { table = null; continue; }
+    if (SCHEMA_ONLY_TABLES.includes(table)) continue;
     const match = DEFAULT_LINE.exec(line);
     if (match) { rows.push({ table, column: match[1], literal: match[2] }); continue; }
     if (line.includes(' default ')) throw new Error(`CATCHUP_DEFAULT_LINE_UNREADABLE: ${line}`);
@@ -409,11 +428,217 @@ export function renderDefaultsCatchup(repository = here) {
   return DEFAULTS_HEADER + renderDefaultStatements(readColumnDefaults(repository)) + DEFAULTS_FOOTER;
 }
 
+
+export const TABLES_CATCHUP_MIGRATION =
+  'services/authority-store/supabase/record-migrations/20260920750000_oasis_schema_tables.sql';
+
+/**
+ * The eight tables D7's schema clause added, as the generator names them.
+ *
+ * Spelled out rather than imported from `SCHEMA_ONLY`, for the reason the
+ * defaults reader gives: importing `tools-entity-schema-plan.mjs` pulls in
+ * `json5`, and the isolated authority job installs no root packages, so a
+ * suite there importing this file would die at load rather than on an
+ * assertion. The cost of a second copy is paid in the root suite instead,
+ * where `record-store-catchup` asserts this list is exactly `snakeCase` of
+ * `SCHEMA_ONLY`'s keys — so adding a ninth entity without extending this
+ * fails rather than shipping a catch-up that silently carries eight.
+ */
+export const SCHEMA_ONLY_TABLES = Object.freeze([
+  'oasis_action_item', 'oasis_assessment', 'oasis_audit', 'oasis_automation_rule',
+  'oasis_feedback', 'oasis_scenario', 'oasis_upload', 'oasis_workflow_execution',
+]);
+
+/**
+ * One table's whole DDL block, from `create table` through the revoke.
+ *
+ * Both ends are anchored and asserted. A missing opener means the generator no
+ * longer emits this table, and a missing closer means the block's shape
+ * changed — either way the honest answer is a refusal, because a block read to
+ * the wrong end would apply a table with its row level security left off.
+ * That is the one failure mode here worth refusing loudly for: a record table
+ * without forced RLS is readable by every tenant.
+ */
+export function readTableBlock(repository, table) {
+  const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
+  const opens = `create table "pennsync_records"."${table}" (\n`;
+  const closes = `revoke all on "pennsync_records"."${table}" from public;\n`;
+  const start = sql.indexOf(opens);
+  if (start < 0) throw new Error(`CATCHUP_TABLE_MISSING:${table}`);
+  if (sql.indexOf(opens, start + 1) >= 0) throw new Error(`CATCHUP_TABLE_DUPLICATED:${table}`);
+  const end = sql.indexOf(closes, start);
+  if (end < 0) throw new Error(`CATCHUP_TABLE_UNTERMINATED:${table}`);
+  const block = sql.slice(start, end + closes.length);
+  // Asserted rather than assumed: a table whose RLS lines moved out of this
+  // block would come across unprotected and nothing else here would notice.
+  for (const needed of ['enable row level security', 'force row level security']) {
+    if (!block.includes(needed)) throw new Error(`CATCHUP_TABLE_UNPROTECTED:${table}:${needed}`);
+  }
+  return block;
+}
+
+/** One table's policies, in the order the generator emitted them. */
+export function readTablePolicies(repository, table) {
+  const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
+  const statements = [];
+  const pattern = new RegExp(`^create policy "([^"]+)" on "pennsync_records"\\."${table}" .*;$`, 'gm');
+  for (const match of sql.matchAll(pattern)) statements.push({ name: match[1], sql: match[0] });
+  // A table with no policy at all is representable in this store and is not
+  // what these eight are: with none, a definer contract reads nothing and the
+  // catch-up would look like it worked. D32's four append-only entities have
+  // two policies rather than four, so the count is not asserted — only that
+  // there is at least one, and that a read exists.
+  if (!statements.length) throw new Error(`CATCHUP_TABLE_NO_POLICY:${table}`);
+  if (!statements.some(entry => entry.name === `${table}_read`)) {
+    throw new Error(`CATCHUP_TABLE_NO_READ_POLICY:${table}`);
+  }
+  const names = statements.map(entry => entry.name);
+  if (new Set(names).size !== names.length) throw new Error(`CATCHUP_TABLE_POLICY_DUPLICATED:${table}`);
+  return statements;
+}
+
+/**
+ * The eight blocks in the form a store that already ran the generated file can
+ * apply.
+ *
+ * `create table if not exists` is the only idempotent form a table has, and it
+ * is weaker than the `create or replace` the other catch-ups use: on a store
+ * that somehow holds a table of this name with different columns it is a
+ * silent no-op. That is accepted here and named rather than hidden, because
+ * these eight names are new to the store — nothing has ever created one — and
+ * the hosted comparison is what would catch a mismatch, column by column, if
+ * the premise were ever wrong.
+ */
+export function idempotentTables(repository, tables = SCHEMA_ONLY_TABLES) {
+  const parts = [];
+  for (const table of tables) {
+    const block = readTableBlock(repository, table)
+      .replace(`create table "pennsync_records"."${table}" (`,
+        `create table if not exists "pennsync_records"."${table}" (`);
+    if (!block.startsWith('create table if not exists ')) {
+      throw new Error(`CATCHUP_TABLE_REWRITE_MISSED:${table}`);
+    }
+    const policies = readTablePolicies(repository, table).map(entry =>
+      `drop policy if exists "${entry.name}" on "pennsync_records"."${table}";\n${entry.sql}`);
+    parts.push([block, ...policies].join('\n'));
+  }
+  return parts.join('\n\n');
+}
+
+const TABLES_HEADER = `-- D7's schema clause, for a store that already exists (D88).
+--
+-- D7 carries the paused domains as \`preserved_paused\` and says of them: "Their
+-- schemas and data still migrate; only their execution stays off." The schema
+-- planner could not express that until \`SCHEMA_ONLY\` named these eight
+-- entities one at a time, and regenerating
+-- \`20260919170000_record_store.sql\` reaches a fresh provision and no
+-- deployment that has already applied it -- so the change lives in both places
+-- and this is the second.
+--
+-- DERIVED, never typed: \`node tools-pennsync-record-catchup.mjs --write\` reads
+-- each table's whole block and each of its policies out of the generated
+-- migration. A hand-kept copy of 164 columns and 32 policies would drift in
+-- the one direction nothing measures.
+--
+-- WHAT THIS DOES NOT DO. A table is not an access path. Every OASIS capability
+-- stays \`preserved_paused\`; the generic broker family serves \`broker\` alone
+-- and D22's ceiling refuses all eight on its own account; so after this applies
+-- the only way to one of these rows is a hand-written contract, and there is
+-- none yet. The frontend census reports these call sites as
+-- \`no_access_contract\` rather than as served, for exactly that reason.
+begin;
+
+do $$
+begin
+  if to_regclass('pennsync_records.patient') is null then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_STORE_REQUIRED';
+  end if;
+end $$;
+
+do $$
+declare v_admin text := current_user;
+begin
+  if exists (select 1 from pg_catalog.pg_roles
+    where rolname = 'pennsync_records_owner' and (rolsuper or rolbypassrls)) then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS';
+  end if;
+  begin
+    execute format('grant %I to current_user with set true', 'pennsync_records_owner');
+  exception
+    when syntax_error then execute format('grant %I to current_user', 'pennsync_records_owner');
+    when others then null; -- already held, or not ours to grant; proven below
+  end;
+  begin
+    execute format('set role %I', 'pennsync_records_owner');
+    execute format('set role %I', v_admin);
+  exception when others then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE';
+  end;
+end $$;
+
+-- As the owner, so these tables come out owned by the role the generated
+-- migration would have given them. The hosted comparison reads
+-- \`pg_get_userbyid(c.relowner)\`, so a catch-up that ran as the administrator
+-- would close one difference and open another.
+set local role "pennsync_records_owner";
+
+`;
+
+const TABLES_FOOTER = `
+
+reset role;
+commit;
+`;
+
+/** The schema-only tables catch-up, header and all. */
+export function renderTablesCatchup(repository = here) {
+  return TABLES_HEADER + idempotentTables(repository) + TABLES_FOOTER;
+}
+
+/**
+ * Every default `readColumnDefaults` skips is carried by this file instead.
+ *
+ * The defaults catch-up stops at the schema-only tables because it is already
+ * applied and cannot be edited. That is only safe if the defaults it stops
+ * reading arrive somewhere, so this reads them out of the generated migration a
+ * second time — deliberately, since the point is to check the first reader's
+ * exclusion rather than to reuse it — and asserts each one appears inside the
+ * emitted table block. A default that existed on a fresh store and on no
+ * existing one is D88 one column at a time, which is the failure the exclusion
+ * could otherwise introduce while every suite stayed green.
+ */
+export function assertSkippedDefaultsAreCarried(repository = here) {
+  const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
+  const carried = renderTablesCatchup(repository);
+  const skipped = [];
+  let table = null;
+  for (const line of sql.split('\n')) {
+    const opens = TABLE_OPENS.exec(line);
+    if (opens) { [, table] = opens; continue; }
+    if (table === null) continue;
+    if (line === ');') { table = null; continue; }
+    if (!SCHEMA_ONLY_TABLES.includes(table)) continue;
+    const match = DEFAULT_LINE.exec(line);
+    if (match) skipped.push({ table, column: match[1], literal: match[2] });
+    else if (line.includes(' default ')) throw new Error(`CATCHUP_DEFAULT_LINE_UNREADABLE: ${line}`);
+  }
+  // Zero would mean the exclusion is pointless OR that the shape changed and
+  // nothing is being read at all; the second is the one worth refusing for.
+  if (!skipped.length) throw new Error('CATCHUP_SKIPPED_DEFAULTS_MISSING');
+  for (const row of skipped) {
+    if (!carried.includes(`"${row.column}" `) || !carried.includes(`default ${row.literal}`)) {
+      throw new Error(`CATCHUP_SKIPPED_DEFAULT_NOT_CARRIED:${row.table}.${row.column}`);
+    }
+  }
+  return skipped;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const derived = [
     [CATCHUP_MIGRATION, renderCatchup()],
     [INDEX_CATCHUP_MIGRATION, renderIndexCatchup()],
     [DEFAULTS_CATCHUP_MIGRATION, renderDefaultsCatchup()],
+    [TABLES_CATCHUP_MIGRATION, renderTablesCatchup()],
   ];
   let stale = false;
   for (const [file, sql] of derived) {

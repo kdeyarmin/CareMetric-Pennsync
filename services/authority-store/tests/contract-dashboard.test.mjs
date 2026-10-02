@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations, assertNewestRecordMigration } from './record-migrations.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The dashboard's five collections.
@@ -42,21 +42,27 @@ before(async () => {
   // it. A forward migration is applied by every suite that adopts this walk,
   // which is the only way a contract suite can see one land on it.
   const applied = await applyRecordMigrations(db);
-  // This change's forward migration is the newest PENDING file, so the
-  // ordering guard is this suite's. The helper admits ONE holder, and which
-  // suite that is is a property of the whole tree rather than of any branch:
-  // it sat in `contract-compliance-writes.test.mjs`, then moved through
-  // `contract-duty-status`, `contract-reference-writes`,
-  // `roster-phone-provisioned`, `contract-timesheet-review-approver` and
-  // `contract-time-off-review-approver` as each of those merged, and arrives
-  // here because `20260920745000` sorts after all of them. That is what
-  // `assertNewestRecordMigration` says to do rather than widening the old call
-  // with an exception list.
+  // The guard is RETIRED here, by the helper's own instruction: this migration
+  // has MERGED, and `20260920750000_oasis_schema_tables` -- which this merge
+  // brings in -- now sorts after it. The helper admits exactly one holder, so
+  // the call moves on to `record-store-catchup.test.mjs` and is held there
+  // alone; keeping it would fail this `before` and take every test in this
+  // suite down with it, naming a contract that had done nothing wrong.
   //
-  // This line was stale against the merged tree while naming a true
-  // predecessor, and nothing could flag it: the branch that moved the guard on
-  // and the branch that wrote this sentence never touched the same file.
-  assertNewestRecordMigration(applied, FORWARD_NAME);
+  // The comment this replaces is worth reading before the next hand repeats it.
+  // It traced the holder through six suites and ended by recording that its own
+  // predecessor line had gone stale against the merged tree while naming a true
+  // one -- and then went stale the same way, for the same reason, because the
+  // branch that moves the guard on and the file that names the holder are never
+  // the same file and git has nothing to conflict. So the chain is not recorded
+  // here at all now: `grep` for the live call answers it against whatever tree
+  // you are holding, and a sentence cannot.
+  //
+  // Retiring it is NOT asserting nothing. The line below is this suite's own
+  // property -- that the walk really did apply the migration this suite
+  // measures -- and it is what still catches this file being renamed away.
+  assert.ok(applied.includes(FORWARD_NAME),
+    `the record walk did not apply ${FORWARD_NAME}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`update pennsync_private.membership set tenant_role = 'office_staff'
     where id = 'membership-3'`);
