@@ -123,16 +123,26 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=6 files=12 external_secret=2 none=78
+port queue: entity_authorization=5 files=8 external_secret=2 none=82
 ```
 
-98 carried capabilities, **78 written, 20 blocked** (2026-09-29, after D153).
-The carried total falls by one here rather than the written total rising,
-because D153 retired `enforceStaffRoleIntegrity` instead of porting it: the
-owned store constrains `staff_role` on both tables and lets nobody write it, so
-the sweep that reverted a spoofed value has no work left. **A bucket shrinking
-is not the same event as a port landing, and this page should not let the two
-read alike** — a written count that did not move is the tell.
+98 carried capabilities, **79 written, 19 blocked** (2026-09-30, after D223),
+which is the line above summed — `none` is the written total and the other
+three buckets are the blocked one. Derive it that way rather than carrying it
+forward: this paragraph read 78 and 20 for a day after the queue line beside it
+had moved, so the page carried two measurements of one thing that disagreed,
+which is the defect its own next sentence is about.
+
+The previous reading was **78 written, 20 blocked** (2026-09-29, after D153),
+and it is kept because of what it shows rather than for the numbers. The
+carried total fell by one there rather than the written total rising, because
+D153 retired `enforceStaffRoleIntegrity` instead of porting it: the owned store
+constrains `staff_role` on both tables and lets nobody write it, so the sweep
+that reverted a spoofed value has no work left. **A bucket shrinking is not the
+same event as a port landing, and this page should not let the two read
+alike** — a written count that did not move is the tell. D223 is the other
+shape: `setNurseDutyStatus` was really written, so `none` rose and the carried
+total did not.
 `records_schema` is absent from that line rather than zero in it,
 because `portQueueLine` omits an empty bucket — and that bucket is empty with
 every capability in it BUILT, which is the first time. Three of the buckets
@@ -182,11 +192,12 @@ written.
 1. ~~**Apply what is already committed to the staging project.**~~ **Done
    2026-09-21**: all 59 outstanding migrations applied to
    `caremetric-pennsync-staging`, 68 recorded in the ledger, the pin landed on
-   staging with `source 'default'`. **The ledger has since taken the five
-   migrations merged after that and stands at 73 with nothing pending**, read
-   from the `hosted-gap` job on `b8e4e021` rather than from the tick. The 59 record migrations are no
-   longer unproven against a hosted database; the handlers still are, because
-   nothing has served a request yet. Stage B has since deployed them, paused —
+   staging with `source 'default'`. **As read from the `hosted-gap` job on
+   `b8e4e021`, the ledger stood at 73 with nothing pending at that commit**;
+   this is a dated reading rather than the current state, which is not readable
+   from this tree. The 59 record migrations are no longer unproven against a
+   hosted database; the handlers still are, because nothing has served a
+   request yet. Stage B has since deployed them, paused —
    serving one needs an identity, so it is stages C and D.
 2. ~~**Create the `pennsync-api` Railway service**, deployed paused, exactly as
    the integration runtime was.~~ **Done 2026-09-22**: live at
@@ -359,11 +370,15 @@ written.
    entities' dispositions splits them three ways: sites a route already serves,
    sites that could be adopted against the owned store, and sites that **cannot
    land at all** because the entity's domain was decided `hub` or
-   `preserved_paused` — those need a product answer, not an edit, and no amount
-   of frontend work reduces them. Sizing this item off the single number 453
-   overstates the editable part and understates the decisions.
+   `preserved_paused` — no amount of frontend work reduces them. Sizing this
+   item off the single number 453 overstates the editable part and understates
+   the decisions. **But "those need a product answer" is wrong as a blanket
+   claim**: the `hub` domain's answer was given by D8, and D7 exempts the
+   schema-and-data half of `preserved_paused` in its own words. The split, its
+   instruments and what is genuinely left for the owner are under Stage J
+   below, with the counts marked as a dated reading.
 
-   **What makes this item tractable, and Stage G's seven not, is one
+   **What makes this item tractable, and Stage G's remaining bucket not, is one
    distinction that runs under both**: whether a capability exists, and whether
    anything can call it. Here the capability exists and the gate PROVES
    something can call it, by putting each site's own arguments through the
@@ -408,17 +423,22 @@ Sizes assume the current cadence; they are estimates, not commitments.
 
 ### Stage A — Prove the committed store on hosted staging (size S, days; no approval needed)
 
-The cheapest and most overdue step in the migration, and the only one on the
-critical path that needs nothing from anybody.
+**Done 2026-09-21: the migrations this stage names were applied to
+`caremetric-pennsync-staging`.** The instrument is this stage's own dated record
+under *Applied 2026-09-21* below. ~~The cheapest and most overdue step in the
+migration, and the only one on the critical path that needs nothing from
+anybody.~~ Everything that follows is kept as the procedure and as what the
+stage found, not as work outstanding — which is why the two bullets below are
+struck rather than deleted.
 
-- Apply the five missing authority migrations to `caremetric-pennsync-staging`:
+- ~~Apply the five missing authority migrations to `caremetric-pennsync-staging`:
   `20260919090000_deployment_app_pin`, `20260919114500_enrollment_receipt`,
   `20260920040000_chart_assignment`, `20260920180000_chart_assignment_lifecycle`,
   `20260920200000_membership_lifecycle`. The app pin goes first; unset it
   defaults to staging, which is the correct outcome for this project, but the
-  `deployment` row should record that it was *chosen*.
-- Then apply every `supabase/record-migrations/` file, in order — 54 when this
-  was written, 59 now.
+  `deployment` row should record that it was *chosen*.~~
+- ~~Then apply every `supabase/record-migrations/` file, in order — 54 when this
+  was written, 59 now.~~
   `tools-pennsync-provision.mjs` cannot do this — it refuses a database that
   already holds `pennsync_private` (`PROVISION_STORE_ALREADY_PRESENT`), by
   design, because re-provisioning would try to re-pin an immutable pin.
@@ -496,6 +516,28 @@ critical path that needs nothing from anybody.
   ledger check by one row; the owner applied the migration at about `18:18Z`;
   the re-run came back green, 22 of 22, `skipped 0`. Anyone reading the first
   run as a schema problem is debugging the clock.
+
+  **Second worked instance, 2026-10-01, and it is recorded here as a DATED
+  READING with its reporters named rather than as a state of the store.** A
+  staging apply landed against `main` at `82bd9c94`, with the apply output
+  stamped `19:23:47Z`, and the hosted ledger moved from 74 rows to 90. **None of
+  that was measured from this tree.** The apply session's own transcript is the
+  primary source; it reached this page through a worker of the coordinator
+  session, so it is second-hand here, and that session's report is saved outside
+  the repository as `staging-apply-report-2026-10-01.md`. The ledger movement was
+  read independently of that transcript, from `main`'s CI logs, by two further
+  sessions. A reading corroborated three ways is still a reading of one moment:
+  `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` with no
+  `--apply` is what answers what a store holds now, and this sentence does not.
+
+  **What that reading does NOT say is what is pending, which is a different
+  instrument.** At `543a0271` two record migrations had arrived and not been
+  applied, and `node tools-pennsync-apply-signal.mjs --base origin/main` on the
+  head carrying this paragraph reports one more arriving with it — measured here,
+  five runs agreeing, rather than inferred from the ledger figure above. D106's
+  rule is the whole point: what is committed, what reaches a deployment and what
+  a deployment has RUN are three counts, each derived, and subtracting one from
+  another across two instruments is how they get merged by accident.
 - **A second transport had to exist before that plan could be run at all, and
   that is a finding rather than a convenience.** From this container — and from
   any runner allowed outbound HTTPS and nothing else, which includes CI here —
@@ -1435,7 +1477,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   | | Count |
   | --- | ---: |
-  | Ported capabilities `src/` reaches | 54 of 80 |
+  | Ported capabilities `src/` reaches | 54 of 136 |
   | Routed call sites | 73 |
   | …naming a tenant | **3** |
   | …demonstrably not naming one | 33 |
@@ -1555,16 +1597,85 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   document is where such a judgement belongs; each is then re-checked against
   the tree, so a declared name that stops being a handler, or a read wave that
   gains a write, fails the build. "The rest by blast radius" is derived:
-  read-only, then mutating, then the nineteen that reach the paused runtime.
+  read-only, then mutating, then the twenty-seven that reach the runtime.
 
   | Wave | Handlers | Migrations |
   | --- | ---: | ---: |
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 28 |
-  | `mutating` (derived) | 54 | 39 |
-  | `integration` (derived) | 19 | 17 |
+  | `read-only` (derived) | 55 | 29 |
+  | `mutating` (derived) | 59 | 42 |
+  | `integration` (derived) | 27 | 25 |
+
+  **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
+  and `splitReferralPDF` — carry an operator cost the other twenty-four do not.**
+  They are the first three ports out of the `files` bucket, and they get there
+  by taking the document's BYTES rather than a locator, so each brokers
+  `UploadFile` under the caller's own subject — which put that name into
+  `BROKERED_OPERATIONS`. The second and third added no operator cost the first
+  had not already added, and no migration: the same shape over a different
+  integration (`InvokeLLM` with the document attached rather than
+  `ExtractDataFromUploadedFile`) and then over a different document.
+
+  **What none of the three clears is `CROSS_SUBJECT_DOCUMENT_READ`**, recorded
+  in Stage H. They read a document for the length of one request; a locator
+  stored so a COLLEAGUE can open it later is a different question with a
+  different answer, and the third port sits beside exactly such a locator
+  (`Referral.document_url`) without touching it. `node tools-pennsync-release-ladder.mjs
+  --wave integration --integration-deployment https://<runtime-host>` now
+  requires it, so **a runtime serving only the two AI operations and
+  `SendEmail` does not hold this wave**: `UploadFile` has to join
+  `INTEGRATIONS_ALLOWED_OPERATIONS` on the integration runtime in the same
+  release. That is a release-variable write and belongs to whoever holds that
+  connector; nothing here performs it, and the gate refusing is the check doing
+  its job rather than a defect. Read the runtime's own `/readyz` for what it is
+  serving — this page does not say.
+
+  **One capability in this wave is a PARTIAL port, and it is not the two
+  above.** `syncCMSRegulations` sends `model: "gemini_3_1_pro"` and
+  `add_context_from_internet: true`. The owned runtime admits `automatic` or
+  the one model an operator configured, and refuses a web search BY NAME, so
+  the call is refused whatever that configuration is — measured 2026-09-29 by
+  driving the port's own constants through `validateParams`, which answers
+  `MODEL_MAPPING_REQUIRED` and then, if an operator named that model,
+  `WEB_SEARCH_NOT_MIGRATED`. Nothing in `src/` calls it.
+
+  **The search leg is now PAUSED BY NAME** (`WEB_SEARCH_RELEASE_PAUSED`, 503,
+  raised before the model is reached), which is D42 and D81's shape. It was
+  settled on correctness rather than weighed: the only alternative is dropping
+  the search and asking the model anyway, which stores regulations recalled
+  from training as CURRENT CMS regulations in a compliance product, and a
+  capability that refuses is strictly better than one that answers confidently
+  and wrongly. The refusal is unconditional rather than gated on an operator
+  setting, because what it waits on is a provider that does not exist rather
+  than a decision anybody can take; the port below the guard is kept whole, so
+  restoring it is deleting one guard.
+
+  **Two things about how this was found are worth more than the fix.** Nothing
+  crossed the two halves — the business API builds the model call and the
+  runtime decides whether to make it, and each half was right on its own — so
+  `pennsyncApiOriginalParity` now drives every port's model constant through
+  the runtime's own validator and names this one exception with its reason,
+  which fails the build if a second arrives or this one vanishes. And the
+  capability had **no behavioural test of any kind** until the pause, which is
+  how a 130-line port with a record contract and a trail append shipped with a
+  call neither half could make.
+
+  **Those two rows were RE-DERIVED on the merged tree, not reconciled.** Two
+  branches moved them and neither could see the other: one read 64 and 42
+  against 22 and 17, the other 49 and 37 against 24 and 23, and the merged tree
+  reads neither pair. `node tools-pennsync-release-ladder.mjs --summary` is the
+  instrument and it is the only thing either figure should ever be copied from.
+
+  **A THIRD row moved on the next merge, and it is the one that never
+  conflicted.** `read-only`'s migration count went 28 → 29 because
+  `20260920745000_dashboard_visit_documentation.sql` arrives in that wave, and
+  both sides of that merge wrote 28: the branch adding the file never touched
+  this row, and `main` could not see the file. Git records what two branches
+  both edited, which is a different set from what the merge makes false, so a
+  row can be stale on the merged tree with no marker anywhere near it. Re-derive
+  EVERY row from the tool, not the rows that conflicted.
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1582,12 +1693,43 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   with one shared migration, and moved neither `mutating` nor `integration` —
   which is what a read-only port should look like: five capabilities that
   create nothing, over five entities the frontend already writes through
-  Base44. Every other movement since batch D belongs to a sibling batch rather
+  Base44. The provider directory's three writes then took `mutating` to 52 with
+  one shared migration and moved neither of the other two: `createPhysician`,
+  `updatePhysician` and `deletePhysician` are the whole delta, and `physician`
+  was already read through a capability in `read-only`, so the entity arrives in
+  no wave it was not already in. Every other movement since batch D belongs to a sibling batch rather
   than to this one — which is what the paragraph below means about the figures
   being global, and why the row is re-derived on the merged tree instead of
   being added to. This row was re-derived on seven bases over the life of one
   pull request; the number above is a reading of the tree it merges onto and of
   no other.
+
+  The roster's telecom keys then added ONE migration to EACH of the three derived
+  waves and no handler to anything: a forward file over `roster_entry` (D88), so
+  every handler reaching a roster contract needs it and no capability arrived. It
+  is the shape the `operational_limit` repair and the crossed-chart control
+  already had — a wave gains a migration without gaining work — and worth saying
+  each time rather than once, because a count that moved for no new capability is
+  the one a reader is likeliest to read as a port.
+
+  Note WHICH waves moved, because the obvious guess is wrong: a roster read is a
+  read, so `read-only` is the expected row and the other two are not. They move
+  because the roster is read by handlers that then WRITE, and by handlers that
+  also reach the runtime, and a wave's migrations are the ones ITS handlers need
+  — so a shared read contract lands in every wave that reaches it. This is the
+  same property the compliance writes recorded from the other side, where one
+  file joined two waves: three rows moving for one file is the derivation
+  working, not a file counted three times.
+
+  The timesheet approver gate then added ONE migration to `mutating` and nothing
+  to the other five, and no handler to anything: a forward file over
+  `contract_timesheet_review` (D88), so the two timesheet handlers need it and no
+  capability arrived. Only `mutating` moves because `contract_timesheet_review` is
+  reached by no read-only handler and by nothing touching the runtime — which is
+  the contrast worth keeping beside the shared-read cases, where one forward file
+  moves every derived row at once: a wave's migrations are the ones ITS handlers
+  need, so how many rows move says which handlers reach the function rather than
+  how big the change is.
 
   The five compliance WRITES then took `mutating` to 54 and left `read-only`
   and `integration` where they were. Its migrations rose by **two** for one
@@ -1597,6 +1739,12 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   both waves. A wave's migration count is therefore not a partition of the
   directory and the six rows do not sum to it — read each row as what that
   wave's operator must have applied, never as a share of the whole.
+  The duty-status port (D223) then took `mutating` to 55 and its migrations to
+  40, and left `read-only` and `integration` where they were. One handler, one
+  migration, and both counts move by one — which is what a plain port looks
+  like, and is worth recording precisely because the two rows above it each
+  move by something other than one for reasons that are not miscounts.
+
   **These counts are GLOBAL, so this row belongs to whichever batch merges
   next rather than to the plan.** Re-derive it from
   `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
@@ -1605,6 +1753,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   with its own CI green throughout. The figures above already carry batch A's
   seven reference reads and batch C's fourteen library and configuration
   capabilities.
+
+  The three reference tables' writes then took `mutating` to 63 with one shared
+  migration, and moved neither `read-only` nor `integration`. Six capabilities
+  and not nine: `LibraryDocument` gets an update and a delete and no create,
+  because its entity requires the storage locator the contract refuses until the
+  file copy has run. All three entities were already read through capabilities
+  in `read-only`, so again no entity arrives in a wave it was not already in —
+  which is the shape to expect from a port that gives an existing read its
+  missing write half, and the reason the read row does not move.
 
   The `mutating` row's migrations rose by one with D108, and the derivation
   rather than the number: that entry's forward migration redefines
@@ -1633,7 +1790,20 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   reconciling them by arithmetic is how a delta gets stated over a total that
   no longer exists.
 
-  The `read-only` row's migrations rose by one with the dashboard
+  The `mutating` row's migrations rose by one again, and ONLY that row, because
+  the leave-review approver fix's forward migration redefines
+  `contract_time_off_review` — one contract, reached by handlers in no other
+  wave. Contrast the roster telephone change next to it, where a forward file
+  over a shared READ contract moved all three derived rows at once: which rows
+  move is a property of how widely the contract is reached, not of how large the
+  change is. The handler count does not move, because the change adds no
+  capability; a handler count that had moved would have meant the classification
+  shifted rather than that work arrived. Re-derived from `--summary` on this
+  tree rather than added to the figure above, for the reason the D108 paragraph
+  gives: replaying a delta onto a base that has moved states it over a total
+  that no longer exists.
+
+  The `read-only` row's migrations then rose by one with the dashboard
   documentation signal, and the derivation again rather than the number: that
   forward migration redefines `dashboard_visit`, which `contract_dashboard`
   projects through, so the wave carrying `getDashboardData` gains it as a
@@ -1643,8 +1813,14 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   the paragraphs above record the opposite case: these rows are each wave's
   OWN prerequisites, not the cumulative value, so a migration reaching only
   `read-only`'s handlers moves only `read-only` — while the value `--wave
-  mutating` emits does grow, because THAT is the superset. All three were
-  re-derived from `--summary` on this tree rather than added to.
+  mutating` emits does grow, because THAT is the superset.
+
+  **What that paragraph did NOT do on its own branch is edit the row**, and
+  neither did `main`. The table above said 28 on both sides of the merge and
+  the tool said 29, so the prose was right and the figure beside it was wrong,
+  with nothing conflicting. Re-deriving the whole table on the merged tree is
+  what found it; re-deriving the figures a merge happened to mark is what would
+  have missed it.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
@@ -1690,6 +1866,51 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   facility stays and is still the place a future hold goes; because an empty
   list fires none of its six guards, each is driven from a synthetic hold in its
   tests rather than left vacuous.
+  **Four workforce capabilities have MOVED out of `mutating` the same way, and
+  this time a migration column moved with them.** `submitTimeOffRequest`,
+  `reviewTimeOffRequest`, `reviewPersonnelCredential` and
+  `submitPersonnelCredential` each answered a constant `delivery_paused: true`
+  and reached no integration; they now send their staff notice, so all four
+  carry `needsIntegration: true` and the ladder places them in `integration`:
+  mutating 54 → 50 and integration 19 → 23 in the table above. The check worth
+  reading is that the handler total does not change — 2 + 2 + 4 + 55 + 50 + 23
+  is 136 either way — because a transfer moves a capability between waves while
+  an arrival raises the sum.
+
+  The migration columns went 39 → 37 and 17 → 19, which is two files changing
+  wave rather than two files arriving, and the derivation is per-file:
+  `20260920240000_contract_credential.sql` and
+  `…250000_contract_credential_review.sql` are reached by these two credential
+  capabilities and by nothing else left behind — the credential LIST reads
+  through `20260920660000_contract_compliance_reads.sql` — so both follow their
+  handlers. `20260920230000_contract_time_off.sql` does NOT move, because
+  `cancelTimeOffRequest` stays in `mutating`: its notice cannot be built until
+  the cancel contract returns the status it replaced, so the file is a
+  prerequisite of both waves now. Measured by diffing `--wave` on this tree
+  against `00ccac41`, not inferred from the deltas.
+
+  Restoring the in-app rows those two time-off senders never minted then took
+  `integration`'s migrations 19 → 22 with no handler moving and no new SQL
+  written: the two capabilities call the existing `createNotification` contract,
+  so the wave gains that contract's own file, the mint facility it is the only
+  writer through (`20260920285000_notification_mint.sql`, D48) and
+  `20260920300000_contract_notification.sql`, whose helpers it uses. A wave's
+  prerequisites follow from the contracts its handlers call, and these two
+  handlers gained a contract call. The read waves do not move, because those
+  three files were already theirs.
+
+  The fifth workforce sender transferred with them once the store could answer
+  its condition: mutating 50 → 49 and integration 23 → 24, with integration's
+  migrations 22 → 23 for the forward file
+  `20260920680000_time_off_cancel_previous_status.sql`, which replaces the
+  cancel contract so its answer names the status it replaced.
+  `20260920230000_contract_time_off.sql` still does not move a column, but the
+  reason has changed and is worth writing down: it stayed before because
+  `cancelTimeOffRequest` was left behind in `mutating`, and now nothing is left
+  behind — `getApprovedTimeOff` reaches that file from `read-only`, which holds
+  it either way. A prerequisite that did not move for one reason and then does
+  not move for another looks like nothing happening.
+
   The send's own switch, separate from `PENNSYNC_API_RELEASE`, is
   `PENNSYNC_API_DELIVERY=enabled-v1`, read exactly and untrimmed; it was written
   at `16:19Z` the same day. **What `/readyz` says about it is a reading, not a
@@ -2770,15 +2991,20 @@ from the other.
 **Exit:** production store provisioned; the pin proved chosen rather than
 defaulted; `deployment` row dated.
 
-### Stage G — The last 21 ports (size M, parallel to D and E)
+### Stage G — The ports that are left (size M, parallel to D and E)
 
 **Measured 2026-09-23: the startable side is at ZERO, and the count of what is
 left has fallen twice since this heading was written — 31, then 24 after D82 to
 D87, then 21 once D89 to D91 wrote the three ports those decisions unblocked.**
 `tools-transition-disposition.mjs` reports 78 capabilities with no blocker, and
 all 78 are registered in `services/pennsync-api` — so every port that *can* be
-written without a decision has been. The heading said 31 and says 21; read
-`pnpm run check:transition-disposition` rather than either. Four buckets the
+written without a decision has been. **The heading carried 31, then 21, and now
+carries no count at all**, because it was wrong at both and the figure has since
+moved again — D153's retirement of `enforceStaffRoleIntegrity` took the
+`entity_authorization` bucket down by one and nothing updated the heading.
+A count written into this prose is wrong within a merge, so there is none here:
+the table below carries it, and `pnpm run check:transition-disposition` is the
+instrument. Four buckets the
 queue used to report are empty: `records_schema` (D75 on a correction, then
 D84 refilled it and D89 to D91 emptied it again by building all three),
 `ported_function` (D76), `entity_not_carried` (D84) and `core_integration`
@@ -2792,7 +3018,7 @@ answer was 0. That is D47's lesson once more — read the shape from the tree.
 Re-measured after D82 to D87 (2026-09-23), which settled every decision this
 table was waiting on, and again after D89, D90 and D91 wrote the three ports
 those decisions unblocked. **What is left is no longer "ports that are simply
-not written yet"** — that bucket is empty. It is the file layer, seven
+not written yet"** — that bucket is empty. It is the file layer, the
 administrative write paths, and a vendor key.
 
 | Blocker | Count | What it needs |
@@ -2805,18 +3031,20 @@ administrative write paths, and a vendor key.
 | ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is a flag flip rather than a build, and it stayed the owner's until he flipped it on 2026-09-25 — the runtime half at `09:42Z`, the `OWNER_HELD` lift in #283, and the api's `PENNSYNC_API_DELIVERY` at `16:19Z`. All three are spent and both capabilities now send |
 
 **Where those readings come from, so the next person re-runs them rather than
-quoting this row.** The bucket and its seven names are `pnpm run
+quoting this row.** The bucket and its names are `pnpm run
 check:transition-disposition`'s own `port queue` line, which this page pins in
-Stage B. The three-and-four split is `schedulerAuth` in each capability's
-module crossed against whether any file under `src/` names it: three carry the
-fence and are named nowhere, four are named by a screen. Both read on
-`6e867ff7`. The row's shape can move under a disposition ruling without any
-capability being written — `enforceStaffRoleIntegrity` is under one now — so
-re-measure before quoting the count.
+Stage B. The split between decisions and ports is `schedulerAuth` in each
+capability's module crossed against whether any file under `src/` names it: the
+fenced ones are named nowhere, the rest are named by a screen, and the row above
+says which is which. **Written without tallies deliberately** — this paragraph
+carried a three-and-four split adding to seven, against a table that already
+said six, because D153's retirement of `enforceStaffRoleIntegrity` was recorded
+in the row and not here. The row's shape can move under a disposition ruling
+without any capability being written, so re-measure rather than quote either.
 
 **And there is a third reading, which is the one that changes how this bucket
-should be planned.** None of the seven — the four ports included — can be
-written against a capability that already exists. All seven write `User`, and
+should be planned.** None of them — the ports included — can be written against
+a capability that already exists. Every one of them writes `User`, and
 nothing under `services/authority-store/supabase/record-migrations/` writes
 `pennsync_records.user` at all, so D82's `user_update` policy and
 `user_self_write_guard` trigger are a permission with no performer: the store
@@ -2844,6 +3072,93 @@ capabilities that are already there.
 
 **Exit:** `private_files` rehearsal receipt — source hash equals download hash,
 foreign and revoked denial, expiry and renewal.
+
+#### The duty toggle, and the first caller of D82's profile write
+
+`setNurseDutyStatus` is served by `20260920710000_contract_duty_status.sql`,
+and it is the first thing in the store that writes `pennsync_records.user`.
+D82 built that path — an update policy naming `caller_user_id()` and a trigger
+admitting only `PROFILE_SELF_WRITABLE` — and nothing had called it, so
+`contract-duty-status.test.mjs` is the first evidence either half works.
+
+It reached the queue's startable bucket and left it in the same change, on a
+correction rather than a decision: `writtenColumns` could not read a patch
+assembled into a local object before the call, so a capability whose six
+columns are all on the allowlist was reported as writing outside it.
+
+Four divergences from the original, each proved against it rather than
+described:
+
+* **The cross-user leg is refused by name.** Its only gate is
+  `isProtectedSuperAdmin`, the platform tier D14 and D22 removed, and
+  `user_update` would refuse the write anyway — as a row that did not update,
+  which reaches the caller as success.
+* **Membership is the only way in.** The original admits the platform owner
+  *instead of* an active membership. A narrowing, and not one D40 widens back:
+  there is no agency-scoped successor to "may set anyone's duty status".
+* **A caller holding two agencies is served, and in Base44 is not.**
+  `hasExactActiveAgencyMembership` refuses unless exactly one row comes back,
+  which is how a handler with no envelope establishes a tenant. The business
+  API's invariant is that every request names its tenant, so the compensation is
+  deleted (D68). Its whole blast radius is which agency's activity trail the
+  entry lands in, and the caller holds both.
+* **The change and its trail entry are one transaction.** The original writes
+  `UserActivity` with `.catch()`, so a failed audit leaves the change made and
+  unrecorded (D37).
+
+One detail cannot be ported and is recorded rather than approximated. The
+off-duty message is cut at 320 **UTF-16 code units**, and JavaScript's `slice`
+will cut between the halves of a surrogate pair. PostgreSQL text cannot hold a
+lone surrogate, so `duty_message_bounded` counts units the way D33's
+`bounded_reason` does and drops a character whose second unit would cross the
+bound rather than splitting it — identical for every message that does not cut
+mid-pair, one character shorter for one that does.
+
+The sanitizer is in SQL and not in the service, which is the one place this
+departs from D67's split. The original's own comment says why: the message is
+spoken to callers by TTS and sent as an SMS auto-reply, so stripping markup is a
+disclosure control rather than shaping, and **a control the service applies is a
+control a direct RPC call skips.**
+
+#### CROSS_SUBJECT_DOCUMENT_READ — a stored document is a second problem, and a port never clears it
+
+**Named because it must not be inherited from a port.** Measured 2026-09-29.
+
+The integration runtime derives its subject as
+`hash(hashKey, [appId, agencyId, user_id])` (`runtime.mjs:136`) — per **(app,
+agency, USER)** — and `providers.mjs`'s `fileRecord` admits an object only when
+`row.subject` equals the caller's. `pennsync-api` holds no storage credential
+and forwards the caller's own bearer, so the subject is the CALLER'S.
+
+Two consequences, and conflating them is the hazard this record exists for:
+
+1. **Within one person's work, a handle travels.** The subject is stable across
+   requests, so an object one handler mints is readable by another handler in a
+   later request by the same person. `operator-acceptance.mjs:78-89` drives
+   upload, extract and sign as three separate invocations and expects all three
+   to succeed, with a foreign-subject denial beside it. This is what lets a
+   browser-supplied document capability port at all, and it is why
+   `extractPatientDataFromDocument`, `extractClinicalDocument` and
+   `splitReferralPDF` could move.
+2. **Between people, it does not.** A COLLEAGUE opening a document is a
+   different subject and gets `FILE_ACCESS_DENIED`. So every carried locator
+   that exists so somebody ELSE can open it later stays blocked — and that is
+   most of them. `Referral.document_url` is the worked example: the intake
+   screen stores it for the care team, the census counts it as one of the 66
+   locator fields, and porting the split detector over that same document
+   changes nothing about it.
+
+**So a port of a capability that READS a document during one request is never
+evidence that STORING that document is solved.** The sentence to refuse is "the
+referral upload is unblocked". The capability is; the persistence is not, and
+the two happen to concern the same bytes, which is exactly why they get read as
+one thing.
+
+Closing this is not a data migration. It needs a reader model the runtime does
+not implement — D77 pins `RUNTIME_READER_MODEL` against `REQUIRED_READER_MODEL`
+and refuses every apply precisely because they differ — and giving that runtime
+record or tenant authorization is a decision about ITS authorization model.
+Unchanged by any of the three ports above.
 
 ### Stage I — Customer data migration (size L; after Stage F)
 
@@ -3431,25 +3746,44 @@ entity routes: 81 declared, 145/245 landable call sites SERVED, 100 still to ado
   of those 100, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 99 need a named capability
 ```
 
-**And the reading on THIS tree, with the compliance writes merged onto the route
-and allowlist work.** This one is `pnpm run check:entity-routes`'s own output and
-is **pinned**: `tools-entity-routes.test.mjs` fails unless the page carries it
-byte for byte, so paste what the tool prints and never retype, rewrap or
-re-indent it.
+Then the provider directory's three writes landed and the reading moved again.
+The block above is a record of the head before them and stays where it is; this
+one is the current tree. Two of the three new routes are SERVED and the third is
+UNPROVED — `PhysicianForm.jsx` passes form state, so no static reader can run its
+arguments — which is why three declarations move the served line by two. Read the
+declared count and the served count as answering different questions: declaring a
+route always moves the first and moves the second only for the sites whose
+arguments this can resolve.
 
 ```
-entity routes: 86 declared, 152/245 landable call sites SERVED, 93 still to adopt
-  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
-  18 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
-  of those 93, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 92 need a named capability
+entity routes: 84 declared, 147/245 landable call sites SERVED, 98 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 45 pass arguments this cannot read
+  17 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 98, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 97 need a named capability
+```
+
+**And the reading at `00ccac41`, with the compliance writes, the provider
+directory's three writes and the three reference tables' writes merged
+together.** It was the pinned block when it was written and is now a RECORD of
+that head; the pinned one is the last block in this stage, and only that one is
+checked byte for byte.
+
+```
+entity routes: 97 declared, 158/245 landable call sites SERVED, 87 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 56 pass arguments this cannot read
+  23 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 87, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 86 need a named capability
 ```
 
 **It is one printer run over one merged tree, so read it as a reading and not as
-a sum.** The five compliance write keys are the difference from the block above
-it, and the nine refused sites and fifty unreadable arguments come from the route
-and allowlist work, not from these five — the two branches were open at once and
-neither could see the other's effect on these totals, which is why this is
-re-measured here rather than added up.
+a sum, and this block is the worked example of why.** Three branches were open
+at once — the compliance reads, the compliance writes, and the provider
+directory's three writes — and none could see the others' effect on these
+totals. Adding the deltas gives the wrong answer in both directions here: the
+declared count rose by five where two branches each claimed three and two, and
+the unreadable count rose to fifty-two although neither branch set out to move
+it at all. Every figure below was re-run on the merged tree rather than
+reconciled.
 
 **Two of the three matcher-fix refusals are in a module nothing imports, and that
 changes what they cost rather than whether they are real.**
@@ -3460,6 +3794,128 @@ so the assertion fails if one ever does, and today none does. The refusals are
 real and no screen reaches them. Measured on this tree: eight entity operations
 live in that module, across `NoteConversion`, `ComplianceAudit`, `Task` and
 `Incident`, and none is on a path a user can execute.
+
+**The reading above is a record of `00ccac41` and is deliberately not
+maintained.** What follows it is measured on a tree where the INSTRUMENT
+changed, so the two are not comparable and must not be differenced.
+
+`limitConstants()` in `tools-entity-call-arguments.mjs` used to read exactly one
+module, `src/lib/queryLimits.js`. Every call site naming a row limit declared
+anywhere else read INDETERMINATE, which makes the whole call unreadable and the
+site unserved — whatever its contract could do. `AdrAuditCase.list` was the
+worked example and is recorded above: its contract existed, was reachable and
+was tested, and the only thing between it and a route was that
+`ADR_CASE_READ_LIMIT` is declared in `src/components/adr/adrCaseRead.js`. The
+earlier comment in `independentEntityRoutes.js` named the broader cause and was
+wrong; the limit was the SOURCE MODULE and never the module boundary, since
+`PATIENT_HISTORY_ROWS` has always resolved across files.
+
+The reader now takes every production module that exports an integer. It
+refuses an AMBIGUOUS name — two modules giving one name different values — and
+a local `const` SHADOWING an exported one, rather than picking, because it
+resolves a name and does not follow an import graph. Both were measured clear
+on this tree, and both are refusals in the code rather than sentences here, for
+the reason this page keeps relearning: a reading of a tree on a day is not a
+property of the tree, and a check that runs every time is the difference
+between an assumption and a guarantee. Each refusal was planted and watched to
+fail, and each carries a control that must pass.
+
+**What it moved, measured rather than predicted: exactly one site.** The whole
+per-site classification was captured before and after and differenced, and
+`AdrAuditCase.list` in `src/pages/ADRCenter.jsx` is the only line that changed,
+from unreadable to `["-created_date", 200]`. `NoteConversion.filter` was
+expected to move with it and did not, and the correction is worth keeping: it
+is held on its CONTRACT, which cannot express the field the site filters on —
+`operationalRoutes.test.js` says so and fails if `listNoteConversions` ever
+takes that field — so it was never the reader's to convert. Two sites that look
+like one cause were two.
+
+So the route below is the ruler's whole yield, and the rest of the change is
+the ruler.
+
+```
+entity routes: 87 declared, 153/245 landable call sites SERVED, 92 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 50 pass arguments this cannot read
+  18 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+**Read the served count's rise as ONE screen, and read nothing at all into the
+comparison with the block above.** A figure derived by a widened instrument and
+a figure derived by the narrow one are answers to different questions, and the
+only honest statement across them is that the pool was classified by a
+different rule, not that it grew or shrank. Anything still reading
+INDETERMINATE after this is unreadable for a reason other than where its
+constant lives.
+
+**That block records `00ccac41` read by the WIDENED instrument, and what follows
+is the same tree again with the two `AIConfiguration` write routes declared.**
+It is a third printer run and not an adjustment of either block above it. The
+limit reader and these two routes were open at the same time and neither branch
+could see the other's effect on these totals, so the figures below were
+re-measured on the merged tree; adding the two deltas would have invented a
+number no rule produced.
+
+**Read the served count first, because it did not move, and that is the honest
+result rather than a disappointing one.** All four call sites those routes serve
+build their payload in a variable, so the argument reader cannot evaluate them
+and they move from the unrouted pool into the population it declines to answer
+about. The routes are declared and UNPROVED, and what checks them is the
+contract's own refusals — the state eighteen write routes were already in before
+these two. The gate cannot say these screens now work; it can only say they are
+no longer refused before reaching the store, which is what declaring them buys.
+`routedEntities` refuses an undeclared entity operation on this backend with no
+Base44 fallback, so every one of those four sites refused until this landed.
+
+So the move to read here is the unrouted pool falling by four and the unreadable
+population rising by the same four. That rise is the check working: it grows
+every time a route is declared over a site of that shape, and reading it as a
+regression would be reading the instrument's own honesty as a fault.
+
+```
+entity routes: 89 declared, 153/245 landable call sites SERVED, 92 still to adopt
+  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 54 pass arguments this cannot read
+  20 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientEducationAssignment.update, PatientRecommendation.create
+  of those 92, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 91 need a named capability
+```
+
+The scope those routes send is derived from the payload rather than bound, for
+a reason that is about this file's key shape rather than about the contract:
+one `AIConfiguration.create` route serves an administrator writing the agency's
+settings and a nurse writing their own preferences, and `user_email` is the
+column that tells them apart. The contract re-decides the same question against
+the stored row and refuses a mismatch by name, so a mis-derived scope is a
+refusal the screen reports rather than a write to somebody else's row. And one
+narrowing rides with it: the agency branch admits an `agency_admin` only, where
+the Base44 entity write had no role gate at all.
+
+**That block, and every one above it, is a DATED record. What follows is this
+tree again after the duty toggle was WITHDRAWN — superseded by the contract
+`main` already carries — and after the reference writes landed. It is another
+printer run, not an adjustment of anything above it.** This is the PINNED
+block: `tools-entity-routes.test.mjs` fails unless the page carries it byte for
+byte, so paste what `pnpm run check:entity-routes` prints and never retype,
+rewrap or re-indent it.
+
+```
+entity routes: 100 declared, 164/245 landable call sites SERVED, 81 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 81, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 80 need a named capability
+```
+
+**Every figure above was re-run on the merged tree rather than reconciled from
+the two sides of the merge**, and that is the rule this block exists to enforce
+rather than a remark about this one. Two branches each moved the declared count
+and neither could see the other, so adding their deltas is wrong in both
+directions — and the instrument moved as well, which makes a difference against
+any earlier block in this stage a comparison between two different questions.
+Read the blocks above as dated records and difference none of them.
+
+What this head contributes to the move is the roster's telecom projection and the
+repair of three admin screens that had been asking the roster for an order it
+cannot serve, so those sites moved into SERVED rather than out of the audit. The
+totals it produced are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -3563,50 +4019,145 @@ which is how a bucket comes to claim more than it measured.
 Beside the served sites, the remainder is three populations and they are three
 different kinds of work:
 
-- **Nine are REFUSED by a declared route.** Six are `User.list` asking for a
-  sort, across five files; three are the offline queue's, described above.
-  These are the only sites where the Base44 fallback is already gone — but nine
-  refusals are FIVE screens. They fall across six files, and the sixth is not a
+- **Four are REFUSED by a declared route.** One is `User.list` asking for a
+  `full_name` sort, in one file; three are the offline queue's, described above.
+  These are the only sites where the Base44 fallback is already gone — but four
+  refusals are ONE screen. They fall across two files, and the second is not a
   screen: `retiredOfflineQueue.js` is a lib module no production file imports.
-  Nine, six and five are three different counts of one bucket, and the one that
-  sizes the work is the smallest. **And this line is progress-shaped, so a rise
-  in it reads backwards**: it was six when #309 merged and is nine now, and all
-  three arrivals came from `c90ad9ae` — two keys became refusals by being
-  DECLARED, where an undeclared key is skipped rather than refused, and the
-  third became visible when the shared matcher stopped being a regular
-  expression. A refusal cannot be counted until a route exists to do the
-  refusing, so plotting this bucket over time measures the audit's reach and not
-  the product's health.
-- **Fifty pass arguments the scan cannot read**, because the call builds
+  Four, one and one are three different counts of one bucket, and the
+  one that sizes the work is the smallest. **This line moves in BOTH directions
+  for reasons that are not opposites, so neither direction can be read off the
+  number.** It was six when #309 merged, rose to nine on `c90ad9ae` — two keys
+  became refusals by being DECLARED, where an undeclared key is skipped rather
+  than refused, and the third became visible when the shared matcher stopped
+  being a regular expression — and has fallen from nine to four here, across
+  THREE changes none of which knew about the others: three admin screens stopped
+  asking for an order the roster cannot serve, then the timesheet's approver
+  dropdown did, then the leave form's did, so five sites moved into SERVED rather
+  than out of the audit. A rise measures the audit's reach; this fall measures
+  five call sites repaired; and a fall could equally mean a route was withdrawn.
+  Read the cause, never the direction.
+
+  **Note what that does to the arithmetic**, because it is the trap this line is
+  for: each change lowered the figure independently and each was correct about
+  its own tree, so adding any one's delta to another's base gives a number both
+  sides would have signed off, and so does taking the union of their removals.
+  The figure is re-measured at each merge rather than reconciled from the sides.
+  This has now happened on two consecutive merges, which is what makes it a
+  property of the slot order rather than an accident.
+- **The one that remains is a single site in `Timesheets.jsx`**, and it is kept
+  deliberately rather than owed. Its employee list filters `u.role === "user"`,
+  and D23 keeps `role` off the roster precisely because it is self-assertable,
+  so serving that page an order would turn a loud refusal into a staffing screen
+  confidently showing nobody. The approver dropdown in the same file was repaired
+  and asks only for `tenant_role`, which the roster does project. That contrast
+  is the reason a refusal is read per SITE and not per file.
+- **Sixty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Thirty-four have no route declared at all**, over twenty-eight entity and
-  operation keys: fifteen reads over twelve keys, and nineteen writes over
-  sixteen. **The writes still outnumber the reads**, which inverts the shape
-  every wave so far has had. The reason is measurable on the sites already
-  served: a read key there carries 2.59 call sites and a write key 1.32, so a
-  read port has historically served many screens per route while a write port
-  served the one form that calls it. **Do not carry that ratio into the
-  remainder, though**: inside this pool a read key covers 1.25 sites and a write
-  key 1.19, which is nothing like the served spread and is barely a gap at all.
+- **Seventeen have no route declared at all**, over fourteen entity and
+  operation keys: fourteen reads over eleven keys, and three writes over three.
+  Re-derived on this head rather than reconciled from either side of the merge,
+  because every figure in this bullet is a property of the whole population and
+  adding two branches' deltas is wrong in both directions. **The write half fell
+  furthest, and not because anyone worked on it** — the reference writes took
+  eight sites out of this pool and the withdrawn duty toggle put nothing back,
+  so a bucket nobody touched moved twice. That is what a remainder does: it is a
+  property of what is LEFT. The reason the shape keeps moving is measurable on
+  the sites already served: a read key there carries 2.66 call sites and a write
+  key 1.24, so a read port has historically served many screens per route while
+  a write port served the one form that calls it. **Do not carry that ratio into
+  the remainder, though**: inside this pool a read key covers 1.27 sites and a
+  write key 1.00, which is nothing like the served spread — a write key there
+  now covers exactly one site each, so the ratio has no spread left to read.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **The two ratios ran the OTHER way round one head ago and that is worth
-  keeping**, because it is this paragraph's own rule arriving in the paragraph.
-  Before the compliance writes landed, the remainder's write key covered 1.57
-  sites against a read key's 1.25 — the inversion, stated here as the finding.
-  Five write keys adopting routes moved the pool and the inversion went with
-  them; nothing was wrong with the earlier measurement and nothing is wrong with
-  this one. What would have been wrong is carrying the sentence across a merge
-  because it read well. A ratio over a REMAINDER is a property of what is left,
-  so it moves every time anything is taken off it, and it has to be re-measured
-  at the head that quotes it rather than inherited.
+  **This bullet has now been re-derived at eight consecutive heads. Across the
+  first five every one of its six figures moved, reversing a finding stated in
+  its own prose three times; at the sixth, seventh and eighth only the served
+  read pair did, which are the first heads where re-deriving the whole bullet
+  changed one figure.** One head ago the two halves were level at fifteen sites each
+  and the write key was the THINNER, at 1.15 against 1.25; the head before that
+  the write key covered 1.61 and the paragraph called that inversion the
+  finding; before that 1.57, and before that the writes were nearly twice the
+  reads. Nothing was wrong with any of those measurements. What would have been
+  wrong is carrying a sentence across a merge because it read well.
+
+  **This head is the cleanest demonstration the bullet has produced.** The three
+  reference tables' writes took eight sites out of the remainder and changed
+  nothing else about it — and the remainder's READ half did not move at all,
+  by either figure, while its write half fell from fifteen sites over thirteen
+  keys to seven over five and its ratio rose from 1.15 to 1.40. A pin on the
+  four quotients alone would have caught that; a pin on the read ratio alone
+  would have seen a stationary 1.25 and reported no change, in a head where a
+  third of the bucket left.
+
+  **The mechanism is worth more than any of the numbers: a ratio over a
+  REMAINDER is a property of what is LEFT.** It moves whenever anything leaves,
+  in whichever direction the departure was thinner or fatter than what stayed —
+  so it moves when nobody has touched it, purely because somebody else made
+  progress elsewhere. That is why the direction of travel on this bullet is not
+  a signal about the remaining work, and why re-deriving it beats adjusting the
+  figure that obviously changed. Four of these six figures are quotients, and a
+  quotient moves when either half does — it can also sit perfectly still while
+  both halves move, which is the failure this paragraph could not detect about
+  itself until the pin below started asserting the integer pairs.
+
+  **All six are now pinned**, in `tools-entity-routes.test.mjs`, which derives
+  both pools through the same `servedSites` / `measureDestinations` pair that
+  produces the three counts above, asserts the four integer PAIRS first and only
+  then the quotients formatted from them. It will fail on every pull request
+  that declares a route. That is the design: the instruction is to re-derive the
+  whole bullet, and a pin that goes quiet when the paragraph rots is the thing
+  this section exists to complain about.
+
+  **It moved again on this tree, and for the first time the REMAINDER did not
+  move at all.** Three call sites joined the served pool — the three admin
+  screens that stopped asking the roster for an order it cannot serve — and they
+  joined a key that pool already held, so the served read SITES rose by three
+  while its read KEYS stood still and the ratio rose from 2.56 to 2.62 with no
+  route declared anywhere. The remainder is untouched, to the integer, in all
+  four of its figures: those three sites always had a route declared over them
+  and were sitting in the REFUSED bucket, which this bullet does not count, so
+  nothing could leave a pool they were never in.
+
+  **That is the cleanest instance yet of the mechanism this bullet keeps
+  restating, and it points the opposite way from the last one.** A head ago a
+  departure moved a ratio nobody had worked on; here work on three sites moved a
+  ratio and left the remainder's four figures exactly as they were. A reader
+  watching only the served ratio would see it rise and a reader watching only
+  the remainder would see a flat line, and both would be reading this same
+  change correctly. Neither number was wrong before and neither is wrong now.
+
+  **And it moved once more on the tree this branch merges onto, for a cause the
+  bullet had not seen before: a site that was being REFUSED became served.** The
+  timesheet's approver dropdown stopped asking the roster for an order it cannot
+  serve, so one call site crossed from the refused bucket into the served pool
+  without any route being declared — the served read pair goes from 128 sites
+  over 50 keys to 129 over the same 50, and the ratio with it. Every earlier
+  move on this bullet came from a key being DECLARED or a population leaving the
+  remainder; this one is a call site repaired, and the remainder did not move at
+  all. So the four pairs are not only a guard against a quotient sitting still
+  while both halves move — they are also the only thing here that can tell a
+  repaired site from a new route, since both raise the served count by one.
+
+  **And it moved once more on the tree this branch merges onto, for a cause the
+  bullet had not seen before: a site that was being REFUSED became served.** The
+  leave form's approver dropdown stopped asking the roster for an order it cannot
+  serve, so one call site crossed from the refused bucket into the served pool
+  without any route being declared — the served read pair goes from 128 sites
+  over 50 keys to 129 over the same 50, and the ratio with it. Every earlier
+  move on this bullet came from a key being DECLARED or a population leaving the
+  remainder; this one is a call site repaired, and the remainder did not move at
+  all. So the four pairs are not only a guard against a quotient sitting still
+  while both halves move — they are also the only thing here that can tell a
+  repaired site from a new route, since both raise the served count by one.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
@@ -3874,28 +4425,89 @@ population, whose figures are prose here and are not pinned. A paragraph put on
 the wrong side of this line will read as a claim about the other gate.
 
 **What the dropped domains cost, and by which instrument.** `node
-tools-frontend-retired-inventory.mjs --summary`, re-measured on `main` after
-#291: **203 call sites across 84 files and 29 entities; 59 files lose
-everything they read** (reads 123, writes 79, subscriptions 1), leaving 25
-partially affected. Those are exact, and #291 writes them out per file and per
-entity as `docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md` — a file is the unit
-somebody edits and an entity is the unit somebody decided about, so that is the
-page to open when this work starts, rather than this count. The shape a person would notice — roughly 9 top-level destinations and
+tools-frontend-retired-inventory.mjs --summary`, first read on `main` after
+#291 and re-measured on `84718e6b` on 2026-09-29: **208 call sites across 86
+files and 32 entities; 59 files lose everything they read** (reads 123, writes
+84, subscriptions 1), leaving 27 partially affected. Those are exact, and #291
+writes them out per file and per entity as
+`docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md` — a file is the unit somebody
+edits and an entity is the unit somebody decided about, so that is the page to
+open when this work starts, rather than this count. **Its population IS the
+destination gate's 208 and cannot drift from it**, because `measureInventory`
+filters that gate's own `measureDestinations` output — the two report at
+different units and never from different readings. **So do not read the 194
+below as this paragraph's number.** When this sentence last said 203, that was
+the DROPPED TOTAL, and the subset below then said 203 as well — two different
+sets wearing one number for one commit. The total has since moved to 208 and
+the subset is 194, **which is what it has been since D80 was written**: at 445
+the buckets were `no_table` 193, `broker_is_read_only` 9 and `no_realtime_seam`
+1, so the uncarried domain was 194 there too. The eight sites the matcher
+gained were all landable and the five reference writes moved out of
+`record_store`, which is why the TOTAL moved and the subset did not. Two
+quantities coincided, one of them moved, the other was never what the sentence
+said it was, and nothing in either sentence could show either thing. The shape
+a person would notice — roughly 9 top-level destinations and
 about 33 hollowed-out pages — comes from a filename scan rather than that tool,
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
-**208 of 453 — 46% — have no destination in the owned store, and 203 of those
-reach a domain the migration has decided not to carry.** The other five are the
-D83 writes above, whose tables ARE carried, for reads: what has no destination
-there is the operation rather than the domain, and conflating the two is how
-this page would start overstating the product work. 119 of the 203 are the
-training domain, whose destination is the Hub; 75 are `preserved_paused`. **That
-75 is not an off-by-one against the table's 74**, which counts `preserved_paused`
-inside `no_table` only — the 75th is the `no_realtime_seam` site, whose entity is
-also `preserved_paused`. Each needs a product answer about what the feature
-becomes, not an edit somebody has not got to yet, so a plan that sizes this
-stage by the call-site count is sizing the wrong thing.
+**208 of 453 — 46% — have no destination in the owned store, and 194 of those
+reach a domain the migration has decided not to carry.** The other fourteen are
+writes to entities it DOES carry, read-only — nine refused by the broker
+family's D2 ceiling and five by a D83 reference table's GRANT: what has no
+destination there is the OPERATION rather than the domain, and conflating the
+two is how this page would start overstating the product work. **It said 203
+here for one commit, which is the same conflation drawn one line lower**: the
+five were separated out and the nine were not, on a split keyed to the
+destination bucket rather than to the disposition, which is the thing that
+decides whether a table exists at all. The correction is `carried_entity` in
+the inventory, derived from `CARRIED_DISPOSITIONS`, and the tell was sitting in
+the next sentence the whole time — 119 plus 75 is 194, and 203 was never a
+number this paragraph could reach. 119 of the 194 are the training domain,
+whose destination is the Hub; 75 are `preserved_paused`. **That 75 is not an
+off-by-one against the table's 74**, which counts `preserved_paused` inside
+`no_table` only — the 75th is the `no_realtime_seam` site, whose entity is also
+`preserved_paused`, so it is on the uncarried side too although its bucket is
+the one bucket that could fall either way. A plan that sizes this stage by the
+call-site count is sizing the wrong thing.
+
+**"Each needs a product answer" was wrong, and it made this block read as the
+owner's when most of it is not.** **The page already disagreed with itself**:
+the paragraph above says 119 of the 194 are the training domain *whose
+destination is the Hub* — an answer already given — and the sentence that
+followed put all 194 under "each needs a product answer". Two adjacent
+sentences, checkable without re-running anything below. Measured 2026-09-30 on
+`36c828a0` against
+`tools-frontend-retired-inventory.mjs`, `src/lib/nav.manifest.js`,
+`discoverPausedFunctions` and `auditBrokerCeiling`. The structure below is
+durable; **the counts are a dated reading, so re-run those rather than quoting
+them.**
+
+- **Training and learning — `hub`, twelve entities.** Their product answer was
+  already given: D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` send them to
+  `kdeyarmin/caremetric-support-hub`, both controls unset behind a five-step
+  pre-cutover checklist. **They are neither his to decide nor ours to port**,
+  and porting their tables into the owned store would build precisely what D8
+  decided not to build. They also pass a restoration test outright — F19 in
+  `docs/audits/FEATURE_INVENTORY.md` reads "Working but needs improvement",
+  nine of their pages are in the nav manifest, and exactly one backing function
+  is paused at source. **That is why the reading survived: functioning today
+  and belonging here are different questions.**
+- **OASIS — `preserved_paused`, eight entities.** D7 already exempts the half
+  that looked gated: *"their schemas and data still migrate; only their
+  execution stays off"*. What is his is **activation**. What is not a table
+  away is the frontend: `auditBrokerCeiling` refuses all eight — seven deny
+  direct reads, `OASISUpload` conditions them, six name a clinical subject, two
+  can hold a file — so each call site needs a hand-written contract with its own
+  gate and refusals. **A domain with no backing Base44 function is MORE work
+  here, not less, because there is no capability to port.**
+- **Fax and voice — `preserved_paused`, six entities.** Whether these function
+  today is **not answerable from this tree.** D7's pauses are attested by
+  receipts rather than source flags, and the Telnyx credentials live in-app as
+  `IntegrationSecret` — so `discoverPausedFunctions` reads zero paused handlers
+  across all fourteen `FaxLog` functions while D7 lists fax as paused, and both
+  are correct. The instrument would be an authenticated read of the hosted
+  credential presence and the Base44 release flags. **None has been taken.**
 
 The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
 called fine: the family serves `Announcement`, `FacilityDocumentationRule` and
@@ -3928,9 +4540,15 @@ proxy for "which could" overstates it.** Two facts, both measured:
   **touches** an entity for its own reasons is not one that **serves** a call
   site.
 
-**The 203 that cannot land have their own docket:**
+**The ones that cannot land have their own docket:**
 [FRONTEND_DECISION_DOCKET_2026-09-22.md](FRONTEND_DECISION_DOCKET_2026-09-22.md).
-Two findings in it change the plan. 81 of the 119 training sites sit in 35
+**Its 203 is D80's 203 and carries D80's error** — it opens by calling all of
+them sites "reaching an entity the owned store will have **no table for**",
+and its own closing table gives the nine admin reference writes a row of their
+own. So do not cross it against the 194 above; what it enumerates is the
+DROPPED TOTAL at 445, 193 `no_table` plus those 9 plus 1 subscription, and
+only 194 of it is the uncarried domain. Re-run the tool if you need today's
+set. Two findings in it change the plan. 81 of the 119 training sites sit in 35
 screens the learning cutover's switch never reaches — the course player and the
 compliance reports among them — so the learning cutover is a *sequencing
 dependency* of the exit. And the paused-domain screens are live today (direct

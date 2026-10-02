@@ -62,14 +62,29 @@ before(async () => {
   assert.deepEqual(applied,
     readdirSync(resolve(repository, RECORDS)).filter(file => file.endsWith('.sql')).sort(),
     'the record directory and what was applied to this store disagree');
-  // The ordering guard is NOT here any more. This migration merged, at
-  // `00ccac41`, so it is part of what a store already holds and a later
-  // change's file legitimately sorts after it — which is the retirement
-  // `assertNewestRecordMigration` documents, not a widening. It moved on to
-  // `20260920680000_dashboard_visit_documentation.sql`, in
-  // `contract-dashboard.test.mjs`, exactly as it moved here from the read
-  // half. The directory/applied comparison above stays, because that one is
-  // about this suite seeing the whole store rather than about ordering.
+  // The ordering guard has MOVED ON, and this is the retirement the helper's
+  // own docstring asks for rather than a weakening of it: this migration is on
+  // `main`, so it is part of what a store already holds, and a later file
+  // sorting after it is a correct tree rather than a base that moved. It was not
+  // dropped at its own merge, and the next forward migration to arrive failed
+  // this suite's `before` and took all 22 of its tests down with it, naming a
+  // file that had done nothing wrong.
+  //
+  // Where it lives now is a merge resolution rather than either branch's answer,
+  // and on THIS tree it is neither side's. The chain runs
+  // `contract-duty-status`, `contract-reference-writes`,
+  // `roster-phone-provisioned`, `contract-timesheet-review-approver`,
+  // `contract-time-off-review-approver`; this branch adds
+  // `20260920745000_dashboard_visit_documentation`, which sorts after all of
+  // them, so the holder on this tree is `contract-dashboard.test.mjs` alone.
+  // Each side's claim was right about the tree that named it, and taking either
+  // whole would have left two suites holding it, which the helper forbids,
+  // because the second holder asserts a tree the first one's own change makes
+  // false. On this merge both sides' named holders were wrong, which is why the
+  // answer is re-derived from the directory rather than carried from a side.
+  //
+  // What stays is the set equality above, which is the assertion that actually
+  // says this store is the one a deployment gets.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   for (const [id, agency, first, last] of [

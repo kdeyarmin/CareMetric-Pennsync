@@ -237,7 +237,7 @@ test('selector source is service-owned, finite, read-only, and ignores mutable U
   assert.match(source, /Tenant membership list changed during request/);
   assert.match(source, /Caller identity changed during request/);
   assert.ok(
-    source.indexOf("req.method !== 'POST'") < source.indexOf('createClientFromRequest(req)'),
+    source.indexOf("req.method !== 'POST'") < source.indexOf('createClientFromRequest('),
     'method gate must run before client construction',
   );
   assert.doesNotMatch(source, /\.create\(|\.update\(|\.delete\(/);

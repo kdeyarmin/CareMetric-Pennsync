@@ -179,7 +179,7 @@ test('the pause is the first executable handler statement and precedes all legac
     );
 
     const pauseReturnIndex = handlerSource.indexOf('return Response.json({');
-    const clientIndex = handlerSource.indexOf('createClientFromRequest(req)');
+    const clientIndex = handlerSource.indexOf('createClientFromRequest(');
     assert.ok(pauseReturnIndex >= 0, `${functionName} must include the pause response`);
     assert.ok(clientIndex > pauseReturnIndex, `${functionName} must pause before client creation`);
     assert.ok(
@@ -202,7 +202,7 @@ test('all contained sources transpile successfully with their dormant redesign c
     const result = transpileTs(source);
     assert.equal(result.diagnostics?.length || 0, 0, functionName);
     assert.match(result.outputText, /legacy_patient_service_writer_paused/, functionName);
-    assert.match(result.outputText, /createClientFromRequest\(req\)/, functionName);
+    assert.match(result.outputText, /createClientFromRequest\(/, functionName);
   }
 });
 

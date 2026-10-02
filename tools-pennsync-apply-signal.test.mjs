@@ -186,6 +186,80 @@ test('a base whose pin does not cover its own files refuses, because the count w
   assert.deepEqual(refusal.detail.files, ['record-migrations/20260102000000_record_first.sql']);
 });
 
+test('a base the head does not descend from refuses instead of crying withdrawal', () => {
+  // The misfire this refusal exists for. A branch that is merely BEHIND its
+  // base has every migration the base added missing from its own pin, and
+  // `applySignal` correctly calls those `withdrawing` — for the inputs it was
+  // handed. The defect is upstream of it: a base that is not the head's base.
+  // Left unchecked the run emits the loudest annotation the tool has, at exit
+  // 0, and a reader cannot tell it from a migration somebody really removed.
+  const repository = baseline();
+  repository.migration('20260103000000_record_head.sql', 'select 3;');
+  repository.pin();
+  repository.commit('the head adds one');
+
+  execFileSync('git', ['checkout', '-q', '-b', 'sibling', 'HEAD^'], { cwd: repository.root });
+  repository.migration('20260104000000_record_sibling.sql', 'select 4;');
+  repository.pin();
+  repository.commit('the base adds a different one');
+  execFileSync('git', ['checkout', '-q', '-'], { cwd: repository.root });
+
+  const refusal = refusalFrom(() => measure({ base: 'sibling', repository: repository.root }));
+  assert.equal(refusal.code, 'APPLY_SIGNAL_BASE_NOT_ANCESTOR');
+  assert.equal(refusal.detail.ref, 'sibling');
+  // The direction the misfire hid: the head is missing what the BASE has.
+  assert.deepEqual(refusal.detail.behind, ['record-migrations/20260104000000_record_sibling.sql']);
+});
+
+test('a base git can read but cannot place in the history is its own refusal', () => {
+  // The status-not-1 branch, which the non-ancestor test cannot reach. A
+  // TREE-ish is read by `git show` and `git ls-tree` exactly as a commit is,
+  // so both pin reads above succeed and only `merge-base` rejects it — with
+  // 128, not the 1 that means "no". Keeping those apart is a stated property
+  // of the check rather than tidiness: collapse them and a check that cannot
+  // RUN reports the same thing as a check that ran and answered, which is the
+  // fall-through the refusal exists to prevent.
+  const repository = baseline();
+  const tree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'],
+    { cwd: repository.root, encoding: 'utf8' }).trim();
+
+  const refusal = refusalFrom(() => measure({ base: tree, repository: repository.root }));
+  assert.equal(refusal.code, 'APPLY_SIGNAL_ANCESTRY_UNREADABLE');
+  assert.equal(refusal.detail.ref, tree);
+  assert.notEqual(refusal.detail.status, 1);
+});
+
+test('a non-ancestor refusal keeps the comparison and asserts neither reading', () => {
+  // What the refusal replaced was an exit-0 annotation calling these files
+  // withdrawn. Dropping the comparison instead would lose the one case where
+  // that annotation was RIGHT — a ref that really was this branch's previous
+  // tip — so the detail carries the files and names both readings without
+  // deciding between them.
+  const repository = baseline();
+  repository.migration('20260103000000_record_head.sql', 'select 3;');
+  repository.pin();
+  repository.commit('the head adds one');
+  execFileSync('git', ['checkout', '-q', '-b', 'other', 'HEAD^'], { cwd: repository.root });
+  repository.migration('20260104000000_record_other.sql', 'select 4;');
+  repository.pin();
+  repository.commit('the other line adds a different one');
+  execFileSync('git', ['checkout', '-q', '-'], { cwd: repository.root });
+
+  const refusal = refusalFrom(() => measure({ base: 'other', repository: repository.root }));
+  assert.deepEqual(refusal.detail.behind, ['record-migrations/20260104000000_record_other.sql']);
+  assert.match(refusal.detail.reading, /MIGRATE_LEDGER_UNKNOWN/);
+  // Neither reading may be stated as the fact of the matter.
+  assert.match(refusal.detail.reading, /If this ref really was/);
+  assert.match(refusal.detail.reading, /If it is another line of history/);
+  // A refusal is one annotation line; a newline in the middle truncates it.
+  const errors = [];
+  runApplySignalCli({
+    argv: ['--base', 'other'], repository: repository.root, write: () => {},
+    error: line => errors.push(line),
+  });
+  assert.ok(!errors[0].includes('\n'));
+});
+
 test('a base ref that cannot be read is a refusal and never a quiet zero', () => {
   const repository = baseline();
   for (const base of ['no-such-ref', undefined]) {
@@ -236,6 +310,14 @@ test('this repository, against itself, owes nothing and reads its own pin', () =
   // Drives the real tree through the real readers. `HEAD` against `HEAD` is the
   // one base every checkout has, however shallow, and it proves the pin and the
   // directories agree here — the precondition every count above depends on.
+  //
+  // IT MEASURES THE WORKING TREE, so it is RED BY DESIGN on a dirty one: edit a
+  // committed migration and this case correctly reports it under `editing` and
+  // fails until the change is committed. That is the signal working, not drift,
+  // and it is worth saying here because the alternative is somebody learning to
+  // ignore this suite mid-edit rather than learning to ignore the artefact.
+  // A comment-only edit to a migration does it too — the sha moves anyway, which
+  // is why the pin is re-derived in the same change.
   const signal = measure({ base: 'HEAD' });
   assert.equal(signal.behindBy, 0);
   assert.deepEqual(signal.editing, []);

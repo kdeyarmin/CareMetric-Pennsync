@@ -21,7 +21,7 @@ import { applyRecordMigrations, assertNewestRecordMigration } from './record-mig
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
 const DASHBOARD = `${MIGRATIONS}20260920500000_contract_dashboard.sql`;
-const FORWARD_NAME = '20260920680000_dashboard_visit_documentation.sql';
+const FORWARD_NAME = '20260920745000_dashboard_visit_documentation.sql';
 const ORIGINAL = 'base44/functions/getDashboardData/entry.ts';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -43,10 +43,19 @@ before(async () => {
   // which is the only way a contract suite can see one land on it.
   const applied = await applyRecordMigrations(db);
   // This change's forward migration is the newest PENDING file, so the
-  // ordering guard is now this suite's. It moved here from
-  // `contract-compliance-writes.test.mjs` when that migration merged, which
-  // is what `assertNewestRecordMigration` says to do rather than widening the
-  // old call with an exception list.
+  // ordering guard is this suite's. The helper admits ONE holder, and which
+  // suite that is is a property of the whole tree rather than of any branch:
+  // it sat in `contract-compliance-writes.test.mjs`, then moved through
+  // `contract-duty-status`, `contract-reference-writes`,
+  // `roster-phone-provisioned`, `contract-timesheet-review-approver` and
+  // `contract-time-off-review-approver` as each of those merged, and arrives
+  // here because `20260920745000` sorts after all of them. That is what
+  // `assertNewestRecordMigration` says to do rather than widening the old call
+  // with an exception list.
+  //
+  // This line was stale against the merged tree while naming a true
+  // predecessor, and nothing could flag it: the branch that moved the guard on
+  // and the branch that wrote this sentence never touched the same file.
   assertNewestRecordMigration(applied, FORWARD_NAME);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`update pennsync_private.membership set tenant_role = 'office_staff'

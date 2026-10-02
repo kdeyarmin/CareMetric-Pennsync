@@ -2,6 +2,24 @@ import { buildHelpUrl } from '@caremetric/help-sdk';
 
 export const PENNSYNC_HELP_PRODUCT = 'pennsync';
 export const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
+/**
+ * The owned production build's identity, for a build that is no longer
+ * identified to Base44. It is a build label, never a tenant, an account or an
+ * origin, and it is not sent anywhere.
+ *
+ * What it is NOT: unforgeable. The value is a literal here and the gate is
+ * plain equality, so anyone who runs the build can set the variable to it.
+ * That is not a hole, because whoever runs the build already controls every
+ * other variable this module reads, including the flag itself — there is no
+ * attacker this check could be defending against. What it does is distinguish
+ * the production build from an ordinary one that merely sets
+ * `VITE_DEPLOY_ENV=production`, so the launcher cannot come on by accident.
+ *
+ * It is weaker in one way than the Base44 app id above, which is worth knowing
+ * rather than glossing: that id also binds the build to a real backend, so
+ * presenting it has consequences for whoever does, while this label has none.
+ */
+export const PENNSYNC_OWNED_PRODUCTION_BUILD_ID = 'caremetric-pennsync-production';
 
 const HELP_ENVIRONMENTS = new Set(['production', 'staging', 'development']);
 // Require a version-shaped value, not merely a string whose characters happen
@@ -15,24 +33,53 @@ export function isCentralHelpEnabled(value) {
 }
 
 /**
- * Activate the central launcher only when both PennSync's immutable production
- * Base44 identity and the explicit `production` deployment environment match.
- * Base44 does not expose backend Secrets to Vite builds, so an omitted flag
- * enables that verified production build while an explicit non-`true` value
- * remains a fail-closed emergency override. Preview/dev, staging, and every
- * other app id stay off even if a flag is accidentally supplied.
+ * Which verified production build this is, or `undefined` for every build that
+ * is not one. Exactly one identity may be presented: a build carrying both a
+ * Base44 app id and the owned build id has not established which thing it is,
+ * and an ambiguous build is not a verified one.
+ *
+ * `base44` is the existing path, unchanged: PennSync's immutable production
+ * Base44 app id. `owned` is the same question asked of a build that no longer
+ * has a Base44 app id at all — without it the launcher could only ever be
+ * activated by a build still identified to Base44, which is the one state the
+ * exit removes. The synthetic staging backend is refused outright: it is
+ * synthetic by construction, so `VITE_DEPLOY_ENV=production` on it names a
+ * deployment environment rather than a production deployment.
+ */
+export function resolveProductionBuildIdentity({ appId, buildId, backend } = {}) {
+  const hasAppId = appId != null && appId !== '';
+  const hasBuildId = buildId != null && buildId !== '';
+  if (hasAppId === hasBuildId) return undefined;
+  if (hasAppId) return appId === PENNSYNC_PRODUCTION_APP_ID ? 'base44' : undefined;
+  if (backend === 'independent-staging') return undefined;
+  return buildId === PENNSYNC_OWNED_PRODUCTION_BUILD_ID ? 'owned' : undefined;
+}
+
+/**
+ * Activate the central launcher only when a verified production build identity
+ * and the explicit `production` deployment environment both match. Preview/dev,
+ * staging, synthetic staging and every other identity stay off even if a flag
+ * is accidentally supplied.
+ *
+ * The flag's default differs by identity, and narrows rather than widens. Base44
+ * does not expose backend Secrets to Vite builds, so on that path an omitted
+ * flag enables the verified production build while an explicit non-`true` value
+ * remains a fail-closed emergency override. An owned build sets its own build
+ * variables, so that reason does not hold there and the flag must be the exact
+ * string `true`.
  */
 export function resolveCentralHelpActivation({
   appId,
+  buildId,
+  backend,
   flag,
   environment,
   isDevelopment = false,
 } = {}) {
-  if (
-    isDevelopment
-    || appId !== PENNSYNC_PRODUCTION_APP_ID
-    || environment !== 'production'
-  ) return false;
+  if (isDevelopment || environment !== 'production') return false;
+  const identity = resolveProductionBuildIdentity({ appId, buildId, backend });
+  if (identity === undefined) return false;
+  if (identity === 'owned') return isCentralHelpEnabled(flag);
   return flag == null || isCentralHelpEnabled(flag);
 }
 
@@ -103,6 +150,8 @@ const viteEnv = import.meta.env || {};
 
 export const CENTRAL_HELP_ENABLED = resolveCentralHelpActivation({
   appId: viteEnv.VITE_BASE44_APP_ID,
+  buildId: viteEnv.VITE_PENNSYNC_BUILD_ID,
+  backend: viteEnv.VITE_PENNSYNC_BACKEND,
   flag: viteEnv.VITE_CENTRAL_HELP_ENABLED,
   environment: viteEnv.VITE_DEPLOY_ENV,
   isDevelopment: viteEnv.DEV === true,
