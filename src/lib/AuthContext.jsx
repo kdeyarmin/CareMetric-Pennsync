@@ -9,7 +9,7 @@ import {
   useRef,
 } from 'react';
 import { base44, tenantAuthorityClient } from '@/api/base44Client';
-import { independentStagingAuth } from '@/lib/independentStagingSession';
+import { independentStagingAuth, ownedBackendAuth } from '@/lib/independentStagingSession';
 import { appParams, plantLoginReturnState } from '@/lib/app-params';
 import { createAxiosClient } from '@/lib/base44AxiosClient';
 import { queryClientInstance } from '@/lib/query-client';
@@ -250,11 +250,11 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const cleanupIndependentSession = useCallback(() => {
-    if (!independentStagingAuth) return Promise.resolve(true);
+    if (!ownedBackendAuth) return Promise.resolve(true);
     if (independentCleanupRef.current) return independentCleanupRef.current;
     // signOut fences local access synchronously and preserves failed known
     // credentials for retry. Keep its promise independent of cache teardown.
-    const pending = independentStagingAuth.signOut().then(() => true, () => {
+    const pending = ownedBackendAuth.signOut().then(() => true, () => {
       setAuthError({ type: 'staging_cleanup_unavailable',
         message: 'Access is closed. Session cleanup could not be confirmed. Keep this page open and retry signing out.' });
       return false;
@@ -373,7 +373,7 @@ export const AuthProvider = ({ children }) => {
     // integration, log, and subscription from being initiated by a retained
     // async continuation while React/cache/storage teardown is in progress.
     closeTenantSdkRealm();
-    const nativeCleanup = independentStagingAuth
+    const nativeCleanup = ownedBackendAuth
       && (terminalIndependentSession || hasPinnedTenantSdkRealm())
       ? cleanupIndependentSession() : null;
     closeAuthorityBoundWindows();
@@ -565,6 +565,11 @@ export const AuthProvider = ({ children }) => {
           queryClientInstance.setQueryData(['currentUser'], { ...authenticatedUser });
           return false;
         }
+      // Auto-selecting a sole membership is the Base44 path's behaviour and the
+      // production mode keeps it: a nurse with one agency should not be asked
+      // to choose it. STAGING is the exception on purpose — its acceptance runs
+      // drive the selector explicitly — so this branch reads the staging mode
+      // rather than "is this an owned backend".
       } else if (memberships.length === 1 && !independentStagingAuth) {
         selectedMembership = memberships[0];
       } else {
@@ -659,7 +664,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       if (generation !== authGeneration.current) return false;
       closeTenantSdkRealm();
-      const nativeCleanup = independentStagingAuth && hasPinnedTenantSdkRealm()
+      const nativeCleanup = ownedBackendAuth && hasPinnedTenantSdkRealm()
         ? cleanupIndependentSession() : null;
       const definitiveFailure = isDefinitiveTenantAuthorityFailure(error)
         || stage === 'drafts';
@@ -737,9 +742,9 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
 
-      if (independentStagingAuth) {
-        setAppPublicSettings({ name: 'PennSync independent staging' });
-        if (independentStagingAuth.hasSession()) {
+      if (ownedBackendAuth) {
+        setAppPublicSettings({ name: independentStagingAuth ? 'PennSync independent staging' : 'PennSync' });
+        if (ownedBackendAuth.hasSession()) {
           await establishTenantAuthority({ phase: 'boot' });
         } else {
           await purgeTenantAuthority({ nextState: TENANT_AUTHORITY_STATES.LOADING,
@@ -861,11 +866,11 @@ export const AuthProvider = ({ children }) => {
       closeAuthorityBoundWindows();
       // Uncontrolled page exit may terminate requests. This is best effort;
       // a retained BFCache document retries before its controlled reload.
-      if (independentStagingAuth) void cleanupIndependentSession();
+      if (ownedBackendAuth) void cleanupIndependentSession();
     };
     const handleDocumentRestore = (event) => {
       if (!event.persisted) return;
-      if (!independentStagingAuth) window.location.reload();
+      if (!ownedBackendAuth) window.location.reload();
       else {
         poisonTenantSdkRealm();
         void cleanupIndependentSession().then(cleaned => { if (cleaned) window.location.reload(); });
@@ -902,7 +907,7 @@ export const AuthProvider = ({ children }) => {
             purgeDrafts: true,
           });
         } catch (error) {
-          if (independentStagingAuth && error?.message === 'STAGING_SESSION_CLEANUP_UNCONFIRMED') return false;
+          if (ownedBackendAuth && error?.message === 'STAGING_SESSION_CLEANUP_UNCONFIRMED') return false;
           throw error;
         }
         setTenantContextError(tenantError(
@@ -922,7 +927,7 @@ export const AuthProvider = ({ children }) => {
           purgeDrafts: true,
         });
       } catch (error) {
-        if (independentStagingAuth && error?.message === 'STAGING_SESSION_CLEANUP_UNCONFIRMED') return false;
+        if (ownedBackendAuth && error?.message === 'STAGING_SESSION_CLEANUP_UNCONFIRMED') return false;
         throw error;
       }
       setTenantContextError(tenantError(
@@ -1105,7 +1110,7 @@ export const AuthProvider = ({ children }) => {
 
     // Match the existing boot contract: without an app session token there is
     // no protected identity to resume. The public page itself remains usable.
-    if (!(independentStagingAuth ? independentStagingAuth.hasSession() : appParams.token)) {
+    if (!(ownedBackendAuth ? ownedBackendAuth.hasSession() : appParams.token)) {
       setIsLoadingAuth(false);
       setIsAuthenticated(false);
       return false;
@@ -1122,7 +1127,7 @@ export const AuthProvider = ({ children }) => {
     // SDK gate after provider logout; only full navigation creates a new realm.
     poisonTenantSdkRealm();
     if (logoutInProgressRef.current) {
-      if (independentStagingAuth) {
+      if (ownedBackendAuth) {
         const cleaned = await cleanupIndependentSession();
         if (cleaned && shouldRedirect) window.location.assign(scrubProtectedBrowserLocation());
       }
@@ -1178,7 +1183,7 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
     setIsLoadingAuth(false);
     setAuthError(null);
-    if (independentStagingAuth) {
+    if (ownedBackendAuth) {
       const cleaned = await cleanupIndependentSession();
       if (cleaned && shouldRedirect) window.location.assign(safeReturnUrl);
     } else if (shouldRedirect) base44.auth.logout(safeReturnUrl);
@@ -1189,7 +1194,7 @@ export const AuthProvider = ({ children }) => {
   }, [cleanupIndependentSession, purgeTenantAuthority]);
 
   const navigateToLogin = () => {
-    if (independentStagingAuth) return;
+    if (ownedBackendAuth) return;
     if (window.location.pathname === '/login') return;
     const returnUrl = plantLoginReturnState(scrubProtectedBrowserLocation());
     base44.auth.redirectToLogin(returnUrl);

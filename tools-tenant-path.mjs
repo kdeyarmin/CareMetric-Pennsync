@@ -39,7 +39,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSON5 from 'json5';
-import { CARRIED, DISPOSITION_FILE, ENTITY_DIRECTORY, TENANT_COLUMN } from './tools-entity-schema-plan.mjs';
+import { CARRIED, DISPOSITION_FILE, ENTITY_DIRECTORY, TENANT_COLUMN, carriesTable } from './tools-entity-schema-plan.mjs';
 
 export const FORMAT = 'pennsync-tenant-path';
 export const FORMAT_VERSION = 1;
@@ -112,7 +112,7 @@ export function readEntity(repository, name) {
 
 export function carriedEntities(repository) {
   const dispositions = JSON.parse(readFileSync(join(repository, DISPOSITION_FILE), 'utf8')).entities;
-  return Object.keys(dispositions).filter(name => CARRIED.includes(dispositions[name])).sort();
+  return Object.keys(dispositions).filter(name => carriesTable(name, dispositions[name])).sort();
 }
 
 export function isActorColumn(column) {

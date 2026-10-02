@@ -4,8 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import {
-  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, assertNewestRecordMigration,
-  recordMigrationNames,
+  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, recordMigrationNames,
 } from './record-migrations.mjs';
 
 /**
@@ -77,9 +76,23 @@ before(async () => {
   for (const name of [ORIGINAL, NAME]) {
     assert.ok(applied.includes(name), `${name} must be applied: this suite measures it`);
   }
-  // A guard on this PENDING change; it retires when the change merges. See
-  // `assertNewestRecordMigration`, whose own error message says so.
-  assertNewestRecordMigration(applied, NAME);
+  // The ordering guard is retired here, which is what the helper's own docstring
+  // asks for once this migration has MERGED: it is part of what a store already
+  // holds, so a later file sorting after it is a correct tree rather than a base
+  // that moved. It has moved on to
+  // `20260920745000_dashboard_visit_documentation.sql`, in
+  // `contract-dashboard.test.mjs`.
+  //
+  // Retiring the CALL is all that happens here. The three assertions above are
+  // this suite's own and are untouched: the set equality says the store it built
+  // is the whole record directory, and the two `includes` say which files this
+  // suite measures. A predecessor that dropped that half along with the guard
+  // would stop observing its own migration's application, which is the half the
+  // guard was never doing.
+  //
+  // Git cannot flag this. Neither branch of the merge that created the second
+  // holder touched this file, so it merges clean while being made false by the
+  // migration arriving beside it.
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values

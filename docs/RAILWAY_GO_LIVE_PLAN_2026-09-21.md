@@ -1604,8 +1604,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 28 |
-  | `mutating` (derived) | 59 | 42 |
+  | `read-only` (derived) | 61 | 34 |
+  | `mutating` (derived) | 68 | 45 |
   | `integration` (derived) | 27 | 25 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
@@ -1667,6 +1667,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   against 22 and 17, the other 49 and 37 against 24 and 23, and the merged tree
   reads neither pair. `node tools-pennsync-release-ladder.mjs --summary` is the
   instrument and it is the only thing either figure should ever be copied from.
+
+  **A THIRD row moved on the next merge, and it is the one that never
+  conflicted.** `read-only`'s migration count went 28 → 29 because
+  `20260920745000_dashboard_visit_documentation.sql` arrives in that wave, and
+  both sides of that merge wrote 28: the branch adding the file never touched
+  this row, and `main` could not see the file. Git records what two branches
+  both edited, which is a different set from what the merge makes false, so a
+  row can be stale on the merged tree with no marker anywhere near it. Re-derive
+  EVERY row from the tool, not the rows that conflicted.
 
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
@@ -1793,6 +1802,25 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   tree rather than added to the figure above, for the reason the D108 paragraph
   gives: replaying a delta onto a base that has moved states it over a total
   that no longer exists.
+
+  The `read-only` row's migrations then rose by one with the dashboard
+  documentation signal, and the derivation again rather than the number: that
+  forward migration redefines `dashboard_visit`, which `contract_dashboard`
+  projects through, so the wave carrying `getDashboardData` gains it as a
+  prerequisite. No handler count moved anywhere, which is the check to read —
+  the change adds no capability, it widens one projection by a derived
+  boolean. The other two rows did NOT move, and that is worth saying because
+  the paragraphs above record the opposite case: these rows are each wave's
+  OWN prerequisites, not the cumulative value, so a migration reaching only
+  `read-only`'s handlers moves only `read-only` — while the value `--wave
+  mutating` emits does grow, because THAT is the superset.
+
+  **What that paragraph did NOT do on its own branch is edit the row**, and
+  neither did `main`. The table above said 28 on both sides of the merge and
+  the tool said 29, so the prose was right and the figure beside it was wrong,
+  with nothing conflicting. Re-deriving the whole table on the merged tree is
+  what found it; re-deriving the figures a merge happened to mark is what would
+  have missed it.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
