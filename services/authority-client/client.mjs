@@ -209,6 +209,21 @@ export const PORTED_FUNCTIONS = Object.freeze({
   distributePolicyAcknowledgment: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',
+  listFaxContacts: 'json',
+  createFaxContact: 'json',
+  bulkCreateFaxContacts: 'json',
+  updateFaxContact: 'json',
+  deleteFaxContact: 'json',
+  listFaxTemplates: 'json',
+  createFaxTemplate: 'json',
+  updateFaxTemplate: 'json',
+  useFaxTemplate: 'json',
+  deleteFaxTemplate: 'json',
+  getFaxRetryConfig: 'json',
+  saveFaxRetryConfig: 'json',
+  listAgencyPhoneNumbers: 'json',
+  listFaxLogs: 'json',
+  searchFaxLogs: 'json',
 });
 /**
  * A JSON response allowance above the 1 MiB default, by handler name.
@@ -235,12 +250,50 @@ export const PORTED_FUNCTIONS = Object.freeze({
  * than the screen. It is a BOUND rather than an expectation: a page of real
  * text can still exceed it, and that is a loud refusal, not a truncation.
  */
+/*
+ * The telecom three cross it on a DIFFERENT measure, and the difference is the
+ * point rather than a detail.
+ *
+ * The compliance five above are over the default with every value NULL. These
+ * three are not: a null-valued page of 500 contacts is about 0.1 MiB. What puts
+ * them over is their own contracts' TEXT CAPS -- `fax_text` bounds `notes` at
+ * 2000 for a contact and 5000 for a cover page, and 500 contacts or 200 cover
+ * pages of capped text is 1.5 and 1.4 MiB measured. So the null floor is the
+ * wrong instrument here, and a map that only ever answered to it let fifteen
+ * handlers in with no entry at all: that is how these were found, by a review
+ * driving the real contracts rather than by anything in this repository.
+ *
+ * `bulkCreateFaxContacts` is here because it returns every created contact in
+ * full, at the same ceiling of 500 as the list.
+ *
+ * `listFaxLogs` is here on a THIRD measure, and it is the one I got wrong
+ * first. This paragraph said it and `searchFaxLogs` were deliberately absent
+ * because `fax_log_row` projects no `ocr_text`, so "both fit the default on any
+ * measure". The absent column is real and the conclusion did not follow: that
+ * row projects nineteen columns NONE of which any contract here caps, because
+ * the log has no writer in this tree, and at a ceiling of 500 an upper bound on
+ * them is 2.5 MiB. The reason it is an upper bound rather than a measurement is
+ * the paragraph below -- so this is the one entry justified by the absence of a
+ * cap rather than by the presence of one, and the suite computes it rather than
+ * taking either claim from here. `searchFaxLogs` really does fit: its ceiling is
+ * 100, and its two extra keys are a 300-character excerpt and a boolean.
+ *
+ * And the honest limit of all of it: on a READ the row functions project the
+ * carried column raw, so `fax_text`'s cap bounds what THIS store writes and not
+ * what Base44 wrote. A carried `notes` has no bound here, and a page of those
+ * can still exceed the allowance. That is the same loud refusal the paragraph
+ * above describes, not a truncation, and no computed figure can close it.
+ */
 export const BULK_RESPONSE_BYTES = Object.freeze({
   listAgencyIncidents: 8 * 1024 * 1024,
   listComplianceAudits: 8 * 1024 * 1024,
   listAdrAuditCases: 8 * 1024 * 1024,
   listPersonnelCredentials: 8 * 1024 * 1024,
   listPolicyAcknowledgments: 8 * 1024 * 1024,
+  listFaxContacts: 8 * 1024 * 1024,
+  bulkCreateFaxContacts: 8 * 1024 * 1024,
+  listFaxTemplates: 8 * 1024 * 1024,
+  listFaxLogs: 8 * 1024 * 1024,
 });
 /** The ported API's one route shape. No caller names a path. */
 const FUNCTION_PATH = name => `/v1/functions/${name}`;

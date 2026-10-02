@@ -16,7 +16,8 @@ import {
   Loader2, Copy, Check, Activity, Webhook, Send, Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { maskPhone, formatPhoneDisplay, normalizeE164 } from "@/components/voice/phoneUtils";
+import { formatPhoneDisplay, normalizeE164 } from "@/components/voice/phoneUtils";
+import { hasPersonalCell, personalCellTail } from "@/components/admin/rosterTelecom";
 import {
   evaluateAgencyConfig, summarize, WEBHOOK_FUNCTIONS, functionUrlBase,
 } from "@/components/admin/telnyxSetup";
@@ -77,7 +78,14 @@ export default function PhoneProvisioningPanel() {
   const { data: users = [] } = useQuery({
     queryKey: ["phone-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list("full_name", 200);
+      // `email` rather than `full_name`: the owned roster serves two orders, email
+      // with the user id as the tiebreaker and `-created_date`, and refuses every
+      // other sort outright rather than answering it in the default order
+      // (`independentEntityRoutes.js`). `full_name` is not a sort it can ever
+      // learn — the carried user table has no name column at all — so this call
+      // asked for a page the owned backend has no way to serve and was refused
+      // before the roster contract ran.
+      const _rows = await base44.entities.User.list("email", 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
@@ -684,9 +692,9 @@ export default function PhoneProvisioningPanel() {
                   ) : (
                     <Badge variant="outline">No work number</Badge>
                   )}
-                  {u.personal_cell_e164 && (
+                  {hasPersonalCell(u) && (
                     <Badge className="bg-slate-200 text-slate-700">
-                      <ShieldCheck className="w-3 h-3 mr-1" /> Cell {maskPhone(u.personal_cell_e164)}
+                      <ShieldCheck className="w-3 h-3 mr-1" /> Cell {personalCellTail(u)}
                     </Badge>
                   )}
                 </div>

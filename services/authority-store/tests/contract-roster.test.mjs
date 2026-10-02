@@ -47,6 +47,7 @@ const MEASURED = [
   '20260920030000_contract_roster.sql',
   '20260920620000_roster_created_date.sql',
   '20260920630000_roster_display_name.sql',
+  '20260920720000_roster_phone_provisioned.sql',
 ];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -143,10 +144,17 @@ ${'    '}${ROLES_C.map(([n, role]) => `('${APP}','membership-${n}','${C}','${uid
   // exactly.
   await db.exec(`insert into ${SCHEMA}."user"
     ("source_app_id","id","agency_id","agency_name","account_type","role",
-     "staff_role","duty_status","phone","credentials","license_number","manager_email") values
+     "staff_role","duty_status","phone","credentials","license_number","manager_email",
+     "work_phone_number","personal_cell_e164") values
 ${'    '}${ROLES_C.map(([n, role]) => `('${APP}','${rid(n)}','agency-a',`
       + `'Claimed Agency A','platform_admin','admin','${STAFF_ROLE[role]}','off_duty','555-100${n}',`
-      + `'CRED-${n}','LIC-${n}','boss@example.invalid')`).join(',\n    ')};`);
+      + `'CRED-${n}','LIC-${n}','boss@example.invalid',`
+      // Telecom, so the privilege assertions below are about the GATE rather
+      // than about a column that is null for everybody. Without these, an
+      // unprivileged caller sees null for the two numbers whether the gate is
+      // there or not: an assertion both the fixed and the broken path satisfy.
+      + `'+121555501${String(n).padStart(2, '0')}','+121555509${String(n).padStart(2, '0')}')`)
+    .join(',\n    ')};`);
   // Carried profile rows, every authority label a lie. 3 is deliberately
   // absent: a colleague with a membership and no profile row is still on the
   // roster, which is the half of this a join written the other way round
@@ -642,6 +650,15 @@ test('every tenant role that holds a membership gets its agency roster', async (
 
 test('a manager is privileged and the three context-only roles are not', async () => {
   const DETAIL = ['phone', 'credentials', 'license_number', 'manager_email'];
+  /**
+   * The telecom keys widen the same way and are listed apart from DETAIL for
+   * one reason: a privileged caller gets `false` for a presence boolean and
+   * `null` for a number the row does not carry, so "reaches a manager" is not
+   * `!== null` for all four. What matters either way is the UNPRIVILEGED half —
+   * null AND present — which is asserted with DETAIL below.
+   */
+  const TELECOM = ['has_work_phone', 'has_personal_cell',
+    'work_phone_number', 'personal_cell_masked'];
   // `manager` is the only role besides `agency_admin` the privilege gate
   // admits, and the only other one `is_manager` is derived true for. Both
   // branches were unreachable before this agency existed.
@@ -658,7 +675,7 @@ test('a manager is privileged and the three context-only roles are not', async (
     const entries = (await listAs(caller, C)).entries;
     for (const entry of entries) {
       // Null rather than absent, so the shape never says which caller it is.
-      for (const field of DETAIL) {
+      for (const field of [...DETAIL, ...TELECOM]) {
         assert.ok(Object.hasOwn(entry, field), `${field} must still be present for ${role}`);
         assert.equal(entry[field], null, `${field} is administrative and must not reach ${role}`);
       }
@@ -671,6 +688,16 @@ test('a manager is privileged and the three context-only roles are not', async (
       `get widens the same way for ${role}`);
   }
   assert.equal((await as(MANAGER_C, GET, [C, rid(OFFICE_C)]))[0].result.phone, `555-100${OFFICE_C}`);
+
+  // The telecom half from the privileged side: a manager gets the work line in
+  // full, the cell MASKED, and both presence booleans true. The mask is spelled
+  // out rather than computed, because a test that recomputed it from the fixture
+  // would agree with a projection that had stopped masking.
+  const member = (await as(MANAGER_C, GET, [C, rid(OFFICE_C)]))[0].result;
+  assert.equal(member.work_phone_number, `+121555501${String(OFFICE_C).padStart(2, '0')}`);
+  assert.equal(member.personal_cell_masked, `(•••) •••-09${String(OFFICE_C).padStart(2, '0')}`);
+  assert.equal(member.has_work_phone, true);
+  assert.equal(member.has_personal_cell, true);
 });
 
 /**
@@ -750,7 +777,14 @@ test('the roster projects only seven columns a screen could send back', async ()
     + 'mirrors the row: widen this set only with the write side read in the same change');
   // And state the other half as a number, so a projection that grew is visible
   // here even when the round-trippable set did not move.
-  assert.equal(projected.length - overlap.length, 19,
+  // 19 until `20260920720000_roster_phone_provisioned.sql` added four telecom
+  // keys. They are the safe kind of widening this number exists to make
+  // somebody acknowledge: none is on the allowlist above, so the overlap did
+  // not move. `personal_cell_masked` is deliberately not named
+  // `personal_cell_e164`, which IS on it — a projection carrying that key
+  // would make the masked value round-trippable and a mirroring screen would
+  // write the mask over the real number.
+  assert.equal(projected.length - overlap.length, 23,
     'projected columns that a caller can never write; a change here is fine, '
     + 'but it should be a change somebody meant');
 });

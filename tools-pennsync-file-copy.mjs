@@ -44,6 +44,7 @@ import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { carriesTable } from './tools-entity-schema-plan.mjs';
 
 /**
  * v2 because the export's shape changed in a way a v1 export cannot satisfy:
@@ -63,8 +64,24 @@ export const APP_LOCK = Object.freeze([168344, 20260918]);
  * storage object and this tool has no business copying it.
  */
 export const STORAGE_HOSTS = Object.freeze(['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io']);
-/** An entity whose disposition gives it no table in the record store. */
-export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved_paused']);
+/**
+ * Whether an entity has a table here is `carriesTable`'s answer and NOT this
+ * tool's, which is the correction rather than a tidy-up.
+ *
+ * The list that stood here was `['retire', 'hub', 'preserved_paused']`, read
+ * off the disposition field — a fifth copy of an answer the disposition cannot
+ * give once a paused entity may carry its schema under D7's own clause. It made
+ * this tool report a row as `uncarried_entity`, "nothing here to re-point",
+ * for an entity whose table the planner had just emitted; the two locator
+ * fields on `OASISUpload` and `OASISAudit` were in the census and in no
+ * rewrite population, so the inventory and the rewrite disagreed with nothing
+ * failing. A skip is the quietest place for that: it is reported, it looks
+ * deliberate, and the reason it gives is the wrong one.
+ *
+ * Nothing is re-exported under a local name: a second name for one predicate is
+ * how the fifth copy got written in the first place, so a caller that needs the
+ * answer imports `carriesTable` from the generator that owns it.
+ */
 
 /**
  * WHO MAY OPEN A COPIED OBJECT — the question that stopped every apply (D77),
@@ -306,7 +323,11 @@ export function planFileCopy({ app_id: appId, references, mapped }, census, mani
     // The carried check comes AFTER the shape checks so an unfamiliar path on
     // a paused entity is still reported as unfamiliar: a census the schemas
     // have outgrown is a finding whatever the disposition says.
-    if (UNCARRIED_DISPOSITIONS.includes(dispositions[reference.entity])) {
+    //
+    // Asked of the ENTITY and its disposition together, because a paused entity
+    // may carry a table (D7's amendment) and this question is only ever about
+    // whether there is a row here to re-point.
+    if (!carriesTable(reference.entity, dispositions[reference.entity])) {
       uncarriedLocators.add(locator);
       note('uncarried_entity', reference);
       continue;
