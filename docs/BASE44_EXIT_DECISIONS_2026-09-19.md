@@ -710,7 +710,7 @@ certificates and credits must be preserved by that cutover, not by this one.
 **Contributed by the plan thread, 2026-09-30, in the same message as the D7
 amendment above.** It widens this entry and corrects nothing already filed.
 
-**119 of the 193 `no_table` sites are the training and learning domain**, twelve entities, all `hub`. D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` already decided their destination: `kdeyarmin/caremetric-support-hub`, with both controls (`VITE_CENTRAL_LEARNING_ENABLED`, `CENTRAL_LEARNING_RELEASE=hub-runtime-v1`) unset and a five-step pre-cutover checklist.
+**119 of the 193 `no_table` sites are the training and learning domain**, twelve entities, all `hub`. D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` already decided their destination: `kdeyarmin/caremetric-support-hub`, with both controls (`VITE_CENTRAL_LEARNING_ENABLED`, `CENTRAL_LEARNING_RELEASE=hub-runtime-v1`) unset and a seven-step pre-cutover checklist.
 
 **So they are neither the owner's to decide nor ours to port**, and porting their tables into the owned store would build precisely what D8 decided not to build. The plan at `:3907` states the Hub destination and then puts all 194 under "each needs a product answer" in the next sentence — the correction is one clause, and it makes the owner's pile smaller rather than larger.
 
