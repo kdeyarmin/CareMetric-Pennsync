@@ -4,7 +4,8 @@ import {
 } from './independentProductionAdapter';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import {
-  productionApiUrl, productionEmail, productionEnv, productionFixture, productionPassword, productionUserId,
+  productionApiUrl, productionDevice, productionEmail, productionEnv, productionFixture, productionPassword,
+  productionUserId,
 } from '@/test/independentProductionFixture';
 import { stagingEnv } from '@/test/independentStagingFixture';
 
@@ -173,5 +174,60 @@ describe('the production backend mode', () => {
       .rejects.toMatchObject({ code: 'STALE_AUTHORITY_SESSION', status: 401 });
     expect(adapter.auth.hasSession()).toBe(false);
     expect(fixture.live.size).toBe(0);
+  });
+});
+
+describe('a session this device already holds', () => {
+  it('is taken up without a password, and signing out leaves nothing to take up', async () => {
+    const fixture = productionFixture();
+    const device = productionDevice();
+    const first = adapterFor(fixture, productionEnv, { device });
+    await first.auth.signIn(productionEmail, productionPassword);
+    expect(device.state.email).toBe(productionEmail);
+    expect(typeof device.state.token).toBe('string');
+
+    // A reload: a NEW adapter over the same device, with nothing in memory.
+    const reloaded = adapterFor(fixture, productionEnv, { device });
+    expect(reloaded.auth.hasSession()).toBe(false);
+    expect(await reloaded.auth.resume()).toBe(true);
+    expect(reloaded.auth.hasSession()).toBe(true);
+    expect(fixture.refreshed).toBe(1);
+    // And the resumed session answers for the person, through the ordinary path.
+    expect(await reloaded.authority.me()).toEqual({ id: productionUserId, email: productionEmail });
+
+    await reloaded.auth.signOut();
+    expect(device.state.token).toBeNull();
+    expect(device.state.clears).toBeGreaterThan(0);
+    const third = adapterFor(fixture, productionEnv, { device });
+    expect(await third.auth.resume()).toBe(false);
+  });
+
+  it('closing the realm leaves the device able to resume; only signing out forgets', async () => {
+    const fixture = productionFixture();
+    const device = productionDevice();
+    const adapter = adapterFor(fixture, productionEnv, { device });
+    await adapter.auth.signIn(productionEmail, productionPassword);
+    const kept = device.state.token;
+    await adapter.auth.signOut({ forget: false });
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(device.state.token).toBe(kept);
+    expect(await adapterFor(fixture, productionEnv, { device }).auth.resume()).toBe(true);
+  });
+
+  it('answers false, and reaches no project, when this device holds nothing', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture, productionEnv, { device: productionDevice() });
+    expect(await adapter.auth.resume()).toBe(false);
+    expect(fixture.requests).toEqual([]);
+    expect(adapter.auth.hasSession()).toBe(false);
+  });
+
+  it('a record naming somebody the project refuses leaves no session and is forgotten', async () => {
+    const fixture = productionFixture();
+    const device = productionDevice('someone.else@agency.example', 'refresh-nobody-minted');
+    const adapter = adapterFor(fixture, productionEnv, { device });
+    expect(await adapter.auth.resume()).toBe(false);
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(device.state.token).toBeNull();
   });
 });

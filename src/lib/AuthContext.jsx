@@ -37,6 +37,7 @@ import {
   poisonTenantSdkRealm,
 } from '@/lib/tenantSdkRealmGate';
 import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch';
+import { OWNED_SESSION_STORAGE_KEY } from '@/lib/ownedBackendSessionStore';
 import {
   bindTrustedTenantContext,
   clearTrustedTenantContext,
@@ -249,19 +250,35 @@ export const AuthProvider = ({ children }) => {
     setTenantAuthorityStateValue(nextState);
   }, []);
 
-  const cleanupIndependentSession = useCallback(() => {
+  /**
+   * Revoke this document's owned session, and say whether the DEVICE forgets it.
+   *
+   * `forget` has no default and every call site decides it, because the two
+   * meanings are not interchangeable. The app closes a realm by itself — the
+   * five-minute expiry, a tab that was hidden, a back-forward restore, a page
+   * exit, an identity read that failed — and none of those means the person is
+   * leaving; forgetting there would make a reload ask for a password, which is
+   * the behaviour the device record exists to end. Only `logout` forgets.
+   *
+   * A pending non-forgetting cleanup is NOT reused by a forgetting caller: a
+   * sign-out that arrived while a realm was closing would otherwise be satisfied
+   * by a promise that deliberately kept the record. Revoking twice is a no-op and
+   * clearing twice is idempotent, so the second call is the cheap, safe answer.
+   */
+  const cleanupIndependentSession = useCallback((forget) => {
     if (!ownedBackendAuth) return Promise.resolve(true);
-    if (independentCleanupRef.current) return independentCleanupRef.current;
+    const inFlight = independentCleanupRef.current;
+    if (inFlight && (inFlight.forget || !forget)) return inFlight.promise;
     // signOut fences local access synchronously and preserves failed known
     // credentials for retry. Keep its promise independent of cache teardown.
-    const pending = ownedBackendAuth.signOut().then(() => true, () => {
+    const pending = ownedBackendAuth.signOut({ forget }).then(() => true, () => {
       setAuthError({ type: 'staging_cleanup_unavailable',
         message: 'Access is closed. Session cleanup could not be confirmed. Keep this page open and retry signing out.' });
       return false;
     }).finally(() => {
-      if (independentCleanupRef.current === pending) independentCleanupRef.current = null;
+      if (independentCleanupRef.current?.promise === pending) independentCleanupRef.current = null;
     });
-    independentCleanupRef.current = pending;
+    independentCleanupRef.current = { promise: pending, forget: !!forget };
     return pending;
   }, []);
 
@@ -368,6 +385,9 @@ export const AuthProvider = ({ children }) => {
     purgePersistent = false,
     purgeDrafts = false,
     terminalIndependentSession = false,
+    // A purge is realm teardown, so it does NOT forget the device by default.
+    // `logout` is the one caller that passes true.
+    forgetDevice = false,
   } = {}) => {
     // First statement: prevent every protected SDK read, write, function,
     // integration, log, and subscription from being initiated by a retained
@@ -375,7 +395,7 @@ export const AuthProvider = ({ children }) => {
     closeTenantSdkRealm();
     const nativeCleanup = ownedBackendAuth
       && (terminalIndependentSession || hasPinnedTenantSdkRealm())
-      ? cleanupIndependentSession() : null;
+      ? cleanupIndependentSession(forgetDevice) : null;
     closeAuthorityBoundWindows();
     // Fence non-TanStack draft work synchronously. This must happen before the
     // first await so stale component/import continuations cannot write while
@@ -664,8 +684,11 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       if (generation !== authGeneration.current) return false;
       closeTenantSdkRealm();
+      // A failed identity read closes this realm; it is not somebody signing
+      // out, and the stored token is refused on the next boot and cleared there
+      // if it really is spent.
       const nativeCleanup = ownedBackendAuth && hasPinnedTenantSdkRealm()
-        ? cleanupIndependentSession() : null;
+        ? cleanupIndependentSession(false) : null;
       const definitiveFailure = isDefinitiveTenantAuthorityFailure(error)
         || stage === 'drafts';
       if (definitiveFailure) {
@@ -744,7 +767,12 @@ export const AuthProvider = ({ children }) => {
 
       if (ownedBackendAuth) {
         setAppPublicSettings({ name: independentStagingAuth ? 'PennSync independent staging' : 'PennSync' });
-        if (ownedBackendAuth.hasSession()) {
+        // A session already in this document, or one this device can take up
+        // without a password. The second is what makes a reload survivable on the
+        // owned path, which the Base44 path gets from its stored access token:
+        // `resume` answers false when there is nothing to take up, so the else
+        // branch below is still the ordinary fresh-browser case.
+        if (ownedBackendAuth.hasSession() || await ownedBackendAuth.resume()) {
           await establishTenantAuthority({ phase: 'boot' });
         } else {
           await purgeTenantAuthority({ nextState: TENANT_AUTHORITY_STATES.LOADING,
@@ -866,14 +894,14 @@ export const AuthProvider = ({ children }) => {
       closeAuthorityBoundWindows();
       // Uncontrolled page exit may terminate requests. This is best effort;
       // a retained BFCache document retries before its controlled reload.
-      if (ownedBackendAuth) void cleanupIndependentSession();
+      if (ownedBackendAuth) void cleanupIndependentSession(false);
     };
     const handleDocumentRestore = (event) => {
       if (!event.persisted) return;
       if (!ownedBackendAuth) window.location.reload();
       else {
         poisonTenantSdkRealm();
-        void cleanupIndependentSession().then(cleaned => { if (cleaned) window.location.reload(); });
+        void cleanupIndependentSession(false).then(cleaned => { if (cleaned) window.location.reload(); });
       }
     };
     window.addEventListener('pagehide', handleDocumentExit);
@@ -999,6 +1027,10 @@ export const AuthProvider = ({ children }) => {
         || event.key === 'base44_pending_access_token'
         || event.key === 'base44_server_url'
         || event.key === 'token'
+        // The owned device record, for the same reason as the Base44 keys beside
+        // it: another tab signing in or out has changed who this browser is, and
+        // a READY realm here was established under the previous answer.
+        || event.key === OWNED_SESSION_STORAGE_KEY
         || isBrowserAuthorityEpochStorageKey(event.key)
         || event.key === DRAFT_AUTHORITY_MARKER_KEY
         || event.key === DRAFT_LOGOUT_TOMBSTONE_KEY
@@ -1128,7 +1160,7 @@ export const AuthProvider = ({ children }) => {
     poisonTenantSdkRealm();
     if (logoutInProgressRef.current) {
       if (ownedBackendAuth) {
-        const cleaned = await cleanupIndependentSession();
+        const cleaned = await cleanupIndependentSession(true);
         if (cleaned && shouldRedirect) window.location.assign(scrubProtectedBrowserLocation());
       }
       return;
@@ -1169,6 +1201,9 @@ export const AuthProvider = ({ children }) => {
       nextState: TENANT_AUTHORITY_STATES.SWITCHING,
       purgePersistent: true,
       purgeDrafts: true,
+      // The person is leaving, so whichever of this purge and the direct cleanup
+      // below reaches the adapter first must forget the device.
+      forgetDevice: true,
     }).catch(() => {
       // Keep the authority gate and logout latch closed. A future app boot must
       // repeat strict cleanup before any protected tenant can become READY.
@@ -1184,7 +1219,7 @@ export const AuthProvider = ({ children }) => {
     setIsLoadingAuth(false);
     setAuthError(null);
     if (ownedBackendAuth) {
-      const cleaned = await cleanupIndependentSession();
+      const cleaned = await cleanupIndependentSession(true);
       if (cleaned && shouldRedirect) window.location.assign(safeReturnUrl);
     } else if (shouldRedirect) base44.auth.logout(safeReturnUrl);
     else base44.auth.logout();

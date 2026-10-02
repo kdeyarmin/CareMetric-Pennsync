@@ -21,10 +21,32 @@ export const productionEnv = {
   VITE_PENNSYNC_API_URL: productionApiUrl,
 };
 
+/**
+ * A device record as the browser store would hold it, injectable into an adapter.
+ *
+ * `email` answers whose session this is and never the credential; the token
+ * reaches the client through the port, which is how the real store is shaped.
+ */
+export function productionDevice(email = null, token = null) {
+  const state = { email, token, clears: 0, writes: [] };
+  return {
+    state,
+    email: () => state.email,
+    port: address => ({
+      read: () => (state.email === address ? state.token : null),
+      write: value => { state.email = address; state.token = value; state.writes.push(value); return true; },
+      clear: () => { state.clears += 1; state.email = null; state.token = null; },
+    }),
+  };
+}
+
 export function productionFixture() {
   const requests = [], live = new Map(), apiCalls = [];
   let next = 0;
-  const fixture = { requests, live, apiCalls, apiResponse: null, denyContext: false, agencies: ['agency-one'] };
+  const fixture = { requests, live, apiCalls, apiResponse: null, denyContext: false, agencies: ['agency-one'],
+    // Refresh tokens this project will honour, each exactly once, as GoTrue
+    // rotates them.
+    refreshable: new Set(), refreshed: 0 };
   const json = (body, status = 200) => new Response(JSON.stringify(body), {
     status, headers: { 'content-type': 'application/json' },
   });
@@ -57,12 +79,29 @@ export function productionFixture() {
     if (url.endsWith('/token?grant_type=password')) {
       if (input.email !== productionEmail || input.password !== productionPassword) return json({}, 401);
       const bearer = `production.session${++next}.token`;
-      live.set(bearer, true);
-      return json({ user, access_token: bearer, token_type: 'bearer' });
+      const refresh = `refresh${next}`;
+      live.set(bearer, refresh);
+      fixture.refreshable.add(refresh);
+      return json({ user, access_token: bearer, token_type: 'bearer', refresh_token: refresh });
+    }
+    if (url.endsWith('/token?grant_type=refresh_token')) {
+      fixture.refreshed += 1;
+      if (typeof input.refresh_token !== 'string'
+        || !fixture.refreshable.delete(input.refresh_token)) return json({}, 401);
+      const bearer = `production.resumed${++next}.token`;
+      const refresh = `refresh${next}`;
+      live.set(bearer, refresh);
+      fixture.refreshable.add(refresh);
+      return json({ user, access_token: bearer, token_type: 'bearer', refresh_token: refresh });
     }
     const bearer = options.headers.Authorization?.slice(7);
     if (!live.has(bearer)) return json({}, 401);
-    if (url.endsWith('/logout?scope=local')) { live.delete(bearer); return new Response(null, { status: 204 }); }
+    if (url.endsWith('/logout?scope=local')) {
+      // A local logout ends the session, so its refresh token dies with it.
+      fixture.refreshable.delete(live.get(bearer));
+      live.delete(bearer);
+      return new Response(null, { status: 204 });
+    }
     if (url.endsWith('/user')) return json(user);
     if (url.endsWith('/pennsync_staging_memberships')) {
       return json({ ...common(), user_id: productionUserId, user_email: productionEmail,

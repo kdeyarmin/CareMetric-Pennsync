@@ -266,18 +266,26 @@ describe('AuthProvider tenant authority state machine', () => {
 
   async function readyIndependent() {
     const session = { active: true, native: true };
-    const signOut = vi.fn(async () => { session.active = false; session.native = false; });
-    mocks.independentAuth = { hasSession: () => session.active, signOut };
+    // `active` is this document's session and `native` the provider's. A closure
+    // stops using the first; only a sign-out ends the second. That split is the
+    // adapter's contract, so the mock honours `forget` rather than ending both.
+    const signOut = vi.fn(async ({ forget = true } = {}) => {
+      session.active = false;
+      if (forget) session.native = false;
+    });
+    // A session already in this document, so nothing is resumed from the device.
+    const resume = vi.fn(async () => false);
+    mocks.independentAuth = { hasSession: () => session.active, resume, signOut };
     const rendered = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.SELECTION_REQUIRED));
     expect(signOut).not.toHaveBeenCalled();
     await act(async () => { await rendered.result.current.selectTenant('agency-a'); });
     expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
     expect(signOut).not.toHaveBeenCalled();
-    return { ...rendered, session, signOut };
+    return { ...rendered, session, signOut, resume };
   }
 
-  it.each(['online', 'expiry', 'background'])('independent %s closure revokes the known session before offering restart', async reason => {
+  it.each(['online', 'expiry', 'background'])('independent %s closure drops the session from memory and leaves it live at the provider', async reason => {
     let expire;
     const originalTimeout = window.setTimeout.bind(window);
     const timeout = vi.spyOn(window, 'setTimeout').mockImplementation((callback, delay, ...args) => {
@@ -286,9 +294,9 @@ describe('AuthProvider tenant authority state machine', () => {
     });
     const { result, session, signOut } = await readyIndependent();
     const cleanup = deferred();
-    signOut.mockImplementation(() => {
+    signOut.mockImplementation(({ forget = true } = {}) => {
       session.active = false;
-      return cleanup.promise.then(() => { session.native = false; });
+      return cleanup.promise.then(() => { if (forget) session.native = false; });
     });
     try {
       await act(async () => {
@@ -304,12 +312,22 @@ describe('AuthProvider tenant authority state machine', () => {
           visibility.mockRestore(); vi.mocked(Date.now).mockRestore();
         }
       });
-      expect(signOut).toHaveBeenCalledOnce(); expect(session.active).toBe(false);
+      // This assertion was the reverse until 2026-10-02: a closure revoked the
+      // provider's session. It cannot, and still let a reload come back signed in:
+      // a local logout ends the session, and the refresh token on the device dies
+      // with it, so revoking here left the device record dead on arrival and the
+      // person typing a password every five minutes. Base44 revokes nothing on a
+      // realm close either. The cost is that an access token leaked elsewhere
+      // cannot be invalidated early after a closure, for up to its hour.
+      expect(signOut).toHaveBeenCalledOnce();
+      expect(signOut).toHaveBeenCalledWith({ forget: false });
+      expect(session.active).toBe(false);
       expect(result.current.tenantAuthorityKey).toBeNull();
       expect(result.current.tenantContextError?.type).not.toBe('browser_authority_change_requires_restart');
       expect(session.native).toBe(true);
       await act(async () => { cleanup.resolve(); });
-      expect(session.native).toBe(false);
+      expect(session.native).toBe(true);
+      expect(session.active).toBe(false);
       expect(result.current.tenantContextError.type).toBe('browser_authority_change_requires_restart');
       expect(mocks.authMe).toHaveBeenCalledTimes(2);
     } finally { timeout.mockRestore(); }
@@ -318,16 +336,20 @@ describe('AuthProvider tenant authority state machine', () => {
   it('independent public entry awaits exact cleanup and cannot resume authority on return', async () => {
     const { result, session, signOut } = await readyIndependent();
     const cleanup = deferred(); let completed = false;
-    signOut.mockImplementation(() => {
+    signOut.mockImplementation(({ forget = true } = {}) => {
       session.active = false;
-      return cleanup.promise.then(() => { session.native = false; });
+      return cleanup.promise.then(() => { if (forget) session.native = false; });
     });
     let entry;
     await act(async () => { entry = result.current.setPublicRouteActive(true).then(value => { completed = true; return value; }); });
     expect(result.current.tenantAuthorityKey).toBeNull(); expect(completed).toBe(false);
     expect(signOut).toHaveBeenCalledOnce();
     await act(async () => { cleanup.resolve(); expect(await entry).toBe(true); });
-    expect(session.native).toBe(false);
+    // Entering a public route closes the staff realm; it does not sign the person
+    // out, so the provider's session survives and the reload below is what cannot
+    // reuse this document's authority.
+    expect(session.native).toBe(true);
+    expect(session.active).toBe(false);
     await act(async () => { await result.current.setPublicRouteActive(false); });
     expect(result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.BLOCKED);
     expect(result.current.tenantContextError.type).toBe('browser_authority_change_requires_restart');
@@ -369,20 +391,77 @@ describe('AuthProvider tenant authority state machine', () => {
     expect(session.native).toBe(false);
   });
 
-  it('independent concurrent terminal closure and logout share one pending cleanup', async () => {
+  it('boots a session this device already holds, without a password', async () => {
+    // The Base44 path comes back signed in after a reload because its access token
+    // is in localStorage. The owned path stored nothing, so the same reload asked
+    // for a password -- and the app closes a READY realm after five minutes
+    // whatever the backend, which made that a password every five minutes of work.
+    const resume = vi.fn(async () => true);
+    const signOut = vi.fn(async () => {});
+    let signedIn = false;
+    mocks.independentAuth = { hasSession: () => signedIn, resume, signOut };
+    resume.mockImplementation(async () => { signedIn = true; return true; });
+    const rendered = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(rendered.result.current.tenantAuthorityState)
+      .toBe(TENANT_AUTHORITY_STATES.SELECTION_REQUIRED));
+    expect(resume).toHaveBeenCalledOnce();
+    expect(rendered.result.current.isAuthenticated).toBe(true);
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it('shows the sign-in form when this device holds nothing to resume', async () => {
+    const resume = vi.fn(async () => false);
+    mocks.independentAuth = { hasSession: () => false, resume, signOut: vi.fn(async () => {}) };
+    const rendered = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(rendered.result.current.isLoadingAuth).toBe(false));
+    expect(resume).toHaveBeenCalledOnce();
+    expect(rendered.result.current.isAuthenticated).toBe(false);
+  });
+
+  it('independent concurrent terminal closures share one pending cleanup', async () => {
     const { result, session, signOut } = await readyIndependent();
     const cleanup = deferred();
-    signOut.mockImplementation(() => {
+    signOut.mockImplementation(({ forget = true } = {}) => {
       session.active = false;
-      return cleanup.promise.then(() => { session.native = false; });
+      return cleanup.promise.then(() => { if (forget) session.native = false; });
+    });
+    let first, second;
+    await act(async () => {
+      first = result.current.refreshUser(); second = result.current.setPublicRouteActive(true);
+    });
+    expect(signOut).toHaveBeenCalledOnce(); expect(result.current.tenantAuthorityKey).toBeNull();
+    await act(async () => { cleanup.resolve(); await Promise.allSettled([first, second]); });
+    // One cleanup for both, and the provider's session survives both, because
+    // neither is a person leaving.
+    expect(session.native).toBe(true); expect(session.active).toBe(false);
+    expect(signOut).toHaveBeenCalledOnce();
+    // Neither closure is a person leaving, so neither asks the device to forget.
+    expect(signOut.mock.calls.every(([options]) => options?.forget === false)).toBe(true);
+    expect(result.current.tenantAuthorityState).not.toBe(TENANT_AUTHORITY_STATES.READY);
+  });
+
+  it('a logout during a terminal closure signs out AGAIN rather than sharing it', async () => {
+    // This replaces an assertion that the two SHARE one cleanup, which was right
+    // while both meant the same thing. They no longer do: a closure revokes the
+    // grants and leaves this device able to resume, which is how a reload survives
+    // the app's own five-minute realm expiry, while a logout must also make the
+    // device forget. Satisfying the logout with the closure's promise would leave a
+    // usable refresh token behind on a sign-out.
+    const { result, session, signOut } = await readyIndependent();
+    const cleanup = deferred();
+    signOut.mockImplementation(({ forget = true } = {}) => {
+      session.active = false;
+      return cleanup.promise.then(() => { if (forget) session.native = false; });
     });
     let expiry, logout;
     await act(async () => {
       expiry = result.current.refreshUser(); logout = result.current.logout(false);
     });
-    expect(signOut).toHaveBeenCalledOnce(); expect(result.current.tenantAuthorityKey).toBeNull();
-    await act(async () => { cleanup.resolve(); await Promise.all([expiry, logout]); });
-    expect(session.native).toBe(false); expect(signOut).toHaveBeenCalledOnce();
+    expect(result.current.tenantAuthorityKey).toBeNull();
+    await act(async () => { cleanup.resolve(); await Promise.allSettled([expiry, logout]); });
+    expect(session.native).toBe(false);
+    expect(signOut.mock.calls.map(([options]) => options?.forget)).toContain(false);
+    expect(signOut.mock.calls.map(([options]) => options?.forget)).toContain(true);
     expect(result.current.tenantAuthorityState).not.toBe(TENANT_AUTHORITY_STATES.READY);
   });
 

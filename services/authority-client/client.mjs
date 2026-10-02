@@ -547,7 +547,15 @@ function validateResult(result, method, params, config) {
   return result;
 }
 
-/** Credentials and tokens stay in this closure; no storage, refresh, or Base44 fallback. */
+/**
+ * No Base44 fallback, and the ACCESS token stays in this closure.
+ *
+ * This line used to read "no storage, refresh, or Base44 fallback", and two
+ * thirds of that is no longer true: with a `sessionStore`, the rotated refresh
+ * token is kept on the device and exchanged on boot, because the Base44 path a
+ * build replaces comes back signed in after a reload and this one asked for a
+ * password again. Without a store the closure is still the whole of it.
+ */
 export function createStagingAuthorityClient(input, options = {}) {
   return createAuthorityClient(validateTarget(input), 'staging', options);
 }
@@ -576,7 +584,26 @@ export function createProductionAuthorityClient(input, options = {}) {
   return createAuthorityClient(validateProductionTarget(input), 'production', options);
 }
 
-function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
+/**
+ * A refresh token's shape, bounded here as well as in the device store.
+ *
+ * This value is SENT to the provider as a credential, so the client refuses to
+ * send something that is not one rather than finding out from a 401 — the same
+ * reason the access token's shape is checked in `validGrant`.
+ */
+const REFRESH_TOKEN = /^[A-Za-z0-9_-]{8,512}$/;
+/**
+ * An access token's shape: three dot-separated base64url segments.
+ *
+ * Named because two different questions ask it. `validGrant` asks whether a grant
+ * may be USED, and the tracker below asks whether a string is a token this client
+ * must revoke — and the second must not depend on the first, because a grant this
+ * client refuses is still a session the provider minted.
+ */
+const ACCESS_TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+function createAuthorityClient(config, mode,
+  { fetchImpl = globalThis.fetch, timeoutMs = 15000, sessionStore = null } = {}) {
   const staging = mode === 'staging';
   const targetCode = staging ? 'INVALID_STAGING_TARGET' : 'INVALID_PRODUCTION_TARGET';
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) fail(targetCode);
@@ -601,7 +628,7 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
     && user.role === 'authenticated' && user.is_anonymous === false
     && typeof user.email_confirmed_at === 'string' && Number.isFinite(Date.parse(user.email_confirmed_at));
   const validGrant = session => sameUser(session?.user) && typeof session.access_token === 'string'
-    && session.access_token.length <= 16384 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.access_token)
+    && session.access_token.length <= 16384 && ACCESS_TOKEN.test(session.access_token)
     && session.token_type === 'bearer';
   async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false,
     receivedGrant, maxResponseBytes = 1024 * 1024, origin = config.projectUrl, apikey = true,
@@ -671,6 +698,65 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
     return record.revoking;
   }
   const revokeAllKnown = () => Promise.all([...knownSessions.keys()].map(revokeKnown));
+  /**
+   * Keep this grant's refresh token on the device, or leave nothing there.
+   *
+   * Called only after a session has been established, and never with anything
+   * else: a provider that answers without a refresh token leaves the device with
+   * no record rather than a stale one, because a record beside a session the app
+   * cannot resume is a credential for a session nothing is tracking.
+   */
+  // A port may be synchronous (the browser's own storage is) or asynchronous (a
+  // test's, or a device store that is not). Awaiting the result covers both, so
+  // neither kind of port needs to know which the client expected.
+  const device = {
+    read: () => Promise.resolve(sessionStore.read()),
+    write: value => Promise.resolve(sessionStore.write(value)),
+    clear: () => Promise.resolve(sessionStore.clear()),
+  };
+  const persist = async session => {
+    if (!sessionStore) return;
+    const next = session?.refresh_token;
+    if (typeof next === 'string' && REFRESH_TOKEN.test(next)) await device.write(next);
+    else await device.clear();
+  };
+  /**
+   * What a refusal means for the device record.
+   *
+   * A grant the provider REFUSED, or one that answered about somebody else, means
+   * the stored token is spent or was never ours, so it goes. A transport failure
+   * means nothing about the token: clearing it there would sign out every person
+   * whose app booted offline or against a service that was briefly down, which is
+   * worse than the thing it would protect. A token that really did die while the
+   * transport failed is refused on the next boot and cleared then.
+   */
+  /**
+   * Register the grant a CREDENTIAL EXCHANGE answered with, and revoke it at once
+   * if the attempt is already over.
+   *
+   * It asks `validGrant` first, and that is deliberate rather than an oversight I
+   * nearly "fixed". A grant that contradicts the identity this client is pinned or
+   * bound to is not ours, and `client-lifecycle.test.mjs` asserts by name that such
+   * a token is "rejected without treating its token as a cleanup credential" — the
+   * client refuses the answer and touches nothing in it, rather than sending a
+   * string out of an answer it just called untrustworthy. The session that may be
+   * left behind is bounded by its own expiry and is known only to whoever produced
+   * that answer.
+   *
+   * The opposite rule holds one step later, and the discriminator is whose
+   * credential the request carried: a grant that comes back from a request made
+   * with a session this client ALREADY accepted is ours by construction, so there
+   * it is registered on the token's shape alone.
+   */
+  const trackGrant = async (value, canceled, accept) => {
+    if (!validGrant(value)) return;
+    const bearer = value.access_token;
+    if (!knownSessions.has(bearer)) knownSessions.set(bearer, { revoking: null });
+    accept(bearer);
+    if (canceled) await revokeKnown(bearer);
+  };
+  const KEEP_ON = new Set(['AUTHORITY_NETWORK_FAILED', 'AUTHORITY_REQUEST_ABORTED',
+    'AUTHORITY_REQUEST_FAILED', 'STALE_AUTHORITY_SESSION', 'AUTHORITY_SESSION_CLEANUP_FAILED']);
   return Object.freeze({
     async signIn(password) {
       invalidate();
@@ -682,13 +768,7 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
           fail(staging ? 'INVALID_STAGING_CREDENTIAL' : 'INVALID_PRODUCTION_CREDENTIAL');
         }
         const session = await request('/auth/v1/token?grant_type=password', { lease, body: { email: config.email, password },
-          receivedGrant: async (value, canceled) => {
-            if (validGrant(value)) {
-              candidate = value.access_token;
-              if (!knownSessions.has(candidate)) knownSessions.set(candidate, { revoking: null });
-              if (canceled) await revokeKnown(candidate);
-            }
-          } });
+          receivedGrant: (value, canceled) => trackGrant(value, canceled, bearer => { candidate = bearer; }) });
         if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
         // Bind the production identity BEFORE the confirmation read, so that
         // read is a check rather than a second chance to establish one: the
@@ -702,13 +782,66 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
         if (!sameUser(user)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
         current(lease);
         token = candidate;
+        await persist(session);
         return Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
       } catch (error) {
         // A learned identity that never produced a session is not one. Leaving
         // it bound would let the next failed attempt be checked against a
         // predecessor's grant instead of against nothing.
         if (!staging && !token) authUserId = null;
-        if (candidate) await revokeKnown(candidate);
+        // Everything registered, not only the candidate: a grant that was refused
+        // was never a candidate and is exactly the one that would be left live.
+        await revokeAllKnown();
+        throw error;
+      }
+    },
+    /**
+     * Take up the session this device already holds, without a password.
+     *
+     * This is the half that makes a reload survivable, and it is deliberately the
+     * SAME sequence as `signIn` from the grant onwards: the refreshed grant is
+     * checked by `validGrant`, the production identity is bound from it, the
+     * `/user` read has to agree, and only then does the token become usable. A
+     * resumed session is therefore held to exactly what a password session is.
+     *
+     * The address is NOT learned here. The device record names whose session it
+     * is, the client was constructed for that address, and `sameUser` compares
+     * the provider's answer against it — so a record somebody swapped resumes
+     * nobody rather than resuming them as its new owner.
+     *
+     * Answers null when this device holds nothing, because that is the ordinary
+     * case on a fresh browser and not a failure to report.
+     */
+    async resume() {
+      if (!sessionStore) return null;
+      invalidate();
+      const lease = epoch;
+      let candidate = null;
+      try {
+        await revokeAllKnown(); current(lease);
+        const stored = await device.read();
+        if (stored === null || stored === undefined) return null;
+        if (typeof stored !== 'string' || !REFRESH_TOKEN.test(stored)) {
+          await device.clear();
+          return null;
+        }
+        const session = await request('/auth/v1/token?grant_type=refresh_token', { lease, body: { refresh_token: stored },
+          receivedGrant: (value, canceled) => trackGrant(value, canceled, bearer => { candidate = bearer; }) });
+        if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        if (!staging) { current(lease); authUserId = session.user.id; }
+        const user = await request('/auth/v1/user', { lease, bearer: candidate, method: 'GET' });
+        if (!sameUser(user)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        token = candidate;
+        // The exchange ROTATES: the token just sent is spent, so the device record
+        // is replaced with the new one or emptied. Leaving the old one would make
+        // every later boot fail against a token the provider has already retired.
+        await persist(session);
+        return Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
+      } catch (error) {
+        if (!staging && !token) authUserId = null;
+        await revokeAllKnown();
+        if (!KEEP_ON.has(error?.code)) await device.clear().catch(() => {});
         throw error;
       }
     },
@@ -777,8 +910,45 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
       }
       return result.result;
     },
-    async signOut() {
+    /**
+     * End this session, and say whether the DEVICE should forget it too.
+     *
+     * The distinction is the whole reason persistence is worth anything, and it
+     * is not a convenience. The app closes a READY realm by itself — after five
+     * minutes, on returning to a tab that was hidden, on a back-forward restore
+     * — and each of those paths ends the session as part of re-establishing a
+     * fresh document, not because the person is leaving. If those forgot the
+     * device record, a reload would ask for a password again and the Base44
+     * behaviour this restores would be undone by the app's own housekeeping.
+     *
+     * So `forget` is TRUE by default, because a method named `signOut` that left
+     * a usable credential behind would be the dangerous default, and the handful
+     * of realm-closing callers pass false deliberately. The grants are revoked
+     * either way: what survives a realm close is the refresh token on the device,
+     * never a live access token in memory.
+     */
+    async signOut({ forget = true } = {}) {
       invalidate();
+      if (!forget) {
+        // A REALM CLOSE, and it deliberately revokes nothing. A local logout ends
+        // the provider's session, and that session's refresh token dies with it —
+        // so revoking here would leave the device record dead on arrival and the
+        // person signing in again after every closure, which is the whole thing
+        // this facility exists to end. What ends is the use: `invalidate` above
+        // drops the access token out of memory and aborts everything in flight.
+        //
+        // The cost, stated rather than hidden: after a closure the session stays
+        // live at the provider until its access token expires, so a token that
+        // leaked elsewhere cannot be invalidated early. Base44 revokes nothing on a
+        // realm close either, and the token it leaves live sits in storage, so this
+        // is parity and not more. The provider's own session limits could bound it
+        // further, which is a configuration question and not this client's.
+        return;
+      }
+      // The record goes FIRST, before the network call that can fail: a sign-out
+      // whose revoke never answers must still leave nothing on the device for the
+      // next boot to resume from.
+      if (sessionStore) await device.clear().catch(() => {});
       await revokeAllKnown();
     },
     invalidate,
