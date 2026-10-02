@@ -8,6 +8,15 @@
  * its baseline fails; a count below it passes and is reported so the gain can
  * be locked in by lowering the baseline.
  *
+ * The same baseline carries an allowance for the one signal that is not a
+ * count: a file may take an entity HANDLE without an immediately visible call
+ * only while that file and entity are listed, so this tree's existing handles
+ * are recorded in a reviewed diff and a NEW one fails. An allowance is the
+ * record of an undercount, not permission for it, which is why entries are
+ * COUNTED rather than matched -- a second handle beside a declared one is still
+ * refused -- and why a declaration with nothing to match fails too: it has
+ * outlived the defect it describes.
+ *
  * It is deterministic and offline: no network, no credential, no hosted
  * inventory. Test and spec files are excluded because they deliberately model
  * the very surface being retired.
@@ -108,6 +117,120 @@ export function* entityCalls(text) {
     yield { entity: found.get(end), end };
   }
 }
+/**
+ * Comment bodies, blanked rather than removed so every line number downstream
+ * still points at the line it came from. Blanking is the whole reason this is
+ * not the repo's usual two-replace strip: a strip that deletes the text moves
+ * every line after it, and the refusal below reports file and LINE.
+ *
+ * Its limit, stated because a reader will assume more: only a `//` comment that
+ * STARTS its line is blanked, so a trailing one after code survives. That is
+ * safe for this matcher in one direction only — a trailing comment mentioning
+ * `base44.entities.Name` would be reported as a taken handle. It is driven by a
+ * test rather than left to the reader.
+ */
+const withoutComments = text => text
+  .replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/gu, ' '))
+  .replace(/^[ \t]*\/\/.*$/gmu, comment => comment.replace(/[^\n]/gu, ' '));
+
+/**
+ * Where a file takes an entity HANDLE instead of calling through it: the same
+ * characters `ENTITY_CALL` matches, with the following `.` captured rather than
+ * required, so one regex decides both halves and they cannot drift apart.
+ *
+ * Three ways of reaching an entity are NOT covered by it, listed because the
+ * next reader will otherwise take the handle set for a closed one. Each is
+ * measured absent from production `src`, which is why they are recorded rather
+ * than matched. Re-measured 2026-10-02 over all 1,102 production source files,
+ * comments blanked, with one regex per form: no computed lookup, no destructure
+ * of the namespace, no plain alias of it, and no `{ entities } = base44`. The
+ * only optional-chain hit is `entities?.NoteConversion` at
+ * `src/lib/retiredOfflineQueue.js:431-432`, a typeof check on an injected
+ * PARAMETER named `entities` (the four-entity map above), not the SDK
+ * namespace, so it takes no handle. Forms:
+ *   - `base44?.entities?.Name`, optional chaining anywhere in the path;
+ *   - `base44.entities[expression]`, a computed lookup on the namespace itself,
+ *     as opposed to the indexed lookup on a local map that `agencySettings.js`
+ *     does and this tool does see;
+ *   - `const { Name } = base44.entities` where `Name` is then handed on without
+ *     a call. `entityCalls` resolves that binding when a call DOES follow
+ *     (`NAMESPACE_DESTRUCTURE`); it is only the handed-on handle that is unseen.
+ * Any of them appearing is a reason to widen this regex, not to widen the
+ * allowance below.
+ */
+export const ENTITY_HANDLE = /\bbase44\s*\.\s*entities\s*\.\s*([A-Z][A-Za-z0-9_]*)(?![\w$])[ \t\r\n]*(\.)?/g;
+
+/**
+ * Every `{ entity, line }` where this file takes a handle and does not
+ * immediately call a method on it. Comments are blanked first, because a
+ * sentence ABOUT the SDK is not a call site and `src/lib/independentStagingAdapter.js`
+ * contains one.
+ */
+export function takenHandles(text) {
+  const code = withoutComments(text);
+  const taken = [];
+  for (const match of code.matchAll(ENTITY_HANDLE)) {
+    if (match[2] === '.') continue;
+    taken.push({ entity: match[1], line: code.slice(0, match.index).split('\n').length });
+  }
+  return taken;
+}
+
+/**
+ * Taking a handle is allowed only while the tool can still SEE calls arriving
+ * through it. So a taken handle is accounted for when `entityCalls` resolves at
+ * least one NON-LITERAL site for that entity in that file, and refused
+ * otherwise — which fails closed on every way of reaching the handle rather
+ * than chasing aliases through the code.
+ *
+ * Why the non-literal part carries the weight. `CourseLessonBuilder.jsx` reads
+ * through a literal `base44.entities.TrainingModule.filter` on one line and
+ * hands the HANDLE to a shared hook on the next; the hook creates, updates and
+ * deletes through it. "This entity appears somewhere in this file" would call
+ * that accounted and miss three writes, which is the case this refusal exists
+ * for. An accounted handle must have its ALIASED path resolve, not merely share
+ * an entity name with a visible call.
+ *
+ * Named limitation: accounting is per file and entity, not per binding, so in a
+ * file that holds a visible aliased call for an entity, a SECOND handle of that
+ * same entity is not told apart from the first. Measured 2026-10-02: no file in
+ * production `src` has that shape. Each of the four files that takes handles
+ * takes exactly one per entity (retiredOfflineQueue.js: four handles, one each
+ * for ComplianceAudit, Incident, NoteConversion and Task, each with its aliased
+ * calls resolved; the other three files have no aliased call at all). Closing
+ * the hole needs per-binding resolution, which is a different detector.
+ */
+export function unaccountedHandles(repository) {
+  const unaccounted = [];
+  for (const file of sourceFiles(join(repository, 'src'))) {
+    // Comment-blanked once and used for all three scans: a commented-out alias
+    // call must not account for a real handle any more than it may be reported
+    // as one. Blanking keeps offsets, so the lines below still point at their own.
+    const text = withoutComments(readFileSync(file, 'utf8'));
+    const taken = takenHandles(text);
+    if (taken.length === 0) continue;
+    const literals = new Set();
+    for (const match of text.matchAll(ENTITY_CALL)) literals.add(match.index + match[0].length);
+    const resolved = new Set();
+    for (const site of entityCalls(text)) if (!literals.has(site.end)) resolved.add(site.entity);
+    for (const hit of taken) {
+      if (!resolved.has(hit.entity)) {
+        unaccounted.push({ file: relative(repository, file), line: hit.line, entity: hit.entity });
+      }
+    }
+  }
+  return unaccounted;
+}
+
+/**
+ * How the committed allowance names a handle this tree already takes: by FILE
+ * and ENTITY, never by line. A line number is invalidated by any edit above it,
+ * so a line-keyed allowance would turn an unrelated insertion into a refusal
+ * and teach a reader to re-run `--update` to clear it. File and entity are also
+ * what a reviewer can check against the source without counting lines.
+ */
+export const handleKey = handle => `${handle.file}::${handle.entity}`;
+
 const FUNCTION_INVOKE = /\bfunctions\s*\.\s*invoke\s*\(/g;
 const CORE_INTEGRATION = /\bintegrations\s*\.\s*Core\s*\.\s*[A-Za-z][A-Za-z0-9_]*/g;
 
@@ -167,7 +290,13 @@ export function parseBaseline(raw) {
   if (Object.keys(maximum).length !== METRICS.length || METRICS.some(metric => !Number.isSafeInteger(maximum[metric]) || maximum[metric] < 0)) {
     throw new Error('BASELINE_INVALID_MAXIMUM');
   }
-  return baseline;
+  const allowed = baseline.allowed_handles ?? [];
+  // A repeated key is legal and MEANS something: one entry per occurrence, so
+  // declaring a file's handle does not admit a second one beside it.
+  if (!Array.isArray(allowed) || allowed.some(key => typeof key !== 'string' || !key.includes('::'))) {
+    throw new Error('BASELINE_INVALID_ALLOWANCE');
+  }
+  return { ...baseline, allowed_handles: allowed };
 }
 
 export function compareSurface(measured, baseline) {
@@ -202,21 +331,71 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
     // Deliberately explicit: lowering the baseline locks in real progress and
     // must appear in a reviewed diff. It can also silence a regression, so it
     // is never run automatically.
-    write(baselinePath, JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, maximum: measured.counts }, null, 2) + '\n');
-    log(JSON.stringify({ updated: relative(repository, baselinePath), maximum: measured.counts }, null, 2));
+    const allowed_handles = unaccountedHandles(repository).map(handleKey).sort();
+    write(baselinePath, JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, maximum: measured.counts, allowed_handles }, null, 2) + '\n');
+    log(JSON.stringify({ updated: relative(repository, baselinePath), maximum: measured.counts, allowed_handles }, null, 2));
     return 0;
   }
   let baseline;
   try { baseline = parseBaseline(readFileSync(baselinePath, 'utf8')); }
   catch (error) { log(JSON.stringify({ error: error?.message || 'BASELINE_UNAVAILABLE' })); return 2; }
   const report = compareSurface(measured, baseline);
+  // Reported and failed SEPARATELY from the ratchet, because it is a different
+  // kind of answer: the baseline says whether the coupling grew, and this says
+  // whether the baseline could see it. A handle the tool cannot follow makes
+  // every metric above an UNDERCOUNT, so it must not be expressible as one.
+  const unaccounted = unaccountedHandles(repository);
+  // Counted, not matched. A key says which file-and-entity pair is known; the
+  // COUNT says how many, so a second handle of a declared entity in a declared
+  // file is refused rather than admitted by its neighbour's entry.
+  //
+  // Refused PER KEY, with every line listed, never pinned to one occurrence.
+  // Found by review: assigning the surplus by order of discovery means a handle
+  // INSERTED ABOVE a declared one takes the declared slot, and the refusal then
+  // names the long-standing reviewed site -- sending a contributor to fix the one
+  // line that was already accounted for. Nothing in the file says which
+  // occurrence the entry was written for, so the tool must not pretend it does.
+  const declared = new Map();
+  for (const key of baseline.allowed_handles) declared.set(key, (declared.get(key) ?? 0) + 1);
+  const found = new Map();
+  for (const handle of unaccounted) {
+    const key = handleKey(handle);
+    if (!found.has(key)) found.set(key, []);
+    found.get(key).push(handle.line);
+  }
+  report.unaccounted_handles = unaccounted;
+  report.refused_keys = [...found].sort(([a], [b]) => (a < b ? -1 : 1))
+    .filter(([key, lines]) => lines.length > (declared.get(key) ?? 0))
+    .map(([key, lines]) => ({ key, taken: lines.length, declared: declared.get(key) ?? 0, lines }));
+  // A stale entry FAILS rather than passing with a note. It means somebody has
+  // repaired one of the recorded handles, and the gate is the only thing that
+  // will tell them the record of it must go: a passing report says it on a line
+  // nobody reads, and the allowance then outlives the defect it describes.
+  report.stale_allowance = [...declared].sort(([a], [b]) => (a < b ? -1 : 1))
+    .filter(([key, count]) => count > (found.get(key)?.length ?? 0))
+    .map(([key, count]) => ({ key, declared: count, found: found.get(key)?.length ?? 0 }));
   if (args.includes('--summary')) {
     log(`base44 surface ${report.within_baseline ? 'within baseline' : 'REGRESSED'}: `
       + METRICS.map(metric => `${metric}=${report.counts[metric]}/${baseline.maximum[metric]}`).join(' '));
+    const refusedKeys = new Set(report.refused_keys.map(entry => entry.key));
+    for (const handle of report.unaccounted_handles) {
+      if (refusedKeys.has(handleKey(handle))) continue;
+      log(`  allowed HANDLE ${handle.file}:${handle.line} takes ${handle.entity}`
+        + ' and no call through it is visible');
+    }
+    for (const entry of report.refused_keys) {
+      log(`  REFUSED ${entry.key} is taken ${entry.taken} time(s) at line(s) ${entry.lines.join(', ')}`
+        + ` and declared ${entry.declared}. Account for one of them, or declare it.`);
+    }
+    for (const entry of report.stale_allowance) {
+      log(`  STALE ALLOWANCE ${entry.key} is declared ${entry.declared} time(s) and taken ${entry.found}.`
+        + ` Delete ${entry.declared - entry.found} entry(s).`);
+    }
   } else {
     log(JSON.stringify(report, null, 2));
   }
-  return report.within_baseline ? 0 : 1;
+  return report.within_baseline && report.refused_keys.length === 0
+    && report.stale_allowance.length === 0 ? 0 : 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
