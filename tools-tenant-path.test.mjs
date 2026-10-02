@@ -77,7 +77,11 @@ test('the isolation gap stays counted rather than estimated', () => {
   const stamped = Object.values(decisions).filter(decision => STAMPED_KINDS.includes(decision.kind)).length;
   const declared = paths.totals.direct + paths.totals.profile_claim;
   assert.equal(plan.totals.tenant_scoped, declared + stamped);
-  assert.equal(plan.totals.carried, paths.totals.carried);
+  // `tables`, not `carried`: both tools now mean "every entity with a table",
+  // and the plan's `carried` counts only the ones a CARRIED disposition earned.
+  // Comparing against that would have let the two drift by exactly the eight
+  // D7 schema-only tables, which is the population this agreement exists for.
+  assert.equal(plan.totals.tables, paths.totals.carried);
   // Every blocking entity is decided, the profile claim included. It used to
   // be the one exception — excluded from authorization rather than decided,
   // because every kind then available would have authorized through the very

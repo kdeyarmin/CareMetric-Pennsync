@@ -280,6 +280,109 @@ export const HANDLERS = Object.freeze({
       return contract('getAgencySettings', params);
     },
   }),
+  // THE FAX AND PHONE FAMILY. Each handler checks the argument SET and nothing
+  // else: every decision about who may read or write a row is in the contract,
+  // and the whole point of these being thin is that there is one place to read
+  // the authorization from.
+  listFaxContacts: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listFaxContacts', params);
+    },
+  }),
+  createFaxContact: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'INVALID_PARAMS');
+      return contract('createFaxContact', params);
+    },
+  }),
+  bulkCreateFaxContacts: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['rows'], 'INVALID_PARAMS');
+      // An array of objects, checked here because the contract's own refusal
+      // for a non-array is one code for two different mistakes.
+      if (!Array.isArray(params.rows)) fail(400, 'INVALID_PARAMS');
+      for (const row of params.rows) if (!isObject(row)) fail(400, 'INVALID_PARAMS');
+      return contract('bulkCreateFaxContacts', params);
+    },
+  }),
+  updateFaxContact: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'INVALID_PARAMS');
+      return contract('updateFaxContact', params);
+    },
+  }),
+  deleteFaxContact: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      return contract('deleteFaxContact', params);
+    },
+  }),
+  listFaxTemplates: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listFaxTemplates', params);
+    },
+  }),
+  createFaxTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'INVALID_PARAMS');
+      return contract('createFaxTemplate', params);
+    },
+  }),
+  updateFaxTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id', 'fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'INVALID_PARAMS');
+      return contract('updateFaxTemplate', params);
+    },
+  }),
+  useFaxTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      return contract('useFaxTemplate', params);
+    },
+  }),
+  deleteFaxTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['id'], 'INVALID_PARAMS');
+      return contract('deleteFaxTemplate', params);
+    },
+  }),
+  getFaxRetryConfig: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return contract('getFaxRetryConfig', params);
+    },
+  }),
+  saveFaxRetryConfig: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['config'], 'INVALID_PARAMS');
+      if (!isObject(params.config)) fail(400, 'INVALID_PARAMS');
+      return contract('saveFaxRetryConfig', params);
+    },
+  }),
+  listAgencyPhoneNumbers: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listAgencyPhoneNumbers', params);
+    },
+  }),
+  listFaxLogs: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listFaxLogs', params);
+    },
+  }),
+  searchFaxLogs: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['query', 'limit'], 'INVALID_PARAMS');
+      return contract('searchFaxLogs', params);
+    },
+  }),
   createPhysician: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, ['fields'], 'INVALID_PARAMS');

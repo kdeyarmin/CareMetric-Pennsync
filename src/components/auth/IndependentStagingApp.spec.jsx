@@ -10,7 +10,16 @@ vi.mock('@/lib/independentStagingSession', async () => {
   const { createIndependentStagingAdapter, readIndependentStagingConfig } = await import('@/lib/independentStagingAdapter');
   const { stagingEnv } = await import('@/test/independentStagingFixture');
   const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(stagingEnv), { fetchImpl: transport.fetch });
-  return { independentStagingAdapter: adapter, independentStagingAuth: adapter.auth };
+  // The whole surface, not just the staging names: `App` reads
+  // `ownedBackendAuth` and `base44Client` reads `ownedBackendAdapter`, and an
+  // export this factory leaves off throws where it is read. This build IS the
+  // staging workspace, so every name resolves to the one staging adapter.
+  return {
+    independentStagingAdapter: adapter, independentStagingAuth: adapter.auth,
+    independentProductionAdapter: null, independentProductionAuth: null,
+    ownedBackendAdapter: adapter, ownedBackendAuth: adapter.auth,
+    usesIndependentBackend: true, ownedBackendMode: 'staging',
+  };
 });
 // jsdom has no durable IndexedDB. Preserve the real provider/realm/query teardown;
 // existing storage suites independently cover the browser persistence boundary.

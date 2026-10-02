@@ -16,7 +16,7 @@
   "migrations/20260920200000_membership_lifecycle.sql": "58f39e139908345ef5fc7ec259f7ea2be7c871c668a9aacdf6e39a96ae44833c",
   "migrations/20260920600000_locally_verified_identity.sql": "7be382861a25997a66fe2ef5948a9bb3eecac31eed8d504051ec164f958d32b8",
   "migrations/20260920605000_staff_name.sql": "8b85c018d1f4d60eaa0abe1fdc2c6b2a584115ddd93a88f58c2d154599428c38",
-  "record-migrations/20260919170000_record_store.sql": "8f1ff9750ce8c7d02e1b68044e07169db0dc3dac90446b57798cf1c95ee4debd",
+  "record-migrations/20260919170000_record_store.sql": "95b92fcbce092266d2ad6e19b7922e6c1ca11d25d6d149979916e5aa54bc9dfd",
   "record-migrations/20260919180000_record_brokers.sql": "553c24c42b32deeec637c3c26adf448ed6884c81d03d298860a3eea01c5a489e",
   "record-migrations/20260920000000_contract_policy_library.sql": "b5ed76066b6e62793d35bc0c678ef2a740acf14f1208714e0153e1b0e221091b",
   "record-migrations/20260920010000_activity_audit.sql": "237d69c072469357e2fbba2b8fefde2af4a02a37c6e76f0d57f7855ebb0ce4a4",
@@ -95,5 +95,12 @@
   "record-migrations/20260920720000_roster_phone_provisioned.sql": "4d63f6fae77bd88b5e10a4c922f6f7e95edf36a6da58571de306f4e1dd6f6def",
   "record-migrations/20260920730000_timesheet_review_approver_role.sql": "d9e5f789e69629b8e2a8229b2da5919f885bb355c7e052a44bff7bfd87323e6c",
   "record-migrations/20260920740000_time_off_review_approver_role.sql": "558e21cb34f62e7d1f83e7817ecf11219966d7503274080572023efe6fe30a9f",
-  "record-migrations/20260920745000_dashboard_visit_documentation.sql": "b51feed01afc0be0fe7e0954f6bdea3de540b41d12e2b4b27b1bbda127b40a42"
+  "record-migrations/20260920745000_dashboard_visit_documentation.sql": "b51feed01afc0be0fe7e0954f6bdea3de540b41d12e2b4b27b1bbda127b40a42",
+  "record-migrations/20260920750000_oasis_schema_tables.sql": "c64e1492f0f468a8c27b8e24bbc1e53ba253c3bbd63acb8d97809d33e6d535a4",
+  "record-migrations/20260920840000_telecom_schema_tables.sql": "4962c6161fcf594a3a714c68daf0d01f3130aa1fe8f3bd8bc152381db1bc6f46",
+  "record-migrations/20260920850000_contract_fax_contact.sql": "f7697ea8d350f80ccda96bcbfec10cd7c71baf266338d8dbd33b641163482de8",
+  "record-migrations/20260920860000_contract_fax_template.sql": "f90a620e907edee44b16bb0f823b2096424ba71f55b727d7b4c27d282a45ae15",
+  "record-migrations/20260920870000_contract_fax_retry_config.sql": "9e8f0faab22b367989e157de604ee9a0792dbca160a64b66f80539be5f447a19",
+  "record-migrations/20260920880000_contract_phone_number.sql": "1416e448cb14c231c67baa7072cae5ef88b71ae78bd68d3fc461375a7cbbde4b",
+  "record-migrations/20260920890000_contract_fax_log.sql": "c3a00bbf753de05ddbb44c0dc2302d7d464156473db0a0874c74e24252c43c1c"
 }

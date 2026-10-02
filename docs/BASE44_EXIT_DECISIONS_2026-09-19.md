@@ -492,6 +492,206 @@ no claim here about whether it is right. The 193-site block, the 119 learning
 sites, the fourteen `FaxLog` functions, the eight OASIS entities and the
 `auditBrokerCeiling` run are the author's, in the author's words.*
 
+### Amendment to D7, 2026-10-01 — the schema clause is implementable, and this is what implements it
+
+**Contributed by the OASIS data-side thread, 2026-10-01, measured on
+`a227446f`.** It carries no decision number, at its author's reckoning and with
+the collector's agreement, because it widens D7 by implementing a sentence D7
+already contains, which is this register's own preference over issuing one.
+
+**The conflict was real and was not about the decision.** D7 says "Their schemas
+and data still migrate; only their execution stays off", while
+`tools-entity-schema-plan.mjs:41` was `CARRIED = ['port', 'broker']`, enforced
+at `:669`, so a `preserved_paused` entity had no table **by construction**. Four
+documents sized work off D7's sentence and a reader of the tree would have
+concluded it was unimplementable. Neither side was wrong about its own subject:
+**the disposition field was being asked two questions at once — does this entity
+have a table, and does its capability run — and nothing could answer them
+differently.** The confusion had already spread to FIVE places that each
+reimplemented the first answer off the second: the planner,
+`tools-tenant-path.mjs:115`, `UNCARRIED_DISPOSITIONS` in
+`tools-transition-disposition.mjs:653`,
+`tools-frontend-retired-inventory.mjs:75`, and a second
+`UNCARRIED_DISPOSITIONS` in `tools-pennsync-file-copy.mjs:67`.
+
+**This sentence said four, and the fifth was found by a review of the change
+that wrote it.** The amendment converted the first three, left the fourth and
+never enumerated the fifth — while asserting, a few paragraphs below, that the
+two OASIS locator fields had moved into the rewrite population, which the fifth
+copy was making false. Two things to carry out of it. **Count the copies by
+searching for the ANSWER, never by listing the ones you changed**: a list
+written while converting is a list of what you happened to notice. And note
+where each copy hid. The file-copy one returned a reported skip — `uncarried_entity`,
+"nothing here to re-point" — so the wrong answer arrived labelled, looking
+deliberate, in an artifact an operator reads and acts on; a skip is the quietest
+place in this tree for a wrong reason to sit. The inventory one was not the same
+defect at all: `entityIsCarried` is correct and answers the DOMAIN, which the
+disposition does decide, so folding the 45 sites onto its carried side would
+have published the sentence "operations with no destination on an entity it DOES
+carry, read-only" about entities nothing serves at all. It reports
+`table_without_contract` beside that figure instead, a SUBSET of the uncarried
+side that is never summed with it.
+
+**The wide change was measured first and does not run.** `CARRIED` plus
+`preserved_paused` plans all 54 paused entities and stops at
+`TENANT_PATH_MISSING:AgencyKPI`. Recorded because that line is the next reader's
+first instinct and the refusal is cheaper to read than to re-derive.
+
+**What was taken instead** is `SCHEMA_ONLY`, an enumeration naming each paused
+entity whose schema migrates with a reason of at least forty characters, in the
+house form of `DECLARED_UNIQUE`, `CONTRACT_UNIQUE`, `BINDING_TENANCY` and D84's
+`uncarried_legs`; one shared `carriesTable(entity, disposition)` predicate so the
+five copies become one; and `assertSchemaOnly`, which refuses an entry whose
+entity has since been ported, retired, moved to the hub, lost its disposition or
+lost its schema file. **Each refusal is proved by sabotaging a copy of the
+manifest**, because a check nobody has seen bite is a comment.
+
+**A table is not an access path, and D7's execution half is untouched.** All ten
+OASIS capabilities remain `preserved_paused`; the generic broker family serves
+`broker` alone and the ceiling above refuses all eight on its own separate
+account; so the only way to one of these rows is a hand-written contract and
+there is none yet. **So the honest destination for such a call site is neither
+`no_table` nor `record_store`**, and `tools-frontend-destination.mjs` gains
+`no_access_contract` for exactly that state: the verdict is unchanged and only
+the reason changes, from one that would have gone stale the moment the table
+landed. Reporting `record_store` would have been the worse of the two errors,
+because the verdict is identical either way and only that one is a false claim
+about why. The bucket empties one entity at a time as contracts ship.
+
+**Measured, each re-derivable in one command and none to be quoted from here
+without re-running it**: tables 156 to **164** (156 carried + 8 schema-only,
+reported apart and never summed into one figure, because a single number would
+have moved with nothing saying which half did); columns 2416 to 2580; policies in
+the committed SQL 590 to **622**; tenant decisions 99 to **104**, of which the
+split is the thing to read rather than the total — five of the eight need one,
+`OASISAssessment` and `OASISUpload` declare `agency_id` themselves and
+`OASISWorkflowExecution` resolves by reference, and a sixth entry for it was
+written, refused by `check:tenant-decisions` as a spare, and removed, which was
+right: a decision would have stamped a second tenant column onto a row that
+already has an owner. **Frontend call sites that cannot land: 208 before and 208
+after**, `no_table` 193 splitting into 148 plus 45 `no_access_contract`. Read
+those last three together or not at all — the change adds tables and serves
+nothing.
+
+**Six existing guards bit and were updated rather than relaxed, and two of them
+are the lesson.** The "a paused entity must not acquire a table" control was
+`TrainingCourse`, which is `hub`, so it **would have passed for the wrong
+reason** under any change to the paused population; it now asserts the control's
+disposition beside its name and uses `FaxLog`. And `tools-tenant-path.test.mjs`
+compared the plan's `carried` against the path tool's carried count, which left
+alone would have drifted by exactly the eight new tables — the population that
+agreement exists to catch.
+
+**The regeneration ships a forward migration in the same change (D88)**, and
+writing it found the same defect inside the tool written to prevent it: the
+already-applied `20260920590000_column_defaults.sql` regenerated with eight new
+lines in it. An applied migration is frozen in content, so that edit would have
+reached no store that ran it while every suite stayed green. The defaults reader
+now skips the schema-only tables — their defaults arrive inline in their own
+`create table` — and `assertSkippedDefaultsAreCarried` reads them out a second
+time, deliberately rather than by reusing the first reader, and proves each one
+is carried. **It was caught by the fingerprint pin reporting the file CHANGED
+rather than added, which is the half of that pin that earns its keep.**
+
+**Two things the data side does not restore, named here rather than discovered
+later.** The uploaded documents do not move: `OASISUpload.file_url` and
+`OASISAudit.oasis_file_url` are locator fields, and D77's copy refuses every
+apply because `RUNTIME_READER_MODEL` is `uploader_owned` where
+`REQUIRED_READER_MODEL` is `record_authorized` — closing that is a decision about
+the integration runtime's own authorization model. So a migrated audit's
+attachment still opens from the old side, and giving these two entities tables
+moves two locator fields out of D77's "no row to re-point" group into the rewrite
+population — **which was a claim about the schema and not about the tool until a
+review caught the gap**: `tools-pennsync-file-copy.mjs` keyed its own carried
+check on the disposition, so it went on reporting both fields as having no row to
+re-point after the tables existed. Corrected in the same change, with a test that
+drives each field through the planner by its own name, because
+`OASISAudit.oasis_file_url` is not the usual spelling and a check written against
+`OASISUpload.file_url` alone would pass while the other still landed in
+`unknown_field`. Nothing about the apply changes: the reader-model refusal is
+untouched and no byte moves. And the automation stays off, which is the decision rather than a
+gap: what the eight tables carry is what the app *stores* about an assessment,
+and what stays paused is everything that *fires*.
+
+**A sentence stood here saying the screens work in Base44 today, and it was
+wrong.** It reasoned from a true pair — 8 of the 10 OASIS capabilities refuse at
+source, and the 45 screen call sites are direct reads and writes that never go
+through them — to a conclusion the pair does not support, because nothing in it
+asked whether the components holding those call sites render. Measured on
+`a227446f`: **all 45 sit in components no user can reach**, by three mechanisms
+across 27 files — 12 files paused at source in the `const X_ENABLED = false` and
+`const X_PAUSED = true` shapes D7, D47 and D75 enumerate for handlers, **14** more
+reached only through a paused ancestor, and **1** that nothing in `src/` imports at
+all. The script is `measurements/oasis-screen-reachability.mjs` in the project
+library, with its own controls; it was wrong twice before it was right and both
+wrong versions returned the same clean answer, so **re-run it rather than quoting
+the figure**.
+
+**That split first read 13 and 1 — sic, 13 and 2 — and the instruction in the
+sentence above is why it is corrected here rather than defended.** The verdict did
+not move and is not what was wrong: 45 of 45 unreachable with the pauses on, 43 of
+45 live with them off. What was wrong was the per-mechanism SPLIT, and it was found
+by somebody else running the script on a different domain. Its label for "why is
+this file unreachable" ended in a bare `else` reading "every path runs through a
+paused ancestor", which fired for any file that had importers and was not
+reachable — **a default wearing the words of a measurement**. The fax thread hit it
+in the CONTROL run, where pause detection is disabled and nothing is paused at
+all, and the script still blamed a paused ancestor for a component whose importers
+are merely dead themselves. The cause is walked now, upward from the file, and a
+contradiction between the up-walk and the down-walk is labelled loudly rather than
+folded into a real answer.
+
+Two things to carry. **The run whose job is attribution is the run where an
+invented reason does the most damage**, so read the control's labels and not only
+its totals. And the arithmetic error beside it is instructive on its own: the 1 and
+the 3 are both correct readings of the same tree, because a file that is paused AND
+has no importer is labelled by whichever test runs first, so the no-importer count
+is 1 with pauses on and 3 with them off. Reading one figure out of each run and
+splitting the difference is how it became 2.
+
+This leaves the tables exactly as above — D7's schema clause is about what
+migrates and says nothing about whether a screen renders — and moves the piece
+after them. The access contracts over these eight entities are not restoring a
+working screen, because there is no working screen behind any of the 45 sites, so
+whether to build them is the owner's rather than a default.
+
+**And the obvious next question has an answer, which the first version of this
+retraction left open: the screens DID work and were switched off.** Five
+checked, and every one existed unpaused before its flag arrived — two of the
+flags land on 2026-09-04 and 2026-09-07, in commits titled "Harden source-only
+authorization and readiness gates" and "Harden tenant reads and reconcile staging
+readiness". So this is a feature that ran and was deliberately turned off, not
+one that never shipped. **Reading history here needed a deliberate step**: the
+container's clone is shallow, and before `git fetch --deepen` every one of these
+files reported first appearing at the graft boundary on 2026-09-28 — a date that
+is a property of the clone and of every file in it, which reads exactly like a
+finding. The pauses' own stated reasons are AI correctness and PDGM payment
+safety ("a verified CMS grouper", "protected assessment provenance", "this is not
+a $0 result"), which is the automation half this amendment already leaves to the
+owner rather than anything the migration did. So the record half restores and the
+switch stays the owner's, and the two are separable.
+
+**And the general rule, which is D75's in the other half of the tree: a
+capability paused at source has a paused SCREEN as often as a paused handler, and
+nothing here measures the second.** Three shapes of paused handler are
+enumerated and checked. The same three sit in `src/` with no check over them,
+which is how the retracted sentence came to be written down at all. Sizing
+restore-versus-add off the handler census alone gets it wrong in the direction
+that makes the work look like restoration.
+
+**The standing rule this leaves behind: when a decision and the code appear to
+contradict each other, check first whether the code is answering a narrower
+question than the decision asks.** D7 was implementable from the day it was
+written; what was missing was a way to express half of it, and a field that
+answers two questions will be read as answering whichever one the reader came
+for.
+
+**And adding an entity to `SCHEMA_ONLY` is not pre-approved by this amendment.**
+It admits the eight OASIS entities and, when that thread adds them, the six fax,
+voice and SMS ones. Each owes its own reason and its own reading of what the
+table makes reachable; the credential-bearing fax entities in particular are a
+different question from a paused table and must not ride in on one.
+
 ## D8 — Learning moves to the Support Hub rather than being ported
 
 The 45 learning, training and central-adapter handlers and their 31 entity
