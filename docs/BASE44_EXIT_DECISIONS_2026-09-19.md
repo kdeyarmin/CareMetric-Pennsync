@@ -721,6 +721,31 @@ blocks from one message from the plan thread. The provenance, the digest of the
 message as received and the two structural departures are recorded at the D7
 amendment above.*
 
+### Addendum to D8, 2026-10-01 — the owner's word on the destination
+
+Kevin, in the project chat at 2026-10-01T20:06:39Z, answering whether training
+and learning is still meant to move to the Support Hub (project message
+`cmsg_016fV3UdJAZmNVAQi9yxJEUaG5xhpFEakELdncobj9oUeR`):
+
+> yes - everything goes to the support hub
+
+D8 and its 2026-09-30 amendment had already decided and recorded that
+destination, `kdeyarmin/caremetric-support-hub`, with no owner marking on it.
+This supplies the marking: the direction is now the owner's as well as the
+project's, and the Hub cutover stays a prerequisite of the exit rather than a
+parallel project.
+
+It supplies nothing else. It says nothing about when anything moves, nothing
+about moving any data, and it lifts none of the holds. **"Everything" is read
+against the question he was answering** — D8's own scope, which that entry states
+as "The 45 learning, training and central-adapter handlers and their 31 entity
+schemas are `hub`, per `CENTRAL_LEARNING_CUTOVER.md`" — and does not reach a
+domain D8 never covered; a broad word in answer to a narrow question carries the
+narrow scope.
+
+*Carried as prose by the redeploy thread (`session_01MhHsR37e28HT3cxuskEv2u`),
+2026-10-01, from the coordinator session's relay of his message.*
+
 ## D9 — The thirty-one open dispositions, resolved
 
 Decision: every capability left `undecided` now carries one, so the manifest

@@ -1315,9 +1315,35 @@ const DECLARED_ROUTES = Object.freeze({
    * `agency_name`, `tenant_role`, `is_active`, a DERIVED `is_manager` and
    * `is_approved`, the staff and duty fields, and — for an `agency_admin` or
    * `manager` only — `phone`, `credentials`, `license_number`,
-   * `manager_email`, `profile_completeness_score` and
-   * `ai_content_agreement_accepted`, null rather than absent for everybody
-   * else.
+   * `manager_email`, `profile_completeness_score`,
+   * `ai_content_agreement_accepted` and the four telecom keys below, null
+   * rather than absent for everybody else.
+   *
+   * The telecom keys are `has_work_phone`, `has_personal_cell`,
+   * `work_phone_number` and `personal_cell_masked`
+   * (`20260920720000_roster_phone_provisioned.sql`). It supplies NO
+   * `personal_cell_e164` under any name. No digit the product DISPLAYS is lost
+   * by that: every screen printing the cell already prints `maskPhone(...)`, so
+   * the masked form is the whole of what a reader ever saw, and the full number
+   * is not worth carrying through a projection every roster consumer shares. A
+   * screen wanting the full cell is a product question and not a route this file
+   * can widen — and the key is deliberately not the column's name, because
+   * `personal_cell_e164` is self-writable, so a screen that mirrored a roster row
+   * back would write the mask over the real number.
+   *
+   * WHAT THAT REASONING MISSED, recorded because the omission is the
+   * interesting part. Three screens do not display the cell at all; they TEST
+   * it, to count who is provisioned. An omitted key is a fine answer to a screen
+   * that prints a masked number and the WRONG answer to one asking whether a
+   * number exists — it does not render blank there, it inverts, reporting every
+   * provisioned nurse as missing a bridge cell. "They only count" was offered as
+   * the reason the omission was safe and was the reason it was not. All four
+   * consumers now read `rosterTelecom.js`, which answers from `has_personal_cell`
+   * on this path and falls back to the raw column on the Base44 one.
+   *
+   * This paragraph is a second representation of that migration and the
+   * migration is the record; `roster-phone-provisioned.test.mjs` and
+   * `contract-roster.test.mjs` are what fail when the two disagree.
    *
    * It supplies `created_date` and can be read in `created_date` DESCENDING
    * order, which is what `-created_date` asks for and what 25 of the call sites

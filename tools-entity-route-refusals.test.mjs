@@ -13,7 +13,7 @@
  *
  *   * the three offline-queue sites are unreachable, proved by the import
  *     graph rather than by the header's own sentence;
- *   * the six `User.list` sites ask for a `full_name` order the roster
+ *   * the three `User.list` sites ask for a `full_name` order the roster
  *     deliberately refuses (`20260920630000_roster_display_name.sql` says why:
  *     the column is empty, so a name-sorted list would read in email order
  *     under a name heading) AND read fields the roster does not project at
@@ -24,8 +24,24 @@
  * approver filter reads `role` and `account_type`, which D23 keeps off the
  * roster ON PURPOSE because they are self-editable labels, and the three
  * Telnyx panels read `work_phone_number` and `personal_cell_e164`, which the
- * projection has never carried. A staffing screen would render nobody and a
+ * projection had never carried. A staffing screen would render nobody and a
  * provisioning screen would render nothing provisioned, both confidently.
+ *
+ * The panels are what this branch acts on, and it takes the other route: the
+ * sites stopped reading the absent fields, so their entries came out here
+ * exactly as the table's own rule prescribes — a ported site fails the
+ * still-reads half. Note what the projection does and does NOT now carry, since
+ * "ported" is not "the columns were added": `work_phone_number` is projected
+ * under its own name and privileged-only, the two provisioning screens get
+ * `has_work_phone` and `has_personal_cell` because they only ever COUNT, and
+ * the personal cell is projected MASKED under a key of its own rather than as
+ * `personal_cell_e164` — `20260920720000_roster_phone_provisioned.sql` says in
+ * its own header why that indirection is load-bearing. So no entry here came out
+ * because the roster started answering what it refused; each came out because
+ * its site asks something else now.
+ *
+ * Serving the sort on its own would still be the defect described above, which
+ * is why the paragraph stays.
  *
  * So this test fails if somebody makes a site pass the route while it still
  * reads an absent field, and it names the fields in the failure. It also fails
@@ -38,7 +54,9 @@
  *
  *   * a PROSE mention. `NumberPoolPanel.jsx` names `work_phone_number` only in
  *     its header comment, so the table claimed a read that does not exist and
- *     the assertion passed. That entry now names the cell alone.
+ *     the assertion passed. That entry named the cell alone until this branch
+ *     ported the site and removed it; the finding is kept because the
+ *     stripping it produced is what the remaining entries rest on.
  *   * a NEIGHBOUR'S read. `Timesheets.jsx` holds TWO refused sites, and a
  *     file-wide search answers identically for both — so the employee list,
  *     which asks nothing about `account_type`, was credited with the approver
@@ -84,24 +102,6 @@ const REFUSALS = Object.freeze([
   {
     file: RETIRED, key: 'Task.filter', because: 'filter_field',
     reason: 'Unreachable, and `contract_task_list` has no `client_request_id` parameter: serving it would mean a forward migration and an RPC signature change for a call with no caller.',
-  },
-  {
-    file: 'src/components/admin/NumberPoolPanel.jsx', key: 'User.list', because: 'sort',
-    absent: ['personal_cell_e164'],
-    reads: ['return u?.personal_cell_e164 || "";'],
-    reason: 'Needs the roster port, not the sort: it reads the personal cell the projection does not carry. `work_phone_number` is NOT listed: this file mentions it only in its header comment, which the first version of this table counted as a read.',
-  },
-  {
-    file: 'src/components/admin/PhoneProvisioningPanel.jsx', key: 'User.list', because: 'sort',
-    absent: ['personal_cell_e164', 'work_phone_number'],
-    reads: ['users.filter((u) => !u.work_phone_number)', '{u.personal_cell_e164 && ('],
-    reason: 'Needs the roster port, not the sort: it reads work and cell numbers the projection does not carry.',
-  },
-  {
-    file: 'src/components/admin/TelnyxSetupProgress.jsx', key: 'User.list', because: 'sort',
-    absent: ['personal_cell_e164', 'work_phone_number'],
-    reads: ['users.filter((u) => u.work_phone_number)', 'withWork.filter((u) => !u.personal_cell_e164)'],
-    reason: 'Needs the roster port, not the sort: its provisioning counts read fields the projection does not carry.',
   },
   {
     file: 'src/pages/TimeOff.jsx', key: 'User.list', because: 'sort',
@@ -210,7 +210,7 @@ test('the three offline-queue sites are unreachable, by the import graph', () =>
     'something now imports the retired queue; these three sites may be live again');
 });
 
-test('the six roster sites read fields the roster does not project', () => {
+test('the roster sites read fields the roster does not project', () => {
   // The half that makes serving the sort a defect rather than a fix. The
   // fields are NAMED above and both halves of each claim are re-checked here:
   // that the roster really does not project it, and that the file really does
@@ -218,7 +218,11 @@ test('the six roster sites read fields the roster does not project', () => {
   // when its entry comes out.
   const projected = new Set(rosterProjection());
   const roster = measured().filter(call => call.key === 'User.list');
-  assert.equal(roster.length, 6, 'six refused sites read the roster');
+  // THREE, not six: this branch ports NumberPoolPanel, PhoneProvisioningPanel and
+  // TelnyxSetupProgress, so their entries came out as the table's own comment
+  // prescribes. The three left are the approver screens, whose blocker is a
+  // decision rather than a projection.
+  assert.equal(roster.length, 3, 'three refused sites read the roster');
 
   // `full_name` IS projected — `20260920630000` added it — and is empty until
   // names are loaded. That is the sort's own problem and a different one.

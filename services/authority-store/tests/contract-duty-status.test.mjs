@@ -67,12 +67,15 @@ before(async () => {
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  // The ordering guard is NOT here, and the comment that used to claim it was
-  // is why this is spelled out. This file was the newest pending migration when
-  // it landed on `main`; it stopped being that when this branch's
-  // `20260920700000_contract_reference_writes` merged in, which sorts after it.
-  // So the guard moved on to `contract-reference-writes.test.mjs` and this
-  // suite keeps only the property that is its own.
+  // The ordering guard is NOT here, and where it lives is a merge resolution
+  // rather than either branch's answer. This file was the newest pending
+  // migration when it landed on `main`; `main` then recorded the guard as
+  // having moved on to `contract-reference-writes.test.mjs`, which was correct
+  // for `main`. This branch adds `20260920720000_roster_phone_provisioned`,
+  // which sorts after that one, so on THIS tree the newest pending file is
+  // neither of them and the guard is held by `roster-phone-provisioned.test.mjs`
+  // alone. Both sides were right about their own tree, and taking either one
+  // whole leaves two suites holding it, which the helper forbids.
   //
   // Nothing about this file changed. It was OVERTAKEN, which is the rule the
   // helper's error text does not name — it names merging, the commonest cause.
