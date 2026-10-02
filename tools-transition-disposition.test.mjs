@@ -660,7 +660,13 @@ test('what the record store permits per entity is read from the policies it emit
   // not the same as their being servable — permitting a write says what the
   // store would allow a definer contract to do, never that a capability exists
   // to do it, and `tools-frontend-destination` keeps those two apart.
-  assert.equal(Object.keys(permits).length, 164, 'every entity with a table is accounted for');
+  //
+  // 170, not 164: D7's six fax and phone tables, read the same way and with
+  // the same caveat. All six are servable by nothing at all today — the
+  // generic broker family serves `broker` alone and D16's ceiling refuses
+  // every one of them on its own account — so this figure moving is exactly
+  // the distinction above arriving a second time.
+  assert.equal(Object.keys(permits).length, 170, 'every entity with a table is accounted for');
   assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
   const readOnly = Object.keys(permits).filter(entity => permits[entity].read && !permits[entity].write).sort();
   // The eight platform reference tables. `User` left this list with D82: the
@@ -1788,9 +1794,10 @@ test('nothing in the queue is startable and unwritten', async () => {
   // Batch A's seven reference reads (D101), batch C's fourteen clinical
   // library, patient education and configuration capabilities, batch E's
   // ten screen records, batch D's fourteen over the operational tables and
-  // the five compliance domains' read half, and the provider directory's three
-  // writes, are the same kind of thing for
-  // the same reason, and
+  // the five compliance domains' read half, the provider directory's three
+  // writes, and the telecom family's fifteen over the fax address book,
+  // templates, retry policy, work numbers and transmission log, are the same
+  // kind of thing for the same reason, and
   // they are why this list needs stating rather than deriving. The SPA called
   // `base44.entities.Physician.list(...)` and the rest straight through the
   // platform SDK, so there is no Base44 function to be the port of — what was
@@ -1809,35 +1816,34 @@ test('nothing in the queue is startable and unwritten', async () => {
       `${name} has a Base44 function, so it is a port and belongs in the queue`);
   }
   assert.deepEqual(facilities, [
-    'createAdrAuditCase', 'createAgencyTask', 'createComplianceAudit',
+    'bulkCreateFaxContacts', 'createAdrAuditCase', 'createAgencyTask',
+    'createComplianceAudit', 'createFaxContact', 'createFaxTemplate',
     'createNoteConversion', 'createPhysician', 'deleteAdrAuditCase',
-    'deleteDocumentTemplate', 'deleteLibraryDocument', 'deleteOnCallShift',
-    'deletePdfTemplate', 'deletePhysician', 'getAgencyRosterMember',
-    'getAgencySettings', 'getMyNotificationPreferences',
-    'listAdrAuditCases', 'listAgencyIncidents', 'listAgencyRoster',
-    'listAgencyTasks', 'listBrokeredRecords', 'listCarePlans',
-    'listChartClinicalEvents', 'listChartRecommendations',
-    'listClinicalLibraryFolders', 'listClinicalLibraryTemplates',
-    'listClinicalPathways', 'listComplianceAudits',
-    'listCustomValidationRules', 'listDocumentTemplates',
-    'listEducationMaterials', 'listFaceToFaceEncounters',
-    'listLibraryDocuments', 'listMedicareComplianceRules',
-    'listMedicareGuidelines', 'listNoteConversions', 'listOcrCorrections',
-    'listOcrTrainingRuns', 'listOnCallShifts', 'listPatientDocumentRecords',
-    'listPatientEducationAssignments', 'listPdfTemplates',
-    'listPersonnelCredentials', 'listPhysicians',
-    'listPolicyAcknowledgments', 'listSentEducationMaterials',
-    'listVisitPointConfigs', 'lookupComplianceRule',
-    'manageClinicalLibraryFolder', 'manageClinicalLibraryTemplate',
-    'manageClinicalPathway', 'manageCustomValidationRule',
-    'manageEducationMaterial', 'managePatientEducationAssignment',
-    'readAiConfiguration', 'recordChartRecommendation',
-    'recordSentEducationMaterial', 'saveAgencySettings',
+    'deleteDocumentTemplate', 'deleteFaxContact', 'deleteFaxTemplate',
+    'deleteLibraryDocument', 'deleteOnCallShift', 'deletePdfTemplate', 'deletePhysician',
+    'getAgencyRosterMember', 'getAgencySettings', 'getFaxRetryConfig',
+    'getMyNotificationPreferences', 'listAdrAuditCases', 'listAgencyIncidents',
+    'listAgencyPhoneNumbers', 'listAgencyRoster', 'listAgencyTasks',
+    'listBrokeredRecords', 'listCarePlans', 'listChartClinicalEvents',
+    'listChartRecommendations', 'listClinicalLibraryFolders',
+    'listClinicalLibraryTemplates', 'listClinicalPathways', 'listComplianceAudits',
+    'listCustomValidationRules', 'listDocumentTemplates', 'listEducationMaterials',
+    'listFaceToFaceEncounters', 'listFaxContacts', 'listFaxLogs', 'listFaxTemplates',
+    'listLibraryDocuments', 'listMedicareComplianceRules', 'listMedicareGuidelines',
+    'listNoteConversions', 'listOcrCorrections', 'listOcrTrainingRuns',
+    'listOnCallShifts', 'listPatientDocumentRecords', 'listPatientEducationAssignments',
+    'listPdfTemplates', 'listPersonnelCredentials', 'listPhysicians',
+    'listPolicyAcknowledgments', 'listSentEducationMaterials', 'listVisitPointConfigs',
+    'lookupComplianceRule', 'manageClinicalLibraryFolder',
+    'manageClinicalLibraryTemplate', 'manageClinicalPathway',
+    'manageCustomValidationRule', 'manageEducationMaterial',
+    'managePatientEducationAssignment', 'readAiConfiguration',
+    'recordChartRecommendation', 'recordSentEducationMaterial', 'saveAgencySettings',
     'saveAiConfiguration', 'saveCarePlan', 'saveDocumentTemplate',
-    'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
-    'saveOnCallShift', 'savePdfTemplate',
-    'updateAdrAuditCase', 'updateComplianceAudit', 'updateLibraryDocument',
-    'updatePhysician',
+    'saveFaceToFaceEncounter', 'saveFaxRetryConfig', 'saveMyNotificationPreferences',
+    'saveOnCallShift', 'savePdfTemplate', 'searchFaxLogs', 'updateAdrAuditCase',
+    'updateComplianceAudit', 'updateFaxContact', 'updateFaxTemplate',
+    'updateLibraryDocument', 'updatePhysician', 'useFaxTemplate',
   ]);
 });
 
