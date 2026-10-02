@@ -71,7 +71,7 @@
     "src/pages/ReferralIntake.jsx:510 analyzeReferralPriority",
     "src/pages/ReferralIntake.jsx:514 analyzeReferralIntake",
     "src/pages/ReferralIntake.jsx:624 matchPatientWithAI",
-    "src/pages/TimeOff.jsx:54 getApprovedTimeOff",
+    "src/pages/TimeOff.jsx:55 getApprovedTimeOff",
     "src/pages/UserGuides.jsx:25 generateUserGuidePDF",
     "src/pages/UserManagement.jsx:148 resendInvitationV2",
     "src/pages/UserSettings.jsx:244 createNotification"

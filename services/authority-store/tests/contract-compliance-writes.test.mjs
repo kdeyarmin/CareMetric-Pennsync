@@ -73,12 +73,14 @@ before(async () => {
   // Where it lives now is a merge resolution rather than either branch's answer,
   // and on THIS tree it is neither side's. `main` sent it to
   // `contract-duty-status`, then to `contract-reference-writes`, then to
-  // `roster-phone-provisioned` as further forward migrations landed; this branch
-  // adds a record migration sorting after all of them, so the newest pending file
-  // here is the timesheet review approver role and the guard is held by
-  // `contract-timesheet-review-approver.test.mjs` alone. Each claim was right
-  // about the tree that named it, and taking either side whole would have left
-  // two suites holding it — which the helper forbids, because the second holder
+  // `roster-phone-provisioned` when `20260920720000` landed, then to
+  // `contract-timesheet-review-approver` when `20260920730000` did; this branch
+  // adds `20260920740000_time_off_review_approver_role`, which sorts after all of
+  // them, so the holder on this tree is
+  // `contract-time-off-review-approver.test.mjs` alone. Each side's claim was
+  // right about the tree that named it — HEAD could not see `20260920730000` and
+  // `main` cannot see `20260920740000` — and taking either whole would have left
+  // two suites holding it, which the helper forbids, because the second holder
   // asserts a tree the first one's own change makes false.
   //
   // What stays is the set equality above, which is the assertion that actually

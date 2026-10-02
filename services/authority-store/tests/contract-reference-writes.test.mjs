@@ -62,7 +62,7 @@ before(async () => {
   // The ORDERING guard has LEFT this suite again, and the round trip is still
   // the lesson rather than the bookkeeping. It belongs to whichever migration is
   // the newest PENDING one, and this branch adds one that sorts after this file,
-  // so the holder is `contract-timesheet-review-approver.test.mjs`. A file takes
+  // so the holder is `contract-time-off-review-approver.test.mjs`. A file takes
   // the guard by being newest and loses it by being OVERTAKEN; the helper's error
   // text names merging, which is only the commonest cause. It is never held by
   // two suites at once, because the second holder asserts a tree the first one's
@@ -75,13 +75,14 @@ before(async () => {
   const applied = await applyRecordMigrations(db);
   assert.deepEqual(applied, await recordMigrationNames(),
     'the record directory and what was applied to this store disagree');
-  // This file has now been OVERTAKEN TWICE, which is why neither side of this
-  // merge named the right holder: `main` handed the guard to
-  // `roster-phone-provisioned.test.mjs` when `20260920720000` landed, and this
-  // merge brings in `20260920730000_timesheet_review_approver_role`, which sorts
-  // after that. So the guard is held by
-  // `contract-timesheet-review-approver.test.mjs` alone, and the roster suite
-  // drops it in this same change — one holder, which is what the helper admits.
+  // This file has now been OVERTAKEN THREE TIMES, which is why neither side of
+  // this merge named the right holder: `main` handed the guard to
+  // `roster-phone-provisioned.test.mjs` when `20260920720000` landed and to
+  // `contract-timesheet-review-approver.test.mjs` when `20260920730000` did,
+  // and this branch adds `20260920740000`, which sorts after both. So the holder
+  // on this tree is `contract-time-off-review-approver.test.mjs` alone, and the
+  // timesheet suite drops it in this same change — one holder, which is what the
+  // helper admits.
   //
   // Nothing about this file changed and nothing about it is wrong. Keeping the
   // call would have failed this suite's `before` and taken every test in it down

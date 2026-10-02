@@ -13,17 +13,19 @@
  *
  *   * the three offline-queue sites are unreachable, proved by the import
  *     graph rather than by the header's own sentence;
- *   * the two `User.list` sites ask for a `full_name` order the roster
+ *   * the ONE `User.list` site left asks for a `full_name` order the roster
  *     deliberately refuses (`20260920630000_roster_display_name.sql` says why:
  *     the column is empty, so a name-sorted list would read in email order
- *     under a name heading) AND read fields the roster does not project at
- *     all, which is the half nothing else records.
+ *     under a name heading) AND reads fields the roster does not project at
+ *     all, which is the half nothing else records. It was five sites, then
+ *     two, then one, each fall a real port rather than a widened route.
  *
  * That second half is the load-bearing one. Serving the sort is a two-line
  * change and it would turn a loud refusal into a quiet wrong answer:
- * `TimeOff.jsx`'s approver filter reads `role` and `account_type`, which D23
- * keeps off the roster ON PURPOSE because they are self-editable labels,
- * `Timesheets.jsx`'s employee list reads `role`, and the three
+ * `Timesheets.jsx`'s employee list reads `role`, which D23 keeps off the roster
+ * ON PURPOSE because it is a self-editable label — BOTH approver filters read
+ * that pair and both have since been repaired to ask the tenant role, the
+ * timesheet one and then the leave one — and the three
  * Telnyx panels read `work_phone_number` and `personal_cell_e164`, which the
  * projection had never carried. A staffing screen would render nobody and a
  * provisioning screen would render nothing provisioned, both confidently.
@@ -109,12 +111,6 @@ const REFUSALS = Object.freeze([
   {
     file: RETIRED, key: 'Task.filter', because: 'filter_field',
     reason: 'Unreachable, and `contract_task_list` has no `client_request_id` parameter: serving it would mean a forward migration and an RPC signature change for a call with no caller.',
-  },
-  {
-    file: 'src/pages/TimeOff.jsx', key: 'User.list', because: 'sort',
-    absent: ['account_type', 'role'],
-    reads: ['u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true'],
-    reason: 'Needs the roster port and a decision: its approver filter reads `role` and `account_type`, which D23 keeps off the roster deliberately, so who may approve has to be re-expressed as a tenant role.',
   },
   {
     file: 'src/pages/Timesheets.jsx', key: 'User.list', because: 'sort',
@@ -211,7 +207,7 @@ test('the three offline-queue sites are unreachable, by the import graph', () =>
     'something now imports the retired queue; these three sites may be live again');
 });
 
-test('the two roster sites read fields the roster does not project', () => {
+test('the one roster site reads fields the roster does not project', () => {
   // The half that makes serving the sort a defect rather than a fix. The
   // fields are NAMED above and both halves of each claim are re-checked here:
   // that the roster really does not project it, and that the file really does
@@ -219,16 +215,20 @@ test('the two roster sites read fields the roster does not project', () => {
   // when its entry comes out.
   const projected = new Set(rosterProjection());
   const roster = measured().filter(call => call.key === 'User.list');
-  // TWO, not six, and the fall is the work of two changes rather than one:
-  // `main` ported NumberPoolPanel, PhoneProvisioningPanel and TelnyxSetupProgress,
-  // and this branch ports the timesheet approver's read, so each entry came out as
-  // the table's own comment prescribes. The two left are the leave approver screen
-  // and its sibling, whose blocker is a decision rather than a projection.
+  // ONE, and the figure is RE-MEASURED rather than reasoned to, because this is
+  // the third merge in a row where neither side of the conflict held the right
+  // answer. `main` carried TWO — it had ported the three Telnyx panels and the
+  // timesheet approver — and this branch carried FIVE, having ported the leave
+  // approver against a base that predates all four of those. Each side's figure
+  // is correct about its own tree and both are wrong about this one, and the
+  // merge is BELOW BOTH, because the two sides removed disjoint entries. Adding
+  // either side's delta to the other's base lands on a number both sides would
+  // sign off and that is wrong, and so does unioning them.
   //
-  // This figure is NOT derivable from either side of the merge: both branches
-  // lowered it from six independently and neither knew the other had, so the
-  // arithmetic agrees with a wrong answer on each side alone. It is re-measured.
-  assert.equal(roster.length, 2, 'two refused sites read the roster');
+  // What is left is the employee list on `Timesheets.jsx`, whose blocker is D23
+  // keeping `role` off the roster on purpose rather than a projection anybody is
+  // going to widen.
+  assert.equal(roster.length, 1, 'one refused site reads the roster');
 
   // `full_name` IS projected — `20260920630000` added it — and is empty until
   // names are loaded. That is the sort's own problem and a different one.

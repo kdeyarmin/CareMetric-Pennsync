@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { submitTimeOffRequest } from "@/functions/submitTimeOffRequest";
+import { reconcileApprover } from "@/components/approvals/approverCandidates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,12 +51,20 @@ export default function RequestTimeOffForm({
   const update = (patch) => setForm((prev) => ({ ...prev, ...patch }));
 
   // currentUser resolves asynchronously; once a profile manager is known,
-  // pre-select it — but never clobber a choice the employee already made.
+  // pre-select it — but never clobber a choice the employee already made, and
+  // never carry one the authoritative list does not offer.
+  //
+  // `reconcileApprover` carries why, including why an EMPTY list clears nothing.
+  // `MyTimesheetForm.jsx` has the same shape and the same stale default, which is
+  // why the rule lives in the module beside the list rather than written out here.
   useEffect(() => {
-    if (defaultManagerEmail) {
-      setForm((prev) => (prev.manager_email ? prev : { ...prev, manager_email: defaultManagerEmail }));
-    }
-  }, [defaultManagerEmail]);
+    setForm((prev) => {
+      const next = reconcileApprover({
+        current: prev.manager_email, offered: approvers, fallback: defaultManagerEmail,
+      });
+      return next === prev.manager_email ? prev : { ...prev, manager_email: next };
+    });
+  }, [approvers, defaultManagerEmail]);
 
   const totalDays = useMemo(
     () => totalRequestedDays(form.start_date, form.end_date, form.half_day),
