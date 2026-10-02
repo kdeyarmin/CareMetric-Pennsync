@@ -71,6 +71,10 @@ describe('scrubbing the link out of the live URL', () => {
       ['/?code=abcdef123456&tab=open', '?tab=open', ''],
       ['/#access_token=aaaaaabbbbbb&refresh_token=cccccc&type=invite&expires_in=3600', '', ''],
       ['/Dashboard?tab=open#/visits/3?access_token=aaaaaabbbbbb', '?tab=open', '#/visits/3'],
+      // A stray `?` INSIDE a parameter list is not the start of a query, and
+      // splitting there left everything after it unfiltered -- a completeness gap
+      // against this module's own promise, found by a reviewer.
+      ['/#access_token=aaaaaabbbbbb?tab=open', '', '#tab=open'],
     ]) {
       const module = await load(href);
       expect(module.pendingLink).toBeNull();

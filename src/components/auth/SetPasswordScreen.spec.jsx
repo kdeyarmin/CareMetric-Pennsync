@@ -80,6 +80,22 @@ describe('setting a password from a link', () => {
     await waitFor(() => expect(onPasswordSet).toHaveBeenCalledWith(ADDRESS));
   });
 
+  it('does not tell somebody whose link is already spent to retry', async () => {
+    // The provider resolves the link on its own now, so a mistyped address is
+    // caught after the invitation has been used. Retrying it cannot work, and the
+    // generic message said exactly that, one code later than the cleanup case.
+    const user = userEvent.setup();
+    setPasswordFromLink.mockRejectedValue(Object.assign(new Error('AUTHENTICATION_IDENTITY_MISMATCH'),
+      { code: 'AUTHENTICATION_IDENTITY_MISMATCH' }));
+    render(<SetPasswordScreen link={INVITE} />);
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Accept invitation' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('does not match this invitation, and the invitation has now been used');
+    expect(alert).toHaveTextContent('Ask your administrator to send a new one.');
+    expect(alert.textContent).not.toMatch(/retry/i);
+  });
+
   it('says what is different before anything leaves the browser', async () => {
     const user = userEvent.setup();
     render(<SetPasswordScreen link={INVITE} />);
@@ -107,16 +123,20 @@ describe('setting a password from a link', () => {
     render(<SetPasswordScreen link={INVITE} />);
     await fill(user);
     await user.click(screen.getByRole('button', { name: 'Accept invitation' }));
-    // Asking for a new link would be a message to a real person, which this
-    // change does not send, so the answer is to ask an administrator.
+    // The provider answers the same way for a spent link, a link issued to
+    // somebody else, and an address typed wrong, so the cause the person can check
+    // themselves is named FIRST. Asking for a new link would be a message to a
+    // real person, which this change does not send, so the second half is to ask
+    // an administrator rather than a button that mails anybody.
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'This invitation link is no longer valid, or it was issued for a different email address. Ask your administrator to send a new one.');
+      'Check the email address you typed: it must be the one your invitation was sent to. If it is right, this invitation is no longer valid and your administrator can send a new one.');
 
     cleanup();
     render(<SetPasswordScreen link={RECOVERY} />);
     await fill(user);
     await user.click(screen.getByRole('button', { name: 'Set password' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('This password reset link is no longer valid');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Check the email address you typed: it must be the one the reset link was sent to.');
   });
 
   it('keeps no password in the form after a failure', async () => {

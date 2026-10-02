@@ -76,14 +76,25 @@ export function readLinkParams(search) {
 export function scrubFragment(hash) {
   const raw = String(hash ?? '').replace(/^#/, '');
   if (!raw.includes('=')) return { hash: raw ? `#${raw}` : '', removed: false };
+  // A fragment is EITHER a route with an optional query of its own, or a bare
+  // parameter list. The first `?` only begins a query when what precedes it is a
+  // route rather than a parameter: `#access_token=…?tab=open` is one parameter
+  // list with a stray `?` in it, and splitting there left the secret in the half
+  // nothing filtered. A reviewer found that against this function's own docstring.
   const cut = raw.indexOf('?');
-  const path = cut === -1 ? '' : raw.slice(0, cut);
-  const params = new URLSearchParams(cut === -1 ? raw : raw.slice(cut + 1));
+  const route = cut !== -1 && !raw.slice(0, cut).includes('=');
+  const path = route ? raw.slice(0, cut) : '';
+  const params = new URLSearchParams(route ? raw.slice(cut + 1) : raw.replace(/\?/g, '&'));
   let removed = false;
   for (const name of SCRUBBED) if (params.has(name)) { params.delete(name); removed = true; }
   if (!removed) return { hash: `#${raw}`, removed };
+  // What is KEPT is re-serialised, so an escaped space comes back as `+`. Harmless
+  // for a router that decodes, and noted rather than fixed: preserving the
+  // original encoding means string surgery on a URL, which is more to get wrong
+  // than the thing it would preserve.
   const rest = params.toString();
-  const kept = rest ? `${path}?${rest}` : path;
+  // The `?` belongs to a route, so a bare parameter list keeps none.
+  const kept = rest ? (path ? `${path}?${rest}` : rest) : path;
   return { hash: kept ? `#${kept}` : '', removed: true };
 }
 

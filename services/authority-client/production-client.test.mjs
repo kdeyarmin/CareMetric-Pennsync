@@ -36,8 +36,13 @@ function fixture(overrides = {}) {
       id: AUTH_USER_ID, email: EMAIL, role: 'authenticated', is_anonymous: false,
       email_confirmed_at: '2026-10-01T00:00:00Z',
     }, context: null, apiResponse: null,
+    // The live bearers, exposed so a test can assert a COUNT rather than a name:
+    // a reviewer's own assertion named a token an interleaving never mints and so
+    // passed while two grants were live.
+    live,
     // Link tokens this fixture will honour, and the passwords it was asked to
     // write. Both are the fixture's own strings: nothing real is involved.
+    rotateOnWrite: false, linkUser: null,
     links: new Set(['invite:invitetoken-aaaaaa', 'recovery:recoverytoken-bbbbbb']),
     passwords: [], password: PASSWORD, consumeLinks: true, refuseLogout: false, ...overrides,
   };
@@ -77,7 +82,9 @@ function fixture(overrides = {}) {
       if (state.consumeLinks) state.links.delete(`${body.type}:${body.token_hash}`);
       const bearer = `production.link${++next}.token`;
       live.set(bearer, true);
-      return json({ user: state.user, access_token: bearer, token_type: 'bearer' });
+      // `linkUser` mints the grant for somebody else, which is what a mistyped
+      // address produces now that the provider resolves the link on its own.
+      return json({ user: state.linkUser ?? state.user, access_token: bearer, token_type: 'bearer' });
     }
     if (url.endsWith('/token?grant_type=password')) {
       // The CURRENT password, so a grant after a link write has to use what the
@@ -97,7 +104,13 @@ function fixture(overrides = {}) {
       if (typeof body.password !== 'string' || body.password.length < 12) return json({}, 422);
       state.passwords.push(body.password);
       state.password = body.password;
-      return json(state.user);
+      // `rotateOnWrite` makes the write answer with a session of its own, which is
+      // provider behaviour this repository cannot measure and must survive either
+      // way: a token nothing registered is a token nothing can revoke.
+      if (!state.rotateOnWrite) return json(state.user);
+      const rotated = `production.rotated${++next}.token`;
+      live.set(rotated, true);
+      return json({ ...state.user, access_token: rotated, token_type: 'bearer' });
     }
     if (url.endsWith('/user')) return json(state.user);
     if (url.endsWith('/pennsync_staging_context')) {
@@ -278,6 +291,49 @@ test('a link sets the password and never becomes a session', async () => {
   // password it just set, which is the only path that produces a session.
   await assert.rejects(api.rpc('context', { p_agency_id: 'agency-real' }), { code: 'AUTHENTICATION_REQUIRED' });
   await assert.doesNotReject(api.signIn('a-new-long-password').then(() => api.rpc('context', { p_agency_id: 'agency-real' })));
+});
+
+test('a grant for the wrong person is refused AND revoked, not merely refused', async () => {
+  // THE ROOT CAUSE BEHIND THREE FINDINGS, in the instance that found it: a grant
+  // this client will not USE still has to be cleaned up, and those are different
+  // questions. Registering only what `validGrant` accepts meant a grant for
+  // somebody else was never registered, so the catch had nothing to revoke: the
+  // refusal was correct, no password was written, and a live session for the real
+  // account was left behind with the link spent.
+  const state = fixture();
+  state.linkUser = { ...state.user, id: '11111111-2222-4333-8444-555555555555',
+    email: 'somebody.else@agency.example' };
+  const api = client(state);
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHENTICATION_IDENTITY_MISMATCH' });
+  assert.deepEqual(state.passwords, []);
+  // The logout is OBSERVED rather than assumed, and the count is what is asserted:
+  // a reviewer's own version of this named a token the path never mints and passed
+  // while a grant was live.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
+});
+
+test('a password write that answers with a session of its own leaves nothing live', async () => {
+  // A REVIEWER'S FINDING, found structurally: the write was sent without the
+  // callback that registers a grant, so a session in ITS answer was known to
+  // nobody -- not the success path, not the catch, not the next call's sweep --
+  // and the one thing this method promises would have failed silently. Whether
+  // the provider ever answers that way is not measured here, which is exactly why
+  // the client must not depend on it.
+  const state = fixture();
+  state.rotateOnWrite = true;
+  const api = client(state);
+  await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // BOTH grants revoked, not just the link's: two logouts, and nothing live.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user',
+    'POST /auth/v1/logout?scope=local', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
 });
 
 test('a recovery link works the same way, and a consumed link cannot be replayed', async () => {

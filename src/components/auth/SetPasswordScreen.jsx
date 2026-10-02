@@ -92,12 +92,30 @@ const SetPasswordScreen = ({ link, onPasswordSet }) => {
       // that already has a password. A reviewer walked exactly that path. So this
       // is the done state, with the one sentence they can act on.
       if (code === 'AUTHORITY_SESSION_CLEANUP_FAILED') { setDone(true); setStale(true); return; }
+      // THE LINK IS SPENT. With the redemption happening here, the provider
+      // resolves the link alone and mints before the client can object, so a
+      // mistyped address is caught after the invitation has been used. Saying
+      // retry would send them back to a link that no longer works; the only thing
+      // that helps is a new one, and only an administrator can issue it.
+      if (code === 'AUTHENTICATION_IDENTITY_MISMATCH') {
+        setError(invite
+          ? 'That email address does not match this invitation, and the invitation has now been used. Ask your administrator to send a new one.'
+          : 'That email address does not match this reset link, and the link has now been used. Ask your administrator to send a new one.');
+        return;
+      }
       const rejected = code === 'AUTHENTICATION_FAILED' || caught?.status === 401;
       setError(
+        // THE ADDRESS COMES FIRST, because two of this refusal's three causes are
+        // not the link. A reviewer walked it: the provider answers the same way
+        // for a spent link, a link issued to somebody else, and an address typed
+        // wrong, and the old sentence sent all three to an administrator for a new
+        // link -- which gets a person who made a typo a fresh link to mistype
+        // again. The cause they can check themselves is named first, and the one
+        // that needs somebody else is named second.
         rejected
           ? invite
-            ? 'This invitation link is no longer valid, or it was issued for a different email address. Ask your administrator to send a new one.'
-            : 'This password reset link is no longer valid, or it was issued for a different email address. Ask your administrator to send a new one.'
+            ? 'Check the email address you typed: it must be the one your invitation was sent to. If it is right, this invitation is no longer valid and your administrator can send a new one.'
+            : 'Check the email address you typed: it must be the one the reset link was sent to. If it is right, this link is no longer valid and your administrator can send a new one.'
           : code === 'INVALID_PRODUCTION_CREDENTIAL'
             ? `Please choose a password of at least ${MINIMUM_PASSWORD_LENGTH} characters.`
             : code === 'INVALID_PRODUCTION_LINK'

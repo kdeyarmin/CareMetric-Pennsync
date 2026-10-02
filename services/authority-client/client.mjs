@@ -580,10 +580,18 @@ export function createProductionAuthorityClient(input, options = {}) {
  * The two email link kinds this client will exchange, and nothing else.
  *
  * `invite` is a new member accepting; `recovery` is an existing one who has
- * forgotten their password. The other GoTrue types are deliberately absent:
- * `magiclink` and `signup` would each be a way to obtain a session without a
- * password, and `email_change` moves the address this client's target is built
- * around.
+ * forgotten their password. The other GoTrue types are absent for TWO different
+ * reasons, which an earlier version of this comment ran together.
+ *
+ * `magiclink` and `signup` are refused on the property: each is a way to obtain a
+ * session without a password, which is this method's own negation.
+ *
+ * `email_change` is a different case, and absent only because nothing asks for it:
+ * it hands out no password-free session, it confirms a new address. If a member of
+ * staff is ever to change their own address, that flow needs a client half and has
+ * none, and somebody holding such a link today has nowhere to take it. That is a
+ * product question rather than a security one, and it is written down here rather
+ * than filed under the two above.
  */
 const LINK_TYPES = Object.freeze(new Set(['invite', 'recovery']));
 /**
@@ -753,7 +761,25 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
       if (staging) fail('STAGING_OPERATION_UNAVAILABLE');
       invalidate();
       const lease = epoch;
-      let candidate = null;
+      // EVERY grant either request hands back, registered the same way, because a
+      // grant this method cannot name is a grant it cannot revoke. The write used
+      // to be sent without this: if `PUT /user` ever answers with a session --
+      // which is the provider's behaviour and is not measured here -- nothing
+      // registered it, so neither the success path, nor the catch, nor the next
+      // call's sweep could revoke it, and the one thing this method promises would
+      // have failed silently. A reviewer found that structurally and proved it
+      // with a transport whose write mints a second session.
+      //
+      // It admits a token on its SHAPE rather than through `validGrant`, because
+      // the write's answer is a user rather than a grant: demanding the whole
+      // envelope is how a rotated token would go unnoticed again.
+      const track = async (value, canceled) => {
+        const token = value?.access_token;
+        if (typeof token !== 'string' || token.length > 16384
+          || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) return;
+        if (!knownSessions.has(token)) knownSessions.set(token, { revoking: null });
+        if (canceled) await revokeKnown(token);
+      };
       try {
         await revokeAllKnown(); current(lease);
         if (!LINK_TYPES.has(type) || typeof tokenHash !== 'string' || !LINK_TOKEN.test(tokenHash)) {
@@ -773,28 +799,24 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
           // mistypes it is refused rather than quietly setting somebody's
           // password: the link decides whose account, and the address has to
           // agree with it.
-          lease, body: { type, token_hash: tokenHash },
-          receivedGrant: async (value, canceled) => {
-            if (validGrant(value)) {
-              candidate = value.access_token;
-              if (!knownSessions.has(candidate)) knownSessions.set(candidate, { revoking: null });
-              if (canceled) await revokeKnown(candidate);
-            }
-          } });
+          lease, body: { type, token_hash: tokenHash }, receivedGrant: track });
         if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
         current(lease);
         authUserId = session.user.id;
-        const updated = await request('/auth/v1/user', { lease, bearer: session.access_token, method: 'PUT', body: { password } });
+        const updated = await request('/auth/v1/user', { lease, bearer: session.access_token,
+          method: 'PUT', body: { password }, receivedGrant: track });
         if (!sameUser(updated)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
         current(lease);
         const identity = Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
-        // Not in the `finally`: a cleanup failure on the success path means a
-        // live session minted from a mailbox is still out there, which the caller
-        // has to hear about rather than have swallowed by a return.
-        await revokeKnown(candidate);
+        // EVERY known grant, not just the link's: the write may have rotated it,
+        // and revoking one by name would leave the other live. Not in the
+        // `finally`, because a cleanup failure on the success path means a live
+        // session minted from a mailbox is still out there, which the caller has
+        // to hear about rather than have swallowed by a return.
+        await revokeAllKnown();
         return identity;
       } catch (error) {
-        if (candidate) await revokeKnown(candidate).catch(() => {});
+        await revokeAllKnown().catch(() => {});
         throw error;
       } finally { invalidate(); }
     },
