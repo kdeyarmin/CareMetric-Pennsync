@@ -144,6 +144,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm run test:pennsync-api
 
+      - name: Run owned static site host tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:pennsync-site
+
       - name: Run central admin contract tests
         if: ${{ !cancelled() }}
         run: pnpm run test:central-admin

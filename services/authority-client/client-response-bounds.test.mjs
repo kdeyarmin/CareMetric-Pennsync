@@ -92,6 +92,176 @@ test('every bulk capability whose page cannot fit the default has an allowance',
     + 'that motivated this map no longer holds');
 });
 
+/**
+ * The telecom capabilities, bounded by their contract's own TEXT CAPS.
+ *
+ * The compliance five are over the default with every value null. These three
+ * are not -- a null-valued page of 500 contacts is about 0.1 MiB -- and they
+ * are over it anyway, because `fax_text` caps `notes` at 2000 for a contact and
+ * 5000 for a cover page and the ceiling is 500 and 200 rows. So this half reads
+ * a different floor out of a different migration, and the two are kept apart
+ * rather than averaged into one rule that is true of neither.
+ *
+ * `row` is the projection, `writer` is the function whose insert carries the
+ * caps, and `ceiling` is read from the list's own `least(greatest(...))` or, for
+ * the batch, from the refusal that bounds it.
+ */
+const TELECOM_DIR = resolve(HERE, '../authority-store/supabase/record-migrations');
+const TELECOM = Object.freeze({
+  listFaxContacts: {
+    file: '20260920850000_contract_fax_contact.sql', payload: 'p_contact',
+    row: 'fax_contact_row', writer: 'contract_fax_contact_create',
+    ceiling: /v_limit := least\(greatest\(coalesce\(p_limit, \d+\), 1\), (\d+)\)/,
+  },
+  bulkCreateFaxContacts: {
+    file: '20260920850000_contract_fax_contact.sql', payload: 'p_contact',
+    row: 'fax_contact_row', writer: 'contract_fax_contact_create',
+    // The batch returns every created contact in full, so its page is the
+    // batch's own refusal rather than a read limit.
+    ceiling: /if v_count > (\d+) then/,
+  },
+  listFaxTemplates: {
+    file: '20260920860000_contract_fax_template.sql', payload: 'p_template',
+    row: 'fax_template_row', writer: 'contract_fax_template_create',
+    ceiling: /v_limit := least\(greatest\(coalesce\(p_limit, \d+\), 1\), (\d+)\)/,
+  },
+});
+
+/**
+ * A byte allowance per projected key, for a column this contract does not cap.
+ *
+ * An id, an address, a timestamp or a boolean. Declared rather than parsed,
+ * because the carried schema is where those widths live and reading it here
+ * would make this suite depend on a second generator. It is generous on
+ * purpose: the figure this produces has to be an upper bound on what a page of
+ * CONTRACT-WRITTEN rows can be, or comparing an allowance against it proves
+ * nothing.
+ */
+const UNCAPPED_KEY_BYTES = 256;
+
+function telecomBounds(sql, spec) {
+  const body = fn => {
+    const start = sql.indexOf(`create function "pennsync_records".${fn}(`);
+    assert.ok(start > 0, `${fn} is not declared in ${spec.file}`);
+    const next = sql.indexOf('create function "pennsync_records".', start + 1);
+    return sql.slice(start, next > 0 ? next : sql.length);
+  };
+  const projection = body(spec.row);
+  const keys = [...projection.slice(projection.indexOf('jsonb_build_object('))
+    .matchAll(/'([a-z0-9_]+)'\s*,/g)].map(match => match[1]);
+  // The same two drift guards the compliance half uses, for the same reason: a
+  // regex that stopped matching the projection and started matching other
+  // quoted text of a similar size satisfies a length inequality while measuring
+  // nothing, and that has happened in this repository before.
+  assert.ok(keys.includes('id'), `${spec.row}'s parsed projection has no 'id'; the parse has drifted`);
+  assert.deepEqual([...new Set(keys)], keys,
+    `${spec.row}'s parsed projection repeats a key, so this is not a jsonb_build_object key list`);
+  // The caps, per column, out of the writer's own `fax_text` calls.
+  const caps = new Map();
+  for (const match of body(spec.writer)
+    .matchAll(new RegExp(`fax_text\\(${spec.payload}->'([a-z0-9_]+)', (\\d+)\\)`, 'g'))) {
+    caps.set(match[1], Math.max(caps.get(match[1]) ?? 0, Number(match[2])));
+  }
+  assert.ok(caps.size > 0, `${spec.writer} caps no text column; the caps parse has drifted`);
+  for (const column of caps.keys()) {
+    assert.ok(keys.includes(column),
+      `${spec.writer} caps ${column}, which ${spec.row} does not project; one parse is wrong`);
+  }
+  const ceiling = sql.match(spec.ceiling);
+  assert.ok(ceiling, `${spec.file} does not bound this capability's page as expected`);
+  // `"key":"<value>",` per column: the key, its quotes, the colon and comma,
+  // then the capped width or the declared allowance.
+  const perRow = keys.reduce((total, key) =>
+    total + key.length + 4 + (caps.get(key) ?? UNCAPPED_KEY_BYTES) + 2, 0) + 2;
+  return { ceiling: Number(ceiling[1]), caps: caps.size, atCeiling: perRow * Number(ceiling[1]) };
+}
+
+test('every telecom capability whose capped page cannot fit the default has an allowance', () => {
+  let overDefault = 0;
+  for (const [handler, spec] of Object.entries(TELECOM)) {
+    const sql = readFileSync(resolve(TELECOM_DIR, spec.file), 'utf8');
+    const { ceiling, atCeiling } = telecomBounds(sql, spec);
+    assert.ok(Object.hasOwn(BULK_RESPONSE_BYTES, handler),
+      `${handler} pages to ${ceiling} rows of capped text and has no declared allowance`);
+    assert.ok(BULK_RESPONSE_BYTES[handler] >= atCeiling,
+      `${handler} allows ${BULK_RESPONSE_BYTES[handler]} bytes and a page of capped text `
+      + `at its ceiling of ${ceiling} needs ${atCeiling}`);
+    if (atCeiling > DEFAULT_RESPONSE_BYTES) overDefault += 1;
+  }
+  // All three, or the entries added for them are dead weight. This is the
+  // assertion that fails if a ceiling or a cap is lowered to the point where
+  // the default would do, which is a decision rather than a tidy-up.
+  assert.equal(overDefault, Object.keys(TELECOM).length,
+    `${overDefault} of ${Object.keys(TELECOM).length} telecom capabilities exceed the 1 MiB `
+    + 'default; the measurement that motivated their allowances no longer holds');
+});
+
+test('the two fax log reads are bounded by their projection, not by a cap', () => {
+  // The third measure, and the one a first draft of this suite got wrong in the
+  // direction that looks safe. `fax_log_row` projects no `ocr_text` -- the one
+  // unbounded column on that row -- and from that I concluded both reads fit the
+  // default. The absent column is real; the conclusion was not. The log has no
+  // writer in this tree, so NO contract caps any of the nineteen columns it does
+  // project, and the only bound available is the declared per-key allowance.
+  //
+  // So this case is symmetric rather than one-sided: whichever of the two is
+  // over the default must carry an allowance, whichever is under must not, and
+  // it must come out one of each -- otherwise one of the two directions is
+  // asserted against nothing, which is the state the first draft was in.
+  const sql = readFileSync(TELECOM_DIR + '/20260920890000_contract_fax_log.sql', 'utf8');
+  const body = fn => {
+    const at = sql.indexOf(`create function "pennsync_records".${fn}(`);
+    assert.ok(at > 0, `${fn} is not declared`);
+    const after = sql.indexOf('create function "pennsync_records".', at + 1);
+    return sql.slice(at, after > 0 ? after : sql.length);
+  };
+  const projected = text => [...text.slice(text.indexOf('jsonb_build_object('))
+    .matchAll(/'([a-z0-9_]+)'\s*,/g)].map(match => match[1]);
+  const rowKeys = projected(body('fax_log_row'));
+  assert.ok(rowKeys.includes('id'), "fax_log_row's parsed projection has no 'id'; the parse has drifted");
+  assert.deepEqual([...new Set(rowKeys)], rowKeys,
+    "fax_log_row's parsed projection repeats a key, so this is not a jsonb_build_object key list");
+  // Recorded rather than relied on: if the log ever gains a contract that caps
+  // one of these, this suite is reading the wrong instrument for it.
+  assert.equal(rowKeys.includes('ocr_text'), false,
+    'fax_log_row projects ocr_text, so the allowance below understates the row');
+
+  // The search adds its own keys to each row, and the excerpt is capped in SQL,
+  // so it is the one column here with a real width.
+  const EXTRA = Object.freeze({ ocr_excerpt: 300, ocr_truncated: UNCAPPED_KEY_BYTES });
+  const READS = Object.freeze({
+    listFaxLogs: { fn: 'contract_fax_log_list', extra: {} },
+    searchFaxLogs: { fn: 'contract_fax_log_search', extra: EXTRA },
+  });
+  let overDefault = 0;
+  for (const [handler, { fn, extra }] of Object.entries(READS)) {
+    const text = body(fn);
+    const ceiling = text.match(/v_limit := least\(greatest\(coalesce\(p_limit, \d+\), 1\), (\d+)\)/);
+    assert.ok(ceiling, `${fn} does not bound its page as expected`);
+    for (const key of Object.keys(extra)) {
+      assert.ok(text.includes(`'${key}'`), `${fn} does not add ${key}; this suite's extra keys are stale`);
+    }
+    const width = key => extra[key] ?? UNCAPPED_KEY_BYTES;
+    const perRow = [...rowKeys, ...Object.keys(extra)]
+      .reduce((total, key) => total + key.length + 4 + width(key) + 2, 0) + 2;
+    const atCeiling = perRow * Number(ceiling[1]);
+    if (atCeiling > DEFAULT_RESPONSE_BYTES) {
+      overDefault += 1;
+      assert.ok(Object.hasOwn(BULK_RESPONSE_BYTES, handler),
+        `${handler} pages to ${ceiling[1]} uncapped rows needing ${atCeiling} bytes, `
+        + `over the ${DEFAULT_RESPONSE_BYTES} default, and has no declared allowance`);
+      assert.ok(BULK_RESPONSE_BYTES[handler] >= atCeiling,
+        `${handler} allows ${BULK_RESPONSE_BYTES[handler]} bytes and its page needs ${atCeiling}`);
+    } else {
+      assert.equal(Object.hasOwn(BULK_RESPONSE_BYTES, handler), false,
+        `${handler}'s page is ${atCeiling} bytes, inside the default, so its allowance is dead weight`);
+    }
+  }
+  assert.equal(overDefault, 1,
+    `${overDefault} of the two fax log reads is over the default; with none or both, one `
+    + 'direction of this case is asserted against nothing');
+});
+
 test('the allowance is what the client actually sends a response through', async () => {
   const sql = readFileSync(MIGRATION, 'utf8');
   const { atCeiling } = bounds(sql, CAPABILITIES.listAgencyIncidents);

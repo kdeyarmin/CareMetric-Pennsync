@@ -1,7 +1,7 @@
 # PennSync iOS Shell (WKWebView wrapper)
 
 A native iOS wrapper around the PennSync web app
-(`https://caremetricai.base44.app/`). The repo is a frontend-only SPA (see
+(`https://app.caremetricai.com/`). The repo is a frontend-only SPA (see
 `AGENTS.md`); this directory holds the complete source + project spec for the
 App Store shell. Minimum deployment target: **iOS 15.0**.
 
@@ -44,12 +44,22 @@ changes.
 
 ### App-Bound Domains
 
-`Info.plist` declares `WKAppBoundDomains` (`base44.app`, `base44.com` — bare
-domains cover their subdomains, including `caremetricai.base44.app`) and
+`Info.plist` declares `WKAppBoundDomains` (`caremetricai.com`, `base44.app`,
+`base44.com` — bare domains cover their subdomains, so the first covers
+`app.caremetricai.com` and the second covers `caremetricai.base44.app`) and
 `WebViewController` sets `limitsNavigationsToAppBoundDomains = true`. This is
 retained as a main-frame navigation boundary. The current web frontend
 intentionally registers no service worker and has no offline app shell; network
 failures are handled by the wrapper's native retry screen.
+
+**All three are listed on purpose; this is the transitional set.** The shell
+loads `https://app.caremetricai.com/`, and both Base44 domains stay because
+sign-in is still Base44's: `/login` on the app origin is a Base44-served page
+today, and the sign-in flow can navigate the main frame to a `base44.app`
+address. The list takes up to ten entries, so one binary works either side of
+the hosting move and the DNS change needs no second App Store release. Removing
+the Base44 entries is a separate release, after the backend exit — see
+`docs/HOSTING_EXIT_RUNBOOK.md`.
 
 The trade-off is that *main-frame* navigation is limited to the listed
 domains. That is safe here because the navigation policy already opens
@@ -60,8 +70,10 @@ app-bound limits and keep working inline; the policy handler also
 deliberately `.allow`s all subframe navigations rather than ejecting them
 to Safari.
 
-If the frontend ever moves off these domains, update both the plist array
-and `appURL` in `WebViewController.swift`.
+If the frontend ever moves off these domains, update both the plist array and
+`appURL` in `WebViewController.swift` — and `tools-app-store-migration.test.mjs`,
+which byte-pins every file in this directory against a baseline commit and
+requires each intended change to be enumerated there with a reason.
 
 ### Popups and printing
 

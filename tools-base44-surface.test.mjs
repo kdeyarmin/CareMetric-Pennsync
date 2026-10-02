@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BASELINE_FILE, FORMAT, FORMAT_VERSION, METRICS,
-  compareSurface, entityCalls, main, measureSurface, parseBaseline, sourceFiles,
+  compareSurface, entityCalls, handleKey, main, measureSurface, parseBaseline, sourceFiles,
+  takenHandles, unaccountedHandles,
 } from './tools-base44-surface.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -79,6 +81,9 @@ test('updating the baseline is explicit and writes only the measured counts', ()
   assert.ok(written.path.endsWith(BASELINE_FILE));
   const parsed = parseBaseline(written.body);
   assert.deepEqual(parsed.maximum, measureSurface(repository).counts);
+  // Without this the one command a reader reaches for to lower the baseline
+  // would silently delete the record of every handle the tool cannot follow.
+  assert.deepEqual(parsed.allowed_handles, unaccountedHandles(repository).map(handleKey).sort());
 });
 
 test('the command line refuses unknown arguments and an unavailable baseline', () => {
@@ -146,4 +151,195 @@ test('the module that defeated the old matcher is measured, and it is one module
     if ([...entityCalls(body)].length > literal) bound.push(relative(repository, file));
   }
   assert.deepEqual(bound, ['src/lib/retiredOfflineQueue.js']);
+});
+
+test('a handle TAKEN without an immediate call is seen, and a called one is not', () => {
+  const taken = text => takenHandles(text).map(hit => `${hit.entity}:${hit.line}`);
+  // The control that bites, and the reason this exists: the shipped matcher is
+  // BLIND to this file and says so when asked, rather than being read as blind.
+  const probe = 'const handle = base44.entities.Visit;\nexport const go = () => handle.create({});\n';
+  assert.deepEqual(taken(probe), ['Visit:1']);
+  assert.deepEqual([...entityCalls(probe)], []);
+
+  // Called immediately, through whitespace and a newline, is NOT a taken handle:
+  // the existing matcher already counts those and counting them here would
+  // report every call site in the repository as a finding.
+  assert.deepEqual(taken('base44.entities.Visit.filter({});'), []);
+  assert.deepEqual(taken('base44.entities.Visit\n  .filter({});'), []);
+  assert.deepEqual(taken('base44.entities . Visit . filter({});'), []);
+
+  // A handle taken as a property value, which is the shape that passes it on.
+  assert.deepEqual(taken('useThing({ entity: base44.entities.Task, toItem });'), ['Task:1']);
+});
+
+test('a comment ABOUT the SDK is not a call site, and line numbers survive the blanking', () => {
+  const taken = text => takenHandles(text).map(hit => `${hit.entity}:${hit.line}`);
+  assert.deepEqual(taken('// a caller may hold `base44.entities.Patient` or one of its methods\n'), []);
+  assert.deepEqual(taken('/*\n * base44.entities.Patient\n */\n'), []);
+  // The blanking preserves OFFSETS, so a finding after a multi-line comment
+  // still reports its own line. A strip that deleted the text would say 2.
+  assert.deepEqual(taken('/* one\n   two\n   three */\nconst h = base44.entities.Task;\n'), ['Task:4']);
+  // The stated limit, driven rather than left to the reader: a TRAILING `//`
+  // comment is not blanked, so a handle named in one is reported. Whoever makes
+  // this stricter should delete this case rather than discover it.
+  assert.deepEqual(taken('const x = 1; // see base44.entities.Task\n'), ['Task:1']);
+
+  // The real file that motivated it, asserted against the tree.
+  assert.deepEqual(takenHandles(
+    readFileSync(resolve(repository, 'src/lib/independentStagingAdapter.js'), 'utf8')), []);
+});
+
+const committed = () => parseBaseline(readFileSync(resolve(repository, BASELINE_FILE), 'utf8')).allowed_handles;
+
+test('an unaccounted handle is named with its file and line, and an accounted one is not', () => {
+  // Pinned against the COMMITTED allowance rather than a second copy of the
+  // list. A hand repairing one of these sites deletes its entry -- which the
+  // gate's STALE refusal tells them to do -- and this assertion moves with it,
+  // instead of being a test that passes only while the defect exists.
+  assert.deepEqual(unaccountedHandles(repository).map(handleKey).sort(), committed());
+  // `retiredOfflineQueue.js` takes four handles and is ABSENT from that list,
+  // which is the half that keeps this from being a count of every alias: its
+  // aliased path resolves, so the tool can still see the calls arriving.
+  assert.equal(takenHandles(
+    readFileSync(resolve(repository, 'src/lib/retiredOfflineQueue.js'), 'utf8')).length, 4);
+  assert.equal(unaccountedHandles(repository)
+    .some(hit => hit.file === 'src/lib/retiredOfflineQueue.js'), false);
+  // And a literal read of the SAME entity does not account for a taken handle --
+  // the case the training builders are. Scoped to the allowance still naming the
+  // file, so repairing the builder retires this case with its entry; the shape
+  // itself is pinned permanently over a fixture below, where no repair reaches it.
+  if (committed().includes('src/components/training/CourseLessonBuilder.jsx::TrainingModule')) {
+    const builder = readFileSync(resolve(repository, 'src/components/training/CourseLessonBuilder.jsx'), 'utf8');
+    assert.equal([...entityCalls(builder)].length, 1, 'only the literal read is visible');
+    assert.deepEqual([...entityCalls(builder)].map(site => site.entity), ['TrainingModule']);
+  }
+});
+
+test('a literal call does not account for a handle of the same entity in the same file', () => {
+  // The discrimination the whole refusal turns on, over a fixture so that it
+  // survives every repair to the four sites this tree happens to hold.
+  const root = mkdtempSync(join(tmpdir(), 'base44-surface-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'builder.jsx'),
+      'const rows = base44.entities.TrainingModule.filter({ id });\n'
+      + 'export const panel = () => useBuilder({ entity: base44.entities.TrainingModule, rows });\n');
+    assert.deepEqual(unaccountedHandles(root),
+      [{ file: 'src/builder.jsx', line: 2, entity: 'TrainingModule' }],
+      'the literal filter is visible and the handed-on handle is still refused');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a commented-out alias call does not account for a real handle', () => {
+  const root = mkdtempSync(join(tmpdir(), 'base44-surface-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'queue.js'),
+      'const q = { Task: base44.entities.Task };\n'
+      + '// q.Task.list();\n'
+      + '/* q.Task.create({}); */\n'
+      + 'export const handle = () => useThing(base44.entities.Task);\n');
+    assert.deepEqual(unaccountedHandles(root).map(hit => hit.line), [1, 4],
+      'the only calls through the alias are in comments, so neither handle is accounted for');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('this tree\'s unaccounted handles are the committed allowance, so the gate passes', () => {
+  const lines = [];
+  const code = main(['--summary'], { repository, log: line => lines.push(String(line)) });
+  const unaccounted = unaccountedHandles(repository);
+  assert.equal(code, 0, 'a handle the committed baseline records does not fail the gate');
+  // Named anyway, every one of them: the allowance records an undercount, and a
+  // reader of this output has to be able to see which counts are short.
+  for (const hit of unaccounted) {
+    assert.equal(lines.some(line => line.includes(`${hit.file}:${hit.line}`)), true,
+      `${hit.file}:${hit.line} is not named in the summary`);
+  }
+  assert.equal(lines.some(line => line.startsWith('  REFUSED')), false);
+  assert.equal(lines.some(line => line.includes('STALE ALLOWANCE')), false,
+    'an allowance entry matching nothing should have been deleted with the fix that earned it');
+  const json = [];
+  main([], { repository, log: line => json.push(String(line)) });
+  const report = JSON.parse(json.join('\n'));
+  assert.deepEqual(report.unaccounted_handles, unaccounted);
+  assert.deepEqual(report.refused_keys, []);
+});
+
+test('a handle the allowance does not name fails the gate, and naming it clears it', () => {
+  // Over a fixture tree through the real walker, matcher and command line: the
+  // question is what the GATE does, and a hand-built report cannot answer it.
+  const root = mkdtempSync(join(tmpdir(), 'base44-surface-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'screen.jsx'),
+      'const handle = base44.entities.Visit;\nexport const save = payload => handle.create(payload);\n');
+    const file = { format: FORMAT, version: FORMAT_VERSION, maximum: Object.fromEntries(METRICS.map(m => [m, 50])) };
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: [] }));
+    const refused = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => refused.push(String(line)) }), 1);
+    assert.match(refused.join('\n'), /within baseline/, 'it fails on the handle, not on the ratchet');
+    assert.equal(refused.some(line =>
+      line.startsWith('  REFUSED src/screen.jsx::Visit is taken 1 time(s) at line(s) 1 and declared 0')), true);
+
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit'] }));
+    const allowed = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => allowed.push(String(line)) }), 0);
+    assert.equal(allowed.some(line => line.startsWith('  allowed HANDLE src/screen.jsx:1')), true);
+
+    // A stale entry FAILS: whoever repaired the handle has to delete its record,
+    // and a passing note is a line nobody reads.
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/gone.js::Visit', 'src/screen.jsx::Visit'] }));
+    const stale = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => stale.push(String(line)) }), 1);
+    assert.equal(stale.some(line => line.includes('STALE ALLOWANCE src/gone.js::Visit')), true);
+    assert.equal(stale.some(line => line.startsWith('  REFUSED')), false, 'and not as a refusal');
+
+    // A SECOND handle of an already-declared entity in an already-declared file
+    // is refused, because one entry declares one occurrence. Found by review:
+    // keying without counting admitted the new site beside its neighbour.
+    writeFileSync(join(root, 'src', 'screen.jsx'),
+      'const handle = base44.entities.Visit;\nexport const save = payload => handle.create(payload);\n'
+      + 'export const second = base44.entities.Visit;\n');
+    writeFileSync(join(root, BASELINE_FILE), JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit'] }));
+    const second = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => second.push(String(line)) }), 1);
+    // Reported per KEY with both lines, not pinned to one of them. Found by
+    // review: a handle inserted ABOVE a declared one would otherwise take the
+    // declared slot and the refusal would name the reviewed site instead.
+    assert.equal(second.some(line =>
+      line.startsWith('  REFUSED src/screen.jsx::Visit is taken 2 time(s) at line(s) 1, 3 and declared 1')), true);
+    assert.equal(second.some(line => line.startsWith('  allowed HANDLE')), false,
+      'and an over-subscribed key does not also print one of its sites as allowed');
+    // And declaring it twice admits both.
+    writeFileSync(join(root, BASELINE_FILE),
+      JSON.stringify({ ...file, allowed_handles: ['src/screen.jsx::Visit', 'src/screen.jsx::Visit'] }));
+    assert.equal(main(['--summary'], { repository: root, log: () => {} }), 0);
+    // Dropping back to one taken handle makes the second declaration STALE.
+    writeFileSync(join(root, 'src', 'screen.jsx'),
+      'const handle = base44.entities.Visit;\nexport const save = payload => handle.create(payload);\n');
+    const shrunk = [];
+    assert.equal(main(['--summary'], { repository: root, log: line => shrunk.push(String(line)) }), 1);
+    assert.equal(shrunk.some(line => line.includes('declared 2 time(s) and taken 1')), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the baseline rejects an allowance it cannot be read against', () => {
+  const file = patch => JSON.stringify({ ...baseline(), ...patch });
+  for (const [name, patch] of Object.entries({
+    notAnArray: { allowed_handles: 'src/screen.jsx::Visit' },
+    notStrings: { allowed_handles: [{ file: 'src/screen.jsx', entity: 'Visit' }] },
+    missingEntity: { allowed_handles: ['src/screen.jsx'] },
+  })) {
+    assert.throws(() => parseBaseline(file(patch)), /BASELINE_INVALID_ALLOWANCE/, name);
+  }
+  // A repeated key is LEGAL: it declares a second occurrence in the same file.
+  assert.deepEqual(parseBaseline(file({ allowed_handles: ['s::V', 's::V'] })).allowed_handles, ['s::V', 's::V']);
+  // Absent is empty, which refuses every handle rather than allowing them.
+  assert.deepEqual(parseBaseline(file({})).allowed_handles, []);
 });
