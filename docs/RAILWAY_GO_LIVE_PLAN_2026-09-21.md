@@ -1604,9 +1604,9 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 28 |
-  | `mutating` (derived) | 59 | 41 |
-  | `integration` (derived) | 27 | 24 |
+  | `read-only` (derived) | 55 | 29 |
+  | `mutating` (derived) | 59 | 42 |
+  | `integration` (derived) | 27 | 25 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
   and `splitReferralPDF` — carry an operator cost the other twenty-four do not.**
@@ -1668,6 +1668,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   reads neither pair. `node tools-pennsync-release-ladder.mjs --summary` is the
   instrument and it is the only thing either figure should ever be copied from.
 
+  **A THIRD row moved on the next merge, and it is the one that never
+  conflicted.** `read-only`'s migration count went 28 → 29 because
+  `20260920745000_dashboard_visit_documentation.sql` arrives in that wave, and
+  both sides of that merge wrote 28: the branch adding the file never touched
+  this row, and `main` could not see the file. Git records what two branches
+  both edited, which is a different set from what the merge makes false, so a
+  row can be stale on the merged tree with no marker anywhere near it. Re-derive
+  EVERY row from the tool, not the rows that conflicted.
+
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
   reads and three writes — and both migration counts rose by the one migration
@@ -1711,6 +1720,16 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   same property the compliance writes recorded from the other side, where one
   file joined two waves: three rows moving for one file is the derivation
   working, not a file counted three times.
+
+  The timesheet approver gate then added ONE migration to `mutating` and nothing
+  to the other five, and no handler to anything: a forward file over
+  `contract_timesheet_review` (D88), so the two timesheet handlers need it and no
+  capability arrived. Only `mutating` moves because `contract_timesheet_review` is
+  reached by no read-only handler and by nothing touching the runtime — which is
+  the contrast worth keeping beside the shared-read cases, where one forward file
+  moves every derived row at once: a wave's migrations are the ones ITS handlers
+  need, so how many rows move says which handlers reach the function rather than
+  how big the change is.
 
   The five compliance WRITES then took `mutating` to 54 and left `read-only`
   and `integration` where they were. Its migrations rose by **two** for one
@@ -1770,6 +1789,38 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   the two conflicting readings above were both correct for their own tree, and
   reconciling them by arithmetic is how a delta gets stated over a total that
   no longer exists.
+
+  The `mutating` row's migrations rose by one again, and ONLY that row, because
+  the leave-review approver fix's forward migration redefines
+  `contract_time_off_review` — one contract, reached by handlers in no other
+  wave. Contrast the roster telephone change next to it, where a forward file
+  over a shared READ contract moved all three derived rows at once: which rows
+  move is a property of how widely the contract is reached, not of how large the
+  change is. The handler count does not move, because the change adds no
+  capability; a handler count that had moved would have meant the classification
+  shifted rather than that work arrived. Re-derived from `--summary` on this
+  tree rather than added to the figure above, for the reason the D108 paragraph
+  gives: replaying a delta onto a base that has moved states it over a total
+  that no longer exists.
+
+  The `read-only` row's migrations then rose by one with the dashboard
+  documentation signal, and the derivation again rather than the number: that
+  forward migration redefines `dashboard_visit`, which `contract_dashboard`
+  projects through, so the wave carrying `getDashboardData` gains it as a
+  prerequisite. No handler count moved anywhere, which is the check to read —
+  the change adds no capability, it widens one projection by a derived
+  boolean. The other two rows did NOT move, and that is worth saying because
+  the paragraphs above record the opposite case: these rows are each wave's
+  OWN prerequisites, not the cumulative value, so a migration reaching only
+  `read-only`'s handlers moves only `read-only` — while the value `--wave
+  mutating` emits does grow, because THAT is the superset.
+
+  **What that paragraph did NOT do on its own branch is edit the row**, and
+  neither did `main`. The table above said 28 on both sides of the merge and
+  the tool said 29, so the prose was right and the figure beside it was wrong,
+  with nothing conflicting. Re-deriving the whole table on the merged tree is
+  what found it; re-deriving the figures a merge happened to mark is what would
+  have missed it.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
@@ -3847,10 +3898,10 @@ byte, so paste what `pnpm run check:entity-routes` prints and never retype,
 rewrap or re-indent it.
 
 ```
-entity routes: 100 declared, 162/245 landable call sites SERVED, 83 still to adopt
-  6 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+entity routes: 100 declared, 164/245 landable call sites SERVED, 81 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
   25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
-  of those 83, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 82 need a named capability
+  of those 81, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 80 need a named capability
 ```
 
 **Every figure above was re-run on the merged tree rather than reconciled from
@@ -3968,30 +4019,39 @@ which is how a bucket comes to claim more than it measured.
 Beside the served sites, the remainder is three populations and they are three
 different kinds of work:
 
-- **Six are REFUSED by a declared route.** Three are `User.list` asking for a
-  `full_name` sort, across two files; three are the offline queue's, described
-  above. These are the only sites where the Base44 fallback is already gone — but
-  six refusals are TWO screens. They fall across three files, and the third is
-  not a screen: `retiredOfflineQueue.js` is a lib module no production file
-  imports. Six, three and two are three different counts of one bucket, and the
+- **Four are REFUSED by a declared route.** One is `User.list` asking for a
+  `full_name` sort, in one file; three are the offline queue's, described above.
+  These are the only sites where the Base44 fallback is already gone — but four
+  refusals are ONE screen. They fall across two files, and the second is not a
+  screen: `retiredOfflineQueue.js` is a lib module no production file imports.
+  Four, one and one are three different counts of one bucket, and the
   one that sizes the work is the smallest. **This line moves in BOTH directions
   for reasons that are not opposites, so neither direction can be read off the
   number.** It was six when #309 merged, rose to nine on `c90ad9ae` — two keys
   became refusals by being DECLARED, where an undeclared key is skipped rather
   than refused, and the third became visible when the shared matcher stopped
-  being a regular expression — and is six again now for a different reason
-  entirely: three admin screens stopped asking for an order the roster cannot
-  serve, so those sites moved into SERVED rather than out of the audit. A rise
-  measures the audit's reach; this fall measures three call sites repaired; and a
-  fall could equally mean a route was withdrawn. Read the cause, never the
-  direction.
-- **The three that remain are the two approver screens**, `TimeOff.jsx` and
-  `Timesheets.jsx` (twice), and they are deliberately not repaired here. Both
-  files are open in other pull requests at the time of writing, and moving a line
-  in them from this one would trade a measured refusal for a merge conflict. The
-  `full_name` sort is not servable in either store — the carried user table has
-  no name column at all — so this is a repair somebody owes, not a question
-  anybody has to answer first.
+  being a regular expression — and has fallen from nine to four here, across
+  THREE changes none of which knew about the others: three admin screens stopped
+  asking for an order the roster cannot serve, then the timesheet's approver
+  dropdown did, then the leave form's did, so five sites moved into SERVED rather
+  than out of the audit. A rise measures the audit's reach; this fall measures
+  five call sites repaired; and a fall could equally mean a route was withdrawn.
+  Read the cause, never the direction.
+
+  **Note what that does to the arithmetic**, because it is the trap this line is
+  for: each change lowered the figure independently and each was correct about
+  its own tree, so adding any one's delta to another's base gives a number both
+  sides would have signed off, and so does taking the union of their removals.
+  The figure is re-measured at each merge rather than reconciled from the sides.
+  This has now happened on two consecutive merges, which is what makes it a
+  property of the slot order rather than an accident.
+- **The one that remains is a single site in `Timesheets.jsx`**, and it is kept
+  deliberately rather than owed. Its employee list filters `u.role === "user"`,
+  and D23 keeps `role` off the roster precisely because it is self-assertable,
+  so serving that page an order would turn a loud refusal into a staffing screen
+  confidently showing nobody. The approver dropdown in the same file was repaired
+  and asks only for `tenant_role`, which the roster does project. That contrast
+  is the reason a refusal is read per SITE and not per file.
 - **Sixty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
@@ -4007,7 +4067,7 @@ different kinds of work:
   eight sites out of this pool and the withdrawn duty toggle put nothing back,
   so a bucket nobody touched moved twice. That is what a remainder does: it is a
   property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.62 call sites and a write
+  the sites already served: a read key there carries 2.66 call sites and a write
   key 1.24, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.27 sites and a
@@ -4018,9 +4078,11 @@ different kinds of work:
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at six consecutive heads and every one
-  of its six figures has moved, reversing a finding stated in its own prose
-  three times.** One head ago the two halves were level at fifteen sites each
+  **This bullet has now been re-derived at eight consecutive heads. Across the
+  first five every one of its six figures moved, reversing a finding stated in
+  its own prose three times; at the sixth, seventh and eighth only the served
+  read pair did, which are the first heads where re-deriving the whole bullet
+  changed one figure.** One head ago the two halves were level at fifteen sites each
   and the write key was the THINNER, at 1.15 against 1.25; the head before that
   the write key covered 1.61 and the paragraph called that inversion the
   finding; before that 1.57, and before that the writes were nearly twice the
@@ -4072,6 +4134,30 @@ different kinds of work:
   watching only the served ratio would see it rise and a reader watching only
   the remainder would see a flat line, and both would be reading this same
   change correctly. Neither number was wrong before and neither is wrong now.
+
+  **And it moved once more on the tree this branch merges onto, for a cause the
+  bullet had not seen before: a site that was being REFUSED became served.** The
+  timesheet's approver dropdown stopped asking the roster for an order it cannot
+  serve, so one call site crossed from the refused bucket into the served pool
+  without any route being declared — the served read pair goes from 128 sites
+  over 50 keys to 129 over the same 50, and the ratio with it. Every earlier
+  move on this bullet came from a key being DECLARED or a population leaving the
+  remainder; this one is a call site repaired, and the remainder did not move at
+  all. So the four pairs are not only a guard against a quotient sitting still
+  while both halves move — they are also the only thing here that can tell a
+  repaired site from a new route, since both raise the served count by one.
+
+  **And it moved once more on the tree this branch merges onto, for a cause the
+  bullet had not seen before: a site that was being REFUSED became served.** The
+  leave form's approver dropdown stopped asking the roster for an order it cannot
+  serve, so one call site crossed from the refused bucket into the served pool
+  without any route being declared — the served read pair goes from 128 sites
+  over 50 keys to 129 over the same 50, and the ratio with it. Every earlier
+  move on this bullet came from a key being DECLARED or a population leaving the
+  remainder; this one is a call site repaired, and the remainder did not move at
+  all. So the four pairs are not only a guard against a quotient sitting still
+  while both halves move — they are also the only thing here that can tell a
+  repaired site from a new route, since both raise the served count by one.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the

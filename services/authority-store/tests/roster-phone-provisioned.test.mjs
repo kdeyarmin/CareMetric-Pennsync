@@ -70,16 +70,15 @@ before(async () => {
   }
   applied = await applyRecordMigrations(db);
   assert.ok(applied.includes(NAME), `${NAME} must be applied: this suite measures it`);
-  // The guard RETIRED here, by the rule the comment it replaces states: this
-  // migration has MERGED, so a later file sorting after it is a correct tree
-  // rather than a base that moved. `20260920750000_oasis_schema_tables` is the
-  // newest pending file and holds the call now.
+  // The guard is RETIRED here, by the helper's own instruction: this migration
+  // has MERGED, and `20260920730000_timesheet_review_approver_role` — which this
+  // merge brings in — now sorts after it. The helper admits exactly one holder,
+  // so the call moves on to `contract-timesheet-review-approver.test.mjs` and is
+  // held there alone; keeping it would fail this `before` and take every test in
+  // this suite down with it, naming a contract that had done nothing wrong.
   //
-  // Nothing about this suite changed. Keeping the call would have failed this
-  // `before` and taken every test in the file down with it, naming a migration
-  // that had done nothing wrong — which is why the helper says to retire rather
-  // than widen. What is kept is this suite's own property: that its migration
-  // really was applied to the store it measures.
+  // Retiring it is NOT asserting nothing. The membership check above is this
+  // suite's own property and is what still catches this file being renamed away.
 });
 after(async () => db?.close());
 
