@@ -38,7 +38,7 @@ export const VARIANTS = Object.freeze({
   clean: { note: 'Seals cleanly; the planner reports nothing wrong.' },
   bad_enum: {
     note: 'A visit whose status is outside the target column\'s allowed values.',
-    expected: { quarantine: [{ app: LIVE_APP, entity: 'Visit', id: id(0x3002), code: 'column_value_refused', column: 'status' }] },
+    expected: { quarantine: [{ app: LIVE_APP, entity: 'Visit', id: id(0x4002), code: 'column_value_refused', column: 'status' }] },
   },
   unknown_field: {
     note: 'A patient carrying a field the target table does not have.',
@@ -46,7 +46,7 @@ export const VARIANTS = Object.freeze({
   },
   unenrolled_author: {
     note: 'A patient authored by someone with an identity mapping who has not been enrolled.',
-    expected: { findings: [{ app: LIVE_APP, entity: 'Patient', code: 'author_not_enrolled', count: 1 }] },
+    expected: { findings: [{ app: LIVE_APP, entity: 'Patient', code: 'author_not_enrolled', count: 1 }, { app: LIVE_APP, entity: 'Visit', code: 'author_not_enrolled', count: 2 }] },
   },
   cross_agency_link: {
     note: 'A visit in agency B pointing at a patient in agency A.',
