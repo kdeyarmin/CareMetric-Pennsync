@@ -44,7 +44,14 @@ test('production pin diagnostics can be printed without carrying CLI output', ()
     // A SQLSTATE and nothing else. Five characters from a fixed set, so it
     // names which refusal a statement hit without carrying any of the text
     // around it.
-    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501', 'PRODUCTION_PIN_READBACK_FAILED 42P01']) {
+    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501', 'PRODUCTION_PIN_READBACK_FAILED 42P01',
+    // A position, in the same alphabet as a SQLSTATE: a stage letter and an index
+    // into that directory's own sorted listing, so it says WHICH file without
+    // naming one. A diagnosed failure carries both its SQLSTATE and the position.
+    'PRODUCTION_PIN_STORE_BUILD_FAILED_SESSION_LOST R0000',
+    'PRODUCTION_PIN_STORE_BUILD_FAILED_SERVER_RESTARTED A0012',
+    'PRODUCTION_PIN_SERVER_UNREACHABLE R0003',
+    'PRODUCTION_PIN_STORE_BUILD_FAILED 42501 R0001']) {
     assert.equal(emittableProductionPin(message), true);
   }
   // Anything that could carry a credential, a URL, a command or free text must
@@ -59,7 +66,11 @@ test('production pin diagnostics can be printed without carrying CLI output', ()
     // nothing that could carry an identifier or a sentence.
     'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501X', 'PRODUCTION_PIN_SETTING_WRITE_FAILED 4250',
     'PRODUCTION_PIN_SETTING_WRITE_FAILED 42p01', 'PRODUCTION_PIN_SETTING_WRITE_FAILED postgres',
-    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501 postgres']) {
+    'PRODUCTION_PIN_SETTING_WRITE_FAILED 42501 postgres',
+    // Three tokens is a message growing a place for free text; two is the most
+    // this ever needs, a SQLSTATE and a position.
+    'PRODUCTION_PIN_STORE_BUILD_FAILED 42501 R0001 postgres',
+    'PRODUCTION_PIN_STORE_BUILD_FAILED 42501 R0001 42P01']) {
     assert.equal(emittableProductionPin(message), false);
   }
 });

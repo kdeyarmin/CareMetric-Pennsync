@@ -62,7 +62,7 @@ export const AUTHORITY_MIGRATIONS = new URL('../supabase/migrations/', import.me
  * free text.
  */
 export const emittableProductionPin = message =>
-  /^(PRODUCTION_PIN_[A-Z_]+( [0-9A-Z]{5})?|LOCAL_[A-Z_]+( [0-9]{1,5})?)$/.test(message);
+  /^(PRODUCTION_PIN_[A-Z_]+( [0-9A-Z]{5}){0,2}|LOCAL_[A-Z_]+( [0-9]{1,5})?)$/.test(message);
 
 /**
  * A failing statement's SQLSTATE, and nothing else.
@@ -123,17 +123,54 @@ export async function pinLocalStackToProduction() {
   // IMMUTABLE function body has to run in the same session that carries it.
   // Bound rather than interpolated -- `set_config` is an ordinary function, unlike
   // the `ALTER ROLE` this replaces.
-  await withClient(databaseUrl, 'PRODUCTION_PIN_STORE_BUILD_FAILED', async client => {
-    const { rows } = await client.query('select set_config($1, $2, false) as value',
-      [PIN_SETTING, PRODUCTION_APP]);
-    if (rows[0]?.value !== PRODUCTION_APP) fail('PRODUCTION_PIN_SETTING_NOT_VISIBLE');
-    for (const name of (await readdir(AUTHORITY_MIGRATIONS)).filter(f => f.endsWith('.sql')).sort()) {
-      await client.query(await readFile(new URL(name, AUTHORITY_MIGRATIONS), 'utf8'));
-    }
-    // The record half, in the order a deployment applies it, through the helper
-    // that owns that order rather than a second copy of it.
-    await applyRecordMigrations({ exec: sql => client.query(sql) });
-  });
+  // WHICH FILE, and whether the SERVER or only the SESSION went. A build failure
+  // here is a bare code otherwise, and the first run of this design spent itself
+  // on exactly that: `Connection terminated unexpectedly` names no file, and a
+  // socket that closes with no error packet carries no SQLSTATE either, so the
+  // two causes that need different fixes -- a backend that died and a session
+  // that was killed under a server still running -- read identically. The
+  // position is a stage letter and a four-digit index into that directory's own
+  // sorted listing, which is five characters from a fixed set, like a SQLSTATE,
+  // and names no file or statement.
+  const started = await withClient(databaseUrl, 'PRODUCTION_PIN_START_TIME_UNREADABLE',
+    async client => (await client.query('select pg_postmaster_start_time() as at')).rows[0]?.at);
+  let position = 'A0000';
+  const at = (stage, index) => { position = `${stage}${String(index).padStart(4, '0')}`; };
+  try {
+    await withClient(databaseUrl, 'PRODUCTION_PIN_STORE_BUILD_FAILED', async client => {
+      const { rows } = await client.query('select set_config($1, $2, false) as value',
+        [PIN_SETTING, PRODUCTION_APP]);
+      if (rows[0]?.value !== PRODUCTION_APP) fail('PRODUCTION_PIN_SETTING_NOT_VISIBLE');
+      const authority = (await readdir(AUTHORITY_MIGRATIONS)).filter(f => f.endsWith('.sql')).sort();
+      for (const [index, name] of authority.entries()) {
+        at('A', index);
+        await client.query(await readFile(new URL(name, AUTHORITY_MIGRATIONS), 'utf8'));
+      }
+      // The record half, in the order a deployment applies it, through the helper
+      // that owns that order rather than a second copy of it.
+      let record = 0;
+      await applyRecordMigrations({ exec: sql => { at('R', record++); return client.query(sql); } });
+    });
+  } catch (error) {
+    if (!emittableProductionPin(error.message)) throw error;
+    // The server's own liveness, read on a NEW connection: if it answers with the
+    // same start time the session was lost under a running server, and if the
+    // time moved the backend went down and came back. Either way the position
+    // goes out, because without it the next run starts where this one did.
+    let after = null;
+    try {
+      after = await withClient(databaseUrl, 'PRODUCTION_PIN_START_TIME_UNREADABLE',
+        async client => (await client.query('select pg_postmaster_start_time() as at')).rows[0]?.at);
+    } catch { fail(`PRODUCTION_PIN_SERVER_UNREACHABLE ${position}`); }
+    // The liveness verdict is added ONLY where the failure carried no SQLSTATE.
+    // A statement that failed and said why is already diagnosed, and replacing
+    // its code with `_SESSION_LOST` would both lose the SQLSTATE and assert a
+    // cause that is not the one that occurred -- the server is plainly fine if a
+    // statement answered. The position goes on either way.
+    const diagnosed = error.message.includes(' ');
+    const kind = String(after) === String(started) ? 'SESSION_LOST' : 'SERVER_RESTARTED';
+    fail(diagnosed ? `${error.message} ${position}` : `${error.message}_${kind} ${position}`);
+  }
 
   // A NEW session, because the pin is only worth anything if it is a property of
   // the STORE rather than of the session that built it.
