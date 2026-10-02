@@ -78,6 +78,33 @@ const SCREEN_COMMON = Object.freeze(['PENNSYNC_SCREEN_AGENCY_NOT_HELD']);
 // The provider directory's three writes share one refusal set, deliberately: a
 // screen cannot tell a create refusal from a delete refusal and learn from the
 // difference which providers exist in another agency.
+/*
+ * The fax families' shared refusal sets.
+ *
+ * Shared within ONE family only. `fax_contact` and `fax_template` rhyme and
+ * their codes are deliberately distinct, because each contract declares its
+ * own refusals and a code one cannot raise must never cross back from the
+ * other.
+ */
+const FAX_CONTACT_READ_CODES = Object.freeze(['PENNSYNC_FAX_CONTACT_FORBIDDEN']);
+const FAX_CONTACT_WRITE_CODES = Object.freeze([
+  'PENNSYNC_FAX_CONTACT_FORBIDDEN',
+  'PENNSYNC_FAX_CONTACT_INVALID',
+  'PENNSYNC_FAX_CONTACT_EMPTY',
+  'PENNSYNC_FAX_CONTACT_FIELD_RESERVED',
+  'PENNSYNC_FAX_CONTACT_FIELD_UNSUPPORTED',
+  'PENNSYNC_FAX_CONTACT_NAME_REQUIRED',
+  'PENNSYNC_FAX_CONTACT_NUMBER_REQUIRED',
+]);
+const FAX_TEMPLATE_WRITE_CODES = Object.freeze([
+  'PENNSYNC_FAX_TEMPLATE_FORBIDDEN',
+  'PENNSYNC_FAX_TEMPLATE_INVALID',
+  'PENNSYNC_FAX_TEMPLATE_EMPTY',
+  'PENNSYNC_FAX_TEMPLATE_FIELD_RESERVED',
+  'PENNSYNC_FAX_TEMPLATE_FIELD_UNSUPPORTED',
+  'PENNSYNC_FAX_TEMPLATE_NAME_REQUIRED',
+]);
+
 const PHYSICIAN_WRITE_CODES = Object.freeze([
   'PENNSYNC_PHYSICIAN_WRITE_FORBIDDEN',
   'PENNSYNC_PHYSICIAN_WRITE_INVALID',
@@ -2270,6 +2297,163 @@ export const RECORD_CONTRACTS = Object.freeze({
     codes: Object.freeze([
       'PENNSYNC_SETTINGS_AGENCY_NOT_HELD',
       'PENNSYNC_SETTINGS_LIMIT_INVALID',
+    ]),
+  }),
+  // THE FAX AND PHONE FAMILY. Five contracts, one per entity, all of them
+  // over tables D7's schema clause carried without activating the domain. Each
+  // declares its OWN refusal codes, so a code one of them cannot raise never
+  // crosses back from another — and the two per-person families' codes are
+  // deliberately distinct for that reason even though the shapes rhyme.
+  listFaxContacts: Object.freeze({
+    rpc: 'pennsync_contract_fax_contact_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: FAX_CONTACT_READ_CODES,
+  }),
+  createFaxContact: Object.freeze({
+    rpc: 'pennsync_contract_fax_contact_create',
+    params: Object.freeze(['fields']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_contact: args.fields ?? null }),
+    codes: FAX_CONTACT_WRITE_CODES,
+  }),
+  bulkCreateFaxContacts: Object.freeze({
+    rpc: 'pennsync_contract_fax_contact_bulk_create',
+    params: Object.freeze(['rows']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_contacts: args.rows ?? null }),
+    // The batch raises every single-create code, because every row goes
+    // through the same contract function, PLUS its own two.
+    codes: Object.freeze([...FAX_CONTACT_WRITE_CODES,
+      'PENNSYNC_FAX_CONTACT_BATCH_EMPTY',
+      'PENNSYNC_FAX_CONTACT_BATCH_TOO_LARGE',
+    ]),
+  }),
+  updateFaxContact: Object.freeze({
+    rpc: 'pennsync_contract_fax_contact_update',
+    params: Object.freeze(['id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_id: args.id ?? null, p_contact: args.fields ?? null,
+    }),
+    codes: Object.freeze([...FAX_CONTACT_WRITE_CODES,
+      'PENNSYNC_FAX_CONTACT_ID_REQUIRED',
+      // Not found and not mine are ONE code by design, so a caller cannot
+      // learn that a contact with this id exists in somebody else's book.
+      'PENNSYNC_FAX_CONTACT_NOT_FOUND',
+    ]),
+  }),
+  deleteFaxContact: Object.freeze({
+    rpc: 'pennsync_contract_fax_contact_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_id: args.id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_FAX_CONTACT_FORBIDDEN',
+      'PENNSYNC_FAX_CONTACT_ID_REQUIRED',
+      'PENNSYNC_FAX_CONTACT_NOT_FOUND',
+    ]),
+  }),
+  listFaxTemplates: Object.freeze({
+    rpc: 'pennsync_contract_fax_template_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze(['PENNSYNC_FAX_TEMPLATE_FORBIDDEN']),
+  }),
+  createFaxTemplate: Object.freeze({
+    rpc: 'pennsync_contract_fax_template_create',
+    params: Object.freeze(['fields']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_template: args.fields ?? null }),
+    codes: FAX_TEMPLATE_WRITE_CODES,
+  }),
+  updateFaxTemplate: Object.freeze({
+    rpc: 'pennsync_contract_fax_template_update',
+    params: Object.freeze(['id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_id: args.id ?? null, p_template: args.fields ?? null,
+    }),
+    codes: Object.freeze([...FAX_TEMPLATE_WRITE_CODES,
+      'PENNSYNC_FAX_TEMPLATE_ID_REQUIRED',
+      'PENNSYNC_FAX_TEMPLATE_NOT_FOUND',
+    ]),
+  }),
+  // The atomic increment the original says in its own comment it needs and
+  // cannot have from `src/`. It takes an id and nothing else, which is what
+  // makes it an increment rather than a write of a value the browser computed.
+  useFaxTemplate: Object.freeze({
+    rpc: 'pennsync_contract_fax_template_use',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_id: args.id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_FAX_TEMPLATE_FORBIDDEN',
+      'PENNSYNC_FAX_TEMPLATE_ID_REQUIRED',
+      'PENNSYNC_FAX_TEMPLATE_NOT_FOUND',
+    ]),
+  }),
+  deleteFaxTemplate: Object.freeze({
+    rpc: 'pennsync_contract_fax_template_delete',
+    params: Object.freeze(['id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_id: args.id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_FAX_TEMPLATE_FORBIDDEN',
+      'PENNSYNC_FAX_TEMPLATE_ID_REQUIRED',
+      'PENNSYNC_FAX_TEMPLATE_NOT_FOUND',
+    ]),
+  }),
+  getFaxRetryConfig: Object.freeze({
+    rpc: 'pennsync_contract_fax_retry_config_read',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_RETRY_CONFIG_FORBIDDEN']),
+  }),
+  saveFaxRetryConfig: Object.freeze({
+    rpc: 'pennsync_contract_fax_retry_config_save',
+    params: Object.freeze(['config']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_config: args.config === undefined ? null : args.config,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_RETRY_CONFIG_FORBIDDEN',
+      'PENNSYNC_RETRY_CONFIG_INVALID',
+      'PENNSYNC_RETRY_CONFIG_EMPTY',
+      'PENNSYNC_RETRY_CONFIG_FIELD_UNSUPPORTED',
+      // D78: the save retries once onto a concurrent winner's row, so this is
+      // reachable only if that row was gone again by the time it looked.
+      'PENNSYNC_RETRY_CONFIG_CONFLICT',
+    ]),
+  }),
+  listAgencyPhoneNumbers: Object.freeze({
+    rpc: 'pennsync_contract_phone_number_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze(['PENNSYNC_PHONE_NUMBER_FORBIDDEN']),
+  }),
+  listFaxLogs: Object.freeze({
+    rpc: 'pennsync_contract_fax_log_list',
+    params: Object.freeze(['patient_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient: args.patient_id === undefined ? null : args.patient_id,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze(['PENNSYNC_FAX_LOG_FORBIDDEN']),
+  }),
+  // The content search is its own capability because its PROJECTION differs:
+  // it is the only thing here that returns any part of `ocr_text`, and then
+  // only the 300-character excerpt the screen renders (D64, D71).
+  searchFaxLogs: Object.freeze({
+    rpc: 'pennsync_contract_fax_log_search',
+    params: Object.freeze(['query', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_query: args.query ?? null,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FAX_LOG_FORBIDDEN',
+      'PENNSYNC_FAX_LOG_QUERY_TOO_SHORT',
     ]),
   }),
   createPhysician: Object.freeze({

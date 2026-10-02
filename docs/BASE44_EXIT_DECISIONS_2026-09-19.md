@@ -14392,7 +14392,7 @@ direction of progress is the one nobody re-measures.
 `port queue: entity_authorization=5 files=12 external_secret=2 none=79`, from
 `node tools-transition-disposition.mjs --summary` at the head this change was
 written on. Re-read on `6995e5a74f4abf7111f62d357e35aa896360ceb3` (2026-10-02), beside
-that one: `port queue: entity_authorization=5 files=8 external_secret=2 none=82`. The bucket falls by one and the five that remain are pinned BY
+that one: `port queue: entity_authorization=5 files=8 external_secret=2 none=82`. Re-read on `c7d6940` (#408), beside both: the same line, unchanged. The bucket falls by one and the five that remain are pinned BY
 NAME in `tools-transition-disposition.test.mjs`, because a count alone passes
 a swap — and because the thing this decision is most likely to be misread as
 is a promise that the five are coming. They are not coming until somebody

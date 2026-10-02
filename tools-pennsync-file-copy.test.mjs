@@ -36,7 +36,20 @@ const only = entity => {
 const DOC = only('Document');
 const VERSION = only('DocumentVersion');
 const REFERRAL = only('Referral');
-const PAUSED = only('FaxLog');
+// The paused control, whose point is that a paused entity has no table here
+// and so no row to re-point. `FaxLog` held this seat until it joined
+// `SCHEMA_ONLY` and acquired one, at which point the control would have gone
+// on reading as a control while asserting nothing -- a bucket keeping its name
+// after the reason for it went, in a test. `DocumentSignature` replaces it
+// from a DIFFERENT domain on purpose: every remaining paused fax entity is a
+// candidate to be carried by the next change to this area, and the control
+// should not be. Its disposition is asserted beside its name, which is
+// `SCHEMA_ONLY`'s own lesson about a control that passes for the wrong reason.
+const PAUSED_ENTITY = 'DocumentSignature';
+assert.equal(manifest.entities[PAUSED_ENTITY], 'preserved_paused');
+assert.equal(Object.hasOwn(SCHEMA_ONLY, PAUSED_ENTITY), false);
+assert.equal(carriesTable(PAUSED_ENTITY, manifest.entities[PAUSED_ENTITY]), false);
+const PAUSED = only(PAUSED_ENTITY);
 
 const exported = (references, mapped = []) => readExport(JSON.stringify({
   contract: COPY_CONTRACT, app_id: APP, references, mapped,
@@ -94,8 +107,9 @@ test('every reason a reference produces no copy is named', () => {
     ref({ locator: 'https://evil.example/a.pdf' }),
     ref({ entity: 'NotAnEntity' }),
     ref({ path: 'not_a_locator_field' }),
-    // `FaxLog` is `preserved_paused`: no table here, so nothing to re-point.
-    ref({ entity: 'FaxLog', path: PAUSED }),
+    // `DocumentSignature` is `preserved_paused`: no table here, so nothing to
+    // re-point.
+    ref({ entity: PAUSED_ENTITY, path: PAUSED }),
     ref({ locator: SECOND }),
   ], [locatorKey(SECOND)]);
   assert.deepEqual(result.skips, {
@@ -147,7 +161,7 @@ test('an unfamiliar path on a paused entity is still reported as unfamiliar', ()
   // The carried check runs AFTER the shape checks on purpose: a census the
   // schemas have outgrown is a finding whatever the disposition says, and
   // reporting it as `uncarried_entity` would hide it behind a decision.
-  const result = plan([{ entity: 'FaxLog', path: 'invented_url', row_id: 'x', agency_id: AGENCY, locator: STORAGE }]);
+  const result = plan([{ entity: PAUSED_ENTITY, path: 'invented_url', row_id: 'x', agency_id: AGENCY, locator: STORAGE }]);
   assert.equal(result.skips.unknown_field, 1);
   assert.equal(result.skips.uncarried_entity, 0);
 });
@@ -200,7 +214,7 @@ test('the uncarried half is reported beside the copy set, never merged into it',
   assert.ok(uncarried.length < locatorEntities.length,
     'and the other side must exist too, or the planner copies nothing at all');
   const result = plan([
-    ref({ entity: 'FaxLog', path: PAUSED, locator: SECOND }),
+    ref({ entity: PAUSED_ENTITY, path: PAUSED, locator: SECOND }),
     ref(),
   ]);
   assert.equal(result.copies.length, 1);
