@@ -516,6 +516,28 @@ struck rather than deleted.
   ledger check by one row; the owner applied the migration at about `18:18Z`;
   the re-run came back green, 22 of 22, `skipped 0`. Anyone reading the first
   run as a schema problem is debugging the clock.
+
+  **Second worked instance, 2026-10-01, and it is recorded here as a DATED
+  READING with its reporters named rather than as a state of the store.** A
+  staging apply landed against `main` at `82bd9c94`, with the apply output
+  stamped `19:23:47Z`, and the hosted ledger moved from 74 rows to 90. **None of
+  that was measured from this tree.** The apply session's own transcript is the
+  primary source; it reached this page through a worker of the coordinator
+  session, so it is second-hand here, and that session's report is saved outside
+  the repository as `staging-apply-report-2026-10-01.md`. The ledger movement was
+  read independently of that transcript, from `main`'s CI logs, by two further
+  sessions. A reading corroborated three ways is still a reading of one moment:
+  `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` with no
+  `--apply` is what answers what a store holds now, and this sentence does not.
+
+  **What that reading does NOT say is what is pending, which is a different
+  instrument.** At `543a0271` two record migrations had arrived and not been
+  applied, and `node tools-pennsync-apply-signal.mjs --base origin/main` on the
+  head carrying this paragraph reports one more arriving with it — measured here,
+  five runs agreeing, rather than inferred from the ledger figure above. D106's
+  rule is the whole point: what is committed, what reaches a deployment and what
+  a deployment has RUN are three counts, each derived, and subtracting one from
+  another across two instruments is how they get merged by accident.
 - **A second transport had to exist before that plan could be run at all, and
   that is a finding rather than a convenience.** From this container — and from
   any runner allowed outbound HTTPS and nothing else, which includes CI here —
@@ -1575,19 +1597,19 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   document is where such a judgement belongs; each is then re-checked against
   the tree, so a declared name that stops being a handler, or a read wave that
   gains a write, fails the build. "The rest by blast radius" is derived:
-  read-only, then mutating, then the twenty that reach the runtime.
+  read-only, then mutating, then the twenty-seven that reach the runtime.
 
   | Wave | Handlers | Migrations |
   | --- | ---: | ---: |
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 27 |
-  | `mutating` (derived) | 59 | 40 |
-  | `integration` (derived) | 27 | 23 |
+  | `read-only` (derived) | 61 | 34 |
+  | `mutating` (derived) | 68 | 45 |
+  | `integration` (derived) | 27 | 25 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
-  and `splitReferralPDF` — carry an operator cost the other nineteen do not.**
+  and `splitReferralPDF` — carry an operator cost the other twenty-four do not.**
   They are the first three ports out of the `files` bucket, and they get there
   by taking the document's BYTES rather than a locator, so each brokers
   `UploadFile` under the caller's own subject — which put that name into
@@ -1646,6 +1668,15 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   reads neither pair. `node tools-pennsync-release-ladder.mjs --summary` is the
   instrument and it is the only thing either figure should ever be copied from.
 
+  **A THIRD row moved on the next merge, and it is the one that never
+  conflicted.** `read-only`'s migration count went 28 → 29 because
+  `20260920745000_dashboard_visit_documentation.sql` arrives in that wave, and
+  both sides of that merge wrote 28: the branch adding the file never touched
+  this row, and `main` could not see the file. Git records what two branches
+  both edited, which is a different set from what the merge makes false, so a
+  row can be stale on the merged tree with no marker anywhere near it. Re-derive
+  EVERY row from the tool, not the rows that conflicted.
+
   `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
   reads and three writes — and both migration counts rose by the one migration
@@ -1672,6 +1703,33 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   being added to. This row was re-derived on seven bases over the life of one
   pull request; the number above is a reading of the tree it merges onto and of
   no other.
+
+  The roster's telecom keys then added ONE migration to EACH of the three derived
+  waves and no handler to anything: a forward file over `roster_entry` (D88), so
+  every handler reaching a roster contract needs it and no capability arrived. It
+  is the shape the `operational_limit` repair and the crossed-chart control
+  already had — a wave gains a migration without gaining work — and worth saying
+  each time rather than once, because a count that moved for no new capability is
+  the one a reader is likeliest to read as a port.
+
+  Note WHICH waves moved, because the obvious guess is wrong: a roster read is a
+  read, so `read-only` is the expected row and the other two are not. They move
+  because the roster is read by handlers that then WRITE, and by handlers that
+  also reach the runtime, and a wave's migrations are the ones ITS handlers need
+  — so a shared read contract lands in every wave that reaches it. This is the
+  same property the compliance writes recorded from the other side, where one
+  file joined two waves: three rows moving for one file is the derivation
+  working, not a file counted three times.
+
+  The timesheet approver gate then added ONE migration to `mutating` and nothing
+  to the other five, and no handler to anything: a forward file over
+  `contract_timesheet_review` (D88), so the two timesheet handlers need it and no
+  capability arrived. Only `mutating` moves because `contract_timesheet_review` is
+  reached by no read-only handler and by nothing touching the runtime — which is
+  the contrast worth keeping beside the shared-read cases, where one forward file
+  moves every derived row at once: a wave's migrations are the ones ITS handlers
+  need, so how many rows move says which handlers reach the function rather than
+  how big the change is.
 
   The five compliance WRITES then took `mutating` to 54 and left `read-only`
   and `integration` where they were. Its migrations rose by **two** for one
@@ -1731,6 +1789,38 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   the two conflicting readings above were both correct for their own tree, and
   reconciling them by arithmetic is how a delta gets stated over a total that
   no longer exists.
+
+  The `mutating` row's migrations rose by one again, and ONLY that row, because
+  the leave-review approver fix's forward migration redefines
+  `contract_time_off_review` — one contract, reached by handlers in no other
+  wave. Contrast the roster telephone change next to it, where a forward file
+  over a shared READ contract moved all three derived rows at once: which rows
+  move is a property of how widely the contract is reached, not of how large the
+  change is. The handler count does not move, because the change adds no
+  capability; a handler count that had moved would have meant the classification
+  shifted rather than that work arrived. Re-derived from `--summary` on this
+  tree rather than added to the figure above, for the reason the D108 paragraph
+  gives: replaying a delta onto a base that has moved states it over a total
+  that no longer exists.
+
+  The `read-only` row's migrations then rose by one with the dashboard
+  documentation signal, and the derivation again rather than the number: that
+  forward migration redefines `dashboard_visit`, which `contract_dashboard`
+  projects through, so the wave carrying `getDashboardData` gains it as a
+  prerequisite. No handler count moved anywhere, which is the check to read —
+  the change adds no capability, it widens one projection by a derived
+  boolean. The other two rows did NOT move, and that is worth saying because
+  the paragraphs above record the opposite case: these rows are each wave's
+  OWN prerequisites, not the cumulative value, so a migration reaching only
+  `read-only`'s handlers moves only `read-only` — while the value `--wave
+  mutating` emits does grow, because THAT is the superset.
+
+  **What that paragraph did NOT do on its own branch is edit the row**, and
+  neither did `main`. The table above said 28 on both sides of the merge and
+  the tool said 29, so the prose was right and the figure beside it was wrong,
+  with nothing conflicting. Re-deriving the whole table on the merged tree is
+  what found it; re-deriving the figures a merge happened to mark is what would
+  have missed it.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
@@ -3808,10 +3898,10 @@ byte, so paste what `pnpm run check:entity-routes` prints and never retype,
 rewrap or re-indent it.
 
 ```
-entity routes: 100 declared, 159/245 landable call sites SERVED, 86 still to adopt
-  9 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+entity routes: 100 declared, 164/245 landable call sites SERVED, 81 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
   25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
-  of those 86, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 85 need a named capability
+  of those 81, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 80 need a named capability
 ```
 
 **Every figure above was re-run on the merged tree rather than reconciled from
@@ -3822,9 +3912,10 @@ directions — and the instrument moved as well, which makes a difference agains
 any earlier block in this stage a comparison between two different questions.
 Read the blocks above as dated records and difference none of them.
 
-What this head contributes to the move is the duty toggle, one capability, whose
-own write path had never been exercised by anything. The totals it produced are
-the block's to state.
+What this head contributes to the move is the roster's telecom projection and the
+repair of three admin screens that had been asking the roster for an order it
+cannot serve, so those sites moved into SERVED rather than out of the audit. The
+totals it produced are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -3928,20 +4019,39 @@ which is how a bucket comes to claim more than it measured.
 Beside the served sites, the remainder is three populations and they are three
 different kinds of work:
 
-- **Nine are REFUSED by a declared route.** Six are `User.list` asking for a
-  sort, across five files; three are the offline queue's, described above.
-  These are the only sites where the Base44 fallback is already gone — but nine
-  refusals are FIVE screens. They fall across six files, and the sixth is not a
+- **Four are REFUSED by a declared route.** One is `User.list` asking for a
+  `full_name` sort, in one file; three are the offline queue's, described above.
+  These are the only sites where the Base44 fallback is already gone — but four
+  refusals are ONE screen. They fall across two files, and the second is not a
   screen: `retiredOfflineQueue.js` is a lib module no production file imports.
-  Nine, six and five are three different counts of one bucket, and the one that
-  sizes the work is the smallest. **And this line is progress-shaped, so a rise
-  in it reads backwards**: it was six when #309 merged and is nine now, and all
-  three arrivals came from `c90ad9ae` — two keys became refusals by being
-  DECLARED, where an undeclared key is skipped rather than refused, and the
-  third became visible when the shared matcher stopped being a regular
-  expression. A refusal cannot be counted until a route exists to do the
-  refusing, so plotting this bucket over time measures the audit's reach and not
-  the product's health.
+  Four, one and one are three different counts of one bucket, and the
+  one that sizes the work is the smallest. **This line moves in BOTH directions
+  for reasons that are not opposites, so neither direction can be read off the
+  number.** It was six when #309 merged, rose to nine on `c90ad9ae` — two keys
+  became refusals by being DECLARED, where an undeclared key is skipped rather
+  than refused, and the third became visible when the shared matcher stopped
+  being a regular expression — and has fallen from nine to four here, across
+  THREE changes none of which knew about the others: three admin screens stopped
+  asking for an order the roster cannot serve, then the timesheet's approver
+  dropdown did, then the leave form's did, so five sites moved into SERVED rather
+  than out of the audit. A rise measures the audit's reach; this fall measures
+  five call sites repaired; and a fall could equally mean a route was withdrawn.
+  Read the cause, never the direction.
+
+  **Note what that does to the arithmetic**, because it is the trap this line is
+  for: each change lowered the figure independently and each was correct about
+  its own tree, so adding any one's delta to another's base gives a number both
+  sides would have signed off, and so does taking the union of their removals.
+  The figure is re-measured at each merge rather than reconciled from the sides.
+  This has now happened on two consecutive merges, which is what makes it a
+  property of the slot order rather than an accident.
+- **The one that remains is a single site in `Timesheets.jsx`**, and it is kept
+  deliberately rather than owed. Its employee list filters `u.role === "user"`,
+  and D23 keeps `role` off the roster precisely because it is self-assertable,
+  so serving that page an order would turn a loud refusal into a staffing screen
+  confidently showing nobody. The approver dropdown in the same file was repaired
+  and asks only for `tenant_role`, which the roster does project. That contrast
+  is the reason a refusal is read per SITE and not per file.
 - **Sixty pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
@@ -3957,7 +4067,7 @@ different kinds of work:
   eight sites out of this pool and the withdrawn duty toggle put nothing back,
   so a bucket nobody touched moved twice. That is what a remainder does: it is a
   property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.56 call sites and a write
+  the sites already served: a read key there carries 2.66 call sites and a write
   key 1.24, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.27 sites and a
@@ -3968,9 +4078,11 @@ different kinds of work:
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at five consecutive heads and every one
-  of its six figures has moved, reversing a finding stated in its own prose
-  three times.** One head ago the two halves were level at fifteen sites each
+  **This bullet has now been re-derived at eight consecutive heads. Across the
+  first five every one of its six figures moved, reversing a finding stated in
+  its own prose three times; at the sixth, seventh and eighth only the served
+  read pair did, which are the first heads where re-deriving the whole bullet
+  changed one figure.** One head ago the two halves were level at fifteen sites each
   and the write key was the THINNER, at 1.15 against 1.25; the head before that
   the write key covered 1.61 and the paragraph called that inversion the
   finding; before that 1.57, and before that the writes were nearly twice the
@@ -4005,11 +4117,47 @@ different kinds of work:
   whole bullet, and a pin that goes quiet when the paragraph rots is the thing
   this section exists to complain about.
 
-  **It moved again on this tree, by one read key leaving the pool**, and the
-  served read ratio moved with it for the same reason. Neither number was
-  wrong before and neither is wrong now. Note also what did NOT move: the
-  remainder's write ratio, because nothing left that half — which is the same
-  reading twice rather than a figure that held for a reason.
+  **It moved again on this tree, and for the first time the REMAINDER did not
+  move at all.** Three call sites joined the served pool — the three admin
+  screens that stopped asking the roster for an order it cannot serve — and they
+  joined a key that pool already held, so the served read SITES rose by three
+  while its read KEYS stood still and the ratio rose from 2.56 to 2.62 with no
+  route declared anywhere. The remainder is untouched, to the integer, in all
+  four of its figures: those three sites always had a route declared over them
+  and were sitting in the REFUSED bucket, which this bullet does not count, so
+  nothing could leave a pool they were never in.
+
+  **That is the cleanest instance yet of the mechanism this bullet keeps
+  restating, and it points the opposite way from the last one.** A head ago a
+  departure moved a ratio nobody had worked on; here work on three sites moved a
+  ratio and left the remainder's four figures exactly as they were. A reader
+  watching only the served ratio would see it rise and a reader watching only
+  the remainder would see a flat line, and both would be reading this same
+  change correctly. Neither number was wrong before and neither is wrong now.
+
+  **And it moved once more on the tree this branch merges onto, for a cause the
+  bullet had not seen before: a site that was being REFUSED became served.** The
+  timesheet's approver dropdown stopped asking the roster for an order it cannot
+  serve, so one call site crossed from the refused bucket into the served pool
+  without any route being declared — the served read pair goes from 128 sites
+  over 50 keys to 129 over the same 50, and the ratio with it. Every earlier
+  move on this bullet came from a key being DECLARED or a population leaving the
+  remainder; this one is a call site repaired, and the remainder did not move at
+  all. So the four pairs are not only a guard against a quotient sitting still
+  while both halves move — they are also the only thing here that can tell a
+  repaired site from a new route, since both raise the served count by one.
+
+  **And it moved once more on the tree this branch merges onto, for a cause the
+  bullet had not seen before: a site that was being REFUSED became served.** The
+  leave form's approver dropdown stopped asking the roster for an order it cannot
+  serve, so one call site crossed from the refused bucket into the served pool
+  without any route being declared — the served read pair goes from 128 sites
+  over 50 keys to 129 over the same 50, and the ratio with it. Every earlier
+  move on this bullet came from a key being DECLARED or a population leaving the
+  remainder; this one is a call site repaired, and the remainder did not move at
+  all. So the four pairs are not only a guard against a quotient sitting still
+  while both halves move — they are also the only thing here that can tell a
+  repaired site from a new route, since both raise the served count by one.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
@@ -4337,7 +4485,7 @@ them.**
 
 - **Training and learning — `hub`, twelve entities.** Their product answer was
   already given: D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` send them to
-  `kdeyarmin/caremetric-support-hub`, both controls unset behind a five-step
+  `kdeyarmin/caremetric-support-hub`, both controls unset behind a seven-step
   pre-cutover checklist. **They are neither his to decide nor ours to port**,
   and porting their tables into the owned store would build precisely what D8
   decided not to build. They also pass a restoration test outright — F19 in
@@ -4353,6 +4501,47 @@ them.**
   can hold a file — so each call site needs a hand-written contract with its own
   gate and refusals. **A domain with no backing Base44 function is MORE work
   here, not less, because there is no capability to port.**
+
+  **Read that D7 quote as a mechanism and not as a count.** The reason its
+  sentence was unimplementable is that one field was answering two questions:
+  the disposition decided both whether an entity's data is carried and whether
+  its execution is on, so "schemas and data still migrate" had nowhere to be
+  true. Separating the two is what makes it implementable, and that is the claim
+  to carry — it holds whether or not any particular change has landed, where a
+  sentence of the form "none of them has a table" goes stale the moment one
+  does.
+
+  **And do not write "the fourteen paused entities."** The `preserved_paused`
+  population is **54**, measured from `tools-transition-disposition.json` on this
+  tree. Eight plus six is the subject of this bullet and the fax-and-voice bullet
+  below it, not a population — the two happen to sum to fourteen, and "fourteen"
+  is also in use nearby for a count of FILES reached only through a paused
+  ancestor, which is a different thing again. Name the bullet's own entities, or
+  re-measure.
+
+  **The restoration test the training bullet runs, run here: it fails.**
+  Verified by hand on this tree, because this is the kind of claim that should
+  not be relayed. `src/components/hub-tabs/OASISAnalyzer.jsx:110` is `const
+  OASIS_ANALYZER_ENABLED = false;`. The file's **only** export is `export default
+  function OASISAnalyzer` at `:2756`, whose first statement is `if
+  (!OASIS_ANALYZER_ENABLED)` returning the "OASIS AI Analyzer Paused" card.
+  `<OASISToPatientChartPusher` at `:1771` sits inside `function
+  EnabledOASISAnalyzer`, declared at `:130` and **not exported**. So the call site
+  is unreachable at runtime with no alternative path — the opposite of the
+  training domain, where nine pages are in the nav manifest and one backing
+  function is paused.
+
+  **Why it is off is recorded, and it is a safety decision rather than neglect.**
+  Eleven of the twelve source flags in this domain arrive in one commit,
+  `67d9d5ee` of 2026-09-02, "Fail closed on unverified OASIS, PDGM, and
+  tenant-sensitive paths" — AI correctness and PDGM payment safety: a verified
+  CMS grouper, protected assessment provenance, and an explicit warning that an
+  unavailable grouping is not a $0 result. That is seventeen days before this
+  migration's first decision document, so it is not something the migration
+  switched off and not something the migration may switch back on. **Whether
+  OASIS comes back at all is the owner's**, which is the activation half D7
+  already leaves to him. This bullet records the failed test; it does not propose
+  restoring it.
 - **Fax and voice — `preserved_paused`, six entities.** Whether these function
   today is **not answerable from this tree.** D7's pauses are attested by
   receipts rather than source flags, and the Telnyx credentials live in-app as
@@ -4423,6 +4612,31 @@ a colleague is in is already served.
 
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
+
+  **That mode now exists, under that exact name.** `VITE_PENNSYNC_BACKEND=independent`
+  is the app's own branded sign-in, sign-out, session lease and tenant resolution
+  against a configured Supabase project and the owned business API, for a real
+  staff account. The staging mode's four-actor pin is lifted for this mode only;
+  its app id, project reference and URL, publishable key and service origin are
+  read from build configuration and checked for shape and mutual agreement rather
+  than pinned, with the staging app and the staging project refused by name. The
+  synthetic workspace, the `staging_*` referral actions and the `Synthetic %`
+  projection are **absent** from it rather than widened. **THE SWITCH IS OFF:**
+  nothing is configured and no build points anywhere. Still owed before a staff
+  account can be used — invitation acceptance and password set, both of which
+  deliver mail to a real person and so are the owner's to release, and an
+  end-to-end acceptance job driving the COMPILED app in this mode against a local
+  store pinned to the production app id.
+
+  Two things about the bullet above, since this is the kind of line that invites a
+  wrong correction. The first clause is **partly done already**:
+  `src/api/base44Client.js` takes the owned adapter for either owned mode, and
+  what is left is removing the Base44 client construction, which waits on the
+  entity call sites rather than on the mode. And the bullet itself is **accurate
+  and needs no edit** — it was read as carrying a stale value, on the grounds that
+  the configuration reader accepted only `base44` and `independent-staging`, which
+  was a correct measurement and the wrong conclusion. A Stage J bullet describes
+  work to do, so it is not stale for naming something the code has not done yet.
 - Replace call sites tier by tier — **but not by the count, and not by the
   entity.** What is left is three populations and only one of them is work;
   the waves, and the column that cannot be derived, are above. A lint rule
@@ -4483,29 +4697,76 @@ is the small part:
 | --- | --- |
 | `ios/PennSync/WebViewController.swift:38` | `appURL` hard-bound to `https://caremetricai.base44.app/` |
 | `ios/PennSync/Info.plist:52-56` | `WKAppBoundDomains` is `base44.app`, `base44.com`. It takes up to 10, so the transitional build lists OLD and NEW and one binary works either side of the DNS move |
-| `base44/functions/createUserWithTempPassword/entry.ts:36-37` | store URLs in the invitation email |
+| `base44/functions/createUserWithTempPassword/entry.ts` | The two store URLs in the invitation email, `DEFAULT_IOS_APP_URL` and `DEFAULT_ANDROID_APP_URL` — **and a second reason this file is on the list**: it consumes `APP_PUBLIC_URL` as an ORIGIN through `getAppBaseUrl`, and derives every user-visible link in that mail from it. `base44ClientRequest`'s hard-coded `https://base44.app` is the SDK's BACKEND and does **not** move with the domain; do not conflate the two. Named by constant and carrying no line number on purpose: an earlier revision of this row said `:36-37`, which are the `Base44-App-Id` header and nothing to do with a URL, and two readers on two heads disagreed by sixty lines about where the URLs actually were. **The two `ios/` rows above keep theirs for a reason that does not apply here:** `tools-app-store-migration.test.mjs` byte-pins those files to a baseline commit, so a line in them cannot move without failing that suite, while this Deno function is edited freely. `docs/HOSTING_EXIT_RUNBOOK.md` step 7 is the operational half — point `APP_PUBLIC_URL` at the new origin in the Base44 function environment, owner the repository owner, reversible |
 | `tools-app-store-migration.test.mjs` | byte-pins all 25 `ios/` and `public/` files to baseline `1ff6018` and asserts the Base44 URL is still present, so any of the above FAILS the suite by design. Updating it is a reviewed act, not a fix |
 
-`caremetricai.base44.app` must stay reachable until adoption of the new build is
-high: an installed app on the old binary points there permanently.
+`caremetricai.base44.app` must stay reachable while any installed copy of the old
+binary is in use: `appURL` is hard-bound, so such a copy points there permanently
+and no change in this repository can redirect it. **How long that is, nothing here
+can say.** An earlier revision of this sentence ended "until adoption of the new
+build is high", which offers an end date the mechanism does not supply — nothing in
+this tree observes how many installed copies exist or what share has moved. The
+condition is measured and its threshold is not; both halves belong in the sentence.
 
 **What actually blocks a native release has little to do with Railway.**
 `docs/APP_STORE_SUBMISSION_CHECKLIST.md` opens with a hard STOP — no IPA or AAB
 may be uploaded, *including to TestFlight or Play testing tracks* — and the
 reasons are recovery problems rather than engineering ones:
 
-1. **Signing continuity.** Apple provisioning for `com.caremetric.ai` and Play
-   App Signing for `com.caremetic.ai` must be RECOVERED, not regenerated. A new
-   signing key means existing users cannot update; they would have to uninstall
-   and reinstall.
+1. **Signing continuity — Android only.** Play App Signing for
+   `com.caremetic.ai` must be RECOVERED, not substituted: a new signing key means
+   existing users cannot update, and would have to uninstall and reinstall.
+   Whether the enrolment exists is **unmeasured from this repository**, for the
+   reason item 2 gives — say unmeasured rather than absent.
+
+   **iOS is not in this clause, and an earlier revision of this list put it
+   here.** Nothing cryptographic needs recovering on that side. The App Store
+   re-signs every upload, so a distribution certificate is reissued rather than
+   recovered, and `ios/project.yml` already sets `CODE_SIGN_STYLE: Automatic`.
+   What makes an upload an UPDATE is an identity and not a key: the Apple team
+   plus the bundle id `com.caremetric.ai`, which `ios/project.yml` pins and
+   `tools-app-store-migration.test.mjs` asserts. Apple's public record for app
+   `6757097720` gives the seller as this repository's owner (read 2026-10-01 from
+   `itunes.apple.com/lookup`), so the record is on his own account and no App
+   Store Connect transfer is involved. **What that reading does not establish**,
+   and one sign-in would: whether the Developer Program membership is current and
+   the credentials are to hand. The Stage L row "Recover Android signing, and
+   Apple **account** access" has carried the dated correction since 2026-09-22;
+   this list was contradicting it two hundred lines away, which is why the
+   narrowing happens here rather than there.
+
+   **The two bundle ids differ, and the difference is deliberate** — Apple
+   `com.caremetric.ai`, Play `com.caremetic.ai`, with no `r`. Why is recorded
+   once, in the comment directly above the two constants in
+   `base44/functions/createUserWithTempPassword/entry.ts`, along with the note
+   that both were verified to resolve. This plan points at that comment rather
+   than keeping a second copy of the reason, because a second copy is a second
+   thing to go stale.
 2. **There is no `android/` directory in this repository.** Blocker 6 is not an
    Android update, it is a project that does not exist here.
-3. **Four live in-app purchases** — Monthly $29.99, Quarterly $79.99,
-   Semi-Annual $149.99, Annual $264.99 — and **none of the native IAP
-   implementation is in this repository**: no StoreKit, no receipt validation,
-   no entitlement code, and no server-side subscription state in either store.
-   This is a standing risk today, independent of the migration, and nothing in
-   the migration plan carries subscription state across.
+3. **Four in-app purchase products are configured in the App Store record** —
+   Monthly $29.99, Quarterly $79.99, Semi-Annual $149.99, Annual $264.99 — and
+   **none of the native IAP implementation is in this repository**: no StoreKit,
+   no receipt validation, no entitlement code, and no server-side subscription
+   state in either store. This is a standing risk today, independent of the
+   migration, and nothing in the migration plan carries subscription state
+   across.
+
+   **An earlier revision called them "four live in-app purchases", which claims
+   more than the evidence carries.** What is measured is an App Store listing
+   showing four subscription products with prices, and that proves they are SET
+   UP in the record. It does not prove the app can sell them, and Base44's own
+   documentation on store billing says it cannot — its answer is that the
+   purchase has to happen on the web for now, with an explicit instruction not to
+   use Stripe for payments inside a mobile app. Read from this repository,
+   subscriptions are Stripe (`stripe_customer_id`, `stripe_subscription_id`,
+   `stripe_price_id`), and a search of the whole tree for Apple receipt
+   verification, the App Store server API or StoreKit returns nothing at all.
+
+   **Do not read that as "there are no in-app purchases."** Whether anyone has
+   ever been charged is invisible from here, and what to do about four configured
+   products is the owner's decision. This stays a STOP item; what changed is its
+   reason, from a thing known to be working to a thing nobody has measured.
 4. **Guideline 4.2.** It is a web wrapper before and after, so the move changes
    nothing here. The checklist's own recommendation is Apple Business Manager
    distribution (unlisted or custom app) rather than public listing, since the
@@ -4650,9 +4911,10 @@ account, and nobody can be admitted as one.**
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
 | Base44 owner-signed export permits | Stage I | Production and legacy apps |
-| Recover Android signing, and Apple **account** access | Stage L — and **before the frontend moves** | Corrected 2026-09-22 ([runbook](MOBILE_RECOVERY_RUNBOOK_2026-09-22.md)). *Android:* whether it can ever be updated turns on one setting — Play Console → App integrity → is Play App Signing enabled? If yes, a lost upload key can be reset; if no, the only copy of the key is the PWABuilder output zip, and without it the app cannot be updated. *iOS:* "never regenerated" was wrong here — iOS certificates and profiles are reissued routinely without breaking updates; continuity is the app record `6757097720` staying in the same team, so recovery is signing into that account (lead: team `JC83GT8MG8`). Both apps load `caremetricai.base44.app`, so both must be recoverable before Stage J moves the origin |
+| Recover Android signing, and Apple **account** access | Stage L — and **before the frontend moves** | Corrected 2026-09-22 ([runbook](MOBILE_RECOVERY_RUNBOOK_2026-09-22.md)). *Android:* whether it can ever be updated turns on one setting — Play Console → App integrity → is Play App Signing enabled? If yes, a lost upload key can be reset; if no, the only copy of the key is the PWABuilder output zip, and without it the app cannot be updated. *iOS:* "never regenerated" was wrong here — iOS certificates and profiles are reissued routinely without breaking updates; continuity is the app record `6757097720` staying in the same team, so recovery is signing into that account (lead: team `JC83GT8MG8`). **What the LIVE binaries load is unmeasured**, and an earlier revision of this row asserted that both apps load `caremetricai.base44.app`. §7 of that runbook says the live binaries' own configuration is unknown because their source was not found, and every public surface tried on 2026-10-01 leaves it unknown: both app origins serve deliberately empty association files (distinguishable from the SPA shell an invented path returns), the web manifest is origin-relative with `id`, `start_url` and `scope` all `"."`, and the marketing site references the custom domain and no Base44 host. What IS measured is **this repository's** `ios/`, pinned in the table above: `appURL` hard-bound to that host and `WKAppBoundDomains` listing only `base44.app` and `base44.com`, so that binary could not load the custom domain even if the URL changed. The owner said on 2026-10-01 that the iPhone app was *built only with Base44* — which answers how it was MADE, not what it LOADS, and says nothing whatever about Android, so the Android half keeps both unknowns and no part of that answer may be carried across to it. Either way both must be recoverable before Stage J moves the origin, which is why this row sits before the frontend move rather than inside Stage L |
 | Find the Android build's origin | Stage L | Searched 2026-09-22: no Android file in this repository's full history (4,338 commits, 175 branches), nor in `CM-Go`, `CMbackup` or `App-Studio` — and all three were created after the live build's Jan 15, 2026 update, so none could have produced it. Per the July audit it is a PWABuilder TWA, which has no source to find; the artefact is the output zip holding the key |
-| Recover or reimplement the IAP entitlement path | Stage L, and today | Four live products; no StoreKit, receipt validation or subscription state in this repository. **This repository's `ios/` is not the live app** — it has no StoreKit and targets iOS 15.0 where the live app requires 15.6 — so submitting it as an update would remove purchase and restore for paying subscribers |
+| Recover or reimplement the IAP entitlement path | Stage L, and today | Four products **configured in the App Store record**; no StoreKit, receipt validation or subscription state in this repository, and nothing under `ios/` references `StoreKit`, `SKProduct` or `Transaction`. **This repository's `ios/` is not the live app** — it has no StoreKit and targets iOS 15.0 where the live app requires 15.6 — so it must not be submitted as an update to it. That conclusion stands on the target and the absent framework alone. An earlier revision ended "would remove purchase and restore for paying subscribers", which assumes the live app sells subscriptions; the STOP list above records why that is unmeasured, and whether anyone has ever been charged is invisible from here |
+| **Repoint the App Store listing's own URLs** | Stage L, **and today** | Read off the live product page on 2026-10-01: the listing's privacy-policy, Support and EULA URLs are all `https://caremetricai.base44.app/…`. Apple requires a working privacy-policy URL, so retiring that hostname breaks the **listing** and not only the app — a failure mode the rest of this section does not cover, since every other row is about a binary. Fixing it is App Store Connect **metadata**: no upload, no signing, no StoreKit, so it is the one piece of this that is not behind the upload STOP and can be done before anything is recovered |
 | Store-side privacy declarations, EULA approval, physical-device tests | Stage L | Blockers 5 and 7; the bundled privacy manifest is already correct |
 | Distribution route decision (public listing vs Apple Business Manager) | Stage L | Guideline 4.2 applies to a web wrapper either way |
 

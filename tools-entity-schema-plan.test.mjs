@@ -6,9 +6,12 @@ import { fileURLToPath } from 'node:url';
 import {
   CARRIED, CHART_ROOT, CHART_SUBJECTS, DECLARED_IMMUTABLE, DECLARED_UNIQUE, EXPECTATIONS_FILE,
   FORMAT, FORMAT_VERSION, IMMUTABILITY_CLAIM, IMMUTABLE_KINDS,
-  CONTRACT_UNIQUE, RECORD_MIGRATION_FILE, SCHEMA, UNIQUENESS_CLAIM, UNIQUE_KINDS,
-  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, contractUniqueKeys, contractUniqueName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
+  CONTRACT_UNIQUE, RECORD_MIGRATION_FILE, SCHEMA, SCHEMA_ONLY, SCHEMA_ONLY_REASON_MINIMUM,
+  SYSTEM_COLUMNS,
+  UNIQUENESS_CLAIM, UNIQUE_KINDS,
+  assertSchemaOnly, buildPlan, carriesTable, chartPredicate, chartSubject, columnType, comparePlan, constraintName, contractUniqueKeys, contractUniqueName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
 } from './tools-entity-schema-plan.mjs';
+import { SCHEMA_ONLY_TABLES, SYSTEM_COLUMN_COUNT } from './tools-pennsync-record-catchup.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const entity = (properties, name = 'Probe') => JSON.stringify({ name, type: 'object', properties, required: [], rls: {} });
@@ -46,16 +49,71 @@ test('the committed plan still matches the entity definitions', () => {
   assert.deepEqual(report.changed, []);
 });
 
-test('only entities dispositioned port or broker get a table', () => {
+test('a table comes from a carried disposition or from SCHEMA_ONLY, and from nothing else', () => {
   const plan = buildPlan(repository);
   const dispositions = JSON.parse(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).entities;
   for (const carried of plan.entities) {
-    assert.ok(CARRIED.includes(dispositions[carried.entity]), `${carried.entity} should not be carried`);
+    assert.ok(CARRIED.includes(dispositions[carried.entity]) || Object.hasOwn(SCHEMA_ONLY, carried.entity),
+      `${carried.entity} should not have a table`);
   }
-  // A paused or retired entity must not silently acquire a home here.
-  assert.equal(plan.entities.some(carried => carried.entity === 'OASISAssessment'), false);
+  // A paused entity NOT named in SCHEMA_ONLY must still not acquire a home
+  // here, and the control has to be one of the OTHER paused entities for that
+  // to bite: a change that widened the disposition instead of enumerating would
+  // pass every assertion above and fail only this one. `TrainingCourse` was the
+  // first control written here and is `hub`, which would have made this pass
+  // for the wrong reason, so the disposition is asserted beside the name.
+  //
+  // `FaxLog` was the second, and it stopped being a control by being carried:
+  // the change that added the fax and phone entities to `SCHEMA_ONLY` gave it a
+  // table, and a control naming a carried entity asserts nothing while still
+  // reading as a control. That is this repository's recurring shape -- a bucket
+  // keeping its name after the reason for it went -- arriving in the assertion
+  // written to catch it. The lesson is the one above: assert the disposition
+  // beside the name, so the next such move fails here rather than passing
+  // quietly. `DocumentSignature` is deliberately from a different domain, since
+  // any paused entity next to a carried one is a candidate to be carried next.
+  assert.equal(dispositions.DocumentSignature, 'preserved_paused');
+  assert.equal(Object.hasOwn(SCHEMA_ONLY, 'DocumentSignature'), false);
+  assert.equal(plan.entities.some(carried => carried.entity === 'DocumentSignature'), false);
+  assert.equal(carriesTable('DocumentSignature', 'preserved_paused'), false);
+  assert.equal(carriesTable('OASISUpload', 'preserved_paused'), true);
+  assert.equal(carriesTable('Patient', 'port'), true);
   assert.equal(plan.entities.some(carried => carried.entity === 'TrainingCourse'), false);
   assert.ok(plan.entities.some(carried => carried.entity === 'Patient'));
+  // And the schema-only entities are in, by the second route rather than the first.
+  for (const entity of Object.keys(SCHEMA_ONLY)) {
+    assert.equal(dispositions[entity], 'preserved_paused', entity);
+    assert.ok(plan.entities.some(carried => carried.entity === entity), entity);
+  }
+  assert.equal(plan.totals.carried + plan.totals.schema_only, plan.totals.tables);
+  assert.equal(plan.totals.schema_only, Object.keys(SCHEMA_ONLY).length);
+});
+
+test('a SCHEMA_ONLY entry whose disposition moved underneath it is refused', () => {
+  const dispositions = JSON.parse(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).entities;
+  // The real manifest passes. Everything below sabotages a copy of it, because
+  // a check that has never been seen to bite is a comment.
+  assert.doesNotThrow(() => assertSchemaOnly(dispositions));
+  const subject = Object.keys(SCHEMA_ONLY)[0];
+  // Ported: the entry is stale and its entity belongs to `CARRIED`'s answer now.
+  assert.throws(() => assertSchemaOnly({ ...dispositions, [subject]: 'port' }),
+    new RegExp(`SCHEMA_ONLY_ALREADY_CARRIED:${subject}`));
+  // Retired or moved to the hub: there is no schema here to migrate at all.
+  assert.throws(() => assertSchemaOnly({ ...dispositions, [subject]: 'retire' }),
+    new RegExp(`SCHEMA_ONLY_NOT_PAUSED:${subject}:retire`));
+  assert.throws(() => assertSchemaOnly({ ...dispositions, [subject]: undefined }),
+    new RegExp(`SCHEMA_ONLY_NOT_PAUSED:${subject}:missing`));
+  // A schema that was deleted under an entry would plan nothing, quietly.
+  assert.throws(() => assertSchemaOnly(dispositions, new Set()),
+    new RegExp(`SCHEMA_ONLY_SCHEMA_MISSING:${subject}`));
+  // And an entry that says nothing is not an entry. Checked on a synthetic
+  // list rather than by shortening a real reason, so the real ones stay put.
+  for (const because of ['', '   ', 'because D7 says so']) {
+    assert.ok(because.trim().length < SCHEMA_ONLY_REASON_MINIMUM, because);
+  }
+  for (const [name, because] of Object.entries(SCHEMA_ONLY)) {
+    assert.ok(because.trim().length >= SCHEMA_ONLY_REASON_MINIMUM, name);
+  }
 });
 
 test('the plan never claims to be reviewed, indexed or applied', () => {
@@ -531,9 +589,10 @@ test('every contract key is caught by name in the contract that names it', () =>
   // exactly this index, and the function it claims to belong to has to be there.
   const plan = buildPlan(repository);
   const keys = plan.entities.flatMap(row => row.contract_unique_keys);
-  assert.equal(keys.length, 3, 'three contracts depend on a key of their own');
+  assert.equal(keys.length, 4, 'four contracts depend on a key of their own');
   assert.deepEqual(keys.map(key => key.index).sort(),
-    ['policy_acknowledgment_distribution_unique', 'timesheet_period_unique',
+    ['fax_retry_config_active_agency_unique',
+      'policy_acknowledgment_distribution_unique', 'timesheet_period_unique',
       'visit_point_config_active_agency_unique']);
   for (const key of keys) {
     const sql = readFileSync(resolve(repository,
@@ -644,11 +703,46 @@ test('the committed migration carries one policy per name, and the count is pinn
   // Read from the committed SQL rather than from the plan on purpose: the
   // plan carries no policy total, and what the claim is ABOUT is what a
   // caller's role meets in the store, which is the emitted file.
+  //
+  // 590 until the eight D7 schema-only tables landed, which added four policies
+  // each; 646 since the fax and phone wave added six more tables at four each.
+  // The figure is pinned rather than derived from the table count for the
+  // reason it was pinned in the first place: four entities get read and insert
+  // and NO update or delete (D32), so policies-per-table is not four and a
+  // derived pin would quietly accept a missing one. Note that the two
+  // schema-only waves happen to be four-each and the general rule is not, which
+  // is exactly why arithmetic is no substitute for the pin here.
   const sql = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8')
     .split('\n').filter(line => !line.trimStart().startsWith('--')).join('\n');
   const names = [...sql.matchAll(/create policy "([^"]+)"/g)].map(match => match[1]);
-  assert.equal(names.length, 590);
+  assert.equal(names.length, 646);
   // A duplicate name would apply twice and read as one policy in any count
   // taken by eye, so the distinctness is the half a grep cannot give you.
   assert.equal(new Set(names).size, names.length);
+});
+
+test('the catch-up tool\'s copy of the platform column count agrees with the generator', () => {
+  // `tools-pennsync-record-catchup.mjs` spells `5` out rather than importing
+  // `SYSTEM_COLUMNS`, for the same reason it spells the table names out: the
+  // isolated authority job installs no root packages, so importing the
+  // generator there would die at load on `json5`. The cost is paid here. A
+  // sixth platform column would otherwise shift every wave's measured size by
+  // one per table and the size sentences would be quietly wrong.
+  assert.equal(SYSTEM_COLUMN_COUNT, SYSTEM_COLUMNS.length);
+});
+
+test('the catch-up tool\'s copy of the schema-only table names is the same list', () => {
+  // `tools-pennsync-record-catchup.mjs` spells the table names out rather than
+  // importing `SCHEMA_ONLY`, so that it pulls in no `json5` and stays loadable
+  // from the isolated authority job. The cost of that second copy is paid here,
+  // in the root suite, where both are reachable: an entity added to
+  // `SCHEMA_ONLY` without extending a wave would otherwise ship forward
+  // migrations that silently carried one table fewer than the store needs.
+  //
+  // The UNION is what has to match, not one wave's list, because D7's schema
+  // clause ships a forward migration per wave now. Which wave a name is in is
+  // that tool's own business and its own assertion; what matters here is that
+  // every schema-only entity is in SOME wave.
+  assert.deepEqual([...SCHEMA_ONLY_TABLES].sort(),
+    Object.keys(SCHEMA_ONLY).map(name => snakeCase(name)).sort());
 });

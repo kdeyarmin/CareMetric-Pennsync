@@ -27,6 +27,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { entityCalls, sourceFiles } from './tools-base44-surface.mjs';
+import { SCHEMA_ONLY } from './tools-entity-schema-plan.mjs';
 
 export const FORMAT = 'pennsync-frontend-destination';
 export const FORMAT_VERSION = 1;
@@ -62,13 +63,21 @@ export const AUDITED_ENTITIES = Object.freeze(['SecurityLog', 'SystemLog', 'User
  */
 export const DESTINATIONS = Object.freeze([
   'record_store', 'broker_family', 'activity_trail',
-  'no_table', 'broker_is_read_only', 'global_reference_is_read_only',
+  'no_table', 'no_access_contract', 'broker_is_read_only', 'global_reference_is_read_only',
   'no_realtime_seam', 'export_archive_only', 'undeclared',
 ]);
 /** Where the tenant decisions say which entities are D83 reference data. */
 export const TENANT_DECISION_FILE = 'tools-tenant-decision.json';
 /** The destinations that mean a call site has somewhere to go. */
 export const SERVED = Object.freeze(['record_store', 'broker_family', 'activity_trail']);
+/**
+ * Every disposition this tool will answer for. A name outside it is a refusal
+ * rather than a bucket, and the check reading it runs BEFORE any early return —
+ * see `destinationFor`, where that ordering is the whole point.
+ */
+export const KNOWN_DISPOSITIONS = Object.freeze([
+  'port', 'broker', 'retire', 'hub', 'preserved_paused',
+]);
 
 export function classifyOperation(operation) {
   if (READ_OPERATIONS.includes(operation)) return 'read';
@@ -85,10 +94,33 @@ export function classifyOperation(operation) {
  * D22), so a `create` on a brokered entity has no destination even though the
  * entity is "served".
  */
-export function destinationFor(disposition, operation) {
+export function destinationFor(disposition, operation, entity = null) {
   const kind = classifyOperation(operation);
   if (!kind) throw new Error(`FRONTEND_DESTINATION_UNKNOWN_OPERATION:${operation}`);
+  // The disposition is validated HERE rather than in the `switch` below, and the
+  // reason is a defect review found in this function: both early returns under
+  // this line answer without consulting the disposition at all, so the
+  // `default: throw` was unreachable for a `realtime` operation and — once
+  // `SCHEMA_ONLY` arrived — for every entity in the new bucket. An entity there
+  // that lost or misspelled its disposition reported a clean `no_access_contract`
+  // instead of failing the run, which is the fail-closed property this census
+  // leans on elsewhere being silently suspended for exactly the eight entities a
+  // reader is newly interested in. Measured before it was moved: with the old
+  // order, `destinationFor('something_new', 'list', 'OASISUpload')` returned a
+  // bucket and `destinationFor('something_new', 'list', null)` threw.
+  if (!KNOWN_DISPOSITIONS.includes(disposition)) {
+    throw new Error(`FRONTEND_DESTINATION_UNKNOWN_DISPOSITION:${disposition}`);
+  }
   if (kind === 'realtime') return 'no_realtime_seam';
+  // A `SCHEMA_ONLY` entity has a table and no way in. Reporting it as
+  // `no_table` would be the bucket keeping its name after the reason for it
+  // went, which is the failure this project keeps finding; reporting it as
+  // `record_store` would be worse, because the verdict is the same either way
+  // (the site is unserved) and only the second one is a lie about why. The
+  // generic family cannot serve these — it serves `broker` alone — so the only
+  // path is a hand-written contract, and this bucket empties one entity at a
+  // time as those ship rather than all at once when the tables land.
+  if (entity !== null && Object.hasOwn(SCHEMA_ONLY, entity)) return 'no_access_contract';
   switch (disposition) {
     case 'port':
       return 'record_store';
@@ -100,7 +132,12 @@ export function destinationFor(disposition, operation) {
     case 'preserved_paused':
       return 'no_table';
     default:
-      throw new Error(`FRONTEND_DESTINATION_UNKNOWN_DISPOSITION:${disposition}`);
+      // Unreachable while this switch handles every name in
+      // `KNOWN_DISPOSITIONS`, and kept with a DIFFERENT code for that reason: it
+      // now catches only a disposition added to that list and not to this
+      // switch, which would otherwise fall out of the function as `undefined`
+      // and be counted as a destination nothing recognises.
+      throw new Error(`FRONTEND_DESTINATION_UNHANDLED_DISPOSITION:${disposition}`);
   }
 }
 
@@ -165,7 +202,7 @@ export function measureDestinations(repository) {
         disposition,
         destination: disposition
           ? refineGlobalReference(
-            refineRetired(destinationFor(disposition, operation), entity),
+            refineRetired(destinationFor(disposition, operation, entity), entity),
             operation, globalReference.has(entity))
           : 'undeclared',
       });
