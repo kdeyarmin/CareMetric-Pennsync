@@ -1,0 +1,651 @@
+{
+  "format": "pennsync-record-mover-agency-rules",
+  "version": 1,
+  "entities": {
+    "AIConfiguration": {
+      "rule": "constant"
+    },
+    "AIContentAgreementAttestation": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "AIFeedback": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "AIInsightFeedback": {
+      "rule": "constant"
+    },
+    "AIKnowledgeBase": {
+      "rule": "constant"
+    },
+    "AILearningPattern": {
+      "rule": "constant"
+    },
+    "AIModelConfiguration": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "AIModelTestResult": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "AdrAuditCase": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "Agency": {
+      "rule": "agency_list"
+    },
+    "AgencyComplianceRule": {
+      "rule": "constant"
+    },
+    "AgencyFeatureAccess": {
+      "rule": "constant"
+    },
+    "AgencyInvitation": {
+      "rule": "constant"
+    },
+    "AgencyInvoice": {
+      "rule": "constant"
+    },
+    "AgencyMembership": {
+      "rule": "declared"
+    },
+    "AgencySettings": {
+      "rule": "constant"
+    },
+    "AlertTriggerRule": {
+      "rule": "constant"
+    },
+    "Announcement": {
+      "rule": "constant"
+    },
+    "AppliedDataLog": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "AppointmentForm": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "ApprovalRequest": {
+      "rule": "constant"
+    },
+    "AutomaticCarePlanTrigger": {
+      "rule": "constant"
+    },
+    "BIIntegration": {
+      "rule": "constant"
+    },
+    "Billing": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "CareCoordinationAlert": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "CarePlan": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "CarePlanProposal": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "CareSetting": {
+      "rule": "constant"
+    },
+    "CitationLibrary": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "ClinicalEvent": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "ClinicalLibraryFolder": {
+      "rule": "constant"
+    },
+    "ClinicalLibraryTemplate": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "ClinicalPathway": {
+      "rule": "constant"
+    },
+    "ComplianceAudit": {
+      "rule": "parent",
+      "column": "visit_id",
+      "parent": "Visit"
+    },
+    "ComplianceRule": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "ComplianceViolation": {
+      "rule": "constant"
+    },
+    "ContentScopeBinding": {
+      "rule": "declared"
+    },
+    "CustomValidationRule": {
+      "rule": "constant"
+    },
+    "DataArchivePolicy": {
+      "rule": "constant"
+    },
+    "DischargeSummary": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "Document": {
+      "rule": "parent",
+      "binding": "DocumentTenantBinding",
+      "column": "document_id"
+    },
+    "DocumentAnalysisHistory": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "DocumentAutomationWorkflow": {
+      "rule": "constant"
+    },
+    "DocumentPackage": {
+      "rule": "declared"
+    },
+    "DocumentRecord": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "DocumentTemplate": {
+      "rule": "constant"
+    },
+    "DocumentTenantBinding": {
+      "rule": "declared"
+    },
+    "DocumentVersion": {
+      "rule": "constant"
+    },
+    "DocumentationTemplate": {
+      "rule": "constant"
+    },
+    "EducationMaterial": {
+      "rule": "constant"
+    },
+    "EmbedConfig": {
+      "rule": "parent",
+      "column": "document_id",
+      "parent": "Document"
+    },
+    "EmployeePayrollProfile": {
+      "rule": "constant"
+    },
+    "FaceToFaceEncounter": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "FacilityDocumentationRule": {
+      "rule": "constant"
+    },
+    "FeaturePackage": {
+      "rule": "constant"
+    },
+    "FeatureToggle": {
+      "rule": "constant"
+    },
+    "FleetServiceEntry": {
+      "rule": "declared"
+    },
+    "FleetServiceReview": {
+      "rule": "declared"
+    },
+    "FleetVehicle": {
+      "rule": "declared"
+    },
+    "FollowUpRuleConfig": {
+      "rule": "constant"
+    },
+    "FormTemplate": {
+      "rule": "constant"
+    },
+    "GeneratedDocument": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "HealthRecord": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "Immunization": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "Incident": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "InsuranceProvider": {
+      "rule": "constant"
+    },
+    "InterventionLog": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "InvitationSettings": {
+      "rule": "constant"
+    },
+    "Invoice": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "LearnedFormatPattern": {
+      "rule": "constant"
+    },
+    "LibraryDocument": {
+      "rule": "constant"
+    },
+    "MaterialInteraction": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "MedicalCode": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "MedicareComplianceRule": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "MedicareGuideline": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "Medication": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "MedicationReconciliation": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "NewFeature": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "NoteConversion": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "NoteFeedback": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "NoteTemplate": {
+      "rule": "constant"
+    },
+    "Notification": {
+      "rule": "declared"
+    },
+    "NotificationPreference": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "NotificationPreferences": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "NotificationRule": {
+      "rule": "constant"
+    },
+    "NurseGoal": {
+      "rule": "constant"
+    },
+    "NursePerformanceMetric": {
+      "rule": "constant"
+    },
+    "OASISActionItem": {
+      "rule": "constant"
+    },
+    "OASISAssessment": {
+      "rule": "declared"
+    },
+    "OASISAudit": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "OASISAutomationRule": {
+      "rule": "constant"
+    },
+    "OASISFeedback": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "OASISScenario": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "OASISUpload": {
+      "rule": "declared"
+    },
+    "OASISWorkflowExecution": {
+      "rule": "parent",
+      "column": "oasis_upload_id",
+      "parent": "OASISUpload"
+    },
+    "OCRFeedback": {
+      "rule": "constant"
+    },
+    "OCRTrainingSession": {
+      "rule": "constant"
+    },
+    "OnCallShift": {
+      "rule": "constant"
+    },
+    "PDFIndex": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "PDFTemplate": {
+      "rule": "constant"
+    },
+    "Patient": {
+      "rule": "declared"
+    },
+    "PatientAlert": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientBillingInfo": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientCareTeamAssignment": {
+      "rule": "declared"
+    },
+    "PatientDocument": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientEducationAssignment": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientEducationDelivery": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientEducationDraft": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientEducationEngagement": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientEducationMaterial": {
+      "rule": "constant"
+    },
+    "PatientNoteHistoryEntry": {
+      "rule": "declared"
+    },
+    "PatientPathwayAssignment": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientRecommendation": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PatientRiskAssessment": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PayerRateConfig": {
+      "rule": "constant"
+    },
+    "Payment": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PaymentRecord": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PendingPatientUpdate": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "PersonnelCredential": {
+      "rule": "constant"
+    },
+    "Physician": {
+      "rule": "constant"
+    },
+    "PhysicianAgencyProfile": {
+      "rule": "declared"
+    },
+    "PolicyAcknowledgment": {
+      "rule": "constant"
+    },
+    "PolicyLibrary": {
+      "rule": "constant"
+    },
+    "ProviderDashboardCustomization": {
+      "rule": "constant"
+    },
+    "ProviderFacilityAssignment": {
+      "rule": "constant"
+    },
+    "ProviderPatientAssignment": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "ProviderPermission": {
+      "rule": "constant"
+    },
+    "ProviderPracticeInfo": {
+      "rule": "constant"
+    },
+    "ProviderPreferences": {
+      "rule": "constant"
+    },
+    "ProviderSettings": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "ProviderSpecialization": {
+      "rule": "parent",
+      "column": "documentation_template_id",
+      "parent": "DocumentationTemplate",
+      "fallback": "constant"
+    },
+    "ProviderUsagePattern": {
+      "rule": "constant"
+    },
+    "Referral": {
+      "rule": "declared"
+    },
+    "RegulatoryUpdate": {
+      "rule": "constant"
+    },
+    "ReminderLog": {
+      "rule": "constant"
+    },
+    "ReportTemplate": {
+      "rule": "constant"
+    },
+    "RiskAlert": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "RiskAnalysis": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "ScheduleFeedback": {
+      "rule": "parent",
+      "column": "visit_id",
+      "parent": "Visit",
+      "fallback": "constant"
+    },
+    "ScheduledReport": {
+      "rule": "constant"
+    },
+    "SentEducationMaterial": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "ServiceCode": {
+      "rule": "none",
+      "reason": "global reference data is written by migration and never moved from Base44 (D83)"
+    },
+    "SessionTimeout": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "SharedDocument": {
+      "rule": "constant"
+    },
+    "SharedPhraseLibrary": {
+      "rule": "constant"
+    },
+    "SuggestedIntervention": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "SupplyItem": {
+      "rule": "constant"
+    },
+    "SupplyLowStockAlert": {
+      "rule": "parent",
+      "column": "task_id",
+      "parent": "Task",
+      "fallback": "constant"
+    },
+    "SupplyPrediction": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "SupplyUsageLog": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "Task": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
+    "TeamNote": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient"
+    },
+    "TerminologyGlossary": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "TermsAcceptanceAudit": {
+      "rule": "parent",
+      "column": "document_id",
+      "parent": "Document"
+    },
+    "TimeOffRequest": {
+      "rule": "constant"
+    },
+    "Timesheet": {
+      "rule": "constant"
+    },
+    "TranscriptionLearning": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "User": {
+      "rule": "none",
+      "reason": "membership in the authority store decides who is on the roster (D23)"
+    },
+    "UserFavorite": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "UserInvitation": {
+      "rule": "constant"
+    },
+    "UserLearnedPattern": {
+      "rule": "owner",
+      "reason": "a per-person row; its owner is the person's mapped subject, not an agency (D13)"
+    },
+    "VerificationCode": {
+      "rule": "constant"
+    },
+    "Visit": {
+      "rule": "declared"
+    },
+    "VisitPointConfig": {
+      "rule": "constant"
+    }
+  }
+}
