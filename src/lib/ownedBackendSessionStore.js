@@ -15,9 +15,10 @@
  *
  * WHY A REFRESH TOKEN RATHER THAN THE ACCESS TOKEN, which is what Base44 stores.
  * This is strictly LESS exposed than the behaviour it restores: a refresh token
- * is single-use, rotates on every exchange, and is revoked by signing out, while
- * a stored bearer is usable against the API for its whole life by anybody who
- * reads it. So the access token stays in the client's closure, where it was, and
+ * is single-use, rotates on every exchange, and is revoked by signing out — where
+ * the revoke SUCCEEDS, which is the client's own qualification and not a detail —
+ * while a stored bearer is usable against the API for its whole life by anybody
+ * who reads it. So the access token stays in the client's closure, where it was, and
  * only this travels to the device.
  *
  * WHAT IS DELIBERATELY NOT HERE. No access token, under any name — the writer
@@ -131,8 +132,32 @@ export function createOwnedSessionPort(email) {
     },
     clear() {
       // Unconditional, not "only if it is mine": every path that reaches here is
-      // a sign-out or a refusal, and both mean this device holds no session.
+      // a sign-out or a realm teardown, and both mean this device holds no
+      // session. A path that is only discarding a token it SPENT must use
+      // `clearSpent` instead — see why there.
       clearStoredOwnedSession();
+    },
+    /**
+     * Forget the record only if it still holds `spent`.
+     *
+     * TWO TABS BOOTING AT ONCE, which a reviewer measured and which is reachable
+     * in ordinary use. Both read the record, both try to exchange it, one wins and
+     * writes the rotated token, and the loser's attempt is refused. An
+     * unconditional clear in the loser then deletes the WINNER's record: the
+     * person is signed in, the provider still honours the token on the device, and
+     * the next boot asks for a password anyway. Which tab answered last decided
+     * it, and the race test passed only because that ordering happened to put the
+     * clear before the write.
+     *
+     * So the loser removes what it spent and nothing else. Returns whether it
+     * removed anything, because a caller that wrote a record of its own wants to
+     * know this did not take it away.
+     */
+    clearSpent(spent) {
+      const record = readRecord();
+      if (!record || record.email !== owner || record.refresh_token !== spent) return false;
+      clearStoredOwnedSession();
+      return true;
     },
   });
 }

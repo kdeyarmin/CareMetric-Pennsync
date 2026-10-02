@@ -464,6 +464,26 @@ describe('a staging session this device already holds', () => {
     expect(await adapterWith(fixture, device).auth.resume()).toBe(false);
   });
 
+  it('two overlapping boots leave the record alone, because the loser refused nothing', async () => {
+    // The production spec carries the reasoning; this is the same guard at the
+    // other entry point, and both are pinned because the two share one closure
+    // and a fix applied to one of them is easy to believe applies to both.
+    const fixture = stagingFixture();
+    const device = deviceRecord();
+    const first = adapterWith(fixture, device);
+    await first.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    await first.auth.signOut({ forget: false });
+    expect(typeof device.state.token).toBe('string');
+
+    const booting = adapterWith(fixture, device);
+    const [loser, winner] = await Promise.all([booting.auth.resume(), booting.auth.resume()]);
+    expect(loser).toBe(false);
+    expect(winner).toBe(true);
+    expect(device.state.clears).toBe(0);
+    expect(typeof device.state.token).toBe('string');
+    expect(await adapterWith(fixture, device).auth.resume()).toBe(true);
+  });
+
   it('refuses a record naming anybody but the four actors, and forgets it', async () => {
     const fixture = stagingFixture();
     const device = deviceRecord('nurse@agency.example', 'synthetic-refresh-forged');

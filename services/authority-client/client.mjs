@@ -806,8 +806,16 @@ function createAuthorityClient(config, mode,
      *
      * The address is NOT learned here. The device record names whose session it
      * is, the client was constructed for that address, and `sameUser` compares
-     * the provider's answer against it — so a record somebody swapped resumes
-     * nobody rather than resuming them as its new owner.
+     * the provider's answer against it — so a token moved into somebody else's
+     * record resumes nobody rather than resuming them as its new owner.
+     *
+     * READ THAT NARROWLY, as a reviewer had to point out. It is the TOKEN being
+     * swapped that this refuses. A WHOLE record copied onto another device, address
+     * and token together, does resume its owner there: the boot path reads the
+     * record's own address and constructs the client for it, so there is nothing
+     * for `sameUser` to disagree with. That is the same exposure as a copied
+     * `base44_access_token`, and narrower, since this one is single-use and dies on
+     * sign-out — see `signOut` for what that does and does not guarantee.
      *
      * Answers null when this device holds nothing, because that is the ordinary
      * case on a fresh browser and not a failure to report.
@@ -817,14 +825,32 @@ function createAuthorityClient(config, mode,
       invalidate();
       const lease = epoch;
       let candidate = null;
+      let spent = null;
       try {
-        await revokeAllKnown(); current(lease);
+        // IT DROPS WHAT IT KNOWS RATHER THAN REVOKING IT, which is the opposite of
+        // `signIn`, and a reviewer measured why it has to be. A realm close leaves
+        // the provider's session live on purpose and `invalidate()` does not empty
+        // `knownSessions`, so the bearer from before the close is still named here.
+        // Revoking it ends that SESSION at the provider, and `scope=local` ends the
+        // session rather than one token — so the refresh token on the device dies
+        // with it and the exchange two lines down answers 401. A resume on the same
+        // adapter therefore destroyed the session it was about to inherit, and
+        // cleared the record on the way out. Dropping the names instead loses
+        // nothing: a sign-out revokes, and these tokens are the ones a close
+        // deliberately left live.
+        //
+        // And do NOT fix it by revoking AFTER the exchange: the rotated grant is in
+        // the same provider session, so a local logout then would revoke what was
+        // just resumed. A fixture that treats each access token as independently
+        // live would pass either way, which is why this is written down here.
+        knownSessions.clear(); current(lease);
         const stored = await device.read();
         if (stored === null || stored === undefined) return null;
         if (typeof stored !== 'string' || !REFRESH_TOKEN.test(stored)) {
           await device.clear();
           return null;
         }
+        spent = stored;
         const session = await request('/auth/v1/token?grant_type=refresh_token', { lease, body: { refresh_token: stored },
           receivedGrant: (value, canceled) => trackGrant(value, canceled, bearer => { candidate = bearer; }) });
         if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
@@ -841,7 +867,14 @@ function createAuthorityClient(config, mode,
       } catch (error) {
         if (!staging && !token) authUserId = null;
         await revokeAllKnown();
-        if (!KEEP_ON.has(error?.code)) await device.clear().catch(() => {});
+        // IT FORGETS ONLY WHAT IT SPENT. Another tab may have exchanged the same
+        // record and written the rotated token while this attempt was in flight, so
+        // an unconditional clear here deletes a record that is live and belongs to
+        // a session somebody is using — the person stays signed in and the next
+        // boot asks for a password anyway. A reviewer measured both interleavings.
+        if (!KEEP_ON.has(error?.code) && spent !== null) {
+          await Promise.resolve(sessionStore.clearSpent?.(spent) ?? device.clear()).catch(() => {});
+        }
         throw error;
       }
     },
@@ -948,6 +981,14 @@ function createAuthorityClient(config, mode,
       // The record goes FIRST, before the network call that can fail: a sign-out
       // whose revoke never answers must still leave nothing on the device for the
       // next boot to resume from.
+      //
+      // WHICH IS NOT THE SAME AS THE COPY BEING DEAD, and the distinction is a
+      // reviewer's. Clearing the record only empties THIS device; what kills a
+      // record somebody already copied is the revoke below, and that is a network
+      // call whose failure is swallowed — deliberately, because a sign-out must
+      // complete offline. So the copy is dead when the revoke succeeded, and when it
+      // did not the copy stays usable until the session expires at the provider.
+      // Nothing here can close that, and claiming otherwise would overstate it.
       if (sessionStore) await device.clear().catch(() => {});
       await revokeAllKnown();
     },

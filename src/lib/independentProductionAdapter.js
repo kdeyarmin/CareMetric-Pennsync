@@ -236,12 +236,18 @@ export function createIndependentProductionAdapter(config,
       const lease = ++generation; signedIn = false;
       client = null;
       let next = null;
+      // Whether the throw came from CONSTRUCTING a client for the stored address,
+      // which is the only failure that justifies removing the record. See the
+      // catch.
+      let constructing = false;
       try {
         // Realm-closing, not forgetting: this is a boot, and the record being read
         // is the one thing that must survive it.
         await Promise.all([...clients.values()].map(value => value.signOut({ forget: false })));
         current(lease);
+        constructing = true;
         next = clientFor(address);
+        constructing = false;
         client = next;
         const identity = await next.resume();
         current(lease);
@@ -257,7 +263,15 @@ export function createIndependentProductionAdapter(config,
         // A stored address the client itself will not accept can never resume, so
         // it is removed rather than retried on every boot. The client clears the
         // record for its own refusals; this covers the one it never reached.
-        if (!next) device.port(address).clear();
+        //
+        // AND ONLY THAT ONE. `if (!next)` also caught a lease fenced by a newer
+        // boot — `current(lease)` throws STALE_AUTHORITY_SESSION before
+        // `clientFor` runs — so two overlapping boots, which StrictMode's
+        // double-invoked effects produce, deleted the record with nothing having
+        // reached the provider and nothing having refused anything. A reviewer
+        // measured it: no exchange, no logout, no record. It also contradicted the
+        // client's own KEEP_ON, which lists that code as a keep.
+        if (constructing) device.port(address).clear();
         return false;
       }
     },

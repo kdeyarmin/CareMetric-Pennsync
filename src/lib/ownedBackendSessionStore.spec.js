@@ -81,6 +81,33 @@ describe('the device record', () => {
     expect(() => clearStoredOwnedSession()).not.toThrow();
   });
 
+  it('forgets only what it spent, so a losing tab leaves the winner signed in', () => {
+    // The two-tab boot a reviewer measured. Both tabs read the same record, one
+    // exchanges it and writes the rotated token, and the loser is refused. The
+    // loser's clean-up must take its OWN spent token and nothing else: with an
+    // unconditional clear the winner's record went, the provider still honoured it
+    // and the next boot asked for a password anyway.
+    const port = createOwnedSessionPort(EMAIL);
+    port.write(TOKEN);
+    const rotated = 'rotated-token-aaaa';
+    port.write(rotated);
+    expect(port.clearSpent(TOKEN)).toBe(false);
+    expect(port.read()).toBe(rotated);
+    // What it did spend goes, and saying so is the point: the caller that wrote a
+    // record of its own wants to know this did not take it away.
+    expect(port.clearSpent(rotated)).toBe(true);
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(port.clearSpent(rotated)).toBe(false);
+  });
+
+  it('will not let one address`s spent token forget another`s record', () => {
+    // `clear` is deliberately unconditional and `clearSpent` deliberately is not,
+    // so the address is checked here as well as the token.
+    createOwnedSessionPort(EMAIL).write(TOKEN);
+    expect(createOwnedSessionPort('someone.else@agency.example').clearSpent(TOKEN)).toBe(false);
+    expect(localStorage.getItem(KEY)).not.toBeNull();
+  });
+
   it('survives a browser that refuses storage, because signing in each time still works', () => {
     const own = Object.getOwnPropertyDescriptor(window, 'localStorage');
     Object.defineProperty(window, 'localStorage', {

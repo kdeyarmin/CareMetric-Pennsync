@@ -214,6 +214,19 @@ export function TenantAuthorityBoundary({ authorityState, authorityKey, fallback
   return <Fragment key={authorityKey}>{children}</Fragment>;
 }
 
+/**
+ * The three ORDINARY reasons a READY realm closes by itself, by name.
+ *
+ * `expiry` is the five-minute timer, `background` the thirty-second hidden tab
+ * and `restore` a document coming back out of the BFCache. Each is ordinary use,
+ * and each is what made an owned build ask for a password every five minutes
+ * before the device kept anything. `online` and a change to an auth storage key
+ * are NOT here: those say the environment changed under a realm established
+ * before it, which is the case the terminal reset exists for, so they revoke the
+ * session and forget the device.
+ */
+const ORDINARY_REALM_CLOSURES = new Set(['expiry', 'background', 'restore']);
+
 export const AuthProvider = ({ children }) => {
   const authGeneration = useRef(0);
   const authorityStateRef = useRef(
@@ -254,11 +267,21 @@ export const AuthProvider = ({ children }) => {
    * Revoke this document's owned session, and say whether the DEVICE forgets it.
    *
    * `forget` has no default and every call site decides it, because the two
-   * meanings are not interchangeable. The app closes a realm by itself — the
-   * five-minute expiry, a tab that was hidden, a back-forward restore, a page
-   * exit, an identity read that failed — and none of those means the person is
-   * leaving; forgetting there would make a reload ask for a password, which is
-   * the behaviour the device record exists to end. Only `logout` forgets.
+   * meanings are not interchangeable, and which side a reason falls on is the
+   * coordinator's decision of about 01:05Z as amended at about 01:40Z.
+   *
+   * KEEPS the record: the five-minute expiry, a tab hidden for thirty seconds, a
+   * back-forward restore, a page exit, and an identity read that failed without
+   * being definitive. None of those means the person is leaving, and forgetting
+   * there would make a reload ask for a password, which is what this record
+   * exists to end.
+   *
+   * FORGETS and revokes: `logout`, an `online` event, a change to an auth storage
+   * key, a definitive identity failure, and every other closure that purges
+   * persistent state. Those say the environment or the identity changed under a
+   * realm established before it, which is what the terminal reset is for, and the
+   * staging client revoked on all of them before this change — so keeping that is
+   * preserving a control rather than adding one.
    *
    * A pending non-forgetting cleanup is NOT reused by a forgetting caller: a
    * sign-out that arrived while a realm was closing would otherwise be satisfied
@@ -385,9 +408,15 @@ export const AuthProvider = ({ children }) => {
     purgePersistent = false,
     purgeDrafts = false,
     terminalIndependentSession = false,
-    // A purge is realm teardown, so it does NOT forget the device by default.
-    // `logout` is the one caller that passes true.
-    forgetDevice = false,
+    // WHETHER THE DEVICE KEEPS ITS SESSION RECORD, and the default is to forget.
+    // The coordinator's decision of about 01:05Z, as amended at about 01:40Z:
+    // three ORDINARY closures keep it — the five-minute expiry, the hidden-tab
+    // timer and a persisted `pageshow` — because those fire in ordinary use and
+    // are the whole of the parity this persistence exists for. Everything else,
+    // including every environment-hostile signal and every explicit sign-out,
+    // forgets it and revokes, which is what the staging client already did. So a
+    // caller that keeps the record says so; silence forgets.
+    forgetDevice = true,
   } = {}) => {
     // First statement: prevent every protected SDK read, write, function,
     // integration, log, and subscription from being initiated by a retained
@@ -693,6 +722,12 @@ export const AuthProvider = ({ children }) => {
         || stage === 'drafts';
       if (definitiveFailure) {
         if (hasPinnedTenantSdkRealm()) poisonTenantSdkRealm();
+        // A DEFINITIVE failure is not an ordinary closure: it purges persistent
+        // state below, and the amended rule says the record goes with such a
+        // purge. The cleanup above has already started without forgetting, so
+        // this is the second call the in-flight `{promise, forget}` ref exists
+        // for — a forgetting caller never rides a non-forgetting cleanup.
+        if (ownedBackendAuth) await cleanupIndependentSession(true).catch(() => false);
         try {
           await ensurePersistentPurge({ includeDrafts: true });
         } catch {
@@ -974,7 +1009,23 @@ export const AuthProvider = ({ children }) => {
     return establishTenantAuthority({ phase: 'select', explicitAgencyId: agencyId });
   }, [establishTenantAuthority, purgeTenantAuthority]);
 
-  const requireFreshBrowserRealm = useCallback(async () => {
+  /**
+   * Close this realm terminally. `ordinary` is the device-record question.
+   *
+   * It defaults to false, so a caller that has not thought about it forgets the
+   * record and revokes — the safe direction, and the one every pinned-realm
+   * caller here wants. The three ordinary closures pass true.
+   *
+   * WHY THE PERSISTENT PURGE DOES NOT DECIDE IT, measured rather than argued:
+   * `purgeRefetchablePhiForAuthorityTransition` removes the keys in
+   * `PURGE_FULL_PREFIXES`, which are re-fetchable PHI and diagnostics, and it
+   * touches no credential — `base44_access_token` and its legacy `token` are not
+   * in that list, so on the backend this build replaces the same purge leaves
+   * that session's token in place and the person stays signed in. Keeping the
+   * record through an ordinary closure is therefore parity with what the purge
+   * already does, not an exception carved out of it.
+   */
+  const requireFreshBrowserRealm = useCallback(async ({ ordinary = false } = {}) => {
     authGeneration.current += 1;
     poisonTenantSdkRealm();
     scrubProtectedBrowserLocation();
@@ -983,6 +1034,7 @@ export const AuthProvider = ({ children }) => {
         nextState: TENANT_AUTHORITY_STATES.BLOCKED,
         purgePersistent: true,
         terminalIndependentSession: true,
+        forgetDevice: !ordinary,
       });
     } catch {
       // Remain terminal and blocked. Reload repeats strict cleanup.
@@ -996,9 +1048,20 @@ export const AuthProvider = ({ children }) => {
     return false;
   }, [purgeTenantAuthority, setTenantAuthorityState]);
 
-  const expireReadyBrowserRealm = useCallback(async () => {
+  /**
+   * The three ORDINARY reasons a READY realm closes by itself, by name.
+   *
+   * `expiry` is the five-minute timer, `background` the thirty-second hidden tab
+   * and `restore` a document coming back out of the BFCache. Each is ordinary
+   * use, and each is what made this backend ask for a password every five
+   * minutes before the device kept anything. `online` and a change to an auth
+   * storage key are NOT here: those say the environment changed under a realm
+   * that was established before it, which is the case the terminal reset exists
+   * for, so they revoke and forget.
+   */
+  const expireReadyBrowserRealm = useCallback(async (reason) => {
     if (authorityStateRef.current !== TENANT_AUTHORITY_STATES.READY) return false;
-    return requireFreshBrowserRealm();
+    return requireFreshBrowserRealm({ ordinary: ORDINARY_REALM_CLOSURES.has(reason) });
   }, [requireFreshBrowserRealm]);
 
   useEffect(() => {
@@ -1007,16 +1070,19 @@ export const AuthProvider = ({ children }) => {
     }
 
     let hiddenAt = document.visibilityState === 'hidden' ? Date.now() : null;
-    const expire = () => { void expireReadyBrowserRealm(); };
+    // The reason travels, because it decides whether this device keeps the
+    // session it is holding. A bare `expire()` would forget it, which is the safe
+    // default and the wrong answer for the three ordinary ones.
+    const expire = reason => { void expireReadyBrowserRealm(reason); };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now();
       } else if (hiddenAt !== null && Date.now() - hiddenAt >= 30_000) {
-        expire();
+        expire('background');
       }
     };
     const handlePageShow = (event) => {
-      if (event.persisted) expire();
+      if (event.persisted) expire('restore');
     };
     const handleStorage = (event) => {
       if (
@@ -1035,17 +1101,20 @@ export const AuthProvider = ({ children }) => {
         || event.key === DRAFT_AUTHORITY_MARKER_KEY
         || event.key === DRAFT_LOGOUT_TOMBSTONE_KEY
       ) {
-        expire();
+        // Not ordinary: another tab has changed who this browser is, so the realm
+        // was established under an answer that no longer holds.
+        expire('auth-storage');
       }
     };
-    const expiryTimer = window.setTimeout(expire, 5 * 60 * 1000);
-    window.addEventListener('online', expire);
+    const expiryTimer = window.setTimeout(() => expire('expiry'), 5 * 60 * 1000);
+    const handleOnline = () => expire('online');
+    window.addEventListener('online', handleOnline);
     window.addEventListener('pageshow', handlePageShow);
     window.addEventListener('storage', handleStorage);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.clearTimeout(expiryTimer);
-      window.removeEventListener('online', expire);
+      window.removeEventListener('online', handleOnline);
       window.removeEventListener('pageshow', handlePageShow);
       window.removeEventListener('storage', handleStorage);
       document.removeEventListener('visibilitychange', handleVisibilityChange);

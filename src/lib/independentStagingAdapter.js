@@ -305,10 +305,16 @@ export function createIndependentStagingAdapter(config,
       const lease = ++generation; signedIn = false;
       client = null;
       let next = null;
+      // Whether the throw came from CONSTRUCTING a client for the stored address,
+      // which is the only failure that justifies removing the record. See the
+      // catch.
+      let constructing = false;
       try {
         await Promise.all([...clients.values()].map(value => value.signOut({ forget: false })));
         current(lease);
+        constructing = true;
         next = clientFor(address);
+        constructing = false;
         client = next;
         const identity = await next.resume();
         current(lease);
@@ -317,7 +323,11 @@ export function createIndependentStagingAdapter(config,
         return true;
       } catch {
         if (client === next && generation === lease) { client = null; signedIn = false; }
-        if (!next) device.port(address).clear();
+        // Only a stored address `clientFor` itself refuses — here, one that is not
+        // a pinned synthetic actor. A lease fenced by a newer boot throws before
+        // `clientFor` runs, and clearing there deleted a live record with nothing
+        // having reached the provider; see the production adapter's note.
+        if (constructing) device.port(address).clear();
         return false;
       }
     },

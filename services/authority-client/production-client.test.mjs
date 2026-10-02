@@ -360,6 +360,83 @@ test('closing the realm keeps the device able to resume; only signing out forget
   assert.equal(resumed.email, EMAIL);
 });
 
+test('a resume on the SAME client takes up the session it closed rather than destroying it', async () => {
+  // A reviewer measured this one: the client resumed, and ended with no live
+  // session and a logout sent. `invalidate()` stops the old bearer being USED and
+  // deliberately does not empty `knownSessions`, so the bearer from before the
+  // close was still named — and revoking it ends the SESSION, which takes the
+  // refresh token on the device with it. The exchange then answered 401 and the
+  // record was cleared on the way out, so a reload in the same document signed the
+  // person out instead of resuming them.
+  //
+  // The fix drops the names rather than revoking them. Note what makes this
+  // testable at all: the fixture retires a session's refresh token with the
+  // session, as GoTrue does. A fixture treating each access token as independently
+  // live would pass either way.
+  const state = fixture();
+  const store = deviceStore();
+  const client1 = resumable(state, store);
+  await client1.signIn(PASSWORD);
+  await client1.signOut({ forget: false });
+  const logouts = state.requests.filter(({ url }) => url.endsWith('/logout?scope=local')).length;
+  const identity = await client1.resume();
+  assert.equal(identity.email, EMAIL);
+  assert.equal(state.refreshed, 1);
+  assert.equal(state.requests.filter(({ url }) => url.endsWith('/logout?scope=local')).length, logouts,
+    'nothing was revoked on the way in');
+  assert.equal(store.clears, 0);
+  // And the client it resumed into works, which is what the person would notice.
+  assert.equal((await client1.rpc('context', { p_agency_id: 'agency-real' })).agency_id, 'agency-real');
+  // Signing out from here still revokes what it resumed, which is the property the
+  // dropped names must not have cost. It is counted as a DIFFERENCE rather than
+  // against zero: the pre-close bearer was deliberately left live and this client
+  // no longer names it, and in the real provider a rotation stays inside one
+  // session, so the fixture's two entries are one session there.
+  const before = live(state);
+  await client1.signOut();
+  assert.equal(live(state), before - 1, 'the resumed session is the one that ends');
+  assert.equal(store.value, null);
+});
+
+test('a losing resume forgets only the token it spent, so the winner stays signed in', async () => {
+  // Two tabs booting over one record. Both read it, one exchanges it and writes the
+  // rotated token, the other is refused — and an unconditional clear in the loser
+  // deletes a record the provider still honours, so the person is signed in and the
+  // next boot asks for a password anyway.
+  //
+  // The browser store supplies `clearSpent`; this proves the CLIENT asks for it.
+  // The two are SEQUENCED rather than raced: the loser's port answers with the
+  // value it read BEFORE the winner rotated, which is what a second tab holds. Run
+  // concurrently, whether the loser's clean-up lands before or after the winner's
+  // write is the fixture's scheduling, and the interleaving the defect lives in is
+  // the one that cannot be chosen.
+  const state = fixture();
+  const store = deviceStore();
+  await resumable(state, store).signIn(PASSWORD);
+  const spent = store.value;
+  const winner = await resumable(state, store).resume();
+  assert.equal(winner.email, EMAIL);
+  const rotated = store.value;
+  assert.notEqual(rotated, spent);
+
+  let spentWith = null;
+  const stale = {
+    ...store,
+    read: () => spent,
+    clearSpent: value => {
+      spentWith = value;
+      if (store.value !== value) return false;
+      store.clear();
+      return true;
+    },
+  };
+  await assert.rejects(resumable(state, stale).resume(), { code: 'AUTHENTICATION_FAILED' });
+  assert.equal(spentWith, spent, 'the loser offered the token IT spent');
+  assert.equal(store.clears, 0, 'and the winner`s record survived');
+  assert.equal(store.value, rotated);
+  assert.equal((await resumable(state, store).resume()).email, EMAIL);
+});
+
 test('a refreshed grant about somebody else is refused and forgotten, and its token is not used', async () => {
   // The rule this encodes is `client-lifecycle.test.mjs`'s, which refuses to treat
   // a contradicted grant's token "as a cleanup credential": the client rejects the

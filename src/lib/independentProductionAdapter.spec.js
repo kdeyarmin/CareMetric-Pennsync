@@ -214,6 +214,37 @@ describe('a session this device already holds', () => {
     expect(await adapterFor(fixture, productionEnv, { device }).auth.resume()).toBe(true);
   });
 
+  it('two overlapping boots leave the record alone, because the loser refused nothing', async () => {
+    // StrictMode double-invokes an effect, so two boots in one document is
+    // ordinary rather than exotic. The second fences the first's lease, and the
+    // first throws STALE_AUTHORITY_SESSION before it has constructed a client —
+    // so nothing reached the provider and nothing refused the record.
+    //
+    // A reviewer measured the earlier shape: the loser removed the record with no
+    // exchange and no logout, which also contradicted the client's own KEEP_ON,
+    // where that code is listed as a keep. Only a stored address the CLIENT will
+    // not accept justifies forgetting, and that case is the test below.
+    const fixture = productionFixture();
+    const device = productionDevice();
+    await (await signedIn(fixture, { device })).auth.signOut({ forget: false });
+    const kept = device.state.token;
+    expect(typeof kept).toBe('string');
+
+    const booting = adapterFor(fixture, productionEnv, { device });
+    const [loser, winner] = await Promise.all([booting.auth.resume(), booting.auth.resume()]);
+    expect(loser).toBe(false);
+    expect(winner).toBe(true);
+    // The record is the one thing a boot must not destroy. It has ROTATED, because
+    // the winner exchanged it, so what is asserted is that one is there and that
+    // nothing cleared.
+    expect(device.state.clears).toBe(0);
+    expect(typeof device.state.token).toBe('string');
+    expect(device.state.email).toBe(productionEmail);
+    // And a third boot over that record still works, which is the consequence the
+    // person would have noticed: a password prompt on every reload.
+    expect(await adapterFor(fixture, productionEnv, { device }).auth.resume()).toBe(true);
+  });
+
   it('answers false, and reaches no project, when this device holds nothing', async () => {
     const fixture = productionFixture();
     const adapter = adapterFor(fixture, productionEnv, { device: productionDevice() });
