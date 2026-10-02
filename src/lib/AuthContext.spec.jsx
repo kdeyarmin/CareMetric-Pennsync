@@ -406,6 +406,7 @@ describe('AuthProvider tenant authority state machine', () => {
   it.each([
     ['a sign-out elsewhere removes the record', recordFor('nurse@example.test', 'old-token-12345'), null],
     ['another address signing in replaces it', recordFor('nurse@example.test', 'old-token-12345'), recordFor('other@example.test', 'new-token-12345')],
+    ['a same-address write the device would reject (extra field) is a removal', recordFor('nurse@example.test', 'old-token-12345'), JSON.stringify({ v: 1, email: 'nurse@example.test', refresh_token: 'old-token-12345', scope: 'all' })],
     ['a record appears where there was none', null, recordFor('other@example.test', 'new-token-12345')],
   ])('control: %s still closes this realm', async (_name, oldValue, newValue) => {
     const { signOut } = await readyIndependent();

@@ -128,6 +128,18 @@ describe('the device record', () => {
 });
 
 describe('which storage events change who this browser is', () => {
+  it('a same-address write readRecord would REJECT is a removal, not a rotation', () => {
+    const old = record();
+    for (const bad of [
+      record({ scope: 'all' }),
+      record({ refresh_token: 'short' }),
+      record({ v: 2 }),
+      record({ email: 'Nurse@Agency.example' }),
+    ]) {
+      expect(ownedSessionEventChangesIdentity({ key: KEY, oldValue: old, newValue: bad })).toBe(true);
+    }
+  });
+
   const rec = (email, token) => JSON.stringify({ v: 1, email, refresh_token: token });
   it('a rotation for the same address does not', () => {
     expect(ownedSessionEventChangesIdentity({ oldValue: rec(EMAIL, 'a-token-12345'), newValue: rec(EMAIL, 'b-token-12345') })).toBe(false);

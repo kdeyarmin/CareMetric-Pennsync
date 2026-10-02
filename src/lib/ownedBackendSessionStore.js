@@ -69,22 +69,25 @@ export function clearStoredOwnedSession() {
  * refusal rather than something to ignore, because honouring part of a record
  * somebody else wrote is how a stored session becomes an injected one.
  */
-function readRecord() {
-  const raw = (() => { try { return store()?.getItem(OWNED_SESSION_STORAGE_KEY) ?? null; } catch { return null; } })();
-  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4096) {
-    if (raw !== null) clearStoredOwnedSession();
-    return null;
-  }
+/** The record a serialised value is, or null. Pure: it touches no storage. */
+function parseRecord(raw) {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4096) return null;
   let value;
-  try { value = JSON.parse(raw); } catch { clearStoredOwnedSession(); return null; }
+  try { value = JSON.parse(raw); } catch { return null; }
   const ok = value && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).every(key => FIELDS.includes(key)) && FIELDS.every(key => key in value)
     && value.v === VERSION
     && typeof value.email === 'string' && value.email.length <= 320 && EMAIL.test(value.email)
     && value.email === value.email.trim().toLowerCase()
     && typeof value.refresh_token === 'string' && REFRESH.test(value.refresh_token);
-  if (!ok) { clearStoredOwnedSession(); return null; }
-  return value;
+  return ok ? value : null;
+}
+
+function readRecord() {
+  const raw = (() => { try { return store()?.getItem(OWNED_SESSION_STORAGE_KEY) ?? null; } catch { return null; } })();
+  const record = parseRecord(raw);
+  if (!record && raw !== null) clearStoredOwnedSession();
+  return record;
 }
 
 /**
@@ -162,13 +165,9 @@ export function createOwnedSessionPort(email) {
   });
 }
 
-const emailOfSerialised = raw => {
-  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4096) return null;
-  try {
-    const value = JSON.parse(raw);
-    return value && typeof value === 'object' && typeof value.email === 'string' ? value.email : null;
-  } catch { return null; }
-};
+// The SAME validation `readRecord` applies: anything it would reject is, to this
+// device, no record at all, so a write of one is a removal and not a rotation.
+const emailOfSerialised = raw => parseRecord(raw)?.email ?? null;
 
 /**
  * Whether a `storage` event on the record's key means ANOTHER tab changed who
