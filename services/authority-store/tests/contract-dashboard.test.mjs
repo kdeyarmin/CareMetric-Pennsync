@@ -21,6 +21,7 @@ import { applyRecordMigrations } from './record-migrations.mjs';
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
 const DASHBOARD = `${MIGRATIONS}20260920500000_contract_dashboard.sql`;
+const FORWARD_NAME = '20260920745000_dashboard_visit_documentation.sql';
 const ORIGINAL = 'base44/functions/getDashboardData/entry.ts';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -40,7 +41,28 @@ before(async () => {
   // The whole record directory, in the order a deployment applies
   // it. A forward migration is applied by every suite that adopts this walk,
   // which is the only way a contract suite can see one land on it.
-  await applyRecordMigrations(db);
+  const applied = await applyRecordMigrations(db);
+  // The guard is RETIRED here, by the helper's own instruction: this migration
+  // has MERGED, and `20260920750000_oasis_schema_tables` -- which this merge
+  // brings in -- now sorts after it. The helper admits exactly one holder, so
+  // the call moves on to `record-store-catchup.test.mjs` and is held there
+  // alone; keeping it would fail this `before` and take every test in this
+  // suite down with it, naming a contract that had done nothing wrong.
+  //
+  // The comment this replaces is worth reading before the next hand repeats it.
+  // It traced the holder through six suites and ended by recording that its own
+  // predecessor line had gone stale against the merged tree while naming a true
+  // one -- and then went stale the same way, for the same reason, because the
+  // branch that moves the guard on and the file that names the holder are never
+  // the same file and git has nothing to conflict. So the chain is not recorded
+  // here at all now: `grep` for the live call answers it against whatever tree
+  // you are holding, and a sentence cannot.
+  //
+  // Retiring it is NOT asserting nothing. The line below is this suite's own
+  // property -- that the walk really did apply the migration this suite
+  // measures -- and it is what still catches this file being renamed away.
+  assert.ok(applied.includes(FORWARD_NAME),
+    `the record walk did not apply ${FORWARD_NAME}`);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(`update pennsync_private.membership set tenant_role = 'office_staff'
     where id = 'membership-3'`);
@@ -55,17 +77,20 @@ before(async () => {
         'revoked@example.invalid',$5)`,
     [APP, id, agency, status, JSON.stringify(['revoked@example.invalid'])]);
   }
-  for (const [id, patient, date, status] of [
-    ['visit-today', 'patient-a1', today, 'scheduled'],
-    ['visit-old', 'patient-a1', '2026-01-02', 'completed'],
-    ['visit-done-today', 'patient-a1', today, 'completed'],
-    ['visit-a2', 'patient-a2', today, 'scheduled'],
-    ['visit-discharged', 'patient-a3', today, 'scheduled'],
+  // The fifth column is `nurse_notes`, which decides `has_documentation`:
+  // `visit-old` carries one, `visit-a2` carries whitespace only, and the rest
+  // carry none. No row is added for it, so every count below is unchanged.
+  for (const [id, patient, date, status, notes] of [
+    ['visit-today', 'patient-a1', today, 'scheduled', null],
+    ['visit-old', 'patient-a1', '2026-01-02', 'completed', 'Ambulated 50 feet with a walker.'],
+    ['visit-done-today', 'patient-a1', today, 'completed', null],
+    ['visit-a2', 'patient-a2', today, 'scheduled', '  \t \n '],
+    ['visit-discharged', 'patient-a3', today, 'scheduled', null],
   ]) {
     await db.query(`insert into ${SCHEMA}."visit"("source_app_id","id","agency_id",
-      "patient_id","visit_date","visit_time","visit_type","status")
-      values ($1,$2,$3,$4,$5,'09:00','skilled_nursing',$6)`,
-    [APP, id, A, patient, date, status]);
+      "patient_id","visit_date","visit_time","visit_type","status","nurse_notes")
+      values ($1,$2,$3,$4,$5,'09:00','skilled_nursing',$6,$7)`,
+    [APP, id, A, patient, date, status, notes]);
   }
   for (const [id, patient] of [['incident-a1', 'patient-a1'], ['incident-a2', 'patient-a2']]) {
     await db.query(`insert into ${SCHEMA}."incident"("source_app_id","id","patient_id",
@@ -115,7 +140,8 @@ test('the projection is what the dashboard\'s own widgets read', async () => {
   const shapes = {
     patients: ['id', 'first_name', 'last_name', 'status', 'primary_diagnosis',
       'address', 'updated_date'],
-    visits: ['id', 'patient_id', 'status', 'visit_date', 'visit_time', 'visit_type'],
+    visits: ['id', 'patient_id', 'status', 'visit_date', 'visit_time', 'visit_type',
+      'has_documentation'],
     incidents: ['id', 'patient_id', 'status', 'incident_date', 'incident_name',
       'incident_type'],
     care_plans: ['id', 'patient_id', 'status', 'target_date', 'problem'],
@@ -135,8 +161,10 @@ test('the projection is what the dashboard\'s own widgets read', async () => {
     [...shapes.visits].sort(), 'completed visits are visits');
 });
 
-test('four fields the widgets read exist in neither store, and two are defects', async () => {
-  // Recorded rather than invented, which is what this port turns on.
+test('the four absent fields, and the two defects that are now fixed', async () => {
+  // This test recorded four fields the widgets read that exist in neither
+  // store. Two of them were defects and both are now fixed; the columns are
+  // still absent, which is why the fixes do not reach for them.
   const priorities = readFileSync(resolve(repository,
     'src/components/dashboard/todayPriorities.js'), 'utf8');
   const store = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
@@ -144,31 +172,90 @@ test('four fields the widgets read exist in neither store, and two are defects',
     store.indexOf('\n);', store.indexOf('create table "pennsync_records"."patient" (')));
   const visit = store.slice(store.indexOf('create table "pennsync_records"."visit" ('),
     store.indexOf('\n);', store.indexOf('create table "pennsync_records"."visit" (')));
+  const answer = await dashboard(ADMIN_A);
 
-  // "N high-risk patients to review" reads three spellings and none exists.
-  assert.match(priorities, /patient\?\.risk_level \|\| patient\?\.riskLevel/);
-  assert.match(priorities, /patient\?\.hospitalization_risk === 'high'/);
-  for (const column of ['risk_level', 'hospitalization_risk']) {
+  // D73's rule: a check that reads a file for an ABSENT name has to say
+  // whether it means absent from the code or from the page. These mean the
+  // code, and the module's own comments name all three dead spellings while
+  // explaining why they went — so strip the comments first, and prove the
+  // stripper bit by asserting the prose still carries what the code does not.
+  const code = priorities.replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  assert.ok(priorities.includes('risk_level'), 'the prose explains the removal');
+  assert.ok(code.length > 0.5 * priorities.length, 'the stripper kept the code');
+
+  // STILL ABSENT, all four. Nothing below invents a column.
+  for (const column of ['risk_level', 'hospitalization_risk', 'full_name', 'name']) {
     assert.equal(patient.includes(`"${column}"`), false, `${column} has no column`);
+  }
+  assert.equal(visit.includes('"note_id"'), false, 'note_id has no column');
+  for (const column of ['risk_level', 'hospitalization_risk']) {
     assert.equal(readFileSync(resolve(repository, 'base44/entities/Patient.jsonc'), 'utf8')
       .includes(`"${column}"`), false, `${column} is not in the entity schema either`);
   }
-  // So the priority can never fire, in Base44 today as much as here.
-  const answer = await dashboard(ADMIN_A);
   assert.equal(answer.patients.some(row => Object.hasOwn(row, 'risk_level')), false);
-
-  // "N completed visits need notes" is `!visit.note_id`, and there is no such
-  // column — so the negation is always true and it OVER-reports.
-  assert.match(priorities, /visit\?\.status === 'completed' && !visit\?\.note_id/);
-  assert.equal(visit.includes('"note_id"'), false, 'note_id has no column');
   assert.equal(answer.visits.some(row => Object.hasOwn(row, 'note_id')), false);
 
-  // And `patientName`'s two fallbacks are dead: the carried patient has first
-  // and last names and neither of the others (D38's family).
-  assert.match(priorities, /patient\?\.full_name \|\| patient\?\.name/);
-  for (const column of ['"full_name"', '"name"']) {
-    assert.equal(patient.includes(column), false, `${column} has no column`);
+  // DEFECT ONE, fixed. "N high-risk patients to review" read three spellings
+  // of a column that does not exist, so it could never fire. It now reads
+  // PatientAlert, which is what the product writes and what
+  // HighRiskPatientsWidget on this same dashboard already reads. The
+  // contract is not the answer here and projects nothing new: the alerts
+  // come through `getScopedPatientAlerts`, not through this payload.
+  for (const dead of ['risk_level', 'riskLevel', 'hospitalization_risk']) {
+    assert.equal(code.includes(dead), false,
+      `the priority no longer reads patient.${dead}`);
   }
+  assert.match(priorities, /highRiskPatientIds\(patientAlerts\)/);
+
+  // DEFECT TWO, fixed. `!visit.note_id` was always true, so the tile counted
+  // every completed visit. It now asks `nurse_notes` on the Base44 path and
+  // the projected boolean here, and the boolean is what this contract adds.
+  assert.equal(code.includes('note_id'), false,
+    'the priority no longer reads visit.note_id');
+  assert.match(priorities, /visit\?\.has_documentation/);
+  const byId = new Map(answer.visits.concat(answer.recent_completed_visits)
+    .map(row => [row.id, row]));
+  assert.equal(byId.get('visit-done-today').has_documentation, false,
+    'a completed visit with no note needs one');
+  assert.equal(byId.get('visit-old').has_documentation, true,
+    'a completed visit carrying a note does not');
+  assert.equal(byId.get('visit-a2').has_documentation, false,
+    'whitespace is not documentation');
+
+  // `documentation_source` is NOT the signal, and this is the row that proves
+  // it: the column carries a default, so it is non-null on a visit nobody has
+  // documented.
+  const { rows } = await db.query(`select "documentation_source" as source
+    from ${SCHEMA}."visit" where "id" = 'visit-done-today'`);
+  assert.equal(rows[0].source, 'smart_note');
+  assert.equal(byId.get('visit-done-today').has_documentation, false);
+
+  // The two dead fallbacks in `patientName` are unchanged and still dead: the
+  // carried patient has first and last names and neither of the others.
+  assert.match(priorities, /patient\?\.full_name \|\| patient\?\.name/);
+});
+
+test('the documentation predicate agrees with the browser\'s trim', async () => {
+  // D57's rule: do not assert a table of expected answers you worked out
+  // yourself. The character class is LIFTED out of the migration and run
+  // against the same strings `visitHasDocumentation` sees, so a class that
+  // drifts from JavaScript's whitespace set fails here.
+  const forward = readFileSync(resolve(repository, MIGRATIONS + FORWARD_NAME), 'utf8');
+  const match = forward.match(/nurse_notes" ~\s*\n?\s*'(\[\^[^']+\])'/);
+  assert.ok(match, 'the class is where this test reads it from');
+  const samples = ['', ' ', '\t', '\n', '\r', '\f', '\v', '  \t \n ', '\u00a0',
+    '\u2003', '\u3000', '\ufeff', 'x', ' x ', '0', 'Ambulated 50 feet.'];
+  for (const sample of samples) {
+    const { rows } = await db.query(`select coalesce($1 ~ '${match[1]}', false) as held`,
+      [sample]);
+    assert.equal(rows[0].held, sample.trim() !== '',
+      `${JSON.stringify(sample)} must agree with String.prototype.trim`);
+  }
+  // And the control: the class really is doing the work, so a predicate that
+  // only knew about the ASCII space would disagree on one of these.
+  const naive = await db.query(`select coalesce(btrim($1) <> '', false) as held`, ['\t']);
+  assert.equal(naive.rows[0].held, true, 'btrim alone would have said documented');
 });
 
 test('the scope is the chart, not an address on the patient row', async () => {

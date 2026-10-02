@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url';
 import {
   CARRIED, CHART_ROOT, CHART_SUBJECTS, DECLARED_IMMUTABLE, DECLARED_UNIQUE, EXPECTATIONS_FILE,
   FORMAT, FORMAT_VERSION, IMMUTABILITY_CLAIM, IMMUTABLE_KINDS,
-  CONTRACT_UNIQUE, RECORD_MIGRATION_FILE, SCHEMA, UNIQUENESS_CLAIM, UNIQUE_KINDS,
-  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, contractUniqueKeys, contractUniqueName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
+  CONTRACT_UNIQUE, RECORD_MIGRATION_FILE, SCHEMA, SCHEMA_ONLY, SCHEMA_ONLY_REASON_MINIMUM,
+  UNIQUENESS_CLAIM, UNIQUE_KINDS,
+  assertSchemaOnly, buildPlan, carriesTable, chartPredicate, chartSubject, columnType, comparePlan, constraintName, contractUniqueKeys, contractUniqueName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
 } from './tools-entity-schema-plan.mjs';
+import { SCHEMA_ONLY_TABLES } from './tools-pennsync-record-catchup.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const entity = (properties, name = 'Probe') => JSON.stringify({ name, type: 'object', properties, required: [], rls: {} });
@@ -46,16 +48,61 @@ test('the committed plan still matches the entity definitions', () => {
   assert.deepEqual(report.changed, []);
 });
 
-test('only entities dispositioned port or broker get a table', () => {
+test('a table comes from a carried disposition or from SCHEMA_ONLY, and from nothing else', () => {
   const plan = buildPlan(repository);
   const dispositions = JSON.parse(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).entities;
   for (const carried of plan.entities) {
-    assert.ok(CARRIED.includes(dispositions[carried.entity]), `${carried.entity} should not be carried`);
+    assert.ok(CARRIED.includes(dispositions[carried.entity]) || Object.hasOwn(SCHEMA_ONLY, carried.entity),
+      `${carried.entity} should not have a table`);
   }
-  // A paused or retired entity must not silently acquire a home here.
-  assert.equal(plan.entities.some(carried => carried.entity === 'OASISAssessment'), false);
+  // A paused entity NOT named in SCHEMA_ONLY must still not acquire a home
+  // here, and the control has to be one of the 46 OTHER paused entities for
+  // that to bite: a change that widened the disposition instead of enumerating
+  // would pass every assertion above and fail only this one. `TrainingCourse`
+  // was the first control written here and is `hub`, which would have made this
+  // pass for the wrong reason, so the disposition is asserted beside the name.
+  assert.equal(dispositions.FaxLog, 'preserved_paused');
+  assert.equal(Object.hasOwn(SCHEMA_ONLY, 'FaxLog'), false);
+  assert.equal(plan.entities.some(carried => carried.entity === 'FaxLog'), false);
+  assert.equal(carriesTable('FaxLog', 'preserved_paused'), false);
+  assert.equal(carriesTable('OASISUpload', 'preserved_paused'), true);
+  assert.equal(carriesTable('Patient', 'port'), true);
   assert.equal(plan.entities.some(carried => carried.entity === 'TrainingCourse'), false);
   assert.ok(plan.entities.some(carried => carried.entity === 'Patient'));
+  // And the eight are in, by the second route rather than the first.
+  for (const entity of Object.keys(SCHEMA_ONLY)) {
+    assert.equal(dispositions[entity], 'preserved_paused', entity);
+    assert.ok(plan.entities.some(carried => carried.entity === entity), entity);
+  }
+  assert.equal(plan.totals.carried + plan.totals.schema_only, plan.totals.tables);
+  assert.equal(plan.totals.schema_only, Object.keys(SCHEMA_ONLY).length);
+});
+
+test('a SCHEMA_ONLY entry whose disposition moved underneath it is refused', () => {
+  const dispositions = JSON.parse(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).entities;
+  // The real manifest passes. Everything below sabotages a copy of it, because
+  // a check that has never been seen to bite is a comment.
+  assert.doesNotThrow(() => assertSchemaOnly(dispositions));
+  const subject = Object.keys(SCHEMA_ONLY)[0];
+  // Ported: the entry is stale and its entity belongs to `CARRIED`'s answer now.
+  assert.throws(() => assertSchemaOnly({ ...dispositions, [subject]: 'port' }),
+    new RegExp(`SCHEMA_ONLY_ALREADY_CARRIED:${subject}`));
+  // Retired or moved to the hub: there is no schema here to migrate at all.
+  assert.throws(() => assertSchemaOnly({ ...dispositions, [subject]: 'retire' }),
+    new RegExp(`SCHEMA_ONLY_NOT_PAUSED:${subject}:retire`));
+  assert.throws(() => assertSchemaOnly({ ...dispositions, [subject]: undefined }),
+    new RegExp(`SCHEMA_ONLY_NOT_PAUSED:${subject}:missing`));
+  // A schema that was deleted under an entry would plan nothing, quietly.
+  assert.throws(() => assertSchemaOnly(dispositions, new Set()),
+    new RegExp(`SCHEMA_ONLY_SCHEMA_MISSING:${subject}`));
+  // And an entry that says nothing is not an entry. Checked on a synthetic
+  // list rather than by shortening a real reason, so the real ones stay put.
+  for (const because of ['', '   ', 'because D7 says so']) {
+    assert.ok(because.trim().length < SCHEMA_ONLY_REASON_MINIMUM, because);
+  }
+  for (const [name, because] of Object.entries(SCHEMA_ONLY)) {
+    assert.ok(because.trim().length >= SCHEMA_ONLY_REASON_MINIMUM, name);
+  }
 });
 
 test('the plan never claims to be reviewed, indexed or applied', () => {
@@ -644,11 +691,28 @@ test('the committed migration carries one policy per name, and the count is pinn
   // Read from the committed SQL rather than from the plan on purpose: the
   // plan carries no policy total, and what the claim is ABOUT is what a
   // caller's role meets in the store, which is the emitted file.
+  //
+  // 590 until the eight D7 schema-only tables landed, which added four policies
+  // each. The figure is pinned rather than derived from the table count for the
+  // reason it was pinned in the first place: four entities get read and insert
+  // and NO update or delete (D32), so policies-per-table is not four and a
+  // derived pin would quietly accept a missing one.
   const sql = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8')
     .split('\n').filter(line => !line.trimStart().startsWith('--')).join('\n');
   const names = [...sql.matchAll(/create policy "([^"]+)"/g)].map(match => match[1]);
-  assert.equal(names.length, 590);
+  assert.equal(names.length, 622);
   // A duplicate name would apply twice and read as one policy in any count
   // taken by eye, so the distinctness is the half a grep cannot give you.
   assert.equal(new Set(names).size, names.length);
+});
+
+test('the catch-up tool\'s copy of the schema-only table names is the same list', () => {
+  // `tools-pennsync-record-catchup.mjs` spells the eight table names out rather
+  // than importing `SCHEMA_ONLY`, so that it pulls in no `json5` and stays
+  // loadable from the isolated authority job. The cost of that second copy is
+  // paid here, in the root suite, where both are reachable: a ninth entity added
+  // to `SCHEMA_ONLY` without extending that list would otherwise ship a forward
+  // migration that silently carried eight tables out of nine.
+  assert.deepEqual([...SCHEMA_ONLY_TABLES].sort(),
+    Object.keys(SCHEMA_ONLY).map(name => snakeCase(name)).sort());
 });

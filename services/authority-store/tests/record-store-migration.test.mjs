@@ -18,7 +18,7 @@ import { OWNER_ROLE, RECORD_MIGRATION_FILE, SCHEMA, renderMigration } from '../.
  * 1. **Who owns the tables.** `force row level security` binds a table's owner
  *    — but never a `SUPERUSER` or `BYPASSRLS` role. The authority store's
  *    migrations require exactly such an administrator, so tables left owned by
- *    the migration role would carry 596 policies that nothing obeys. Both
+ *    the migration role would carry every one of its policies and obey none. Both
  *    reviewers of the policy work raised this, and it was recorded as open
  *    because the migration that creates the store did not exist. It does now.
  *
@@ -187,7 +187,14 @@ test('the record owner is a role row level security applies to', async () => {
   const { rows } = await db.query(
     'select rolsuper, rolbypassrls, rolcanlogin from pg_catalog.pg_roles where rolname = $1', [OWNER_ROLE]);
   assert.equal(rows.length, 1, `${OWNER_ROLE} should exist after the migration`);
-  // Any one of these being true silently voids all 596 policies.
+  // `rolsuper` or `rolbypassrls` silently voids every policy in this store at once, and the
+  // migration refuses either one by name (PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS).
+  // `rolcanlogin` bypasses nothing and is a separate prohibition with its own refusal
+  // (PENNSYNC_RECORD_OWNER_MUST_NOT_LOGIN): it decides whether anyone can connect as the role
+  // that owns every record table. One assertion, three fields, two reasons. The count of
+  // policies is deliberately not carried here: 596 was what this comment said and nothing
+  // derived it, and a grep of the migrations answers about the tree rather than about the
+  // store a run built.
   assert.deepEqual(rows[0], { rolsuper: false, rolbypassrls: false, rolcanlogin: false });
 });
 

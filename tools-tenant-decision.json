@@ -250,6 +250,26 @@
       "kind": "agency",
       "because": "Keyed by nurse_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
     },
+    "OASISActionItem": {
+      "kind": "agency",
+      "because": "Its only subject is `patient_name`, a string. There is no `patient_id` to follow to a chart and no agency column, so a derived path would put every bulk-created action item in no tenant at all (D61). It takes a real key before load, and D24 cannot narrow it."
+    },
+    "OASISAudit": {
+      "kind": "agency",
+      "because": "Carries an optional `patient_id`, so a reference path would leave every audit filed before a chart exists in no tenant (D61). The key is its own, and D24 narrows the row to a chart wherever a subject is named."
+    },
+    "OASISAutomationRule": {
+      "kind": "agency",
+      "because": "Agency configuration: the rules staff author for their own agency. Nothing in the schema names a tenant -- `apply_to_patient_types` is a category list, not a reference -- so the key is added before load rather than guessed afterwards."
+    },
+    "OASISFeedback": {
+      "kind": "agency",
+      "because": "Carries four optional references (`patient_id`, `suggested_patient_id`, `actual_patient_id`, `visit_id`) and no required one, so no reference path resolves (D61). Keyed by the agency whose staff gave the feedback; D24 narrows it where `patient_id` is set."
+    },
+    "OASISScenario": {
+      "kind": "agency",
+      "because": "A saved what-if scenario, whose `patient_id` is optional because a scenario may be hypothetical. That is precisely the nullable reference D61 refuses as a tenancy, so it takes its own key and D24 narrows the ones that do name a chart."
+    },
     "OCRFeedback": {
       "kind": "agency",
       "because": "Its only tenancy signal is corrected_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
@@ -398,7 +418,7 @@
     },
     "User": {
       "kind": "roster",
-      "because": "D23. Its agency_id, agency_name and account_type are self-editable profile labels \u2014 each field's own schema description says so and says never to authorize from it \u2014 so no predicate written against this row can decide who may read it. The authority store's membership already models the roster, cannot be edited by its subject, and pennsync_private.context authorizes against it today; caller_roster_ids() asks it. Read only: with no write policy, forced RLS refuses every write from everyone including the record owner, which keeps D23's open profile-write question from quietly resolving itself as allowed."
+      "because": "D23. Its agency_id, agency_name and account_type are self-editable profile labels — each field's own schema description says so and says never to authorize from it — so no predicate written against this row can decide who may read it. The authority store's membership already models the roster, cannot be edited by its subject, and pennsync_private.context authorizes against it today; caller_roster_ids() asks it. Read only: with no write policy, forced RLS refuses every write from everyone including the record owner, which keeps D23's open profile-write question from quietly resolving itself as allowed."
     },
     "UserFavorite": {
       "kind": "self",
