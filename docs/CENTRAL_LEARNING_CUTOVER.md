@@ -105,5 +105,19 @@ says in its own comment that it does so to match the entity policy, while
 `account_type === "super_admin"` — self-editable labels that the entity policy
 does not honour, so such a caller reaches the authoring screen and the create
 fails underneath it. **So the authored-course population is bounded by whoever
-holds the built-in `admin` role**, and sizing step 2 at zero is a default taken
-on that bound, not a measurement of the rows.
+holds the built-in `admin` role** — a bound on who, which is not a count of
+what.
+
+**The owner then answered that there are some, 2026-10-02.** Asked directly
+whether he had built any courses himself, he said "There are ones there". So
+agency-authored courses exist. An earlier draft of this section ended by sizing
+step 2 at zero as a default taken on the bound above; that default is
+falsified and is withdrawn. Step 2 is real work, and carrying authored content
+across is built work rather than a contingency held against the possibility.
+
+What his answer does **not** supply is a count, a list, or any property of the
+rows. The instrument is unchanged: the `(title, annual_cycle_year)`
+discriminator against the seeded set, run over an export of the production
+Base44 app that the owner makes, because no credential here reaches it. Size
+step 2 from that export when it exists, and until then treat the population as
+non-empty and unmeasured — not as a number.
