@@ -1,6 +1,5 @@
-import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useQuery } from "@tanstack/react-query";
+import { useHighRiskPatientAlerts } from "@/components/dashboard/useHighRiskPatientAlerts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,42 +19,12 @@ import { Button } from "@/components/ui/button";
  * exist on that entity, so the widget always rendered empty.
  */
 export default function HighRiskPatientsWidget() {
-  const { data: highRiskAlerts = [] } = useQuery({
-    queryKey: ['highRiskPatients', 'scoped-alerts'],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getScopedPatientAlerts', {
-        limit: 500,
-        status: 'active',
-        severity: ['high', 'critical'],
-      });
-      const alerts = res?.data?.alerts || [];
-      // One row per patient — keep the highest severity / newest.
-      const byPatient = new Map();
-      const severityRank = { critical: 2, high: 1 };
-      for (const alert of alerts) {
-        if (!alert?.patient_id) continue;
-        const prev = byPatient.get(alert.patient_id);
-        if (!prev) {
-          byPatient.set(alert.patient_id, alert);
-          continue;
-        }
-        const prevRank = severityRank[prev.severity] || 0;
-        const nextRank = severityRank[alert.severity] || 0;
-        if (nextRank > prevRank) {
-          byPatient.set(alert.patient_id, alert);
-        } else if (nextRank === prevRank) {
-          const prevDate = new Date(prev.created_date || 0).getTime();
-          const nextDate = new Date(alert.created_date || 0).getTime();
-          if (nextDate > prevDate) byPatient.set(alert.patient_id, alert);
-        }
-      }
-      return Array.from(byPatient.values())
-        .sort((a, b) => (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0))
-        .slice(0, 10);
-    },
-    initialData: [],
-    refetchInterval: 300000,
-  });
+  // One row per patient, from the shared query in useHighRiskPatientAlerts
+  // so the "N high-risk patients to review" priority on this same page asks
+  // the same question through the same key. The hook returns every matching
+  // patient; this widget shows the ten most severe, as it always has.
+  const { data: highRiskPage } = useHighRiskPatientAlerts();
+  const highRiskAlerts = (highRiskPage?.alerts ?? []).slice(0, 10);
 
   const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 500 });
 

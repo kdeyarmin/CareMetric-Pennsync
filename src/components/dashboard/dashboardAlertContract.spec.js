@@ -33,6 +33,17 @@ describe('dashboard alert data contract', () => {
     expect(dashboard).toMatch(/visits=\{alertVisits\}/);
   });
 
+  it('a failed alert read reaches the priority builder as an error', () => {
+    // getScopedPatientAlerts and getDashboardData are two reads. If only the
+    // first fails, an empty alert list is indistinguishable from no high-risk
+    // patients once it reaches buildTodayPriorities, so the tile would report
+    // all clear rather than saying it could not tell. The builder's error input
+    // therefore has to carry both.
+    expect(dashboard).toMatch(/error:\s*patientAlertsError/);
+    expect(dashboard).toMatch(/hasDataError\s*=\s*visitsError\s*\|\|\s*patientsError\s*\|\|\s*patientAlertsError/);
+    expect(dashboard).toMatch(/dashboardError=\{hasDataError\}/);
+  });
+
   it('Incidents list uses a high limit before agency post-filter', () => {
     expect(incidentsPage).toMatch(/Incident\.list\("-created_date",\s*5000\)/);
     expect(incidentsPage).not.toMatch(/Incident\.list\("-created_date",\s*10\)/);

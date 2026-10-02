@@ -339,6 +339,139 @@ function validateTarget(config) {
   return Object.freeze({ ...config, apiUrl: config.apiUrl ?? null, base44UserId: ACTORS.get(config.email) });
 }
 
+/** The two authority methods a production caller may ask for, and nothing else. */
+export const PRODUCTION_METHODS = Object.freeze(['context', 'memberships']);
+const EMAIL = /^[^\s@]{1,128}@[^\s@.]+(?:\.[^\s@.]+)+$/;
+const PROJECT_REF = /^[a-z]{20}$/;
+
+/**
+ * A production target, read from build configuration rather than pinned here.
+ *
+ * Staging is pinned to one app, one project and four accounts because it is one
+ * reviewed environment. Production cannot be: the app id, the Supabase project
+ * and the service origin are properties of a deployment, so this validates
+ * their SHAPE and the relationships between them, and refuses anything that
+ * would send a caller's bearer somewhere unintended.
+ *
+ * Three refusals are the load-bearing ones rather than the shape checks.
+ * `projectUrl` has to be exactly `https://<projectRef>.supabase.co`, so the
+ * origin is DERIVED from the reference and a mismatched pair cannot be
+ * configured — the property the staging pin buys by enumeration, kept without
+ * enumerating. The staging app id and the staging project are refused by name,
+ * because a build that selected production mode and then pointed at the
+ * synthetic store would read as production to every screen while standing on
+ * synthetic rows. And `apiUrl` must be an origin and only an origin (no
+ * credentials, no path, no query), because this caller's access token is sent
+ * there: a path accepted here would let a configuration mistake post the
+ * bearer to someone else's endpoint on a host we do run.
+ */
+export function validateProductionDeployment(config) {
+  if (!object(config) || typeof config.appId !== 'string' || !/^[0-9a-f]{24}$/.test(config.appId)
+    || config.appId === STAGING_APP_ID || typeof config.publishableKey !== 'string'
+    || !/^sb_publishable_[A-Za-z0-9_-]{10,200}$/.test(config.publishableKey)) fail('INVALID_PRODUCTION_TARGET');
+  // The local harness keeps its own exact pair, exactly as staging does: a
+  // loopback origin is not a Supabase project and cannot be derived from a ref.
+  const local = config.projectRef === 'local-pennsync-authority' && config.projectUrl === 'http://127.0.0.1:54321';
+  const hosted = typeof config.projectRef === 'string' && PROJECT_REF.test(config.projectRef)
+    && config.projectRef !== 'xxtyweswohkvgkprimwa'
+    && config.projectUrl === `https://${config.projectRef}.supabase.co`;
+  if (!local && !hosted) fail('INVALID_PRODUCTION_TARGET');
+  if (typeof config.apiUrl !== 'string' || !validOrigin(config.apiUrl)) fail('INVALID_PRODUCTION_TARGET');
+  return Object.freeze({ ...config });
+}
+
+/**
+ * The deployment half, plus the one account this session acts as.
+ *
+ * Split so a build can validate its own configuration before anybody signs in —
+ * production has no actor map to construct a client from, which is how staging
+ * gets that check for free — while the closure still receives a frozen target
+ * carrying both halves.
+ */
+function validateProductionTarget(config) {
+  const deployment = validateProductionDeployment(config);
+  if (typeof config.email !== 'string' || config.email !== config.email.trim().toLowerCase()
+    || !EMAIL.test(config.email)) fail('INVALID_PRODUCTION_TARGET');
+  return Object.freeze({ ...deployment, email: config.email });
+}
+
+/**
+ * An origin and nothing more: `https://host[:port]`, or loopback over http for
+ * the local harness. Parsed rather than matched, so a credential, a path, a
+ * query or a fragment is refused by the URL's own fields instead of by a
+ * pattern somebody has to get right.
+ */
+export function validOrigin(value) {
+  let url;
+  try { url = new URL(value); } catch { return false; }
+  const loopback = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
+  return (url.protocol === 'https:' || loopback) && !url.username && !url.password
+    && url.pathname === '/' && !url.search && !url.hash && value === url.origin;
+}
+
+function validateProductionParams(method, input, appId) {
+  if (!PRODUCTION_METHODS.includes(method)) fail('INVALID_AUTHORITY_REQUEST');
+  const keys = METHODS[method];
+  if (!object(input) || !exact(input, keys)) fail('INVALID_AUTHORITY_REQUEST');
+  for (const value of Object.values(input)) {
+    if (typeof value !== 'string' || !ID.test(value)) fail('INVALID_AUTHORITY_REQUEST');
+  }
+  return Object.freeze({ ...input, p_app_id: appId });
+}
+
+/**
+ * The production reading of an authority answer.
+ *
+ * Deliberately a second validator rather than a flag on the staging one. Most
+ * of what that one asserts is synthetic — the pinned actor's legacy id, the
+ * pinned e-mail, `agency.name like 'Synthetic %'` — and a production answer has
+ * to fail every one of those while still being correct, so a shared validator
+ * would be a list of exceptions where this is a list of requirements.
+ *
+ * What it does NOT assert is worth saying. `staging` and `synthetic` are
+ * checked as booleans and not for their values: the store stamps both `true`
+ * unconditionally (`pennsync_private.context_value`), so requiring `false`
+ * would refuse the store we actually run against, and requiring `true` would
+ * break on the day that stamp is corrected. The contract string is asserted,
+ * because that is the shape promise and it does change deliberately.
+ */
+function validateProductionResult(result, method, params, config, authUserId) {
+  const commonKeys = ['contract', 'app_id', 'auth_user_id', 'staging', 'synthetic'];
+  const contextKeys = [...commonKeys, 'user_id', 'user_email', 'identity_version', 'is_platform_owner',
+    'agency_id', 'membership_id', 'membership_key', 'membership_version', 'membership_status', 'tenant_role', 'agency'];
+  const version = value => Number.isSafeInteger(value) && value >= 1;
+  const common = value => object(value) && value.contract === AUTHORITY_CONTRACT
+    && value.app_id === config.appId && value.auth_user_id === authUserId
+    && typeof value.staging === 'boolean' && typeof value.synthetic === 'boolean';
+  const subject = value => typeof value.user_id === 'string' && ID.test(value.user_id)
+    && value.user_email === config.email;
+  const context = (value, agencyId) => common(value) && exact(value, contextKeys) && subject(value)
+    && version(value.identity_version) && value.is_platform_owner === false
+    && typeof value.agency_id === 'string' && ID.test(value.agency_id)
+    && (!agencyId || value.agency_id === agencyId)
+    && typeof value.membership_id === 'string' && ID.test(value.membership_id)
+    && value.membership_key === `${value.agency_id}:${value.user_id}` && version(value.membership_version)
+    && value.membership_status === 'active'
+    && ['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care'].includes(value.tenant_role)
+    && exact(value.agency, ['id', 'name', 'status']) && value.agency.id === value.agency_id
+    && ['active', 'trial'].includes(value.agency.status)
+    && typeof value.agency.name === 'string' && value.agency.name.length >= 1 && value.agency.name.length <= 120;
+  if (method === 'context') {
+    if (!context(result, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
+    return result;
+  }
+  if (!common(result) || !exact(result, [...commonKeys, 'user_id', 'user_email', 'memberships']) || !subject(result)
+    || !Array.isArray(result.memberships) || result.memberships.length > 50
+    // Every listed membership has to be the SAME subject as the envelope: a
+    // row for somebody else in a list addressed to this caller is the one
+    // shape a per-row check alone would let through.
+    || result.memberships.some(value => !context(value) || value.user_id !== result.user_id)
+    || new Set(result.memberships.map(value => value.agency_id)).size !== result.memberships.length) {
+    fail('INVALID_AUTHORITY_RESPONSE');
+  }
+  return result;
+}
+
 function validateParams(method, input) {
   if (isReferralMethod(method)) {
     if (!validReferralParams(method,input)) fail('INVALID_AUTHORITY_REQUEST');
@@ -468,18 +601,56 @@ function validateResult(result, method, params, config) {
 }
 
 /** Credentials and tokens stay in this closure; no storage, refresh, or Base44 fallback. */
-export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
-  const config = validateTarget(input);
-  if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) fail('INVALID_STAGING_TARGET');
+export function createStagingAuthorityClient(input, options = {}) {
+  return createAuthorityClient(validateTarget(input), 'staging', options);
+}
+
+/**
+ * The same transport, for a real staff account on a production project.
+ *
+ * Shaped as a second ENTRY POINT into one closure rather than a second client,
+ * because what differs between the two is small and auditable — which target is
+ * accepted, how the caller's identity is established, and which authority
+ * methods may be asked — while everything that makes this transport safe (the
+ * epoch lease, the bounded read, the exact-session revocation, the token never
+ * leaving the closure) is the same code in both. A copy would be a second place
+ * for a session fence to rot.
+ *
+ * The difference that matters: staging pins the account's native UUID in
+ * configuration and refuses any grant that does not match it, because the four
+ * synthetic actors are provisioned once and known. Production cannot pin an id
+ * it has never seen, so the identity is LEARNED from the first grant — and the
+ * check that replaces the pin is that the grant's e-mail is the address that was
+ * submitted, confirmed, and `authenticated` rather than anonymous. Every later
+ * request in the session is then held to the id that grant established, so a
+ * second answer about a different person is refused exactly as it is in staging.
+ */
+export function createProductionAuthorityClient(input, options = {}) {
+  return createAuthorityClient(validateProductionTarget(input), 'production', options);
+}
+
+function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
+  const staging = mode === 'staging';
+  const targetCode = staging ? 'INVALID_STAGING_TARGET' : 'INVALID_PRODUCTION_TARGET';
+  if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) fail(targetCode);
   let epoch = 0;
   let token = null;
+  // Who this session is. Staging knows before it asks; production learns it from
+  // the grant and then holds every later answer to it. Cleared with the epoch so
+  // a fresh sign-in re-establishes it rather than inheriting the last one.
+  let authUserId = staging ? config.authUserId : null;
   const pending = new Set();
   // Candidate sessions never authorize RPCs. Retain only known access tokens in
   // memory until exact local-scope revocation succeeds; cleanup can be retried.
   const knownSessions = new Map();
-  const invalidate = () => { epoch += 1; token = null; for (const controller of pending) controller.abort(); pending.clear(); };
+  const invalidate = () => {
+    epoch += 1; token = null; if (!staging) authUserId = null;
+    for (const controller of pending) controller.abort(); pending.clear();
+  };
   const current = lease => { if (lease !== epoch) fail('STALE_AUTHORITY_SESSION'); };
-  const sameUser = user => object(user) && user.id === config.authUserId && user.email === config.email
+  const sameUser = user => object(user) && user.email === config.email
+    && typeof user.id === 'string' && UUID.test(user.id)
+    && (authUserId === null ? !staging : user.id === authUserId)
     && user.role === 'authenticated' && user.is_anonymous === false
     && typeof user.email_confirmed_at === 'string' && Number.isFinite(Date.parse(user.email_confirmed_at));
   const validGrant = session => sameUser(session?.user) && typeof session.access_token === 'string'
@@ -560,7 +731,9 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
       let candidate = null;
       try {
         await revokeAllKnown(); current(lease);
-        if (typeof password !== 'string' || password.length < 12 || password.length > 512) fail('INVALID_STAGING_CREDENTIAL');
+        if (typeof password !== 'string' || password.length < 12 || password.length > 512) {
+          fail(staging ? 'INVALID_STAGING_CREDENTIAL' : 'INVALID_PRODUCTION_CREDENTIAL');
+        }
         const session = await request('/auth/v1/token?grant_type=password', { lease, body: { email: config.email, password },
           receivedGrant: async (value, canceled) => {
             if (validGrant(value)) {
@@ -570,24 +743,49 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
             }
           } });
         if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        // Bind the production identity BEFORE the confirmation read, so that
+        // read is a check rather than a second chance to establish one: the
+        // `/user` answer now has to agree with the grant, which is the same
+        // thing staging's pinned id asks of both.
+        if (!staging) {
+          current(lease);
+          authUserId = session.user.id;
+        }
         const user = await request('/auth/v1/user', { lease, bearer: candidate, method: 'GET' });
         if (!sameUser(user)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
         current(lease);
         token = candidate;
-        return Object.freeze({ id: config.authUserId, email: config.email, provider: 'supabase', app_id: STAGING_APP_ID });
+        return Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
       } catch (error) {
+        // A learned identity that never produced a session is not one. Leaving
+        // it bound would let the next failed attempt be checked against a
+        // predecessor's grant instead of against nothing.
+        if (!staging && !token) authUserId = null;
         if (candidate) await revokeKnown(candidate);
         throw error;
       }
     },
     async rpc(method, input = {}) {
-      const params = validateParams(method, input);
+      const params = staging
+        ? validateParams(method, input)
+        : validateProductionParams(method, input, config.appId);
       if (!token) fail('AUTHENTICATION_REQUIRED');
       const lease = epoch;
+      // Both modes ask the same two wrappers, and the `staging_` in the name is
+      // historical rather than a scope. `pennsync_private.context` and
+      // `.memberships` read `pennsync_private.membership` and `.agency`
+      // generally — nothing in either is synthetic-constrained — and the ported
+      // business API already resolves EVERY caller's authority through
+      // `pennsync_staging_context` (`services/pennsync-api/authority.mjs:16`).
+      // So a production caller asking them is the path the service itself takes,
+      // not a staging path borrowed; a renamed wrapper would be a migration
+      // against a store that has already applied this one.
       const result = await request(`/rest/v1/rpc/pennsync_staging_${method}`, { lease, bearer: token, body: params,
         ...(method === 'visit_documentation' ? { maxResponseBytes: VISIT_DOCUMENTATION_MAX_BYTES } : {}) });
       current(lease);
-      return validateResult(result, method, params, config);
+      return staging
+        ? validateResult(result, method, params, config)
+        : validateProductionResult(result, method, params, config, authUserId);
     },
     /**
      * Call a released ported handler as this caller.
