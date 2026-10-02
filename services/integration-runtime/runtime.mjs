@@ -155,6 +155,13 @@ export function createStore(config, fetcher = fetch) {
     fileGet: body => rpc('cm_integration_file_get', body), fileRecord: body => rpc('cm_integration_file_record', body),
     fileGetAuthorized: body => rpc('cm_integration_file_get_authorized', body),
     fileRecordOwned: body => rpc('cm_integration_file_record_owned', body),
+    // The provider credential's three RPCs (007). `credentialActive` carries
+    // the sealed key and `credentialStatus` does not: two entries rather than
+    // one with a flag, because the projection is the control and a caller of
+    // the status path must not be able to ask for the key.
+    credentialActive: body => rpc('cm_integration_credential_active', body),
+    credentialStatus: body => rpc('cm_integration_credential_status', body),
+    credentialPut: body => rpc('cm_integration_credential_put', body),
   };
 }
 function usableResult(operation, result) {
