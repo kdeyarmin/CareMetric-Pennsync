@@ -81,6 +81,27 @@ const HELPER_CALL = /\bapplyRecordMigrations\b/;
 const DIRECTORY_PAIR =
   /['"]\.\.\/supabase\/migrations\/['"]\s*,\s*['"]\.\.\/supabase\/record-migrations\/['"]/;
 
+/**
+ * Execing the text of a NAMED record migration, read through a path constant.
+ *
+ * The fourth route, and it was exposed rather than invented: `record-store-catchup.test.mjs`
+ * builds a store by reading `RECORD_MIGRATION_FILE` and the catch-up files through the
+ * generator's own exported path constants and `exec`ing the text, which is neither the
+ * helper nor the inline pair. It had been landing in `transitive` for a reason that was
+ * not true — it imported `./record-migrations.mjs` for the ordering guard alone, so
+ * `applyRecordMigrations` appeared in its CLOSURE while nothing called it, which is the
+ * "present and dead" failure this file's own `HELPER_CALL` docstring names. Retiring that
+ * guard removed the import and the misclassification surfaced at once, which is the
+ * closure working.
+ *
+ * Matched on the constants rather than on a path literal because the constants live in
+ * `tools-pennsync-record-catchup.mjs` and `tools-entity-schema-plan.mjs`, which are not
+ * siblings and so are outside the import closure this file walks. A suite naming one of
+ * them is naming a record migration BY FILE, which is what the route is.
+ */
+const FILE_CONSTANT =
+  /\b(RECORD_MIGRATION_FILE|SOURCE_MIGRATION|CATCHUP_MIGRATION|INDEX_CATCHUP_MIGRATION|DEFAULTS_CATCHUP_MIGRATION|TABLES_CATCHUP_MIGRATION)\b/;
+
 /** A sibling module in the same directory, which may apply on a suite's behalf. */
 const SIBLING_IMPORT = /from\s+['"]\.\/([A-Za-z0-9._-]+\.mjs)['"]/g;
 
@@ -120,7 +141,7 @@ export function classifySuites(repository = '.') {
   const namers = [];
   const appliers = [];
   const textReaders = [];
-  const byRoute = { helper: [], inline_pair: [], transitive: [] };
+  const byRoute = { helper: [], inline_pair: [], transitive: [], file_constant: [] };
 
   for (const suite of suites) {
     const own = sources.get(suite);
@@ -136,7 +157,8 @@ export function classifySuites(repository = '.') {
     const route = !store ? null
       : HELPER_CALL.test(own) ? 'helper'
         : (DIRECTORY_PAIR.test(own) ? 'inline_pair'
-          : HELPER_CALL.test(anywhere) || DIRECTORY_PAIR.test(anywhere) ? 'transitive' : null);
+          : HELPER_CALL.test(anywhere) || DIRECTORY_PAIR.test(anywhere) ? 'transitive'
+            : FILE_CONSTANT.test(own) ? 'file_constant' : null);
 
     if (route) {
       appliers.push(suite);
@@ -202,7 +224,8 @@ export function coverageLine(result = classifySuites()) {
   return `record migration coverage: ${suites.length} suites, ${namers.length} name the `
     + `directory, ${appliers.length} build a store from it `
     + `(helper=${byRoute.helper.length} inline-pair=${byRoute.inline_pair.length} `
-    + `transitive=${byRoute.transitive.length}), ${textReaders.length} read it as text only, `
+    + `transitive=${byRoute.transitive.length} file-constant=${byRoute.file_constant.length}), `
+    + `${textReaders.length} read it as text only, `
     + `${unnamed.length} applier(s) name it nowhere`;
 }
 

@@ -173,6 +173,13 @@
       "depth": 2
     },
     {
+      "entity": "CallLog",
+      "kind": "actor",
+      "via": "sent_by",
+      "target": null,
+      "depth": null
+    },
+    {
       "entity": "CareCoordinationAlert",
       "kind": "reference",
       "via": "patient_id",
@@ -379,6 +386,34 @@
       "entity": "FacilityDocumentationRule",
       "kind": "actor",
       "via": "created_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "FaxContact",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FaxLog",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FaxRetryConfig",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FaxTemplate",
+      "kind": "unresolved",
+      "via": null,
       "target": null,
       "depth": null
     },
@@ -614,6 +649,62 @@
       "depth": null
     },
     {
+      "entity": "OASISActionItem",
+      "kind": "actor",
+      "via": "reviewed_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OASISAssessment",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "OASISAudit",
+      "kind": "actor",
+      "via": "reviewed_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OASISAutomationRule",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OASISFeedback",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OASISScenario",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OASISUpload",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "OASISWorkflowExecution",
+      "kind": "reference",
+      "via": "oasis_upload_id",
+      "target": "OASISUpload",
+      "depth": 2
+    },
+    {
       "entity": "OCRFeedback",
       "kind": "actor",
       "via": "corrected_by",
@@ -778,6 +869,13 @@
       "entity": "PersonnelCredential",
       "kind": "actor",
       "via": "approved_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "PhoneNumber",
+      "kind": "unresolved",
+      "via": null,
       "target": null,
       "depth": null
     },
@@ -1098,15 +1196,15 @@
     }
   ],
   "totals": {
-    "carried": 156,
+    "carried": 170,
     "root": 1,
-    "direct": 14,
-    "reference": 41,
+    "direct": 19,
+    "reference": 42,
     "binding": 1,
-    "actor": 38,
+    "actor": 41,
     "profile_claim": 1,
-    "unresolved": 60,
+    "unresolved": 65,
     "max_depth": 3,
-    "blocking": 99
+    "blocking": 107
   }
 }

@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 
 import {
-  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, assertNewestRecordMigration,
+  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations,
 } from './record-migrations.mjs';
 import { maskPhone } from '../../../src/components/voice/phoneUtils.js';
 
@@ -70,10 +70,15 @@ before(async () => {
   }
   applied = await applyRecordMigrations(db);
   assert.ok(applied.includes(NAME), `${NAME} must be applied: this suite measures it`);
-  // While this change is unmerged, anything sorting after it is a base that
-  // moved under it. See `assertNewestRecordMigration`: this call RETIRES when
-  // the change merges rather than growing an exception list.
-  assertNewestRecordMigration(applied, NAME);
+  // The guard is RETIRED here, by the helper's own instruction: this migration
+  // has MERGED, and `20260920730000_timesheet_review_approver_role` — which this
+  // merge brings in — now sorts after it. The helper admits exactly one holder,
+  // so the call moves on to `contract-timesheet-review-approver.test.mjs` and is
+  // held there alone; keeping it would fail this `before` and take every test in
+  // this suite down with it, naming a contract that had done nothing wrong.
+  //
+  // Retiring it is NOT asserting nothing. The membership check above is this
+  // suite's own property and is what still catches this file being renamed away.
 });
 after(async () => db?.close());
 
