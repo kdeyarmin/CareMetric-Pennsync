@@ -255,8 +255,17 @@ export async function pinLocalStackToProduction() {
     // Anything that answered with a SQLSTATE is already diagnosed and is not
     // retried — a refusal does not become a different refusal when it is sent
     // twice, and retrying it would hide it behind the split's own outcome.
-    const crashed = !error.message.includes(' ') && position.startsWith('R')
-      && String(after) !== String(started);
+    // WHAT COUNTS AS THE BACKEND HAVING DIED, corrected by a run. The first
+    // version of this required the postmaster's start time to have MOVED, and
+    // `pg_postmaster_start_time()` does not move when a backend crashes: the
+    // postmaster survives, reinitializes, and reports the same start time. The
+    // run that proved it printed `signal 11: Segmentation fault` in the
+    // container's log and `_SESSION_LOST` in this module's own verdict, so the
+    // split pass never ran. A failure with no SQLSTATE is a session that died
+    // without an error packet, which is the case either way — so the liveness
+    // verdict says whether the POSTMASTER went, and it never says the backend
+    // did not.
+    const crashed = !error.message.includes(' ') && position.startsWith('R');
     let recovered = false;
     if (crashed) {
       const from = Number(position.slice(1));
@@ -279,7 +288,10 @@ export async function pinLocalStackToProduction() {
           + `${statementPosition ?? position}`);
       }
     }
-    // The liveness verdict is added ONLY where the failure carried no SQLSTATE.
+    // The liveness verdict is added ONLY where the failure carried no SQLSTATE,
+    // and it distinguishes a POSTMASTER restart from a session that died under a
+    // postmaster that is still the same one — NOT a live backend from a dead one,
+    // which is what an earlier reading of it claimed.
     // A statement that failed and said why is already diagnosed, and replacing
     // its code with `_SESSION_LOST` would both lose the SQLSTATE and assert a
     // cause that is not the one that occurred -- the server is plainly fine if a
