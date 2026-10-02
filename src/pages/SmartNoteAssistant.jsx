@@ -47,7 +47,12 @@ import {
   setVisitReviewAcknowledgement,
 } from '@/functions/updateAuthorizedVisit';
 import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
-import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
+import {
+  createAuthorityBoundSpeechRecognition,
+  preferLocalSpeechRecognition,
+  LOCAL_SPEECH_REFUSED_MESSAGE,
+  SPEECH_LOCALITY,
+} from '@/lib/tenantMediaDevices';
 import { useAuth } from '@/lib/AuthContext';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
@@ -540,7 +545,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     };
   }, []);
 
-  const startDictation = () => {
+  const startDictation = async () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast.error("Speech recognition not supported in this browser."); return; }
     let binding;
@@ -554,6 +559,18 @@ export default function SmartNoteAssistant({ visitId = null }) {
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
+    // Register BEFORE awaiting. The unmount cleanup disposes whatever is in this
+    // ref, so a binding created and not yet stored is invisible to it: awaiting
+    // first would let the continuation below start a continuous recognizer this
+    // page no longer owns, leaving the microphone live with no UI to stop it.
+    recBindingRef.current?.dispose();
+    recBindingRef.current = binding;
+    // Keep the audio on the device where this browser can.
+    const locality = await preferLocalSpeechRecognition(rec, SR, rec.lang);
+    // Both checks are needed. `isCurrent` answers for the tenant realm only; ref
+    // identity answers for this page and this click, which is what unmounting,
+    // leaving step 1 or a second click changes.
+    if (recBindingRef.current !== binding || !binding.isCurrent()) { binding.dispose(); return; }
     rec.onresult = (e) => {
       if (!binding.isCurrent()) return;
       const t = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(" ");
@@ -565,18 +582,21 @@ export default function SmartNoteAssistant({ visitId = null }) {
       try { rec.stop(); } catch { /* already stopped */ }
     };
     recStopRef.current = stop;
-    rec.onerror = () => {
+    rec.onerror = (e) => {
       if (!binding.isCurrent()) return;
       setListening(false);
       releaseDictation(stop);
+      // Only OUR local requirement is reported. `service-not-allowed` also means
+      // the user agent declined the requested service for its own reasons.
+      if (locality === SPEECH_LOCALITY.LOCAL && e?.error === "service-not-allowed") {
+        toast.error(LOCAL_SPEECH_REFUSED_MESSAGE);
+      }
     };
     rec.onend = () => {
       if (!binding.isCurrent()) return;
       setListening(false);
       releaseDictation(stop);
     };
-    recBindingRef.current?.dispose();
-    recBindingRef.current = binding;
     recRef.current = rec;
     claimDictation(stop);
     try {

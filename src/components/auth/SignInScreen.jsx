@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { base44 } from '@/api/base44Client';
-import { independentStagingAuth } from '@/lib/independentStagingSession';
+import { independentStagingAuth, ownedBackendAuth } from '@/lib/independentStagingSession';
 import {
   appParams,
   peekPendingAccessToken,
@@ -57,7 +57,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [pendingToken, setPendingToken] = useState(() => independentStagingAuth ? null : peekPendingAccessToken());
+  const [pendingToken, setPendingToken] = useState(() => ownedBackendAuth ? null : peekPendingAccessToken());
   const mountedRef = useRef(true);
   const authOperationRef = useRef(0);
   const loginAbortRef = useRef(null);
@@ -105,10 +105,10 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
     const controller = new AbortController();
     loginAbortRef.current = controller;
     try {
-      if (independentStagingAuth) {
+      if (ownedBackendAuth) {
         const submittedPassword = password;
         setPassword('');
-        await independentStagingAuth.signIn(email, submittedPassword, controller.signal);
+        await ownedBackendAuth.signIn(email, submittedPassword, controller.signal);
         if (!mountedRef.current || operation !== authOperationRef.current || controller.signal.aborted) return;
         await checkAppState();
         return;
@@ -149,10 +149,15 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         || operation !== authOperationRef.current
         || controller.signal.aborted
       ) return;
-      if (independentStagingAuth) {
-        setError(err?.status === 401 || err?.code === 'AUTHENTICATION_FAILED'
-          ? 'The staging sign-in could not be verified. Check your test email and password.'
-          : 'Staging sign-in is unavailable. Please retry.');
+      if (ownedBackendAuth) {
+        const rejected = err?.status === 401 || err?.code === 'AUTHENTICATION_FAILED';
+        setError(independentStagingAuth
+          ? rejected
+            ? 'The staging sign-in could not be verified. Check your test email and password.'
+            : 'Staging sign-in is unavailable. Please retry.'
+          : rejected
+            ? 'Incorrect email or password. Please try again.'
+            : 'Sign-in is unavailable right now. Please retry.');
         return;
       }
       const status = err?.status;
@@ -307,13 +312,13 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                 <Button type="submit" disabled={busy} className="h-11 w-full">
                   {busy ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in…</>) : 'Sign in'}
                 </Button>
-                {!independentStagingAuth && isStagingEmailVerificationAvailable() && (
+                {!ownedBackendAuth && isStagingEmailVerificationAvailable() && (
                   <Button type="button" variant="outline" disabled={busy} className="h-11 w-full"
                     onClick={() => switchMode('verify')}>
                     Enter email verification code
                   </Button>
                 )}
-                {!independentStagingAuth && <p className="text-center text-sm text-slate-500">
+                {!ownedBackendAuth && <p className="text-center text-sm text-slate-500">
                   Need an account?{' '}
                   <button
                     type="button"
@@ -372,7 +377,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           </div>
         </div>
 
-        {!independentStagingAuth && <p className="mt-4 text-center text-xs text-slate-400">
+        {!ownedBackendAuth && <p className="mt-4 text-center text-xs text-slate-400">
           Trouble signing in?{' '}
           <button
             type="button"

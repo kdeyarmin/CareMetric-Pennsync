@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createBuildInventory, htmlReferences, main, PRODUCTION_ORIGINS, validateOrigin, verifyOrigin } from './tools-live-frontend-sync.mjs';
+import { createBuildInventory, environmentOrigin, htmlReferences, main, PRODUCTION_ORIGINS, validateOrigin, VERIFY_ORIGIN_VARIABLE, verifyOrigin } from './tools-live-frontend-sync.mjs';
 
 const ORIGIN = PRODUCTION_ORIGINS[0];
 const HTML = '<html><head><script src="./assets/index-good.js" crossorigin type="module"></script>'
@@ -196,4 +196,61 @@ test('invalid arguments or missing build return 2 without network access or expo
     assert.equal(result, 2);
     assert.equal(output.join('').includes('PRIVATE_TEST_VALUE'), false);
   }
+});
+
+// The owned static host has no production hostname until the domain moves, so
+// these cover the one env-supplied origin and the marker that keeps its green
+// from being read as a statement about production.
+test('an owned deployment origin is accepted only under the two owned suffixes', () => {
+  for (const origin of ['https://pennsync-site-production.up.railway.app',
+    'https://site.caremetricai.com', 'https://caremetricai.com']) {
+    assert.equal(environmentOrigin({ [VERIFY_ORIGIN_VARIABLE]: origin }), origin);
+  }
+  for (const value of [
+    // A suffix match that is not a dot boundary is the whole point of the check.
+    'https://evilcaremetricai.com', 'https://notup.railway.app.example',
+    'http://site.caremetricai.com', 'https://site.caremetricai.com:8443',
+    'https://site.caremetricai.com/preview', 'https://site.caremetricai.com/?token=TEST',
+    'https://user:password@site.caremetricai.com', 'https://base44.app', 'nonsense',
+  ]) {
+    assert.throws(() => environmentOrigin({ [VERIFY_ORIGIN_VARIABLE]: value }),
+      (error) => error.code === 'INVALID_VERIFY_ORIGIN', value);
+  }
+  assert.equal(environmentOrigin({}), null);
+  assert.equal(environmentOrigin({ [VERIFY_ORIGIN_VARIABLE]: '' }), null);
+});
+
+test('a green against an owned deployment is marked as not being about production', async (t) => {
+  const { dir } = build(t);
+  const origin = 'https://pennsync-site-production.up.railway.app';
+  const remote = serving(dir);
+  const output = [];
+  const code = await main(['--dist', dir, '--json'],
+    { ...remote, log: (s) => output.push(JSON.parse(s)), env: { [VERIFY_ORIGIN_VARIABLE]: origin } });
+  assert.equal(code, 0);
+  assert.equal(output[0].origin_allowlist, 'environment');
+  assert.deepEqual(output[0].reports.map((r) => r.origin), [origin]);
+  // Neither production address was contacted, so nothing here claims anything
+  // about what production serves.
+  assert.equal(remote.calls.some((call) => PRODUCTION_ORIGINS.includes(call.url.origin)), false);
+});
+
+test('the default run still checks both production addresses and says so', async (t) => {
+  const { dir } = build(t);
+  const remote = serving(dir);
+  const output = [];
+  assert.equal(await main(['--dist', dir, '--json'], { ...remote, log: (s) => output.push(JSON.parse(s)), env: {} }), 0);
+  assert.equal(output[0].origin_allowlist, 'production');
+  assert.deepEqual(output[0].reports.map((r) => r.origin), [...PRODUCTION_ORIGINS]);
+});
+
+test('a bad or doubled origin refuses instead of silently checking production', async () => {
+  const output = [];
+  const noNetwork = { fetchImpl() { assert.fail('network must not run'); }, log: (s) => output.push(JSON.parse(s)) };
+  assert.equal(await main([], { ...noNetwork, env: { [VERIFY_ORIGIN_VARIABLE]: 'https://other.example' } }), 2);
+  assert.equal(output[0].error, 'INVALID_VERIFY_ORIGIN');
+  assert.equal(output[0].origin_allowlist, 'production');
+  assert.equal(await main([PRODUCTION_ORIGINS[0]],
+    { ...noNetwork, env: { [VERIFY_ORIGIN_VARIABLE]: 'https://site.caremetricai.com' } }), 2);
+  assert.equal(output[1].error, 'INVALID_ARGUMENTS');
 });

@@ -16,6 +16,14 @@ const ALLOWED_ORIGINS = new Set([
   ...PRODUCTION_ORIGINS,
   'https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app',
 ]);
+// The owned static host (`services/pennsync-site`) has no production hostname
+// until the domain moves, so the origin it must be verified at cannot be in a
+// committed allowlist. These are the two suffixes an owned deployment can have:
+// a Railway-generated host, or a name under our own domain. They are SUFFIXES
+// matched after a dot or exactly, never substrings — `evilcaremetricai.com`
+// must not pass.
+export const VERIFY_ORIGIN_VARIABLE = 'PENNSYNC_SITE_VERIFY_ORIGIN';
+const VERIFY_ORIGIN_SUFFIXES = Object.freeze(['up.railway.app', 'caremetricai.com']);
 const MAX_FILES = 2000;
 const MAX_ASSET_BYTES = 32 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
@@ -26,12 +34,36 @@ export class VerificationError extends Error {
   constructor(code) { super(code); this.name = 'VerificationError'; this.code = code; }
 }
 
-export function validateOrigin(value) {
+// `allowed` is a parameter rather than a closed-over constant so that an owned
+// deployment origin, which cannot be committed before it exists, reaches this
+// one check instead of each caller inventing its own. The default stays the
+// committed set, so every existing call site is unchanged.
+export function validateOrigin(value, allowed = ALLOWED_ORIGINS) {
   let url;
   try { url = new URL(value); } catch { throw new VerificationError('INVALID_ORIGIN'); }
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
-    || url.pathname !== '/' || !ALLOWED_ORIGINS.has(url.origin)) {
+    || url.pathname !== '/' || !allowed.has(url.origin)) {
     throw new VerificationError('INVALID_ORIGIN');
+  }
+  return url.origin;
+}
+
+// A set-but-invalid value REFUSES rather than falling back to the production
+// pair. Falling back would answer about production while the operator believed
+// they were asking about a preview, which is the one way this tool could report
+// a green that means something other than what was asked.
+export function environmentOrigin(env) {
+  const raw = env[VERIFY_ORIGIN_VARIABLE];
+  if (raw === undefined || raw === '') return null;
+  let url;
+  try { url = new URL(raw); } catch { throw new VerificationError('INVALID_VERIFY_ORIGIN'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
+    || url.pathname !== '/' || url.port || url.origin !== raw) {
+    throw new VerificationError('INVALID_VERIFY_ORIGIN');
+  }
+  const host = url.hostname.toLowerCase();
+  if (!VERIFY_ORIGIN_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))) {
+    throw new VerificationError('INVALID_VERIFY_ORIGIN');
   }
   return url.origin;
 }
@@ -157,8 +189,8 @@ async function fetchBytes(url, limit, fetchImpl) {
   return Buffer.concat(chunks);
 }
 
-export async function verifyOrigin(origin, inventory, { fetchImpl = fetch, concurrency = 4 } = {}) {
-  origin = validateOrigin(origin);
+export async function verifyOrigin(origin, inventory, { fetchImpl = fetch, concurrency = 4, allowed = ALLOWED_ORIGINS } = {}) {
+  origin = validateOrigin(origin, allowed);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 6) {
     throw new VerificationError('INVALID_CONCURRENCY');
   }
@@ -207,9 +239,10 @@ export async function verifyOrigin(origin, inventory, { fetchImpl = fetch, concu
   }
 }
 
-export async function main(args = process.argv.slice(2), { fetchImpl = fetch, log = console.log } = {}) {
+export async function main(args = process.argv.slice(2), { fetchImpl = fetch, log = console.log, env = process.env } = {}) {
   let dist = 'dist';
   const origins = [];
+  let allowlist = 'production';
   try {
     for (let i = 0; i < args.length; i++) {
       if (args[i] === '--json') continue;
@@ -220,18 +253,33 @@ export async function main(args = process.argv.slice(2), { fetchImpl = fetch, lo
       if (args[i].startsWith('-') || origins.length) throw new VerificationError('INVALID_ARGUMENTS');
       origins.push(validateOrigin(args[i]));
     }
+    let allowed = ALLOWED_ORIGINS;
+    const fromEnvironment = environmentOrigin(env);
+    if (fromEnvironment) {
+      // Naming an origin twice is ambiguous about which one the green belongs
+      // to, so it is refused rather than resolved by precedence.
+      if (origins.length) throw new VerificationError('INVALID_ARGUMENTS');
+      origins.push(fromEnvironment);
+      allowed = new Set([...ALLOWED_ORIGINS, fromEnvironment]);
+      allowlist = 'environment';
+    }
     const inventory = createBuildInventory(dist);
     const reports = [];
     for (const origin of (origins.length ? origins : PRODUCTION_ORIGINS)) {
-      reports.push(await verifyOrigin(origin, inventory, { fetchImpl }));
+      reports.push(await verifyOrigin(origin, inventory, { fetchImpl, allowed }));
     }
     const verified = reports.every((r) => r.publication_verified);
+    // `origin_allowlist` is how a reader tells a production run from a preview
+    // one. A green under `environment` proves the owned host serves this exact
+    // build and says nothing about what production serves.
     log(JSON.stringify({ checked_at: new Date().toISOString(), scope: 'static_frontend_publication_only',
+      origin_allowlist: allowlist,
       publication_verified: verified, authenticated_workflows_verified: false,
       full_release_complete: false, reports }, null, 2));
     return verified ? 0 : reports.some((r) => r.status === 'unverified') ? 2 : 1;
   } catch (error) {
-    log(JSON.stringify({ scope: 'static_frontend_publication_only', publication_verified: false,
+    log(JSON.stringify({ scope: 'static_frontend_publication_only', origin_allowlist: allowlist,
+      publication_verified: false,
       full_release_complete: false, error: error.code || 'LOCAL_BUILD_UNAVAILABLE' }, null, 2));
     return 2;
   }
