@@ -140,8 +140,14 @@ const withoutComments = text => text
  *
  * Three ways of reaching an entity are NOT covered by it, listed because the
  * next reader will otherwise take the handle set for a closed one. Each is
- * measured absent from production `src` as of 2026-10-01, which is why they are
- * recorded rather than matched:
+ * measured absent from production `src`, which is why they are recorded rather
+ * than matched. Re-measured 2026-10-02 over all 1,102 production source files,
+ * comments blanked, with one regex per form: no computed lookup, no destructure
+ * of the namespace, no plain alias of it, and no `{ entities } = base44`. The
+ * only optional-chain hit is `entities?.NoteConversion` at
+ * `src/lib/retiredOfflineQueue.js:431-432`, a typeof check on an injected
+ * PARAMETER named `entities` (the four-entity map above), not the SDK
+ * namespace, so it takes no handle. Forms:
  *   - `base44?.entities?.Name`, optional chaining anywhere in the path;
  *   - `base44.entities[expression]`, a computed lookup on the namespace itself,
  *     as opposed to the indexed lookup on a local map that `agencySettings.js`
@@ -184,6 +190,15 @@ export function takenHandles(text) {
  * that accounted and miss three writes, which is the case this refusal exists
  * for. An accounted handle must have its ALIASED path resolve, not merely share
  * an entity name with a visible call.
+ *
+ * Named limitation: accounting is per file and entity, not per binding, so in a
+ * file that holds a visible aliased call for an entity, a SECOND handle of that
+ * same entity is not told apart from the first. Measured 2026-10-02: no file in
+ * production `src` has that shape. Each of the four files that takes handles
+ * takes exactly one per entity (retiredOfflineQueue.js: four handles, one each
+ * for ComplianceAudit, Incident, NoteConversion and Task, each with its aliased
+ * calls resolved; the other three files have no aliased call at all). Closing
+ * the hole needs per-binding resolution, which is a different detector.
  */
 export function unaccountedHandles(repository) {
   const unaccounted = [];
