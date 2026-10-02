@@ -75,6 +75,13 @@ describe('scrubbing the link out of the live URL', () => {
       // splitting there left everything after it unfiltered -- a completeness gap
       // against this module's own promise, found by a reviewer.
       ['/#access_token=aaaaaabbbbbb?tab=open', '', '#tab=open'],
+      // THE SAME DEFECT ONE BRANCH OVER, found by a reviewer after the line
+      // above was fixed: a second `?` after a ROUTE put everything following it
+      // inside a value, so each of these came back byte-for-byte with nothing
+      // removed. A fix written for one branch is not a fix for the shape.
+      ['/#/r?a=1?access_token=aaaaaabbbbbb', '', '#/r?a=1'],
+      ['/#/dashboard?tab=open?refresh_token=cccccc', '', '#/dashboard?tab=open'],
+      ['/#/x?y=2?code=abcdef123456', '', '#/x?y=2'],
     ]) {
       const module = await load(href);
       expect(module.pendingLink).toBeNull();

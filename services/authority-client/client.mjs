@@ -770,13 +770,36 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
       // have failed silently. A reviewer found that structurally and proved it
       // with a transport whose write mints a second session.
       //
-      // It admits a token on its SHAPE rather than through `validGrant`, because
-      // the write's answer is a user rather than a grant: demanding the whole
-      // envelope is how a rotated token would go unnoticed again.
+      // IT ADMITS A TOKEN ON ITS SHAPE RATHER THAN THROUGH `validGrant`, AND EACH
+      // CALL HAS ITS OWN REASON — the comment gave only the second, which is the
+      // one a future reader could satisfy by putting `validGrant` back on the
+      // first and reopening the finding.
+      //
+      // The VERIFY call's answer IS a grant, so `validGrant` would admit it; the
+      // reason it is not asked here is that this method's job on a REFUSAL is to
+      // clean up, and a grant refused for naming the wrong person is exactly the
+      // one that must still be revoked — a mistyped address is an ordinary
+      // mistake against a provider that behaved correctly, so a real person's
+      // session was minted and nobody else will ever clean it up. The sign-in
+      // path answers the same question the other way, deliberately
+      // (`client-lifecycle.test.mjs:172`): a password exchange answering for a
+      // different identity means the responder is not behaving like the provider,
+      // so the token's provenance is unknown and not spending it wins. The axis
+      // is provenance and reachability, not whether this client accepted the
+      // grant. The WRITE call's answer is a USER rather than a grant, so
+      // `validGrant` would reject it outright and a rotated token would go
+      // unnoticed again, which is how the finding arose.
+      //
+      // The bound is for MEMORY and nothing else. It used to be the JWT shape,
+      // which `validGrant` also applies — so a token outside it failed closed for
+      // use and OPEN for cleanup: minted, unusable, and unrevokable, which is a
+      // quiet exception to the one sentence this method promises. A reviewer
+      // measured it as unreachable while GoTrue returns JWTs and asked for the
+      // widening anyway, because the cost of being wrong is one logout request
+      // sent with a bearer the provider will refuse.
       const track = async (value, canceled) => {
         const token = value?.access_token;
-        if (typeof token !== 'string' || token.length > 16384
-          || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) return;
+        if (typeof token !== 'string' || token.length === 0 || token.length > 16384) return;
         if (!knownSessions.has(token)) knownSessions.set(token, { revoking: null });
         if (canceled) await revokeKnown(token);
       };
@@ -816,6 +839,18 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
         await revokeAllKnown();
         return identity;
       } catch (error) {
+        // THE SWALLOW IS LOAD-BEARING, not a shrug. `revokeKnown` raises
+        // `AUTHORITY_SESSION_CLEANUP_FAILED`, and the screen driving this treats
+        // that code as the DONE state — written, only the cleanup failed. Without
+        // the `.catch` it would replace the error that got us here, so a mistyped
+        // address plus a flaky logout would tell somebody their password was set
+        // when none was written. `production-client.test.mjs` pins it, and the
+        // test goes red if the `.catch` goes.
+        //
+        // Read the success path's code narrowly while you are here: a logout that
+        // fails once and succeeds on a retry still answers
+        // `AUTHORITY_SESSION_CLEANUP_FAILED`, so that code means "a cleanup call
+        // failed", never "a session is certainly still live".
         await revokeAllKnown().catch(() => {});
         throw error;
       } finally { invalidate(); }

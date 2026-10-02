@@ -84,7 +84,14 @@ export function scrubFragment(hash) {
   const cut = raw.indexOf('?');
   const route = cut !== -1 && !raw.slice(0, cut).includes('=');
   const path = route ? raw.slice(0, cut) : '';
-  const params = new URLSearchParams(route ? raw.slice(cut + 1) : raw.replace(/\?/g, '&'));
+  // BOTH branches normalise a later `?` to `&`, and the first version did it on
+  // one of them. A second `?` is not a second query: `URLSearchParams` keeps
+  // everything after it inside a VALUE, where no key name matches, so
+  // `#/r?a=1?access_token=…` came back whole with `removed: false`. A reviewer
+  // found it on the branch the earlier fix had not reached — the same defect,
+  // one branch over, which is what a fix written for one case does.
+  const query = (route ? raw.slice(cut + 1) : raw).replace(/\?/g, '&');
+  const params = new URLSearchParams(query);
   let removed = false;
   for (const name of SCRUBBED) if (params.has(name)) { params.delete(name); removed = true; }
   if (!removed) return { hash: `#${raw}`, removed };
