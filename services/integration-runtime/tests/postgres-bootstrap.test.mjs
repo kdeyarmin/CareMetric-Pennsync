@@ -18,7 +18,7 @@ const migrations = new URL('../migrations/', import.meta.url);
 const files = (await readdir(migrations)).filter(name => /^00[1-5]_.+\.sql$/.test(name)).sort();
 assert.equal(files.length, 5);
 const FORWARD = (await readdir(migrations)).filter(name => /^00[6-9]_.+\.sql$/.test(name)).sort();
-assert.deepEqual(FORWARD, ['006_record_owned_files.sql', '007_provider_credential.sql']);
+assert.deepEqual(FORWARD, ['006_record_owned_files.sql', '007_provider_credential.sql', '008_telecom_operations.sql']);
 const installed = JSON.parse(await readFile(new URL('./installed-definition-metadata.json', import.meta.url), 'utf8'));
 const app = '6a9881683dc68a0bd54f1ef7';
 const subject = 'a'.repeat(64);

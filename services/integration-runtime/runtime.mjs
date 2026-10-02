@@ -65,6 +65,14 @@ export function loadConfig(env = process.env) {
     origins, supabaseUrl, encryptionKey, hashKey, configured,
     authorityMode, authorityUrl, authorityKey, authorityConfigured,
     released: env.INTEGRATIONS_RELEASE === 'enabled-v1', dailyLimit: 100,
+    // Fax and SMS have their OWN release, independent of the service's. A
+    // telecom send goes to a doctor's office or a patient's phone, which is
+    // one of the owner's four holds, so it cannot ride a variable that also
+    // releases the AI and file operations. Unset means every telecom send
+    // refuses before a credential is read, and `BROWSER_FORBIDDEN_OPERATIONS`
+    // keeps both operations off the browser list whatever this says.
+    telecomReleased: env.INTEGRATIONS_TELECOM_RELEASE === 'enabled-v1',
+
     supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '', anthropicKey: env.ANTHROPIC_API_KEY || '',
     model: env.INTEGRATIONS_AI_MODEL || 'claude-sonnet-4-6', sendgridKey: env.SENDGRID_API_KEY || '',
     fromEmail: env.NOTIFICATION_FROM_EMAIL || '',
