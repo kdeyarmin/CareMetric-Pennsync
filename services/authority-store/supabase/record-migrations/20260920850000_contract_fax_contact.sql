@@ -284,7 +284,7 @@ end $contract$;
 create function "pennsync_records".contract_fax_contact_bulk_create(
   p_agency text, p_contacts jsonb)
   returns jsonb language plpgsql security definer set search_path = '' as $contract$
-declare v_entry jsonb; v_created jsonb := '[]'::jsonb; v_one jsonb; v_count integer;
+declare v_entry jsonb; v_items jsonb[] := '{}'::jsonb[]; v_created jsonb; v_count integer;
 begin
   if "pennsync_records".caller_tenant_role(p_agency) is null then
     raise exception using errcode='42501', message='PENNSYNC_FAX_CONTACT_FORBIDDEN';
@@ -303,10 +303,20 @@ begin
   -- cannot be reachable through the batch one. That is the defect this shape
   -- is written to prevent rather than a tidiness: a batch importer with its own
   -- insert is a second answer to "what may a caller write".
+  --
+  -- The accumulator is a jsonb ARRAY rather than a jsonb array, which is not a
+  -- style choice at this ceiling. `v_created := v_created || ...` rebuilds the
+  -- whole accumulated jsonb on every iteration, so a 500-row import copies on
+  -- the order of a hundred megabytes to produce a megabyte; plpgsql keeps an
+  -- array VARIABLE in its expanded representation and appends to it in place,
+  -- so this is linear. `to_jsonb` converts once and preserves order, and the
+  -- loop still drives one create per entry so the ordering the single path
+  -- would give is unchanged.
   for v_entry in select e from jsonb_array_elements(p_contacts) e loop
-    v_one := "pennsync_records".contract_fax_contact_create(p_agency, v_entry);
-    v_created := v_created || jsonb_build_array(v_one->'contact');
+    v_items := v_items
+      || ("pennsync_records".contract_fax_contact_create(p_agency, v_entry)->'contact');
   end loop;
+  v_created := to_jsonb(v_items);
   return jsonb_build_object('success', true, 'created', jsonb_array_length(v_created),
     'contacts', v_created);
 end $contract$;

@@ -121,6 +121,55 @@ test('a value outside the schema\'s range is clamped, and the answer says which'
   // And an in-range value reports nothing, or the field would be noise.
   const fine = await as(ADMIN_A, SAVE, [A, { max_retries: 4 }]);
   assert.deepEqual(fine.clamped, []);
+  assert.deepEqual(fine.ignored, []);
+});
+
+/*
+ * The three substitutions this contract used to make in silence.
+ *
+ * The clamp report was written to honour D54 and honoured it at ONE site of
+ * four. A review drove the contract rather than reading it and found the other
+ * three, which is the distinction worth keeping: the test above passed
+ * throughout, because it only ever sent the two top-level numbers.
+ *
+ * Each case asserts the STORED value as well as the report. A report naming a
+ * field that was in fact saved as sent would be noise, and a stored default
+ * with an empty report is the defect itself.
+ */
+test('a clamped multiplier is reported, under the key that moved', async () => {
+  const saved = await as(ADMIN_A, SAVE, [A, { priority_multiplier: { urgent: 99, high: 1.5 } }]);
+  assert.equal(saved.config.priority_multiplier.urgent, 10);
+  assert.equal(saved.config.priority_multiplier.high, 1.5);
+  // Named under the nested key: `priority_multiplier` alone would not say which
+  // of four moved, and the panel has a field per priority.
+  assert.deepEqual(saved.clamped, ['priority_multiplier.urgent']);
+  assert.deepEqual(saved.ignored, []);
+});
+
+test('a known key carrying the wrong type is reported, because the default was stored', async () => {
+  // D39's lost `expiration_date` exactly. The KEY is one of the six, so the
+  // top-level refusal admits it; both helpers answer with the default for
+  // anything of the wrong type, so the operator asked for thirty minutes and
+  // got fifteen.
+  const saved = await as(ADMIN_A, SAVE, [A, { retry_delay_minutes: '30' }]);
+  assert.equal(saved.config.retry_delay_minutes, 15);
+  assert.deepEqual(saved.ignored, ['retry_delay_minutes']);
+  // Not a clamp: nothing was understood and moved into range.
+  assert.deepEqual(saved.clamped, []);
+  const flag = await as(ADMIN_A, SAVE, [A, { auto_retry_enabled: 'yes' }]);
+  assert.deepEqual(flag.ignored, ['auto_retry_enabled']);
+  const blob = await as(ADMIN_A, SAVE, [A, { priority_multiplier: 7 }]);
+  assert.deepEqual(blob.ignored, ['priority_multiplier']);
+  // `is_active` is accepted as a key and never honoured -- the save makes the
+  // row the agency's live policy either way, as the original's update does. So
+  // asking for `false` is ignored rather than obeyed, and is said rather than
+  // silently overridden.
+  const inactive = await as(ADMIN_A, SAVE, [A, { is_active: false }]);
+  assert.equal(inactive.config.is_active, true);
+  assert.deepEqual(inactive.ignored, ['is_active']);
+  // Asking for what it does anyway is not a substitution.
+  const active = await as(ADMIN_A, SAVE, [A, { is_active: true }]);
+  assert.deepEqual(active.ignored, []);
 });
 
 test('an empty body is refused, because it would reset the policy to the defaults', async () => {
@@ -160,6 +209,20 @@ test('the priority multipliers are the four the entity declares, and an extra ke
   // these feed a worker's delay arithmetic, the blob has no schema behind it,
   // and a harmless extra key must not break a save of the four that matter.
   assert.equal(Object.hasOwn(saved.config.priority_multiplier, 'nonsense'), false);
+  // The drop stays and the SILENCE does not. A dropped key nothing reports is
+  // the same defect as a clamped one nothing reports; what differs is only the
+  // advice it carries, so it is `ignored` rather than `clamped`.
+  assert.deepEqual(saved.ignored, ['priority_multiplier.nonsense']);
+  // Both values sent are in range, so nothing was clamped -- the two lists are
+  // independent and this asserts that rather than assuming it. (A first draft
+  // of this line expected a clamp here and failed, which is the pair being
+  // separate doing its job.)
+  assert.deepEqual(saved.clamped, []);
+  // A multiplier of the wrong type is ignored too, and lands in the same list
+  // as the unknown key, because both mean the value was not used at all.
+  const typed = await as(ADMIN_A, SAVE, [A, { priority_multiplier: { low: 'fast' } }]);
+  assert.equal(typed.config.priority_multiplier.low, 2);
+  assert.deepEqual(typed.ignored, ['priority_multiplier.low']);
 });
 
 test('the D78 key exists, is partial, and is what the save catches by name', async () => {

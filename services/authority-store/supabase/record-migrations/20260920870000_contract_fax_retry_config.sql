@@ -192,7 +192,8 @@ create function "pennsync_records".contract_fax_retry_config_save(
 declare
   v_row "pennsync_records"."fax_retry_config"; v_key text; v_now timestamptz;
   v_id text; v_email text; v_agency_name text; v_attempt integer; v_constraint text;
-  v_clamped text[] := array[]::text[];
+  v_clamped text[] := array[]::text[]; v_ignored text[] := array[]::text[];
+  v_multipliers jsonb;
 begin
   -- D40's gate. The original admits the built-in admin and nobody else.
   if "pennsync_records".caller_tenant_role(p_agency) is distinct from 'agency_admin' then
@@ -214,6 +215,28 @@ begin
   end loop;
   -- Said rather than hidden (D54's rule about a substitution count): a caller
   -- that sent 50 retries is told the stored value is 10.
+  --
+  -- THE FIRST VERSION OF THIS BLOCK HONOURED THAT RULE AT ONE SITE OF FOUR, and
+  -- the comment above was the whole of the claim. A review drove the contract
+  -- and found three substitutions it made in silence: a clamped MULTIPLIER
+  -- (`{"priority_multiplier": {"urgent": 99}}` stored 10 and reported nothing),
+  -- a known key carrying the wrong JSON type (`{"retry_delay_minutes": "30"}`
+  -- stored the schema default of 15, because the top-level refusal admits a
+  -- known KEY and both helpers answer with the default for anything of the
+  -- wrong type), and a dropped multiplier key, which this file already knew it
+  -- dropped and had decided not to report.
+  --
+  -- The drop itself stays: `retry_multipliers` keeps four keys for D54's reason,
+  -- the object is rebuilt from a closed set so nothing can be smuggled into the
+  -- blob, and refusing would break a save of the four that matter. What changes
+  -- is the silence. A substitution a caller cannot see is D39's lost
+  -- `expiration_date`: the operator asked for thirty minutes, got fifteen, and
+  -- the answer said `success`.
+  --
+  -- So there are two lists. `clamped` is a value that was understood and moved
+  -- into range; `ignored` is a value that was not used at all. They are separate
+  -- because the fix differs: a clamp means ask for less, an ignore means send it
+  -- in the shape the field takes.
   if jsonb_typeof(p_config->'max_retries') = 'number'
     and "pennsync_records".retry_bounded(p_config->'max_retries', 3, 0, 10)
       <> (p_config->>'max_retries')::double precision then
@@ -224,6 +247,35 @@ begin
       <> (p_config->>'retry_delay_minutes')::double precision then
     v_clamped := pg_catalog.array_append(v_clamped, 'retry_delay_minutes');
   end if;
+  -- A known key whose value is the wrong JSON type, which the refusal above
+  -- cannot catch because the KEY is one of the six. `is_active` is here
+  -- whatever its type: the save makes the row the agency's live policy either
+  -- way, as the original's update does, so a caller asking for `false` is
+  -- ignored rather than obeyed and is now told so.
+  for v_key in select k from jsonb_object_keys(p_config) k loop
+    if (v_key in ('max_retries', 'retry_delay_minutes')
+        and jsonb_typeof(p_config->v_key) <> 'number')
+      or (v_key in ('auto_retry_enabled', 'notify_on_final_failure')
+        and jsonb_typeof(p_config->v_key) <> 'boolean')
+      or (v_key = 'priority_multiplier' and jsonb_typeof(p_config->v_key) <> 'object')
+      or (v_key = 'is_active' and p_config->v_key is distinct from 'true'::jsonb) then
+      v_ignored := pg_catalog.array_append(v_ignored, v_key);
+    end if;
+  end loop;
+  -- The multipliers, each of which goes through `retry_bounded` as well. Named
+  -- under the nested key so a reader can see WHICH one moved, and read from a
+  -- local so a non-object body cannot be walked.
+  v_multipliers := case when jsonb_typeof(p_config->'priority_multiplier') = 'object'
+    then p_config->'priority_multiplier' else '{}'::jsonb end;
+  for v_key in select k from jsonb_object_keys(v_multipliers) k loop
+    if v_key not in ('urgent', 'high', 'normal', 'low')
+      or jsonb_typeof(v_multipliers->v_key) <> 'number' then
+      v_ignored := pg_catalog.array_append(v_ignored, 'priority_multiplier.' || v_key);
+    elsif "pennsync_records".retry_bounded(v_multipliers->v_key, 0, 0.1, 10)
+      <> (v_multipliers->>v_key)::double precision then
+      v_clamped := pg_catalog.array_append(v_clamped, 'priority_multiplier.' || v_key);
+    end if;
+  end loop;
 
   v_email := "pennsync_records".caller_email();
   v_now := clock_timestamp();
@@ -300,7 +352,7 @@ begin
 
   return jsonb_build_object('success', true,
     'config', "pennsync_records".retry_config_row(v_row),
-    'clamped', to_jsonb(v_clamped));
+    'clamped', to_jsonb(v_clamped), 'ignored', to_jsonb(v_ignored));
 end $contract$;
 
 reset role;

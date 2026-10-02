@@ -83,6 +83,16 @@ export const MIGRATION_CODES = Object.freeze([
   // the term reading it would keep every row — a control that applies cleanly
   // and does nothing.
   'PENNSYNC_CHART_AGENCY_ADMIN_MUST_BYPASS_RLS',
+  // D78's key, read by the fax retry-policy contract rather than assumed: its
+  // save catches `fax_retry_config_active_agency_unique` BY NAME, so applying
+  // to a store without the index would emulate a constraint that is not there
+  // and let an agency end up with two active policies. The refusal is at
+  // migration time for the same reason as every code above it, and it is here
+  // because the other four telecom contracts raise only
+  // `PENNSYNC_RECORD_STORE_REQUIRED`, which this list already names -- so one
+  // code of six files was missing, which is the quietest version of the gap
+  // the scan in `http-boundary.test.mjs` exists to close.
+  'PENNSYNC_RETRY_CONFIG_KEY_REQUIRED',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
