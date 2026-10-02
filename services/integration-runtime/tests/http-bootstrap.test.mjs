@@ -63,8 +63,14 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     // the HTTP suites run the real providers against, so a filter that stopped at
     // the original five would leave `http-storage` proving a denial the fixture
     // raised rather than one the runtime did. That is how 006 first failed here.
+    // The count is a ratchet and moves with every migration added to the
+    // directory. It is spelled out rather than derived because deriving it from
+    // the same readdir would assert nothing; the cost is that a change adding a
+    // forward file has to touch this line, and this suite is not in `pnpm test`
+    // -- it needs the local stack -- so the reminder is CI's. That is how 007
+    // reached a red "Verify independent Auth and API" with every local script green.
     const files = (await readdir(directory)).filter(file => /^\d{3}_.+\.sql$/.test(file)).sort();
-    assert.equal(files.length, 6);
+    assert.equal(files.length, 7);
     for (const file of files) {
       phase = `apply ${file} to actual platform`;
       if (file === '002_storage_isolation.sql') {
