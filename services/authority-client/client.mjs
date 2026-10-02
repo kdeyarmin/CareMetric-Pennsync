@@ -789,8 +789,10 @@ function createAuthorityClient(config, mode,
         // it bound would let the next failed attempt be checked against a
         // predecessor's grant instead of against nothing.
         if (!staging && !token) authUserId = null;
-        // Everything registered, not only the candidate: a grant that was refused
-        // was never a candidate and is exactly the one that would be left live.
+        // Everything registered, not only the candidate. This catches nothing the
+        // narrower call did not, because `trackGrant` returns before registering a
+        // grant `validGrant` refuses, so a refused grant is not in the set; it is
+        // kept because it costs nothing and does not depend on that ordering.
         await revokeAllKnown();
         throw error;
       }
