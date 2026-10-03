@@ -511,14 +511,36 @@ consequences worth having in writing. Using the owned deployment's own Railway
 hostname instead would work sooner and ties the asset to a hostname nobody has
 promised to keep, so it is the worse choice despite being available earlier. And
 adding a file under `public/` fails `tools-app-store-migration.test.mjs`, which pins
-that directory and `ios/` to an exact inventory of 25 paths — deliberately, so that
-a native-adjacent addition is reviewed rather than absorbed. That is a reviewed
-change to the baseline inventory and belongs in the same pull request as the files.
+that directory and `ios/` to an exact inventory of 25 baseline paths — deliberately,
+so that a native-adjacent addition is reviewed rather than absorbed. An addition is
+a named entry with a reason in `REVIEWED_PUBLIC_ADDITIONS` in the same pull request
+as the file; the baseline itself is never bumped.
 
-The code change is **not** this branch's: it belongs in a small pull request of its
-own, after the two this runbook ships with. Merging it ships nothing by itself,
-since `services/pennsync-api` deploys on a release-variable write rather than on a
-merge touching its directory.
+The code change is **not** this branch's: it is its own small pull request, after
+the two this runbook ships with. It carries the two image files as
+`public/brand/pennsync-logo.png` and `public/brand/penn-home-health.png`
+(byte-identical copies, so one file serves the app logo and the mail logo), points
+`BRAND_LOGO_URL` and `HandoutPreview.jsx` at `/brand/...` on the app's own origin,
+and records both files as reviewed additions in `tools-app-store-migration.test.mjs`.
+The two frontend constants ride the same frontend publish as the files, so they
+cannot point at an address that does not serve yet.
+
+**The mail logo is deliberately not in that pull request.** `branded-email.mjs`
+carries it as the original's absolute URL and `pennsyncApiOriginalParity.test.js`
+compares the renderer byte for byte against the block generated from
+`base44/_shared/backendHelpers.mjs`, so changing it means changing the shared helper
+and its carried copies together. It also must not ship before the frontend publish
+serves the file. It follows as a third change, after the publish and the read-back.
+
+**The read-back has to check the content type, not the status.** Measured
+2026-10-03: `https://app.caremetricai.com/brand/pennsync-logo.png`, before any
+publish carries it, answers `200 text/html`, because the host serves the app shell
+for every unknown path. A bare 200 would pass a broken image. The proof is
+`content-type: image/png` and the byte length (1,250,006 and 102,379).
+
+Merging that pull request ships nothing by itself, since `services/pennsync-api`
+deploys on a release-variable write rather than on a merge touching its directory,
+and the frontend only changes on a deliberate publish.
 
 **The hosted data, the user accounts and the generated native build**, which are
 the other half of the exit rather than this runbook's, named here only so the list
