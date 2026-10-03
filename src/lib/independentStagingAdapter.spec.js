@@ -439,6 +439,17 @@ describe('entity and integration calls in the independent build', () => {
     await expect(client.integrations.Core.InvokeLLM({})).rejects.toMatchObject({
       code: 'STAGING_OPERATION_UNAVAILABLE', operation: 'integrations.Core.InvokeLLM' });
   });
+  it('has no link exchange at all, and asks the project nothing about one', async () => {
+    const fixture = stagingFixture();
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(stagingEnv), { fetchImpl: fixture.fetch });
+    // Staging's four actors are fixed and their credentials are build
+    // configuration, so there is no invitation to accept and no password a caller
+    // could set. The name exists so a screen can ask the owned backend for it
+    // rather than branching on which mode it is in.
+    await expect(adapter.auth.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'))
+      .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
+    expect(fixture.requests).toEqual([]);
+  });
 });
 
 describe('a staging session this device already holds', () => {

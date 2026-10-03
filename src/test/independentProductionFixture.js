@@ -50,6 +50,11 @@ export function productionFixture() {
   const requests = [], live = new Map(), apiCalls = [];
   let next = 0;
   const fixture = { requests, live, apiCalls, apiResponse: null, denyContext: false, agencies: ['agency-one'],
+    // Link tokens this fixture will exchange, and the passwords it was asked to
+    // write. Both are the fixture's own strings; nothing real is involved, and
+    // the halves that would SEND a link are not in the client at all.
+    links: new Set(['invite:invitetoken-aaaaaa', 'recovery:recoverytoken-bbbbbb']), passwords: [],
+    password: productionPassword,
     // Refresh tokens this project will honour, each exactly once, as GoTrue
     // rotates them.
     refreshable: new Set(), refreshed: 0 };
@@ -82,8 +87,20 @@ export function productionFixture() {
     }
     if (!url.startsWith(`${productionProjectUrl}/`)) throw new Error('FIXTURE_FOREIGN_DESTINATION');
     const input = options.body ? JSON.parse(options.body) : {};
+    if (url.endsWith('/verify')) {
+      // No address and no bare token: the redemption happens here, by hash. See
+      // `production-client.test.mjs`'s own handler for why that shape is the one.
+      if (input.email !== undefined || input.token !== undefined
+        || !['invite', 'recovery'].includes(input.type)
+        || !fixture.links.delete(`${input.type}:${input.token_hash}`)) return json({}, 401);
+      const bearer = `production.link${++next}.token`;
+      live.set(bearer, true);
+      return json({ user, access_token: bearer, token_type: 'bearer' });
+    }
     if (url.endsWith('/token?grant_type=password')) {
-      if (input.email !== productionEmail || input.password !== productionPassword) return json({}, 401);
+      // The CURRENT password, so a grant after a link write has to use what the
+      // write set rather than what the fixture started with.
+      if (input.email !== productionEmail || input.password !== fixture.password) return json({}, 401);
       const bearer = `production.session${++next}.token`;
       const refresh = `refresh${next}`;
       live.set(bearer, refresh);
@@ -107,6 +124,12 @@ export function productionFixture() {
       fixture.refreshable.delete(live.get(bearer));
       live.delete(bearer);
       return new Response(null, { status: 204 });
+    }
+    if (url.endsWith('/user') && options.method === 'PUT') {
+      if (typeof input.password !== 'string' || input.password.length < 12) return json({}, 422);
+      fixture.passwords.push(input.password);
+      fixture.password = input.password;
+      return json(user);
     }
     if (url.endsWith('/user')) return json(user);
     if (url.endsWith('/pennsync_staging_memberships')) {

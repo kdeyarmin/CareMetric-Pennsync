@@ -18,6 +18,8 @@ import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
 import { OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
 import { isStagingEmailVerificationAvailable } from '@/lib/stagingEmailVerification';
 import StagingEmailVerification from './StagingEmailVerification';
+import SetPasswordScreen from './SetPasswordScreen';
+import { pendingLink } from '@/lib/ownedBackendLinkParams';
 import {
   CENTRAL_SUPPORT_EMAIL,
   CENTRAL_SUPPORT_EMAIL_HREF,
@@ -58,6 +60,11 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pendingToken, setPendingToken] = useState(() => ownedBackendAuth ? null : peekPendingAccessToken());
+  // An invitation or recovery link the page was opened with. Only an owned
+  // backend can act on one: the Base44 path has its own flow on the hosted page,
+  // and nothing here could serve it. The parameters are scrubbed from the URL at
+  // import either way, because a token in the address bar is a token in history.
+  const [pendingLinkState, setPendingLinkState] = useState(() => (ownedBackendAuth ? pendingLink : null));
   const mountedRef = useRef(true);
   const authOperationRef = useRef(0);
   const loginAbortRef = useRef(null);
@@ -71,6 +78,26 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
       loginAbortRef.current = null;
     };
   }, []);
+
+  // Before the sign-in form, and in place of it: somebody arriving on a link has
+  // no password yet, or has forgotten it, so offering them one to type would be
+  // the wrong question. The URL does not change, so a deep link survives.
+  if (pendingLinkState) {
+    return (
+      <SetPasswordScreen
+        link={pendingLinkState}
+        onPasswordSet={(address) => {
+          // Straight to the sign-in form with the address filled in. Never a
+          // session: the client revokes the grant the link bought, and this
+          // screen is where that property would be undone if it were undone.
+          setPendingLinkState(null);
+          setMode('signin');
+          setEmail(address);
+          setError('');
+        }}
+      />
+    );
+  }
 
   const switchMode = (nextMode) => {
     setMode(nextMode);

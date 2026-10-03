@@ -638,6 +638,31 @@ export function createProductionAuthorityClient(input, options = {}) {
 }
 
 /**
+ * The two email link kinds this client will exchange, and nothing else.
+ *
+ * `invite` is a new member accepting; `recovery` is an existing one who has
+ * forgotten their password. The other GoTrue types are absent for TWO different
+ * reasons, which an earlier version of this comment ran together.
+ *
+ * `magiclink` and `signup` are refused on the property: each is a way to obtain a
+ * session without a password, which is this method's own negation.
+ *
+ * `email_change` is a different case, and absent only because nothing asks for it:
+ * it hands out no password-free session, it confirms a new address. If a member of
+ * staff is ever to change their own address, that flow needs a client half and has
+ * none, and somebody holding such a link today has nowhere to take it. That is a
+ * product question rather than a security one, and it is written down here rather
+ * than filed under the two above.
+ */
+const LINK_TYPES = Object.freeze(new Set(['invite', 'recovery']));
+/**
+ * The shape of a link's token. Bounded and character-restricted because it is
+ * read out of a URL the caller arrived on, so it is the least trusted input this
+ * module takes.
+ */
+const LINK_TOKEN = /^[A-Za-z0-9_-]{6,512}$/;
+
+/**
  * A refresh token's shape, bounded here as well as in the device store.
  *
  * This value is SENT to the provider as a credential, so the client refuses to
@@ -932,6 +957,124 @@ function createAuthorityClient(config, mode,
         }
         throw error;
       }
+    },
+    /**
+     * Set this account's password from an invitation or a recovery link.
+     *
+     * PRODUCTION ONLY. Staging's four actors are fixed and their credentials are
+     * build configuration, so there is no invitation to accept there and nothing
+     * a caller could set.
+     *
+     * A LINK NEVER BECOMES A SESSION. The grant the exchange returns is used for
+     * exactly one request — the password write — and then revoked, and the epoch
+     * is bumped either way, so this method cannot leave a caller signed in and no
+     * RPC can be made on a token that came from a mailbox. The caller signs in
+     * afterwards with the password they just set, through `signIn` above, which is
+     * the only path that produces a working session. A link arriving twice
+     * therefore cannot be replayed into a session either.
+     *
+     * The identity checks are `signIn`'s: the grant has to be for this client's
+     * own address with a confirmed email, and the user the write answers with has
+     * to be the same one. Nothing here sends anything — the halves that send, a
+     * `/invite` and a `/recover`, are not in this client at all.
+     */
+    async setPasswordFromLink(type, tokenHash, password) {
+      if (staging) fail('STAGING_OPERATION_UNAVAILABLE');
+      invalidate();
+      const lease = epoch;
+      // EVERY grant either request hands back, registered the same way, because a
+      // grant this method cannot name is a grant it cannot revoke. The write used
+      // to be sent without this: if `PUT /user` ever answers with a session --
+      // which is the provider's behaviour and is not measured here -- nothing
+      // registered it, so neither the success path, nor the catch, nor the next
+      // call's sweep could revoke it, and the one thing this method promises would
+      // have failed silently. A reviewer found that structurally and proved it
+      // with a transport whose write mints a second session.
+      //
+      // IT ADMITS A TOKEN ON ITS SHAPE RATHER THAN THROUGH `validGrant`, AND EACH
+      // CALL HAS ITS OWN REASON — the comment gave only the second, which is the
+      // one a future reader could satisfy by putting `validGrant` back on the
+      // first and reopening the finding.
+      //
+      // The VERIFY call's answer IS a grant, so `validGrant` would admit it; the
+      // reason it is not asked here is that this method's job on a REFUSAL is to
+      // clean up, and a grant refused for naming the wrong person is exactly the
+      // one that must still be revoked — a mistyped address is an ordinary
+      // mistake against a provider that behaved correctly, so a real person's
+      // session was minted and nobody else will ever clean it up. The sign-in
+      // path answers the same question the other way, deliberately
+      // (`client-lifecycle.test.mjs:172`): a password exchange answering for a
+      // different identity means the responder is not behaving like the provider,
+      // so the token's provenance is unknown and not spending it wins. The axis
+      // is provenance and reachability, not whether this client accepted the
+      // grant. The WRITE call's answer is a USER rather than a grant, so
+      // `validGrant` would reject it outright and a rotated token would go
+      // unnoticed again, which is how the finding arose.
+      //
+      // The bound is for MEMORY and nothing else. It used to be the JWT shape,
+      // which `validGrant` also applies — so a token outside it failed closed for
+      // use and OPEN for cleanup: minted, unusable, and unrevokable, which is a
+      // quiet exception to the one sentence this method promises. A reviewer
+      // measured it as unreachable while GoTrue returns JWTs and asked for the
+      // widening anyway, because the cost of being wrong is one logout request
+      // sent with a bearer the provider will refuse.
+      const track = async (value, canceled) => {
+        const token = value?.access_token;
+        if (typeof token !== 'string' || token.length === 0 || token.length > 16384) return;
+        if (!knownSessions.has(token)) knownSessions.set(token, { revoking: null });
+        if (canceled) await revokeKnown(token);
+      };
+      try {
+        await revokeAllKnown(); current(lease);
+        if (!LINK_TYPES.has(type) || typeof tokenHash !== 'string' || !LINK_TOKEN.test(tokenHash)) {
+          fail('INVALID_PRODUCTION_LINK');
+        }
+        // The same bounds as a sign-in, and the same code, because this is the
+        // same credential being written rather than a second kind of secret.
+        if (typeof password !== 'string' || password.length < 12 || password.length > 512) {
+          fail('INVALID_PRODUCTION_CREDENTIAL');
+        }
+        const session = await request('/auth/v1/verify', {
+          // `token_hash` rather than `token` and an address, because the hash is
+          // the half of a link that is redeemed HERE. The other shape is redeemed
+          // by the provider, which then hands the browser a whole session in the
+          // URL -- the one thing this method exists to avoid. The typed address is
+          // still checked, by `sameUser` against the grant's own, so a person who
+          // mistypes it is refused rather than quietly setting somebody's
+          // password: the link decides whose account, and the address has to
+          // agree with it.
+          lease, body: { type, token_hash: tokenHash }, receivedGrant: track });
+        if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        authUserId = session.user.id;
+        const updated = await request('/auth/v1/user', { lease, bearer: session.access_token,
+          method: 'PUT', body: { password }, receivedGrant: track });
+        if (!sameUser(updated)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        const identity = Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
+        // EVERY known grant, not just the link's: the write may have rotated it,
+        // and revoking one by name would leave the other live. Not in the
+        // `finally`, because a cleanup failure on the success path means a live
+        // session minted from a mailbox is still out there, which the caller has
+        // to hear about rather than have swallowed by a return.
+        await revokeAllKnown();
+        return identity;
+      } catch (error) {
+        // THE SWALLOW IS LOAD-BEARING, not a shrug. `revokeKnown` raises
+        // `AUTHORITY_SESSION_CLEANUP_FAILED`, and the screen driving this treats
+        // that code as the DONE state — written, only the cleanup failed. Without
+        // the `.catch` it would replace the error that got us here, so a mistyped
+        // address plus a flaky logout would tell somebody their password was set
+        // when none was written. `production-client.test.mjs` pins it, and the
+        // test goes red if the `.catch` goes.
+        //
+        // Read the success path's code narrowly while you are here: a logout that
+        // fails once and succeeds on a retry still answers
+        // `AUTHORITY_SESSION_CLEANUP_FAILED`, so that code means "a cleanup call
+        // failed", never "a session is certainly still live".
+        await revokeAllKnown().catch(() => {});
+        throw error;
+      } finally { invalidate(); }
     },
     async rpc(method, input = {}) {
       const params = staging

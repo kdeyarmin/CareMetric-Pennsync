@@ -39,7 +39,12 @@ function fixture(overrides = {}) {
     requests: [], user: {
       id: AUTH_USER_ID, email: EMAIL, role: 'authenticated', is_anonymous: false,
       email_confirmed_at: '2026-10-01T00:00:00Z',
-    }, context: null, apiResponse: null, refreshed: 0, live, refreshable, ...overrides,
+    }, context: null, apiResponse: null, refreshed: 0, live, refreshable,
+    // Link tokens this fixture will honour, and the passwords it was asked to
+    // write. Both are the fixture's own strings: nothing real is involved.
+    rotateOnWrite: false, rotatedShape: null, linkUser: null,
+    links: new Set(['invite:invitetoken-aaaaaa', 'recovery:recoverytoken-bbbbbb']),
+    passwords: [], password: PASSWORD, consumeLinks: true, refuseLogout: false, ...overrides,
   };
   let next = 0;
   const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -65,8 +70,26 @@ function fixture(overrides = {}) {
     }
     if (!url.startsWith(`${PROJECT_URL}/`)) throw new Error('FIXTURE_FOREIGN_DESTINATION');
     const body = options.body ? JSON.parse(options.body) : {};
+    if (url.endsWith('/verify')) {
+      // A fake transport, and deliberately a STRICT one: the exchange has to name
+      // one of the two link kinds and a hash this fixture minted, and must carry
+      // NO address and no bare token -- the shape where the provider redeems the
+      // link and hands back a session is the one this path refuses to use. No real
+      // address and no real link is used anywhere, and nothing here sends.
+      if (body.email !== undefined || body.token !== undefined
+        || !['invite', 'recovery'].includes(body.type)
+        || !state.links.has(`${body.type}:${body.token_hash}`)) return json({}, 401);
+      if (state.consumeLinks) state.links.delete(`${body.type}:${body.token_hash}`);
+      const bearer = `production.link${++next}.token`;
+      live.set(bearer, true);
+      // `linkUser` mints the grant for somebody else, which is what a mistyped
+      // address produces now that the provider resolves the link on its own.
+      return json({ user: state.linkUser ?? state.user, access_token: bearer, token_type: 'bearer' });
+    }
     if (url.endsWith('/token?grant_type=password')) {
-      if (body.email !== EMAIL || body.password !== PASSWORD) return json({}, 401);
+      // The CURRENT password, so a grant after a link write has to use what the
+      // write set rather than what the fixture started with.
+      if (body.email !== EMAIL || body.password !== state.password) return json({}, 401);
       const bearer = `production.session${++next}.token`;
       const refresh = `refresh${next}`;
       live.set(bearer, refresh);
@@ -89,12 +112,27 @@ function fixture(overrides = {}) {
     const bearer = options.headers.Authorization?.slice(7);
     if (!live.has(bearer)) return json({}, 401);
     if (url.endsWith('/logout?scope=local')) {
+      if (state.refuseLogout) return json({}, 500);
       // A local logout ends the SESSION, so the refresh token minted with that
-      // access token dies with it — which is what makes revoking on sign-out the
-      // thing that stops a copied device record from being replayed.
+      // access token dies with it.
       refreshable.delete(live.get(bearer));
-      live.delete(bearer);
-      return new Response(null, { status: 204 });
+      live.delete(bearer); return new Response(null, { status: 204 });
+    }
+    if (url.endsWith('/user') && options.method === 'PUT') {
+      if (typeof body.password !== 'string' || body.password.length < 12) return json({}, 422);
+      state.passwords.push(body.password);
+      state.password = body.password;
+      // `rotateOnWrite` makes the write answer with a session of its own, which is
+      // provider behaviour this repository cannot measure and must survive either
+      // way: a token nothing registered is a token nothing can revoke.
+      if (!state.rotateOnWrite) return json(state.user);
+      // `rotatedShape` lets a test mint a token that is NOT JWT-shaped, which is
+      // the case the tracking bound used to drop on the floor.
+      const rotated = state.rotatedShape
+        ? state.rotatedShape(next + 1) : `production.rotated${++next}.token`;
+      if (state.rotatedShape) next += 1;
+      live.set(rotated, true);
+      return json({ ...state.user, access_token: rotated, token_type: 'bearer' });
     }
     if (url.endsWith('/user')) return json(state.user);
     if (url.endsWith('/pennsync_staging_context')) {
@@ -276,6 +314,191 @@ test('only the two authority methods are reachable, and a ported handler still n
 test('a short credential never reaches the project', async () => {
   const state = fixture();
   await assert.rejects(client(state).signIn('short'), { code: 'INVALID_PRODUCTION_CREDENTIAL' });
+  assert.deepEqual(state.requests, []);
+});
+
+test('a link sets the password and never becomes a session', async () => {
+  const state = fixture();
+  const api = client(state);
+  const identity = await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(identity, { id: AUTH_USER_ID, email: EMAIL, provider: 'supabase', app_id: APP_ID });
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // The write is a PUT on the user, not a second grant, and the exchange named
+  // this address. Both are asserted from the requests the transport actually saw.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user', 'POST /auth/v1/logout?scope=local',
+  ]);
+  // THE PROPERTY THIS METHOD EXISTS FOR: the grant that came out of a mailbox was
+  // revoked, and no RPC can be made on it. A caller signs in afterwards with the
+  // password it just set, which is the only path that produces a session.
+  await assert.rejects(api.rpc('context', { p_agency_id: 'agency-real' }), { code: 'AUTHENTICATION_REQUIRED' });
+  await assert.doesNotReject(api.signIn('a-new-long-password').then(() => api.rpc('context', { p_agency_id: 'agency-real' })));
+});
+
+test('a wrong-person grant from a LINK is revoked, where the same grant from a sign-in is not', async () => {
+  // THE MIRROR OF `client-lifecycle.test.mjs:172`, and the pair is the point: that
+  // test pins the sign-in path NOT logging out a grant it refused (its `requests`
+  // is exactly the password exchange), and this one pins the link path logging one
+  // out. Neither suite proves the pair, and either side reads like it could be
+  // tidied into the other, so each names the other.
+  //
+  // What separates them is PROVENANCE and REACHABILITY, not whether the client
+  // accepted the grant. A mistyped address on a link is an ordinary mistake
+  // against a provider that behaved correctly, so a real person's session gets
+  // minted and nobody will ever clean it up: revoking wins. A password exchange
+  // that answers for a different identity means the responder is not behaving
+  // like the provider at all, so the token's provenance is unknown and not
+  // spending it as a credential wins -- and that is unreachable in ordinary
+  // operation, where a typo is not.
+  // THE ROOT CAUSE BEHIND THREE FINDINGS, in the instance that found it: a grant
+  // this client will not USE still has to be cleaned up, and those are different
+  // questions. Registering only what `validGrant` accepts meant a grant for
+  // somebody else was never registered, so the catch had nothing to revoke: the
+  // refusal was correct, no password was written, and a live session for the real
+  // account was left behind with the link spent.
+  const state = fixture();
+  state.linkUser = { ...state.user, id: '11111111-2222-4333-8444-555555555555',
+    email: 'somebody.else@agency.example' };
+  const api = client(state);
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHENTICATION_IDENTITY_MISMATCH' });
+  assert.deepEqual(state.passwords, []);
+  // The logout is OBSERVED rather than assumed, and the count is what is asserted:
+  // a reviewer's own version of this named a token the path never mints and passed
+  // while a grant was live.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
+});
+
+test('a mistyped address whose cleanup also fails still answers the mismatch', async () => {
+  // WHAT THE BARE `.catch(() => {})` IN THE CATCH IS FOR, and nothing else pinned
+  // it. `revokeKnown` raises `AUTHORITY_SESSION_CLEANUP_FAILED`, and the screen
+  // that drives this treats that code as the DONE state -- the password was
+  // written and only the cleanup failed. So without the swallow, a typo plus a
+  // flaky logout would replace the mismatch with a code meaning success, and tell
+  // somebody their password was set when no password was written at all. Delete
+  // the `.catch` and this test goes red; a reviewer measured that it does.
+  const state = fixture({ refuseLogout: true });
+  state.linkUser = { ...state.user, id: '11111111-2222-4333-8444-555555555555',
+    email: 'somebody.else@agency.example' };
+  const api = client(state);
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHENTICATION_IDENTITY_MISMATCH' });
+  // No password written, the logout attempted, and the session still live --
+  // which is the honest outcome and is NOT what the answer is about.
+  assert.deepEqual(state.passwords, []);
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 1);
+});
+
+test('a password write that answers with a session of its own leaves nothing live', async () => {
+  // A REVIEWER'S FINDING, found structurally: the write was sent without the
+  // callback that registers a grant, so a session in ITS answer was known to
+  // nobody -- not the success path, not the catch, not the next call's sweep --
+  // and the one thing this method promises would have failed silently. Whether
+  // the provider ever answers that way is not measured here, which is exactly why
+  // the client must not depend on it.
+  const state = fixture();
+  state.rotateOnWrite = true;
+  const api = client(state);
+  await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // BOTH grants revoked, not just the link's: two logouts, and nothing live.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user',
+    'POST /auth/v1/logout?scope=local', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
+});
+
+test('a rotated token the provider does not shape like a JWT is still revoked', async () => {
+  // THE QUIET EXCEPTION TO THIS METHOD'S OWN SENTENCE, measured by a reviewer and
+  // closed here. Tracking used to apply the JWT shape, which `validGrant` also
+  // applies -- so a token outside it failed closed for USE and open for CLEANUP:
+  // minted by the write, never usable, and never revokable. Unreachable while
+  // GoTrue returns JWTs, and reachable the moment the token format changes, which
+  // is a property of somebody else's service rather than of this code.
+  const state = fixture({ rotateOnWrite: true, rotatedShape: n => `two.segments${n}` });
+  const api = client(state);
+  await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // Both the link's grant and the write's unshaped one, logged out by name.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user',
+    'POST /auth/v1/logout?scope=local', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
+});
+
+test('a recovery link works the same way, and a consumed link cannot be replayed', async () => {
+  const state = fixture();
+  const api = client(state);
+  await api.setPasswordFromLink('recovery', 'recoverytoken-bbbbbb', 'another-long-password');
+  assert.deepEqual(state.passwords, ['another-long-password']);
+  // The fixture consumes the token, as GoTrue does, so the second attempt is the
+  // real replay case rather than a simulated one.
+  await assert.rejects(api.setPasswordFromLink('recovery', 'recoverytoken-bbbbbb', 'third-long-password'),
+    { code: 'AUTHENTICATION_FAILED' });
+  assert.deepEqual(state.passwords, ['another-long-password']);
+});
+
+test('a link this client will not exchange never leaves the browser', async () => {
+  const state = fixture();
+  const api = client(state);
+  for (const [label, args] of [
+    // The absent GoTrue types, each of which would be a way to get a session
+    // with no password, or to move the address the target is built around.
+    ['a magic link', ['magiclink', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['a signup link', ['signup', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['an email change', ['email_change', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['no type at all', [undefined, 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['a token with a space', ['invite', 'invite token', 'a-new-long-password']],
+    ['a token carrying a path', ['invite', '../../etc/passwd', 'a-new-long-password']],
+    ['a token too short to be one', ['invite', 'abc', 'a-new-long-password']],
+    ['a token over the bound', ['invite', 'a'.repeat(513), 'a-new-long-password']],
+    ['no token', ['invite', null, 'a-new-long-password']],
+  ]) {
+    await assert.rejects(api.setPasswordFromLink(...args), { code: 'INVALID_PRODUCTION_LINK' }, label);
+  }
+  // The same bounds as a sign-in, and the same code: this is the same credential
+  // being written rather than a second kind of secret.
+  for (const password of ['short', '', null, 'a'.repeat(513)]) {
+    await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', password),
+      { code: 'INVALID_PRODUCTION_CREDENTIAL' });
+  }
+  assert.deepEqual(state.requests, []);
+  assert.deepEqual(state.passwords, []);
+});
+
+test('a link session whose revocation fails is reported rather than left quiet', async () => {
+  const state = fixture({ refuseLogout: true });
+  const api = client(state);
+  // A cleanup failure on the success path means a session minted from a mailbox
+  // is still live, so it is raised rather than swallowed by the return -- and the
+  // password was still written, which is why the code says cleanup and not write.
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHORITY_SESSION_CLEANUP_FAILED' });
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+});
+
+test('a staging client has no link exchange at all', async () => {
+  const { createStagingAuthorityClient } = await import('./client.mjs');
+  const state = fixture();
+  // The staging target's own reviewed values: a synthetic actor's address and one
+  // of the two approved reference/origin pairs. Nothing real appears here either.
+  const staging = createStagingAuthorityClient({
+    appId: STAGING_APP_ID, projectRef: 'local-pennsync-authority', projectUrl: 'http://127.0.0.1:54321',
+    publishableKey: 'sb_publishable_synthetic_test_key',
+    email: 'info+pennsync-admin-a@caremetricai.com', authUserId: '10000000-0000-4000-8000-000000000001',
+  }, { fetchImpl: state.fetch });
+  // Staging's four actors are fixed and their credentials are build
+  // configuration, so there is no invitation to accept and nothing to set.
+  await assert.rejects(staging.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'STAGING_OPERATION_UNAVAILABLE' });
   assert.deepEqual(state.requests, []);
 });
 
