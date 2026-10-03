@@ -30,6 +30,19 @@ const REVIEWED_NATIVE_CHANGES = Object.freeze({
     'Documents the two changes above and the transitional domain set.',
 });
 
+// The mirror image: a file ADDED under public/ is the same kind of reviewed act.
+// Each needs a reason, must be tracked, and must not be in the baseline (an
+// entry that was already pinned belongs in the changes above). The packaged
+// native directories cannot gain files this way, only public/ can.
+const REVIEWED_PUBLIC_ADDITIONS = Object.freeze({
+  'public/brand/pennsync-logo.png':
+    'Hosting exit: the PennSync logo previously loaded from the Base44 storage bucket. '
+    + 'Byte-identical copy so the app serves it from its own origin; the mail logo is the same file.',
+  'public/brand/penn-home-health.png':
+    'Hosting exit: the Penn Home Health handout image previously loaded from the Base44 '
+    + 'storage bucket. Byte-identical copy served from the app origin.',
+});
+
 // execFileSync's default maxBuffer is 1 MiB; keep this in step with the same
 // helper in tools-decision-register.test.mjs, where a register that crossed a
 // megabyte made every base read die with ENOBUFS.
@@ -41,7 +54,14 @@ test('every native and packaged public asset is byte-preserved, or enumerated wi
   const baseline = paths(git('ls-tree', '-r', '-z', '--name-only', BASELINE, '--', 'ios', 'public'));
   const current = paths(git('ls-files', '-z', '--', 'ios', 'public'));
   assert.equal(baseline.length, 25, 'Review baseline inventory changes explicitly.');
-  assert.deepEqual(current, baseline, 'Native/public files were added, removed or renamed.');
+  const additions = Object.keys(REVIEWED_PUBLIC_ADDITIONS);
+  for (const path of additions) {
+    assert.ok(path.startsWith('public/'), `${path}: only public/ may gain files`);
+    assert.ok(!baseline.includes(path), `${path} is already pinned; exempt it as a change instead`);
+    assert.ok(REVIEWED_PUBLIC_ADDITIONS[path].length >= 40, `${path} needs a real reason, not a label`);
+  }
+  assert.deepEqual(current, [...baseline, ...additions].sort(),
+    'Native/public files were added, removed or renamed.');
   // An exemption naming a file outside the pinned set proves nothing and hides
   // a typo as a pass.
   for (const path of Object.keys(REVIEWED_NATIVE_CHANGES)) {

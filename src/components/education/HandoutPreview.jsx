@@ -39,7 +39,7 @@ export default function HandoutPreview({
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
                   <img 
-                    src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/c39653ba3_PennHomeHealthInc.png"
+                    src="/brand/penn-home-health.png"
                     alt="Penn Home Health"
                     className="h-12"
                   />
