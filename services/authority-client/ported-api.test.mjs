@@ -227,9 +227,13 @@ test('the capability exposes no token and adds no new surface', async () => {
   // finds missing, which would be a TypeError instead of a code. Asserted right
   // below, so this list growing by a name that does nothing cannot pass.
   assert.deepEqual(Object.keys(client).sort(),
-    ['callFunction', 'invalidate', 'rpc', 'setPasswordFromLink', 'signIn', 'signOut']);
+    ['callFunction', 'invalidate', 'resume', 'rpc', 'setPasswordFromLink', 'signIn', 'signOut']);
   await assert.rejects(() => client.setPasswordFromLink('invite', 'invitetoken-aaaaaa',
     'a-new-long-password'), { code: 'STAGING_OPERATION_UNAVAILABLE' });
+  // `resume` is a name, not a capability, unless the client was given a device
+  // port: a client built without one answers null rather than reaching for a
+  // credential it has no way to hold.
+  assert.equal(await client.resume(), null);
   assert.ok(!JSON.stringify(Object.getOwnPropertyDescriptors(client)).includes('synthetic.access.token'));
   assert.ok(Object.isFrozen(client));
 });

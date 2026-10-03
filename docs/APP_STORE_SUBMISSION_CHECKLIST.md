@@ -19,10 +19,40 @@ Store Connect/process steps that must be resolved before another native submissi
 - [ ] **Apple and Google privacy disclosures.** Reconcile App Store privacy
       labels, Google Play Data safety, and `ios/PennSync/PrivacyInfo.xcprivacy`
       with the app's actual web and native data handling.
-- [ ] **Signing/distribution continuity.** Recover and verify the original Apple
-      signing/provisioning assets for `com.caremetric.ai` and Google signing/Play
-      App Signing continuity for `com.caremetic.ai`; do not substitute a new
-      identity or signing key.
+- [ ] **Signing/distribution continuity.** These are two different problems and
+      they were one bullet until 2026-10-01, which had a reader chasing the wrong
+      thing on iOS.
+
+      **iOS: nothing cryptographic needs recovering.** The App Store re-signs
+      every upload for distribution, so a distribution certificate is reissued
+      rather than recovered, and `ios/project.yml` already uses
+      `CODE_SIGN_STYLE: Automatic`. What makes an upload an UPDATE rather than a
+      new app is an identity, not a key: the Apple team plus the bundle id
+      `com.caremetric.ai`, which `ios/project.yml` pins and
+      `tools-app-store-migration.test.mjs` asserts. Apple's public record for
+      ID 6757097720 gives the seller as the repository owner (read 2026-10-01
+      from `itunes.apple.com/lookup`), so the record is on his own account and no
+      App Store Connect app transfer is involved. What that reading does NOT
+      establish, and one sign-in would: whether the Developer Program membership
+      is current and the account credentials are to hand.
+
+      **Android: the original wording holds, and only here.** Google signing /
+      Play App Signing continuity for `com.caremetic.ai` must be recovered, not
+      substituted — with no Play App Signing enrolment, a lost app signing key
+      ends the listing's update path and users would have to reinstall. Whether
+      that enrolment exists is **unmeasured from this repository**: there is no
+      `android/` directory here at all, so nothing in the tree can answer it.
+
+      `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` **contradicts itself about this,
+      two hundred lines apart**, which is a different defect from carrying the
+      error. The sentence beginning "App Signing for `com.caremetic.ai` must be
+      RECOVERED, not regenerated" puts both platforms under Android's
+      consequence, while the Stage L row beginning "Recover Android signing, and
+      Apple **account** access" already carries the correction, dated 2026-09-22
+      and citing `docs/MOBILE_RECOVERY_RUNBOOK_2026-09-22.md`. So the fix there is
+      to narrow the earlier sentence and point it at the dated row — not to state
+      the correction a third time. That belongs to that document's next change;
+      read it by those two anchors rather than by line number, which moves.
 - [ ] **IAP/billing continuity.** Reconcile the existing Apple in-app purchases
       and any Google billing configuration with product IDs, purchase/receipt
       validation, restore behavior, entitlements, and server state.

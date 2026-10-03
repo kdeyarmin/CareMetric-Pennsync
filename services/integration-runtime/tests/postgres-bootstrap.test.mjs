@@ -18,7 +18,7 @@ const migrations = new URL('../migrations/', import.meta.url);
 const files = (await readdir(migrations)).filter(name => /^00[1-5]_.+\.sql$/.test(name)).sort();
 assert.equal(files.length, 5);
 const FORWARD = (await readdir(migrations)).filter(name => /^00[6-9]_.+\.sql$/.test(name)).sort();
-assert.deepEqual(FORWARD, ['006_record_owned_files.sql']);
+assert.deepEqual(FORWARD, ['006_record_owned_files.sql', '007_provider_credential.sql', '008_telecom_operations.sql']);
 const installed = JSON.parse(await readFile(new URL('./installed-definition-metadata.json', import.meta.url), 'utf8'));
 const app = '6a9881683dc68a0bd54f1ef7';
 const subject = 'a'.repeat(64);
@@ -368,4 +368,152 @@ test('every released operation can actually reserve, the new one included', () =
   // policy, so a direct read as `service_role` matches zero rows by design
   // (D32's shape). `outcome: 'owned'` is returned from the function's own
   // `insert ... returning`, so it already attests the row landed.
+}, { forward: true }));
+
+/*
+ * 007's credential store, against a real cluster.
+ *
+ * The module-level suite beside the service code asserts the SQL as TEXT —
+ * that the grants name `service_role` alone, that no policy exists, that the
+ * status function's projection leaves the sealed column out. None of that is
+ * behaviour. A trigger that deparses correctly can still fire on nothing, and
+ * a partial unique index is a claim about two concurrent writers that one
+ * connection cannot make. So the refusals are proved here.
+ */
+const credential = (db, args) => rpc(db, 'credential_put', args);
+const CRED = app;
+const putArgs = (sealed = 'sealed-blob', last = '9911', by = 'operator@example.test') =>
+  [randomUUID(), CRED, 'telnyx', sealed, last, 'cHVibGljLWtleQ==', 'mp-1', 'vc-1', 'fc-1', by];
+
+test('a credential rotation appends a version and retires the previous one', () => lab(async ({ db }) => {
+  await role(db);
+  assert.equal(await credential(db, putArgs('blob-one', '1111')), '1');
+  assert.equal(await credential(db, putArgs('blob-two', '2222')), '2');
+  const active = await rpc(db, 'credential_active', [CRED, 'telnyx']);
+  assert.equal(active.version, 2);
+  assert.equal(active.api_key_sealed, 'blob-two');
+  assert.equal(active.api_key_last_four, '2222');
+  // The retired version is kept, and is not what the senders get.
+  await reset(db);
+  const rows = (await db.query('select version, is_active, deactivated_at from public.cm_integration_credential order by version')).rows;
+  assert.deepEqual(rows.map(row => [Number(row.version), row.is_active]), [[1, false], [2, true]]);
+  assert.notEqual(rows[0].deactivated_at, null);
+  assert.equal(rows[1].deactivated_at, null);
+}, { forward: true }));
+
+test('the status projection cannot return the sealed key, and says nothing about an absent one', () => lab(async ({ db }) => {
+  await role(db);
+  assert.equal(await rpc(db, 'credential_status', [CRED, 'telnyx']), null);
+  await credential(db, putArgs('blob-one', '9911'));
+  const status = await rpc(db, 'credential_status', [CRED, 'telnyx']);
+  assert.equal(Object.hasOwn(status, 'api_key_sealed'), false);
+  assert.equal(JSON.stringify(status).includes('blob-one'), false);
+  assert.equal(status.api_key_last_four, '9911');
+  assert.deepEqual(
+    [status.public_key_configured, status.messaging_profile_configured,
+      status.voice_connection_configured, status.fax_connection_configured],
+    [true, true, true, true]);
+  // Another provider's status is another row, and there is none.
+  assert.equal(await rpc(db, 'credential_active', [CRED, 'other']), null);
+}, { forward: true }));
+
+test('the credential table refuses every edit, delete and reactivation', () => lab(async ({ db }) => {
+  await role(db);
+  await credential(db, putArgs('blob-one', '1111'));
+  await credential(db, putArgs('blob-two', '2222'));
+  await reset(db);
+  const refuses = async (sql, expected) => {
+    await assert.rejects(() => db.query(sql), error => {
+      assert.match(error.message, expected);
+      return true;
+    }, `expected a refusal from: ${sql}`);
+    // A failed statement poisons the implicit transaction state on some paths;
+    // keep the connection usable for the next case.
+    await db.query('select 1').catch(() => {});
+  };
+  await refuses("update public.cm_integration_credential set api_key_sealed = 'swapped' where is_active",
+    /Credential rotation records a new version/);
+  await refuses("update public.cm_integration_credential set api_key_last_four = '0000' where is_active",
+    /Credential rotation records a new version/);
+  await refuses("update public.cm_integration_credential set updated_by = 'someone@else.test' where is_active",
+    /Credential rotation records a new version/);
+  await refuses('delete from public.cm_integration_credential where version = 1',
+    /Credential history is append-only/);
+  await refuses('update public.cm_integration_credential set is_active = true, deactivated_at = null where version = 1',
+    /A retired credential cannot be reactivated/);
+  // And the rows are as they were.
+  const rows = (await db.query('select version, is_active, api_key_sealed from public.cm_integration_credential order by version')).rows;
+  assert.deepEqual(rows.map(row => [Number(row.version), row.is_active, row.api_key_sealed]),
+    [[1, false, 'blob-one'], [2, true, 'blob-two']]);
+}, { forward: true }));
+
+test('two concurrent rotations of one provider cannot both become active', () => lab(async ({ db, connect }) => {
+  await role(db);
+  await credential(db, putArgs('blob-one', '1111'));
+  // Two real connections. The lock the function takes is on the ACTIVE row, so
+  // this is the case `select ... for update` can actually serialize; the first
+  // rotation had no active row to lock and is bounded by the partial unique
+  // index instead, which is why both halves are in the migration.
+  const [a, b] = [await connect(), await connect()];
+  for (const client of [a, b]) await client.query('set role service_role');
+  await a.query('begin'); await b.query('begin');
+  const first = a.query(
+    'select public.cm_integration_credential_put($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) as v',
+    putArgs('blob-a', 'aaaa'));
+  await first;
+  let settled = false;
+  const second = b.query(
+    'select public.cm_integration_credential_put($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) as v',
+    putArgs('blob-b', 'bbbb')).then(result => { settled = true; return result; });
+  await delay(300);
+  assert.equal(settled, false, 'the second rotation must block on the first, not race it');
+  await a.query('commit');
+  const answer = await second;
+  await b.query('commit');
+  // The loser takes the next version rather than colliding on it.
+  assert.equal(Number(answer.rows[0].v), 3);
+  // Read back as the owner: `service_role` holds the functions and still
+  // cannot read the table, which the last case in this group proves.
+  await reset(db);
+  const rows = (await db.query('select version, is_active from public.cm_integration_credential order by version')).rows;
+  assert.deepEqual(rows.map(row => [Number(row.version), row.is_active]),
+    [[1, false], [2, false], [3, true]]);
+}, { forward: true }));
+
+test('no browser role may reach the credential, through the table or the functions', () => lab(async ({ db }) => {
+  await role(db);
+  await credential(db, putArgs('blob-one', '1111'));
+  for (const name of ['anon', 'authenticated']) {
+    await reset(db);
+    await db.query(`set role ${name}`);
+    for (const statement of [
+      'select * from public.cm_integration_credential',
+      `select public.cm_integration_credential_active('${CRED}','telnyx')`,
+      `select public.cm_integration_credential_status('${CRED}','telnyx')`,
+    ]) {
+      await assert.rejects(() => db.query(statement), /permission denied/,
+        `${name} must be refused: ${statement}`);
+      await db.query('select 1').catch(() => {});
+    }
+  }
+  await reset(db);
+  // And `service_role`, which holds the functions, still cannot read the table
+  // directly: forced RLS with no policy admits nobody, so the definer
+  // functions are the only way in.
+  await role(db);
+  await assert.rejects(() => db.query('select * from public.cm_integration_credential'), /permission denied/);
+  // The guard is the directory's only trigger function, so it is the only one
+  // that would keep PostgreSQL's default EXECUTE to PUBLIC. It arrived that
+  // way and the restore ratchet is what noticed. Firing a trigger checks no
+  // privilege -- only `create trigger` does, which is why the revoke sits
+  // after it -- so this costs the guard nothing and the asymmetry is gone.
+  await reset(db);
+  assert.deepEqual((await db.query(`select p.proname as name,
+    has_function_privilege('anon',p.oid,'EXECUTE') as anon,
+    has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated,
+    has_function_privilege('service_role',p.oid,'EXECUTE') as service_role
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'cm_integration_%'
+      and p.prorettype = 'pg_catalog.trigger'::regtype order by p.proname`)).rows,
+  [{ name: 'cm_integration_credential_guard', anon: false, authenticated: false, service_role: false }]);
 }, { forward: true }));

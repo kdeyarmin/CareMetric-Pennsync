@@ -46,11 +46,22 @@
 	  App-Bound Domains used by WebViewController's main-frame navigation
 	  containment. The current frontend intentionally registers no service
 	  worker and provides no offline app shell. Bare domains cover their
-	  subdomains, including caremetricai.base44.app and the Base44 auth/API
-	  endpoints.
+	  subdomains, so caremetricai.com covers app.caremetricai.com (the origin
+	  WebViewController loads) and base44.app covers caremetricai.base44.app and
+	  the Base44 auth/API endpoints.
+
+	  All THREE are listed on purpose and this is the transitional set. The list
+	  takes up to ten entries, so one binary can work either side of the hosting
+	  move: caremetricai.com is where the app now loads, and the two Base44
+	  domains stay because sign-in is still Base44's — `/login` on the app origin
+	  is a Base44-served page today, and its flow can navigate the main frame to
+	  a base44.app address. Dropping either Base44 entry before the backend exit
+	  completes breaks sign-in on this binary. Dropping them AFTER it is a
+	  separate, reviewed release.
 	-->
 	<key>WKAppBoundDomains</key>
 	<array>
+		<string>caremetricai.com</string>
 		<string>base44.app</string>
 		<string>base44.com</string>
 	</array>

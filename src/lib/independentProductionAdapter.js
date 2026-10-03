@@ -4,6 +4,7 @@ import {
 import {
   CONTEXT_KEYS, MEMBERSHIP_KEYS, exact, failWith, refusingNamespace, routedEntities, pick,
 } from './ownedBackendSeam.js';
+import { createOwnedSessionPort, storedOwnedSessionEmail } from './ownedBackendSessionStore.js';
 
 /**
  * The production mode: the app's own sign-in, against a real Supabase project
@@ -72,8 +73,17 @@ export function readIndependentProductionConfig(env = {}) {
  * proxy. The surface mirrors the staging adapter's so `base44Client.js`,
  * `AuthContext` and `SignInScreen` hold one shape rather than two.
  */
+/**
+ * The device half of staying signed in, injectable so a test supplies its own.
+ *
+ * `email` answers whose session this device holds and never the credential; the
+ * token reaches the authority client through a port bound to that address, so no
+ * code in this module ever holds it.
+ */
+const DEVICE = Object.freeze({ email: storedOwnedSessionEmail, port: createOwnedSessionPort });
+
 export function createIndependentProductionAdapter(config,
-  { fetchImpl = globalThis.fetch, boundTenant = () => null } = {}) {
+  { fetchImpl = globalThis.fetch, boundTenant = () => null, device = DEVICE } = {}) {
   let client = null;
   let generation = 0;
   let signedIn = false;
@@ -91,10 +101,23 @@ export function createIndependentProductionAdapter(config,
     current(lease);
     return result;
   };
-  const signOut = async () => {
+  /**
+   * End the session. `forget` false closes the realm and leaves the device able
+   * to resume, which is what the app's own realm expiry means; the default
+   * forgets, because that is what a person signing out means.
+   */
+  const signOut = async ({ forget = true } = {}) => {
     generation++; signedIn = false;
     client = null;
-    await Promise.all([...clients.values()].map(value => value.signOut()));
+    await Promise.all([...clients.values()].map(value => value.signOut({ forget })));
+  };
+  /** Construct, or reuse, the client for one address with its device port. */
+  const clientFor = address => {
+    const next = clients.get(address)
+      ?? createProductionAuthorityClient({ ...config.target, email: address },
+        { fetchImpl, sessionStore: device.port(address) });
+    clients.set(address, next);
+    return next;
   };
   const me = async () => {
     const result = await rpc('memberships', {});
@@ -199,6 +222,60 @@ export function createIndependentProductionAdapter(config,
   const auth = Object.freeze({
     hasSession: () => signedIn,
     /**
+     * Take up a session this device already holds, with no password.
+     *
+     * Answers false for every outcome that is not a live session — nothing
+     * stored, a spent token, a service that cannot be reached — because a boot
+     * that cannot resume is a boot that shows the sign-in form, which is what the
+     * Base44 path does with a token its backend refuses. The client decides
+     * whether the device record survives the attempt; nothing here does.
+     */
+    async resume() {
+      const address = device.email();
+      if (!address) return false;
+      const lease = ++generation; signedIn = false;
+      client = null;
+      let next = null;
+      // Whether the throw came from CONSTRUCTING a client for the stored address,
+      // which is the only failure that justifies removing the record. See the
+      // catch.
+      let constructing = false;
+      try {
+        // Realm-closing, not forgetting: this is a boot, and the record being read
+        // is the one thing that must survive it.
+        await Promise.all([...clients.values()].map(value => value.signOut({ forget: false })));
+        current(lease);
+        constructing = true;
+        next = clientFor(address);
+        constructing = false;
+        client = next;
+        const identity = await next.resume();
+        current(lease);
+        if (!identity) { if (client === next) client = null; return false; }
+        signedIn = true;
+        return true;
+      } catch {
+        // Nothing propagates. A boot is not a request somebody made, so there is
+        // nobody to report to: the answer is the sign-in form either way. The one
+        // thing a failure here must not do is leave this adapter believing it has
+        // a session.
+        if (client === next && generation === lease) { client = null; signedIn = false; }
+        // A stored address the client itself will not accept can never resume, so
+        // it is removed rather than retried on every boot. The client clears the
+        // record for its own refusals; this covers the one it never reached.
+        //
+        // AND ONLY THAT ONE. `if (!next)` also caught a lease fenced by a newer
+        // boot — `current(lease)` throws STALE_AUTHORITY_SESSION before
+        // `clientFor` runs — so two overlapping boots, which StrictMode's
+        // double-invoked effects produce, deleted the record with nothing having
+        // reached the provider and nothing having refused anything. A reviewer
+        // measured it: no exchange, no logout, no record. It also contradicted the
+        // client's own KEEP_ON, which lists that code as a keep.
+        if (constructing) device.port(address).clear();
+        return false;
+      }
+    },
+    /**
      * Sign in as a real staff account.
      *
      * The address is the caller's, not an entry in a pinned map, so the client
@@ -215,9 +292,7 @@ export function createIndependentProductionAdapter(config,
       if (signal?.aborted) fail('STALE_AUTHORITY_SESSION', 401);
       // A malformed address is refused by the client's own target validation,
       // before any request leaves the browser.
-      const next = clients.get(normalized)
-        ?? createProductionAuthorityClient({ ...config.target, email: normalized }, { fetchImpl });
-      clients.set(normalized, next);
+      const next = clientFor(normalized);
       client = next;
       const cancel = () => {
         if (generation !== lease) return;
