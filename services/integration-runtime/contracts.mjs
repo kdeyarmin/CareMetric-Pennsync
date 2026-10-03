@@ -7,7 +7,17 @@ export const fail = (status, code) => { throw new IntegrationError(status, code)
 export const ID = /^[A-Za-z0-9_-]{1,128}$/;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_FILE = 8 * 1024 * 1024;
-export const OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFile', 'SendEmail', 'UploadFile', 'UploadPrivateFile', 'UploadRecordFile', 'CreateFileSignedUrl']);
+export const OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFile', 'SendEmail', 'UploadFile', 'UploadPrivateFile', 'UploadRecordFile', 'CreateFileSignedUrl', 'SendFax', 'SendSms']);
+// Strict E.164, and strict is the point. `normalizeFaxDest` in the Base44
+// original falls back to the RAW STRING when it cannot normalise, which is how
+// a malformed number reaches the provider today; `normalizeFromE164` beside it
+// returns null for the same input, and its comment says why — an
+// unnormalizable value must fail loudly rather than fail every send at the
+// provider. This boundary takes the second answer for both ends: a destination
+// that is not already E.164 is refused here. That is a NARROWING of the
+// original and is recorded as one. Normalising is the caller's half, where the
+// agency's own settings and the cost-control gate live.
+export const E164 = /^\+[1-9]\d{7,14}$/;
 // Operations a browser caller may never be granted, whatever the service list
 // says. `runtime.mjs` only requires the browser list to be a SUBSET of the
 // service list, so before `SendEmail` was released the ceiling refused a browser
@@ -22,7 +32,15 @@ export const OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFi
 // browser reaching it directly would mint an agency-readable object with
 // nothing but the caller's own typing deciding what went into it, and the
 // chart narrowing that stands behind this model would never be evaluated.
-export const BROWSER_FORBIDDEN_OPERATIONS = Object.freeze(['SendEmail', 'UploadRecordFile']);
+// `SendFax` and `SendSms` join for `SendEmail`'s reason in its sharpest form: a
+// browser reaching either would send to a number decided by nothing but the
+// caller's own typing, with none of the record-side work that bounds a
+// recipient — the agency's outbound line, its blocked area codes, the premium
+// prefixes, and for SMS the consent ledger that exists precisely because the
+// recipient is a person. A fax carries a document; the recipient is a doctor's
+// office. This is a refusal rather than a default: nothing may configure it
+// back on, and `runtime.mjs` raises BROWSER_FORBIDDEN_OPERATION at boot.
+export const BROWSER_FORBIDDEN_OPERATIONS = Object.freeze(['SendEmail', 'UploadRecordFile', 'SendFax', 'SendSms']);
 export const MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv']);
 export function exactObject(value, allowed, code = 'INVALID_INPUT') {
   if (!value || typeof value !== 'object' || Array.isArray(value)

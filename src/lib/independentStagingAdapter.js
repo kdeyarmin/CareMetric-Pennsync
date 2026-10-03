@@ -1,6 +1,8 @@
 import { createStagingAuthorityClient, PORTED_FUNCTIONS, STAGING_APP_ID } from '../../services/authority-client/client.mjs';
+import { createFeedSubscriber, feedFor, intervalSchedule } from './independentEntityFeeds.js';
+import { routeFor } from './independentEntityRoutes.js';
 import {
-  CONTEXT_KEYS, MEMBERSHIP_KEYS, exact, failWith, refusingNamespace, routedEntities, pick, scopeOf,
+  CONTEXT_KEYS, MEMBERSHIP_KEYS, exact, failWith, refusingNamespace, pick, scopeOf, refusalFor,
 } from './ownedBackendSeam.js';
 import { createOwnedSessionPort, storedOwnedSessionEmail } from './ownedBackendSessionStore.js';
 
@@ -12,6 +14,66 @@ const UNAVAILABLE = 'STAGING_OPERATION_UNAVAILABLE';
 const fail = (code, status = 403) => failWith(code, status);
 const contextKeys = CONTEXT_KEYS;
 const membershipKeys = MEMBERSHIP_KEYS;
+// `then` must read as absent: a function there would make the namespace, or an
+// entity, a thenable, and `await base44.entities` would call it.
+const NOT_AN_OPERATION = new Set(['then', 'toJSON']);
+// Memoised per name, because the SDK's own objects are stable: a caller may
+// hold `base44.entities.Patient` or one of its methods, and the realm gate
+// caches its method facades by owner identity, so a fresh proxy per access
+// would miss that cache on every call.
+const refusingLevel = (resolve) => {
+  const made = new Map();
+  return new Proxy(Object.freeze({}), {
+    get: (_target, name) => {
+      if (typeof name !== 'string' || NOT_AN_OPERATION.has(name)) return undefined;
+      if (!made.has(name)) made.set(name, resolve(name));
+      return made.get(name);
+    },
+  });
+};
+/**
+ * The entity namespace, which refuses exactly as before except where a route
+ * is DECLARED.
+ *
+ * `serve` is the adapter's own `portedCall`, so a routed entity call carries
+ * the same tenant fence, session lease and service contract as the function
+ * call it becomes — this level adds no authorization and can remove none.
+ * Everything without a declaration keeps the refusal above, unchanged, which
+ * is what lets Stage J adopt one call site at a time.
+ *
+ * `subscribe` is the one entity operation a route cannot be: it returns an
+ * unsubscribe FUNCTION synchronously, straight into a `useEffect` cleanup,
+ * where every route here is promise-shaped. So it is declared as a feed
+ * instead, and answered before the route lookup — a feed and a route for the
+ * same entity operation cannot both exist, because `subscribe` is never a
+ * route key. With no feed declared the refusal below is unchanged, which is
+ * what lets this land before any entity has one.
+ */
+const routedEntities = (code, serve, configured) => refusingLevel(entity => refusingLevel(operation => (...args) => {
+  // `configured` is the same condition `routesPorted` applies to a function
+  // call: with no service to ask, a declared route is not a route. Refusing
+  // here rather than inside `serve` keeps a misconfigured build answering
+  // "unavailable" instead of a transport error.
+  if (operation === 'subscribe') {
+    const feed = configured() ? feedFor(entity) : null;
+    // The UNDECLARED case keeps the existing rejection exactly, rather than
+    // throwing: that behaviour is asserted today and no feed exists yet, so
+    // this branch changes nothing until one is declared.
+    if (!feed) return Promise.reject(refusalFor(code, 'entities', entity, operation));
+    return createFeedSubscriber({ entity, feed, serve, schedule: intervalSchedule })(...args);
+  }
+  const route = configured() ? routeFor(entity, operation) : null;
+  if (!route) return Promise.reject(refusalFor(code, 'entities', entity, operation));
+  // `request` refuses an argument it cannot express, synchronously. Keep the
+  // whole path promise-shaped: these stand in for SDK methods, and a caller
+  // that gets a throw where every sibling rejects has to handle two shapes.
+  let input;
+  try { input = route.request(...args); } catch (error) { return Promise.reject(error); }
+  // The call's own arguments reach `response` as well, because a route that
+  // re-orders or narrows the answer has to know what was asked for to say
+  // whether the page it got was the whole set.
+  return serve(route.function, input).then(answer => route.response(answer, ...args));
+}));
 
 export function readIndependentStagingConfig(env = {}) {
   if (!env.VITE_PENNSYNC_BACKEND || env.VITE_PENNSYNC_BACKEND === 'base44') return null;

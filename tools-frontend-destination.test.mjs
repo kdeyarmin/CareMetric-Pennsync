@@ -155,9 +155,16 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // check rather than the two new figures: a table is not an access path, and
   // `no_access_contract` says so instead of letting the bucket keep a name whose
   // reason had gone. It empties one entity at a time as each contract ships.
+  //
+  // The split then moved again, to 119 + 74, when D7's six fax and phone
+  // entities got tables in the same way. The movement is 29 sites and not the
+  // 30 those six entities hold: `FaxLog` has 7, and the seventh is a
+  // `subscribe` that lands in `no_realtime_seam`, which is a bucket of its own
+  // and did not change. So derive this from the per-entity rollup rather than
+  // by adding an entity's whole site count to the moving side.
   assert.deepEqual(report.by_destination, {
     record_store: 235, broker_family: 7, activity_trail: 3,
-    no_table: 148, no_access_contract: 45,
+    no_table: 119, no_access_contract: 74,
     broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
   });
@@ -265,8 +272,8 @@ test('the summary names what cannot land and stays quiet about what can', () => 
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
   assert.match(lines[0], /453 call sites, 245 can land, 208\/208 cannot/);
-  assert.ok(lines.some(line => /no_table: 148/.test(line)));
-  assert.ok(lines.some(line => /no_access_contract: 45/.test(line)));
+  assert.ok(lines.some(line => /no_table: 119/.test(line)));
+  assert.ok(lines.some(line => /no_access_contract: 74/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));
   assert.ok(!lines.some(line => /record_store/.test(line)), 'the served destinations are not the finding');
 });

@@ -1604,8 +1604,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 29 |
-  | `mutating` (derived) | 59 | 42 |
+  | `read-only` (derived) | 61 | 34 |
+  | `mutating` (derived) | 68 | 45 |
   | `integration` (derived) | 27 | 25 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
@@ -4485,7 +4485,7 @@ them.**
 
 - **Training and learning — `hub`, twelve entities.** Their product answer was
   already given: D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` send them to
-  `kdeyarmin/caremetric-support-hub`, both controls unset behind a five-step
+  `kdeyarmin/caremetric-support-hub`, both controls unset behind a seven-step
   pre-cutover checklist. **They are neither his to decide nor ours to port**,
   and porting their tables into the owned store would build precisely what D8
   decided not to build. They also pass a restoration test outright — F19 in
@@ -4501,6 +4501,47 @@ them.**
   can hold a file — so each call site needs a hand-written contract with its own
   gate and refusals. **A domain with no backing Base44 function is MORE work
   here, not less, because there is no capability to port.**
+
+  **Read that D7 quote as a mechanism and not as a count.** The reason its
+  sentence was unimplementable is that one field was answering two questions:
+  the disposition decided both whether an entity's data is carried and whether
+  its execution is on, so "schemas and data still migrate" had nowhere to be
+  true. Separating the two is what makes it implementable, and that is the claim
+  to carry — it holds whether or not any particular change has landed, where a
+  sentence of the form "none of them has a table" goes stale the moment one
+  does.
+
+  **And do not write "the fourteen paused entities."** The `preserved_paused`
+  population is **54**, measured from `tools-transition-disposition.json` on this
+  tree. Eight plus six is the subject of this bullet and the fax-and-voice bullet
+  below it, not a population — the two happen to sum to fourteen, and "fourteen"
+  is also in use nearby for a count of FILES reached only through a paused
+  ancestor, which is a different thing again. Name the bullet's own entities, or
+  re-measure.
+
+  **The restoration test the training bullet runs, run here: it fails.**
+  Verified by hand on this tree, because this is the kind of claim that should
+  not be relayed. `src/components/hub-tabs/OASISAnalyzer.jsx:110` is `const
+  OASIS_ANALYZER_ENABLED = false;`. The file's **only** export is `export default
+  function OASISAnalyzer` at `:2756`, whose first statement is `if
+  (!OASIS_ANALYZER_ENABLED)` returning the "OASIS AI Analyzer Paused" card.
+  `<OASISToPatientChartPusher` at `:1771` sits inside `function
+  EnabledOASISAnalyzer`, declared at `:130` and **not exported**. So the call site
+  is unreachable at runtime with no alternative path — the opposite of the
+  training domain, where nine pages are in the nav manifest and one backing
+  function is paused.
+
+  **Why it is off is recorded, and it is a safety decision rather than neglect.**
+  Eleven of the twelve source flags in this domain arrive in one commit,
+  `67d9d5ee` of 2026-09-02, "Fail closed on unverified OASIS, PDGM, and
+  tenant-sensitive paths" — AI correctness and PDGM payment safety: a verified
+  CMS grouper, protected assessment provenance, and an explicit warning that an
+  unavailable grouping is not a $0 result. That is seventeen days before this
+  migration's first decision document, so it is not something the migration
+  switched off and not something the migration may switch back on. **Whether
+  OASIS comes back at all is the owner's**, which is the activation half D7
+  already leaves to him. This bullet records the failed test; it does not propose
+  restoring it.
 - **Fax and voice — `preserved_paused`, six entities.** Whether these function
   today is **not answerable from this tree.** D7's pauses are attested by
   receipts rather than source flags, and the Telnyx credentials live in-app as
@@ -4571,6 +4612,31 @@ a colleague is in is already served.
 
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
+
+  **That mode now exists, under that exact name.** `VITE_PENNSYNC_BACKEND=independent`
+  is the app's own branded sign-in, sign-out, session lease and tenant resolution
+  against a configured Supabase project and the owned business API, for a real
+  staff account. The staging mode's four-actor pin is lifted for this mode only;
+  its app id, project reference and URL, publishable key and service origin are
+  read from build configuration and checked for shape and mutual agreement rather
+  than pinned, with the staging app and the staging project refused by name. The
+  synthetic workspace, the `staging_*` referral actions and the `Synthetic %`
+  projection are **absent** from it rather than widened. **THE SWITCH IS OFF:**
+  nothing is configured and no build points anywhere. Still owed before a staff
+  account can be used — invitation acceptance and password set, both of which
+  deliver mail to a real person and so are the owner's to release, and an
+  end-to-end acceptance job driving the COMPILED app in this mode against a local
+  store pinned to the production app id.
+
+  Two things about the bullet above, since this is the kind of line that invites a
+  wrong correction. The first clause is **partly done already**:
+  `src/api/base44Client.js` takes the owned adapter for either owned mode, and
+  what is left is removing the Base44 client construction, which waits on the
+  entity call sites rather than on the mode. And the bullet itself is **accurate
+  and needs no edit** — it was read as carrying a stale value, on the grounds that
+  the configuration reader accepted only `base44` and `independent-staging`, which
+  was a correct measurement and the wrong conclusion. A Stage J bullet describes
+  work to do, so it is not stale for naming something the code has not done yet.
 - Replace call sites tier by tier — **but not by the count, and not by the
   entity.** What is left is three populations and only one of them is work;
   the waves, and the column that cannot be derived, are above. A lint rule
@@ -4631,29 +4697,76 @@ is the small part:
 | --- | --- |
 | `ios/PennSync/WebViewController.swift:38` | `appURL` hard-bound to `https://caremetricai.base44.app/` |
 | `ios/PennSync/Info.plist:52-56` | `WKAppBoundDomains` is `base44.app`, `base44.com`. It takes up to 10, so the transitional build lists OLD and NEW and one binary works either side of the DNS move |
-| `base44/functions/createUserWithTempPassword/entry.ts:36-37` | store URLs in the invitation email |
+| `base44/functions/createUserWithTempPassword/entry.ts` | The two store URLs in the invitation email, `DEFAULT_IOS_APP_URL` and `DEFAULT_ANDROID_APP_URL` — **and a second reason this file is on the list**: it consumes `APP_PUBLIC_URL` as an ORIGIN through `getAppBaseUrl`, and derives every user-visible link in that mail from it. `base44ClientRequest`'s hard-coded `https://base44.app` is the SDK's BACKEND and does **not** move with the domain; do not conflate the two. Named by constant and carrying no line number on purpose: an earlier revision of this row said `:36-37`, which are the `Base44-App-Id` header and nothing to do with a URL, and two readers on two heads disagreed by sixty lines about where the URLs actually were. **The two `ios/` rows above keep theirs for a reason that does not apply here:** `tools-app-store-migration.test.mjs` byte-pins those files to a baseline commit, so a line in them cannot move without failing that suite, while this Deno function is edited freely. `docs/HOSTING_EXIT_RUNBOOK.md` step 7 is the operational half — point `APP_PUBLIC_URL` at the new origin in the Base44 function environment, owner the repository owner, reversible |
 | `tools-app-store-migration.test.mjs` | byte-pins all 25 `ios/` and `public/` files to baseline `1ff6018` and asserts the Base44 URL is still present, so any of the above FAILS the suite by design. Updating it is a reviewed act, not a fix |
 
-`caremetricai.base44.app` must stay reachable until adoption of the new build is
-high: an installed app on the old binary points there permanently.
+`caremetricai.base44.app` must stay reachable while any installed copy of the old
+binary is in use: `appURL` is hard-bound, so such a copy points there permanently
+and no change in this repository can redirect it. **How long that is, nothing here
+can say.** An earlier revision of this sentence ended "until adoption of the new
+build is high", which offers an end date the mechanism does not supply — nothing in
+this tree observes how many installed copies exist or what share has moved. The
+condition is measured and its threshold is not; both halves belong in the sentence.
 
 **What actually blocks a native release has little to do with Railway.**
 `docs/APP_STORE_SUBMISSION_CHECKLIST.md` opens with a hard STOP — no IPA or AAB
 may be uploaded, *including to TestFlight or Play testing tracks* — and the
 reasons are recovery problems rather than engineering ones:
 
-1. **Signing continuity.** Apple provisioning for `com.caremetric.ai` and Play
-   App Signing for `com.caremetic.ai` must be RECOVERED, not regenerated. A new
-   signing key means existing users cannot update; they would have to uninstall
-   and reinstall.
+1. **Signing continuity — Android only.** Play App Signing for
+   `com.caremetic.ai` must be RECOVERED, not substituted: a new signing key means
+   existing users cannot update, and would have to uninstall and reinstall.
+   Whether the enrolment exists is **unmeasured from this repository**, for the
+   reason item 2 gives — say unmeasured rather than absent.
+
+   **iOS is not in this clause, and an earlier revision of this list put it
+   here.** Nothing cryptographic needs recovering on that side. The App Store
+   re-signs every upload, so a distribution certificate is reissued rather than
+   recovered, and `ios/project.yml` already sets `CODE_SIGN_STYLE: Automatic`.
+   What makes an upload an UPDATE is an identity and not a key: the Apple team
+   plus the bundle id `com.caremetric.ai`, which `ios/project.yml` pins and
+   `tools-app-store-migration.test.mjs` asserts. Apple's public record for app
+   `6757097720` gives the seller as this repository's owner (read 2026-10-01 from
+   `itunes.apple.com/lookup`), so the record is on his own account and no App
+   Store Connect transfer is involved. **What that reading does not establish**,
+   and one sign-in would: whether the Developer Program membership is current and
+   the credentials are to hand. The Stage L row "Recover Android signing, and
+   Apple **account** access" has carried the dated correction since 2026-09-22;
+   this list was contradicting it two hundred lines away, which is why the
+   narrowing happens here rather than there.
+
+   **The two bundle ids differ, and the difference is deliberate** — Apple
+   `com.caremetric.ai`, Play `com.caremetic.ai`, with no `r`. Why is recorded
+   once, in the comment directly above the two constants in
+   `base44/functions/createUserWithTempPassword/entry.ts`, along with the note
+   that both were verified to resolve. This plan points at that comment rather
+   than keeping a second copy of the reason, because a second copy is a second
+   thing to go stale.
 2. **There is no `android/` directory in this repository.** Blocker 6 is not an
    Android update, it is a project that does not exist here.
-3. **Four live in-app purchases** — Monthly $29.99, Quarterly $79.99,
-   Semi-Annual $149.99, Annual $264.99 — and **none of the native IAP
-   implementation is in this repository**: no StoreKit, no receipt validation,
-   no entitlement code, and no server-side subscription state in either store.
-   This is a standing risk today, independent of the migration, and nothing in
-   the migration plan carries subscription state across.
+3. **Four in-app purchase products are configured in the App Store record** —
+   Monthly $29.99, Quarterly $79.99, Semi-Annual $149.99, Annual $264.99 — and
+   **none of the native IAP implementation is in this repository**: no StoreKit,
+   no receipt validation, no entitlement code, and no server-side subscription
+   state in either store. This is a standing risk today, independent of the
+   migration, and nothing in the migration plan carries subscription state
+   across.
+
+   **An earlier revision called them "four live in-app purchases", which claims
+   more than the evidence carries.** What is measured is an App Store listing
+   showing four subscription products with prices, and that proves they are SET
+   UP in the record. It does not prove the app can sell them, and Base44's own
+   documentation on store billing says it cannot — its answer is that the
+   purchase has to happen on the web for now, with an explicit instruction not to
+   use Stripe for payments inside a mobile app. Read from this repository,
+   subscriptions are Stripe (`stripe_customer_id`, `stripe_subscription_id`,
+   `stripe_price_id`), and a search of the whole tree for Apple receipt
+   verification, the App Store server API or StoreKit returns nothing at all.
+
+   **Do not read that as "there are no in-app purchases."** Whether anyone has
+   ever been charged is invisible from here, and what to do about four configured
+   products is the owner's decision. This stays a STOP item; what changed is its
+   reason, from a thing known to be working to a thing nobody has measured.
 4. **Guideline 4.2.** It is a web wrapper before and after, so the move changes
    nothing here. The checklist's own recommendation is Apple Business Manager
    distribution (unlisted or custom app) rather than public listing, since the
@@ -4798,9 +4911,10 @@ account, and nobody can be admitted as one.**
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
 | Base44 owner-signed export permits | Stage I | Production and legacy apps |
-| Recover Android signing, and Apple **account** access | Stage L — and **before the frontend moves** | Corrected 2026-09-22 ([runbook](MOBILE_RECOVERY_RUNBOOK_2026-09-22.md)). *Android:* whether it can ever be updated turns on one setting — Play Console → App integrity → is Play App Signing enabled? If yes, a lost upload key can be reset; if no, the only copy of the key is the PWABuilder output zip, and without it the app cannot be updated. *iOS:* "never regenerated" was wrong here — iOS certificates and profiles are reissued routinely without breaking updates; continuity is the app record `6757097720` staying in the same team, so recovery is signing into that account (lead: team `JC83GT8MG8`). Both apps load `caremetricai.base44.app`, so both must be recoverable before Stage J moves the origin |
+| Recover Android signing, and Apple **account** access | Stage L — and **before the frontend moves** | Corrected 2026-09-22 ([runbook](MOBILE_RECOVERY_RUNBOOK_2026-09-22.md)). *Android:* whether it can ever be updated turns on one setting — Play Console → App integrity → is Play App Signing enabled? If yes, a lost upload key can be reset; if no, the only copy of the key is the PWABuilder output zip, and without it the app cannot be updated. *iOS:* "never regenerated" was wrong here — iOS certificates and profiles are reissued routinely without breaking updates; continuity is the app record `6757097720` staying in the same team, so recovery is signing into that account (lead: team `JC83GT8MG8`). **What the LIVE binaries load is unmeasured**, and an earlier revision of this row asserted that both apps load `caremetricai.base44.app`. §7 of that runbook says the live binaries' own configuration is unknown because their source was not found, and every public surface tried on 2026-10-01 leaves it unknown: both app origins serve deliberately empty association files (distinguishable from the SPA shell an invented path returns), the web manifest is origin-relative with `id`, `start_url` and `scope` all `"."`, and the marketing site references the custom domain and no Base44 host. What IS measured is **this repository's** `ios/`, pinned in the table above: `appURL` hard-bound to that host and `WKAppBoundDomains` listing only `base44.app` and `base44.com`, so that binary could not load the custom domain even if the URL changed. The owner said on 2026-10-01 that the iPhone app was *built only with Base44* — which answers how it was MADE, not what it LOADS, and says nothing whatever about Android, so the Android half keeps both unknowns and no part of that answer may be carried across to it. Either way both must be recoverable before Stage J moves the origin, which is why this row sits before the frontend move rather than inside Stage L |
 | Find the Android build's origin | Stage L | Searched 2026-09-22: no Android file in this repository's full history (4,338 commits, 175 branches), nor in `CM-Go`, `CMbackup` or `App-Studio` — and all three were created after the live build's Jan 15, 2026 update, so none could have produced it. Per the July audit it is a PWABuilder TWA, which has no source to find; the artefact is the output zip holding the key |
-| Recover or reimplement the IAP entitlement path | Stage L, and today | Four live products; no StoreKit, receipt validation or subscription state in this repository. **This repository's `ios/` is not the live app** — it has no StoreKit and targets iOS 15.0 where the live app requires 15.6 — so submitting it as an update would remove purchase and restore for paying subscribers |
+| Recover or reimplement the IAP entitlement path | Stage L, and today | Four products **configured in the App Store record**; no StoreKit, receipt validation or subscription state in this repository, and nothing under `ios/` references `StoreKit`, `SKProduct` or `Transaction`. **This repository's `ios/` is not the live app** — it has no StoreKit and targets iOS 15.0 where the live app requires 15.6 — so it must not be submitted as an update to it. That conclusion stands on the target and the absent framework alone. An earlier revision ended "would remove purchase and restore for paying subscribers", which assumes the live app sells subscriptions; the STOP list above records why that is unmeasured, and whether anyone has ever been charged is invisible from here |
+| **Repoint the App Store listing's own URLs** | Stage L, **and today** | Read off the live product page on 2026-10-01: the listing's privacy-policy, Support and EULA URLs are all `https://caremetricai.base44.app/…`. Apple requires a working privacy-policy URL, so retiring that hostname breaks the **listing** and not only the app — a failure mode the rest of this section does not cover, since every other row is about a binary. Fixing it is App Store Connect **metadata**: no upload, no signing, no StoreKit, so it is the one piece of this that is not behind the upload STOP and can be done before anything is recovered |
 | Store-side privacy declarations, EULA approval, physical-device tests | Stage L | Blockers 5 and 7; the bundled privacy manifest is already correct |
 | Distribution route decision (public listing vs Apple Business Manager) | Stage L | Guideline 4.2 applies to a web wrapper either way |
 
