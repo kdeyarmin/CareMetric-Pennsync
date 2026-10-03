@@ -13,8 +13,11 @@ export const stagingEnv = {
 export const stagingApiUrl = 'http://127.0.0.1:54341';
 export function stagingFixture() {
   const requests = [], live = new Map();
+  // Refresh tokens this project will honour, each exactly once, keyed to the actor
+  // and the access token they were minted beside.
+  const refreshable = new Map();
   let next = 0;
-  const fixture = { requests, live, apiCalls: [], apiResponse: null, holdPatient: null, beforeReturn: null, denyContext: false };
+  const fixture = { requests, live, refreshable, apiCalls: [], apiResponse: null, holdPatient: null, beforeReturn: null, denyContext: false };
   const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   fixture.fetch = async (url, options) => {
     requests.push({ url, method: options.method });
@@ -35,11 +38,29 @@ export function stagingFixture() {
       const index = stagingEmails.indexOf(input.email);
       if (index < 0 || input.password !== 'Synthetic-accepted-password') return response({}, 401);
       const bearer = `synthetic.session${++next}.token`; live.set(bearer, index);
-      return response({ user: nativeUser(index), access_token: bearer, token_type: 'bearer' });
+      const refresh = `synthetic-refresh-${next}`;
+      refreshable.set(refresh, { index, bearer });
+      return response({ user: nativeUser(index), access_token: bearer, token_type: 'bearer',
+        refresh_token: refresh });
+    }
+    if (url.endsWith('/token?grant_type=refresh_token')) {
+      // Single use and rotating, and a local logout ends the session it belongs to.
+      const held = refreshable.get(input.refresh_token);
+      if (!held) return response({}, 401);
+      refreshable.delete(input.refresh_token);
+      const bearer = `synthetic.resumed${++next}.token`; live.set(bearer, held.index);
+      const refresh = `synthetic-refresh-${next}`;
+      refreshable.set(refresh, { index: held.index, bearer });
+      return response({ user: nativeUser(held.index), access_token: bearer, token_type: 'bearer',
+        refresh_token: refresh });
     }
     const bearer = options.headers.Authorization?.slice(7), index = live.get(bearer);
     if (index === undefined) return response({}, 401);
-    if (url.endsWith('/logout?scope=local')) { live.delete(bearer); return new Response(null, { status: 204 }); }
+    if (url.endsWith('/logout?scope=local')) {
+      for (const [token, held] of refreshable) if (held.bearer === bearer) refreshable.delete(token);
+      live.delete(bearer);
+      return new Response(null, { status: 204 });
+    }
     if (url.endsWith('/user')) return response(nativeUser(index));
     const agency = index === 3 ? 'agency-b' : 'agency-a';
     const common = { contract: AUTHORITY_CONTRACT, app_id: STAGING_APP_ID, auth_user_id: nativeUser(index).id, staging: true, synthetic: true };

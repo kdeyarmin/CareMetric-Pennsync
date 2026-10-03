@@ -4,6 +4,7 @@ import { routeFor } from './independentEntityRoutes.js';
 import {
   CONTEXT_KEYS, MEMBERSHIP_KEYS, exact, failWith, refusingNamespace, pick, scopeOf, refusalFor,
 } from './ownedBackendSeam.js';
+import { createOwnedSessionPort, storedOwnedSessionEmail } from './ownedBackendSessionStore.js';
 
 const EMAILS = Object.freeze(['admin-a', 'clinician-a', 'clinician-empty', 'admin-b']
   .map(name => `info+pennsync-${name}@caremetricai.com`));
@@ -105,8 +106,11 @@ export function readIndependentStagingConfig(env = {}) {
 }
 
 /** Finite adaptation of existing app contracts; never a generic SDK or entity proxy. */
+/** The device half of staying signed in. See the production adapter's copy. */
+const DEVICE = Object.freeze({ email: storedOwnedSessionEmail, port: createOwnedSessionPort });
+
 export function createIndependentStagingAdapter(config,
-  { fetchImpl = globalThis.fetch, boundTenant = () => null } = {}) {
+  { fetchImpl = globalThis.fetch, boundTenant = () => null, device = DEVICE } = {}) {
   let client = null;
   let generation = 0;
   let signedIn = false;
@@ -119,10 +123,28 @@ export function createIndependentStagingAdapter(config,
     if (!active || !signedIn) fail('AUTHENTICATION_REQUIRED', 401);
     const result = await active.rpc(name, input); current(lease); return result;
   };
-  const signOut = async () => {
+  /**
+   * End the session. `forget` false closes the realm and leaves the device able
+   * to resume; the default forgets, because that is what signing out means.
+   */
+  const signOut = async ({ forget = true } = {}) => {
     generation++; signedIn = false;
     client = null;
-    await Promise.all([...clients.values()].map(value => value.signOut()));
+    await Promise.all([...clients.values()].map(value => value.signOut({ forget })));
+  };
+  /**
+   * Construct, or reuse, the client for one PINNED actor with its device port.
+   *
+   * The actor map is the gate: an address that is not one of the four has no
+   * authority user id to pin, so it cannot produce a client at all. That is what
+   * makes a tampered device record harmless here without a check of its own.
+   */
+  const clientFor = address => {
+    if (!Object.hasOwn(config.actors, address)) fail('STAGING_ACCOUNT_UNAVAILABLE', 401);
+    const next = clients.get(address) ?? createStagingAuthorityClient({ ...config.target, email: address,
+      authUserId: config.actors[address] }, { fetchImpl, sessionStore: device.port(address) });
+    clients.set(address, next);
+    return next;
   };
   const me = async () => {
     const result = await rpc('memberships', {});
@@ -334,6 +356,43 @@ export function createIndependentStagingAdapter(config,
 
   const auth = Object.freeze({
     hasSession: () => signedIn,
+    /**
+     * Take up a session this device already holds. See the production adapter's
+     * copy for why nothing propagates; the only difference here is that the actor
+     * map refuses an address that is not one of the four.
+     */
+    async resume() {
+      const address = device.email();
+      if (!address) return false;
+      const lease = ++generation; signedIn = false;
+      client = null;
+      let next = null;
+      // Whether the throw came from CONSTRUCTING a client for the stored address,
+      // which is the only failure that justifies removing the record. See the
+      // catch.
+      let constructing = false;
+      try {
+        await Promise.all([...clients.values()].map(value => value.signOut({ forget: false })));
+        current(lease);
+        constructing = true;
+        next = clientFor(address);
+        constructing = false;
+        client = next;
+        const identity = await next.resume();
+        current(lease);
+        if (!identity) { if (client === next) client = null; return false; }
+        signedIn = true;
+        return true;
+      } catch {
+        if (client === next && generation === lease) { client = null; signedIn = false; }
+        // Only a stored address `clientFor` itself refuses — here, one that is not
+        // a pinned synthetic actor. A lease fenced by a newer boot throws before
+        // `clientFor` runs, and clearing there deleted a live record with nothing
+        // having reached the provider; see the production adapter's note.
+        if (constructing) device.port(address).clear();
+        return false;
+      }
+    },
     async signIn(email, password, signal) {
       const lease = ++generation; signedIn = false;
       client = null;
@@ -342,9 +401,7 @@ export function createIndependentStagingAdapter(config,
       const normalized = String(email).trim().toLowerCase();
       if (!Object.hasOwn(config.actors, normalized)) fail('STAGING_ACCOUNT_UNAVAILABLE', 401);
       if (signal?.aborted) fail('STALE_AUTHORITY_SESSION', 401);
-      const next = clients.get(normalized) ?? createStagingAuthorityClient({ ...config.target, email: normalized,
-        authUserId: config.actors[normalized] }, { fetchImpl });
-      clients.set(normalized, next);
+      const next = clientFor(normalized);
       client = next;
       const cancel = () => {
         if (generation !== lease) return;

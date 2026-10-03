@@ -220,21 +220,59 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     };
     context = await newContext(); page = await context.newPage(); page.setDefaultTimeout(10000);
     const names = () => page.getByRole('heading', { level: 3, name: /^Synthetic Patient / });
+    // WHOSE SESSION THIS DEVICE IS ALLOWED TO BE HOLDING, set where the app signs
+    // somebody in and cleared where it signs them out, so the storage check below
+    // asks the question rather than being told the answer by its caller.
+    let deviceOwner = null;
     const noPersistedCredentials = async () => {
       // App parameters and authority tombstones are legitimate. Inspect credentials,
       // not the existence of storage. These snapshots never leave Node memory.
       evidenceCheck = 'browser-storage-snapshot';
       const stored = await context.storageState({ indexedDB: true });
       const session = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)));
+      // THE ONE CREDENTIAL AN OWNED BUILD MAY KEEP, and this check used to forbid
+      // it. The coordinator's decision of 2026-10-02 at about 01:05Z reverses that
+      // for parity with the backend being replaced, which keeps its ACCESS token in
+      // `localStorage` and comes back signed in — so the device holds the rotated
+      // refresh token and the address it belongs to, and nothing else. The record is
+      // taken OUT of the snapshot here and checked field by field, so everything the
+      // denial below used to catch is still caught everywhere else in storage.
+      evidenceCheck = 'device-session-record';
+      const held = stored.origins.flatMap(origin => (origin.localStorage ?? [])
+        .filter(entry => entry.name === 'pennsync_owned_session'));
+      assert.ok(held.length <= 1);
+      if (deviceOwner === null) assert.deepEqual(held, []);
+      else {
+        assert.equal(held.length, 1);
+        const record = JSON.parse(held[0].value);
+        assert.deepEqual(Object.keys(record).sort(), ['email', 'refresh_token', 'v']);
+        assert.equal(record.v, 1); assert.equal(record.email, deviceOwner);
+        assert.match(record.refresh_token, /^[A-Za-z0-9_-]{8,512}$/);
+        // It is a REFRESH token, which is the whole point: an access token this
+        // test has seen must never be the thing on the device, and neither may a
+        // JWT shape, because `containsCredential` would no longer see it here.
+        assert.equal(knownGrants.has(record.refresh_token), false);
+        assert.equal(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(record.refresh_token), false);
+      }
+      const rest = {
+        ...stored,
+        origins: stored.origins.map(origin => ({ ...origin,
+          localStorage: (origin.localStorage ?? []).filter(entry => entry.name !== 'pennsync_owned_session') })),
+      };
       evidenceCheck = 'persisted-credential-denial';
-      assert.equal(containsCredential([stored, session], credentials), false);
+      assert.equal(containsCredential([rest, session], credentials), false);
       evidenceCheck = 'public-cdn-cookie-contract';
       assert.equal(stored.cookies.every(publicCdnCookie), true);
       evidenceCheck = 'empty-cache-storage';
       assert.equal(await page.evaluate(async () => (await globalThis.caches.keys()).length), 0);
       evidenceCheck = 'none';
     };
-    const signedOut = async () => {
+    const signedOut = async ({ device = null } = {}) => {
+      // `device` is what the caller has established about this device, not an
+      // excuse: a sign-out passes nothing and the record must be gone, while a
+      // realm CLOSE passes the address it expects to still be held, because a
+      // close revokes nothing and leaves the device able to take the session up.
+      deviceOwner = device;
       await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
       await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
       await expect(page.getByRole('heading', { name: 'Patient Management', exact: true })).toHaveCount(0);
@@ -255,6 +293,9 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
       await page.getByLabel('Password', { exact: true }).fill(actor.password);
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Choose the agency workspace to open', exact: true })).toBeVisible();
+      // Signed in, so from here the device is allowed to be holding this person's
+      // rotated refresh token — and `noPersistedCredentials` proves it is theirs.
+      deviceOwner = actor.email;
       await expect(names()).toHaveCount(0); await noPersistedCredentials();
       if (select) await chooseAgency(name,intakeOnly);
     };

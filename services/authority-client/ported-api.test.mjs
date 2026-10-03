@@ -223,7 +223,11 @@ test('the capability exposes no token and adds no new surface', async () => {
   const { client } = harness();
   await client.signIn(password);
   assert.deepEqual(Object.keys(client).sort(),
-    ['callFunction', 'invalidate', 'rpc', 'signIn', 'signOut']);
+    ['callFunction', 'invalidate', 'resume', 'rpc', 'signIn', 'signOut']);
+  // `resume` is a name, not a capability, unless the client was given a device
+  // port: a client built without one answers null rather than reaching for a
+  // credential it has no way to hold.
+  assert.equal(await client.resume(), null);
   assert.ok(!JSON.stringify(Object.getOwnPropertyDescriptors(client)).includes('synthetic.access.token'));
   assert.ok(Object.isFrozen(client));
 });
