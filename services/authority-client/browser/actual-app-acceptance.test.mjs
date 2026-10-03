@@ -12,9 +12,10 @@ import { provision, localRequest } from './fixture.mjs';
 import { allowedDestination, matchesPatientPost } from './network.mjs';
 import { startActualApp, ACTUAL_APP_ORIGIN } from './actual-app-server.mjs';
 import { createRouteWorkTracker, settlePageRoutes } from './route-work.mjs';
-// Existing public brand asset. This is the one retained remote static dependency,
-// not evidence of complete hosting exit. Do not allow its bucket or host broadly.
-const LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png';
+// The brand logo is the app's own public/brand file, served by the app origin
+// under test, so no request for it leaves loopback. Only this exact path is
+// admitted through the image branch below, GET and image only.
+const LOGO = `${ACTUAL_APP_ORIGIN}/brand/pennsync-logo.png`;
 const ROSTERS = [
   ['admin-a', ['Synthetic Patient A1', 'Synthetic Patient A2']],
   ['clinician-a', ['Synthetic Patient A1']], ['clinician-empty', []],
@@ -51,7 +52,7 @@ function publicCdnCookie(cookie) {
 }
 
 test('actual app network and credential checks exclude remote business calls and secret persistence', () => {
-  assert.equal(BRAND_LOGO_URL, LOGO);
+  assert.equal(new URL(BRAND_LOGO_URL, ACTUAL_APP_ORIGIN).href, LOGO);
   const assets = new Set(['/assets/app.js', '/assets/app.css']);
   const allowed = (url, method = 'GET', type = 'fetch') => allowedRequest(new URL(url), method, type, assets);
   assert.equal(allowed(`${ACTUAL_APP_ORIGIN}/`, 'GET', 'document'), true);
@@ -101,7 +102,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
   const credentials = [], releases = [], grants = new Map(), knownGrants = new Set();
   let status;
   try {
-    assert.equal(BRAND_LOGO_URL, LOGO);
+    assert.equal(new URL(BRAND_LOGO_URL, ACTUAL_APP_ORIGIN).href, LOGO);
     status = await localStatus();
     const { Client } = createRequire(new URL('../../authority-store/package.json', import.meta.url))('pg');
     db = new Client({ connectionString: status.DB_URL, connectionTimeoutMillis: 10000, statement_timeout: 15000 });
