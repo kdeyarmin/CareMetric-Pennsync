@@ -38,6 +38,12 @@ const expected = {
   'pennsync_private.staff_name': 'app_id,auth_user_id,display_name,recorded_at',
   'pennsync_private.visit_disclosure_audit': 'id,app_id,actor_id,agency_id,membership_id,membership_version,tenant_role,patient_id,visit_id,purpose,access_basis,assignment_id,assignment_version,created_at',
   'pennsync_private.visit_list_disclosure_audit': 'id,app_id,actor_id,agency_id,membership_id,membership_version,tenant_role,patient_id,access_basis,assignment_id,assignment_version,purpose,status_filter,after_id,page_size,visit_ids,has_more,created_at',
+  // The provider credential, from forward migration 007. Append-only history:
+  // a rotation inserts a new version and retires the old one, so a restore has
+  // to bring back every version and not merely the active one -- which is what
+  // `seedRuntime` seeds and `proveRuntime` proves, rather than this line
+  // quietly claiming the coverage.
+  'public.cm_integration_credential': 'id,app_id,provider,version,api_key_sealed,api_key_last_four,public_key,messaging_profile_id,voice_connection_id,fax_connection_id,is_active,updated_by,recorded_at,deactivated_at',
   'public.cm_integration_daily_budget': 'app_id,subject,budget_day,attempts',
   // `owner_kind` and `agency_id` arrive with D224's forward migration 006.
   'public.cm_integration_files': 'id,app_id,subject,object_path,content_type,size_bytes,sha256,created_at,owner_kind,agency_id',

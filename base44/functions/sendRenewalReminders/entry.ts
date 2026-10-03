@@ -128,6 +128,12 @@ Deno.serve(async (req) => {
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
+    // Hub cutover guard: once learning is released to the Support Hub, this job
+    // must not create assignments or reminders against Base44 course data.
+    if (Deno.env.get('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1') {
+      return Response.json({ success: true, skipped: true, reason: 'central_learning' });
+    }
+
     const svc = base44.asServiceRole.entities;
     const today = new Date();
     const todayIso = today.toISOString().slice(0, 10);
