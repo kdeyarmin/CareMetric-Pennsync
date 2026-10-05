@@ -419,7 +419,10 @@ Deno.serve(async (req) => {
     const body = await req.json();
     debugLog('Request received with keys:', Object.keys(body || {}));
 
-    const { condition, patientName, patientEmail, action, selectedSections, customNotes, styleOptions } = body;
+    const { condition, patientName, action, selectedSections, customNotes, styleOptions } = body;
+    // Security: never relay to a caller-chosen address. Handouts are emailed
+    // only to the authenticated staff member, who can then share it.
+    const patientEmail = action === 'email' ? user.email : null;
     diagnostics.condition = condition;
     diagnostics.action = action;
 
@@ -796,6 +799,9 @@ Deno.serve(async (req) => {
     if (action === 'email' && patientEmail) {
       diagnostics.stage = 'sending_email';
       try {
+        // Caller-supplied branding is not trusted in outbound mail.
+        style.agencyName = 'PennSync';
+        style.agencyPhone = '';
         await base44.asServiceRole.integrations.Core.SendEmail({
           from_name: clean(style.agencyName),
           to: patientEmail,

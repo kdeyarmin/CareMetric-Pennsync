@@ -361,7 +361,7 @@ export default function PatientEducationHub() {
   };
 
   const handleEmail = async () => {
-    if (!selectedTopic || !patientEmail) return;
+    if (!selectedTopic) return;
     
     setIsEmailing(true);
     setSuccessMessage("");
@@ -370,7 +370,6 @@ export default function PatientEducationHub() {
       const response = await base44.functions.invoke('generatePatientHandout', {
         condition: selectedTopic.id,
         patientName: selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : null,
-        patientEmail,
         action: 'email',
         selectedSections: Object.keys(selectedSections).length > 0 ? selectedSections : null,
         customNotes: customNotes || null,
@@ -387,7 +386,7 @@ export default function PatientEducationHub() {
         throw new Error(data.error);
       }
 
-      setSuccessMessage(`Handout emailed to ${patientEmail}!`);
+      setSuccessMessage('Handout emailed to your inbox!');
       setTimeout(() => setSuccessMessage(""), 4000);
     } catch (error) {
       console.error('Error emailing handout:', error);
@@ -553,16 +552,6 @@ export default function PatientEducationHub() {
                     />
                   </div>
 
-                  <div>
-                    <Label className="text-sm">Email Address (for emailing)</Label>
-                    <Input
-                      type="email"
-                      placeholder="patient@example.com"
-                      value={patientEmail}
-                      onChange={(e) => setPatientEmail(e.target.value)}
-                      className="mt-2 h-11 touch-target"
-                    />
-                  </div>
 
                   {/* Customization Toggle */}
                   <div className="pt-2">
@@ -664,7 +653,7 @@ export default function PatientEducationHub() {
 
                     <Button
                       onClick={handleEmail}
-                      disabled={!patientEmail || isEmailing}
+                      disabled={isEmailing}
                       variant="outline"
                       className="w-full min-h-[44px]"
                     >
