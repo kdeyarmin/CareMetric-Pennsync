@@ -813,7 +813,7 @@ Deno.serve(async (req) => {
                 <div style="height:3px; width:60px; background:#c8911e; margin:10px auto 0;"></div>
               </div>
               <div style="padding:28px; background:#ffffff; color:#1e293b;">
-                <p>Dear ${cleanHtml(patientName) || 'Patient'},</p>
+                <p>Dear ${cleanHtml(user.full_name) || 'Team member'},</p>
                 <p>Please find attached your personalized education guide on <strong>${cleanHtml(template.title)}</strong>, prepared by your care team.</p>
                 <p style="font-weight:bold; margin-bottom:6px;">What to do next:</p>
                 <ul style="margin-top:0; color:#334155;">
@@ -822,7 +822,6 @@ Deno.serve(async (req) => {
                   <li>Share it with family members who help with your care</li>
                   <li>Call your nurse with any questions</li>
                 </ul>
-                <p>If you have any questions, please contact us at <strong>${cleanHtml(style.agencyPhone)}</strong>.</p>
                 <p style="margin-bottom:0;">Warm regards,<br><strong>${cleanHtml(style.agencyName)}</strong></p>
               </div>
               <div style="background:#f1f5f9; padding:14px; text-align:center; color:#64748b; font-size:12px;">
