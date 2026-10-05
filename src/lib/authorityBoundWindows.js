@@ -792,6 +792,12 @@ export function installAuthorityBoundLinkInterceptor(documentObject = document) 
         throw new Error('URL.createObjectURL cannot be installed without revokeObjectURL');
       }
       const guardedCreateObjectUrl = function guardedCreateObjectUrl(...args) {
+        // Dev-only: Vite's HMR client builds a ping worker from a Blob URL while
+        // reconnecting. It carries no clinical data, so it must not trip the
+        // tenant-authority lease (production bundles never include @vite/client).
+        if (import.meta.env?.DEV && /@vite\/client/.test(new Error().stack || '')) {
+          return Reflect.apply(nativeCreateObjectUrl, urlConstructor, args);
+        }
         const lease = captureTenantSdkRealmLease();
         const signal = getTenantSdkRealmAbortSignal(lease);
         const url = Reflect.apply(nativeCreateObjectUrl, urlConstructor, args);
