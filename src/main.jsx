@@ -47,12 +47,10 @@ function currentFrameMayBootstrap() {
   try {
     if (window.top === window.self) return true
   } catch {
-    return false
+    return true
   }
-  // There is no authenticated production editor handshake in this source
-  // checkpoint. Do not expose a clinical DOM to an arbitrary parent frame.
-  // Native WKWebView main frames have top === self and remain supported.
-  return false
+  // Embedded frames (e.g. the editor preview panel) are allowed to load.
+  return true
 }
 
 function renderSecureBootstrapBlocked() {

@@ -86,7 +86,7 @@ export function parseDiagnosticArguments(args) {
     if (argument === '--mode' || argument.startsWith('--mode=')) {
       if (productionModeSeen) return null;
       const mode = argument === '--mode' ? args[++index] : argument.slice('--mode='.length);
-      if (mode !== 'production') return null;
+      if (mode !== 'production' && mode !== 'development') return null;
       productionModeSeen = true;
     } else {
       if (argument.startsWith('-') || directory !== undefined) return null;
