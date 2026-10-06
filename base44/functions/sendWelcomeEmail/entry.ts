@@ -236,7 +236,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    const welcomeEmail = await base44.integrations.Core.SendEmail({
+    // Verify the recipient is a registered PennSync user in the caller's own
+    // agency so an admin cannot relay a branded welcome email (which carries a
+    // temporary password) to an arbitrary outside address.
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const recipientRows = await base44.asServiceRole.entities.User.filter(
+      { email: normalizedEmail }, undefined, 2,
+    );
+    const recipient = Array.isArray(recipientRows) && recipientRows.length === 1 ? recipientRows[0] : null;
+    if (!recipient) {
+      return Response.json({ error: 'Recipient is not a registered PennSync user.' }, { status: 403 });
+    }
+    if (user.role !== 'admin' && user.agency_name && recipient.agency_name !== user.agency_name) {
+      return Response.json({ error: 'Recipient is not in your agency.' }, { status: 403 });
+    }
+
+    const welcomeEmail = await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
       subject: 'Welcome to PennSync by CareMetric — your account is ready',
       from_name: 'PennSync by CareMetric',

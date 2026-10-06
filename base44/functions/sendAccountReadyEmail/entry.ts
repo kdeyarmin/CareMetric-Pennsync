@@ -318,6 +318,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'email is required' }, { status: 400 });
     }
 
+    // Verify the recipient is a registered PennSync user in the caller's own
+    // agency so an admin cannot relay a branded "account ready" email to an
+    // arbitrary outside address (open relay / phishing primitive).
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const recipientRows = await base44.asServiceRole.entities.User.filter(
+      { email: normalizedEmail }, undefined, 2,
+    );
+    const recipient = Array.isArray(recipientRows) && recipientRows.length === 1 ? recipientRows[0] : null;
+    if (!recipient) {
+      return Response.json({ error: 'Recipient is not a registered PennSync user.' }, { status: 403 });
+    }
+    if (user.account_type !== 'super_admin' && user.role !== 'admin'
+      && user.agency_name && recipient.agency_name !== user.agency_name) {
+      return Response.json({ error: 'Recipient is not in your agency.' }, { status: 403 });
+    }
+
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
       from_name: 'PennSync by CareMetric',
