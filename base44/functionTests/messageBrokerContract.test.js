@@ -265,12 +265,14 @@ function makeClient({
   return {
     client: {
       auth: { me: async () => state.user },
-      asServiceRole: { entities },
-      integrations: {
-        Core: {
-          InvokeLLM: async (input) => {
-            state.llmCalls.push(structuredClone(input));
-            return structuredClone(llmResult);
+      asServiceRole: {
+        entities,
+        integrations: {
+          Core: {
+            InvokeLLM: async (input) => {
+              state.llmCalls.push(structuredClone(input));
+              return structuredClone(llmResult);
+            },
           },
         },
       },
