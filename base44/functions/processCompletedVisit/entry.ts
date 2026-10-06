@@ -305,7 +305,7 @@ Use proper medical terminology and follow Medicare documentation requirements. B
     // Kick off the narrative call now; it runs concurrently with the follow-up
     // tasks call below (both use the same inputs and are independent), roughly
     // halving the clinician's wait on visit completion.
-    const narrativePromise = base44.integrations.Core.InvokeLLM({
+    const narrativePromise = base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: narrativePrompt,
       model: 'automatic'
     });
@@ -343,7 +343,7 @@ Consider:
 
 Only suggest tasks that are clinically necessary. If no follow-up is needed, return empty array.`;
 
-    const tasksPromise = base44.integrations.Core.InvokeLLM({
+    const tasksPromise = base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: tasksPrompt,
       response_json_schema: {
         type: 'object',

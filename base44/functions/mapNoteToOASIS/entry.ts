@@ -450,7 +450,7 @@ DISCREPANCY SEVERITY RULES:
 
 Return JSON with detailed mapping results:`;
 
-    const result = await base44.integrations.Core.InvokeLLM({
+    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt,
       response_json_schema: {

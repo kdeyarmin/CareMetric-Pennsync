@@ -128,7 +128,7 @@ Make the note:
 
 Return ONLY the formatted note text, no JSON structure.`;
 
-    const noteText = await base44.integrations.Core.InvokeLLM({
+    const noteText = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: prompt
     });

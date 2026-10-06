@@ -133,7 +133,7 @@ GUIDELINES:
 - Use professional nursing language
 - Prioritize based on clinical urgency and patient needs`;
 
-    const response = await base44.integrations.Core.InvokeLLM({
+    const response = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: prompt,
       response_json_schema: {

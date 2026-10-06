@@ -1300,7 +1300,7 @@ test('the clinical document prompt and schema are the original s', async () => {
    */
   const relative = 'base44/functions/extractClinicalDocument/entry.ts';
   const original = await readFile(resolve(repository, relative), 'utf8');
-  const open = original.indexOf('await base44.integrations.Core.InvokeLLM({');
+  const open = original.indexOf('await base44.asServiceRole.integrations.Core.InvokeLLM({');
   assert.ok(open > 0, 'the original still calls InvokeLLM');
   const start = original.indexOf('{', open);
   const end = original.indexOf('\n    });', start);
@@ -1434,7 +1434,7 @@ test('the referral split prompt and schema are the original s', async () => {
   // `InvokeLLM` argument, lifted whole and closed over `fileUrl`.
   const relative = 'base44/functions/splitReferralPDF/entry.ts';
   const original = await readFile(resolve(repository, relative), 'utf8');
-  const open = original.indexOf('await base44.integrations.Core.InvokeLLM({');
+  const open = original.indexOf('await base44.asServiceRole.integrations.Core.InvokeLLM({');
   assert.ok(open > 0, 'the original still calls InvokeLLM');
   const start = original.indexOf('{', open);
   const end = original.indexOf('\n    });', start);

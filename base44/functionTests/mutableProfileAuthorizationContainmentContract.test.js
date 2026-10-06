@@ -272,7 +272,7 @@ test('analyzeAndGenerateClinicalTasks authorizes the patient before PHI reads an
   const patientRead = handler.indexOf('entities.Patient');
   const accessGate = handler.indexOf('assertPatientAccess(base44, user, patient)');
   const relatedPhiReads = handler.indexOf('entities.Visit');
-  const modelCall = handler.indexOf('base44.integrations.Core.InvokeLLM');
+  const modelCall = handler.indexOf('base44.asServiceRole.integrations.Core.InvokeLLM');
 
   assert.notEqual(patientRead, -1);
   assert.notEqual(accessGate, -1);

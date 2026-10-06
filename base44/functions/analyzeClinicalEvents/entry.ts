@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
       extraction_confidence: e.extraction_confidence
     }));
 
-    const result = await base44.integrations.Core.InvokeLLM({
+    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `Analyze these clinical events for a patient and identify potential issues:
 

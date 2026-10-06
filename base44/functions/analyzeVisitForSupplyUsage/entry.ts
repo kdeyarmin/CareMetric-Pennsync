@@ -249,7 +249,7 @@ Visit Notes: "${visitNotes}"
 Return ONLY valid JSON array, no other text.`;
 
     // Call LLM integration
-    const analysisResult = await base44.integrations.Core.InvokeLLM({
+    const analysisResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: extractionPrompt,
       model: 'automatic',
       response_json_schema: {

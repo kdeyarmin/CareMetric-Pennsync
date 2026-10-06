@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
     );
 
     // Analyze trends with AI
-    const rawTrends = await base44.integrations.Core.InvokeLLM({
+    const rawTrends = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `Analyze this patient's clinical data over time and identify significant trends, patterns, and risks.
 

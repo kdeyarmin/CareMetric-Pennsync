@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
     const contextData = referral_data || patientData;
 
     // Generate OASIS assessment using AI
-    const result = await base44.integrations.Core.InvokeLLM({
+    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `Generate a comprehensive OASIS assessment guide for this home health patient.
 

@@ -166,7 +166,7 @@ Provide a JSON response with the following structure:
 
 Return ONLY valid JSON matching the structure above, no prose or code fences.`;
 
-    const response = await base44.integrations.Core.InvokeLLM({
+    const response = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: analysisPrompt
     });

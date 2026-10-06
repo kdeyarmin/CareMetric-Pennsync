@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     const processOne = async (fileUrl, fileName) => {
       try {
         // Extract text from PDF
-        const extractedData = await base44.integrations.Core.ExtractDataFromUploadedFile({
+        const extractedData = await base44.asServiceRole.integrations.Core.ExtractDataFromUploadedFile({
           file_url: fileUrl,
           json_schema: {
             type: "object",
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
         }
 
         // Analyze with AI
-        const analysisResult = await base44.integrations.Core.InvokeLLM({
+        const analysisResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
           model: "automatic",
           prompt: `You are an expert OASIS analyst. Analyze this OASIS assessment document:
 

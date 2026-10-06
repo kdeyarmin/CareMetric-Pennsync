@@ -77,9 +77,9 @@ async function loadOriginal(surface, guideContent) {
   source = source.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     `const createClientFromRequest = () => ({
        auth: { me: async () => ({ id: 'synthetic-user', is_active: true }) },
-       integrations: { Core: { InvokeLLM: async (argument) => {
+       asServiceRole: { integrations: { Core: { InvokeLLM: async (argument) => {
          globalThis.__calls.push(argument); return globalThis.__content;
-       } } },
+       } } } },
      });`);
   const js = transpileTs(source).outputText;
   const file = join(tmpdir(), `guideparity_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);

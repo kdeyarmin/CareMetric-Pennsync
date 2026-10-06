@@ -147,7 +147,7 @@ Extract and return JSON with:
   "regulatory_citation": "Official citation if found in content (e.g., 42 CFR 484.55)"
 }`;
 
-    const analysis = await base44.integrations.Core.InvokeLLM({
+    const analysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: analysisPrompt,
       response_json_schema: {
