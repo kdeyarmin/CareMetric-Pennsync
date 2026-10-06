@@ -420,9 +420,10 @@ Deno.serve(async (req) => {
     debugLog('Request received with keys:', Object.keys(body || {}));
 
     const { condition, patientName, action, selectedSections, customNotes, styleOptions } = body;
-    // Security: never relay to a caller-chosen address. Handouts are emailed
-    // only to the authenticated staff member, who can then share it.
-    const patientEmail = action === 'email' ? user.email : null;
+    // Security: the recipient is NEVER read from the request body (any
+    // patientEmail/to field is ignored). Handouts are emailed only to the
+    // authenticated staff member's own registered address, who can then share it.
+    const deliveryEmail = action === 'email' ? user.email : null;
     diagnostics.condition = condition;
     diagnostics.action = action;
 
@@ -438,8 +439,8 @@ Deno.serve(async (req) => {
 
     if (!condition) return Response.json({ error: 'Condition is required' }, { status: 400 });
     if (!handoutTemplates[condition]) return Response.json({ error: `Invalid condition: ${condition}` }, { status: 400 });
-    if (action === 'email' && !patientEmail) {
-      return Response.json({ error: 'patientEmail is required to email the handout' }, { status: 400 });
+    if (action === 'email' && !deliveryEmail) {
+      return Response.json({ error: 'Your account has no email address on file.' }, { status: 400 });
     }
     if (action === 'email' && !outboundDeliveryReleased()) {
       return outboundDeliveryPausedResponse('email');
@@ -796,20 +797,21 @@ Deno.serve(async (req) => {
     }
 
     // Email delivery path.
-    if (action === 'email' && patientEmail) {
+    if (action === 'email' && deliveryEmail) {
       diagnostics.stage = 'sending_email';
       try {
-        // Caller-supplied branding is not trusted in outbound mail.
-        style.agencyName = 'PennSync';
-        style.agencyPhone = '';
+        // Outbound mail uses only server-owned values: fixed branding, the
+        // server-side template title, and the signed-in user's own name/email.
+        // No request field (patientName, styleOptions, customNotes) reaches it.
+        const EMAIL_BRAND = 'PennSync';
         await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: clean(style.agencyName),
-          to: patientEmail,
+          from_name: EMAIL_BRAND,
+          to: deliveryEmail,
           subject: `Patient Education: ${template.title}`,
           body: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
               <div style="background:#213a76; padding:24px; text-align:center;">
-                <h1 style="color:#fff; margin:0; font-size:20px; letter-spacing:0.3px;">${cleanHtml(style.agencyName)}</h1>
+                <h1 style="color:#fff; margin:0; font-size:20px; letter-spacing:0.3px;">${EMAIL_BRAND}</h1>
                 <div style="height:3px; width:60px; background:#c8911e; margin:10px auto 0;"></div>
               </div>
               <div style="padding:28px; background:#ffffff; color:#1e293b;">
@@ -822,10 +824,10 @@ Deno.serve(async (req) => {
                   <li>Share it with family members who help with your care</li>
                   <li>Call your nurse with any questions</li>
                 </ul>
-                <p style="margin-bottom:0;">Warm regards,<br><strong>${cleanHtml(style.agencyName)}</strong></p>
+                <p style="margin-bottom:0;">Warm regards,<br><strong>${EMAIL_BRAND}</strong></p>
               </div>
               <div style="background:#f1f5f9; padding:14px; text-align:center; color:#64748b; font-size:12px;">
-                ${cleanHtml(style.agencyName)}${style.agencyPhone ? ` &nbsp;|&nbsp; ${cleanHtml(style.agencyPhone)}` : ''} &nbsp;|&nbsp; caremetric.ai
+                ${EMAIL_BRAND} &nbsp;|&nbsp; caremetric.ai
               </div>
             </div>`
         });
@@ -840,7 +842,7 @@ Deno.serve(async (req) => {
         } catch (_logErr) { /* best effort */ }
         throw new Error(`Failed to send email: ${emailError.message}`);
       }
-      return Response.json({ success: true, message: `Handout emailed to ${patientEmail}` });
+      return Response.json({ success: true, message: `Handout emailed to ${deliveryEmail}` });
     }
 
     return Response.json({
