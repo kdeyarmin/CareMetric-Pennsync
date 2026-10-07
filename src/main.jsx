@@ -256,6 +256,7 @@ async function bootstrapApp() {
     import('@/App.jsx'),
   ])
   bootstrapFailureCode = 'APP_MOUNT'
+  safeSessionStorage.removeItem('pennsync_app_import_retry')
   const root = document.getElementById('root')
   if (!root) throw new Error('PennSync root element is unavailable')
   ReactDomModule.createRoot(root).render(
@@ -270,6 +271,18 @@ async function bootstrapApp() {
 if (documentAuthorityReady) {
   void bootstrapApp().catch((error) => {
     if (handleStaleChunk(error, error?.message || '')) return
+    // Any app-file load failure (not just the recognized stale-chunk messages)
+    // gets one automatic cache-busting reload before the blocked screen shows.
+    const importRetryKey = 'pennsync_app_import_retry'
+    if (bootstrapFailureCode === 'APP_IMPORT' && navigator.onLine !== false
+      && !safeSessionStorage.getItem(importRetryKey)) {
+      safeSessionStorage.setItem(importRetryKey, '1')
+      const url = new URL(window.location.href)
+      url.searchParams.set('_r', String(Date.now()))
+      window.location.href = url.toString()
+      return
+    }
+    safeSessionStorage.removeItem(importRetryKey)
     terminallyCloseDocumentAuthority()
     renderSecureBootstrapBlocked()
   })
