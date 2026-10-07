@@ -55,7 +55,7 @@ export default function Messages() {
     setComposing(false);
     t.messages
       .filter((m) => !m.read_by_user_ids?.includes(data.me))
-      .forEach((m) => base44.functions.invoke("markMessageRead", { agency_id: agencyId, message_id: m.id }).catch(() => {}));
+      .forEach((m) => base44.functions.invoke("markMessageRead", { agency_id: agencyId, id: m.id }).catch(() => {}));
   };
 
   const current = threads.find((t) => t.id === selected);
