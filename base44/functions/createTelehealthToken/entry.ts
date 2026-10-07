@@ -196,7 +196,7 @@ const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
 // as authorization and provider-routing authority. Keep the complete Telnyx
 // implementation dormant until session creation and provider room binding are
 // moved behind a server-owned broker with an immutable binding record.
-const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;
+const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;
 
 /** Find a Telnyx room by unique_name, creating it if it doesn't exist yet. */
 async function findOrCreateRoom(apiKey, uniqueName) {

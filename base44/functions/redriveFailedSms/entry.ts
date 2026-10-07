@@ -135,7 +135,7 @@ const BATCH_LIMIT = 100;
 // authority binding. Keep provider redrive unavailable until legacy rows are
 // migrated and the scheduler can prove their provenance without trusting
 // caller-editable message or User fields.
-const SMS_REDRIVE_MIGRATION_PAUSED = false;
+const SMS_REDRIVE_MIGRATION_PAUSED = true;
 
 // ---- redrive eligibility (mirrors src/components/messaging/smsRedrive.js) ----
 const TRANSIENT_FAILURE_PATTERNS = [

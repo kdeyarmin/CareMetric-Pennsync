@@ -134,6 +134,7 @@ export const REDIRECTS = [
   // ─── Referral Intake consolidation ───────────────────────────────────────────
   // Processor and Admission Note are now steps (tabs) of the intake workflow.
   { from: '/ReferralProcessor', to: '/ReferralIntake?tab=process' },
+  { from: '/ReferralFollowUp', to: '/ReferralIntake' },
   { from: '/ReferralAdmissionNote', to: '/ReferralIntake?tab=admission' },
 
   // ─── Fax Center consolidation ────────────────────────────────────────────────
