@@ -55,7 +55,13 @@ import { HANDOUT_TEMPLATES } from './patient-handout-templates.mjs';
  * selector, and neither changes a line of the document. Refusing them would
  * break the only caller; honouring them would invent a behaviour.
  */
-export const HANDOUT_FIELDS = Object.freeze(['condition', 'patientName', 'patientEmail', 'action',
+// `patientEmail` is deliberately absent. The original used to take the
+// recipient from the request body; it now derives it from the authenticated
+// caller and says so in its own words — "the recipient is NEVER read from the
+// request body (any patientEmail/to field is ignored)". The original ignores a
+// supplied one, this refuses it through `exactObject`, which is the narrowing
+// D39 settled on: a silently filtered field is also a silently lost one.
+export const HANDOUT_FIELDS = Object.freeze(['condition', 'patientName', 'action',
   'selectedSections', 'customNotes', 'styleOptions', 'readingLevel', 'format']);
 export const HANDOUT_STYLE_FIELDS = Object.freeze(['colorScheme', 'fontFamily', 'layout',
   'customHeader', 'customFooter', 'agencyName', 'agencyPhone']);
@@ -106,14 +112,17 @@ export const HANDOUT_ANSWER_CEILING = 1024 * 1024 - 16 * 1024;
 /** Refuses what the original could not render, in the original's order. */
 export function handoutRequest(params) {
   exactObject(params, HANDOUT_FIELDS, 'INVALID_PARAMS');
-  const { condition, patientName, patientEmail, action, selectedSections, customNotes, styleOptions } = params;
+  const { condition, patientName, action, selectedSections, customNotes, styleOptions } = params;
   if (!condition) fail(400, 'CONDITION_REQUIRED');
   if (typeof condition !== 'string' || !Object.hasOwn(HANDOUT_TEMPLATES, condition)) fail(400, 'INVALID_CONDITION');
-  if (action === 'email') {
-    if (!patientEmail) fail(400, 'PATIENT_EMAIL_REQUIRED');
-    fail(503, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
-  }
-  for (const value of [patientName, patientEmail, customNotes, params.readingLevel, params.format]) {
+  // The original's remaining email-path refusals are an address check it makes
+  // against the CALLER's own profile and then the paused send. Here the caller
+  // arrives through the authority envelope and always has an address, so the
+  // address refusal has nothing to fire on and the paused send is the whole
+  // answer — in the original's order, since that check precedes the pause
+  // there too.
+  if (action === 'email') fail(503, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
+  for (const value of [patientName, customNotes, params.readingLevel, params.format]) {
     if (!optionalText(value)) fail(400, 'INVALID_PARAMS');
   }
   if (!(selectedSections === undefined || selectedSections === null || isObject(selectedSections))) {

@@ -75,12 +75,19 @@ async function loadHandler({
           },
         },
       },
+      integrations: {
+        Core: {
+          InvokeLLM: async (args) => {
+            calls.llm.push(args);
+            return llmResult;
+          },
+        },
+      },
     },
     integrations: {
       Core: {
-        InvokeLLM: async (args) => {
-          calls.llm.push(args);
-          return llmResult;
+        InvokeLLM: async () => {
+          throw new Error('Core.InvokeLLM must use the service role');
         },
       },
     },

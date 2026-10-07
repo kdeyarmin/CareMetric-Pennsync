@@ -307,7 +307,7 @@ const OASIS_WRITE_KILL_SWITCH_FIELD = 'oasis_response_writes_disabled';
 // exact-OASIS service-role, atomicity/idempotency, and Visit-policy proofs are
 // all activation blockers. Tests rewrite only an isolated transpiled copy;
 // deployed code has no bypass.
-const OASIS_V2_WRITES_PAUSED = false;
+const OASIS_V2_WRITES_PAUSED = true;
 
 const MAX_BODY_BYTES = 100_000;
 const MAX_IDENTIFIER_LENGTH = 200;

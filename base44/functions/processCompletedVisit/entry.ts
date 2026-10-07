@@ -120,7 +120,7 @@ function validAiSourceResult(result, visitId) {
 // this release gate must still remain before client creation, authentication,
 // or any entity/integration access until nested-auth, claim-race, and provider
 // failure evidence has been accepted.
-const PROCESS_COMPLETED_VISIT_PAUSED = false;
+const PROCESS_COMPLETED_VISIT_PAUSED = true;
 
 async function invokeAuthorizedVisitAction(base44, payload) {
   const internalSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();

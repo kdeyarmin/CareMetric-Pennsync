@@ -194,7 +194,6 @@ const educationTopics = [
 export default function PatientEducationHub() {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [patientId, setPatientId] = useState("");
-  const [patientEmail, setPatientEmail] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEmailing, setIsEmailing] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -456,10 +455,6 @@ export default function PatientEducationHub() {
                 value={patientId}
                 onValueChange={(value) => {
                   setPatientId(value);
-                  const patient = patients.find(p => p.id === value);
-                  if (patient?.email) {
-                    setPatientEmail(patient.email);
-                  }
                 }}
                 placeholder="Select patient for personalization..."
               />
@@ -543,10 +538,6 @@ export default function PatientEducationHub() {
                       value={patientId}
                       onValueChange={(value) => {
                         setPatientId(value);
-                        const patient = patients.find(p => p.id === value);
-                        if (patient?.email) {
-                          setPatientEmail(patient.email);
-                        }
                       }}
                       placeholder="Select patient..."
                     />

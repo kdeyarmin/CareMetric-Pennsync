@@ -7,7 +7,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
  * input surface. Secure-message v2 uses the separate, purpose-bound
  * summarizeMessageThread and generateMessageSuggestions brokers instead.
  */
-const SECURE_MESSAGE_DOMAIN_PAUSED = false;
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
 
 function json(payload: unknown, status = 200) {
   return Response.json(payload, {

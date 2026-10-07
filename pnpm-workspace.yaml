@@ -17,6 +17,12 @@ overrides:
   # socket.io-client. Nothing in this repo can bump it directly, so pin the
   # patched line here. 4.2.7 satisfies socket.io-client's ~4.2.x range.
   socket.io-parser: 4.2.7
+  # GHSA-68fv-2mgg-jv7q (high): event-loop denial of service through indexed
+  # source-map section offsets in source-map-js <1.2.2, reached transitively
+  # via postcss (autoprefixer, a prod dependency), @tailwindcss/node and
+  # css-tree > jsdom. Every consumer declares a ^1.x range that 1.2.2 is
+  # inside, so none of them needs to move; pin the patched line here.
+  source-map-js: 1.2.2
   undici: 7.29.0
   ws: 8.21.0
 minimumReleaseAgeExclude:

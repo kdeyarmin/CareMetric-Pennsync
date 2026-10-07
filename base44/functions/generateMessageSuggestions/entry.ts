@@ -58,7 +58,7 @@ function serviceRoleClientRequest(req, expectedAppId) {
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
 /** Read-only, dormant secure-message v2 patient-context suggestion broker. */
-const SECURE_MESSAGE_DOMAIN_PAUSED = false;
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
 const MAX_BODY_BYTES = 8_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;

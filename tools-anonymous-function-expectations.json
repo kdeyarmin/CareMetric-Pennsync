@@ -215,6 +215,27 @@
       "error": "Webhook credential is not configured uniquely"
     }
   },
+  "listMyMessages": {
+    "status": 503,
+    "body": {
+      "error": "Secure messaging is temporarily unavailable",
+      "code": "secure_message_tenant_broker_required"
+    }
+  },
+  "listMyUpcomingTelehealth": {
+    "status": 503,
+    "body": {
+      "error": "Telehealth provider access is temporarily unavailable while session authority is migrated.",
+      "code": "telehealth_provider_migration_pending"
+    }
+  },
+  "manageTelehealthSession": {
+    "status": 503,
+    "body": {
+      "error": "Telehealth provider access is temporarily unavailable while session authority is migrated.",
+      "code": "telehealth_provider_migration_pending"
+    }
+  },
   "markMessageRead": {
     "status": 503,
     "body": {

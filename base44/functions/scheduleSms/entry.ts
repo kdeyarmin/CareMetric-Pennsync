@@ -86,7 +86,7 @@ function isProtectedSuperAdmin(user) {
 
 const MIN_LEAD_MS = 60 * 1000;
 const MAX_SCHEDULE_MS = 365 * 24 * 60 * 60 * 1000;
-const SCHEDULED_SMS_CREATION_PAUSED = false;
+const SCHEDULED_SMS_CREATION_PAUSED = true;
 
 function normalizeE164(raw) {
   if (!raw) return null;

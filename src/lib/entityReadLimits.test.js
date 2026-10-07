@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import process from 'node:process';
 
 /**
@@ -180,6 +181,17 @@ function findUnlimitedReads(files, { allowSingleRecordQueries = true, exempt } =
       const limitIndex = m[2] === 'list' ? 1 : 2;
       const limit = args[limitIndex]?.trim();
       if (limit && limit !== 'undefined') continue;
+      // The SDK takes the ceiling two ways, and reading only the positional
+      // slot reported an explicit one as absent. `list(sort, limit, …)` and
+      // `filter(query, sort, limit, …)` return an array; an OBJECT in that
+      // same sort slot — `list(options)`, `filter(query, options)` — is page
+      // options and returns one cursor page, which is where `limit` then
+      // lives (SDK `isPageOptions`: any object there selects that overload).
+      // So read the property out of that slot too. The slot is never the
+      // filter query, which sits at args[0], so a field of a query that
+      // happens to be called `limit` cannot satisfy this.
+      const options = args[limitIndex - 1]?.trim();
+      if (options?.startsWith('{') && /(?:^\{|[,{]\s*)limit\s*:/.test(options)) continue;
       if (allowSingleRecordQueries && m[2] === 'filter' && isSingleRecordQuery(args[0])) continue;
       if (exempt.has(rel)) continue;
       const line = src.slice(0, m.index).split('\n').length;
@@ -257,6 +269,38 @@ test('the exemption map is the caller\'s, proved by handing one to a scan that g
   // And a caller that states nothing gets nothing, rather than the last list
   // that happened to be in scope.
   assert.throws(() => findUnlimitedReads(files, options), /needs an `exempt` Map/);
+});
+
+test('a page-options limit counts, and an options object without one still does not', () => {
+  // The widening, proved to bite before it is believed. `findUnlimitedReads`
+  // reads files, so the two shapes are planted as files rather than passed as
+  // strings: that keeps the control on the real code path (the paren walk and
+  // splitArgs) instead of a reimplementation of it.
+  const dir = mkdtempSync(join(tmpdir(), 'entity-read-limits-'));
+  const plant = (name, body) => {
+    const path = join(dir, name);
+    writeFileSync(path, body);
+    return path;
+  };
+  const limited = plant('limited.ts',
+    "const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n"
+    + "  { host_email: 'a@b.c' },\n"
+    + "  { sort: 'scheduled_at', limit: 5, fields: ['status'] },\n);\n");
+  const unlimited = plant('unlimited.ts',
+    "const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n"
+    + "  { host_email: 'a@b.c' },\n"
+    + "  { sort: 'scheduled_at', fields: ['status'] },\n);\n");
+  const options = { allowSingleRecordQueries: false, exempt: NO_EXEMPTIONS };
+
+  // A ceiling inside the page-options object is a ceiling.
+  assert.deepEqual(findUnlimitedReads([limited], options), []);
+  // Dropping it is still reported, so the clause reads the property rather
+  // than waving every object-shaped second argument past.
+  assert.deepEqual(
+    findUnlimitedReads([unlimited], options).map(f => f.replace(/^.*?([^/]+\.ts)/, '$1')),
+    ['unlimited.ts:1 — TelehealthSession.filter() has no row limit'],
+  );
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test('an apostrophe inside a comment does not blind the argument scanner', () => {
