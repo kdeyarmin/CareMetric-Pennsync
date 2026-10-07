@@ -126,6 +126,42 @@ function splitArgs(text) {
   return out;
 }
 
+/**
+ * The row ceiling a page-options object literal supplies, or null for none.
+ *
+ * Read through `splitArgs` rather than by matching `limit\s*:` in the argument
+ * text. That match is satisfied by three things that supply no ceiling at all
+ * — an explicit `undefined`, a `limit` nested inside another property, and the
+ * characters `limit:` inside a string — so a collection read could pass this
+ * guard and still be truncated at the server default, which is the exact
+ * failure the guard exists to catch. All three are negative controls below.
+ *
+ * `splitArgs` tracks quotes and nesting, so splitting the braces' contents
+ * with it yields the TOP-LEVEL properties and nothing else.
+ */
+function pageOptionsLimit(options) {
+  const text = options?.trim();
+  if (!text?.startsWith('{') || !text.endsWith('}')) return null;
+  for (const property of splitArgs(text.slice(1, -1))) {
+    const colon = property.indexOf(':');
+    // `{ limit }` shorthand is `limit: limit` — a real ceiling, held in a
+    // variable. No entity call uses it today; accepting it costs one branch
+    // and keeps the guard from reporting a future one as unlimited.
+    if (colon === -1) {
+      if (property.trim() === 'limit') return 'limit';
+      continue;
+    }
+    const key = property.slice(0, colon).trim().replace(/^['"`]|['"`]$/g, '');
+    if (key !== 'limit') continue;
+    const value = property.slice(colon + 1).trim();
+    // Mirrors the positional branch's rule, so the two forms agree on what
+    // counts: anything but absent or an explicit `undefined`. A variable or
+    // an expression is a ceiling; this guard is about whether one was passed.
+    return value && value !== 'undefined' ? value : null;
+  }
+  return null;
+}
+
 /** A query pinned to a unique record id returns at most one row. */
 function isSingleRecordQuery(query) {
   if (!query) return false;
@@ -190,8 +226,7 @@ function findUnlimitedReads(files, { allowSingleRecordQueries = true, exempt } =
       // So read the property out of that slot too. The slot is never the
       // filter query, which sits at args[0], so a field of a query that
       // happens to be called `limit` cannot satisfy this.
-      const options = args[limitIndex - 1]?.trim();
-      if (options?.startsWith('{') && /(?:^\{|[,{]\s*)limit\s*:/.test(options)) continue;
+      if (pageOptionsLimit(args[limitIndex - 1])) continue;
       if (allowSingleRecordQueries && m[2] === 'filter' && isSingleRecordQuery(args[0])) continue;
       if (exempt.has(rel)) continue;
       const line = src.slice(0, m.index).split('\n').length;
@@ -309,6 +344,40 @@ test('a page-options limit counts, and an options object without one still does 
     const found = findUnlimitedReads([unlimited], options);
     assert.equal(found.length, 1);
     assert.match(found[0], /TelehealthSession\.filter\(\) has no row limit$/);
+
+    // The three shapes that satisfy a `limit\s*:` match and supply no ceiling.
+    // The first version of this clause matched the argument TEXT and accepted
+    // all three, so a read could pass the guard and still be truncated at the
+    // server default — the guard's own subject. Each is planted as a file and
+    // must still be reported.
+    const noCeiling = {
+      'undefined-limit.ts': "{ sort: 'scheduled_at', limit: undefined }",
+      'nested-limit.ts': "{ sort: 'scheduled_at', fields: [{ limit: 5 }] }",
+      'string-limit.ts': "{ sort: 'scheduled_at', note: 'text, limit: 5' }",
+    };
+    for (const [name, optionsText] of Object.entries(noCeiling)) {
+      const file = plant(name,
+        'const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n'
+        + "  { host_email: 'a@b.c' },\n"
+        + `  ${optionsText},\n);\n`);
+      const reported = findUnlimitedReads([file], options);
+      assert.equal(reported.length, 1, `${name} supplies no ceiling and must be reported`);
+      assert.match(reported[0], /TelehealthSession\.filter\(\) has no row limit$/, name);
+    }
+
+    // And the forms that DO supply one still pass, so the narrowing did not
+    // trade the blind spot for a guard that reports every page read.
+    for (const [name, optionsText] of Object.entries({
+      'quoted-key.ts': "{ 'limit': 25 }",
+      'variable-limit.ts': '{ limit: ROSTER_MAXIMUM }',
+      'shorthand-limit.ts': '{ limit }',
+    })) {
+      const file = plant(name,
+        'const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n'
+        + "  { host_email: 'a@b.c' },\n"
+        + `  ${optionsText},\n);\n`);
+      assert.deepEqual(findUnlimitedReads([file], options), [], name);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
