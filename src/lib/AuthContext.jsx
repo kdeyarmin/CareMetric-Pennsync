@@ -1061,7 +1061,14 @@ export const AuthProvider = ({ children }) => {
    */
   const expireReadyBrowserRealm = useCallback(async (reason) => {
     if (authorityStateRef.current !== TENANT_AUTHORITY_STATES.READY) return false;
-    return requireFreshBrowserRealm({ ordinary: ORDINARY_REALM_CLOSURES.has(reason) });
+    const ordinary = ORDINARY_REALM_CLOSURES.has(reason);
+    // On the Base44 build, idle sign-out is handled by SessionTimeoutManager, so
+    // a fixed 5-minute timer must not tear down an active workspace.
+    if (!ownedBackendAuth && reason === 'expiry') return false;
+    const result = await requireFreshBrowserRealm({ ordinary });
+    // Ordinary closures re-open a fresh verified session automatically.
+    if (!ownedBackendAuth && ordinary) window.location.reload();
+    return result;
   }, [requireFreshBrowserRealm]);
 
   useEffect(() => {
