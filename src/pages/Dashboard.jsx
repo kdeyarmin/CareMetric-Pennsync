@@ -304,8 +304,8 @@ export default function Dashboard() {
         <Link to="/SmartNoteAssistant" className="block">
           <StatCard
             label="Notes"
-            value="Unavailable"
-            sub="Tenant metrics paused"
+            value={(dashboardData.recentCompletedVisits || []).length}
+            sub="Recently completed"
             icon={FileText}
             tone="slate"
           />
