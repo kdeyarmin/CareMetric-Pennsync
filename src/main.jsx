@@ -270,6 +270,7 @@ async function bootstrapApp() {
 
 if (documentAuthorityReady) {
   void bootstrapApp().catch((error) => {
+    console.error('[bootstrap]', bootstrapFailureCode, error)
     if (handleStaleChunk(error, error?.message || '')) return
     // Any app-file load failure (not just the recognized stale-chunk messages)
     // gets one automatic cache-busting reload before the blocked screen shows.
