@@ -67,8 +67,8 @@ function serviceRoleClientRequest(req, expectedAppId) {
  * contract executable in tests without representing create as race-safe.
  */
 
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
-const SECURE_MESSAGE_MUTATIONS_PAUSED = true;
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
+const SECURE_MESSAGE_MUTATIONS_PAUSED = false;
 
 const MAX_BODY_BYTES = 24_000;
 const MAX_IDENTIFIER_LENGTH = 200;
