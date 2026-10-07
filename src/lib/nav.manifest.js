@@ -302,8 +302,9 @@ export const NAV_MANIFEST = [
   {
     page: "ReferralTriage",
     label: "Referral Triage",
+    navLabel: "Referral Analyzer",
     icon: Filter,
-    category: null,
+    category: "Office",
     adminOnly: false,
     access: "patient",
     breadcrumbParent: "ReferralIntake",
