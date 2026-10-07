@@ -935,8 +935,8 @@ function decodeClientState(b64) {
 // literal release gates. Inbound fax now crosses only a dedicated, exact
 // service-owned destination binding; it never uses mutable User fields or a
 // newest/single-row AgencySettings fallback as tenant authority.
-const INBOUND_PATIENT_SMS_ROUTING_PAUSED = false;
-const INBOUND_PATIENT_CALL_ROUTING_PAUSED = false;
+const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;
+const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;
 const INBOUND_PATIENT_CALL_STATES = new Set([
   'inbound_ivr',
   'inbound_after_greet',

@@ -18,7 +18,7 @@ const ACTION_LABELS = {
   flag_for_review: "Flag for review"
 };
 
-const OASIS_AUTOMATION_EXECUTION_PAUSED = false;
+const OASIS_AUTOMATION_EXECUTION_PAUSED = true;
 const AUTOMATION_EXECUTION_BLOCKER =
   'Automated OASIS actions are paused pending one atomic, idempotent, patient-authorized broker. No tasks, alerts, notifications, or workflow records have been created.';
 

@@ -20,7 +20,7 @@ export const SERVER_MERGE_REQUIRED_ENTITIES = [
   "PatientOutcomeMetric",
 ];
 
-export const PATIENT_MERGES_PAUSED = false;
+export const PATIENT_MERGES_PAUSED = true;
 export const PATIENT_MERGE_PAUSED_MESSAGE =
   "Patient duplicate scanning and merging are temporarily unavailable pending an authorized, atomic server broker.";
 

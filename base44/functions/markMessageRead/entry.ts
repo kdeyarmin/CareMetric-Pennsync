@@ -58,8 +58,8 @@ function serviceRoleClientRequest(req, expectedAppId) {
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
 /** Dormant secure-message v2 read-state broker with versioned updateMany CAS. */
-const SECURE_MESSAGE_DOMAIN_PAUSED = false;
-const SECURE_MESSAGE_MUTATIONS_PAUSED = false;
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+const SECURE_MESSAGE_MUTATIONS_PAUSED = true;
 
 const MAX_BODY_BYTES = 2_000;
 const MAX_IDENTIFIER_LENGTH = 200;

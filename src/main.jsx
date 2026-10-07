@@ -47,10 +47,23 @@ function currentFrameMayBootstrap() {
   try {
     if (window.top === window.self) return true
   } catch {
-    return true
+    // A cross-origin parent makes `window.top` unreadable. That is strictly
+    // less information than a readable mismatch, so it cannot be the more
+    // permissive answer: refuse, as a readable mismatch does below.
+    return false
   }
-  // Embedded frames (e.g. the editor preview panel) are allowed to load.
-  return true
+  // There is no authenticated production editor handshake in this source
+  // checkpoint. Do not expose a clinical DOM to an arbitrary parent frame.
+  // Native WKWebView main frames have top === self and remain supported.
+  //
+  // An embedded preview is not left without a path: the embedded branch of
+  // `renderSecureBootstrapNotice` draws "Open a secure preview" with a link
+  // that opens the app in a clean, isolated tab — no opener, no forwarded
+  // token — which is the designed accommodation for a preview panel. Loading
+  // the app in the frame instead hands the parent a live clinical DOM and
+  // lets the frame make API calls, both of which `e2e/secure-preview.spec.js`
+  // asserts must not happen.
+  return false
 }
 
 function renderSecureBootstrapBlocked() {

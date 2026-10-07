@@ -65,9 +65,9 @@ function serviceRoleClientRequest(req, expectedAppId) {
  * Notification.create has no documented atomic create-if-absent primitive, so
  * delivery remains separately paused until a uniquely keyed outbox is proven.
  */
-const SECURE_MESSAGE_DOMAIN_PAUSED = false;
-const SECURE_MESSAGE_MUTATIONS_PAUSED = false;
-const URGENT_MESSAGE_OUTBOX_PAUSED = false;
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+const SECURE_MESSAGE_MUTATIONS_PAUSED = true;
+const URGENT_MESSAGE_OUTBOX_PAUSED = true;
 
 const URGENT_TRIGGER_ACTION = 'notify_urgent_message_v2';
 const MAX_BODY_BYTES = 8_000;

@@ -2037,8 +2037,14 @@ test('a capability whose only entities are the claims helper is not waiting on t
     assert.deepEqual(bare.names, [], `${name} touches none outside the helper`);
     assert.equal(bare.dynamic, false, `${name} indexes no namespace`);
   }
-  // The two the measurement finds, and what each one is.
-  assert.deepEqual([...claims].sort(), ['autoImportPatients', 'sendAccountReadyEmail']);
+  // The one the measurement finds. `sendAccountReadyEmail` was the second and
+  // LEFT the set rather than being removed from it: it now reads `User` to
+  // prove the recipient is a registered user in the caller's own agency, which
+  // is the open-relay fix its sibling `sendWelcomeEmail` carries too, so its
+  // entity reach is no longer the claims fence alone. D74's refinement is
+  // unchanged and the assertions below still pin what it answers for that
+  // capability — only its membership here moved, because the capability did.
+  assert.deepEqual([...claims].sort(), ['autoImportPatients']);
 
   const report = checkCoverage(
     discoverCapabilities(repository),

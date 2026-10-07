@@ -648,23 +648,37 @@ test('the email action is refused with the answer the original gives while deliv
     try { handoutRequest(body); } catch (error) { return { status: error.status, code: error.code }; }
     return null;
   };
-  // Without an address the original asks for one, before anything else.
+  // The original no longer takes the recipient from the body. It derives it
+  // from the authenticated caller and says so in its own words — "the
+  // recipient is NEVER read from the request body (any patientEmail/to field
+  // is ignored)". So the address refusal that remains is about the CALLER's
+  // own profile: this default harness caller carries no address, and it is
+  // asked for before anything else.
   let run = await runHandoutOriginal(handler, { condition: 'chf', action: 'email' });
   assert.equal(run.status, 400);
-  assert.equal(run.answer.error, 'patientEmail is required to email the handout');
-  assert.deepEqual(refusal({ condition: 'chf', action: 'email' }), { status: 400, code: 'PATIENT_EMAIL_REQUIRED' });
-  // With one, and `OUTBOUND_DELIVERY_RELEASE` unset, it refuses by code — and
-  // draws nothing, so the refusal really is before the work.
-  run = await runHandoutOriginal(handler, { condition: 'chf', action: 'email', patientEmail: 'p@example.invalid' });
+  assert.equal(run.answer.error, 'Your account has no email address on file.');
+  assert.deepEqual(run.calls, []);
+  // Given a caller who HAS one, and `OUTBOUND_DELIVERY_RELEASE` unset, it
+  // refuses by code — and draws nothing, so the refusal is before the work.
+  const addressed = await loadOriginalHandler(HANDOUT_ENTRY,
+    () => ({ auth: { me: async () => ({ id: 'u1', email: 'ada@example.invalid', is_active: true }) } }));
+  run = await runHandoutOriginal(addressed, { condition: 'chf', action: 'email' });
   assert.equal(run.status, 503);
   assert.equal(run.answer.code, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
   assert.equal(run.answer.retryable, false);
   assert.deepEqual(run.calls, []);
-  assert.deepEqual(refusal({ condition: 'chf', action: 'email', patientEmail: 'p@example.invalid' }),
+  // The port's caller arrives through the authority envelope and always has an
+  // address, so the no-address branch has nothing to fire on there and the
+  // paused send is its whole answer for the email action.
+  assert.deepEqual(refusal({ condition: 'chf', action: 'email' }),
     { status: 503, code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED' });
-  // A style the port would refuse does not outrank the paused send, in either.
-  assert.deepEqual(refusal({ condition: 'chf', action: 'email', patientEmail: 'p@example.invalid',
+  // A style the port would refuse does not outrank the paused send.
+  assert.deepEqual(refusal({ condition: 'chf', action: 'email',
     styleOptions: { colorScheme: 'invented' } }), { status: 503, code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED' });
+  // And a supplied recipient is refused by the port rather than ignored: the
+  // narrowing recorded on HANDOUT_FIELDS, raised by `exactObject` first.
+  assert.deepEqual(refusal({ condition: 'chf', action: 'email', patientEmail: 'p@example.invalid' }),
+    { status: 400, code: 'INVALID_PARAMS' });
   // The original's own condition checks come first, and keep their order.
   assert.deepEqual(refusal({ action: 'email' }), { status: 400, code: 'CONDITION_REQUIRED' });
   run = await runHandoutOriginal(handler, { action: 'email' });
