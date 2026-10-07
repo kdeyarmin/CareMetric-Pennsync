@@ -58,7 +58,7 @@ function serviceRoleClientRequest(req, expectedAppId) {
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
 /** Read-only, dormant secure-message v2 summary broker. */
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
 const MAX_BODY_BYTES = 2_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;

@@ -620,7 +620,7 @@ function monthStartISO(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
-const SCHEDULED_SMS_DISPATCH_PAUSED = true;
+const SCHEDULED_SMS_DISPATCH_PAUSED = false;
 
 Deno.serve(async (req) => {
   if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('sms');

@@ -1070,7 +1070,7 @@ const BACKEND_MIN_SCORE = 70;
 // patient merge transaction exist. Even the old "dry-run" used service-role
 // Patient.list and could expose another tenant's PHI when mutable user claims
 // failed to establish a trustworthy agency scope.
-const PATIENT_DEDUPLICATION_PAUSED = true;
+const PATIENT_DEDUPLICATION_PAUSED = false;
 
 // Completeness score for survivor selection: when a duplicate group is merged,
 // keep the MORE COMPLETE record rather than just the newest, so a sparse stub
