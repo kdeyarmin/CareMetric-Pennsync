@@ -1299,8 +1299,10 @@ export const AuthProvider = ({ children }) => {
     if (ownedBackendAuth) {
       const cleaned = await cleanupIndependentSession(true);
       if (cleaned && shouldRedirect) window.location.assign(safeReturnUrl);
-    } else if (shouldRedirect) base44.auth.logout(safeReturnUrl);
-    else base44.auth.logout();
+    } else {
+      // Always return to this app (absolute URL), never the platform account page.
+      base44.auth.logout(`${window.location.origin}/`);
+    }
     void immediateDraftPurge;
     void immediatePersistentPhiPurge;
     void teardown;
