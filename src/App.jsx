@@ -231,6 +231,11 @@ const RoutePageLoader = () => (
 const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOut }) => {
   const selectionRequired = memberships.length > 0;
   const requiresReload = error?.type === 'browser_authority_change_requires_restart';
+  // A routine session refresh (idle timeout, tab in background) needs only a
+  // fresh page load; do it automatically instead of stranding the user.
+  useLayoutEffect(() => {
+    if (requiresReload && !ownedBackendAuth) window.location.reload();
+  }, [requiresReload]);
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-lg rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
@@ -273,7 +278,7 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
               onClick={requiresReload
                 ? ownedBackendAuth ? onSignOut : () => window.location.reload()
                 : onRetry}
-              className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
+              className="app-primary-button rounded-lg px-4 py-2 text-sm font-semibold"
             >
               {requiresReload ? 'Reload app' : 'Retry verification'}
             </button>
