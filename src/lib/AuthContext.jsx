@@ -1299,9 +1299,18 @@ export const AuthProvider = ({ children }) => {
     if (ownedBackendAuth) {
       const cleaned = await cleanupIndependentSession(true);
       if (cleaned && shouldRedirect) window.location.assign(safeReturnUrl);
-    } else {
-      // Always return to this app (absolute URL), never the platform account page.
+    } else if (shouldRedirect) {
+      // When we do navigate, return to this app (absolute URL) rather than the
+      // platform account page.
       base44.auth.logout(`${window.location.origin}/`);
+    } else {
+      // `logout(false)` is a programmatic sign-out — a tenant switch, or a
+      // logout racing an in-flight mutation — and its callers depend on the
+      // page NOT navigating: the provider-token removal and the authority
+      // latch have to finish here, and a redirect tears the document down
+      // mid-purge. Passing a return URL unconditionally honoured neither the
+      // parameter nor the branch above, which has always respected it.
+      base44.auth.logout();
     }
     void immediateDraftPurge;
     void immediatePersistentPhiPurge;

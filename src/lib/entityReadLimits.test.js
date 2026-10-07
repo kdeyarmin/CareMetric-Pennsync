@@ -292,15 +292,26 @@ test('a page-options limit counts, and an options object without one still does 
     + "  { sort: 'scheduled_at', fields: ['status'] },\n);\n");
   const options = { allowSingleRecordQueries: false, exempt: NO_EXEMPTIONS };
 
-  // A ceiling inside the page-options object is a ceiling.
-  assert.deepEqual(findUnlimitedReads([limited], options), []);
-  // Dropping it is still reported, so the clause reads the property rather
-  // than waving every object-shaped second argument past.
-  assert.deepEqual(
-    findUnlimitedReads([unlimited], options).map(f => f.replace(/^.*?([^/]+\.ts)/, '$1')),
-    ['unlimited.ts:1 — TelehealthSession.filter() has no row limit'],
-  );
-  rmSync(dir, { recursive: true, force: true });
+  try {
+    // A ceiling inside the page-options object is a ceiling.
+    assert.deepEqual(findUnlimitedReads([limited], options), []);
+    // Dropping it is still reported, so the clause reads the property rather
+    // than waving every object-shaped second argument past.
+    //
+    // Asserted on the finding's SHAPE, never on its path. `findUnlimitedReads`
+    // derives its label as `file.slice(process.cwd().length + 1)`, which is
+    // meaningful only for a file UNDER the working directory — and these are
+    // planted in a temp directory, so the label is whatever that arithmetic
+    // leaves. It came out as the basename on one machine and as the empty
+    // string in CI, where the working directory is the longer of the two: a
+    // control that passed locally for a reason that had nothing to do with
+    // what it was checking.
+    const found = findUnlimitedReads([unlimited], options);
+    assert.equal(found.length, 1);
+    assert.match(found[0], /TelehealthSession\.filter\(\) has no row limit$/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('an apostrophe inside a comment does not blind the argument scanner', () => {
