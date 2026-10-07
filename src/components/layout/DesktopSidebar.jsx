@@ -171,6 +171,7 @@ export default function DesktopSidebar({
       {/* User Footer */}
       <div className="border-t border-navy-700 p-3 flex-shrink-0">
         <div className={`flex items-center gap-2 mt-2 ${collapsed ? 'justify-center flex-col' : ''}`}>
+          <Link to="/UserSettings" title="My profile" className={`flex items-center gap-2 min-w-0 rounded-lg hover:bg-navy-700 p-1 -m-1 ${collapsed ? 'flex-col' : 'flex-1'}`}>
           <div className="w-8 h-8 bg-gradient-to-br from-navy-500 to-navy-700 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
             {currentUser?.full_name?.charAt(0)?.toUpperCase() || 'U'}
           </div>
@@ -180,6 +181,7 @@ export default function DesktopSidebar({
               <p className="text-xs text-slate-400 truncate">{userRoleLabel(currentUser)}</p>
             </div>
           )}
+          </Link>
           <Button
             variant="ghost" size="icon"
             onClick={onLogout}

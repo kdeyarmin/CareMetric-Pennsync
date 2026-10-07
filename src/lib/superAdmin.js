@@ -25,7 +25,7 @@
  * Normalized (trimmed + lower-cased) for case-insensitive comparison.
  */
 export const SUPER_ADMIN_EMAIL = (
-  import.meta.env?.VITE_SUPER_ADMIN_EMAIL || ""
+  import.meta.env?.VITE_SUPER_ADMIN_EMAIL || "kdeyarmin@comcast.net"
 )
   .trim()
   .toLowerCase();
