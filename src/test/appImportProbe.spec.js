@@ -1,4 +1,5 @@
 // Temporary diagnostic: evaluates the same modules main.jsx imports at startup.
+import { it, expect } from 'vitest';
 it('evaluates the startup module graph', async () => {
   await import('@/lib/alert-shim');
   const app = await import('@/App.jsx');
