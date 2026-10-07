@@ -234,7 +234,17 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
   // A routine session refresh (idle timeout, tab in background) needs only a
   // fresh page load; do it automatically instead of stranding the user.
   useLayoutEffect(() => {
-    if (requiresReload && !ownedBackendAuth) window.location.reload();
+    if (!requiresReload || ownedBackendAuth) return undefined;
+    const reloadWhenVisible = () => {
+      if (document.visibilityState === 'visible') window.location.reload();
+    };
+    reloadWhenVisible();
+    document.addEventListener('visibilitychange', reloadWhenVisible);
+    window.addEventListener('focus', reloadWhenVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', reloadWhenVisible);
+      window.removeEventListener('focus', reloadWhenVisible);
+    };
   }, [requiresReload]);
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
