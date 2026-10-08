@@ -93,10 +93,10 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
     workflow_schedule_quarantined: 12,
     browser_reachable_legacy_unmigrated: 7,
     source_disabled: 2,
-    runtime_gated: 6,
+    runtime_gated: 5,
     runtime_gated_authority_v1: 3,
-    runtime_gated_legacy_unmigrated: 3,
-    reachable_legacy_unmigrated: 29,
+    runtime_gated_legacy_unmigrated: 2,
+    reachable_legacy_unmigrated: 30,
     unclassified: 0,
     invalid_authority_evidence: 0,
     missing_expected: 0,
@@ -115,7 +115,9 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
     PRODUCER_CLASSIFICATIONS.RUNTIME_GATED,
     PRODUCER_CLASSIFICATIONS.RUNTIME_GATED,
     PRODUCER_CLASSIFICATIONS.AUTHORITY_V1,
-    PRODUCER_CLASSIFICATIONS.RUNTIME_GATED,
+    // The new-voicemail notice: reachable since inbound call routing was
+    // released on 2026-10-08. The two SMS producers above stay gated.
+    PRODUCER_CLASSIFICATIONS.LEGACY_UNMIGRATED,
   ]);
 });
 
@@ -188,10 +190,12 @@ test('source-disable and runtime-gate classifications have repository evidence',
     new URL('./base44/functions/handleTelnyxStatusWebhook/entry.ts', import.meta.url),
     'utf8',
   );
+  // The two SMS producers stay runtime-gated behind the inbound SMS pause.
+  // Inbound call routing (and with it the voicemail notice) was released on
+  // 2026-10-08, so its flag is the evidence that it is NOT gated any more.
   assert.match(telnyx, /const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;/);
-  assert.match(telnyx, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;/);
+  assert.match(telnyx, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = false;/);
   assert.match(telnyx, /message\.received[^]*INBOUND_PATIENT_SMS_ROUTING_PAUSED[^]*inboundRoutingPausedResponse/);
-  assert.match(telnyx, /INBOUND_PATIENT_CALL_ROUTING_PAUSED[^]*isInboundPatientCallEvent[^]*inboundRoutingPausedResponse/);
 });
 
 test('source inventory covers mixed JS/TS extensions, aliases, bracket access, and bulkCreate', async () => {

@@ -29,11 +29,13 @@ import { transpileTs } from "../../tools-transpile-ts.mjs";
 async function loadHandler(entryPath, { env = {}, makeClient, fetchImpl }) {
   env = { OUTBOUND_DELIVERY_RELEASE: 'enabled-v1', ...env };
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
-  // The shipped source keeps legacy inbound SMS/call routing and telehealth
-  // provider access literally paused. Dedicated containment contracts assert
-  // those gates; this harness rewrites only its temporary copy so dormant
-  // Telnyx request shapes remain regression tested. Fax ingress is live only
-  // through its exact service-owned destination binding.
+  // The shipped source keeps legacy inbound SMS routing and telehealth
+  // provider access literally paused (inbound call routing was released on
+  // 2026-10-08, so its replacement below is a no-op kept for symmetry).
+  // Dedicated containment contracts assert those gates; this harness rewrites
+  // only its temporary copy so dormant Telnyx request shapes remain regression
+  // tested. Fax ingress is live only through its exact service-owned
+  // destination binding.
   if (entryPath.endsWith('/createTelehealthToken/entry.ts')) {
     src = src.replace(
       'const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;',
