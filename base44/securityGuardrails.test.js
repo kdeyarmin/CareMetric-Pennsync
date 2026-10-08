@@ -621,7 +621,8 @@ for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'disp
 //     The dormant backend must retain hashed-at-rest validation, while every
 //     browser creation/join surface stays static until server-owned session and
 //     provider-room authority is hosted.
-test('telehealth join tokens stay hashed while browser session flows remain paused', () => {
+test('telehealth join tokens stay hashed and every session flow goes through the server brokers', () => {
+  // Released by the owner on 2026-10-08. What stays pinned is how it is safe.
   const backend = read('base44/functions/createTelehealthToken/entry.ts');
   assert.ok(
     /join_token_hash/.test(backend),
@@ -632,21 +633,31 @@ test('telehealth join tokens stay hashed while browser session flows remain paus
     /"join_token_hash"/.test(entity),
     'TelehealthSession must define the join_token_hash field.',
   );
-  for (const file of ['src/pages/Telehealth.jsx', 'src/components/telehealth/PatientTelehealthPanel.jsx']) {
+  const broker = read('base44/functions/manageTelehealthSession/entry.ts');
+  assert.ok(!/const FIELDS = \[[^\]]*'join_token_hash'/.test(broker),
+    'the session broker must not project the stored join-token hash.');
+  assert.ok(/agency_id: agencyId,\s*\n\s*room_name: `th-\$\{randomHex\(12\)\}`/.test(broker),
+    'the session broker stamps the agency and mints the room name itself.');
+
+  for (const file of [
+    'src/pages/Telehealth.jsx',
+    'src/components/telehealth/TelehealthWorkspace.jsx',
+    'src/components/dashboard/UpcomingTelehealthWidget.jsx',
+  ]) {
     const src = read(file);
     assert.ok(
-      /TELEHEALTH_UNAVAILABLE_MESSAGE/.test(src),
-      `${file} must render the explicit telehealth migration boundary.`,
-    );
-    assert.ok(
-      !/base44\.entities\.TelehealthSession|join_token_hash:|invite_link:|base44\.|useQuery|useMutation/.test(src),
-      `${file} must not read, create, or update caller-shaped sessions while migration is paused.`,
+      !/entities\.TelehealthSession|join_token_hash:|invite_link:/.test(src),
+      `${file} must not read, create, or update session rows directly.`,
     );
   }
+  const workspace = read('src/components/telehealth/TelehealthWorkspace.jsx');
+  assert.ok(/manageTelehealthSession\(\{ action: "list", agency_id: agencyId/.test(workspace));
 
   const joinPage = read('src/pages/JoinTelehealth.jsx');
-  assert.ok(/TELEHEALTH_UNAVAILABLE_MESSAGE/.test(joinPage));
-  assert.ok(!/TelehealthCall|PreJoinDeviceCheck|VideoRoom|useSearchParams/.test(joinPage));
+  assert.ok(/publicCapabilityClient\.createTelehealthToken\(lease, payload\)/.test(joinPage),
+    'the public join page requests its token through the leased public capability client.');
+  assert.ok(/searchParams\.delete\("t"\)/.test(joinPage), 'the join token is scrubbed from the address bar.');
+  assert.ok(!/\bbase44\./.test(joinPage), 'the public join page never touches the tenant SDK.');
 });
 
 // 17. Operational logs from backend service-role functions must not include

@@ -133,6 +133,11 @@ test('the activity trail succeeds a retired LOG table and nothing else', () => {
 
 test('the measured frontend is two populations, and the smaller one is the surprise', () => {
   const report = compare(measureDestinations(repository), JSON.parse(baseline(208)));
+  // 453 became 471 and 245 became 263 when the owner released the care-plan
+  // screens on 2026-10-08 and their eighteen entity calls came back into
+  // `src/`. Every one of them lands in the record store, so `unserved` held
+  // still a third time: an arrival of landable sites, not a decision.
+  //
   // 452 became 453 and 244 became 245 again when the owner's agency-access
   // panel (`src/components/admin/AgencyAccessPanel.jsx`) gained one landable
   // `Agency.list` site: a population ARRIVAL, so `unserved` held still once
@@ -145,9 +150,9 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // eight landable sites arrived and `unserved` likewise held still. Neither is
   // progress: the only figure that moves when a decision is taken or a contract
   // ships is `unserved`, which is why it is the one with a baseline.
-  assert.equal(report.total, 453);
-  assert.equal(report.served, 245);
-  // 208 of 453. Stage J reads as "replace call sites tier by tier", which is a
+  assert.equal(report.total, 471);
+  assert.equal(report.served, 263);
+  // 208 of 471. Stage J reads as "replace call sites tier by tier", which is a
   // refactor whose size is the count; 46% of them have no destination. The
   // percentage is the trap: it read 46% against 453 too, so the denominator
   // moved underneath it and the derived figure did not budge. 194 of the 208 reach
@@ -176,7 +181,7 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // and did not change. So derive this from the per-entity rollup rather than
   // by adding an entity's whole site count to the moving side.
   assert.deepEqual(report.by_destination, {
-    record_store: 235, broker_family: 7, activity_trail: 3,
+    record_store: 253, broker_family: 7, activity_trail: 3,
     no_table: 119, no_access_contract: 74,
     broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
@@ -284,7 +289,7 @@ test('the command line refuses an unknown argument and an unavailable baseline',
 test('the summary names what cannot land and stays quiet about what can', () => {
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
-  assert.match(lines[0], /453 call sites, 245 can land, 208\/208 cannot/);
+  assert.match(lines[0], /471 call sites, 263 can land, 208\/208 cannot/);
   assert.ok(lines.some(line => /no_table: 119/.test(line)));
   assert.ok(lines.some(line => /no_access_contract: 74/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));

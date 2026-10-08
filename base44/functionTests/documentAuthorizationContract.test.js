@@ -477,11 +477,14 @@ test('generateFaxCoverPage fails closed on incoherent assignment lifecycle prove
   }
 });
 
-test('sendMessage pauses before parsing legacy Document relations or accessing a client', async () => {
+test('sendMessage refuses legacy Document relations before accessing a client', async () => {
+  // Released by the owner on 2026-10-08. A message can no longer carry a
+  // Document relation at all: the request allowlist refuses it before auth or
+  // any service-role read, so no document id reaches a lookup.
   let serviceRoleTouched = false;
   const client = {
     get auth() {
-      throw new Error('Paused messaging must not access auth');
+      throw new Error('A refused request must not access auth');
     },
   };
   Object.defineProperty(client, 'asServiceRole', {
@@ -491,17 +494,26 @@ test('sendMessage pauses before parsing legacy Document relations or accessing a
     },
   });
   const handler = await loadHandler('sendMessage', client);
-  const response = await handler(new Proxy({}, {
-    get(_target, property) {
-      throw new Error(`Paused messaging touched request.${String(property)}`);
-    },
-  }));
-
-  assert.equal(response.status, 503);
-  assert.equal(response.headers.get('Cache-Control'), 'no-store');
-  assert.deepEqual(await response.json(), {
-    error: 'Secure messaging is temporarily unavailable',
-    code: 'secure_message_tenant_broker_required',
-  });
+  for (const legacy of [
+    { document_id: 'doc-1' },
+    { attachment_document_ids: ['doc-1'] },
+    { related_document_id: 'doc-1' },
+  ]) {
+    const response = await handler(new Request('https://example.test/function', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: 'Bearer synthetic' },
+      body: JSON.stringify({
+        agency_id: 'agency-1',
+        client_request_id: 'request-1',
+        recipient_user_ids: ['user-2'],
+        subject: 'Visit follow-up',
+        message_text: 'See attached.',
+        ...legacy,
+      }),
+    }));
+    assert.equal(response.status, 400, JSON.stringify(legacy));
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.equal((await response.json()).error, 'Request contains unsupported fields');
+  }
   assert.equal(serviceRoleTouched, false);
 });

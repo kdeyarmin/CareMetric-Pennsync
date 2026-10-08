@@ -75,11 +75,20 @@ describe("telecom presentation containment", () => {
     expect(read("src/lib/nav.manifest.js")).not.toMatch(/badge:\s*["']sms["']/);
   });
 
-  it("hard-gates every telehealth entry surface before data, provider, or device hooks", () => {
+  it("routes every released telehealth surface through its server broker", () => {
+    // Released by the owner on 2026-10-08. The staff page and dashboard reach
+    // sessions only through the agency-scoped brokers; the public join page
+    // only through the leased public capability client.
+    const workspace = read("src/components/telehealth/TelehealthWorkspace.jsx");
+    expect(workspace).toMatch(/manageTelehealthSession\(\{ action: "list", agency_id: agencyId/);
+    expect(read("src/components/dashboard/UpcomingTelehealthWidget.jsx"))
+      .toMatch(/invoke\("listMyUpcomingTelehealth", \{ agency_id: agencyId \}\)/);
+    const join = read("src/pages/JoinTelehealth.jsx");
+    expect(join).toMatch(/publicCapabilityClient\.createTelehealthToken\(lease, payload\)/);
+    expect(join).not.toMatch(/\bbase44\./);
+
+    // Surfaces with no mount stay static rather than half-wired.
     for (const relativePath of [
-      "src/pages/Telehealth.jsx",
-      "src/pages/JoinTelehealth.jsx",
-      "src/components/dashboard/UpcomingTelehealthWidget.jsx",
       "src/components/telehealth/PatientTelehealthPanel.jsx",
       "src/components/telehealth/RealtimeVitalMonitor.jsx",
     ]) {

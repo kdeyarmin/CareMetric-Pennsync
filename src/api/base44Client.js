@@ -59,4 +59,10 @@ export const publicCapabilityClient = Object.freeze({
     lease,
     () => rawBase44.functions.invoke('submitFollowUpResponse', payload),
   ),
+  // The patient's /join page: the session's join token is the only authority,
+  // and createTelehealthToken checks it against the stored hash.
+  createTelehealthToken: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('createTelehealthToken', payload),
+  ),
 });

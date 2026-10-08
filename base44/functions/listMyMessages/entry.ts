@@ -62,15 +62,12 @@ function serviceRoleClientRequest(req, expectedAppId) {
 // in for an agency they hold an active membership in, plus that agency's
 // active staff directory for composing new threads.
 //
-// Paused at source with the rest of the secure-message v2 domain. Every other
-// broker over these rows (sendMessage, markMessageRead, summarizeMessageThread,
-// generateMessageSuggestions, notifyUrgentMessage) refuses while the domain is
-// paused, so a live read here is a bypass of that pause rather than a capability
-// of its own: it discloses message bodies and an agency staff directory from
-// rows whose `provenance_status` nothing has yet proved is server-stamped. Keep
-// this literal true until the v2 authority and atomicity evidence listed in
-// src/pages/Messages.jsx's TENANT_MESSAGES_RELEASE_REQUIREMENTS is approved.
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+// Released with the rest of the secure-message v2 domain by the owner on
+// 2026-10-08 ("approve everything. I want everything to work perfectly"). The
+// deployment serves one agency. Every row returned is a verified_v2 message the
+// caller participates in, inside an agency where the caller holds exactly one
+// active membership; sendMessage is the only writer and stamps provenance.
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
 
 const secureMessageUnavailable = () => Response.json({
   error: 'Secure messaging is temporarily unavailable',
@@ -106,28 +103,41 @@ Deno.serve(async (req) => {
   );
   if (mine.length !== 1) return Response.json({ error: 'No active membership for agency' }, { status: 403 });
 
-  const page = await entities.Message.filter(
+  // The pinned SDK takes positional arguments (query, sort, limit, skip,
+  // fields) and returns an array. The options-object form this used to pass
+  // exists only in a later SDK, so here it returned undefined and threw.
+  const messages = await entities.Message.filter(
     { agency_id: agencyId, provenance_status: 'verified_v2', participant_user_ids: user.id },
-    { sort: '-created_date', limit: 300, fields: ['id', 'thread_id', 'thread_subject', 'sender_user_id', 'sender_name', 'message_text', 'priority', 'created_date', 'read_by_user_ids', 'participant_user_ids'] },
+    '-created_date',
+    300,
+    0,
+    ['id', 'thread_id', 'thread_subject', 'sender_user_id', 'sender_name', 'message_text', 'priority', 'created_date', 'read_by_user_ids', 'participant_user_ids'],
   );
 
   const members = await entities.AgencyMembership.filter(
     { agency_id: agencyId, status: 'active' },
-    { limit: 500, fields: ['user_id', 'user_email_normalized', 'tenant_role'] },
+    undefined,
+    500,
+    0,
+    ['user_id', 'user_email_normalized', 'tenant_role'],
   );
+  const memberRows = Array.isArray(members) ? members : [];
   // Matches the membership page's own ceiling above. Unlimited, this read was
   // capped at the server default (~50), so every member past the first fifty
   // fell out of `nameById` and the directory showed their raw address instead
   // of their name — a silent truncation, not an error.
-  const users = await entities.User.filter(
-    { id: { $in: members.items.map((m) => m.user_id) } }, undefined, 500,
+  const users = memberRows.length === 0 ? [] : await entities.User.filter(
+    { id: { $in: memberRows.map((m) => m.user_id) } }, undefined, 500,
   );
-  const nameById = new Map(users.map((u) => [u.id, u.full_name || u.email]));
+  const nameById = new Map((Array.isArray(users) ? users : []).map((u) => [u.id, u.full_name || u.email]));
 
   return Response.json({
     me: user.id,
-    messages: page.items,
-    directory: members.items
+    // Belt and braces over the participant filter: a row is returned only when
+    // its own participant list names the caller.
+    messages: (Array.isArray(messages) ? messages : [])
+      .filter((m) => Array.isArray(m.participant_user_ids) && m.participant_user_ids.includes(user.id)),
+    directory: memberRows
       .filter((m) => m.user_id !== user.id)
       .map((m) => ({ id: m.user_id, name: nameById.get(m.user_id) || m.user_email_normalized, role: m.tenant_role })),
   });

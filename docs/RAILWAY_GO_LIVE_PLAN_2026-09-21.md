@@ -3993,9 +3993,8 @@ the next time the denominator was what moved.
 agency-access panel landed** — another printer run, not an adjustment of
 anything above it.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 100 declared, 163/245 landable call sites SERVED, 82 still to adopt
@@ -4013,6 +4012,34 @@ landable denominator and the remainder each rose by one while the served count
 and the declared route count held still, and the new key added one entity to
 the remainder as well. Read it as one more site to adopt, not as a regression
 in anything already served; the totals are the block's to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner released the care-plan screens on 2026-10-08** — another printer run, not
+an adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 100 declared, 166/263 landable call sites SERVED, 97 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 68 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 97, across 32 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 96 need a named capability
+```
+
+**No route was declared between these two blocks, and most of the move is the
+population growing rather than anything being adopted.** Restoring the care-plan
+management, builder and automatic-trigger screens brought their Base44 entity
+calls back into `src/`, and every one of them lands in the record store. Three
+of the new sites happen to call a read or create a route was already declared
+over, with arguments it accepts, so they arrived SERVED; eight build their
+predicate or payload in a variable and joined the population the scan cannot
+read; the remaining seven, over six new keys (the trigger table's four
+operations, and the care plan's list and delete), joined the unrouted
+remainder. So the served count rose without anyone adopting a route, and the
+remainder rose because screens came back — read neither as progress nor as a
+regression. The totals are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4149,14 +4176,14 @@ different kinds of work:
   confidently showing nobody. The approver dropdown in the same file was repaired
   and asks only for `tenant_role`, which the roster does project. That contrast
   is the reason a refusal is read per SITE and not per file.
-- **Sixty pass arguments the scan cannot read**, because the call builds
+- **Sixty-eight pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Eighteen have no route declared at all**, over fifteen entity and
-  operation keys: fifteen reads over twelve keys, and three writes over three.
+- **Twenty-five have no route declared at all**, over twenty-one entity and
+  operation keys: seventeen reads over fourteen keys, and eight writes over seven.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
   adding two branches' deltas is wrong in both directions. **The write half fell
@@ -4164,12 +4191,11 @@ different kinds of work:
   eight sites out of this pool and the withdrawn duty toggle put nothing back,
   so a bucket nobody touched moved twice. That is what a remainder does: it is a
   property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.64 call sites and a write
-  key 1.24, so a read port has historically served many screens per route while
+  the sites already served: a read key there carries 2.68 call sites and a write
+  key 1.28, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.25 sites and a
-  write key 1.00, which is nothing like the served spread — a write key there
-  now covers exactly one site each, so the ratio has no spread left to read.
+  the remainder, though**: inside this pool a read key covers 1.21 sites and a
+  write key 1.14, which is nothing like the served spread.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it
@@ -4264,6 +4290,16 @@ different kinds of work:
   there. The served pool did not move in any of its four figures. That is the
   remainder mechanism once more, from the side of an arrival rather than a
   departure.
+
+  **And again when the care-plan screens were restored, which moved both pools
+  at once.** Three restored sites landed on keys the served pool already held —
+  two reads and a create — so its read pair went from 132 sites over 50 keys to
+  134 over the same 50 and its write pair from 31 over 25 to 32 over 25, raising
+  both served ratios with no route declared. The remainder took seven sites over
+  six new keys, so its read pair went to seventeen over fourteen and its write
+  pair from three over three to eight over seven; the write ratio left 1.00 for
+  the first time in several heads, because the trigger table's update is called
+  from two places.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the

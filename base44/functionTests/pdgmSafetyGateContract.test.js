@@ -121,15 +121,9 @@ test("dedicated PDGM/AI scoring endpoints are static unavailable handlers", asyn
 test("OASIS/clinical AI endpoints stop before auth, data, AI, or writes", async () => {
   const endpoints = [
     ["base44/functions/generateCarePlansFromReferral/entry.ts", "REFERRAL_CARE_PLAN_AI_ENABLED", "referral_care_plan_ai_paused"],
-    ["base44/functions/mapNoteToOASIS/entry.ts", "NOTE_TO_OASIS_MAPPING_ENABLED", "note_to_oasis_mapping_paused"],
     ["base44/functions/analyzeClinicalRisks/entry.ts", "CLINICAL_RISK_AI_ENABLED", "clinical_risk_ai_paused"],
-    ["base44/functions/listOASISUploads/entry.ts", "OASIS_UPLOAD_LIST_ENABLED", "oasis_upload_listing_paused"],
-    ["base44/functions/processOASISBatch/entry.ts", "OASIS_BATCH_AI_ENABLED", "oasis_batch_ai_paused"],
     ["base44/functions/savePayerRateConfig/entry.ts", "PAYER_RATE_CONFIG_ENABLED", "payer_rate_configuration_paused"],
-    ["base44/functions/generateOASISReportPDF/entry.ts", "OASIS_REPORT_PDF_ENABLED", "oasis_report_pdf_paused"],
-    ["base44/functions/generateComprehensiveOASISReport/entry.ts", "COMPREHENSIVE_OASIS_REPORT_ENABLED", "comprehensive_oasis_report_paused"],
     ["base44/functions/generateComprehensiveReport/entry.ts", "COMPREHENSIVE_REPORT_ENABLED", "comprehensive_report_paused"],
-    ["base44/functions/generateOASISAssessment/entry.ts", "OASIS_ASSESSMENT_AI_ENABLED", "oasis_assessment_ai_paused"],
     ["base44/functions/generateCarePlanSuggestions/entry.ts", "CARE_PLAN_SUGGESTIONS_AI_ENABLED", "care_plan_suggestions_ai_paused"],
     ["base44/functions/monitorComplianceRisks/entry.ts", "COMPLIANCE_RISK_MONITOR_ENABLED", "compliance_risk_monitor_paused"],
     ["base44/functions/batchAIAnalysis/entry.ts", "BATCH_CLINICAL_AI_ENABLED", "batch_clinical_ai_paused"],
@@ -148,6 +142,54 @@ test("OASIS/clinical AI endpoints stop before auth, data, AI, or writes", async 
     assert.ok(preClient.includes(reason));
     assert.match(preClient, /status:\s*409/);
     assert.doesNotMatch(preClient, /req\.json\s*\(|InvokeLLM|asServiceRole|\.entities\./);
+  }
+});
+
+// Released by the owner on 2026-10-08 ("approve everything"). What stays
+// pinned is how each one is safe to serve: a chart read only after the caller's
+// own access to that chart is decided from membership and the care-team table,
+// a batch only for an agency lead and only over the app's own storage, and the
+// two report formatters reading no record at all.
+test("released OASIS endpoints decide the caller's authority before any record or model", async () => {
+  for (const [path, flag] of [
+    ["base44/functions/generateOASISAssessment/entry.ts", "OASIS_ASSESSMENT_AI_ENABLED"],
+    ["base44/functions/mapNoteToOASIS/entry.ts", "NOTE_TO_OASIS_MAPPING_ENABLED"],
+  ]) {
+    const source = await read(path);
+    assert.match(source, new RegExp(`${flag}\\s*=\\s*true`));
+    const handler = source.slice(source.indexOf("Deno.serve"));
+    assert.match(handler, /withTrustedClaims\(base44, await base44\.auth\.me\(\)\)/, `${path} reads trusted claims`);
+    const check = handler.indexOf("assertOasisChartAccess(");
+    assert.ok(check > 0, `${path} checks chart access`);
+    assert.ok(handler.indexOf("InvokeLLM") > check, `${path} asks the model only after the chart check`);
+    assert.ok(handler.indexOf("entities.OASISUpload") < 0 || handler.indexOf("entities.OASISUpload") > check,
+      `${path} reads OASIS records only after the chart check`);
+    const helper = source.slice(source.indexOf("async function assertOasisChartAccess"), source.indexOf("Deno.serve"));
+    assert.match(helper, /PatientCareTeamAssignment/);
+    assert.doesNotMatch(helper, /assigned_nurses|agency_name/, `${path} never authorizes from editable profile fields`);
+  }
+
+  const batch = await read("base44/functions/processOASISBatch/entry.ts");
+  assert.match(batch, /OASIS_BATCH_AI_ENABLED\s*=\s*true/);
+  assert.match(batch, /const BATCH_FILE_HOSTS = \['qtrypzzcjebvfcihiynt\.supabase\.co', 'base44\.app', 'base44\.io'\]/);
+  const batchHandler = batch.slice(batch.indexOf("Deno.serve"));
+  const lead = batchHandler.indexOf("holdsAgencyLeadMembership(base44, user)");
+  assert.ok(lead > 0 && lead < batchHandler.indexOf("InvokeLLM"), "processOASISBatch admits only an agency lead before any model call");
+  const hosts = batchHandler.indexOf("fileUrls.every(isAppStorageUrl)");
+  assert.ok(hosts > 0 && hosts < batchHandler.indexOf("ExtractDataFromUploadedFile"),
+    "processOASISBatch extracts only files in the app's own storage");
+
+  const uploads = await read("base44/functions/listOASISUploads/entry.ts");
+  assert.match(uploads, /OASIS_UPLOAD_LIST_ENABLED\s*=\s*true/);
+  assert.doesNotMatch(uploads.slice(uploads.indexOf("Deno.serve")), /asServiceRole/,
+    "listOASISUploads reads as the caller, so OASISUpload's own read rule decides");
+
+  for (const path of [
+    "base44/functions/generateOASISReportPDF/entry.ts",
+    "base44/functions/generateComprehensiveOASISReport/entry.ts",
+  ]) {
+    const handler = (await read(path)).slice((await read(path)).indexOf("Deno.serve"));
+    assert.doesNotMatch(handler, /asServiceRole|\.entities\./, `${path} formats the caller's payload and reads no record`);
   }
 });
 

@@ -110,16 +110,23 @@ describe('residual RLS source containment', () => {
   });
 
   it('locks patient education records to their sender or protected admins', () => {
-    // 2026-09-10 owner-approved interim lockdown: the assignment and delivery
-    // tables have no live consumer, so every direct operation is denied.
+    // 2026-10-08, released by the owner with Care Plans: an assignment is the
+    // assigning clinician's or a protected admin's, and is never deleted. The
+    // delivery table still has no live consumer, so it stays fully closed.
     const closed = { read: false, create: false, update: false, delete: false };
-    expect(entity('PatientEducationAssignment').rls).toEqual(closed);
+    const assignment = entity('PatientEducationAssignment').rls;
+    expect(assignment.read).toEqual(ownerOrAdmin('assigned_by'));
+    expect(assignment.create).toEqual(ownerOrAdmin('assigned_by'));
+    expect(assignment.update).toEqual(ownerOrAdmin('assigned_by'));
+    expect(assignment.delete).toBe(false);
     expect(entity('PatientEducationDelivery').rls).toEqual(closed);
     expect(directConsumers('PatientEducationDelivery')).toEqual([]);
-    // The recommender and tracker that touch assignments are not mounted anywhere.
+    // The recommender and tracker that touch assignments are mounted only by the
+    // released Care Plan page; the recommender stamps assigned_by (below), so the
+    // rows it writes are the ones the creator rule above lets it read back.
     for (const component of ['AIEducationRecommender', 'EducationTracker']) {
       expect(sourcesContaining(`/${component}`, [`src/components/carePlan/${component}.jsx`]), component)
-        .toEqual([]);
+        .toEqual(['src/pages/CarePlanManagement.jsx']);
     }
     const generator = read('base44/functions/generatePatientEducation/entry.ts');
     expect(generator).toMatch(/code:\s*'PATIENT_EDUCATION_GENERATION_PAUSED'/);
@@ -203,16 +210,15 @@ describe('residual RLS source containment', () => {
       .toMatch(/const OASIS_CLINICAL_AI_ENABLED\s*=\s*false\s*;/);
   });
 
-  it('keeps AutomaticCarePlanTrigger private while care plans are quarantined', () => {
+  it('keeps AutomaticCarePlanTrigger to protected admins and its one admin page', () => {
+    // Released with Care Plans on 2026-10-08: triggers are agency configuration,
+    // so only the built-in admin role reads or changes them.
     const rls = entity('AutomaticCarePlanTrigger').rls;
     for (const operation of ['read', 'create', 'update', 'delete']) {
-      expect(rls[operation], `AutomaticCarePlanTrigger.${operation}`).toBe(false);
+      expect(rls[operation], `AutomaticCarePlanTrigger.${operation}`).toEqual(ADMIN);
     }
-    expect(directConsumers('AutomaticCarePlanTrigger')).toEqual([]);
-
-    const page = read('src/pages/AutomaticCarePlans.jsx');
-    expect(page).toMatch(/<CarePlanUnavailable/);
-    expect(page).not.toMatch(/\bbase44\b|useQuery|useMutation|entities\./);
+    expect(directConsumers('AutomaticCarePlanTrigger')).toEqual(['src/pages/AutomaticCarePlans.jsx']);
+    expect(read('src/pages/AutomaticCarePlans.jsx')).toMatch(/isAdminLike/);
   });
 
   it('scopes every MicroLearningProgress operation to the learner or protected admins', () => {

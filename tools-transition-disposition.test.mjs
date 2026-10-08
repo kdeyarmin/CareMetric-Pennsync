@@ -2119,14 +2119,26 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
     'generateMessageSuggestions', 'markMessageRead', 'messagingAssistant',
     'notifyUrgentMessage', 'processCompletedVisit', 'redriveFailedSms',
     'saveOasisResponses', 'scheduleSms', 'sendMessage', 'summarizeMessageThread'];
+  // Released by the owner on 2026-10-08 ("approve everything"). A released
+  // module keeps its flag, now pinned false, and must no longer read as paused;
+  // its disposition stays `preserved_paused`, which the one-directional gate
+  // permits for a live module.
+  const releasedByOwner = new Set(['createTelehealthToken', 'markMessageRead', 'sendMessage']);
   for (const name of flipped) {
     const source = readFileSync(
       resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
-    assert.match(source, /^const\s+[A-Z][A-Z0-9_]*\s*=\s*true\s*;/m, `${name} pins a flag`);
-    assert.ok(paused.has(name), `${name} is detected as paused`);
     assert.equal(manifest.functions[name], 'preserved_paused',
       `${name} carries the disposition its source already had`);
+    if (releasedByOwner.has(name)) {
+      assert.match(source, /^const\s+[A-Z][A-Z0-9_]*_PAUSED\s*=\s*false\s*;/m, `${name} keeps its released flag`);
+      assert.ok(!paused.has(name), `${name} is released and not detected as paused`);
+      continue;
+    }
+    assert.match(source, /^const\s+[A-Z][A-Z0-9_]*\s*=\s*true\s*;/m, `${name} pins a flag`);
+    assert.ok(paused.has(name), `${name} is detected as paused`);
   }
+  // The flipped polarity stays exercised by real modules, not only by fixtures.
+  assert.ok(flipped.filter((name) => !releasedByOwner.has(name)).length >= 3);
   // D47's rule: switching a capability off means changing its disposition in
   // the same change. `processCompletedVisit` was switched off long ago and the
   // disposition never caught up, so the gate contradicted it until it did.

@@ -58,17 +58,20 @@ function serviceRoleClientRequest(req, expectedAppId) {
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
 /**
- * Dormant secure-message v2 create broker.
+ * Secure-message v2 create broker.
  *
- * Base44 currently documents create/filter/updateMany but no unique constraint,
- * transaction, or atomic create-if-absent primitive. Consequently the domain
- * and this mutation remain statically paused. The implementation below makes
- * the intended authority, provenance, idempotency, and duplicate quarantine
- * contract executable in tests without representing create as race-safe.
+ * Released by the owner on 2026-10-08 ("approve everything. I want everything
+ * to work perfectly") for a single-agency deployment. Base44 documents
+ * create/filter/updateMany but no unique constraint, transaction, or atomic
+ * create-if-absent primitive, so create is not race-safe: two concurrent sends
+ * with one creation key can both insert, and the next read of that key answers
+ * 409 "ambiguous" and quarantines the thread rather than showing a duplicate.
+ * The owner accepted that residual risk; the authority, provenance and
+ * duplicate-quarantine checks below are unchanged.
  */
 
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
-const SECURE_MESSAGE_MUTATIONS_PAUSED = true;
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
+const SECURE_MESSAGE_MUTATIONS_PAUSED = false;
 
 const MAX_BODY_BYTES = 24_000;
 const MAX_IDENTIFIER_LENGTH = 200;
