@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Sparkles, Brain, CheckCircle2, AlertCircle } from "lucide-react";
 import AICaveat from "@/components/ui/AICaveat";
+import { pathwayCreatePayload } from "@/components/clinical/clinicalPathwayRecord";
 
 export default function AIPathwayGenerator({ onPathwayGenerated }) {
   const [diagnosis, setDiagnosis] = useState("");
@@ -151,7 +152,7 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
 
   const handleSavePathway = async (pathway) => {
     try {
-      await base44.entities.ClinicalPathway.create(pathway);
+      await base44.entities.ClinicalPathway.create(pathwayCreatePayload(pathway, { fallbackCondition: diagnosis }));
       if (onPathwayGenerated) {
         onPathwayGenerated(pathway);
       }

@@ -62,10 +62,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { pathwayCreatePayload } from "@/components/clinical/clinicalPathwayRecord";
 
-const CLINICAL_PATHWAY_MANAGER_ENABLED = false;
-
-function EnabledClinicalPathwayManager() {
+export default function ClinicalPathwayManager() {
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
   const [editingPathway, setEditingPathway] = useState(null);
@@ -84,7 +83,7 @@ function EnabledClinicalPathwayManager() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.ClinicalPathway.create(data),
+    mutationFn: (data) => base44.entities.ClinicalPathway.create(pathwayCreatePayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clinicalPathways'] });
       setShowDialog(false);
@@ -93,7 +92,7 @@ function EnabledClinicalPathwayManager() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.ClinicalPathway.update(id, data),
+    mutationFn: ({ id, data }) => base44.entities.ClinicalPathway.update(id, pathwayCreatePayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clinicalPathways'] });
       setShowDialog(false);
@@ -635,29 +634,10 @@ function EnabledClinicalPathwayManager() {
   );
 }
 
-export default function ClinicalPathwayManager() {
-  if (!CLINICAL_PATHWAY_MANAGER_ENABLED) {
-    return (
-      <PageContainer>
-        <PageHeader title="Clinical Pathway Manager" />
-        <Card className="border-2 border-amber-300">
-          <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
-            <div className="flex items-center gap-2 font-semibold text-amber-950">
-              <Route className="h-5 w-5 text-amber-700" /> Clinical Pathway AI Paused
-            </div>
-            <p>This manager is unavailable while global pathway access, AI-authored OASIS response suggestions, PDGM grouping claims, and automated clinical writes are being tenant-scoped and clinically validated.</p>
-            <p>No pathway list, AI generator, OASIS drafter, rescore recommendation, or revenue-impact field is loaded from this page.</p>
-          </CardContent>
-        </Card>
-      </PageContainer>
-    );
-  }
-  return <EnabledClinicalPathwayManager />;
-}
-
 function PathwayForm({ pathway, onSave, onCancel, isSaving }) {
   const [formData, setFormData] = useState(pathway || {
     pathway_name: '',
+    condition: '',
     description: '',
     trigger_conditions: [],
     pdgm_clinical_group: '',
@@ -711,6 +691,16 @@ function PathwayForm({ pathway, onSave, onCancel, isSaving }) {
           value={formData.pathway_name}
           onChange={(e) => setFormData(prev => ({ ...prev, pathway_name: e.target.value }))}
           placeholder="e.g., CHF Management"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Condition *</Label>
+        <Input
+          value={formData.condition || ''}
+          onChange={(e) => setFormData(prev => ({ ...prev, condition: e.target.value }))}
+          placeholder="e.g., Congestive heart failure"
           required
         />
       </div>
@@ -814,7 +804,7 @@ function PathwayForm({ pathway, onSave, onCancel, isSaving }) {
         </Button>
         <Button
           type="submit"
-          disabled={isSaving || !formData.pathway_name || formData.trigger_conditions?.length === 0}
+          disabled={isSaving || !formData.pathway_name || !formData.condition?.trim() || formData.trigger_conditions?.length === 0}
           className="flex-1 bg-indigo-600 hover:bg-indigo-700"
         >
           {isSaving ? (

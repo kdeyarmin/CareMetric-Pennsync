@@ -180,13 +180,17 @@ describe('residual RLS source containment', () => {
       .toEqual([]);
   });
 
-  it('fails every ClinicalPathway operation closed while all direct hosts remain literally paused', () => {
+  it('admits every ClinicalPathway operation for the administrator only, and only the manager is on', () => {
+    // 2026-10-08 owner decision: the Clinical Pathway Manager is on again, so
+    // pathways are administrator-managed content rather than fully locked. The
+    // OASIS hosts that read them stay paused (another workstream owns OASIS).
     expect(entity('ClinicalPathway').rls).toEqual({
-      read: false,
-      create: false,
-      update: false,
-      delete: false,
+      read: ADMIN,
+      create: ADMIN,
+      update: ADMIN,
+      delete: ADMIN,
     });
+    expect(entity('ClinicalPathway').required).toEqual(['pathway_name', 'condition']);
     expect(directConsumers('ClinicalPathway')).toEqual([
       'src/components/clinical/AIPathwayGenerator.jsx',
       'src/components/clinical/AIPathwayUpdater.jsx',
@@ -195,8 +199,14 @@ describe('residual RLS source containment', () => {
       'src/pages/ClinicalPathwayManager.jsx',
     ]);
 
-    expect(read('src/pages/ClinicalPathwayManager.jsx'))
-      .toMatch(/const CLINICAL_PATHWAY_MANAGER_ENABLED\s*=\s*false\s*;/);
+    const manager = read('src/pages/ClinicalPathwayManager.jsx');
+    expect(manager).not.toContain('CLINICAL_PATHWAY_MANAGER_ENABLED');
+    expect(manager).toContain('ClinicalPathway.create(pathwayCreatePayload(data))');
+    expect(manager).toContain('ClinicalPathway.update(id, pathwayCreatePayload(data))');
+    expect(read('src/components/clinical/AIPathwayGenerator.jsx'))
+      .toContain('ClinicalPathway.create(pathwayCreatePayload(pathway, { fallbackCondition: diagnosis }))');
+    expect(read('src/components/clinical/AIPathwayUpdater.jsx'))
+      .toContain('pathwayUpdatePayload(pathway, recommendation.suggested_change)');
     expect(read('src/components/hub-tabs/OASISAnalyzer.jsx'))
       .toMatch(/const OASIS_ANALYZER_ENABLED\s*=\s*false\s*;/);
     expect(read('src/components/hub-tabs/OASISClinicalReview.jsx'))

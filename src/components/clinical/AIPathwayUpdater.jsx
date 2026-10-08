@@ -9,6 +9,7 @@ import { Loader2, RefreshCw, TrendingUp, BookOpen, CheckCircle2, AlertTriangle }
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { severitySolidClass } from "@/lib/severityStyles";
 import AICaveat from "@/components/ui/AICaveat";
+import { pathwayUpdatePayload } from "@/components/clinical/clinicalPathwayRecord";
 
 export default function AIPathwayUpdater({ pathway, onPathwayUpdated }) {
   const ai = useAICall();
@@ -105,25 +106,14 @@ Return ONLY valid JSON.`;
 
   const applyRecommendation = async (recommendation) => {
     try {
-      const updatedPathway = { ...pathway };
-      
-      if (recommendation.suggested_change) {
-        Object.keys(recommendation.suggested_change).forEach(key => {
-          if (Array.isArray(recommendation.suggested_change[key])) {
-            updatedPathway[key] = [
-              ...(updatedPathway[key] || []),
-              ...recommendation.suggested_change[key]
-            ];
-          } else {
-            updatedPathway[key] = recommendation.suggested_change[key];
-          }
-        });
-      }
+      // Only the pathway's own content fields are written, whatever keys the
+      // model named; array fields are appended to and text fields replaced.
+      const updatedPathway = pathwayUpdatePayload(pathway, recommendation.suggested_change);
 
       await base44.entities.ClinicalPathway.update(pathway.id, updatedPathway);
       
       if (onPathwayUpdated) {
-        onPathwayUpdated(updatedPathway);
+        onPathwayUpdated({ ...pathway, ...updatedPathway });
       }
 
       setRecommendations(prev => ({
