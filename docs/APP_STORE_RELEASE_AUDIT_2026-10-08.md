@@ -37,12 +37,12 @@ including OASIS center or build it".
 | Release outbound email and SMS | `OUTBOUND_DELIVERY_RELEASE=enabled-v1` set on the production app after a census of every outbound path. | Nothing in the code. |
 | Allow password reset | "Forgot password?" sends the platform reset email again (`SignInScreen.jsx`); the owned backend path stays closed. | Reaches users when the frontend is published (B2). |
 | No subscriptions, staff only | No purchase code exists in the binary or the web app. | **Owner:** mark the four in-app purchases *Removed from Sale* (B1a). Consider Apple Business Manager distribution (B8). |
-| Remove risk prediction and PDGM payment features | In progress in this pull request. PDGM clinical grouping used for coding validation stays. | — |
+| Remove risk prediction and PDGM payment features | Done in this pull request. Predictive Analytics, the Clinical Insights dashboard, Documentation Impact, PDGM Rate Settings, the OASIS Center Revenue tab and the PDGM reimbursement report are gone, and each old path redirects; the AI patient risk scorer, Proactive Clinical Support, the revenue tiles and every payment estimate went with them. PDGM clinical grouping used for coding validation stays. | **Owner:** stop advertising "Predictive Analytics" in the App Store description (B7). |
 | Sign-offs and agreements in place | The privacy policy and the AI agreement gate now say business associate agreements cover OpenAI, Anthropic and Google (B5). | Counsel review of the policy text remains good practice. |
 | Owner as super admin | The production `User` row is the built-in admin, and `SUPER_ADMIN_EMAIL` is set on the backend and baked into the production build (`publish-production-frontend.yml`). | — |
 | A way to add staff later | Invite from **Admin User Setup**; the person registers from the email and `onUserSignup` approves them. Then grant agency access in **User Management → Agency access** (`AgencyAccessPanel.jsx`, owner only), which provisions and activates an `AgencyMembership` with a role pre-selected from the invitation. | — |
 | Invite-only | The in-app "Sign up" offer is gone; `onUserSignup` already leaves an uninvited account unapproved and alerts administrators. Social sign-in is off. The app stays *public with login* on purpose: making it private sent `/privacy` and the patient-facing public routes to the hosted login, measured live 2026-10-08. | — |
-| Turn everything on, including OASIS Center | The 44 open, view and print buttons work (`requestAuthorityBoundWindow`). The rest is listed in B4. | B4. |
+| Turn everything on, including OASIS Center | Turned on in this pull request, each behind membership and care-team checks rather than editable profile fields: the 44 open, view and print buttons; Messages; Telehealth (schedule, join links, the dashboard widget); Care Plans (management, builder, automatic triggers); duplicate-patient detection and merge; the OASIS AI endpoints; PDF Tools; the dashboard's Time Saved card; Send Feedback; Bulk Discharge Import; the User Activity Report and Nurse Performance; Phone Center call history, callbacks, inbound call routing and scheduled SMS; the provider follow-up portal; the AI KPI, productivity, quality, system-health and compliance dashboards; the AI compliance auditor and admission documentation; the Clinical Pathway Manager; security log review and the security audit; patient education and discharge summaries; document AI analysis; the patient roster import; and reactivating an offboarded user. | Still being built, each on its own branch: the OASIS Center screens, electronic signature (Sign Document and the signer portal), calling or texting a patient from the chart and the remaining activity screens, and the remaining AI helpers (message suggestions and summaries, care plans drafted from a referral, outcome measures). Every backend change reaches production only when its functions are redeployed and the frontend is published (B2). |
 
 ## 1. What was measured
 
@@ -139,6 +139,14 @@ Consider replacing the icon with full-bleed artwork: no baked-in rounded
 corners or white margin.
 
 ### B4. Paused features a reviewer will land on (Guideline 2.1)
+
+**Status, later on 2026-10-08:** the owner chose to finish them rather than hide
+them ("turn everything on"). Every row in the table below is turned on in this
+pull request except Sign Document, which is being built with the rest of
+electronic signature, and Predictive Analytics, which was removed by the
+owner's decision. The open, view and print buttons work, and Forgot password
+and Send Feedback send. What follows is the reading that prompted the work and
+is kept as a record.
 
 The production build ships these as visible navigation targets that show
 technical "paused" or "unavailable" states:
