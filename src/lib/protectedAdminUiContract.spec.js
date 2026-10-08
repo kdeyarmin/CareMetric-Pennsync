@@ -28,19 +28,24 @@ const expectProtectedAdminEntityWrites = (entityName) => {
 };
 
 describe('protected-admin frontend alignment', () => {
-  // This test aligned `src/pages/ReferralFollowUp.jsx` with the backend gate on
-  // `saveFollowUpRuleConfig`: the page showed referral analytics to any admin
-  // view while gating the rule-settings form on `isAdminLike`. The page is
-  // deleted, and NOTHING in `src/` reaches that function now, so there is no
-  // frontend left to align. The backend gate is still asserted, because the
-  // endpoint survives and is what a future caller would have to respect; the
-  // frontend half becomes the absence pin below rather than being dropped, so
-  // that a new caller has to arrive with its own gate rather than silently.
-  it('keeps the agency-wide rule endpoint admin-gated with no frontend caller', () => {
+  // The follow-up page was restored on 2026-10-08 (owner decision), so this is
+  // again an alignment of `src/pages/ReferralFollowUp.jsx` with the backend gate
+  // on `saveFollowUpRuleConfig`: referral review is shown to any admin view
+  // while the rule-settings form is gated on `isAdminLike`. The page's
+  // payment-estimate panel was not restored, so nothing here asserts it.
+  it('keeps referral review available while protecting agency-wide rule changes', () => {
+    const page = read('src/pages/ReferralFollowUp.jsx');
     const backend = read('base44/functions/saveFollowUpRuleConfig/entry.ts');
+
     expect(backend).toMatch(/const isAdmin = user\?\.role === 'admin'/);
-    expect(() => read('src/pages/ReferralFollowUp.jsx')).toThrow(/ENOENT/);
-    expect(browserSourcesContaining('saveFollowUpRuleConfig')).toEqual([]);
+    expect(page).toMatch(/const adminView = isAdminView\(currentUser\)/);
+    expect(page).toMatch(/const canManageRuleSettings = isAdminLike\(currentUser\)/);
+    expect(page).toMatch(/disabled=\{!canManageRuleSettings\}/);
+    expect(page).toMatch(/\{canManageRuleSettings && showSettings && \(/);
+    expect(page).not.toMatch(/estimateFollowUpRevenueImpact|fmtUsd|PdgmRateConfig/);
+    expect(browserSourcesContaining('saveFollowUpRuleConfig')).toEqual([
+      'src/pages/ReferralFollowUp.jsx',
+    ]);
   });
 
   it('keeps readable catalogs visible but gates their protected mutations', () => {

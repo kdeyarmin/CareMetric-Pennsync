@@ -24,9 +24,13 @@ const authorityGuardCleanups = []
 // guard installation without logging tokens, page content, or user data.
 let bootstrapFailureCode = 'FRAME_NOT_ALLOWED'
 
+// Only the signer bearer is retired. The provider follow-up portal (/followup)
+// was released on 2026-10-08 (owner decision): its page reads the token once
+// through its capability lease and scrubs it from the URL itself
+// (scrubPublicCapabilityParameter), so it must reach the app intact.
 function scrubRetiredPublicTokenBeforeAppImport() {
   const segment = String(window.location.pathname || '').toLowerCase().split('/')[1] || ''
-  if (segment !== 'signer' && segment !== 'followup') return
+  if (segment !== 'signer') return
   const url = new URL(window.location.href)
   if (!url.searchParams.has('token')) return
   url.searchParams.delete('token')

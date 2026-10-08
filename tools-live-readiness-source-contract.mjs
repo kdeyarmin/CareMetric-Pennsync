@@ -382,11 +382,7 @@ const REFERRAL_BROWSER_PATHS = Object.freeze([
   "src/components/referral/ScannedResponseUpload.jsx",
   "src/components/reports/FollowUpAnalytics.jsx",
   "src/components/reports/ReferralVolumeReport.jsx",
-  // `src/pages/ReferralFollowUp.jsx` was here until that page was deleted and its
-  // route turned into a redirect to /ReferralIntake, which is the next line and
-  // already pinned. A path listed here that cannot be read makes the whole
-  // contract `invalid_source_authority_contract`, which is why its absence had
-  // to be recorded rather than left to be rediscovered.
+  "src/pages/ReferralFollowUp.jsx",
   "src/pages/ReferralIntake.jsx",
   "src/pages/ReferralTriage.jsx",
 ]);

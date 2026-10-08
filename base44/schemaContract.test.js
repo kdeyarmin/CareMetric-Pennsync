@@ -639,13 +639,9 @@ test('interim-locked content entities keep a reviewed direct-consumer inventory'
       'src/components/fax/FaxRecipientFields.jsx :: user-scope :: list',
       'src/components/physician/PhysicianDirectory.jsx :: user-scope :: delete,filter,update',
       'src/components/physician/PhysicianForm.jsx :: user-scope :: create,update',
-      // `src/pages/ReferralFollowUp.jsx :: user-scope :: list` was here until that
-      // page was deleted. It read the directory to prefill a provider's fax number
-      // by best name match, and that read did not relocate: this test derives
-      // `actual` from the whole of `src/` and `base44/functions`, so a surviving
-      // caller would show up as an ADDED line rather than leave this one stale.
-      // Recorded rather than quietly dropped, because a shrinking inventory is the
-      // one direction this contract cannot tell from a consumer going unreviewed.
+      // Restored 2026-10-08 with the follow-up page: it reads the directory to
+      // prefill a provider's fax number by best name match.
+      'src/pages/ReferralFollowUp.jsx :: user-scope :: list',
     ],
     TrainingModule: [
       'base44/functions/duplicateInService/entry.ts :: service-role :: create,filter',
