@@ -21,6 +21,29 @@ Every live reading below is dated. These readings describe the deployment on
 that date and can go stale. Re-run the named command before relying on any of
 them.
 
+## Owner decisions, 2026-10-08, and what followed
+
+The owner's words, recorded verbatim: "outbound email - release both to
+production. password reset - allow. Subscriptions - remove - there should be no
+subscriptions. This is only for my own staff to use. clinical features - remove
+risk prediction and PDGM payment features. external sign offs - everything has
+been signed off. all agreements in place for everything", and later "just setup
+me as the super admin of the app for right now and a way for me to add the staff
+later / sign ups. This is strictly an invite only app / turn everything on -
+including OASIS center or build it".
+
+| Decision | Done in this pull request or in production | Still open |
+| --- | --- | --- |
+| Release outbound email and SMS | `OUTBOUND_DELIVERY_RELEASE=enabled-v1` set on the production app after a census of every outbound path. | Nothing in the code. |
+| Allow password reset | "Forgot password?" sends the platform reset email again (`SignInScreen.jsx`); the owned backend path stays closed. | Reaches users when the frontend is published (B2). |
+| No subscriptions, staff only | No purchase code exists in the binary or the web app. | **Owner:** mark the four in-app purchases *Removed from Sale* (B1a). Consider Apple Business Manager distribution (B8). |
+| Remove risk prediction and PDGM payment features | In progress in this pull request. PDGM clinical grouping used for coding validation stays. | — |
+| Sign-offs and agreements in place | The privacy policy and the AI agreement gate now say business associate agreements cover OpenAI, Anthropic and Google (B5). | Counsel review of the policy text remains good practice. |
+| Owner as super admin | The production `User` row is the built-in admin, and `SUPER_ADMIN_EMAIL` is set on the backend and baked into the production build (`publish-production-frontend.yml`). | — |
+| A way to add staff later | Invite from **Admin User Setup**; the person registers from the email and `onUserSignup` approves them. Then grant agency access in **User Management → Agency access** (`AgencyAccessPanel.jsx`, owner only), which provisions and activates an `AgencyMembership` with a role pre-selected from the invitation. | — |
+| Invite-only | The in-app "Sign up" offer is gone; `onUserSignup` already leaves an uninvited account unapproved and alerts administrators. Social sign-in is off. The app stays *public with login* on purpose: making it private sent `/privacy` and the patient-facing public routes to the hosted login, measured live 2026-10-08. | — |
+| Turn everything on, including OASIS Center | The 44 open, view and print buttons work (`requestAuthorityBoundWindow`). The rest is listed in B4. | B4. |
+
 ## 1. What was measured
 
 | Reading (2026-10-08) | How | Result |
@@ -66,6 +89,10 @@ which is item B2.
 ## 3. Release blockers — owner actions
 
 ### B1. The four live in-app purchases (Guidelines 3.1.1, 3.1.2, 2.1)
+
+**Decided 2026-10-08: path (a), retire them.** The owner's words: "there
+should be no subscriptions. This is only for my own staff to use." The App
+Store Connect step is the owner's.
 
 The live app sells Monthly ($29.99), Quarterly ($79.99), Semi Annual ($149.99)
 and Annual ($264.99) Premium. This binary has **no StoreKit**, and the web app
@@ -148,6 +175,19 @@ Analytics (`PREDICTIVE_OASIS_ANALYTICS_ENABLED = false`) and Care Plans (paused)
 
 ### B5. Third-party AI consent (Guideline 5.1.2(i))
 
+**Addressed 2026-10-08, by a different route than the one proposed below.** The
+gate now shows a distinct "Where your information goes when you use AI" section
+naming OpenAI, Anthropic and Google and saying patient information can be
+included, and the accept line says the user agrees to it
+(`AI_CONTENT_AGREEMENT_DATA_SHARING` in `src/lib/aiContentAgreement.js`). It is
+not a fourth acknowledgment, so no version bump or coordinated backend deploy
+was needed: the acknowledgments are pinned word for word by the attestation
+broker, its status twin and the owned store's contract. The only accepted
+attestation in production is the owner's (measured 2026-10-08), so no user is
+grandfathered without seeing it. The owner confirmed the business associate
+agreements, and the policy and gate now state them. The analysis below is kept
+as the record of the alternative.
+
 Patient text, documents and visit audio go to **OpenAI**
 (`transcribeAudioWithWhisper`, `transcribeAndGenerateSOAPNote`), **Anthropic**
 (`transcribeAndGenerateSOAPNote`) and **Google Gemini** through Base44
@@ -190,10 +230,11 @@ promises. The durable fix is a server-side request broker that records the
 request and notifies the agency's `agency_admin` memberships. That is a new
 backend capability with its own disposition, not in this change.
 
-Also decide whether self sign-up should exist at all. The Base44 app is
-"Public (login required)", so anyone can create an account that gets no
-membership. Making the Base44 app invite-only (dashboard setting) removes that
-population.
+Self sign-up: **decided 2026-10-08, invite-only.** The in-app offer is
+removed and `onUserSignup` leaves an uninvited account unapproved. The Base44
+app stays "Public (login required)" because the private setting also hides the
+privacy policy and the public patient routes; an account created on the hosted
+page without an invitation still reaches the deletion link (fix 6).
 
 ### B7. App Store Connect metadata and forms
 
