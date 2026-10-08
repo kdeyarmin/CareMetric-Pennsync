@@ -3963,9 +3963,8 @@ repair of three admin screens that had been asking the roster for an order it
 cannot serve, so those sites moved into SERVED rather than out of the audit. The
 totals it produced are the block's to state.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 100 declared, 163/244 landable call sites SERVED, 81 still to adopt
@@ -3989,6 +3988,31 @@ whole.** Its served read ratio moved because that same site left the served
 pool, while its three other ratios did not move at all — so a reader adjusting
 the figure that obviously changed would have been right by accident, and wrong
 the next time the denominator was what moved.
+
+**That block is a dated record too. What follows is this tree after the owner's
+agency-access panel landed** — another printer run, not an adjustment of
+anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 100 declared, 163/245 landable call sites SERVED, 82 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 82, across 30 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 81 need a named capability
+```
+
+**Nothing was adopted or declared between these two blocks either, and the move
+is again a POPULATION change — in the opposite direction from the one above.**
+`src/components/admin/AgencyAccessPanel.jsx` gained one call site: it lists the
+agencies so the platform owner can grant a staff member a membership in one of
+them, and no route is declared over that read. The site is landable, so the
+landable denominator and the remainder each rose by one while the served count
+and the declared route count held still, and the new key added one entity to
+the remainder as well. Read it as one more site to adopt, not as a regression
+in anything already served; the totals are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4131,8 +4155,8 @@ different kinds of work:
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Seventeen have no route declared at all**, over fourteen entity and
-  operation keys: fourteen reads over eleven keys, and three writes over three.
+- **Eighteen have no route declared at all**, over fifteen entity and
+  operation keys: fifteen reads over twelve keys, and three writes over three.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
   adding two branches' deltas is wrong in both directions. **The write half fell
@@ -4143,7 +4167,7 @@ different kinds of work:
   the sites already served: a read key there carries 2.64 call sites and a write
   key 1.24, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.27 sites and a
+  the remainder, though**: inside this pool a read key covers 1.25 sites and a
   write key 1.00, which is nothing like the served spread — a write key there
   now covers exactly one site each, so the ratio has no spread left to read.
   Both are correct measurements of different populations, and the conclusion
@@ -4231,6 +4255,15 @@ different kinds of work:
   all. So the four pairs are not only a guard against a quotient sitting still
   while both halves move — they are also the only thing here that can tell a
   repaired site from a new route, since both raise the served count by one.
+
+  **And it moved on this branch for the plainest cause of all: a new read with
+  a key nobody had declared.** The agency-access panel's agency list arrived in
+  the remainder as one site over one new key, so the remainder's read pair went
+  from fourteen sites over eleven keys to fifteen over twelve and its read ratio
+  FELL, from 1.27 to 1.25, because the newcomer was thinner than what was already
+  there. The served pool did not move in any of its four figures. That is the
+  remainder mechanism once more, from the side of an arrival rather than a
+  departure.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
