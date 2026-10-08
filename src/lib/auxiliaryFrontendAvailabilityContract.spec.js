@@ -77,9 +77,17 @@ describe('auxiliary frontend availability containment', () => {
     expect(dataQuality).toContain('Administrator account required');
   });
 
-  it('quarantines the cross-authority patient import and prepaint filter state', () => {
-    expect(patientData).not.toContain('PatientFileUpdateUploader');
-    expect(patientData).toContain('one atomic tenant-bound broker');
+  it('binds the restored patient import to the previewed agency and keeps prepaint filter state fenced', () => {
+    // 2026-10-08 owner decision: the roster import is on. The CSV travels
+    // inline (never through public file storage), and the commit names the
+    // agency its preview was computed for so the server refuses a switch.
+    expect(patientData).toContain('<PatientFileUpdateUploader />');
+    expect(patientData).not.toContain('one atomic tenant-bound broker');
+    const uploader = read('src/components/patient/PatientFileUpdateUploader.jsx');
+    expect(uploader).not.toMatch(/UploadFile|file_url/);
+    expect(uploader).toContain('file_content: fileContent');
+    expect(uploader).toMatch(/\.\.\.\(dryRun \? \{\} : \{ agency_id: agencyId \}\)/);
+    expect(uploader).toContain('agencyId: previewResults.results?.agency_id');
     expect(patientData).toContain('filterAuthorityKey === patientAuthorityKey');
     expect(patientData).toContain("const effectiveSearchTerm = filtersCurrent ? searchTerm : ''");
   });
