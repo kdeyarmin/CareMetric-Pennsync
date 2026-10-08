@@ -24,8 +24,12 @@ import {
 import EncryptionStatusIndicator from "@/components/security/EncryptionStatusIndicator";
 import AIAuditAnalyzer from "@/components/security/AIAuditAnalyzer";
 import SecurityAuditScheduler from "@/components/security/SecurityAuditScheduler";
-import SecurityLogUnavailable from "@/components/security/SecurityLogUnavailable";
-import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
+import {
+  SecurityEventLog,
+  UserActivityLog,
+  securityLogMetrics,
+  useSecurityLogSources,
+} from "@/components/security/SecurityLogTabs";
 import VulnerabilityAssessment from "@/components/security/VulnerabilityAssessment";
 import { logActivity } from "@/components/utils/activityLogger";
 import { useAuth } from "@/lib/AuthContext";
@@ -37,6 +41,10 @@ export default function SecurityCompliance() {
   const { user: currentUser } = useAuth();
 
   const isAdmin = isAdminView(currentUser);
+  // 2026-10-08 owner decision: the security and activity logs are readable
+  // again by the administrator account; anything else reports them unavailable.
+  const logSources = useSecurityLogSources(currentUser);
+  const logMetrics = securityLogMetrics(logSources.securityLogs, logSources.userActivity);
 
   React.useEffect(() => {
     if (currentUser) {
@@ -65,9 +73,13 @@ export default function SecurityCompliance() {
     {
       name: "Audit Trails",
       status: "attention",
-      description: "Security event verification unavailable",
+      description: logMetrics
+        ? `${logMetrics.totalEvents} security and activity events loaded`
+        : "Security event verification unavailable",
       icon: FileText,
-      details: "Immutable agency provenance and a tenant-authorized read broker are not yet verified"
+      details: logMetrics
+        ? "Security and user-activity logs are recorded and reviewable by the administrator account"
+        : "The security and activity logs could not be read by this account"
     },
     {
       name: "Session Management",
@@ -107,8 +119,8 @@ export default function SecurityCompliance() {
   ];
 
   // The list above is a documented control INVENTORY, not a set of measurements.
-  // Every entry asserts behaviour this frontend cannot fully probe. The audit
-  // trail is explicitly unavailable until its tenant provenance is verified.
+  // Every entry asserts behaviour this frontend cannot fully probe except the
+  // audit trail, which counts as verified only when its logs were read.
   // Every entry was previously hardcoded
   // `status: "compliant"`, so the HIPAA "% Compliant" figure was mathematically
   // pinned at 100% no matter the state of the system — and the checklist below
@@ -116,7 +128,7 @@ export default function SecurityCompliance() {
   // Separate what is verified from what is merely attested, and report both.
   const assessedChecks = complianceChecks.map((check) => (
     check.name === 'Audit Trails'
-      ? { ...check, attested: false, evidenceType: 'application_assessment', status: 'attention' }
+      ? { ...check, attested: false, evidenceType: 'application_assessment', status: logMetrics ? 'compliant' : 'attention' }
       : { ...check, attested: true, evidenceType: 'platform_attestation', status: 'attested' }
   ));
   const verifiableChecks = assessedChecks.filter((c) => !c.attested);
@@ -168,20 +180,24 @@ export default function SecurityCompliance() {
             {/* Labelled for what it measures: the controls this app can actually
                 check, not the platform attestations it cannot. */}
             <StatCard label="Verified Controls" value={`${verifiedCompliant}/${verifiableChecks.length}`} icon={CheckCircle2} tone={complianceScore === 100 ? 'emerald' : 'amber'} />
-            <StatCard label="User Activities" value="Unavailable" icon={Activity} tone="amber" />
-            <StatCard label="PHI Access" value="Unavailable" icon={Eye} tone="slate" />
-            <StatCard label="Critical Events" value="Unavailable" icon={AlertTriangle} tone="amber" />
+            <StatCard label="Total Events" value={logMetrics ? logMetrics.totalEvents : "Unavailable"} icon={Activity} tone={logMetrics ? "navy" : "amber"} />
+            <StatCard label="PHI Access" value={logMetrics ? logMetrics.phiAccess : "Unavailable"} icon={Eye} tone="slate" />
+            <StatCard label="Critical Events" value={logMetrics ? logMetrics.criticalEvents : "Unavailable"} icon={AlertTriangle} tone={logMetrics ? "red" : "amber"} />
           </div>
 
-          <Alert className="bg-amber-50 border-amber-300">
-            <AlertTriangle className="w-5 h-5 text-amber-700" />
-            <AlertDescription className="text-amber-950">
-              <p className="font-semibold">Security event metrics unavailable</p>
-              <p className="text-sm">
-                SecurityLog rows cannot be read here until immutable agency provenance and a tenant-authorized broker are hosted and verified. Missing values do not mean zero events.
-              </p>
-            </AlertDescription>
-          </Alert>
+          {!logMetrics && (
+            <Alert className="bg-amber-50 border-amber-300">
+              <AlertTriangle className="w-5 h-5 text-amber-700" />
+              <AlertDescription className="text-amber-950">
+                <p className="font-semibold">Security event metrics unavailable</p>
+                <p className="text-sm">
+                  {logSources.permitted
+                    ? 'The security and activity logs have not loaded. Missing values do not mean zero events.'
+                    : 'The security and activity logs are readable in full only by the administrator account. Missing values do not mean zero events.'}
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* HIPAA Requirements */}
           <Card>
@@ -242,7 +258,7 @@ export default function SecurityCompliance() {
                     <li>§ 164.312(a)(1) - Access Control: Role-based authentication implemented</li>
                     <li>§ 164.312(a)(2)(i) - Unique User Identification: Email-based user identification</li>
                     <li>§ 164.312(a)(2)(iii) - Automatic Logoff: 15-minute session timeout</li>
-                    <li>§ 164.312(b) - Audit Controls: Evidence unavailable pending immutable tenant provenance and an authorized read broker</li>
+                    <li>§ 164.312(b) - Audit Controls: {logMetrics ? 'Security and user-activity logs recorded and reviewable by administrators' : 'Log evidence not readable by this account'}</li>
                     <li>§ 164.312(c)(1) - Integrity: Database integrity with timestamps</li>
                     <li>§ 164.312(d) - Authentication: Secure token-based authentication</li>
                     <li>§ 164.312(e)(1) - Transmission Security: TLS 1.2+ encryption</li>
@@ -260,6 +276,11 @@ export default function SecurityCompliance() {
                       generatedDate: new Date().toISOString(),
                       complianceScore,
                       assessedChecks,
+                      logMetrics: logMetrics && {
+                        userActivityEvents: logSources.userActivity.length,
+                        criticalEvents: logMetrics.criticalEvents,
+                        phiAccess: logMetrics.phiAccess,
+                      },
                     });
                     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
                     const url = window.URL.createObjectURL(blob);
@@ -348,7 +369,7 @@ export default function SecurityCompliance() {
                   </p>
                   <ul className="text-xs text-slate-500 space-y-1">
                     <li>• RBAC: Admin and User roles</li>
-                    <li>• Audit: Coverage unverified pending a tenant-authorized broker</li>
+                    <li>• Audit: {logMetrics ? 'Security and activity logs reviewable by administrators' : 'Log coverage not readable by this account'}</li>
                     <li>• Session: Automatic timeout on inactivity</li>
                   </ul>
                 </div>
@@ -358,11 +379,11 @@ export default function SecurityCompliance() {
         </TabsContent>
 
         <TabsContent value="audit" className="space-y-6">
-          <SecurityLogUnavailable />
+          <SecurityEventLog sources={logSources} />
         </TabsContent>
 
         <TabsContent value="activity" className="space-y-6">
-          <UserActivityUnavailable />
+          <UserActivityLog sources={logSources} />
         </TabsContent>
 
         <TabsContent value="ai-analysis">

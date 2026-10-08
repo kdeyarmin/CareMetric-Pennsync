@@ -368,14 +368,6 @@
       "retryable": false
     }
   },
-  "runSecurityAudit": {
-    "status": 503,
-    "body": {
-      "error": "Security audit is unavailable pending immutable tenant provenance",
-      "code": "SECURITY_AUDIT_PAUSED",
-      "available": false
-    }
-  },
   "saveOasisResponses": {
     "status": 503,
     "body": {

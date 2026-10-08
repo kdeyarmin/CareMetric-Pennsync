@@ -587,12 +587,16 @@ test('Codex review: scheduleSms auth, digests, fax authority, audit pause', () =
     /legacy\.length === 1/.test(timesheet) && /VisitPointConfig/.test(timesheet),
     'submitTimesheet must adopt a single unscoped VisitPointConfig legacy row.',
   );
+  // 2026-10-08 owner decision: the security audit runs again, on a pinned
+  // client, authorizing before it parses the body or reads any cohort.
+  const auditHandler = audit.slice(audit.indexOf('Deno.serve'));
   assert.ok(
-    /Deno\.serve\(\(\)\s*=>\s*Response\.json/.test(audit)
-    && /status:\s*503/.test(audit)
+    /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/.test(audit)
+    && auditHandler.indexOf('await auditAuthority(base44, user)') < auditHandler.indexOf('await req.json')
+    && auditHandler.indexOf('await req.json') < auditHandler.indexOf('await loadCohort(')
     && /Cache-Control['"]?:\s*['"]no-store['"]/.test(audit)
-    && !/createClientFromRequest|auth\.me\(|req\.(?:json|text|arrayBuffer|formData)\(|entities\.|integrations\./.test(audit),
-    'runSecurityAudit must fail before SDK construction, auth, request parsing, data reads, or AI calls.',
+    && !/integrations\./.test(audit),
+    'runSecurityAudit must authorize on a pinned client before parsing its body or reading a cohort.',
   );
   assert.ok(
     /isProtectedSuperAdmin\(user\)/.test(smsConsent)

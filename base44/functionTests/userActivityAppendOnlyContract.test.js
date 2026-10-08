@@ -253,34 +253,53 @@ const agreementRequest = (body, method = 'POST') => new Request('http://local/ac
   ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
 });
 
-test('UserActivity denies every direct browser operation until tenant provenance exists', async () => {
+test('UserActivity admits a creator-or-administrator read and refuses every browser write', async () => {
+  // 2026-10-08 owner decision: locked log tables read again as "the record's
+  // creator, or an admin"; rows remain append-only through service-role writers.
   const schema = JSON5.parse(await readFile(
     new URL('../entities/UserActivity.jsonc', import.meta.url),
     'utf8',
   ));
 
   assert.deepEqual(schema.rls, {
-    read: false,
+    read: {
+      $or: [
+        { created_by: '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
     create: false,
     update: false,
     delete: false,
   });
 });
 
-test('browser source cannot obtain UserActivity history or invoke the paused broker', async () => {
+test('browser UserActivity handles exist only in the reviewed administrator views', async () => {
+  const readers = new Set();
   const violations = [];
   for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
     const source = await readFile(url, 'utf8');
-    const handles = entityHandleFindings(source, 'UserActivity');
-    if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
+    if (entityHandleFindings(source, 'UserActivity').length) {
+      readers.add(url.pathname.slice(url.pathname.indexOf('/src/') + 1));
+    }
     if (/\b(?:functions\.)?invoke\s*\(\s*['"]getUserActivityLog['"]/.test(source)) {
       violations.push(`${url.pathname}: getUserActivityLog invocation`);
     }
-    if (/\b(?:functions\.)?invoke\s*\(\s*['"](?:analyzeNursePerformance|runSecurityAudit)['"]/.test(source)) {
+    if (/\b(?:functions\.)?invoke\s*\(\s*['"]analyzeNursePerformance['"]/.test(source)) {
       violations.push(`${url.pathname}: provenance-derived analysis invocation`);
     }
   }
   assert.deepEqual(violations, []);
+  assert.deepEqual([...readers].sort(), [
+    'src/components/security/AIAuditAnalyzer.jsx',
+    'src/components/security/BreachDetectionSystem.jsx',
+    'src/components/security/SecurityAnomalyDetector.jsx',
+    'src/components/security/SecurityLogTabs.jsx',
+  ]);
+  for (const reader of readers) {
+    const source = await readFile(new URL(`../../${reader}`, import.meta.url), 'utf8');
+    assert.match(source, /isAdminLike\(/, `${reader} must gate the full-log read on the administrator account`);
+  }
 
   const broker = await readFile(
     new URL('../functions/getUserActivityLog/entry.ts', import.meta.url),
@@ -298,27 +317,31 @@ test('browser source cannot obtain UserActivity history or invoke the paused bro
     new URL('../../src/components/security/UserActivityUnavailable.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(unavailable, /immutable agency provenance/);
-  assert.match(unavailable, /tenant-authorized server broker/);
   assert.match(unavailable, /must not be interpreted as zero events or an all-clear result/);
 
-  for (const [name, code] of [
-    ['analyzeNursePerformance', 'NURSE_PERFORMANCE_ANALYSIS_PAUSED'],
-    ['runSecurityAudit', 'SECURITY_AUDIT_PAUSED'],
-  ]) {
-    const source = await readFile(
-      new URL(`../functions/${name}/entry.ts`, import.meta.url),
-      'utf8',
-    );
-    assert.match(source, new RegExp(`code:\\s*'${code}'`));
-    assert.match(source, /status:\s*503/);
-    assert.match(source, /'Cache-Control':\s*'no-store'/);
-    assert.doesNotMatch(
-      source,
-      /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|InvokeLLM|account_type|agency_name/,
-      `${name} must fail before every authority, input, data, or AI operation`,
-    );
-  }
+  const nursePerformance = await readFile(
+    new URL('../functions/analyzeNursePerformance/entry.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(nursePerformance, /code:\s*'NURSE_PERFORMANCE_ANALYSIS_PAUSED'/);
+  assert.match(nursePerformance, /status:\s*503/);
+
+  // runSecurityAudit runs again (owner decision, 2026-10-08): it authorizes the
+  // built-in administrator or a service-owned agency_admin membership before
+  // any cohort read, and scopes an agency administrator to their agency.
+  const audit = await readFile(
+    new URL('../functions/runSecurityAudit/entry.ts', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(audit, /SECURITY_AUDIT_PAUSED/);
+  assert.match(audit, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.ok(
+    audit.indexOf('const authority = await auditAuthority(base44, user)')
+      < audit.indexOf('cohort = await loadCohort(base44, authority)'),
+    'runSecurityAudit must authorize before reading its cohort',
+  );
+  assert.match(audit, /claims\.account_type === 'agency_admin' && claimIdentifier\(claims\.agency_id\)/);
+  assert.match(audit, /entities\.Patient\.filter\(\{ agency_id: authority\.agencyId \}/);
 
   const personalized = await readFile(
     new URL('../functions/generatePersonalizedTraining/entry.ts', import.meta.url),
