@@ -74,8 +74,12 @@ describe('Layout tenant-authority containment', () => {
     expect(desktopSidebar).not.toContain('sidebar-favorite-patients');
     expect(dashboard).not.toContain('entities.Message');
     expect(dashboard).not.toContain('unreadMessages');
-    expect(dashboard).not.toContain('entities.NoteConversion');
-    expect(dashboard).not.toContain('myNoteConversions');
+    // The Time Saved card reads only the caller's own conversions: the filter
+    // names the signed-in nurse, and NoteConversion RLS admits nothing wider
+    // to a non-admin.
+    expect(dashboard).toMatch(/entities\.NoteConversion\.filter\(\{ nurse_email: currentUser\.email \}/);
+    expect(dashboard.match(/entities\.NoteConversion\./g)).toHaveLength(1);
+    expect(dashboard).toContain('timeSavedDisplayInRange');
     expect(messages).toContain('TENANT_MESSAGES_UNAVAILABLE_MESSAGE');
     expect(messages).not.toContain('base44.entities.Message');
     expect(messages).not.toContain('useQuery');

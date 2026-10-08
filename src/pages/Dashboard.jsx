@@ -25,6 +25,7 @@ import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAlert";
 import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { calculateNurseStats } from "@/components/utils/statsCalculator";
 
 // Non-critical below-the-fold — lazy loaded
 const PendingReferralsWidget    = lazy(() => import("@/components/referral/PendingReferralsWidget"));
@@ -57,6 +58,7 @@ export default function Dashboard() {
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['dashboardData'] }),
+        queryClient.refetchQueries({ queryKey: ['myNoteConversions'] }),
       ]);
       toast.success('Dashboard refreshed');
     } catch {
@@ -118,8 +120,26 @@ export default function Dashboard() {
     console.error('Dashboard data loading error:', visitsError || patientsError);
   }
 
-  // getDashboardData is now the dashboard's only read, so its failure is the
-  // whole error signal. A failed read still has to reach the priority builder
+  // The caller's own AI note conversions drive the "Time Saved" card and the
+  // "no AI-assisted notes this week" priority. NoteConversion RLS admits a
+  // non-admin only to rows whose nurse_email (or creator) is the caller; the
+  // nurse_email filter narrows the built-in admin's wider read to their own.
+  const { data: noteConversions = [], isError: noteConversionsError } = useQuery({
+    queryKey: ['myNoteConversions', currentUser?.email],
+    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser.email }, '-created_date', 5000),
+    initialData: [],
+    staleTime: 600000,
+    gcTime: 900000,
+    enabled: !!currentUser?.email,
+  });
+  const nurseStats = useMemo(() => (
+    currentUser?.email
+      ? calculateNurseStats(currentUser.email, { visits, noteConversions, dateRange: 30 })
+      : null
+  ), [visits, noteConversions, currentUser?.email]);
+
+  // getDashboardData and the caller's own NoteConversion rows are the
+  // dashboard's reads; getDashboardData's failure is the whole error signal. A failed read still has to reach the priority builder
   // rather than arriving as an empty payload, or every tile would report all
   // clear instead of saying it could not tell.
   const hasDataError = visitsError || patientsError;
@@ -220,7 +240,8 @@ export default function Dashboard() {
             visits={visits}
             patients={patients}
             incidents={incidents}
-            noteConversionsAvailable={false}
+            noteConversions={noteConversions}
+            noteConversionsAvailable={!noteConversionsError}
             dashboardError={hasDataError}
           />
 
@@ -300,8 +321,8 @@ export default function Dashboard() {
         </Link>
         <StatCard
           label="Time Saved"
-          value="Unavailable"
-          sub="Tenant metrics paused"
+          value={noteConversionsError || !nurseStats ? "Unavailable" : nurseStats.timeSavedDisplayInRange}
+          sub={noteConversionsError ? "Could not load your notes" : "30 days"}
           icon={Clock}
           tone="gold"
         />
