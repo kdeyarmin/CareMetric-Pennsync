@@ -255,7 +255,10 @@ describe('residual RLS source containment', () => {
     expect(panel).toMatch(/queryFn:\s*\(\)\s*=>\s*base44\.entities\.PhoneNumber\.list[\s\S]{0,120}?enabled:\s*isAdmin/);
   });
 
-  it('hard-pauses FollowUpRuleConfig reads and leaves callers on built-in rules', () => {
+  it('reads FollowUpRuleConfig only through the membership-scoped function', () => {
+    // 2026-10-08 owner decision: the agency's follow-up rules apply again. The
+    // entity still denies every direct read; the helper asks the function,
+    // which picks the agency from the caller's service-owned membership.
     expect(entity('FollowUpRuleConfig').rls).toEqual({
       read: false,
       create: SERVICE_ROLE,
@@ -274,11 +277,15 @@ describe('residual RLS source containment', () => {
 
     const settings = read('src/lib/agencySettings.js');
     const helper = settings.slice(
-      settings.indexOf('export function fetchCallerFollowUpRuleConfig'),
+      settings.indexOf('export async function fetchCallerFollowUpRuleConfig'),
       settings.indexOf('export function fetchCallerPayerRateConfig'),
     );
-    expect(helper).toMatch(/return Promise\.resolve\(null\)/);
-    expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities|base44\.functions/);
+    expect(helper).toContain("base44.functions.invoke('saveFollowUpRuleConfig', { action: 'get' })");
+    expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities/);
+    const backend = read('base44/functions/saveFollowUpRuleConfig/entry.ts');
+    const getPath = backend.slice(backend.indexOf('async function readRuleConfig'), backend.indexOf('Deno.serve'));
+    expect(getPath).toContain("String(user.agency_name || '').trim()");
+    expect(backend).toMatch(/const user = await withTrustedClaims\(base44, await base44\.auth\.me\(\)/);
     for (const caller of [
       'src/components/referral/ProviderFaxRequestCard.jsx',
     ]) {

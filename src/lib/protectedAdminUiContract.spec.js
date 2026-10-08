@@ -36,11 +36,14 @@ describe('protected-admin frontend alignment', () => {
   // endpoint survives and is what a future caller would have to respect; the
   // frontend half becomes the absence pin below rather than being dropped, so
   // that a new caller has to arrive with its own gate rather than silently.
-  it('keeps the agency-wide rule endpoint admin-gated with no frontend caller', () => {
+  it('keeps the agency-wide rule write admin-gated; the browser only reads through it', () => {
+    // 2026-10-08: the one browser caller is the read helper, which sends
+    // `action: 'get'`; the save path keeps its built-in-admin gate.
     const backend = read('base44/functions/saveFollowUpRuleConfig/entry.ts');
     expect(backend).toMatch(/const isAdmin = user\?\.role === 'admin'/);
+    expect(backend.indexOf("body.action === 'get'")).toBeLessThan(backend.indexOf('const isAdmin = user?.role'));
     expect(() => read('src/pages/ReferralFollowUp.jsx')).toThrow(/ENOENT/);
-    expect(browserSourcesContaining('saveFollowUpRuleConfig')).toEqual([]);
+    expect(browserSourcesContaining('saveFollowUpRuleConfig')).toEqual(['src/lib/agencySettings.js']);
   });
 
   it('keeps readable catalogs visible but gates their protected mutations', () => {

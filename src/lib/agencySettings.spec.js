@@ -80,18 +80,34 @@ describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
     expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
   });
 
-  it('keeps browser follow-up-rule reads paused without invoking any entity path', async () => {
+  it('reads follow-up rules through the membership-scoped function, never the entity', async () => {
+    base44.functions.invoke.mockResolvedValueOnce({
+      data: {
+        config: {
+          disabled_rules: ['f2f_missing', 7],
+          severity_overrides: { orders_missing: 'critical' },
+          custom_items: [{ title: 'Ask', question: 'Q?' }, null],
+          updated_by_email: 'admin@example.test',
+        },
+      },
+    });
     const row = await fetchCallerFollowUpRuleConfig('Acme');
-    expect(row).toBeNull();
+    expect(base44.functions.invoke).toHaveBeenCalledWith('saveFollowUpRuleConfig', { action: 'get' });
+    expect(row).toEqual({
+      disabled_rules: ['f2f_missing'],
+      severity_overrides: { orders_missing: 'critical' },
+      custom_items: [{ title: 'Ask', question: 'Q?' }],
+    });
     expect(base44.entities.FollowUpRuleConfig.filter).not.toHaveBeenCalled();
     expect(base44.entities.FollowUpRuleConfig.list).not.toHaveBeenCalled();
   });
 
-  it('ignores caller-controlled agency hints for follow-up rules while the broker is unavailable', async () => {
-    const row = await fetchCallerFollowUpRuleConfig('other-tenant');
-    expect(row).toBeNull();
-    expect(base44.entities.FollowUpRuleConfig.filter).not.toHaveBeenCalled();
-    expect(base44.entities.FollowUpRuleConfig.list).not.toHaveBeenCalled();
+  it('ignores the caller agency hint and falls back to built-in rules on any failure', async () => {
+    base44.functions.invoke.mockRejectedValueOnce(new Error('denied'));
+    expect(await fetchCallerFollowUpRuleConfig('other-tenant')).toBeNull();
+    expect(base44.functions.invoke).toHaveBeenCalledWith('saveFollowUpRuleConfig', { action: 'get' });
+    base44.functions.invoke.mockResolvedValueOnce({ data: { config: null } });
+    expect(await fetchCallerFollowUpRuleConfig()).toBeNull();
   });
 
   it('ignores caller-controlled agency hints while the broker is unavailable', async () => {
