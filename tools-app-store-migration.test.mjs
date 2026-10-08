@@ -73,7 +73,88 @@ const git = (...args) =>
   execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const paths = output => output.split('\0').filter(Boolean).sort();
 
-test('every native and packaged public asset is byte-preserved, or enumerated with a reason', () => {
+// Acquiring the baseline is part of the test, not a precondition a reader is
+// assumed to have met.
+//
+// `BASELINE` is an old commit, and a cloud container clones SHALLOW
+// (`git rev-parse --is-shallow-repository` answers true in the one this was
+// written in), so its objects can be absent. When they are, the `ls-tree`
+// below dies with a bare `fatal: not a tree object` — which names neither this
+// pin nor the clone depth — and because `test:external-integrations` is THIRD
+// in the `pnpm test` chain, the nine scripts after it never run and nothing
+// says so. An environment condition presented as an asset-drift failure, with
+// the rest of the suite hidden behind it.
+//
+// The condition is measured rather than predicted, and the measurement moved:
+// on 2026-10-01 a shallow container here had the baseline trees anyway and both
+// probes answered PRESENT; on 2026-10-08 a fresh one answered ABSENT to both,
+// and `git fetch --depth=1 origin <sha>` took about a second to fix it. So fetch
+// it. Depth is a property of the checkout, never of what this test asserts.
+//
+// Note which probe is used: the tree WALK, which is the operation the test
+// needs. `git cat-file -e <sha>^{commit}` resolves the commit object alone and
+// can answer PRESENT in a tree-filtered partial clone whose walk still fails —
+// a check weaker than the thing it stands in for, reporting the wrong answer in
+// exactly the case it exists for.
+const BASELINE_FETCH = ['fetch', '--depth=1', '--no-tags', 'origin', BASELINE];
+
+// git exits 128 with its reason on stderr for an object it cannot resolve.
+// Anything else — ENOBUFS, a missing binary, a killed fetch — must NOT read as
+// "absent", or the stand-down below swallows a real error, which is the defect
+// tools-decision-register.test.mjs records against the same helper.
+const isMissingObject = error => error?.status === 128;
+
+// null when the baseline's `ios`/`public` trees can be walked here; the git
+// error when they cannot.
+function baselineUnreadable() {
+  try {
+    git('ls-tree', '--name-only', BASELINE, '--', 'ios', 'public');
+    return null;
+  } catch (error) {
+    if (!isMissingObject(error)) throw error;
+    return error;
+  }
+}
+
+// Try once to make the baseline readable. Returns null on success, else the
+// error that still stands. The fetch is bounded and cannot block on
+// credentials: an offline container must report, not hang.
+function acquireBaseline() {
+  const first = baselineUnreadable();
+  if (!first) return null;
+  try {
+    execFileSync('git', BASELINE_FETCH, {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 120_000,
+      stdio: ['ignore', 'ignore', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+  } catch {
+    return first;
+  }
+  return baselineUnreadable() ?? null;
+}
+
+test('every native and packaged public asset is byte-preserved, or enumerated with a reason', t => {
+  // Fetch the pinned baseline if this checkout lacks it, and say so plainly when
+  // it still cannot be read. CI clones at `fetch-depth: 0` (see ci.yml), so there
+  // the objects are always present and an unreadable baseline would be a real
+  // regression — fail. Elsewhere a stand-down names what was NOT checked rather
+  // than reading as a pass, which is the shape tools-decision-register.test.mjs
+  // settled on, and it keeps one environment condition from hiding the nine
+  // `pnpm test` scripts that follow this one.
+  const unreadable = acquireBaseline();
+  if (unreadable) {
+    const detail = `baseline ${BASELINE} is not readable in this checkout `
+      + `(shallow=${(() => { try { return git('rev-parse', '--is-shallow-repository').trim(); } catch { return 'unknown'; } })()}). `
+      + `Native/public byte preservation was NOT checked. Run: git ${BASELINE_FETCH.join(' ')}. `
+      + `git said: ${String(unreadable.stderr || '').trim() || '(nothing)'}`;
+    assert.ok(!process.env.CI,
+      `CI checks out full history, so an absent baseline here is a real failure, not a shallow clone: ${detail}`);
+    t.skip(detail);
+    return;
+  }
   const baseline = paths(git('ls-tree', '-r', '-z', '--name-only', BASELINE, '--', 'ios', 'public'));
   const current = paths(git('ls-files', '-z', '--', 'ios', 'public'));
   assert.equal(baseline.length, 25, 'Review baseline inventory changes explicitly.');

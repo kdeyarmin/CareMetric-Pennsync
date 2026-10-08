@@ -162,8 +162,8 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
  *
  * @param {{measures: Array}} rollup
  * @returns {{
- *   at_risk: boolean,
- *   measures_eligible: number,
+ *   below_internal_marker: boolean,
+ *   measures_sample_ready: number,
  *   measures_needed: number,
  *   measures_short: Array<{key,label,denominator,episodes_needed}>,
  * }}
