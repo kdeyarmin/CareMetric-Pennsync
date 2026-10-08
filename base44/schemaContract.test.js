@@ -380,9 +380,10 @@ test('paused OASIS recommendation and automation entities stay behind containmen
       'src/components/oasis/WorkflowExecutionEngine.jsx',
       'src/components/oasis/WorkflowMonitoringDashboard.jsx',
     ],
+    // PredictiveOutcomesAnalyzer.jsx (AI outcome prediction) was the second
+    // writer until it was deleted with the clinical risk-prediction features.
     PatientRecommendation: [
       'src/components/oasis/OASISToPatientChartPusher.jsx',
-      'src/components/oasis/PredictiveOutcomesAnalyzer.jsx',
     ],
   };
   const actualEntityConsumers = Object.fromEntries(
@@ -401,13 +402,12 @@ test('paused OASIS recommendation and automation entities stay behind containmen
 
   const expectedImportHosts = {
     OASISToPatientChartPusher: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
-    PredictiveOutcomesAnalyzer: [
-      'src/components/hub-tabs/OASISAnalyzer.jsx',
-      'src/components/hub-tabs/OASISClinicalReview.jsx',
-    ],
+    // PredictiveOutcomesAnalyzer is gone entirely, and OASISAnalyzer no longer
+    // mounts WorkflowExecutionEngine: that mount sat behind the permanently-off
+    // PDGM legacy gate, which was removed with the PDGM payment features.
+    PredictiveOutcomesAnalyzer: [],
     OASISAutomationSettings: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
     WorkflowExecutionEngine: [
-      'src/components/hub-tabs/OASISAnalyzer.jsx',
       'src/components/hub-tabs/OASISClinicalReview.jsx',
     ],
     WorkflowMonitoringDashboard: ['src/components/hub-tabs/OASISAnalyzer.jsx'],

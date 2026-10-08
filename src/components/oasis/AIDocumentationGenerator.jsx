@@ -23,7 +23,7 @@ import {
   ChevronDown
 } from "lucide-react";
 
-export default function AIDocumentationGenerator({ analysisResults, pdgmData, navigationData }) {
+export default function AIDocumentationGenerator({ analysisResults, pdgmData }) {
   const ai = useAICall();
   const [suggestions, setSuggestions] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null);
@@ -31,7 +31,7 @@ export default function AIDocumentationGenerator({ analysisResults, pdgmData, na
   const [copiedIndices, setCopiedIndices] = useState(new Set());
 
   const generateDocumentation = async () => {
-    if (!analysisResults && !navigationData) return;
+    if (!analysisResults) return;
 
     try {
       const result = await ai.run({
@@ -52,9 +52,6 @@ ${JSON.stringify({
   functional_scores: pdgmData?.functional_scores,
   comorbidities: pdgmData?.comorbidities
 }, null, 2)}
-
-NAVIGATION DISCREPANCIES:
-${JSON.stringify(navigationData?.discrepancies?.slice(0, 5) || [], null, 2)}
 
 Generate documentation snippets that:
 1. Are clinically accurate and specific

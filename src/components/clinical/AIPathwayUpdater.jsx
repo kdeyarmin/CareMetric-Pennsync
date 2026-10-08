@@ -35,9 +35,8 @@ Comorbidity Checklist: ${JSON.stringify(pathway.comorbidity_checklist)}
 Based on:
 1. Current Medicare guidelines and CMS updates
 2. Evidence-based best practices
-3. PDGM optimization strategies
-4. Quality measure requirements
-5. Recent clinical research
+3. Quality measure requirements
+4. Recent clinical research
 
 Provide specific recommendations for:
 - Updates to documentation prompts based on new guidelines
@@ -50,7 +49,9 @@ Provide specific recommendations for:
 Also indicate:
 - Priority (critical, high, medium, low) for each recommendation
 - Rationale based on guidelines or evidence
-- Potential impact on patient outcomes and/or revenue
+- Potential impact on patient outcomes
+
+Do not recommend changes in order to affect payment, reimbursement, case mix, or revenue.
 
 Return ONLY valid JSON.`;
 

@@ -155,7 +155,6 @@ export default function OASISAutomationSettings() {
   const getTriggerBadge = (type) => {
     const colors = {
       compliance_issue: "bg-red-100 text-red-800",
-      revenue_opportunity: "bg-green-100 text-green-800",
       accuracy_concern: "bg-yellow-100 text-yellow-800",
       score_threshold: "bg-blue-100 text-blue-800",
       clinical_concern: "bg-navy-100 text-navy-800"
@@ -217,12 +216,10 @@ export default function OASISAutomationSettings() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="compliance_issue">Compliance Issue</SelectItem>
-                        <SelectItem value="revenue_opportunity">Revenue Opportunity</SelectItem>
                         <SelectItem value="accuracy_concern">Accuracy Concern</SelectItem>
                         <SelectItem value="missing_documentation">Missing Documentation</SelectItem>
                         <SelectItem value="score_threshold">Score Threshold</SelectItem>
                         <SelectItem value="clinical_concern">Clinical Concern</SelectItem>
-                        <SelectItem value="pdgm_discrepancy">PDGM Discrepancy</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -709,8 +709,15 @@ describe('authority-bound auxiliary-window containment', () => {
     const sameTabLinks = [
       ['src/components/learning/CourseCatalogDetail.jsx', '<a'],
       ['src/components/training/TrainingVideoStudio.jsx', '<a'],
-      ['src/pages/AgencySettings.jsx', '<a'],
     ];
+    // AgencySettings' one auxiliary link was the CMS wage-index link inside the
+    // PDGM location card, which went with the PDGM payment features. The page
+    // has no anchor left, so it is held to the stricter form: nothing on it may
+    // open an auxiliary window at all, by either route.
+    const agencySettings = readFileSync(join(process.cwd(), 'src/pages/AgencySettings.jsx'), 'utf8');
+    expect(agencySettings).not.toContain('openAuthorityBoundWindow');
+    expect(agencySettings).not.toMatch(/target=["']_blank["']/);
+    expect(agencySettings).not.toMatch(/window\.open\(/);
 
     expect(html).toMatch(
       /Content-Security-Policy[^>]+object-src 'none'; base-uri 'none'; frame-src https:\/\/www\.youtube-nocookie\.com; form-action 'self'/,

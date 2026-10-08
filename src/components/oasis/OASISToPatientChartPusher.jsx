@@ -8,12 +8,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowRight, Send, CheckCircle2, Loader2 } from "lucide-react";
 
-export default function OASISToPatientChartPusher({ 
-  analysisResults, 
-  _pdgmData, 
+export default function OASISToPatientChartPusher({
+  analysisResults,
   patientId,
   oasisUploadId,
-  predictions 
 }) {
   const [selectedRecs, setSelectedRecs] = useState([]);
   const [isPushing, setIsPushing] = useState(false);
@@ -60,40 +58,6 @@ export default function OASISToPatientChartPusher({
         steps: imp.exact_text_to_add ? [imp.exact_text_to_add] : ['Review and update documentation']
       });
     });
-
-    // From predictions
-    if (predictions?.proactive_recommendations) {
-      predictions.proactive_recommendations.forEach((pred, idx) => {
-        recs.push({
-          id: `pred-${idx}`,
-          type: pred.category === 'clinical' ? 'clinical_action' : 
-                pred.category === 'care_plan' ? 'care_plan' :
-                pred.category === 'risk' ? 'risk_mitigation' : 'functional_goal',
-          title: pred.recommendation,
-          description: pred.rationale,
-          priority: pred.priority,
-          rationale: pred.expected_impact,
-          impact: pred.expected_impact,
-          steps: pred.success_indicators || []
-        });
-      });
-    }
-
-    // From early warning signals
-    if (predictions?.early_warning_signals) {
-      predictions.early_warning_signals.forEach((signal, idx) => {
-        recs.push({
-          id: `warning-${idx}`,
-          type: 'risk_mitigation',
-          title: `Early Warning: ${signal.signal}`,
-          description: signal.action_needed,
-          priority: signal.severity === 'critical' ? 'critical' : 'high',
-          rationale: `Early intervention needed within ${signal.timeframe}`,
-          impact: 'Prevents adverse outcomes',
-          steps: [signal.action_needed]
-        });
-      });
-    }
 
     return recs;
   };

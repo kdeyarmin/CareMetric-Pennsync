@@ -29,7 +29,6 @@ import {
   FileText,
   Filter,
   Loader2,
-  DollarSign,
   Eye,
   FileDown,
   Calendar,
@@ -115,7 +114,6 @@ function EnabledOASISAuditDashboard() {
     pending: audits.filter(a => a.status === 'pending_review').length,
     inReview: audits.filter(a => a.status === 'in_review').length,
     critical: audits.filter(a => a.priority === 'critical').length,
-    totalRevenue: audits.reduce((sum, a) => sum + (a.estimated_revenue_impact || 0), 0)
   };
 
   const getStatusBadge = (status) => {
@@ -144,7 +142,6 @@ function EnabledOASISAuditDashboard() {
       case 'low_accuracy': return <Target className="w-4 h-4 text-red-500" />;
       case 'low_compliance': return <Shield className="w-4 h-4 text-orange-500" />;
       case 'high_audit_risk': return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
-      case 'revenue_opportunity': return <DollarSign className="w-4 h-4 text-green-500" />;
       default: return <FileText className="w-4 h-4 text-slate-500" />;
     }
   };
@@ -186,7 +183,7 @@ function EnabledOASISAuditDashboard() {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
@@ -227,19 +224,6 @@ function EnabledOASISAuditDashboard() {
               <div>
                 <p className="text-xs text-slate-500">Critical</p>
                 <p className="text-2xl font-bold text-red-600">{stats.critical}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-green-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-green-500" />
-              <div>
-                <p className="text-xs text-slate-500">Revenue Impact</p>
-                <p className="text-xl font-bold text-green-600">
-                  ${stats.totalRevenue.toLocaleString()}
-                </p>
               </div>
             </div>
           </CardContent>
@@ -351,11 +335,6 @@ function EnabledOASISAuditDashboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    {audit.estimated_revenue_impact > 0 && (
-                      <p className="text-lg font-bold text-green-600">
-                        +${audit.estimated_revenue_impact.toLocaleString()}
-                      </p>
-                    )}
                     <p className="text-xs text-slate-500">
                       {audit.key_issues?.length || 0} issues
                     </p>
@@ -381,7 +360,7 @@ function EnabledOASISAuditDashboard() {
 
               <div className="space-y-4">
                 {/* Scores */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div className={`p-3 rounded-lg text-center ${selectedAudit.overall_score < 70 ? 'bg-red-50' : 'bg-green-50'}`}>
                     <p className="text-xs text-slate-500">Overall</p>
                     <p className={`text-2xl font-bold ${selectedAudit.overall_score < 70 ? 'text-red-600' : 'text-green-600'}`}>
@@ -398,12 +377,6 @@ function EnabledOASISAuditDashboard() {
                     <p className="text-xs text-slate-500">Compliance</p>
                     <p className={`text-2xl font-bold ${selectedAudit.compliance_score < 80 ? 'text-red-600' : 'text-green-600'}`}>
                       {selectedAudit.compliance_score}%
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-lg text-center bg-green-50">
-                    <p className="text-xs text-slate-500">Revenue Impact</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      ${selectedAudit.estimated_revenue_impact?.toLocaleString() || 0}
                     </p>
                   </div>
                 </div>
@@ -575,8 +548,8 @@ export default function OASISAuditDashboard() {
           <div className="flex items-center gap-2 font-semibold text-amber-950">
             <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Audit Dashboard Paused
           </div>
-          <p>Legacy rescore, reimbursement, and AI report fields are unavailable pending tenant-scoped audit access and a verified clinical review contract.</p>
-          <p>No audit list, staff roster, legacy dollar value, or report generator is loaded from this tab.</p>
+          <p>Legacy rescore and AI report fields are unavailable pending tenant-scoped audit access and a verified clinical review contract.</p>
+          <p>No audit list, staff roster, or report generator is loaded from this tab.</p>
         </CardContent>
       </Card>
     );

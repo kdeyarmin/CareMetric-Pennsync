@@ -842,9 +842,10 @@ test('static contract keeps the broker service-role-only, read-only, finite, and
     }
   }
   assert.deepEqual(consumers, [], 'OASIS read wrapper must remain unwired pending hosted proof');
+  // PDGMReimbursementReport.jsx left this set when the PDGM payment report
+  // was deleted with the PDGM payment features.
   assert.deepEqual(directEntityReaders.sort(), [
     'components/clinical/OASISQuickUpdate.jsx',
     'components/reports/OASISComplianceReport.jsx',
-    'components/reports/PDGMReimbursementReport.jsx',
   ], 'every remaining direct OASIS browser reader must stay in the reviewed hard-paused set');
 });

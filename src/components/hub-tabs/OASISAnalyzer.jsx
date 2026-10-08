@@ -1,8 +1,6 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useAuth } from '@/lib/AuthContext';
-import { collectAuthorizedVisits } from '@/functions/listAuthorizedVisits';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { calculatePatientMatchScore } from "@/components/oasis/patientMatchScore";
@@ -27,7 +25,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  DollarSign,
   Target,
   Loader2,
   Info,
@@ -48,30 +45,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 
 const BatchOASISAnalyzer = lazy(() => import("@/components/oasis/BatchOASISAnalyzer"));
-const PDGMRevenueComparison = lazy(() => import("@/components/oasis/PDGMRevenueComparison"));
 import FinancialGate from "@/components/ui/FinancialGate";
-import { canViewFinancials } from "@/lib/permissions";
-const EnhancedMultiReportComparison = lazy(() => import("@/components/oasis/EnhancedMultiReportComparison"));
 import KeyTakeawaysSummary from "@/components/oasis/KeyTakeawaysSummary";
-import AuditRiskPredictor from "@/components/oasis/AuditRiskPredictor";
 import DocumentationQualitySuggestions from "@/components/oasis/DocumentationQualitySuggestions";
-const OASISScenarioManager = lazy(() => import("@/components/oasis/OASISScenarioManager"));
-import OASISActionWorkflow from "@/components/oasis/OASISActionWorkflow";
-const AIDocumentationQualityAnalyzer = lazy(() => import("@/components/oasis/AIDocumentationQualityAnalyzer"));
-import AIDocumentationAssistant from "@/components/oasis/AIDocumentationAssistant";
-const AIAuditRiskPredictor = lazy(() => import("@/components/oasis/AIAuditRiskPredictor"));
-import OASISDocumentationQualityScorer from "@/components/oasis/OASISDocumentationQualityScorer";
-const AutomatedPDGMNavigator = lazy(() => import("@/components/oasis/AutomatedPDGMNavigator"));
 import OASISTaskGenerator from "@/components/oasis/OASISTaskGenerator";
 import SmartNoteDataImport from "@/components/oasis/SmartNoteDataImport";
 import { useAutoFlagOASIS, THRESHOLDS } from "@/components/oasis/OASISAutoFlagger";
 const OASISExportManager = lazy(() => import("@/components/oasis/OASISExportManager"));
-import AIProactiveDocumentationAssistant from "@/components/oasis/AIProactiveDocumentationAssistant";
-import AIDocumentationGenerator from "@/components/oasis/AIDocumentationGenerator";
-import OASISValidationPanel from "@/components/oasis/OASISValidationPanel";
-import ClinicalPathwayTrigger from "@/components/oasis/ClinicalPathwayTrigger";
-import PDGMPredictiveForecaster from "@/components/oasis/PDGMPredictiveForecaster";
-const EnhancedPDGMCaseMixAnalyzer = lazy(() => import("@/components/oasis/EnhancedPDGMCaseMixAnalyzer"));
 import PatientMatchSelector from "@/components/oasis/PatientMatchSelector";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import InlineDocumentationAssistant from "@/components/oasis/InlineDocumentationAssistant";
@@ -82,53 +62,20 @@ import OASISDataEntryAssistant from "@/components/oasis/OASISDataEntryAssistant"
 import { BarChart3 } from "lucide-react";
 import OASISAutomationSettings from "@/components/oasis/OASISAutomationSettings";
 import OASISExecutiveSummary from "@/components/oasis/OASISExecutiveSummary";
-const PDGMTrendDashboard = lazy(() => import("@/components/oasis/PDGMTrendDashboard"));
-const WorkflowExecutionEngine = lazy(() => import("@/components/oasis/WorkflowExecutionEngine"));
 const WorkflowMonitoringDashboard = lazy(() => import("@/components/oasis/WorkflowMonitoringDashboard"));
 import OASISToPatientChartPusher from "@/components/oasis/OASISToPatientChartPusher";
-const PredictiveOutcomesAnalyzer = lazy(() => import("@/components/oasis/PredictiveOutcomesAnalyzer"));
 import VisitTypeComplianceChecker from "@/components/compliance/VisitTypeComplianceChecker";
-import AIDataValidationEngine from "@/components/oasis/AIDataValidationEngine";
-import ClinicalNoteToOASISMapper from "@/components/oasis/ClinicalNoteToOASISMapper";
-import OASISDraftGenerator from "@/components/oasis/OASISDraftGenerator";
-import ProactiveRescoringEngine from "@/components/oasis/ProactiveRescoringEngine";
-import AutomatedQualityAssurance from "@/components/oasis/AutomatedQualityAssurance";
-import ProactiveDocumentationAssistant from "@/components/oasis/ProactiveDocumentationAssistant";
-const ComprehensiveOASISReviewer = lazy(() => import("@/components/oasis/ComprehensiveOASISReviewer"));
 import OASISPDFComparison from "@/components/oasis/OASISPDFComparison";
 import { toast } from 'sonner';
-import {
-  PDGM_REIMBURSEMENT_ACTION,
-  PDGM_REIMBURSEMENT_BLOCKER,
-  PDGM_LEGACY_SURFACES_ENABLED,
-} from "@/components/pdgm/pdgmAvailability";
 
 // Whole-surface containment gate. This is intentionally separate from role
 // checks: current hosted User/Agency claims are not a proven immutable tenant
 // boundary, and the dormant analyzer contains auto-running AI, global reads,
-// workflow mutations, OASIS response suggestions, and PDGM consumers.
+// workflow mutations, and OASIS response suggestions. (Its PDGM payment,
+// revenue, scenario and outcome-prediction surfaces were removed outright.)
 const OASIS_ANALYZER_ENABLED = false;
 
-/** Map OASIS M-item codes (UI / AI output) onto pdgmData.functional_scores keys. */
-// `FUNCTIONAL_M_ITEM_FIELDS` / `functionalFieldForMItem` are removed with the
-// AI→PDGM wiring they existed for: they translated a model-chosen M-item score
-// into a `pdgmData.functional_scores` key so it could move a payment estimate.
-
-function PdgmUnavailableNotice() {
-  return (
-    <Alert className="border-amber-300 bg-amber-50">
-      <AlertTriangle className="h-4 w-4 text-amber-700" />
-      <AlertDescription className="space-y-1 text-sm text-amber-900">
-        <p><strong>PDGM grouping and reimbursement are unavailable.</strong> This is not a $0 result.</p>
-        <p>{PDGM_REIMBURSEMENT_BLOCKER}</p>
-        <p>{PDGM_REIMBURSEMENT_ACTION}</p>
-      </AlertDescription>
-    </Alert>
-  );
-}
-
 function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
-  const { tenantContext } = useAuth();
   const [activeTab, setActiveTab] = useState("single");
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -137,22 +84,15 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   const [analysisResults, setAnalysisResults] = useState(null);
   const [pdgmData, setPdgmData] = useState(null);
   const [error, setError] = useState(null);
-  const [savedBatchResults, setSavedBatchResults] = useState([]);
   const [analysisId, setAnalysisId] = useState(null);
-  const [originalPayment, setOriginalPayment] = useState(null);
   const [patientName, setPatientName] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [uploadedFileUrl, setUploadedFileUrl] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedToPatient, setSavedToPatient] = useState(false);
-  const [revenueData, setRevenueData] = useState(null);
-  const [navigationData, setNavigationData] = useState(null);
-  const [qualityScore, setQualityScore] = useState(null);
-  const [triggeredPathways, setTriggeredPathways] = useState([]);
   const [matchResults, setMatchResults] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [useDataEntryAssistant, setUseDataEntryAssistant] = useState(false);
-  const [predictions, setPredictions] = useState(null);
   // Comprehensive OASIS Review for the currently loaded assessment:
   // { results, reviewed_at }. Restored from a saved OASISUpload record on load
   // (so reopening never re-bills the LLM) and persisted back on completion.
@@ -160,17 +100,6 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   // Mirror of the above for async code that must read the LATEST review after an
   // await, not the value captured when the handler started.
   const comprehensiveReviewRef = useRef(null);
-  // Action items are managed only in OASISActionWorkflow, which is admin-gated
-  // (it shows revenue impact), so the reviewer offers creation to those users
-  // only. Reuses the app-wide cached ['currentUser'] query.
-  const { data: currentUserForActions } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-  // The OASISUpload record id backing the loaded assessment, when one exists —
-  // set on load of a saved upload and after "Save to Patient Record".
-  const [oasisUploadRecordId, setOasisUploadRecordId] = useState(null);
-  const [patientHistoricalData, setPatientHistoricalData] = useState(null);
   const [extractedData, setExtractedData] = useState(null);
 
   const queryClient = useQueryClient();
@@ -178,55 +107,15 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   // Fetch patients for linking
   const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
-  // Load patient historical data for AI validation
-  const loadPatientHistoricalData = useCallback(async (patientId) => {
-    try {
-      const [visits, previousOASISRes] = await Promise.all([
-        collectAuthorizedVisits({
-          agencyId: tenantContext?.agency_id,
-          patientId,
-          purpose: 'activity',
-          sort: '-visit_date',
-          limit: 5,
-          expectedScope: tenantContext,
-        }),
-        // Routed through listOASISUploads so financial fields are stripped server-side for non-financial users.
-        base44.functions.invoke('listOASISUploads', { patientId, sort: '-created_date', limit: 3 })
-      ]);
-      const previousOASIS = previousOASISRes?.data?.uploads || [];
-
-      setPatientHistoricalData({
-        previousScores: previousOASIS.map(o => ({
-          date: o.assessment_date,
-          overall: o.scores?.overall,
-          functional: o.pdgm_data?.functional_impairment_level
-        })),
-        hospitalizations: visits.filter(v => v.visit_type === 'admission'),
-        // Compare ordinal levels — string ">" is lexicographic ("Low" > "High").
-        functionalDecline: (() => {
-          if (previousOASIS.length < 2) return false;
-          const rank = { low: 1, medium: 2, high: 3 };
-          const a = rank[String(previousOASIS[0].pdgm_data?.functional_impairment_level || '').toLowerCase()] || 0;
-          const b = rank[String(previousOASIS[1].pdgm_data?.functional_impairment_level || '').toLowerCase()] || 0;
-          return a > b;
-        })()
-      });
-    } catch (error) {
-      console.error('Error loading historical data:', error);
-    }
-  }, [tenantContext]);
-
   // Update selected patient when selectedPatientId changes.
   useEffect(() => {
     if (selectedPatientId && patients.length > 0) {
       const patient = patients.find(p => p.id === selectedPatientId);
       setSelectedPatient(patient || null);
-      if (patient) loadPatientHistoricalData(patient.id);
     } else {
       setSelectedPatient(null);
-      setPatientHistoricalData(null);
     }
-  }, [loadPatientHistoricalData, patients, selectedPatientId]);
+  }, [patients, selectedPatientId]);
 
   // Fetch saved OASIS uploads
   const { data: savedOASISUploads = [] } = useQuery({
@@ -289,8 +178,8 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
         // Pre-select the strongest match so the nurse can review and confirm —
         // but NEVER auto-save. The match score can reach this threshold on name
         // signals alone (the name/DOB are themselves AI-extracted from the PDF),
-        // so silently persisting an AI-extracted OASIS assessment (and its PDGM
-        // payment estimate) to a chart with no human in the loop risks attaching
+        // so silently persisting an AI-extracted OASIS assessment to a chart
+        // with no human in the loop risks attaching
         // a whole assessment to the wrong patient. Saving requires an explicit
         // click on "Save to Patient Record".
         const bestMatch = matchedPatients[0];
@@ -313,11 +202,9 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
 
   // Handle viewing batch result in single analysis view
   const handleViewBatchResult = (result) => {
-    setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
-    // Batch results carry no persisted comprehensive review / backing record.
+    // Batch results carry no persisted comprehensive review.
     setComprehensiveReview(null);
     comprehensiveReviewRef.current = null;
-    setOasisUploadRecordId(null);
     // Clear the analysis IDENTITY too. The effect that mints a fresh
     // analysis_id only runs when analysisId is falsy, so leaving the previous
     // one here filed this assessment's action items under the previous
@@ -332,12 +219,6 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
     setActiveTab("single");
   };
 
-  // Handle batch results for comparison
-  const handleBatchComplete = (results) => {
-    const successfulResults = results.filter(r => r.status === 'success' && r.pdgm_data);
-    setSavedBatchResults(prev => [...prev, ...successfulResults]);
-  };
-
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type === "application/pdf") {
@@ -347,16 +228,10 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
       setAnalysisId(null);
       setSavedToPatient(false);
       setUploadedFileUrl(null);
-      // Clear the prior upload's revenue figures so a stale optimized_payment /
-      // revenue_uplift can't be saved against this new assessment before its own
-      // PDGM revenue comparison recomputes.
-      setRevenueData(null);
-      setOriginalPayment(null);
-      // Drop the prior assessment's comprehensive review + backing record so it
-      // can't hydrate (or be persisted) against this new document's analysis.
+      // Drop the prior assessment's comprehensive review so it can't be
+      // persisted against this new document's analysis.
       setComprehensiveReview(null);
       comprehensiveReviewRef.current = null;
-      setOasisUploadRecordId(null);
     } else {
       setError("Please select a valid PDF file.");
       setFile(null);
@@ -467,17 +342,6 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
       const cleanPdgmData = sanitizeData(pdgmData);
       const cleanAnalysisResults = sanitizeData(analysisResults);
 
-      // Persist the priced case-mix weight and clinical group alongside the
-      // extraction. calculatePDGM derives both, but nothing ever stored them, so
-      // PDGMTrendDashboard's "Avg Case Mix" read undefined (always 0.0000) and its
-      // clinical-group filter matched no rows at all.
-      if (Number.isFinite(revenueData?.original?.caseMixWeight)) {
-        cleanPdgmData.case_mix_weight = revenueData.original.caseMixWeight;
-      }
-      if (revenueData?.original?.clinicalGroup) {
-        cleanPdgmData.clinical_group = revenueData.original.clinicalGroup;
-      }
-
       const savedOASIS = await saveOASISMutation.mutateAsync({
         patient_id: patientIdToUse || null,
         patient_name: patientFullName,
@@ -493,16 +357,13 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
           accuracy: analysisResults.accuracy_score || 0,
           compliance: analysisResults.compliance_score || 0
         },
-        // PDGM reimbursement is globally fail-closed. Do not persist new
-        // estimator dollars or uplift fields while the verified CMS grouper is
-        // unavailable; legacy fields on old records are ignored on read.
+        // No payment, case-mix weight or uplift field is persisted; legacy
+        // fields on old records are ignored on read.
         // Persist the comprehensive AI review with the record so reopening this
         // upload restores it instead of re-running the billed LLM call.
         ...(comprehensiveReview ? { comprehensive_review: sanitizeData(comprehensiveReview) } : {}),
         status: 'analyzed'
       });
-      // The assessment now has a backing record — later review re-runs persist to it.
-      setOasisUploadRecordId(savedOASIS.id);
       // A review that completed WHILE the create was in flight was not in the
       // payload above and had no record id to update — without this it would be
       // lost, and reopening the record would re-run (and re-bill) the review.
@@ -544,20 +405,15 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   // Load saved OASIS for viewing
   // Load saved OASIS for viewing
   const handleLoadSavedOASIS = (oasisUpload) => {
-    setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
-    // Restore the persisted comprehensive review (if any) so the reviewer
-    // hydrates from it instead of re-running the billed LLM call, and keep the
-    // record id so a manual re-run can persist its refreshed findings.
+    // Restore the persisted comprehensive review (if any) so a re-save of this
+    // record carries it forward instead of dropping it.
     setComprehensiveReview(oasisUpload.comprehensive_review || null);
     comprehensiveReviewRef.current = oasisUpload.comprehensive_review || null;
-    setOasisUploadRecordId(oasisUpload.id);
     setAnalysisResults(oasisUpload.analysis_results);
     setPdgmData(oasisUpload.pdgm_data);
     setAnalysisId(oasisUpload.analysis_id);
     setPatientName(oasisUpload.patient_name);
     setSelectedPatientId(oasisUpload.patient_id || '');
-    // Legacy stored estimator amounts have no verified-grouper provenance.
-    setOriginalPayment(null);
     setUploadedFileUrl(oasisUpload.file_url);
     setSavedToPatient(true);
     setActiveTab("single");
@@ -640,7 +496,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
             soc_date: { type: "string", description: "M0030 Start of Care date" },
             referral_date: { type: "string", description: "M0104 Referral date" },
             days_since_soc: { type: "string", description: "Number of days since start of care if mentioned" },
-            // Admission source - critical for PDGM community vs institutional payment
+            // Admission source - community vs institutional (PDGM grouping input)
             m1000_from_where_admitted: {
               type: "string",
               description: "M1000 From where was the patient admitted? Codes: 1=Community (home/physician), 2=Hospital, 3=SNF, 4=IRF/rehab hospital, 5=LTCH, 6=Inpatient psych, 7=Other. Extract the checked code(s) or the facility type text."
@@ -1297,7 +1153,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
         // Will be flagged when saved to patient
       }
       
-      // Use pre-extracted structured data merged with AI analysis for PDGM calculation
+      // Use pre-extracted structured data merged with AI analysis for the extracted OASIS data
       const finalPdgmData = {
         ...structuredPdgmData,
         ...(analysisResult.pdgm_data || {}),
@@ -1451,11 +1307,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                             <Badge className={oasis.scores?.overall >= 80 ? 'bg-green-100 text-green-800' : oasis.scores?.overall >= 60 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}>
                               Score: {oasis.scores?.overall || 'N/A'}%
                             </Badge>
-                            <FinancialGate>
-                              <Badge variant="outline" className="text-amber-700">
-                                Payment unavailable
-                              </Badge>
-                            </FinancialGate>
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
                             {new Date(oasis.created_date).toLocaleDateString()}
@@ -1470,18 +1321,9 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
           </Card>
         </TabsContent>
 
-        {/* Analytics Tab — documentation analytics remain available; PDGM
-            reimbursement analytics are centrally disabled before their hooks
-            or queries can run. */}
+        {/* Analytics Tab — documentation analytics only. */}
         <TabsContent value="analytics" className="mt-4">
           <div className="space-y-6">
-            {PDGM_LEGACY_SURFACES_ENABLED ? (
-              <FinancialGate fallback={<p className="text-sm text-slate-500">PDGM analytics are available to administrators.</p>}>
-                <PDGMTrendDashboard />
-              </FinancialGate>
-            ) : (
-              <PdgmUnavailableNotice />
-            )}
             <OASISAnalyticsDashboard savedOASISUploads={savedOASISUploads} />
           </div>
         </TabsContent>
@@ -1513,9 +1355,11 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
         </TabsContent>
 
         <TabsContent value="batch" className="mt-4">
-          {/* Batch analysis is documentation-only while PDGM is disabled. */}
+          {/* Batch documentation analysis is an administrator tool: the gate is the
+              shared fail-closed admin check, and the batch view carries no
+              payment or reimbursement figure. */}
           <FinancialGate fallback={<p className="text-sm text-slate-500">Batch documentation analysis is available to administrators.</p>}>
-            <BatchOASISAnalyzer onSingleAnalysis={handleViewBatchResult} onBatchComplete={handleBatchComplete} />
+            <BatchOASISAnalyzer onSingleAnalysis={handleViewBatchResult} />
           </FinancialGate>
         </TabsContent>
 
@@ -1640,111 +1484,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             </CardContent>
           </Card>
 
-      {/* Clinical Note to OASIS Mapper */}
-      {PDGM_LEGACY_SURFACES_ENABLED && pdgmData && (
-        <ClinicalNoteToOASISMapper
-          onMappingComplete={() => {
-          }}
-          existingOASISData={pdgmData}
-          extractedNarrative={extractedData?.output?.clinical_narrative}
-        />
-      )}
-
-      {/* OASIS Draft Generator */}
-      {PDGM_LEGACY_SURFACES_ENABLED && selectedPatient && (
-        <OASISDraftGenerator
-          patientData={selectedPatient}
-          clinicalContext={analysisResults?.summary}
-          visitType={pdgmData?.patient_info?.assessment_type || 'admission'}
-          onDraftGenerated={() => {
-          }}
-        />
-      )}
-
-      {/* Never mount the AI rescoring engine while the canonical PDGM/OASIS
-          scoring path is disabled. This prevents its autoAnalyze request from
-          sending clinical data or suggesting higher response codes. */}
-      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
-        <ProactiveRescoringEngine
-          oasisData={pdgmData}
-          patientData={selectedPatient}
-          clinicalContext={analysisResults?.summary}
-          autoAnalyze={true}
-          onOpportunitiesFound={() => {
-          }}
-        />
-      )}
-
-      {/* Comprehensive OASIS Review - Full Document Analysis */}
-      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
-        <ComprehensiveOASISReviewer
-          oasisData={pdgmData}
-          analysisResults={analysisResults}
-          patientData={selectedPatient}
-          autoReview={true}
-          analysisId={analysisId}
-          patientName={patientName}
-          onActionItemsCreated={() => {
-            // Surface the new items in the action workflow list immediately.
-            queryClient.invalidateQueries({ queryKey: ['oasis-actions', analysisId] });
-          }}
-          canManageActionItems={canViewFinancials(currentUserForActions)}
-          savedReview={comprehensiveReview}
-          onReviewComplete={(review) => {
-            setComprehensiveReview(review);
-            comprehensiveReviewRef.current = review;
-            // Persist onto the backing record (when one exists) so reopening
-            // the saved upload restores this review instead of re-billing.
-            if (oasisUploadRecordId) {
-              base44.entities.OASISUpload.update(oasisUploadRecordId, { comprehensive_review: review })
-                .then(() => queryClient.invalidateQueries({ queryKey: ['oasisUploads'] }))
-                .catch((err) => console.error('Failed to persist comprehensive review:', err));
-            }
-          }}
-        />
-      )}
-
-      {/* Proactive Documentation Assistant - AI Gap Detection */}
-      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
-        <ProactiveDocumentationAssistant
-          oasisData={pdgmData}
-          clinicalNotes={analysisResults?.summary}
-          patientData={selectedPatient}
-          autoAnalyze={true}
-          onApplySuggestion={() => {
-            // Could integrate with OASIS editor if available
-          }}
-        />
-      )}
-
-      {/* Automated Quality Assurance */}
-      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
-        <AutomatedQualityAssurance
-          oasisData={pdgmData}
-          patientData={selectedPatient}
-          clinicalNotes={analysisResults?.summary}
-          autoRun={true}
-          onQAComplete={() => {
-          }}
-        />
-      )}
-
-      {/* AI documentation review — findings and questions only.
-          This used to accept an `onCorrection` callback that wrote the model's
-          `suggested_value` / `recommended_score` straight into
-          `pdgmData.functional_scores`, so a model-chosen OASIS code fed the
-          payment calculation. The callback is gone, and the panel no longer
-          produces a value to write. */}
-      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
-        <AIDataValidationEngine
-          oasisData={{ extracted_data: pdgmData, pdgm_data: pdgmData }}
-          patientData={selectedPatient}
-          clinicalNotes={analysisResults?.summary}
-          patientHistory={patientHistoricalData}
-          autoValidate={true}
-        />
-      )}
-
       {/* Visit-Type Compliance Review */}
       {selectedPatientId && analysisResults && (
         <VisitTypeComplianceChecker
@@ -1757,15 +1496,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
         />
       )}
 
-      {PDGM_LEGACY_SURFACES_ENABLED && (
-        <PredictiveOutcomesAnalyzer
-          analysisResults={analysisResults}
-          pdgmData={pdgmData}
-          patientId={selectedPatientId}
-          onPredictionsComplete={(preds) => setPredictions(preds)}
-        />
-      )}
-
       {/* Push Recommendations to Patient Chart */}
       {selectedPatientId && (
         <OASISToPatientChartPusher
@@ -1773,19 +1503,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
           pdgmData={pdgmData}
           patientId={selectedPatientId}
           oasisUploadId={analysisId}
-          predictions={predictions}
-        />
-      )}
-
-      {/* Workflow Execution Engine */}
-      {PDGM_LEGACY_SURFACES_ENABLED && (
-        <WorkflowExecutionEngine
-          analysisResults={analysisResults}
-          pdgmData={pdgmData}
-          patientId={selectedPatientId}
-          patientName={patientName}
-          oasisUploadId={analysisId}
-          autoExecute={true}
         />
       )}
 
@@ -1890,36 +1607,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {PDGM_LEGACY_SURFACES_ENABLED ? (
-                  <FinancialGate>
-                    <Link
-                      to="/OASISCenter?tab=revenue"
-                      onClick={() => onAnalysisHandoff?.({
-                        analysisResults,
-                        pdgmData,
-                        patientName,
-                        uploadId: analysisId,
-                        patientId: selectedPatientId,
-                        navigationData,
-                      })}
-                    >
-                      <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
-                        <DollarSign className="w-8 h-8" />
-                        <div className="text-center">
-                          <div className="font-bold">Revenue Analysis</div>
-                          <div className="text-xs opacity-90">PDGM, Case Mix, Payment</div>
-                        </div>
-                      </Button>
-                    </Link>
-                  </FinancialGate>
-                ) : (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-center text-sm text-amber-900">
-                    <DollarSign className="mx-auto mb-2 h-8 w-8" />
-                    <p className="font-bold">PDGM Revenue Unavailable</p>
-                    <p className="text-xs">Use the official EMR/CMS-approved grouper.</p>
-                  </div>
-                )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Link
                   to="/OASISCenter?tab=quality"
                   onClick={() => onAnalysisHandoff?.({
@@ -1933,7 +1621,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     <Shield className="w-8 h-8" />
                     <div className="text-center">
                       <div className="font-bold">Compliance Review</div>
-                      <div className="text-xs opacity-90">Audit Risk, Validation</div>
+                      <div className="text-xs opacity-90">Compliance, Validation</div>
                     </div>
                   </Button>
                 </Link>
@@ -1943,7 +1631,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     analysisResults,
                     pdgmData,
                     patientName,
-                    navigationData,
                     patientId: selectedPatientId,
                   })}
                 >
@@ -1975,18 +1662,13 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             onTasksCreated={() => {}}
           />
 
-          {/* Documentation export. Legacy PDGM/revenue payloads are never
-              forwarded while the global reimbursement gate is off. */}
+          {/* Documentation export — scores and findings only, no payment data. */}
           <OASISExportManager
             analysisResults={analysisResults}
-            pdgmData={pdgmData}
-            revenueData={PDGM_LEGACY_SURFACES_ENABLED ? revenueData : null}
-            navigationData={PDGM_LEGACY_SURFACES_ENABLED ? navigationData : null}
-            qualityScore={qualityScore}
             patientName={patientName}
           />
 
-          <KeyTakeawaysSummary analysisResults={analysisResults} revenueData={null} />
+          <KeyTakeawaysSummary analysisResults={analysisResults} />
 
           {/* AI-Powered Automatic Document Review */}
           <AIDocumentReviewer
@@ -2152,7 +1834,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
               <Alert className="bg-amber-50 border-amber-300 mb-4">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
                 <AlertDescription className="text-amber-800 text-sm">
-                  <span className="font-semibold">AI-generated estimates.</span> These scores are produced by an AI model from the assessment text — they are not an official OASIS/PDGM determination and do not guarantee coverage or reimbursement. A clinician must verify every M-item before submission.
+                  <span className="font-semibold">AI-generated estimates.</span> These scores are produced by an AI model from the assessment text — they are not an official OASIS determination. A clinician must verify every M-item before submission.
                 </AlertDescription>
               </Alert>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -2208,33 +1890,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                   {analysisResults.validation_summary.recommendation && (
                     <p className="text-sm text-slate-700 mb-2">{analysisResults.validation_summary.recommendation}</p>
                   )}
-                  {/* PDGM Readiness Summary */}
-                  {PDGM_LEGACY_SURFACES_ENABLED && analysisResults.validation_summary.pdgm_readiness && (
-                    <div className={`mt-3 p-2 rounded border ${
-                      analysisResults.validation_summary.pdgm_readiness.ready_for_grouping 
-                        ? 'bg-green-50 border-green-200' 
-                        : 'bg-orange-50 border-orange-200'
-                    }`}>
-                      <p className="text-xs font-semibold mb-1">
-                        {analysisResults.validation_summary.pdgm_readiness.ready_for_grouping 
-                          ? '✓ Ready for PDGM Grouping' 
-                          : '⚠ PDGM Data Issues Detected'}
-                      </p>
-                      {analysisResults.validation_summary.pdgm_readiness.missing_critical_elements?.length > 0 && (
-                        <div className="text-xs text-orange-800">
-                          <span className="font-medium">Missing: </span>
-                          {analysisResults.validation_summary.pdgm_readiness.missing_critical_elements.join(', ')}
-                        </div>
-                      )}
-                      {analysisResults.validation_summary.pdgm_readiness.optimization_opportunities?.length > 0 && (
-                        <div className="text-xs text-blue-700 mt-1">
-                          <span className="font-medium">Optimize: </span>
-                          {analysisResults.validation_summary.pdgm_readiness.optimization_opportunities.slice(0, 2).join('; ')}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {analysisResults.validation_summary.issues?.length > 0 && (
                     <div className="space-y-2 mt-3">
                       {analysisResults.validation_summary.issues.slice(0, 5).map((issue, idx) => (
@@ -2249,11 +1904,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                             {issue.item && <span className="font-mono text-xs bg-slate-100 px-1 rounded">{issue.item}</span>}
                           </div>
                           <p className="text-slate-700">{issue.description}</p>
-                          {PDGM_LEGACY_SURFACES_ENABLED && issue.pdgm_impact && (
-                            <p className="text-navy-700 text-xs mt-1">
-                              <span className="font-medium">PDGM Impact:</span> {issue.pdgm_impact}
-                            </p>
-                          )}
                           {issue.suggested_correction && (
                             <p className="text-green-700 text-xs mt-1 bg-green-50 p-1 rounded">
                               <span className="font-medium">Fix:</span> {issue.suggested_correction}
@@ -2306,57 +1956,12 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             </CardContent>
           </Card>
 
-          {/* The global gate is checked before any navigator, calculator,
-              scenario, or payment-action component can mount or invoke an API. */}
-          {PDGM_LEGACY_SURFACES_ENABLED ? (
-            <FinancialGate>
-              <div className="space-y-6">
-                <AutomatedPDGMNavigator
-                  analysisResults={analysisResults}
-                  pdgmData={pdgmData}
-                  revenueData={revenueData}
-                  onNavigationComplete={(navData) => setNavigationData(navData)}
-                />
-                {navigationData && (
-                  <EnhancedPDGMCaseMixAnalyzer
-                    pdgmData={pdgmData}
-                    navigationData={navigationData}
-                  />
-                )}
-                <PDGMRevenueComparison
-                  analysisResults={analysisResults}
-                  pdgmData={pdgmData}
-                  onPaymentCalculated={(payment) => setOriginalPayment(payment)}
-                  onRevenueCalculated={(revData) => setRevenueData(revData)}
-                />
-                <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                  <OASISScenarioManager
-                    analysisId={analysisId}
-                    originalPdgmData={pdgmData}
-                    originalPayment={Number.isFinite(originalPayment) ? originalPayment : null}
-                    patientName={patientName}
-                    onCreateActions={() => {}}
-                  />
-                  <OASISActionWorkflow
-                    analysisId={analysisId}
-                    analysisResults={analysisResults}
-                    pdgmData={pdgmData}
-                    originalPayment={Number.isFinite(originalPayment) ? originalPayment : null}
-                    patientName={patientName}
-                  />
-                </div>
-              </div>
-            </FinancialGate>
-          ) : (
-            <PdgmUnavailableNotice />
-          )}
-
           {/* Smart Note Data Import - Bi-directional sync */}
           <SmartNoteDataImport
             patientId={selectedPatientId}
             patientName={patientName}
             onImportData={(importData) => {
-              // Apply imported functional observations to PDGM data for comparison
+              // Apply imported functional observations to the extracted OASIS data for comparison
               if (importData.functionalObservations && pdgmData) {
                 const obs = importData.functionalObservations;
                 const updatedScores = { ...pdgmData.functional_scores };
@@ -2378,115 +1983,16 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             }}
           />
 
-          {PDGM_LEGACY_SURFACES_ENABLED && (
-            <FinancialGate>
-              <EnhancedMultiReportComparison
-                savedReports={savedBatchResults}
-                currentReport={analysisResults}
-                currentPdgmData={pdgmData}
-              />
-            </FinancialGate>
-          )}
-
-          {PDGM_LEGACY_SURFACES_ENABLED && (
-            <>
-              <AIDocumentationGenerator
-                analysisResults={analysisResults}
-                pdgmData={pdgmData}
-                navigationData={navigationData}
-              />
-              <AIProactiveDocumentationAssistant
-                analysisResults={analysisResults}
-                pdgmData={pdgmData}
-                navigationData={navigationData}
-                qualityScore={qualityScore}
-              />
-            </>
-          )}
-
-          {PDGM_LEGACY_SURFACES_ENABLED && (
-            <OASISDocumentationQualityScorer
-              analysisResults={analysisResults}
-              pdgmData={pdgmData}
-              onQualityScoreComplete={(score) => setQualityScore(score)}
-            />
-          )}
-
-          {PDGM_LEGACY_SURFACES_ENABLED && (
-            <AIDocumentationQualityAnalyzer analysisResults={analysisResults} pdgmData={pdgmData} />
-          )}
-
-          {/* AI Documentation Assistant & Audit Risk Predictor */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {PDGM_LEGACY_SURFACES_ENABLED && (
-              <AIDocumentationAssistant
-                analysisResults={analysisResults}
-                pdgmData={pdgmData}
-                onInsertText={async (text) => {
-                  try {
-                    await navigator.clipboard.writeText(text || '');
-                    toast.success('Documentation text copied to clipboard');
-                  } catch {
-                    toast.error('Could not copy documentation text');
-                  }
-                }}
-              />
-            )}
-            {PDGM_LEGACY_SURFACES_ENABLED && (
-              <AIAuditRiskPredictor
-                analysisResults={analysisResults}
-                patientId={selectedPatientId}
-              />
-            )}
-          </div>
-
           {/* AI Pathway Recommender - Proactive pathway suggestions */}
           <AIPathwayRecommender
             pdgmData={pdgmData}
             analysisResults={analysisResults}
-            navigationData={navigationData}
             patientId={selectedPatientId}
-            onPathwaysActivated={(pathways) => {
-              setTriggeredPathways(pathways);
-            }}
+            onPathwaysActivated={() => {}}
           />
 
-          {PDGM_LEGACY_SURFACES_ENABLED && (
-            <ClinicalPathwayTrigger
-              pdgmData={pdgmData}
-              analysisResults={analysisResults}
-              patientId={selectedPatientId}
-              onTasksCreated={() => {}}
-              onPathwaysTriggered={(pathways) => setTriggeredPathways(pathways)}
-            />
-          )}
-
-          {PDGM_LEGACY_SURFACES_ENABLED && (
-            <FinancialGate>
-              <PDGMPredictiveForecaster
-                pdgmData={pdgmData}
-                analysisResults={analysisResults}
-                currentPayment={originalPayment}
-                triggeredPathways={triggeredPathways}
-              />
-            </FinancialGate>
-          )}
-
-          {PDGM_LEGACY_SURFACES_ENABLED && (
-            <OASISValidationPanel
-              pdgmData={pdgmData}
-              analysisResults={analysisResults}
-            />
-          )}
-
-          {/* AI-Enhanced Insights Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Audit Risk Predictor */}
-            <AuditRiskPredictor analysisResults={analysisResults} />
-            
-            {/* Documentation Quality Suggestions */}
-            <DocumentationQualitySuggestions analysisResults={analysisResults} />
-          </div>
+          {/* Documentation Quality Suggestions */}
+          <DocumentationQualitySuggestions analysisResults={analysisResults} />
 
           {/* Detailed Analysis Accordion */}
           <Accordion type="multiple" className="space-y-2">
@@ -2644,44 +2150,6 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             {/* "Rescore Opportunities" removed — it showed current → recommended
                 OASIS scores with a revenue badge. */}
 
-            {/* Missing High-Value Documentation */}
-            {PDGM_LEGACY_SURFACES_ENABLED && analysisResults.missing_high_value_documentation?.length > 0 && (
-              <AccordionItem value="missing-docs" className="border rounded-lg border-amber-300">
-                <AccordionTrigger className="px-4 hover:no-underline bg-amber-50 rounded-t-lg">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    <span className="text-amber-800">Missing High-Value Documentation ({analysisResults.missing_high_value_documentation.length})</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    {analysisResults.missing_high_value_documentation.map((doc, idx) => (
-                     <div key={idx} className="p-3 bg-amber-50 rounded-lg border border-amber-300">
-                       <div className="flex items-center justify-between mb-2">
-                         <p className="font-semibold text-amber-900">{doc.area}</p>
-                         {doc.potential_value && (
-                           <Badge className="bg-amber-600 text-white">{doc.potential_value}</Badge>
-                         )}
-                       </div>
-                       <p className="text-sm text-slate-700 mb-2">{doc.why_it_matters}</p>
-                       {doc.suggested_text && (
-                         <div className="bg-white p-2 rounded border border-amber-200">
-                           <p className="text-xs text-amber-600 mb-1 font-medium flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Suggested Documentation:</p>
-                           <p className="text-sm text-slate-800 italic">"{doc.suggested_text}"</p>
-                         </div>
-                       )}
-                       <InlineDocumentationAssistant 
-                         issue={doc} 
-                         issueType="missing_documentation"
-                         pdgmData={pdgmData}
-                       />
-                     </div>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-
             {/* Quick Wins */}
             {analysisResults.quick_wins?.length > 0 && (
               <AccordionItem value="quick-wins" className="border rounded-lg border-navy-300">
@@ -2766,15 +2234,14 @@ export default function OASISAnalyzer({ onAnalysisHandoff }) {
         <CardContent className="space-y-3 pt-5 text-sm text-slate-700">
           <p>
             This analyzer is unavailable while its OASIS response, tenant-access,
-            workflow-automation, and PDGM reimbursement safety controls are being verified.
+            and workflow-automation safety controls are being verified.
           </p>
           <p>
-            No analysis, background query, AI request, payment calculation, or
-            automated patient-chart action runs from this screen.
+            No analysis, background query, AI request, or automated patient-chart
+            action runs from this screen.
           </p>
           <p className="font-medium text-amber-900">
-            Use the official clinician OASIS workflow and the official EMR/CMS-approved
-            grouper. An unavailable payment is not a $0 result.
+            Use the official clinician OASIS workflow in your agency&apos;s EMR.
           </p>
         </CardContent>
       </Card>

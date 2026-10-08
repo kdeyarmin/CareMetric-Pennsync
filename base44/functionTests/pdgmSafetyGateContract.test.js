@@ -1,73 +1,178 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 const root = new URL("../../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
+const exists = (path) => existsSync(fileURLToPath(new URL(path, root)));
 
-test("canonical frontend and backend PDGM reimbursement gates default off", async () => {
-  const [frontend, backend, preview] = await Promise.all([
-    read("src/components/pdgm/pdgmAvailability.js"),
-    read("base44/_shared/backendHelpers.mjs"),
-    read("src/components/pdgm/PDGMCalculationPreview.jsx"),
-  ]);
-  assert.match(frontend, /PDGM_REIMBURSEMENT_ENABLED\s*=\s*false/);
-  assert.match(backend, /PDGM_REIMBURSEMENT_ENABLED\s*=\s*false/);
-  for (const source of [frontend, backend]) {
-    assert.match(source, /LEGACY_FACTORIZED_PDGM_MODEL_RETIRED\s*=\s*true/);
-    assert.match(source, /PDGM_LEGACY_SURFACES_ENABLED\s*=\s*PDGM_REIMBURSEMENT_ENABLED\s*&&\s*!LEGACY_FACTORIZED_PDGM_MODEL_RETIRED/);
+// Every non-test frontend module, as repository-relative paths.
+function frontendModules() {
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(fileURLToPath(new URL(dir, root)), { withFileTypes: true })) {
+      const rel = `${dir}${entry.name}`;
+      if (entry.isDirectory()) walk(`${rel}/`);
+      else if (/\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)) out.push(rel);
+    }
+  };
+  walk("src/");
+  return out.sort();
+}
+
+// The owner removed every user-visible clinical risk-prediction feature and every
+// PDGM payment / reimbursement / revenue-estimate feature from the frontend. The
+// backend PDGM and risk functions stay deployed (and stay paused, below) but lost
+// their frontend callers. What is worth pinning is that the removed surfaces do
+// not come back — as files, as routes, as invocations, or as dormant flags that a
+// one-line edit could switch on.
+const REMOVED_FRONTEND_FILES = [
+  // Pages
+  "src/pages/PredictiveAnalytics.jsx",
+  "src/pages/DocumentationImpact.jsx",
+  "src/pages/PDGMRateSettings.jsx",
+  "src/pages/ClinicalInsightsDashboard.jsx",
+  // Tabs, reports and cards
+  "src/components/hub-tabs/OASISRevenueAnalysis.jsx",
+  "src/components/reports/PDGMReimbursementReport.jsx",
+  "src/components/alerts/PatientAlertAnalyzer.jsx",
+  "src/components/alerts/RiskAlertWidget.jsx",
+  "src/components/clinical/ProactiveClinicalSupport.jsx",
+  "src/components/referral/ClinicalManagerBriefCard.jsx",
+  "src/components/referral/clinicalManagerBrief.js",
+  "src/components/referral/followUpRevenueImpact.js",
+  // Risk prediction
+  "src/components/predictive/PatientRiskScorecard.jsx",
+  "src/components/predictive/PopulationRiskOverview.jsx",
+  "src/components/predictive/RehospitalizationPredictor.jsx",
+  "src/components/predictive/PatientDeteriorationPredictor.jsx",
+  "src/components/predictive/explainableRisk.js",
+  "src/components/predictive/pphWorklistEngine.js",
+  "src/components/analytics/PredictiveRiskAnalyzer.jsx",
+  "src/components/analytics/DiseaseProgressionPredictor.jsx",
+  "src/components/analytics/PopulationTrendAnalyzer.jsx",
+  "src/components/patient/PatientRiskStratification.jsx",
+  "src/components/patient/AIPatientAnalyzer.jsx",
+  "src/components/oasis/PredictiveOutcomesAnalyzer.jsx",
+  "src/components/oasis/AuditRiskPredictor.jsx",
+  "src/components/oasis/AIAuditRiskPredictor.jsx",
+  // PDGM payment, navigator, scenario and forecast
+  "src/components/oasis/AutomatedPDGMNavigator.jsx",
+  "src/components/oasis/pdgmFinancialEngine.js",
+  "src/components/oasis/pdgmNavigatorPrompts.jsx",
+  "src/components/oasis/PDGMRevenueComparison.jsx",
+  "src/components/oasis/PDGMPredictiveForecaster.jsx",
+  "src/components/oasis/PDGMScenarioModeler.jsx",
+  "src/components/oasis/PDGMTrendDashboard.jsx",
+  "src/components/oasis/OASISScenarioManager.jsx",
+  "src/components/oasis/EnhancedMultiReportComparison.jsx",
+  "src/components/oasis/EnhancedPDGMCaseMixAnalyzer.jsx",
+  "src/components/pdgm/pdgmAvailability.js",
+  "src/components/pdgm/pdgmRates.js",
+  "src/components/pdgm/PDGMCalculationPreview.jsx",
+  "src/components/pdgm/PayerRatesManager.jsx",
+  "src/components/pdgm/CaseMixWeightsUpload.jsx",
+  "src/components/pdgm/WageIndexUpload.jsx",
+  "src/components/pdgm/reimbursementImpact.js",
+  "src/components/pdgm/payerRates.js",
+  "src/components/pdgm/wageIndex.js",
+  "src/functions/calculatePDGM.js",
+  "src/functions/generatePDGMComparisonPDF.js",
+  "src/functions/generatePDGMNavigatorPDF.js",
+];
+
+test("removed risk-prediction and PDGM payment frontend modules stay deleted", () => {
+  const back = REMOVED_FRONTEND_FILES.filter(exists);
+  assert.deepEqual(back, [], `removed with the risk-prediction / PDGM payment features: ${back.join(", ")}`);
+  // The PDGM clinical grouping / coding-validation half is deliberately kept.
+  for (const kept of [
+    "src/components/pdgm/pdgmGrouper.js",
+    "src/components/pdgm/cmsPdgmFunctionalDataCy2026.js",
+    "src/components/pdgm/cmsHhgsReleasesCy2026.js",
+    "src/components/referral/intakeDiagnosisValidator.js",
+    "src/components/referral/diagnosisCodeGenerator.js",
+    "src/components/visit/pdgmClinicalGroup.js",
+  ]) {
+    assert.ok(exists(kept), `${kept} is clinical grouping/coding support and must stay`);
   }
-  for (const source of [frontend, backend]) {
-    assert.match(source, /paymentAvailable:\s*false/);
-    assert.match(source, /(?:totalPayment|amount):\s*null/);
-    assert.match(source, /not a \$0 result/i);
-  }
-  assert.match(preview, /previewEnabled\s*=\s*PDGM_LEGACY_SURFACES_ENABLED/);
-  assert.match(preview, /disabled=\{!previewEnabled\s*\|\|/);
 });
 
-test("a global-flag-only edit cannot activate any legacy frontend financial surface", async () => {
-  const canonical = await read("src/components/pdgm/pdgmAvailability.js");
-  const flipped = canonical.replace(
-    "export const PDGM_REIMBURSEMENT_ENABLED = false;",
-    "export const PDGM_REIMBURSEMENT_ENABLED = true;",
-  );
-  assert.notEqual(flipped, canonical, "test must flip the raw global flag");
-
-  const moduleUrl = `data:text/javascript;base64,${Buffer.from(flipped).toString("base64")}`;
-  const availability = await import(moduleUrl);
-  assert.equal(availability.PDGM_REIMBURSEMENT_ENABLED, true);
-  assert.equal(availability.LEGACY_FACTORIZED_PDGM_MODEL_RETIRED, true);
-  assert.equal(availability.PDGM_LEGACY_SURFACES_ENABLED, false);
-  assert.deepEqual(
-    availability.getPdgmPaymentState({
-      incomplete: false,
-      paymentAvailable: true,
-      totalPayment: 999999,
-    }),
-    {
-      available: false,
-      amount: null,
-      reason: "pdgm_payment_unavailable",
-      message: availability.PDGM_REIMBURSEMENT_BLOCKER
-        ? `PDGM payment is unavailable — this is not a $0 result. ${availability.PDGM_REIMBURSEMENT_BLOCKER}`
-        : null,
-      actions: [availability.PDGM_REIMBURSEMENT_ACTION],
-    },
-  );
-
-  const legacyConsumers = [
-    "src/components/hub-tabs/OASISAnalyzer.jsx",
-    "src/components/oasis/PDGMRevenueComparison.jsx",
-    "src/components/pdgm/PDGMCalculationPreview.jsx",
-    "src/components/referral/clinicalManagerBrief.js",
-    "src/components/referral/followUpRevenueImpact.js",
-  ];
-  for (const path of legacyConsumers) {
-    const source = await read(path);
-    assert.match(source, /PDGM_LEGACY_SURFACES_ENABLED/, `${path} must use the retirement-qualified gate`);
-    assert.doesNotMatch(source, /\bPDGM_REIMBURSEMENT_ENABLED\b/, `${path} must not consume the raw global flag`);
+test("removed pages are not routed, and their old paths redirect to a surviving home", async () => {
+  const [manifest, routes] = await Promise.all([read("src/lib/nav.manifest.js"), read("src/routes.jsx")]);
+  const pages = new Set([...manifest.matchAll(/page:\s*["']([^"']+)["']/g)].map((m) => m[1]));
+  for (const [page, home] of [
+    ["PredictiveAnalytics", "/PatientAlerts"],
+    ["ClinicalInsightsDashboard", "/PatientAlerts"],
+    ["DocumentationImpact", "/ReportsAnalytics"],
+    ["PDGMRateSettings", "/AgencySettings"],
+    ["OASISRevenueAnalysis", "/OASISCenter"],
+  ]) {
+    assert.ok(!pages.has(page), `${page} must not be a manifest-routed page`);
+    assert.match(routes, new RegExp(`\\{ from: '/${page}', to: '${home}' \\}`), `${page} must redirect to ${home}`);
   }
+  const [oasisCenter, reports] = await Promise.all([read("src/pages/OASISCenter.jsx"), read("src/pages/ReportsAnalytics.jsx")]);
+  assert.doesNotMatch(oasisCenter, /value="revenue"|OASISRevenueAnalysis/);
+  assert.doesNotMatch(reports, /value="pdgm"|PDGMReimbursementReport/);
+});
+
+test("no frontend module invokes a PDGM payment or AI risk-scoring endpoint", async () => {
+  const PAYMENT_OR_RISK_ENDPOINTS = [
+    "calculatePDGM",
+    "generatePDGMComparisonPDF",
+    "generatePDGMNavigatorPDF",
+    "rankDiagnosesByPDGM",
+    "getPDGMRateConfig",
+    "savePDGMRateConfig",
+    "savePayerRateConfig",
+    "analyzeClinicalRisks",
+  ];
+  const offenders = [];
+  for (const path of frontendModules()) {
+    const source = await read(path);
+    for (const name of PAYMENT_OR_RISK_ENDPOINTS) {
+      const invoked = new RegExp(`functions\\s*\\.\\s*(?:invoke|fetch)\\s*\\(\\s*['"\`]${name}['"\`]`).test(source);
+      const wrapped = new RegExp(`from\\s+['"][^'"]*/functions/${name}['"]`).test(source);
+      if (invoked || wrapped) offenders.push(`${path} -> ${name}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test("no frontend module keeps a dormant PDGM reimbursement flag or payment formatter", async () => {
+  const DORMANT = /\b(?:PDGM_REIMBURSEMENT_ENABLED|PDGM_LEGACY_SURFACES_ENABLED|LEGACY_FACTORIZED_PDGM_MODEL_RETIRED|PDGM_PAYMENT_FEATURE_AVAILABLE|getPdgmPaymentState|formatPdgmCurrency|estimateFollowUpRevenueImpact|fetchCallerPdgmRateConfig|fetchCallerPayerRateConfig)\b/;
+  const offenders = [];
+  for (const path of frontendModules()) {
+    if (DORMANT.test(await read(path))) offenders.push(path);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test("no frontend screen renders a revenue, reimbursement or risk-score estimate", async () => {
+  // User-visible labels of the removed money and prediction surfaces. A label
+  // reappearing in a component is the cheapest signal that one came back.
+  const LABELS = /Revenue Impact|Est\. Revenue|Total Revenue|Revenue Analysis|Revenue Optimization|PDGM Optimization|Open exposure|Payment vs Quality|Total PDGM Payment|Predictive Revenue|Multi-Factor Risk Scoring|Risk Detection Sensitivity|Auto-Run Risk Analysis|PDGM Location Settings|Cost Analysis Settings/;
+  const offenders = [];
+  for (const path of frontendModules()) {
+    if (!/\.jsx$/.test(path)) continue;
+    // Comments may name a removed surface to explain its absence; rendered
+    // text may not.
+    const source = (await read(path)).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const match = LABELS.exec(source);
+    if (match) offenders.push(`${path}: ${match[0]}`);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test("the backend PDGM reimbursement gate defaults off", async () => {
+  const backend = await read("base44/_shared/backendHelpers.mjs");
+  assert.match(backend, /PDGM_REIMBURSEMENT_ENABLED\s*=\s*false/);
+  assert.match(backend, /LEGACY_FACTORIZED_PDGM_MODEL_RETIRED\s*=\s*true/);
+  assert.match(backend, /PDGM_LEGACY_SURFACES_ENABLED\s*=\s*PDGM_REIMBURSEMENT_ENABLED\s*&&\s*!LEGACY_FACTORIZED_PDGM_MODEL_RETIRED/);
+  assert.match(backend, /paymentAvailable:\s*false/);
+  assert.match(backend, /(?:totalPayment|amount):\s*null/);
+  assert.match(backend, /not a \$0 result/i);
 });
 
 test("calculatePDGM returns before client creation, body parsing, or service reads", async () => {
@@ -193,14 +298,6 @@ test("released OASIS endpoints decide the caller's authority before any record o
   }
 });
 
-test("unsafe AI PDGM prompt builders contain no dormant grouping or payment prompt", async () => {
-  const source = await read("src/components/oasis/pdgmNavigatorPrompts.jsx");
-  assert.match(source, /buildNavigationRequest\s*=\s*refusePdgmAiPrompt/);
-  assert.match(source, /buildFinancialPredictionRequest\s*=\s*refusePdgmAiPrompt/);
-  assert.match(source, /buildResolutionWorkflowRequest\s*=\s*refusePdgmAiPrompt/);
-  assert.doesNotMatch(source, /Every diagnosis MUST|functional points|calculated_payment|higher reimbursement|optimal primary diagnosis/i);
-});
-
 test("referral packet permanently excludes fabricated clinical, OASIS, risk, and care-plan sections", async () => {
   const source = await read("base44/functions/generateReferralOASISPacket/entry.ts");
   const disabled = source.slice(source.indexOf("const disabledSections"), source.indexOf("// Helper to check if section is selected"));
@@ -234,19 +331,15 @@ test("OASIS analyzer remains paused and Patient Details mounts no OASIS child", 
   assert.doesNotMatch(patientDetails, /<AIProactiveOASISAssistant|<AIGeneratedOASISAssessment/);
 });
 
-test("OASIS/PDGM AI, analytics, reporting, and workflow surfaces default to static pre-hook pauses", async () => {
+test("OASIS AI, analytics, reporting, and workflow surfaces default to static pre-hook pauses", async () => {
   const surfaces = [
     ["src/components/hub-tabs/OASISReview.jsx", "OASIS_AI_REVIEW_ENABLED", "OASIS AI Suggestion Review Paused"],
     ["src/components/hub-tabs/OASISAnalyticsDashboard.jsx", "OASIS_AI_ANALYTICS_ENABLED", "OASIS AI Analytics Paused"],
     ["src/components/hub-tabs/OASISClinicalReview.jsx", "OASIS_CLINICAL_AI_ENABLED", "OASIS Clinical AI Review Paused"],
     ["src/components/hub-tabs/OASISAuditDashboard.jsx", "OASIS_AUDIT_AI_ENABLED", "OASIS AI Audit Dashboard Paused"],
     ["src/pages/ClinicalPathwayManager.jsx", "CLINICAL_PATHWAY_MANAGER_ENABLED", "Clinical Pathway AI Paused"],
-    ["src/pages/PredictiveAnalytics.jsx", "PREDICTIVE_OASIS_ANALYTICS_ENABLED", "Predictive OASIS analysis unavailable"],
     ["src/components/hub-tabs/RealTimeComplianceDashboard.jsx", "REALTIME_COMPLIANCE_ANALYTICS_ENABLED", "Real-Time Compliance Analytics Paused"],
-    ["src/pages/DocumentationImpact.jsx", "PDGM_PAYMENT_FEATURE_AVAILABLE", "OASIS/PDGM documentation impact"],
     ["src/components/reports/OASISComplianceReport.jsx", "OASIS_COMPLIANCE_REPORT_ENABLED", "OASIS Compliance Report Paused"],
-    ["src/components/reports/PDGMReimbursementReport.jsx", "PDGM_REPORT_ENABLED", "PDGM Report Paused"],
-    ["src/components/clinical/ProactiveClinicalSupport.jsx", "PROACTIVE_CLINICAL_AI_ENABLED", "Proactive Clinical AI Paused"],
     ["src/components/compliance/AIComplianceAuditor.jsx", "AI_COMPLIANCE_AUDITOR_ENABLED", "AI Compliance Audit Paused"],
     ["src/components/hub-tabs/SmartOASISAssessment.jsx", "SMART_OASIS_ASSESSMENT_ENABLED", "Smart OASIS Assessment Paused"],
     ["src/components/clinical/OASISQuickUpdate.jsx", "OASIS_QUICK_UPDATE_ENABLED", "OASIS Quick Update Paused"],
@@ -269,15 +362,13 @@ test("OASIS/PDGM AI, analytics, reporting, and workflow surfaces default to stat
   }
 });
 
-test("browser PDGM rate configuration is paused without direct or brokered reads", async () => {
+test("browser PDGM rate configuration has no reader, and the backend pair stays paused", async () => {
   const [settings, reader, writer] = await Promise.all([
     read("src/lib/agencySettings.js"),
     read("base44/functions/getPDGMRateConfig/entry.ts"),
     read("base44/functions/savePDGMRateConfig/entry.ts"),
   ]);
-  const pdgmFetcher = settings.slice(settings.indexOf("export function fetchCallerPdgmRateConfig"), settings.indexOf("export function fetchCallerFollowUpRuleConfig"));
-  assert.match(pdgmFetcher, /Promise\.resolve\(null\)/);
-  assert.doesNotMatch(pdgmFetcher, /functions\.invoke|entities\.PDGMRateConfig/);
+  assert.doesNotMatch(settings, /fetchCallerPdgmRateConfig|PDGMRateConfig|PayerRateConfig/);
   for (const source of [reader, writer]) {
     assert.match(source, /status:\s*409/);
     assert.doesNotMatch(source, /asServiceRole|\.auth\.me\s*\(|req\.json\s*\(/);

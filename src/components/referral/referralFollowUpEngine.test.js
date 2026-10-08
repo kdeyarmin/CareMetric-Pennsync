@@ -94,8 +94,9 @@ test("symptom-code-only referral asks for a definitive principal diagnosis", () 
 });
 
 test("acceptable-but-unmapped primary is an agency note, not a provider request", () => {
-  // I63.9 is RTP-acceptable but absent from this replace-semantics agency map:
-  // the fix is the PDGM Rate Settings page, so no provider item may fire.
+  // I63.9 is RTP-acceptable but absent from this replace-semantics agency map.
+  // Sequencing reads no grouping or payment table, so the documented acceptable
+  // principal simply stays primary and no provider item may fire.
   const plan = buildFollowUpPlan(
     { ...COMPLETE_REFERRAL, diagnoses: { ...COMPLETE_REFERRAL.diagnoses, secondary_diagnoses: [] } },
     { icdGroups: { Q99: "MMTA_Other" } }

@@ -1,6 +1,6 @@
 {
   "format": "pennsync-frontend-destination",
   "version": 1,
-  "maximum_unserved": 208,
-  "note": "Raised from 203 to 208 on 2026-09-25 because the MEASUREMENT widened, not the coupling: D83's five global-reference write sites (ComplianceRule, MedicareComplianceRule, MedicareGuideline) were counted as landable while no caller can write those tables. A rise here is otherwise a build failure; this one is the tool telling the truth about call sites that were always refused."
+  "maximum_unserved": 193,
+  "note": "Lowered from 208 to 193 when the clinical risk-prediction and PDGM payment features were removed from the frontend: 15 unserved call sites (all preserved_paused entities with no access contract) left with the deleted screens, alongside 7 landable ones. It had been raised from 203 to 208 on 2026-09-25 because the MEASUREMENT widened, not the coupling: D83's five global-reference write sites (ComplianceRule, MedicareComplianceRule, MedicareGuideline) were counted as landable while no caller can write those tables. A rise here is otherwise a build failure."
 }

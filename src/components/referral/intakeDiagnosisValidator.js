@@ -28,7 +28,8 @@ export const UNACCEPTABLE_PRIMARY_CODES = new Set([
 ]);
 
 // Z-code families that ARE acceptable as a PDGM principal and map to
-// MMTA - Surgical Aftercare (see pdgmRates.js ICD→group table). Other Z codes
+// MMTA - Surgical Aftercare (see ICD10_CLINICAL_GROUPS in the backend
+// calculatePDGM function). Other Z codes
 // (status/factor, long-term drug use, etc.) still RTP as principal.
 export const ACCEPTABLE_Z_PREFIXES = ["Z47", "Z48", "Z96"];
 

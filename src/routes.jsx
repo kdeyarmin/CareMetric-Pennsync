@@ -109,7 +109,9 @@ export const REDIRECTS = [
   { from: '/OASISClinicalReview', to: '/OASISCenter?tab=clinical' },
   { from: '/OASISComplianceReview', to: '/OASISCenter?tab=quality' },
   { from: '/OASISDocumentationReview', to: '/OASISCenter?tab=quality' },
-  { from: '/OASISRevenueAnalysis', to: '/OASISCenter?tab=revenue' },
+  // The Revenue tab (PDGM revenue-uplift review) was removed with the PDGM
+  // payment features; its retired path lands on the OASIS Center itself.
+  { from: '/OASISRevenueAnalysis', to: '/OASISCenter' },
   { from: '/OASISAnalyticsDashboard', to: '/OASISCenter?tab=analytics' },
   { from: '/OASISAuditDashboard', to: '/OASISCenter?tab=audit' },
 
@@ -174,14 +176,13 @@ export const REDIRECTS = [
   // Redundant standalone pages folded into their canonical homes — see
   // docs/feature-audit.md. The redirects below are kept so old links/bookmarks
   // resolve to the current home. (Some page files — ClinicalChart, MyLearning,
-  // ClinicalInsightsDashboard, NurseEducationVideos — were re-ported from the
-  // live PENNSync app for content parity but stay unrouted, mirroring the live
-  // app, which also redirects these paths; route one by adding a manifest entry.)
+  // NurseEducationVideos — were re-ported from the live PENNSync app for content
+  // parity but stay unrouted, mirroring the live app, which also redirects these
+  // paths; route one by adding a manifest entry.)
   //   ClinicalChart       → its vitals / care-plan / OASIS tabs already live in
   //                          PatientDetails; sent to the patient list (no id ctx).
   //   MedicalScribe       → same record→transcribe→review pipeline as the Clinical
   //                          Notes "Visit Scribe" choice (a strict superset).
-  //   ClinicalInsights    → population/risk views duplicated by Predictive Analytics.
   //   DocumentationTraining / NurseEducationVideos → consolidated under the Nurse
   //                          Training Hub. (See doc for the unique-content caveat.)
   { from: '/ClinicalChart', to: '/Patients' },
@@ -193,9 +194,20 @@ export const REDIRECTS = [
   // consolidation proved stable; the redirect below is kept so old links resolve.
   { from: '/DocumentVisit', to: '/ClinicalDocumentation' },
   { from: '/MedicalScribe', to: '/ClinicalDocumentation?tab=visit-scribe' },
-  { from: '/ClinicalInsightsDashboard', to: '/PredictiveAnalytics' },
   { from: '/DocumentationTraining', to: '/NurseTrainingHub?tab=documentation' },
   { from: '/NurseEducationVideos', to: '/NurseTrainingHub' },
+
+  // ─── Risk prediction & PDGM payment removal ──────────────────────────────────
+  // Clinical risk-prediction and PDGM payment / reimbursement / revenue-estimate
+  // features were removed from the app. Their retired pages land on the nearest
+  // surviving home: stored patient alerts for the population-risk views, the
+  // admin reporting hub for documentation impact, and Agency Settings for the
+  // PDGM rate tables. (ClinicalInsightsDashboard was an unrouted population/risk
+  // page; its old path forwarded to Predictive Analytics and now lands on alerts.)
+  { from: '/PredictiveAnalytics', to: '/PatientAlerts' },
+  { from: '/ClinicalInsightsDashboard', to: '/PatientAlerts' },
+  { from: '/DocumentationImpact', to: '/ReportsAnalytics' },
+  { from: '/PDGMRateSettings', to: '/AgencySettings' },
 
   // Offline mode was removed. Its retired paths, and the two even older ones
   // that used to forward into it, land on Clinical Notes — the documentation

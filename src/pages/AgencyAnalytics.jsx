@@ -15,17 +15,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users,
   TrendingUp,
-  Clock,
   FileText,
   Download,
   AlertCircle,
   BarChart3
 } from "lucide-react";
-import { calculateStats, calculateNurseStats, formatCurrency } from "../components/utils/statsCalculator";
+import { calculateStats, calculateNurseStats } from "../components/utils/statsCalculator";
 import { toast } from "sonner";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import StatCard from "@/components/ui/stat-card";
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
 
 const EMPTY_ROWS = Object.freeze([]);
@@ -58,8 +56,8 @@ function tenantScopeKey(scope) {
 }
 
 export default function AgencyAnalytics() {
-  // Admin-only page: agency-wide performance rankings and revenue/cost figures
-  // must not render for clinical staff (server-side RLS remains the primary
+  // Admin-only page: agency-wide performance rankings must not render for
+  // clinical staff (server-side RLS remains the primary
   // control; this is the same defense-in-depth gate as AnalyticsDashboard).
   const currentUserQuery = useQuery({
     queryKey: ['currentUser'],
@@ -226,12 +224,11 @@ export default function AgencyAnalytics() {
       />
 
       <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="training">Training</TabsTrigger>
-            <TabsTrigger value="financial">Financial</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -377,26 +374,6 @@ export default function AgencyAnalytics() {
                 tenant-bound reporting projection. Counts and completion rates are withheld.
               </AlertDescription>
             </Alert>
-          </TabsContent>
-
-          {/* Financial Tab */}
-          <TabsContent value="financial" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <StatCard
-                title="Est. Revenue"
-                value={formatCurrency(overallStats.financial.estimatedRevenue)}
-                subtitle="From completed visits"
-                icon={Clock}
-                color="purple"
-              />
-              <Alert className="border-amber-300 bg-amber-50" role="status">
-                <AlertCircle className="h-4 w-4 text-amber-700" />
-                <AlertDescription className="text-amber-950">
-                  Time-saved and cost-savings estimates are unavailable until
-                  NoteConversion has a tenant-bound reporting projection.
-                </AlertDescription>
-              </Alert>
-            </div>
           </TabsContent>
         </Tabs>
     </PageContainer>
