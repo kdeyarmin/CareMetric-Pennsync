@@ -225,15 +225,11 @@ test("dedicated PDGM/AI scoring endpoints are static unavailable handlers", asyn
 
 test("OASIS/clinical AI endpoints stop before auth, data, AI, or writes", async () => {
   const endpoints = [
-    ["base44/functions/generateCarePlansFromReferral/entry.ts", "REFERRAL_CARE_PLAN_AI_ENABLED", "referral_care_plan_ai_paused"],
     ["base44/functions/analyzeClinicalRisks/entry.ts", "CLINICAL_RISK_AI_ENABLED", "clinical_risk_ai_paused"],
     ["base44/functions/savePayerRateConfig/entry.ts", "PAYER_RATE_CONFIG_ENABLED", "payer_rate_configuration_paused"],
     ["base44/functions/generateComprehensiveReport/entry.ts", "COMPREHENSIVE_REPORT_ENABLED", "comprehensive_report_paused"],
-    ["base44/functions/generateCarePlanSuggestions/entry.ts", "CARE_PLAN_SUGGESTIONS_AI_ENABLED", "care_plan_suggestions_ai_paused"],
     ["base44/functions/monitorComplianceRisks/entry.ts", "COMPLIANCE_RISK_MONITOR_ENABLED", "compliance_risk_monitor_paused"],
     ["base44/functions/batchAIAnalysis/entry.ts", "BATCH_CLINICAL_AI_ENABLED", "batch_clinical_ai_paused"],
-    ["base44/functions/generateCarePlanFromReferral/entry.ts", "REFERRAL_CARE_PLAN_DRAFT_ENABLED", "referral_care_plan_draft_paused"],
-    ["base44/functions/generateAdmissionNoteFromReferral/entry.ts", "REFERRAL_ADMISSION_NOTE_AI_ENABLED", "referral_admission_note_ai_paused"],
   ];
 
   for (const [path, flag, reason] of endpoints) {
@@ -368,5 +364,43 @@ test("browser PDGM rate configuration has no reader, and the backend pair stays 
   for (const source of [reader, writer]) {
     assert.match(source, /status:\s*409/);
     assert.doesNotMatch(source, /asServiceRole|\.auth\.me\s*\(|req\.json\s*\(/);
+  }
+});
+
+// Released by the owner on 2026-10-08 ("turn everything on"): the care-plan
+// and referral drafting endpoints. Their gate stays (an operator's off
+// switch, still answered before the SDK), and what is pinned is the order:
+// authority from service-owned rows before the body, any record or the
+// model, and drafts that write no care plan. carePlanAiAuthorizationContract
+// drives each one.
+test("released care-plan AI endpoints decide authority before the body, any record or the model", async () => {
+  for (const [path, flag, authority] of [
+    ["base44/functions/generateCarePlanSuggestions/entry.ts", "CARE_PLAN_SUGGESTIONS_AI_ENABLED", "loadAccessiblePatient("],
+    ["base44/functions/generateCarePlansFromReferral/entry.ts", "REFERRAL_CARE_PLAN_AI_ENABLED", "loadAccessiblePatient("],
+    ["base44/functions/generateCarePlanFromReferral/entry.ts", "REFERRAL_CARE_PLAN_DRAFT_ENABLED", "requireActiveMember("],
+    ["base44/functions/generateAdmissionNoteFromReferral/entry.ts", "REFERRAL_ADMISSION_NOTE_AI_ENABLED", "requireActiveMember("],
+  ]) {
+    const source = await read(path);
+    assert.match(source, new RegExp(`${flag}\\s*=\\s*true`), path);
+    const handler = source.slice(source.indexOf("Deno.serve"));
+    const gate = handler.indexOf(`if (!${flag})`);
+    const client = handler.indexOf("createClientFromRequest(");
+    const me = handler.indexOf("base44.auth.me()");
+    const check = handler.indexOf(authority);
+    const llm = handler.indexOf("InvokeLLM");
+    assert.ok(gate >= 0 && gate < client && client < me && me < check && check < llm, `${path} order`);
+    assert.doesNotMatch(handler, /\.create\(|\.update\(|updateMany|assigned_nurses|agency_name/, `${path} writes nothing and reads no profile scope`);
+    assert.doesNotMatch(handler, /PDGM|reimbursement tips/i, `${path} is payment-neutral`);
+  }
+  for (const path of [
+    "base44/functions/generateCarePlanSuggestions/entry.ts",
+    "base44/functions/generateCarePlansFromReferral/entry.ts",
+  ]) {
+    const source = await read(path);
+    const handler = source.slice(source.indexOf("Deno.serve"));
+    const body = handler.indexOf("await readBoundedBody(");
+    const check = handler.indexOf("await loadAccessiblePatient(");
+    const records = handler.search(/entities\.(?:ClinicalEvent|CarePlan|Visit|Incident)\s*\.filter/);
+    assert.ok(body > 0 && body < check && check < records, `${path} reads the chart's records only after access`);
   }
 });

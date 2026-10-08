@@ -179,15 +179,6 @@
       "endpoint": "migrateExistingData"
     }
   },
-  "monitorClinicalDataForCarePlanUpdates": {
-    "status": 503,
-    "body": {
-      "error": "Legacy Patient service-role writer is temporarily unavailable",
-      "code": "legacy_patient_service_writer_paused",
-      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
-      "endpoint": "monitorClinicalDataForCarePlanUpdates"
-    }
-  },
   "notifyAdminOfSignedDocument": {
     "status": 503,
     "body": {

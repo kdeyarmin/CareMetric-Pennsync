@@ -2,6 +2,10 @@
   "name": "CarePlanProposal",
   "type": "object",
   "properties": {
+    "monitor_key": {
+      "type": "string",
+      "description": "Server-derived idempotency key (<patient_id>:<UTC day>:<finding_type>) stamped by monitorClinicalDataForCarePlanUpdates. A run never creates a second proposal for a key that exists, and concurrent runs converge on the lowest id."
+    },
     "patient_id": {
       "type": "string",
       "description": "Reference to Patient"

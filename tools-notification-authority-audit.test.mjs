@@ -85,14 +85,17 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
   const result = await inventoryNotificationProducers(FUNCTIONS_ROOT);
   assert.deepEqual(result.summary, {
     files_scanned: result.summary.files_scanned,
-    producer_files: 30,
-    call_sites: 40,
-    authority_v1: 6,
-    legacy_unmigrated: 34,
+    // 2026-10-08: processCompletedVisit and monitorClinicalDataForCarePlanUpdates
+    // were released with authority-v1 notices (no longer source-disabled
+    // legacy), and notifyUrgentMessage gained its first, authority-v1, notice.
+    producer_files: 31,
+    call_sites: 41,
+    authority_v1: 9,
+    legacy_unmigrated: 32,
     explicitly_quarantined: 0,
     workflow_schedule_quarantined: 12,
     browser_reachable_legacy_unmigrated: 7,
-    source_disabled: 2,
+    source_disabled: 0,
     runtime_gated: 5,
     runtime_gated_authority_v1: 3,
     runtime_gated_legacy_unmigrated: 2,
@@ -175,8 +178,13 @@ test('source-disable and runtime-gate classifications have repository evidence',
     new URL('./base44/functions/monitorClinicalDataForCarePlanUpdates/entry.ts', import.meta.url),
     'utf8',
   );
-  assert.match(completedVisit, /const PROCESS_COMPLETED_VISIT_PAUSED = true;[\s\S]*if \(PROCESS_COMPLETED_VISIT_PAUSED\)[\s\S]*status: 503/);
-  assert.match(monitor, /Deno\.serve[\s\S]*legacy_patient_service_writer_paused[\s\S]*status: 503[\s\S]*Notification\.create/);
+  // Both were released on 2026-10-08; their notices are authority-v1 now, so
+  // the evidence is the open gate plus an envelope on the one create call.
+  assert.match(completedVisit, /const PROCESS_COMPLETED_VISIT_PAUSED = false;/);
+  assert.match(completedVisit, /Notification\.create\(\{[\s\S]*?recipient_membership_id: membership\.id/);
+  assert.match(monitor, /const CARE_PLAN_MONITOR_ENABLED = true;/);
+  assert.doesNotMatch(monitor, /legacy_patient_service_writer_paused/);
+  assert.match(monitor, /Notification\.create\(\{[\s\S]*?recipient_membership_id: nurseMembership\.id/);
 
   for (const [name, releaseConstant] of [
     ['checkStaleFollowUpRequests', 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS'],

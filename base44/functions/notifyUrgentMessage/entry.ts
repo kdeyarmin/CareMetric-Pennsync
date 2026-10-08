@@ -713,11 +713,18 @@ async function notificationsFor(entities: Record<string, any>, agencyId: string,
 // Exactly one row per (message, recipient). A duplicate can only exist when an
 // expired claim was taken over while its first holder was still writing; both
 // writers keep the lowest id and remove the rest, so they converge.
-async function ensureNotification(entities: Record<string, any>, expected: Record<string, any>) {
+async function ensureNotification(
+  entities: Record<string, any>,
+  message: Record<string, any>,
+  participant: Record<string, any>,
+  senderName: string,
+) {
+  const notification = expectedNotification(message, participant, senderName);
+  const expected = notification;
   let rows = await notificationsFor(entities, expected.agency_id, expected.dedupe_key);
   let created = false;
   if (rows.length === 0) {
-    await entities.Notification.create(expected);
+    await entities.Notification.create(notification);
     created = true;
     rows = await notificationsFor(entities, expected.agency_id, expected.dedupe_key);
   }
@@ -811,7 +818,7 @@ Deno.serve(async (req) => {
         }
         throw error;
       }
-      if (await ensureNotification(entities, expectedNotification(message, participant, senderName))) {
+      if (await ensureNotification(entities, message, participant, senderName)) {
         created += 1;
       }
       notified += 1;
