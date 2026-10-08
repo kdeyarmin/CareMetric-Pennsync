@@ -7,12 +7,17 @@ import { pathToFileURL } from "node:url";
 import { transpileTs } from "../../tools-transpile-ts.mjs";
 
 /**
- * Behavioral contract for the hard-paused OASIS write broker.
+ * Behavioral contract for the OASIS write broker, released by the owner on
+ * 2026-10-08 ("turn everything on").
  *
- * Production-source tests never bypass the pause. Dormant-path tests rewrite
- * the literal in an isolated transpiled copy and inject a complete service-role
- * store. This proves the code below the pause without introducing a deployed
- * runtime, environment, feature-flag, or administrator bypass.
+ * These tests run the PRODUCTION source against an injected service-role store.
+ * They pin what makes the released broker safe to serve: authority comes from
+ * the built-in admin role or the caller's exact active membership (never a
+ * self-editable User field), the chart rule is applied before any write, every
+ * mutable authority edge is rechecked before AND after the create (a write that
+ * loses its authority is deleted), and a retry or a concurrent twin can never
+ * leave two records for one save. One test rewrites the pinned switch-off flag
+ * in an isolated copy to prove the switch still refuses before any client.
  */
 
 const V2 = "pennsync-oasis-response-v2-cms-e2";
@@ -173,7 +178,7 @@ function defaultRows(entity, query, state) {
 }
 
 async function loadHandler({
-  exerciseDormantBroker = true,
+  switchedOff = false,
   user = USER,
   state: stateOverrides = {},
   onAuth = null,
@@ -185,11 +190,11 @@ async function loadHandler({
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     "const createClientFromRequest = globalThis.__soMakeClient;",
   );
-  if (exerciseDormantBroker) {
-    src = src.replace(
-      "const OASIS_V2_WRITES_PAUSED = true;",
-      "const OASIS_V2_WRITES_PAUSED = false;",
-    );
+  if (switchedOff) {
+    // Only the switch-off test rewrites the pinned flag, in an isolated copy.
+    const pinned = "const OASIS_V2_WRITES_PAUSED = false;";
+    assert.ok(src.includes(pinned), "the released broker pins its switch-off flag false");
+    src = src.replace(pinned, "const OASIS_V2_WRITES_PAUSED = true;");
   }
   const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `soctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
@@ -200,6 +205,7 @@ async function loadHandler({
     clientCreations: 0,
     authCalls: 0,
     serviceCreates: [],
+    serviceDeletes: [],
     serviceFilters: [],
     userEntityAccesses: 0,
   };
@@ -234,14 +240,20 @@ async function loadHandler({
       if (result !== undefined) return result;
     }
     const stored = {
-      id: `oa${state.assessments.length + 1}`,
-      ...structuredClone(record),
+      id: `oa${runtime.serviceCreates.length}`,
       created_by: "service@example.com",
+      ...structuredClone(record),
       created_date: NOW,
       updated_date: NOW,
     };
     state.assessments.push(stored);
     return { id: stored.id };
+  };
+  serviceEntities.OASISAssessment.delete = async (id) => {
+    runtime.serviceDeletes.push(id);
+    const index = state.assessments.findIndex((row) => row.id === id);
+    if (index >= 0) state.assessments.splice(index, 1);
+    return { success: true };
   };
 
   globalThis.Deno = { serve: (fn) => { handler = fn; }, env: { get: () => undefined } };
@@ -282,8 +294,8 @@ async function request(handler, body, { method = "POST", headers = {} } = {}) {
 
 const reasons = (json) => (json.errors || []).map((error) => error.reason);
 
-test("production writes are hard-paused before body parsing, client creation, auth, or data access", async () => {
-  const { handler, runtime } = await loadHandler({ exerciseDormantBroker: false });
+test("the switch-off flag, when set, still refuses before body parsing, client creation, auth, or data access", async () => {
+  const { handler, runtime } = await loadHandler({ switchedOff: true });
   const result = await request(handler, "{ definitely not json");
   assert.equal(result.status, 503);
   assert.equal(result.json.reason, "tenant_security_validation_pending");
@@ -293,11 +305,12 @@ test("production writes are hard-paused before body parsing, client creation, au
   assert.deepEqual(runtime.serviceFilters, []);
 });
 
-test("the dormant broker creates only a tenant-stamped canonical draft through service role", async () => {
+test("the released broker creates only a tenant-stamped canonical draft through service role", async () => {
   const { handler, runtime } = await loadHandler();
   const result = await request(handler, payload());
   assert.equal(result.status, 200, JSON.stringify(result.json));
   assert.equal(result.json.ok, true);
+  assert.equal(result.json.created, true);
   assert.equal(result.json.operation, "create_draft");
   assert.deepEqual(Object.keys(result.json.assessment).sort(), [
     "assessment_date",
@@ -337,13 +350,85 @@ test("the dormant broker creates only a tenant-stamped canonical draft through s
   assert.equal(record.oasis_items[0].selected_by, "rn@example.com");
   assert.equal(record.oasis_items[0].selected_at, record.last_written_at);
   assert.equal(record.oasis_items[0].ai_suggested, false);
+  assert.equal(record.created_by, "rn@example.com", "the author is stamped, not the service identity");
 
   assert.equal(runtime.authCalls, 3, "authority is established initially and rechecked before and after create");
   assert.equal(
     runtime.serviceFilters.filter(({ entity }) => entity === "OASISAssessment").length,
-    2,
-    "the service-role create is read back twice around the post-write authority recheck",
+    4,
+    "an identical earlier save is looked for, the create is read back twice around the post-write recheck, and twins are looked for again",
   );
+  assert.deepEqual(runtime.serviceDeletes, []);
+});
+
+test("a retry of the same save returns the first record instead of creating a twin", async () => {
+  const ctx = await loadHandler();
+  const first = await request(ctx.handler, payload());
+  assert.equal(first.status, 200, JSON.stringify(first.json));
+  assert.equal(first.json.created, true);
+  const retry = await request(ctx.handler, payload());
+  assert.equal(retry.status, 200, JSON.stringify(retry.json));
+  assert.equal(retry.json.created, false);
+  assert.equal(retry.json.assessment.id, first.json.assessment.id);
+  assert.equal(ctx.runtime.serviceCreates.length, 1, "the retry wrote nothing");
+
+  // Different content is a different save.
+  const changed = await request(ctx.handler, payload({ oasis_items: [minimalRow({ response_value: { code: "5" } })] }));
+  assert.equal(changed.json.created, true);
+  assert.equal(ctx.runtime.serviceCreates.length, 2);
+});
+
+test("a concurrent identical save that landed first keeps its record and this request's twin is removed", async () => {
+  const earlier = {
+    id: "oa-first",
+    agency_id: "ag1",
+    patient_id: "p1",
+    visit_id: "v1",
+    visit_type: "Discharge",
+    assessment_date: "2026-06-01",
+    status: "draft",
+    last_written_by: "rn@example.com",
+    oasis_items: [{ definition_id: "m1830_cms_e2", response_value: { code: "6" } }],
+    created_date: "2026-06-01T09:59:59.000Z",
+  };
+  const ctx = await loadHandler({
+    // The twin is invisible to the pre-check and appears by the post-create check.
+    onFilter: ({ entity, count, state }) => {
+      if (entity !== "OASISAssessment") return undefined;
+      if (count === 1) return [];
+      if (count === 4) return [earlier, ...state.assessments];
+      return undefined;
+    },
+  });
+  const result = await request(ctx.handler, payload());
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(result.json.created, false);
+  assert.equal(result.json.assessment.id, "oa-first");
+  assert.deepEqual(ctx.runtime.serviceDeletes, ["oa1"], "this request's own twin is removed");
+});
+
+test("a completed save is stamped with its author and a server-derived completion; submission is not a caller's", async () => {
+  const ctx = await loadHandler();
+  const result = await request(ctx.handler, payload({ status: "completed", clinical_summary: "  Ambulates with walker.  " }));
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  const record = ctx.runtime.serviceCreates[0];
+  assert.equal(record.status, "completed");
+  assert.equal(record.completed_by, "rn@example.com");
+  assert.equal(record.completed_date, record.last_written_at);
+  assert.equal(record.clinical_summary, "Ambulates with walker.");
+  // Discharge collects twelve CMS items in the supported subset; one answered.
+  assert.equal(record.completion_percentage, 8);
+
+  for (const status of ["submitted", "approved", "in_progress", ""]) {
+    const refused = await loadHandler();
+    const res = await request(refused.handler, payload({ status }));
+    assert.equal(res.status, 400, status);
+    assert.equal(res.json.reason, "invalid_status", status);
+    assert.equal(refused.runtime.clientCreations, 0, status);
+  }
+  const tooLong = await loadHandler();
+  const longResult = await request(tooLong.handler, payload({ clinical_summary: "x".repeat(2001) }));
+  assert.equal(longResult.json.reason, "invalid_clinical_summary");
 });
 
 test("method and request shape are exact; updates, lifecycle transitions, and client-owned fields are refused", async () => {
@@ -408,14 +493,15 @@ test("body size, exact identifiers, calendar dates, and item count are bounded b
   assert.equal(oversized.runtime.clientCreations, 0);
 });
 
-test("anonymous, inactive, disabled, service, unverified, and built-in admin identities cannot author responses", async () => {
+test("anonymous, inactive, disabled, service, unverified, and non-user identities cannot author responses", async () => {
   const users = [
     null,
     { ...USER, is_active: false },
     { ...USER, disabled: true },
     { ...USER, is_service: true },
     { ...USER, is_verified: false },
-    { ...USER, role: "admin" },
+    { ...USER, role: "editor" },
+    { ...USER, role: "admin", is_active: false },
     { ...USER, id: "" },
     { ...USER, email: "not-an-email" },
   ];
@@ -427,18 +513,46 @@ test("anonymous, inactive, disabled, service, unverified, and built-in admin ide
   }
 });
 
-test("an exact active immutable clinician membership is required; mutable User agency claims are ignored", async () => {
-  const allowed = await loadHandler({
-    user: { ...USER, agency_id: "other", agency_name: "Other" },
+test("the platform owner (protected built-in admin role) opens any chart in the named agency without a membership", async () => {
+  const owner = await loadHandler({
+    user: { ...USER, id: "owner-1", email: "owner@example.com", role: "admin" },
+    state: { memberships: [], assignments: [] },
   });
-  assert.equal((await request(allowed.handler, payload())).status, 200);
+  const result = await request(owner.handler, payload());
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(result.json.scope.tenant_role, "platform_owner");
+  assert.equal(result.json.scope.chart_access_basis, "agency_wide");
+  assert.equal(result.json.scope.membership_id, null);
+  assert.equal(owner.runtime.serviceFilters.some(({ entity }) => entity === "AgencyMembership"), false,
+    "the owner's authority is the protected role, not a membership lookup");
+
+  // The named agency must still be the chart's own agency.
+  const foreign = await loadHandler({
+    user: { ...USER, id: "owner-1", email: "owner@example.com", role: "admin" },
+    state: { memberships: [], patients: [{ ...PATIENT, agency_id: "ag2" }] },
+  });
+  const foreignResult = await request(foreign.handler, payload());
+  assert.ok([404, 409].includes(foreignResult.status), JSON.stringify(foreignResult.json));
+  assert.deepEqual(foreign.runtime.serviceCreates, []);
+});
+
+test("an exact active membership in an OASIS-completing role is required; mutable User agency claims are ignored", async () => {
+  const allowed = await loadHandler({
+    user: { ...USER, agency_id: "other", agency_name: "Other", account_type: "agency_admin", is_manager: true },
+  });
+  const allowedResult = await request(allowed.handler, payload());
+  assert.equal(allowedResult.status, 200);
+  assert.equal(allowedResult.json.scope.tenant_role, "clinician",
+    "a self-edited account_type or is_manager never lifts a clinician to agency-wide");
+  assert.equal(allowedResult.json.scope.chart_access_basis, "care_team_assignment");
 
   const cases = [
     { memberships: [] },
     { memberships: [{ ...MEMBERSHIP, status: "suspended" }] },
     { memberships: [{ ...MEMBERSHIP, agency_id: "ag2", membership_key: "ag2:u1" }] },
-    { memberships: [{ ...MEMBERSHIP, tenant_role: "manager" }] },
-    { memberships: [{ ...MEMBERSHIP, tenant_role: "agency_admin" }] },
+    { memberships: [{ ...MEMBERSHIP, tenant_role: "office_staff" }] },
+    { memberships: [{ ...MEMBERSHIP, tenant_role: "social_worker" }] },
+    { memberships: [{ ...MEMBERSHIP, tenant_role: "spiritual_care" }] },
     { memberships: [{ ...MEMBERSHIP, user_email_normalized: "other@example.com" }] },
     { memberships: [{ ...MEMBERSHIP }, { ...MEMBERSHIP, id: "mem2" }] },
   ];
@@ -450,6 +564,26 @@ test("an exact active immutable clinician membership is required; mutable User a
   }
 });
 
+test("an agency administrator or manager opens every chart in their own agency, and only there", async () => {
+  for (const tenant_role of ["agency_admin", "manager"]) {
+    const ctx = await loadHandler({
+      state: { memberships: [{ ...MEMBERSHIP, tenant_role }], assignments: [] },
+    });
+    const result = await request(ctx.handler, payload());
+    assert.equal(result.status, 200, `${tenant_role}: ${JSON.stringify(result.json)}`);
+    assert.equal(result.json.scope.chart_access_basis, "agency_wide");
+    assert.equal(ctx.runtime.serviceFilters.some(({ entity }) => entity === "PatientCareTeamAssignment"), false,
+      `${tenant_role} needs no care-team seat`);
+
+    const elsewhere = await loadHandler({
+      state: { memberships: [{ ...MEMBERSHIP, tenant_role }], assignments: [], patients: [{ ...PATIENT, agency_id: "ag2" }] },
+    });
+    const refused = await request(elsewhere.handler, payload());
+    assert.ok([404, 409].includes(refused.status), `${tenant_role}: ${JSON.stringify(refused.json)}`);
+    assert.deepEqual(elsewhere.runtime.serviceCreates, []);
+  }
+});
+
 test("the exact active Agency and its unique agency code bind all settings lookups", async () => {
   const good = await loadHandler();
   const result = await request(good.handler, payload());
@@ -458,10 +592,17 @@ test("the exact active Agency and its unique agency code bind all settings looku
   assert.ok(settingsReads.length >= 3);
   for (const { query } of settingsReads) assert.deepEqual(query, { agency_code: "MAPLE-HH" });
 
+  // An agency with no code has no settings row to bind: it writes under the
+  // released default and no settings row is read at all.
+  const uncoded = await loadHandler({ state: { agencies: [{ ...AGENCY, agency_code: "" }] } });
+  const uncodedResult = await request(uncoded.handler, payload());
+  assert.equal(uncodedResult.status, 200, JSON.stringify(uncodedResult.json));
+  assert.equal(uncoded.runtime.serviceFilters.some(({ entity }) => entity === "AgencySettings"), false);
+
   const cases = [
     { agencies: [] },
     { agencies: [{ ...AGENCY, status: "suspended" }] },
-    { agencies: [{ ...AGENCY, agency_code: "" }] },
+    { agencies: [{ ...AGENCY, agency_code: " MAPLE-HH" }] },
     { agencies: [{ ...AGENCY }, { ...AGENCY, id: "ag2" }] },
   ];
   for (const state of cases) {
@@ -472,17 +613,29 @@ test("the exact active Agency and its unique agency code bind all settings looku
   }
 });
 
-test("the agency-scoped feature flag defaults closed and its kill switch wins", async () => {
-  const cases = [
-    [{ settings: [] }, 403, "feature_disabled"],
+test("the agency rollout flag is an opt-out and its kill switch wins", async () => {
+  const allowed = [
+    { settings: [] },
+    { settings: [{ ...SETTINGS, [FLAG]: undefined }] },
+    { settings: [{ ...SETTINGS, [FLAG]: null }] },
+    { settings: [{ ...SETTINGS, [FLAG]: true }] },
+    { settings: [{ ...SETTINGS, agency_code: "OTHER" }] },
+  ];
+  for (const state of allowed) {
+    const ctx = await loadHandler({ state });
+    const result = await request(ctx.handler, payload());
+    assert.equal(result.status, 200, JSON.stringify({ state, json: result.json }));
+  }
+
+  const refused = [
     [{ settings: [{ ...SETTINGS, [FLAG]: false }] }, 403, "feature_disabled"],
     [{ settings: [{ ...SETTINGS, [FLAG]: "true" }] }, 409, "settings_integrity_failed"],
     [{ settings: [{ ...SETTINGS, updated_date: "not-an-instant" }] }, 409, "settings_integrity_failed"],
     [{ settings: [{ ...SETTINGS }, { ...SETTINGS, id: "settings2" }] }, 409, "settings_integrity_failed"],
-    [{ settings: [{ ...SETTINGS, agency_code: "OTHER" }] }, 403, "feature_disabled"],
     [{ settings: [{ ...SETTINGS, oasis_response_writes_disabled: true }] }, 423, "write_kill_switch"],
+    [{ settings: [{ ...SETTINGS, [FLAG]: undefined, oasis_response_writes_disabled: true }] }, 423, "write_kill_switch"],
   ];
-  for (const [state, status, reason] of cases) {
+  for (const [state, status, reason] of refused) {
     const ctx = await loadHandler({ state });
     const result = await request(ctx.handler, payload());
     assert.equal(result.status, status, JSON.stringify(result.json));
@@ -677,16 +830,29 @@ test("post-write authority drift prevents a success response and exact readback 
   assert.equal(driftResult.status, 409, JSON.stringify(driftResult.json));
   assert.equal(driftResult.json.reason, "authority_changed");
   assert.equal(drift.runtime.serviceCreates.length, 1, "the revocation raced after service-role create");
+  assert.deepEqual(drift.runtime.serviceDeletes, ["oa1"], "a write that lost its authority is removed");
+  assert.equal(drift.state.assessments.length, 0, "no unacknowledged draft survives");
+
+  const killed = await loadHandler({
+    onFilter: ({ entity, count, state }) => entity === "AgencySettings" && count === 3
+      ? [{ ...state.settings[0], oasis_response_writes_disabled: true, updated_date: NOW }]
+      : undefined,
+  });
+  const killedResult = await request(killed.handler, payload());
+  assert.equal(killedResult.json.reason, "write_kill_switch");
+  assert.deepEqual(killed.runtime.serviceDeletes, ["oa1"], "a kill switch thrown mid-request removes the write");
 
   const changedReadback = await loadHandler({
     onFilter: ({ entity, count, state }) => {
-      if (entity !== "OASISAssessment" || count !== 2) return undefined;
+      // 1: the identical-save lookup, 2: first readback, 3: final readback.
+      if (entity !== "OASISAssessment" || count !== 3) return undefined;
       return [{ ...state.assessments[0], status: "submitted" }];
     },
   });
   const changedResult = await request(changedReadback.handler, payload());
   assert.equal(changedResult.status, 409, JSON.stringify(changedResult.json));
   assert.equal(changedResult.json.reason, "write_verification_failed");
+  assert.deepEqual(changedReadback.runtime.serviceDeletes, ["oa1"]);
 });
 
 test("foreign, missing, duplicate, or tampered service-role readback is never reported as success", async () => {
@@ -700,7 +866,8 @@ test("foreign, missing, duplicate, or tampered service-role readback is never re
   ];
   for (const variant of variants) {
     const ctx = await loadHandler({
-      onFilter: (context) => context.entity === "OASISAssessment" && context.count === 1
+      // count 1 is the identical-save lookup; count 2 is the first readback.
+      onFilter: (context) => context.entity === "OASISAssessment" && context.count === 2
         ? variant(context)
         : undefined,
     });
@@ -708,6 +875,7 @@ test("foreign, missing, duplicate, or tampered service-role readback is never re
     assert.equal(result.status, 409, JSON.stringify(result.json));
     assert.equal(result.json.reason, "write_verification_failed");
     assert.equal(result.json.assessment, undefined);
+    assert.deepEqual(ctx.runtime.serviceDeletes, ["oa1"], "an unverifiable write is removed");
   }
 });
 
@@ -733,20 +901,28 @@ test("provider failures are redacted and never expose predicates or PHI", async 
   assert.doesNotMatch(JSON.stringify(createResult.json), /SECRET|agency_id/);
 });
 
-test("static containment keeps the hard pause first, service-role-only create, and no update path", async () => {
+test("static containment: the switch-off flag is pinned off and checked first, authority precedes the create, no update path", async () => {
   const source = await readFile(new URL("../functions/saveOasisResponses/entry.ts", import.meta.url), "utf8");
-  assert.match(source, /const OASIS_V2_WRITES_PAUSED = true;/);
-  assert.match(source, /no cross-entity transaction/i);
-  assert.match(source, /idempotency key, so a retry/i);
-  assert.match(source, /Visit-policy proofs are\s+\/\/ all activation blockers/i);
+  assert.match(source, /const OASIS_V2_WRITES_PAUSED = false;/);
   const handler = source.slice(source.indexOf("Deno.serve"));
   assert.ok(handler.indexOf("if (OASIS_V2_WRITES_PAUSED)") < handler.indexOf("parseRequest(req)"));
   assert.ok(handler.indexOf("if (OASIS_V2_WRITES_PAUSED)") < handler.indexOf("createClientFromRequest("));
+  // Authority, the chart and the agency controls are all decided before the
+  // create, and rechecked immediately before it.
+  const create = handler.indexOf("entities.OASISAssessment.create(");
+  for (const step of ["loadAuthority(base44, input.agencyId)", "loadPatientAccess(entities,", "enforceSettingsPolicy(initialSettings)", "recheckWriteAccess(base44, entities, input, snapshots)"]) {
+    const at = handler.indexOf(step);
+    assert.ok(at > 0 && at < create, `${step} precedes the create`);
+  }
+  // A write that fails its post-write recheck is deleted.
+  assert.match(handler, /catch \(error\) \{\s*\/\/ No cross-entity transaction[\s\S]*?OASISAssessment\.delete\(assessmentId\)/);
   assert.match(source, /const entities = base44\.asServiceRole\.entities;/);
-  assert.match(source, /await entities\.OASISAssessment\.create\(record\)/);
   assert.doesNotMatch(source, /base44\.entities\.OASISAssessment/);
   assert.doesNotMatch(source, /OASISAssessment\.update\s*\(/);
-  assert.doesNotMatch(source, /user\??\.agency_(?:id|name)/);
+  // Authority never reads a self-editable User field.
+  assert.doesNotMatch(source, /user\??\.(?:agency_(?:id|name)|account_type|is_manager|assigned_nurses)\b/);
+  assert.match(source, /const isPlatformOwner = user\.role === 'admin';/);
+  assert.match(source, /const OASIS_WRITER_ROLES = new Set\(\['agency_admin', 'manager', 'clinician'\]\);/);
   assert.match(source, /body\.operation === 'update'/);
   assert.match(source, /'updates_paused'/);
   assert.match(source, /console\.error\('saveOasisResponses failed'\)/);

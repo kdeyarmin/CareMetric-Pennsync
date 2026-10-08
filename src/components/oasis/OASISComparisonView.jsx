@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { logOASISAction, AuditActions } from "../utils/auditLogger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,9 +54,9 @@ const responseOptionsForItem = (itemNumber) => {
   return null;
 };
 
-export default function OASISComparisonView({ 
-  patient, 
-  oasisRecord, 
+export default function OASISComparisonView({
+  patient,
+  oasisRecord,
   aiSuggestions = [],
   onClose,
   onUpdate
@@ -68,82 +68,36 @@ export default function OASISComparisonView({
   const [rejectingItem, setRejectingItem] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
 
+  // Every decision is written by the OASIS record broker: it confirms the
+  // reviewer may work on this upload (its author, a care-team member on the
+  // chart, or an agency lead), stamps the reviewer from the session, and
+  // refuses a change the record moved under (a conditional write).
   const updateMutation = useMutation({
     mutationFn: async ({ itemNumber, action, value, notes }) => {
-      const updatedData = { ...oasisRecord.extracted_data };
-      const currentUser = await base44.auth.me();
-      const oldValue = updatedData[itemNumber]?.value;
-      
-      if (action === 'approve') {
-        updatedData[itemNumber] = {
-          ...updatedData[itemNumber],
-          reviewed: true,
-          approved: true,
-          reviewed_by: currentUser.email,
-          reviewed_at: new Date().toISOString(),
-          review_notes: notes
-        };
-        
-        // Log audit trail
-        await logOASISAction({
-          action: AuditActions.OASIS_SUGGESTION_APPROVED,
-          patientId: patient.id,
-          oasisId: oasisRecord.id,
-          itemNumber,
-          oldValue,
-          newValue: updatedData[itemNumber].value,
-          confidence: updatedData[itemNumber].confidence,
-          notes,
-          reviewedBy: currentUser.email,
-        });
-      } else if (action === 'reject') {
-        updatedData[itemNumber] = {
-          ...updatedData[itemNumber],
-          reviewed: true,
-          rejected: true,
-          reviewed_by: currentUser.email,
-          reviewed_at: new Date().toISOString(),
-          rejection_reason: notes
-        };
-        
-        // Log audit trail
-        await logOASISAction({
-          action: AuditActions.OASIS_SUGGESTION_REJECTED,
-          patientId: patient.id,
-          oasisId: oasisRecord.id,
-          itemNumber,
-          oldValue,
-          newValue: null,
-          notes,
-          reviewedBy: currentUser.email,
-        });
-      } else if (action === 'edit') {
-        updatedData[itemNumber] = {
-          ...updatedData[itemNumber],
-          value,
-          reviewed: true,
-          manually_edited: true,
-          reviewed_by: currentUser.email,
-          reviewed_at: new Date().toISOString(),
-          edit_notes: notes
-        };
-        
-        // Log audit trail
-        await logOASISAction({
-          action: AuditActions.OASIS_SUGGESTION_EDITED,
-          patientId: patient.id,
-          oasisId: oasisRecord.id,
-          itemNumber,
-          oldValue,
-          newValue: value,
-          notes,
-          reviewedBy: currentUser.email,
-        });
-      }
-
-      return base44.entities.OASISUpload.update(oasisRecord.id, {
-        extracted_data: updatedData
+      const oldValue = oasisRecord.extracted_data?.[itemNumber]?.value;
+      const result = await manageOASISRecords('review_extracted_item', {
+        upload_id: oasisRecord.id,
+        item_number: itemNumber,
+        decision: action,
+        ...(action === 'edit' ? { value } : {}),
+        notes,
       });
+      const auditAction = action === 'approve'
+        ? AuditActions.OASIS_SUGGESTION_APPROVED
+        : action === 'reject'
+          ? AuditActions.OASIS_SUGGESTION_REJECTED
+          : AuditActions.OASIS_SUGGESTION_EDITED;
+      await logOASISAction({
+        action: auditAction,
+        patientId: patient?.id,
+        oasisId: oasisRecord.id,
+        itemNumber,
+        oldValue,
+        newValue: action === 'reject' ? null : result?.item?.value ?? oldValue,
+        notes,
+        reviewedBy: result?.item?.reviewed_by,
+      });
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisRecords'] });
@@ -191,11 +145,11 @@ export default function OASISComparisonView({
 
   const handleSaveEdit = () => {
     if (!editValue) return;
-    updateMutation.mutate({ 
-      itemNumber: editingItem, 
-      action: 'edit', 
+    updateMutation.mutate({
+      itemNumber: editingItem,
+      action: 'edit',
       value: editValue,
-      notes: editNotes 
+      notes: editNotes
     });
     setEditingItem(null);
   };

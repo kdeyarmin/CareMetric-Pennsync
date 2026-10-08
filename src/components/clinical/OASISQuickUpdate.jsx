@@ -1,34 +1,33 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Brain, CheckCircle2, Clock, FileText } from "lucide-react";
+import { AlertTriangle, Brain, CheckCircle2, Clock, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { optionsForItem, PAIN_FREQUENCY_OPTIONS } from "@/components/oasis/oasisScales";
-import { formatEastern } from "@/components/utils/timezone";
+import { formatEastern, todayEastern } from "@/components/utils/timezone";
 import { markStartOfCareCompleted } from "@/components/referral/intakeToSocTracker";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useAuth } from "@/lib/AuthContext";
+import OasisResponseControl from "@/components/oasis/OasisResponseControl";
+import { visitTypeToTimepoint } from "@/components/oasis/responseSchema/registry.js";
+import { V2_DEFINITIONS } from "@/components/oasis/responseSchema/v2CmsE2.js";
+import { isResponseAnswered, selectionsForSave } from "@/components/oasis/cmsResponseSelections";
+import { saveOfficialResponses } from "@/components/oasis/responseSchema/oasisWriteAdapter.js";
+import { listAuthorizedOASISAssessments } from "@/functions/readAuthorizedOASISAssessments";
 import {
   listAuthorizedReferrals,
   updateAuthorizedReferral,
 } from '@/functions/manageAuthorizedReferral';
 
-// Each OASIS-E item uses its OWN valid range (M1810/M1845 = 0–3, M1850 = 0–5,
-// M1830/M1860 = 0–6) — see oasisScales.js. A single flat list either truncated the
-// 0–6 items or offered codes that don't exist for the 0–3/0–5 items.
-// `item` is the OASIS M-number persisted into OASISAssessment.oasis_items.
-const QUICK_FIELDS = [
-  { key: "ambulation", item: "M1860", label: "Ambulation (M1860)", options: optionsForItem("m1860") },
-  { key: "bathing", item: "M1830", label: "Bathing (M1830)", options: optionsForItem("m1830") },
-  { key: "dressing_upper", item: "M1810", label: "Dressing Upper (M1810)", options: optionsForItem("m1810") },
-  { key: "transferring", item: "M1850", label: "Transferring (M1850)", options: optionsForItem("m1850") },
-  { key: "toileting", item: "M1845", label: "Toileting (M1845)", options: optionsForItem("m1845") },
-  { key: "pain_frequency", item: "M1242", label: "Pain Frequency (M1242)", options: PAIN_FREQUENCY_OPTIONS },
-];
+// The functional items a clinician most often updates between full assessments,
+// from the CMS-aligned (v2) definitions — never PennSync's legacy scales, whose
+// codes mean something different on the official instrument. Each one appears
+// only at the time points CMS collects it.
+const QUICK_DEFINITION_IDS = ["m1830_cms_e2", "m1840_cms_e2", "m1860_cms_e2", "m1870_cms_e2"];
 
 // OASISAssessment.visit_type is a required enum; an assessment must declare which
 // kind it is. These are the schema's valid values. (Also consumed by
@@ -40,7 +39,11 @@ export const VISIT_TYPES = ["Start of Care", "Resumption of Care", "Recertificat
 // declined). `active` is deliberately excluded: an active referral was already
 // admitted, so a new SOC OASIS shouldn't rewrite its SOC bookkeeping.
 const OPEN_REFERRAL_STATUSES = ["new", "pending", "processing", "awaiting_info", "ready_for_admission"];
-const OASIS_QUICK_UPDATE_ENABLED = false;
+
+// Released by the owner on 2026-10-08 ("turn everything on"). Entry saves only
+// through the protected `saveOasisResponses` broker, which authorizes the caller
+// and the chart itself; history reads only through `readAuthorizedOASISAssessments`.
+const OASIS_QUICK_UPDATE_ENABLED = true;
 
 /**
  * After a Start of Care OASIS is saved, close the intake→SOC clock on the
@@ -81,26 +84,83 @@ export async function completeReferralSocForPatient(patientId, socDate, agencyId
 }
 
 function EnabledOASISQuickUpdate({ patient }) {
-  const [values, setValues] = useState({});
+  const { user, tenantContext } = useAuth();
+  const agencyId = tenantContext?.agency_id || null;
+  const queryClient = useQueryClient();
+  const [responses, setResponses] = useState({});
   const [visitType, setVisitType] = useState("");
+  const [assessmentDate, setAssessmentDate] = useState(() => todayEastern());
   const [clinicalNote, setClinicalNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const { data: recentAssessments = [] } = useQuery({
-    queryKey: ["oasis-assessments", patient?.id],
-    queryFn: () => base44.entities.OASISAssessment.filter({ patient_id: patient.id }, "-created_date", 5),
-    enabled: !!patient?.id,
-    initialData: [],
+  const timepoint = visitTypeToTimepoint(visitType);
+  const definitions = useMemo(
+    () => QUICK_DEFINITION_IDS
+      .map((id) => V2_DEFINITIONS[id])
+      .filter((definition) => definition && timepoint && definition.timepoints.includes(timepoint)),
+    [timepoint],
+  );
+
+  const historyKey = ["oasis-assessments", "authorized-summary", agencyId, patient?.id];
+  const { data: recentAssessments = [], error: historyError } = useQuery({
+    queryKey: historyKey,
+    queryFn: async () => (await listAuthorizedOASISAssessments({
+      agencyId,
+      patientId: patient.id,
+      purpose: "summary",
+      limit: 5,
+    })).assessments,
+    enabled: !!patient?.id && !!agencyId,
   });
 
-  const handleSave = async () => {
-    toast.error("OASIS saving is temporarily unavailable pending tenant security validation.");
+  const answeredCount = definitions.filter((definition) => isResponseAnswered(definition, responses[definition.definition_id])).length;
+  const hasChanges = answeredCount > 0 || clinicalNote.trim().length > 0;
+
+  const handleVisitType = (value) => {
+    setVisitType(value);
+    // Keep only answers still collected at the new reason.
+    const nextPoint = visitTypeToTimepoint(value);
+    setResponses((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => (
+      V2_DEFINITIONS[id]?.timepoints.includes(nextPoint)
+    ))));
   };
 
-  const hasChanges = Object.keys(values).length > 0 || clinicalNote.trim().length > 0;
+  const handleSave = async () => {
+    if (!patient?.id || !visitType) return;
+    const selections = selectionsForSave(visitType, responses)
+      .filter((selection) => QUICK_DEFINITION_IDS.includes(selection.definitionId));
+    if (selections.length === 0) {
+      toast.error("Select at least one response before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await saveOfficialResponses({
+        agencyId,
+        assessment: { patient_id: patient.id, visit_type: visitType, assessment_date: assessmentDate, status: "draft" },
+        selections,
+        clinicianEmail: user?.email,
+        clinicalSummary: clinicalNote,
+      });
+      if (!result.ok) {
+        toast.error(result.detail || "The update was not saved.");
+        return;
+      }
+      toast.success(result.created ? "OASIS update saved as a draft." : "This update was already saved.");
+      setResponses({});
+      setClinicalNote("");
+      queryClient.invalidateQueries({ queryKey: ["oasis-assessments"] });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
-      {/* Recent assessments */}
+      {/* Recent assessments — read through the authorized summary broker. */}
+      {historyError && (
+        <p className="text-xs text-amber-700">Recent assessments could not be loaded for this chart.</p>
+      )}
       {recentAssessments.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -116,10 +176,12 @@ function EnabledOASISQuickUpdate({ patient }) {
                   <span className="font-medium text-slate-800">
                     {formatEastern(a.assessment_date || a.created_date, 'M/d/yyyy')}
                   </span>
-                  <span className="text-slate-500 ml-2">by {a.completed_by || a.created_by || "clinician"}</span>
-                  {a.clinical_summary && <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{a.clinical_summary}</p>}
+                  <span className="text-slate-500 ml-2">{a.visit_type}</span>
+                  {typeof a.completion_percentage === "number" && (
+                    <span className="text-xs text-slate-400 ml-2">{a.completion_percentage}% of CMS items</span>
+                  )}
                 </div>
-                <Badge className={a.status === "submitted" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}>
+                <Badge className={a.status === "completed" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}>
                   {a.status}
                 </Badge>
               </div>
@@ -135,48 +197,64 @@ function EnabledOASISQuickUpdate({ patient }) {
             <Brain className="w-4 h-4 text-indigo-500" />
             OASIS Quick Update
           </CardTitle>
-          <p className="text-xs text-slate-500">Update key functional status items and save as a draft for review.</p>
+          <p className="text-xs text-slate-500">
+            Update key functional items with the CMS response wording and save them as a draft for review.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label htmlFor="quick-visit-type" className="text-xs font-semibold text-slate-700 mb-1.5 block">
-              Assessment Type <span className="text-red-500">*</span>
-            </label>
-            <Select value={visitType} onValueChange={setVisitType}>
-              <SelectTrigger id="quick-visit-type" className="h-10 text-sm">
-                <SelectValue placeholder="Select assessment type…" />
-              </SelectTrigger>
-              <SelectContent>
-                {VISIT_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="quick-visit-type" className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                Assessment Type <span className="text-red-500">*</span>
+              </label>
+              <Select value={visitType} onValueChange={handleVisitType}>
+                <SelectTrigger id="quick-visit-type" className="h-10 text-sm">
+                  <SelectValue placeholder="Select assessment type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISIT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label htmlFor="quick-assessment-date" className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                Assessment Date <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="quick-assessment-date"
+                type="date"
+                value={assessmentDate}
+                onChange={(e) => setAssessmentDate(e.target.value)}
+                className="h-10 text-sm"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {QUICK_FIELDS.map(({ key, label, options }) => (
-              <div key={key}>
-                <label className="text-xs font-semibold text-slate-700 mb-1.5 block">{label}</label>
-                <Select value={values[key] || ""} onValueChange={(v) => setValues((prev) => ({ ...prev, [key]: v }))}>
-                  <SelectTrigger className="h-10 text-sm">
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {options.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
-          </div>
+          {visitType && definitions.length === 0 && (
+            <p className="text-sm text-slate-600 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              CMS collects none of these functional items at {visitType}. Use the full assessment instead.
+            </p>
+          )}
+          {definitions.map((definition) => (
+            <OasisResponseControl
+              key={definition.definition_id}
+              definition={definition}
+              timepoint={timepoint}
+              value={responses[definition.definition_id] ?? null}
+              onChange={(value) => setResponses((prev) => ({ ...prev, [definition.definition_id]: value }))}
+              disabled={saving}
+            />
+          ))}
 
           <div>
             <label htmlFor="clinical-note" className="text-xs font-semibold text-slate-700 mb-1.5 block">Clinical Note</label>
             <Textarea
               id="clinical-note"
               rows={3}
+              maxLength={2000}
               placeholder="Add clinical observations or notes for this assessment…"
               value={clinicalNote}
               onChange={(e) => setClinicalNote(e.target.value)}
@@ -187,10 +265,10 @@ function EnabledOASISQuickUpdate({ patient }) {
           <div className="flex items-center gap-3">
             <Button
               onClick={handleSave}
-              disabled
+              disabled={saving || !visitType || answeredCount === 0 || !agencyId}
               className="bg-indigo-600 hover:bg-indigo-700 min-h-[40px]"
             >
-              <FileText className="w-4 h-4 mr-2" />
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
               Save as Draft
             </Button>
             {hasChanges && !visitType && (
@@ -218,9 +296,15 @@ export default function OASISQuickUpdate(props) {
           <div className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="h-5 w-5" /> OASIS Quick Update Paused
           </div>
-          <p>Response entry is unavailable pending verified OASIS-E definitions and tenant-scoped assessment access.</p>
-          <p>No assessment history, response scale, clinical note, or draft write is loaded from this panel.</p>
+          <p>Response entry is switched off for this deployment.</p>
         </CardContent>
+      </Card>
+    );
+  }
+  if (!props?.patient?.id) {
+    return (
+      <Card>
+        <CardContent className="p-5 text-sm text-slate-600">Select a patient to record a quick OASIS update.</CardContent>
       </Card>
     );
   }

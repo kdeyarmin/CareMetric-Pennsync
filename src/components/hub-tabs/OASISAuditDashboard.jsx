@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { agencyQueryKey } from '@/lib/agencyRoster';
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
+import { isOasisLeadView } from "@/lib/oasisRoles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,9 +41,21 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import OASISAuditReportGenerator from "@/components/oasis/OASISAuditReportGenerator";
-import { ALL_ROWS } from '@/lib/queryLimits';
 
-const OASIS_AUDIT_AI_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). The audit queue
+// is an agency lead's: it lists, assigns and updates audits only through the
+// OASIS record broker, which admits the platform owner or an active
+// agency_admin/manager membership and only for audits on its own agency's
+// uploads. An audit carries documentation gaps — never a rescore or a dollar
+// figure.
+const OASIS_AUDIT_AI_ENABLED = true;
+
+const STATUS_OPTIONS = [
+  ['pending_review', 'Pending Review'],
+  ['in_review', 'In Review'],
+  ['reviewed', 'Reviewed'],
+  ['compliant', 'Compliant — no action needed'],
+];
 
 function EnabledOASISAuditDashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
@@ -59,39 +73,36 @@ function EnabledOASISAuditDashboard() {
     queryFn: () => base44.auth.me(),
   });
 
-  // Gate on role === 'admin' to match OASISAudit read RLS (all-row access is
-  // role-admin only; others are limited to created_by/assigned_to), so this
-  // dashboard isn't shown empty/partial to account_type-only admins.
-  const isAdmin = currentUser?.role === 'admin';
+  // An agency lead (agency_admin or manager membership, or the platform
+  // owner), from the validated tenant context — the broker applies the same
+  // rule on its own authority.
+  const isAdmin = isOasisLeadView(currentUser);
 
   // Fetch audits
   const { data: audits = [], isLoading } = useQuery({
     queryKey: ['oasisAudits'],
-    queryFn: () => base44.entities.OASISAudit.list('-created_date', 100),
+    queryFn: async () => (await manageOASISRecords('list_audits', { limit: 200 }))?.audits || [],
     enabled: isAdmin
   });
 
-  // Fetch admins for assignment (agency-scoped for facility admins)
+  // Who an audit can be assigned to: the active administrators and managers of
+  // the audit's own agency, from AgencyMembership — not the editable profile.
   const { data: admins = [] } = useQuery({
-    queryKey: ['adminUsers', agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const users = await base44.entities.User.list(undefined, ALL_ROWS);
-      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
-      const scoped = filterUsersByCallerAgency(users, currentUser);
-      return scoped.filter((u) =>
-        u.role === 'admin' || u.account_type === 'agency_admin',
-      );
-    },
-    enabled: isAdmin && !!currentUser,
+    queryKey: ['oasisAuditors', selectedAudit?.id],
+    queryFn: async () => (await manageOASISRecords('list_auditors', { audit_id: selectedAudit.id }))?.auditors || [],
+    enabled: isAdmin && !!selectedAudit?.id,
   });
 
   // Update audit mutation
   const updateAuditMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.OASISAudit.update(id, data),
+    mutationFn: ({ id, data }) => manageOASISRecords('update_audit', { audit_id: id, patch: data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisAudits'] });
       setSelectedAudit(null);
-    }
+    },
+    onError: (error) => {
+      toast.error(error?.message || "The audit could not be updated.");
+    },
   });
 
   // Filter audits
@@ -121,8 +132,7 @@ function EnabledOASISAuditDashboard() {
       pending_review: 'bg-yellow-100 text-yellow-800',
       in_review: 'bg-blue-100 text-blue-800',
       reviewed: 'bg-green-100 text-green-800',
-      corrected: 'bg-navy-100 text-navy-800',
-      dismissed: 'bg-slate-100 text-slate-800'
+      compliant: 'bg-emerald-100 text-emerald-800'
     };
     return styles[status] || 'bg-slate-100 text-slate-800';
   };
@@ -155,12 +165,11 @@ function EnabledOASISAuditDashboard() {
 
   const handleCompleteReview = () => {
     if (!selectedAudit) return;
+    // The broker stamps the reviewer and the time from the session.
     updateAuditMutation.mutate({
       id: selectedAudit.id,
       data: {
         status: 'reviewed',
-        reviewed_by: currentUser?.email,
-        reviewed_at: new Date().toISOString(),
         auditor_findings: reviewNotes
       }
     });
@@ -173,7 +182,7 @@ function EnabledOASISAuditDashboard() {
         <Alert className="bg-red-50 border-red-200">
           <AlertTriangle className="w-4 h-4 text-red-600" />
           <AlertDescription className="text-red-800">
-            Access denied. This page is only available to administrators.
+            Access denied. The audit queue is available to agency administrators and managers.
           </AlertDescription>
         </Alert>
       </div>
@@ -253,11 +262,9 @@ function EnabledOASISAuditDashboard() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending_review">Pending Review</SelectItem>
-                <SelectItem value="in_review">In Review</SelectItem>
-                <SelectItem value="reviewed">Reviewed</SelectItem>
-                <SelectItem value="corrected">Corrected</SelectItem>
-                <SelectItem value="dismissed">Dismissed</SelectItem>
+                {STATUS_OPTIONS.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
@@ -293,8 +300,8 @@ function EnabledOASISAuditDashboard() {
       ) : (
         <div className="space-y-3">
           {filteredAudits.map((audit) => (
-            <Card 
-              key={audit.id} 
+            <Card
+              key={audit.id}
               className={`hover:shadow-md transition-shadow cursor-pointer ${
                 audit.priority === 'critical' ? 'border-red-300' : ''
               }`}
@@ -392,8 +399,8 @@ function EnabledOASISAuditDashboard() {
                             <Badge variant="outline" className="text-xs">{issue.category}</Badge>
                             {issue.item && <Badge className="text-xs bg-navy-100 text-navy-800">{issue.item}</Badge>}
                             <Badge className={`text-xs ${
-                              issue.severity === 'high' ? 'bg-red-100 text-red-800' : 
-                              issue.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' : 
+                              issue.severity === 'high' ? 'bg-red-100 text-red-800' :
+                              issue.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
                               'bg-blue-100 text-blue-800'
                             }`}>{issue.severity}</Badge>
                           </div>
@@ -407,19 +414,15 @@ function EnabledOASISAuditDashboard() {
                   </div>
                 )}
 
-                {/* Rescore Opportunities */}
-                {selectedAudit.rescore_opportunities?.length > 0 && (
+                {/* Documentation gaps the analysis found. */}
+                {selectedAudit.documentation_gaps?.length > 0 && (
                   <div>
-                    <p className="text-sm font-semibold mb-2">Rescore Opportunities</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {selectedAudit.rescore_opportunities.map((opp, idx) => (
-                        <div key={idx} className="p-2 bg-green-50 rounded border border-green-200 text-sm">
-                          <div className="flex items-center justify-between">
-                            <Badge className="bg-green-700 text-white">{opp.m_item}</Badge>
-                          </div>
-                          <p className="text-xs mt-1">
-                            {opp.gap_description || opp.question || ''}
-                          </p>
+                    <p className="text-sm font-semibold mb-2">Documentation Gaps</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {selectedAudit.documentation_gaps.map((gap, idx) => (
+                        <div key={idx} className="p-2 bg-amber-50 rounded border border-amber-200 text-sm">
+                          {gap.m_item && <Badge variant="outline" className="font-mono">{gap.m_item}</Badge>}
+                          <p className="text-xs mt-1">{gap.gap_description || gap.question || ''}</p>
                         </div>
                       ))}
                     </div>
@@ -441,8 +444,8 @@ function EnabledOASISAuditDashboard() {
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <p className="text-xs text-slate-500 mb-1">Assign To</p>
-                    <Select 
-                      value={selectedAudit.assigned_to || ''} 
+                    <Select
+                      value={selectedAudit.assigned_to || ''}
                       onValueChange={(val) => {
                         updateAuditMutation.mutate({
                           id: selectedAudit.id,
@@ -455,8 +458,8 @@ function EnabledOASISAuditDashboard() {
                       </SelectTrigger>
                       <SelectContent>
                         {admins.map((admin) => (
-                          <SelectItem key={admin.id} value={admin.email}>
-                            {admin.full_name || admin.email}
+                          <SelectItem key={admin.email} value={admin.email}>
+                            {admin.email}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -464,18 +467,12 @@ function EnabledOASISAuditDashboard() {
                   </div>
                   <div className="flex-1">
                     <p className="text-xs text-slate-500 mb-1">Status</p>
-                    <Select 
-                      value={selectedAudit.status} 
+                    <Select
+                      value={selectedAudit.status}
                       onValueChange={(val) => {
                         updateAuditMutation.mutate({
                           id: selectedAudit.id,
-                          data: { 
-                            status: val,
-                            ...(val === 'reviewed' ? {
-                              reviewed_by: currentUser?.email,
-                              reviewed_at: new Date().toISOString()
-                            } : {})
-                          }
+                          data: { status: val }
                         });
                       }}
                     >
@@ -483,11 +480,9 @@ function EnabledOASISAuditDashboard() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="pending_review">Pending Review</SelectItem>
-                        <SelectItem value="in_review">In Review</SelectItem>
-                        <SelectItem value="reviewed">Reviewed</SelectItem>
-                        <SelectItem value="corrected">Corrected</SelectItem>
-                        <SelectItem value="dismissed">Dismissed</SelectItem>
+                        {STATUS_OPTIONS.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -498,7 +493,7 @@ function EnabledOASISAuditDashboard() {
                 <Button variant="outline" onClick={() => { setSelectedAudit(null); setReviewNotes(""); }}>
                   Close
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => setShowReportDialog(true)}
                 >
@@ -511,7 +506,7 @@ function EnabledOASISAuditDashboard() {
                   </Button>
                 )}
                 {selectedAudit.status === 'in_review' && (
-                  <Button 
+                  <Button
                     onClick={handleCompleteReview}
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -548,8 +543,7 @@ export default function OASISAuditDashboard() {
           <div className="flex items-center gap-2 font-semibold text-amber-950">
             <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Audit Dashboard Paused
           </div>
-          <p>Legacy rescore and AI report fields are unavailable pending tenant-scoped audit access and a verified clinical review contract.</p>
-          <p>No audit list, staff roster, or report generator is loaded from this tab.</p>
+          <p>The OASIS audit queue is switched off for this deployment.</p>
         </CardContent>
       </Card>
     );

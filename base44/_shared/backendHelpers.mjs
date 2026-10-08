@@ -15,6 +15,9 @@
 import { AREA_CODE_TIMEZONE } from '../../src/components/voice/quietHours.js';
 import { DEFAULT_URGENT_KEYWORDS } from '../../src/components/voice/urgentKeywords.js';
 import { isAllowedDestination, PREMIUM_AREA_CODES } from '../../src/components/voice/costControls.js';
+import { OASIS_AUDIT_THRESHOLDS, buildOasisAuditRecord } from '../../src/components/oasis/oasisAuditFlag.js';
+import { OASIS_EXTRACTED_ITEM_MAP, buildExtractedReviewItems } from '../../src/components/oasis/oasisExtractedItems.js';
+import { deriveActionTypes, evaluateRuleTrigger } from '../../src/components/oasis/workflowEngineUtils.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -44,6 +47,34 @@ function isAllowedDestinationSource() {
 // src/components/voice/costControls.js — this copy is generated from it verbatim.
 const PREMIUM_AREA_CODES = new Set([${codes}]);
 ${isAllowedDestination.toString()}`;
+}
+
+// OASIS audit flag — single source of truth is src/components/oasis/oasisAuditFlag.js.
+// The broker that saves an upload decides the audit flag from the analysis it is
+// saving; generating its copy from the module the browser tests run against means
+// the threshold and the record shape cannot drift between the two.
+function oasisAuditFlagSource() {
+  return `// Generated verbatim from src/components/oasis/oasisAuditFlag.js.
+const OASIS_AUDIT_THRESHOLDS = ${JSON.stringify(OASIS_AUDIT_THRESHOLDS)};
+${buildOasisAuditRecord.toString()}`;
+}
+
+// OASIS extracted-item review rows — single source of truth is
+// src/components/oasis/oasisExtractedItems.js (see oasisAuditFlagSource).
+function oasisExtractedItemsSource() {
+  return `// Generated verbatim from src/components/oasis/oasisExtractedItems.js.
+const OASIS_EXTRACTED_ITEM_MAP = ${JSON.stringify(OASIS_EXTRACTED_ITEM_MAP)};
+${buildExtractedReviewItems.toString()}`;
+}
+
+// OASIS automation rule evaluation — single source of truth is
+// src/components/oasis/workflowEngineUtils.js. The browser used to evaluate the
+// rules and then write the tasks, alerts and execution records itself; the
+// evaluation now runs where the writes are authorized, from the same code.
+function oasisWorkflowRulesSource() {
+  return `// Generated verbatim from src/components/oasis/workflowEngineUtils.js.
+const deriveActionTypes = ${deriveActionTypes.toString()};
+const evaluateRuleTrigger = ${evaluateRuleTrigger.toString()};`;
 }
 
 export const SHARED_HELPERS = {
@@ -1732,5 +1763,84 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
   const code = Number(status);
   return !Number.isFinite(code) || code >= 500;
 }`,
+
+  // OASIS chart and record scope, from TRUSTED claims only. Every caller hands
+  // these a user already rebuilt by withTrustedClaims(base44, await
+  // base44.auth.me()), so agency_id, account_type and is_manager come from the
+  // caller's one active AgencyMembership and never from the self-editable
+  // profile. The built-in admin role (protected from auth.updateMe) is the
+  // platform owner and may open any chart. Anyone else needs an active
+  // membership in the patient's own agency and then an agency-wide role
+  // (agency_admin or manager), to be the patient's recorded creator, or an exact
+  // active PatientCareTeamAssignment. Patient.assigned_nurses and
+  // User.agency_name are never consulted: a nurse can write both.
+  oasisChartAccess: `async function assertOasisChartAccess(base44, user, patient) {
+  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  if (user.role === 'admin') return null;
+  const agencyId = typeof user.agency_id === 'string' ? user.agency_id : '';
+  if (!agencyId || patient.agency_id !== agencyId) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (user.account_type === 'agency_admin' || user.is_manager === true) return null;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (email && String(patient.created_by_user_email_normalized || '') === email
+    && patient.created_by_user_id === user.id) return null;
+  const assignments = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+    { agency_id: agencyId, patient_id: patient.id, user_id: user.id }, '-updated_date', 5,
+  ).catch(() => []);
+  const active = (Array.isArray(assignments) ? assignments : []).some((row) => (
+    row?.status === 'active'
+    && row.agency_id === agencyId
+    && row.patient_id === patient.id
+    && row.user_id === user.id
+  ));
+  return active ? null : Response.json({ error: 'Forbidden' }, { status: 403 });
+}`,
+
+  // Which OASIS records a caller sees, from the same trusted claims. The scope
+  // is decided once per request: the platform owner sees every agency, an
+  // agency lead (agency_admin or manager membership) sees their agency, and
+  // anyone else sees what they authored plus the charts they may open.
+  oasisRecordScope: `function oasisCallerScope(user) {
+  if (!user || typeof user !== 'object') return null;
+  const userId = typeof user.id === 'string' ? user.id : '';
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!userId || !email) return null;
+  if (user.role === 'admin') return { platform: true, lead: true, agencyId: '', userId, email };
+  const agencyId = typeof user.agency_id === 'string' ? user.agency_id : '';
+  if (!agencyId) return null;
+  const lead = user.account_type === 'agency_admin' || user.is_manager === true;
+  return { platform: false, lead, agencyId, userId, email };
+}
+async function oasisOpenablePatientIds(base44, scope) {
+  // null means "every chart in scope": the platform owner and an agency lead.
+  if (!scope || scope.platform || scope.lead) return null;
+  const entities = base44.asServiceRole.entities;
+  const [created, seats] = await Promise.all([
+    entities.Patient.filter(
+      { agency_id: scope.agencyId, created_by_user_id: scope.userId }, '-updated_date', 2000,
+    ).catch(() => []),
+    entities.PatientCareTeamAssignment.filter(
+      { agency_id: scope.agencyId, user_id: scope.userId, status: 'active' }, '-updated_date', 2000,
+    ).catch(() => []),
+  ]);
+  const ids = new Set();
+  for (const row of Array.isArray(created) ? created : []) {
+    if (row?.agency_id === scope.agencyId && row.created_by_user_id === scope.userId
+      && String(row.created_by_user_email_normalized || '') === scope.email) ids.add(row.id);
+  }
+  for (const row of Array.isArray(seats) ? seats : []) {
+    if (row?.status === 'active' && row.agency_id === scope.agencyId && row.user_id === scope.userId) {
+      ids.add(row.patient_id);
+    }
+  }
+  return ids;
+}`,
+
+  oasisAuditFlag: oasisAuditFlagSource(),
+
+  oasisExtractedItems: oasisExtractedItemsSource(),
+
+  oasisWorkflowRules: oasisWorkflowRulesSource(),
 
 };

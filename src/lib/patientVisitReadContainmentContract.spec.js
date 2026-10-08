@@ -568,7 +568,7 @@ function scanDirectPatientVisitReads(fileName, sourceText) {
   return [...findings.values()];
 }
 
-// The 37 removed calls across these 32 modules are a reviewed migration
+// The 36 removed calls across these 31 modules are a reviewed migration
 // inventory. Each entry records its original direct-read count and the broker
 // token(s) that must remain present after the cutover.
 //
@@ -582,7 +582,10 @@ function scanDirectPatientVisitReads(fileName, sourceText) {
 // whose sole consumer sat behind the permanently-off PDGM legacy gate. The
 // `hospitalization_risk` and `clinical_insights` visit purposes now have no
 // frontend caller; they stay in the purpose policies untouched, because the
-// backend capability is not part of this removal.
+// backend capability is not part of this removal. It was then 37 across 32
+// until the OASIS Center was turned back on, which deleted the never-mounted
+// `AIProactiveOASISAssistant.jsx` (one `documentation` read) as a duplicate of
+// the chart tools the center already mounts.
 const MIGRATED_CALLSITES = Object.freeze({
   'src/components/admin/AIAutoTagger.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'ai_tagging'/],
   'src/components/admin/AIKPIReportGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
@@ -597,7 +600,6 @@ const MIGRATED_CALLSITES = Object.freeze({
   'src/components/hub-tabs/AdminReportsCenter.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
   'src/components/hub-tabs/ComplianceMonitoringDashboard.jsx': [1, /visitComplianceAvailable\s*=\s*false/],
   'src/components/hub-tabs/PatientEducationPortal.jsx': [1, /Patient education generation is temporarily unavailable[\s\S]*?tenant-safe storage/],
-  'src/components/oasis/AIProactiveOASISAssistant.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/oasis/SmartNoteDataImport.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/patient/ClinicalEventsTimeline.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
   'src/components/patient/PatientMergeDialog.jsx': [2, /purpose:\s*'activity'/],
@@ -791,8 +793,8 @@ describe('Patient/Visit direct-read containment', () => {
   });
 
   it('keeps the complete 37-read/32-module migration inventory on reviewed brokers', () => {
-    expect(Object.keys(MIGRATED_CALLSITES)).toHaveLength(32);
-    expect(Object.values(MIGRATED_CALLSITES).reduce((sum, [count]) => sum + count, 0)).toBe(37);
+    expect(Object.keys(MIGRATED_CALLSITES)).toHaveLength(31);
+    expect(Object.values(MIGRATED_CALLSITES).reduce((sum, [count]) => sum + count, 0)).toBe(36);
     for (const [relative, [, ...requirements]] of Object.entries(MIGRATED_CALLSITES)) {
       const source = readFileSync(path.join(ROOT, relative), 'utf8');
       for (const requirement of requirements) expect(source, relative).toMatch(requirement);

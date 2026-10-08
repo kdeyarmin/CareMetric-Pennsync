@@ -8,9 +8,15 @@ import PageContainer from "@/components/ui/PageContainer";
 import { useIsEmbedded } from "@/components/ui/embeddedPage";
 import {
   ChevronDown, ChevronUp, Users, Search, CheckCircle2, History,
-  Loader2, AlertCircle, AlertTriangle, Brain, Activity, ShieldAlert, Lightbulb, Printer
+  Loader2, AlertCircle, AlertTriangle, Brain, Activity, ShieldAlert, Lightbulb, Printer, Save
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/AuthContext";
+import { todayEastern } from "@/components/utils/timezone";
+import CmsResponseEntry from "@/components/oasis/CmsResponseEntry";
+import { pruneToVisitType, selectionsForSave } from "@/components/oasis/cmsResponseSelections";
+import { saveOfficialResponses } from "@/components/oasis/responseSchema/oasisWriteAdapter.js";
+import OASISQuickUpdate, { VISIT_TYPES, completeReferralSocForPatient } from "@/components/clinical/OASISQuickUpdate";
 import { exportToPDF } from "@/components/utils/pdfExporter";
 import { evaluateOASIS, computeCareScope } from "@/components/oasis/oasisScoringEngine";
 import { buildLegacyFormOutput } from "@/components/oasis/responseSchema/legacyFormOutput.js";
@@ -22,8 +28,8 @@ import OASISQuestionGuidance from "@/components/oasis/OASISQuestionGuidance";
 import { OASIS_GUIDANCE } from "@/components/oasis/oasisGuidanceData";
 import NoteToOasisPrefill from "@/components/oasis/NoteToOasisPrefill";
 import { OASIS_SECTIONS } from "@/components/oasis/oasisQuestions";
-import { VISIT_TYPES } from "@/components/clinical/OASISQuickUpdate";
 import { AssessmentSkeleton } from "@/components/ui/PageSkeleton";
+import { Input } from "@/components/ui/input";
 import { debounce } from "@/lib/debounce";
 import { LOCAL_PHI_KEYS } from "@/lib/localPhiKeys";
 
@@ -52,7 +58,11 @@ function isAnswered(question, answers) {
 // idle timeout mid-assessment would be silent loss of documented care; see
 // src/lib/localPhiKeys.js).
 const DRAFT_AUTOSAVE_DEBOUNCE_MS = 1000;
-const SMART_OASIS_ASSESSMENT_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). The patient list
+// comes from the authorized roster broker, the CMS-aligned responses save only
+// through the protected saveOasisResponses broker (which authorizes the caller
+// and the chart itself), and the legacy screening answers stay a local draft.
+const SMART_OASIS_ASSESSMENT_ENABLED = true;
 
 function draftStorageKey(patientId, visitType) {
   const typeSlug = String(visitType).toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -62,9 +72,11 @@ function draftStorageKey(patientId, visitType) {
 function readDraft(key) {
   try {
     const draft = JSON.parse(localStorage.getItem(key) ?? "null");
-    const hasAnswers = draft && typeof draft.answers === "object" && draft.answers !== null &&
-      Object.keys(draft.answers).length > 0;
-    return hasAnswers ? draft : null;
+    if (!draft || typeof draft !== "object") return null;
+    const answers = draft.answers && typeof draft.answers === "object" ? draft.answers : {};
+    const cms = draft.cms_responses && typeof draft.cms_responses === "object" ? draft.cms_responses : {};
+    const hasAnswers = Object.keys(answers).length > 0 || Object.keys(cms).length > 0;
+    return hasAnswers ? { ...draft, answers, cms_responses: cms } : null;
   } catch {
     return null; // malformed entry or storage unavailable — behave as "no draft"
   }
@@ -280,12 +292,31 @@ function EnabledSmartOASISAssessment() {
   const [exporting, setExporting] = useState(false);
   const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [currentGuidance, setCurrentGuidance] = useState({ questionId: null, questionLabel: "" });
+  // The CMS-aligned (v2) responses the clinician selects — the only answers that
+  // are saved. The screening answers above stay a local draft and printed guide.
+  const [cmsResponses, setCmsResponses] = useState({});
+  const [assessmentDate, setAssessmentDate] = useState(() => todayEastern());
+  const [saving, setSaving] = useState(false);
+  // "full" — the whole assessment; "quick" — the functional-items quick update.
+  const [mode, setMode] = useState("full");
+  const { user, tenantContext } = useAuth();
+  const agencyId = tenantContext?.agency_id || null;
 
   const { data: patients = [], isLoading: patientsLoading } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 100 });
 
   const handleAnswer = useCallback((questionId, value) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   }, []);
+
+  const handleCmsResponse = useCallback((definitionId, value) => {
+    setCmsResponses(prev => ({ ...prev, [definitionId]: value }));
+  }, []);
+
+  // A changed assessment reason keeps only the selections CMS still collects.
+  const handleVisitTypeChange = (value) => {
+    setVisitType(value);
+    setCmsResponses(prev => pruneToVisitType(value, prev));
+  };
 
   // ── Draft autosave + recovery ──────────────────────────────────────────────
   const draftKey = selectedPatientId ? draftStorageKey(selectedPatientId, visitType) : null;
@@ -310,35 +341,44 @@ function EnabledSmartOASISAssessment() {
     if (previousPatientIdRef.current === selectedPatientId) return;
     previousPatientIdRef.current = selectedPatientId;
     setAnswers({});
+    setCmsResponses({});
   }, [selectedPatientId]);
 
   // Autosave (debounced) so in-progress work survives a refresh. Guarded on the
   // answers object actually changing: switching patient/visit type alone must
   // not re-file the on-screen answers under the new selection's key.
   const lastSeenAnswersRef = useRef(answers);
+  const lastSeenCmsRef = useRef(cmsResponses);
   useEffect(() => {
-    const answersChanged = lastSeenAnswersRef.current !== answers;
+    const answersChanged = lastSeenAnswersRef.current !== answers || lastSeenCmsRef.current !== cmsResponses;
     lastSeenAnswersRef.current = answers;
-    if (!answersChanged || !draftKey || Object.keys(answers).length === 0) return;
+    lastSeenCmsRef.current = cmsResponses;
+    if (!answersChanged || !draftKey) return;
+    if (Object.keys(answers).length === 0 && Object.keys(cmsResponses).length === 0) return;
     writeDraft(draftKey, {
       patient_id: selectedPatientId,
       visit_type: visitType,
       answers,
+      cms_responses: cmsResponses,
       saved_at: new Date().toISOString(),
     });
-  }, [answers, draftKey, selectedPatientId, visitType, writeDraft]);
+  }, [answers, cmsResponses, draftKey, selectedPatientId, visitType, writeDraft]);
 
   // Offer to restore a matching saved draft — only while nothing has been
   // entered yet, so a restore can never clobber live entries (and the banner
   // dismisses itself once the clinician starts answering).
   useEffect(() => {
-    if (!draftKey || Object.keys(answers).length > 0) { setDraftPrompt(null); return; }
+    if (!draftKey || Object.keys(answers).length > 0 || Object.keys(cmsResponses).length > 0) {
+      setDraftPrompt(null);
+      return;
+    }
     const draft = readDraft(draftKey);
     setDraftPrompt(draft && draft.patient_id === selectedPatientId ? draft : null);
-  }, [draftKey, selectedPatientId, answers]);
+  }, [draftKey, selectedPatientId, answers, cmsResponses]);
 
   const handleRestoreDraft = () => {
     if (draftPrompt?.answers) setAnswers(draftPrompt.answers);
+    if (draftPrompt?.cms_responses) setCmsResponses(pruneToVisitType(visitType, draftPrompt.cms_responses));
     setDraftPrompt(null);
   };
 
@@ -364,8 +404,56 @@ function EnabledSmartOASISAssessment() {
   const totalQuestions = OASIS_SECTIONS.reduce((sum, s) => sum + s.questions.length, 0);
   const completionPct = Math.round((answeredTotal / totalQuestions) * 100);
 
-  const handleSaveClick = () => {
-    toast.error("OASIS saving is temporarily unavailable pending tenant security validation.");
+  const cmsSelections = useMemo(() => selectionsForSave(visitType, cmsResponses), [visitType, cmsResponses]);
+
+  // Save the CMS-aligned selections as a new dated record through the protected
+  // broker. The broker decides whether this clinician may write to this chart;
+  // a refusal is shown by its own reason, never retried silently.
+  const handleSave = async (status) => {
+    if (!selectedPatientId) { toast.error("Please select a patient first."); return; }
+    if (cmsSelections.length === 0) {
+      toast.error("Select at least one CMS-aligned response before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await saveOfficialResponses({
+        agencyId,
+        assessment: {
+          patient_id: selectedPatientId,
+          visit_type: visitType,
+          assessment_date: assessmentDate,
+          status,
+        },
+        selections: cmsSelections,
+        clinicianEmail: user?.email,
+      });
+      if (!result.ok) {
+        toast.error(result.detail || "The assessment was not saved.");
+        return;
+      }
+      // The saved responses now live server-side; the local draft is obsolete.
+      writeDraft.cancel();
+      if (draftKey) {
+        try { localStorage.removeItem(draftKey); } catch { /* storage unavailable */ }
+      }
+      if (status === "completed" && visitType === "Start of Care") {
+        // Fire-and-forget: close the referral's intake→SOC clock without ever
+        // blocking or failing the save.
+        completeReferralSocForPatient(selectedPatientId, assessmentDate, agencyId);
+      }
+      // Clear the form: leaving committed responses on screen is how they could
+      // be re-saved onto the next patient selected.
+      setCmsResponses({});
+      setAnswers({});
+      toast.success(result.created === false
+        ? "This assessment was already saved."
+        : status === "completed"
+          ? `OASIS assessment saved as completed (${result.completion_percentage ?? 0}% of CMS items).`
+          : "OASIS assessment saved as a draft.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const careScopeBadge = {
@@ -510,7 +598,7 @@ function EnabledSmartOASISAssessment() {
         />
 
         {/* Assessment reason (RFA) — the exact OASISAssessment.visit_type enum. */}
-        <Select value={visitType} onValueChange={setVisitType}>
+        <Select value={visitType} onValueChange={handleVisitTypeChange}>
           <SelectTrigger
             aria-label="Assessment reason"
             className="h-auto w-auto gap-1.5 rounded-lg border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800"
@@ -521,6 +609,35 @@ function EnabledSmartOASISAssessment() {
             {VISIT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
           </SelectContent>
         </Select>
+
+        {/* The assessment date decides the instrument (OASIS-E2 from 2026-04-01). */}
+        <Input
+          type="date"
+          aria-label="Assessment date"
+          value={assessmentDate}
+          onChange={(e) => setAssessmentDate(e.target.value)}
+          className="h-auto w-auto rounded-lg border-slate-200 px-3 py-1.5 text-sm"
+        />
+
+        {/* Full assessment, or the functional-items quick update. */}
+        <div className="flex rounded-lg border border-slate-200 overflow-hidden" role="group" aria-label="Entry mode">
+          <button
+            type="button"
+            onClick={() => setMode("full")}
+            aria-pressed={mode === "full"}
+            className={`px-3 py-1.5 text-xs font-semibold ${mode === "full" ? "bg-indigo-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            Full assessment
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("quick")}
+            aria-pressed={mode === "quick"}
+            className={`px-3 py-1.5 text-xs font-semibold ${mode === "quick" ? "bg-indigo-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            Quick update
+          </button>
+        </div>
 
         {answeredTotal > 0 && (
           <div className="flex items-center gap-2">
@@ -562,10 +679,27 @@ function EnabledSmartOASISAssessment() {
             {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Printer className="w-3.5 h-3.5 mr-1.5" />}
             Print Guide
           </Button>
-          <Button size="sm" onClick={handleSaveClick} disabled>
-            <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />
-            Saving Paused
-          </Button>
+          {mode === "full" && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleSave("draft")}
+                disabled={saving || !selectedPatientId || cmsSelections.length === 0}
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
+                Save Draft
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleSave("completed")}
+                disabled={saving || !selectedPatientId || cmsSelections.length === 0}
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />}
+                Save Completed
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -580,7 +714,7 @@ function EnabledSmartOASISAssessment() {
               <div className="flex-1 min-w-[12rem]">
                 <p className="text-sm font-semibold text-amber-800">Unsaved draft found</p>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  {Object.keys(draftPrompt.answers).length} answer{Object.keys(draftPrompt.answers).length !== 1 ? "s" : ""} for
+                  {Object.keys(draftPrompt.answers).length + Object.keys(draftPrompt.cms_responses || {}).length} answer{Object.keys(draftPrompt.answers).length + Object.keys(draftPrompt.cms_responses || {}).length !== 1 ? "s" : ""} for
                   this patient ({draftPrompt.visit_type}) autosaved{" "}
                   {draftPrompt.saved_at ? new Date(draftPrompt.saved_at).toLocaleString() : "earlier"}.
                 </p>
@@ -591,21 +725,39 @@ function EnabledSmartOASISAssessment() {
               </div>
             </div>
           )}
-          {/* Evidence only — deliberately NOT wired to handleAnswer. AI may show
-              what the note says; the clinician chooses every response. */}
-          <NoteToOasisPrefill
-            patientId={selectedPatientId}
-            sections={OASIS_SECTIONS}
-          />
-          {OASIS_SECTIONS.map(section => (
-            <SectionCard 
-              key={section.id} 
-              section={section} 
-              answers={answers} 
-              onChange={handleAnswer}
-              onShowGuidance={handleShowGuidance}
-            />
-          ))}
+          {mode === "quick" ? (
+            <OASISQuickUpdate patient={patients.find(p => p.id === selectedPatientId) || null} />
+          ) : (
+            <>
+              {/* The saved part: CMS-aligned responses the clinician selects. */}
+              <CmsResponseEntry
+                visitType={visitType}
+                responses={cmsResponses}
+                onChange={handleCmsResponse}
+                disabled={saving || !selectedPatientId}
+              />
+              {/* Evidence only — deliberately NOT wired to handleAnswer. AI may show
+                  what the note says; the clinician chooses every response. */}
+              <NoteToOasisPrefill
+                patientId={selectedPatientId}
+                sections={OASIS_SECTIONS}
+              />
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+                <span className="font-semibold text-slate-700">PennSync screening companion.</span>{" "}
+                The answers below drive the live recommendations, compliance and logic checks and the printed
+                guide. They are kept as a local draft only and are never saved as OASIS responses.
+              </div>
+              {OASIS_SECTIONS.map(section => (
+                <SectionCard
+                  key={section.id}
+                  section={section}
+                  answers={answers}
+                  onChange={handleAnswer}
+                  onShowGuidance={handleShowGuidance}
+                />
+              ))}
+            </>
+          )}
         </div>
 
         {/* Right — tabbed panel */}
@@ -638,8 +790,7 @@ export default function SmartOASISAssessment() {
           <div className="flex items-center gap-2 font-semibold">
             <ShieldAlert className="h-5 w-5" /> Smart OASIS Assessment Paused
           </div>
-          <p className="mt-2">This assessment is unavailable pending verified OASIS-E definitions, a protected response schema, and tenant-scoped persistence.</p>
-          <p className="mt-2">No patient list, saved assessment, response scale, compliance rule, clinical recommendation, autosaved PHI, or export guide is loaded from this tab.</p>
+          <p className="mt-2">OASIS entry is switched off for this deployment.</p>
         </div>
       </PageContainer>
     );

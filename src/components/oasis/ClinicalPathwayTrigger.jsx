@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,27 +14,66 @@ import {
   FileText,
   ClipboardList,
   Target,
-  TrendingUp,
   ListChecks,
-  Activity
+  Activity,
+  CheckCircle2,
+  Loader2
 } from "lucide-react";
-import { ALL_ROWS } from '@/lib/queryLimits';
+import { manageOASISRecords, oasisClientKey } from "@/functions/manageOASISRecords";
+import { addDaysToToday } from "@/components/oasis/oasisTaskDates";
 
-const TASK_CREATION_BLOCKER =
-  'Clinical-pathway task creation is paused pending an atomic, idempotent, patient-authorized broker.';
-
+/**
+ * Matches the patient's extracted OASIS data against the agency's active
+ * clinical pathway library and offers each triggered pathway's documentation
+ * checklist and recommended tasks. The library is read through the OASIS record
+ * broker (ClinicalPathway denies every direct client read), projected without
+ * its legacy PDGM-group and rescore fields; tasks are created through the same
+ * broker after it confirms the clinician may open this chart, keyed per pathway
+ * task so a second click adds nothing twice.
+ */
 export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, patientId, onPathwaysTriggered }) {
   const [triggeredPathways, setTriggeredPathways] = useState([]);
+  const [creatingFor, setCreatingFor] = useState(null);
+  const [createdFor, setCreatedFor] = useState([]);
+  const queryClient = useQueryClient();
 
   // Fetch all active clinical pathways
   const { data: pathways = [] } = useQuery({
     // Active-only — see AIPathwayRecommender.jsx.
     queryKey: ['clinicalPathways', 'active'],
-    queryFn: async () => {
-      const result = await base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS);
-      return result;
-    }
+    queryFn: async () => (await manageOASISRecords('list_pathways'))?.pathways || [],
   });
+
+  const createPathwayTasks = async (pathway) => {
+    if (!patientId || !pathway?.recommended_tasks?.length) return;
+    setCreatingFor(pathway.id);
+    try {
+      const { results = [] } = await manageOASISRecords('create_tasks', {
+        patient_id: patientId,
+        tasks: pathway.recommended_tasks.slice(0, 25).map((task, index) => ({
+          key: oasisClientKey('pathway-task', patientId, pathway.id, index, task.task_title),
+          title: String(task.task_title || `${pathway.pathway_name} task`).slice(0, 200),
+          description: task.task_description || '',
+          type: task.task_type || 'followup',
+          priority: task.priority,
+          due_date: addDaysToToday({ today: 0, '24_hours': 1, '48_hours': 2, this_week: 7 }[task.due_timeframe] ?? 7),
+          ai_reason: `Recommended by the ${pathway.pathway_name} clinical pathway`,
+        })),
+      });
+      const added = results.filter((row) => row.status === 'created' || row.status === 'existing').length;
+      if (added === pathway.recommended_tasks.slice(0, 25).length) {
+        setCreatedFor((prev) => [...new Set([...prev, pathway.id])]);
+        toast.success(`${added} pathway task${added === 1 ? '' : 's'} added to this patient.`);
+      } else {
+        toast.error(`${added} of ${results.length} pathway tasks were added. Try again for the rest.`);
+      }
+      if (added) queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    } catch (error) {
+      toast.error(error?.message || 'The pathway tasks could not be created.');
+    } finally {
+      setCreatingFor(null);
+    }
+  };
 
   const evaluateCondition = useCallback((condition, data) => {
     const { type, value, operator } = condition;
@@ -158,7 +197,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
         <Alert className="bg-indigo-50 border-indigo-200">
           <Zap className="w-4 h-4 text-indigo-600" />
           <AlertDescription className="text-indigo-800 text-sm">
-            Based on this patient's diagnosis, we've activated specialized clinical pathways to guide documentation and optimize care.
+            Based on this patient's diagnoses, these clinical pathways apply. Use them to guide documentation and the plan of care.
           </AlertDescription>
         </Alert>
 
@@ -173,13 +212,6 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                 </Badge>
               </div>
               <p className="text-sm text-indigo-700">{pathway.description}</p>
-              {pathway.pdgm_clinical_group && (
-                <div className="mt-2">
-                  <Badge variant="outline" className="bg-white text-indigo-700">
-                    Expected PDGM Group: {pathway.pdgm_clinical_group.replace('MMTA_', '')}
-                  </Badge>
-                </div>
-              )}
             </div>
 
             <div className="p-4 space-y-4">
@@ -209,29 +241,6 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                             ))}
                           </div>
                         )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Rescore Opportunities */}
-              {pathway.rescore_opportunities && pathway.rescore_opportunities.length > 0 && (
-                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                  <div className="flex items-center gap-2 mb-3">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <h4 className="font-semibold text-green-900">Rescore Opportunities</h4>
-                  </div>
-                  <div className="space-y-2">
-                    {pathway.rescore_opportunities.map((opp, oIdx) => (
-                      <div key={oIdx} className="bg-white p-2 rounded border border-green-200">
-                        <div className="flex items-center justify-between mb-1">
-                          <Badge className="bg-green-700 text-white font-mono">{opp.m_item}</Badge>
-                        </div>
-                        <p className="text-xs text-slate-600 mb-1">
-                          Typical Range: <span className="font-medium">{opp.typical_score_range}</span>
-                        </p>
-                        <p className="text-sm text-slate-800">{opp.documentation_to_support}</p>
                       </div>
                     ))}
                   </div>
@@ -282,11 +291,16 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                       <h4 className="font-semibold text-navy-900">Recommended Tasks</h4>
                     </div>
                     <Button
-                      disabled
                       size="sm"
+                      onClick={() => createPathwayTasks(pathway)}
+                      disabled={!patientId || creatingFor === pathway.id || createdFor.includes(pathway.id)}
                       className="bg-navy-600 hover:bg-navy-700"
                     >
-                      Task creation paused
+                      {creatingFor === pathway.id
+                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Adding…</>
+                        : createdFor.includes(pathway.id)
+                          ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Tasks added</>
+                          : 'Add tasks'}
                     </Button>
                   </div>
                   <div className="space-y-2">
@@ -312,9 +326,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                       ⚠ Link to a patient record to create tasks
                     </p>
                   )}
-                  {patientId && (
-                    <p className="mt-2 text-xs text-amber-700">{TASK_CREATION_BLOCKER}</p>
-                  )}
+
                 </div>
               )}
             </div>
@@ -335,9 +347,9 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
               </p>
             </div>
             <div className="bg-white p-2 rounded">
-              <p className="text-slate-500">Rescore Opportunities</p>
+              <p className="text-slate-500">Comorbidities to Verify</p>
               <p className="text-lg font-bold text-green-700">
-                {triggeredPathways.reduce((sum, p) => sum + (p.rescore_opportunities?.length || 0), 0)}
+                {triggeredPathways.reduce((sum, p) => sum + (p.comorbidity_checklist?.length || 0), 0)}
               </p>
             </div>
             <div className="bg-white p-2 rounded">

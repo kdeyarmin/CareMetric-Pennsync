@@ -5,7 +5,11 @@ import OASISNoAnalysisCard from "@/components/oasis/OASISNoAnalysisCard";
 import OASISValidationPanel from "@/components/oasis/OASISValidationPanel";
 import AdvancedComplianceAnalyzer from "@/components/oasis/AdvancedComplianceAnalyzer";
 
-const OASIS_COMPLIANCE_REVIEW_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). The compliance
+// panels review the analysis on screen; the only records they read are this
+// chart's prior uploads (through listOASISUploads, scoped server-side from
+// trusted membership) and the caller's own compliance audits (read rule).
+const OASIS_COMPLIANCE_REVIEW_ENABLED = true;
 
 function EnabledOASISComplianceReview({ analysisHandoff }) {
   const { analysisResults, pdgmData, patientId } = analysisHandoff || {};
@@ -121,8 +125,7 @@ export default function OASISComplianceReview({ analysisHandoff }) {
         <CardContent className="p-6">
           <p className="font-semibold text-amber-900">OASIS Compliance AI Review Paused</p>
           <p className="mt-2 text-sm text-amber-800">
-            Automated OASIS compliance conclusions are unavailable pending verified CMS content,
-            tenant-scoped authorization, and clinician review.
+            Compliance review is switched off for this deployment.
           </p>
         </CardContent>
       </Card>

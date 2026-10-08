@@ -50,7 +50,9 @@ import KeyTakeawaysSummary from "@/components/oasis/KeyTakeawaysSummary";
 import DocumentationQualitySuggestions from "@/components/oasis/DocumentationQualitySuggestions";
 import OASISTaskGenerator from "@/components/oasis/OASISTaskGenerator";
 import SmartNoteDataImport from "@/components/oasis/SmartNoteDataImport";
-import { useAutoFlagOASIS, THRESHOLDS } from "@/components/oasis/OASISAutoFlagger";
+import { OASIS_AUDIT_THRESHOLDS as THRESHOLDS } from "@/components/oasis/oasisAuditFlag";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
+import ComprehensiveOASISReviewer from "@/components/oasis/ComprehensiveOASISReviewer";
 const OASISExportManager = lazy(() => import("@/components/oasis/OASISExportManager"));
 import PatientMatchSelector from "@/components/oasis/PatientMatchSelector";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -68,12 +70,15 @@ import VisitTypeComplianceChecker from "@/components/compliance/VisitTypeComplia
 import OASISPDFComparison from "@/components/oasis/OASISPDFComparison";
 import { toast } from 'sonner';
 
-// Whole-surface containment gate. This is intentionally separate from role
-// checks: current hosted User/Agency claims are not a proven immutable tenant
-// boundary, and the dormant analyzer contains auto-running AI, global reads,
-// workflow mutations, and OASIS response suggestions. (Its PDGM payment,
-// revenue, scenario and outcome-prediction surfaces were removed outright.)
-const OASIS_ANALYZER_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). Every record this
+// analyzer reads or writes goes through a server broker that decides the
+// caller's scope from the protected admin role, the caller's own membership and
+// the care-team table: saved analyses list through listOASISUploads, and saving,
+// the comprehensive review, workflow runs, tasks and match feedback through
+// manageOASISRecords. The AI here reviews DOCUMENTATION; it never chooses an
+// OASIS response. (Its PDGM payment, revenue, scenario and outcome-prediction
+// surfaces were removed outright.)
+const OASIS_ANALYZER_ENABLED = true;
 
 function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   const [activeTab, setActiveTab] = useState("single");
@@ -85,6 +90,9 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   const [pdgmData, setPdgmData] = useState(null);
   const [error, setError] = useState(null);
   const [analysisId, setAnalysisId] = useState(null);
+  // The saved OASISUpload record this analysis lives in (null until saved or
+  // loaded). Workflow runs, persisted reviews and handoffs key on it.
+  const [savedUploadId, setSavedUploadId] = useState(null);
   const [patientName, setPatientName] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [uploadedFileUrl, setUploadedFileUrl] = useState(null);
@@ -131,29 +139,39 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
     queryFn: async () => (await base44.functions.invoke('listOASISUploads', { sort: '-created_date', limit: 50 }))?.data?.uploads || [],
   });
 
-  // Save OASIS mutation
+  // Save through the record broker: it checks the chart (when one is linked),
+  // stamps the agency and author itself, keys the save on the analysis id so a
+  // retry never duplicates it, and decides the audit flag from the analysis.
   const saveOASISMutation = useMutation({
-    mutationFn: (data) => base44.entities.OASISUpload.create(data),
-    onSuccess: () => {
+    mutationFn: (data) => manageOASISRecords('create_upload', data),
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['oasisUploads'] });
+      queryClient.invalidateQueries({ queryKey: ['oasisRecords'] });
+      queryClient.invalidateQueries({ queryKey: ['oasisAudits'] });
       setSavedToPatient(true);
+      if (result?.upload?.id) setSavedUploadId(result.upload.id);
     },
   });
 
-  // Auto-flag mutation for audit workflow
-  const autoFlagMutation = useAutoFlagOASIS();
+  // Persist a finished comprehensive review onto the saved record so reopening
+  // it never re-bills the model.
+  const persistComprehensiveReview = (uploadId, review) => {
+    if (!uploadId || !review) return;
+    manageOASISRecords('save_comprehensive_review', { upload_id: uploadId, comprehensive_review: review })
+      .catch((err) => console.error('Failed to persist comprehensive review:', err?.message));
+  };
 
   // Generate unique analysis ID when new analysis starts
   useEffect(() => {
     if (analysisResults && !analysisId) {
         const newAnalysisId = `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         setAnalysisId(newAnalysisId);
-        const extractedName = analysisResults.pdgm_data?.patient_info?.name || 
-                               pdgmData?.patient_info?.name || 
+        const extractedName = analysisResults.pdgm_data?.patient_info?.name ||
+                               pdgmData?.patient_info?.name ||
                                "Unknown Patient";
         setPatientName(extractedName);
       setSavedToPatient(false);
-      
+
       // Advanced fuzzy matching algorithm with multiple strategies
       if (extractedName && extractedName !== "Unknown Patient" && extractedName !== "Unknown Patient - Verify Document" && patients.length > 0) {
         const extractedDOB = analysisResults.pdgm_data?.patient_info?.dob;
@@ -166,15 +184,15 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
         })
         .filter(m => m.confidence >= 40) // Only show matches with at least 40% confidence
         .sort((a, b) => b.confidence - a.confidence);
-        
+
         const results = {
           extractedName,
           extractedDOB,
           matches: matchedPatients
         };
-        
+
         setMatchResults(results);
-        
+
         // Pre-select the strongest match so the nurse can review and confirm —
         // but NEVER auto-save. The match score can reach this threshold on name
         // signals alone (the name/DOB are themselves AI-extracted from the PDF),
@@ -210,6 +228,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
     // one here filed this assessment's action items under the previous
     // assessment's workflow and patient name.
     setAnalysisId(null);
+    setSavedUploadId(null);
     setPatientName("");
     setSavedToPatient(false);
     setAnalysisResults(result);
@@ -226,6 +245,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
       setError(null);
       setAnalysisResults(null);
       setAnalysisId(null);
+      setSavedUploadId(null);
       setSavedToPatient(false);
       setUploadedFileUrl(null);
       // Drop the prior assessment's comprehensive review so it can't be
@@ -242,14 +262,14 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   const handleSaveToPatient = async (autoPatientId = null) => {
     const patientIdToUse = autoPatientId || selectedPatientId;
     if (!analysisResults || !uploadedFileUrl) return;
-    
+
     setIsSaving(true);
     try {
       const selectedPatient = patients.find(p => p.id === patientIdToUse);
-      const patientFullName = selectedPatient 
+      const patientFullName = selectedPatient
         ? `${selectedPatient.first_name} ${selectedPatient.last_name}`
         : patientName;
-      
+
       // Map assessment type abbreviations to full names
       // Map to the OASISUpload.assessment_type enum
       // (SOC/ROC/Recertification/Follow-up/Transfer/Discharge/Other). The prior
@@ -267,7 +287,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
         if (typeUpper === 'DISCHARGE' || typeUpper.includes('DISCHARGE')) return 'Discharge';
         return 'Other'; // Coerce any unrecognized value to the enum-safe default
       };
-      
+
       // Deep sanitize to remove circular references and non-serializable objects
       const sanitizeData = (obj) => {
         if (!obj) return null;
@@ -294,7 +314,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
             seen.add(value);
 
             // Skip DOM elements, React elements, and HTML elements
-            if (value instanceof Element || value instanceof Node || 
+            if (value instanceof Element || value instanceof Node ||
                 value.$$typeof || value._owner || value.nodeType ||
                 (value.constructor && (
                   value.constructor.name?.includes('HTML') ||
@@ -313,7 +333,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
             const result = {};
             for (const key in value) {
               // Skip React internal properties
-              if (key.startsWith('__') || key.startsWith('_') || 
+              if (key.startsWith('__') || key.startsWith('_') ||
                   key.includes('react') || key.includes('fiber') || key.includes('Fiber') ||
                   key === 'nativeEvent' || key === 'target' || key === 'currentTarget') {
                 continue;
@@ -337,12 +357,12 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
 
         return sanitize(obj);
       };
-      
+
       // Sanitize all data before saving
       const cleanPdgmData = sanitizeData(pdgmData);
       const cleanAnalysisResults = sanitizeData(analysisResults);
 
-      const savedOASIS = await saveOASISMutation.mutateAsync({
+      const saved = await saveOASISMutation.mutateAsync({
         patient_id: patientIdToUse || null,
         patient_name: patientFullName,
         file_url: uploadedFileUrl,
@@ -364,14 +384,16 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
         ...(comprehensiveReview ? { comprehensive_review: sanitizeData(comprehensiveReview) } : {}),
         status: 'analyzed'
       });
+      const savedOASIS = saved?.upload;
       // A review that completed WHILE the create was in flight was not in the
       // payload above and had no record id to update — without this it would be
       // lost, and reopening the record would re-run (and re-bill) the review.
       const latestReview = comprehensiveReviewRef.current;
-      if (latestReview && latestReview !== comprehensiveReview) {
-        base44.entities.OASISUpload
-          .update(savedOASIS.id, { comprehensive_review: sanitizeData(latestReview) })
-          .catch((err) => console.error('Failed to persist comprehensive review after save:', err));
+      if (savedOASIS?.id && latestReview && latestReview !== comprehensiveReview) {
+        persistComprehensiveReview(savedOASIS.id, sanitizeData(latestReview));
+      }
+      if (saved?.audit_flagged) {
+        toast.info("This analysis was below the audit thresholds and was added to the OASIS audit queue.");
       }
 
       // Log save activity
@@ -380,21 +402,9 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
         patient_name: patientFullName,
         overall_score: analysisResults.overall_score,
         entity_type: 'OASISUpload',
-        entity_id: savedOASIS.id,
+        entity_id: savedOASIS?.id,
         page: 'OASISAnalyzer'
       });
-
-      // Auto-flag for audit if below thresholds
-      if (savedOASIS) {
-        autoFlagMutation.mutate({
-          oasisUpload: { 
-            ...savedOASIS, 
-            patient_name: patientFullName,
-            patient_id: patientIdToUse 
-          },
-          analysisResults: analysisResults
-        });
-      }
     } catch (err) {
       console.error("Error saving OASIS:", err);
       setError(`Failed to save OASIS to patient record: ${err.message || 'Unknown error'}`);
@@ -412,12 +422,13 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
     setAnalysisResults(oasisUpload.analysis_results);
     setPdgmData(oasisUpload.pdgm_data);
     setAnalysisId(oasisUpload.analysis_id);
+    setSavedUploadId(oasisUpload.id);
     setPatientName(oasisUpload.patient_name);
     setSelectedPatientId(oasisUpload.patient_id || '');
     setUploadedFileUrl(oasisUpload.file_url);
     setSavedToPatient(true);
     setActiveTab("single");
-    
+
     logActivity(ActivityActions.VIEW, {
       entity_type: 'OASISUpload',
       entity_id: oasisUpload.id,
@@ -447,7 +458,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
       try {
         const uploadResult = await Promise.race([
           base44.integrations.Core.UploadFile({ file }),
-          new Promise((_, reject) => 
+          new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Upload timeout - file may be too large')), 60000)
           )
         ]);
@@ -455,7 +466,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
       } catch (uploadErr) {
         throw new Error(`File upload failed: ${uploadErr.message}. Please check your connection and try again.`, { cause: uploadErr });
       }
-      
+
       setUploadedFileUrl(file_url);
       setUploadProgress(40);
       setExtractedData(null); // Reset extracted data for new upload
@@ -470,7 +481,7 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
       // Enhanced extraction schema - simplified for better reliability
       let extractedData;
       let extractionMethod = 'structured';
-      
+
       try {
         extractedData = await Promise.race([
           base44.integrations.Core.ExtractDataFromUploadedFile({
@@ -503,17 +514,17 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
             },
 
             // DIAGNOSES - SEARCH THE ENTIRE DOCUMENT FOR THESE
-            m1021_primary_diagnosis_code: { 
-              type: "string", 
-              description: "PRIMARY DIAGNOSIS ICD-10 CODE - CRITICAL! Search for: 'M1021', 'M-1021', 'M 1021', '(M1021)', 'Primary Diagnosis', 'Principal Diagnosis'. Extract ICD-10 code (format: letter + numbers + optional decimal, examples: I50.9, J44.1, E11.65, Z99.11). May be listed as (a), (b), etc - get the FIRST one. If you find ANY ICD-10 code pattern, extract it here even if not labeled M1021." 
+            m1021_primary_diagnosis_code: {
+              type: "string",
+              description: "PRIMARY DIAGNOSIS ICD-10 CODE - CRITICAL! Search for: 'M1021', 'M-1021', 'M 1021', '(M1021)', 'Primary Diagnosis', 'Principal Diagnosis'. Extract ICD-10 code (format: letter + numbers + optional decimal, examples: I50.9, J44.1, E11.65, Z99.11). May be listed as (a), (b), etc - get the FIRST one. If you find ANY ICD-10 code pattern, extract it here even if not labeled M1021."
             },
-            m1021_primary_diagnosis_description: { 
-              type: "string", 
-              description: "PRIMARY DIAGNOSIS NAME - the condition name/description next to the primary ICD-10 code. Examples: 'Congestive heart failure', 'COPD', 'Diabetes with complications'. Extract the full text description." 
+            m1021_primary_diagnosis_description: {
+              type: "string",
+              description: "PRIMARY DIAGNOSIS NAME - the condition name/description next to the primary ICD-10 code. Examples: 'Congestive heart failure', 'COPD', 'Diabetes with complications'. Extract the full text description."
             },
-            m1023_other_diagnoses: { 
-              type: "string", 
-              description: "OTHER/SECONDARY DIAGNOSES - Search for: 'M1023', 'M-1023', 'M 1023', 'Other Diagnoses', 'Secondary Diagnoses', 'Additional Diagnoses'. Extract ALL ICD-10 codes found with their descriptions. Format: 'I10 Hypertension, E11.9 Diabetes, J44.9 COPD' - include ALL you find, separated by commas." 
+            m1023_other_diagnoses: {
+              type: "string",
+              description: "OTHER/SECONDARY DIAGNOSES - Search for: 'M1023', 'M-1023', 'M 1023', 'Other Diagnoses', 'Secondary Diagnoses', 'Additional Diagnoses'. Extract ALL ICD-10 codes found with their descriptions. Format: 'I10 Hypertension, E11.9 Diabetes, J44.9 COPD' - include ALL you find, separated by commas."
             },
             all_icd10_codes_found: {
               type: "string",
@@ -583,17 +594,17 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
               }
             }
           }),
-          new Promise((_, reject) => 
+          new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Data extraction timeout - PDF may be too complex')), 90000)
           )
         ]);
       } catch (extractErr) {
         console.warn("Structured extraction failed, trying text fallback:", extractErr);
         extractionMethod = 'text_fallback';
-        
+
         // Store extraction data for mapper
         setExtractedData(extractedData);
-        
+
         // Fallback: Extract as plain text with AI-assisted parsing
         try {
           const textExtract = await base44.integrations.Core.ExtractDataFromUploadedFile({
@@ -601,16 +612,16 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
             json_schema: {
               type: "object",
               properties: {
-                full_text: { 
-                  type: "string", 
-                  description: "Extract ALL text from the PDF document exactly as it appears, preserving line breaks and spacing" 
+                full_text: {
+                  type: "string",
+                  description: "Extract ALL text from the PDF document exactly as it appears, preserving line breaks and spacing"
                 }
               }
             }
           });
-          
+
           if (textExtract.status === "success" && textExtract.output?.full_text) {
-            
+
             // Use AI to parse the raw text for critical fields
             const parsedData = await invokeLLM({
               model: "automatic",
@@ -652,7 +663,7 @@ Return JSON:
                 }
               }
             }, { timeoutMs: 90000, retries: 1 });
-            
+
             // Map parsed data to extraction output format
             extractedData = {
               status: "success",
@@ -696,7 +707,7 @@ Return JSON:
       // Handle text fallback extraction
       if (extractionMethod === 'text_fallback' && output?.full_text) {
         oasisTextContent = output.full_text;
-        
+
         // Try to extract patient name from raw text
         const namePatterns = [
           /Patient Name:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/i,
@@ -704,7 +715,7 @@ Return JSON:
           /Name:\s*([A-Z][a-z]+,?\s+[A-Z][a-z]+)/i,
           /([A-Z][a-z]+,\s*[A-Z][a-z]+(?:\s+[A-Z]\.?)?)/,
         ];
-        
+
         for (const pattern of namePatterns) {
           const match = output.full_text.match(pattern);
           if (match && match[1]) {
@@ -713,7 +724,7 @@ Return JSON:
             break;
           }
         }
-        
+
         // Create minimal structured output for downstream processing
         output.patient_name_raw = extractedPatientName;
         output.patient_name = extractedPatientName;
@@ -723,24 +734,24 @@ Return JSON:
         const primaryDxDesc = output.m1021_primary_diagnosis_description || output.primary_diagnosis_description || 'NOT FOUND';
         const otherDx = output.m1023_other_diagnoses || output.secondary_diagnoses || 'NOT FOUND';
         const comorbidities = output.comorbidities_text || 'NOT FOUND';
-        
+
         // Enhanced patient name extraction with fallbacks
         extractedPatientName = output.patient_name_raw || output.patient_name || '';
-        
+
         // Try to construct from first/last if full name not found
         if (!extractedPatientName && (output.patient_first_name || output.patient_last_name)) {
           const firstName = output.patient_first_name || '';
           const lastName = output.patient_last_name || '';
           extractedPatientName = `${firstName} ${lastName}`.trim();
         }
-        
+
         // Clean up the name
         extractedPatientName = extractedPatientName
           .replace(/patient:?/gi, '')
           .replace(/name:?/gi, '')
           .replace(/\s+/g, ' ')
           .trim();
-        
+
         extractedPatientName = extractedPatientName || 'NOT FOUND - CHECK DOCUMENT HEADER';
 
         oasisTextContent = `PATIENT DEMOGRAPHICS:
@@ -823,17 +834,17 @@ Return JSON:
       CLINICAL NARRATIVE:
       ${output.clinical_narrative || 'No narrative extracted'}`;
       }
-      
+
       // Final fallback for text extraction method
       if ((!oasisTextContent || oasisTextContent.trim().length < 20) && extractionMethod === 'text_fallback') {
         oasisTextContent = output?.full_text || '';
       }
-      
+
       if (!oasisTextContent || oasisTextContent.trim().length < 20) {
         throw new Error("PDF appears to be empty or unreadable. Please ensure it's a valid OASIS document with actual content.");
       }
 
-      
+
       // Parse OASIS item scores carefully. Values often arrive as "M1830: 4" or
       // "Bathing - 3"; stripping ALL non-digits would turn that into 18304 and
       // blow functional points / case-mix. Prefer an isolated 0–max digit; missing
@@ -998,9 +1009,9 @@ Return JSON:
           m1850_transferring: parseScore(output?.m1850_transferring, 5),
           m1860_ambulation: parseScore(output?.m1860_ambulation, 6)
         },
-        gg_scores: { 
-          self_care: output?.gg0130_self_care || null, 
-          mobility: output?.gg0170_mobility || null 
+        gg_scores: {
+          self_care: output?.gg0130_self_care || null,
+          mobility: output?.gg0170_mobility || null
         },
         clinical_items: {
           dyspnea: parseScore(output?.m1400_dyspnea, 4),
@@ -1021,10 +1032,10 @@ Return JSON:
           anxiety: output?.m1720_anxiety || null,
           depression_phq2: output?.m1730_depression || null
         },
-        therapy_services: { 
-          pt: checkTherapy(output?.therapy_pt_needed), 
-          ot: checkTherapy(output?.therapy_ot_needed), 
-          slp: checkTherapy(output?.therapy_slp_needed) 
+        therapy_services: {
+          pt: checkTherapy(output?.therapy_pt_needed),
+          ot: checkTherapy(output?.therapy_ot_needed),
+          slp: checkTherapy(output?.therapy_slp_needed)
         },
         risk_factors: {
           fall_risk: output?.fall_risk_assessment || null,
@@ -1035,7 +1046,7 @@ Return JSON:
           medication_count: parseScore(output?.medication_count, 99)
         },
         homebound_reason: output?.homebound_reason || null,
-        patient_info: { 
+        patient_info: {
           name: extractedPatientName || "Unknown Patient - Verify Document",
           first_name: output?.patient_first_name || null,
           last_name: output?.patient_last_name || null,
@@ -1050,7 +1061,7 @@ Return JSON:
 
       // Increase content limit for better analysis
       const maxContentLength = 15000;
-      const _truncatedContent = oasisTextContent.length > maxContentLength 
+      const _truncatedContent = oasisTextContent.length > maxContentLength
         ? oasisTextContent.substring(0, maxContentLength) + "\n[content truncated for processing]"
         : oasisTextContent;
 
@@ -1105,7 +1116,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
               }
             }
           }, { timeoutMs: 90000, retries: 0 }),
-          new Promise((_, reject) => 
+          new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Analysis timeout - please try again')), 90000)
           )
         ]);
@@ -1144,7 +1155,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       });
 
       // Auto-flag for audit if scores below threshold
-      const shouldFlag = 
+      const shouldFlag =
         (analysisResult.accuracy_score < THRESHOLDS.accuracy) ||
         (analysisResult.compliance_score < THRESHOLDS.compliance) ||
         (analysisResult.overall_score < THRESHOLDS.overall);
@@ -1152,26 +1163,26 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       if (shouldFlag && uploadedFileUrl) {
         // Will be flagged when saved to patient
       }
-      
+
       // Use pre-extracted structured data merged with AI analysis for the extracted OASIS data
       const finalPdgmData = {
         ...structuredPdgmData,
         ...(analysisResult.pdgm_data || {}),
         // Prefer AI-analyzed values if they seem more complete
         primary_diagnosis: analysisResult.pdgm_data?.primary_diagnosis || structuredPdgmData.primary_diagnosis,
-        comorbidities: (analysisResult.pdgm_data?.comorbidities?.length > structuredPdgmData.comorbidities?.length) 
-          ? analysisResult.pdgm_data.comorbidities 
+        comorbidities: (analysisResult.pdgm_data?.comorbidities?.length > structuredPdgmData.comorbidities?.length)
+          ? analysisResult.pdgm_data.comorbidities
           : structuredPdgmData.comorbidities,
         functional_scores: {
           ...structuredPdgmData.functional_scores,
           ...(analysisResult.pdgm_data?.functional_scores || {})
         }
       };
-      
+
       // Update the analysis result with merged data
       analysisResult.pdgm_data = finalPdgmData;
       setPdgmData(finalPdgmData);
-      
+
       // Store extracted data for clinical note mapper
       setExtractedData({ status: 'success', output });
     } catch (err) {
@@ -1187,7 +1198,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
 
     // Provide more specific error messages
     let errorMessage = "Failed to analyze the OASIS document. ";
-      
+
       if (err.message?.includes('timeout')) {
         errorMessage += "The request timed out. The file may be too large or complex. Try a smaller file or try again.";
       } else if (err.message?.includes('network') || err.message?.includes('fetch')) {
@@ -1199,7 +1210,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       } else {
         errorMessage += err.message || "Please try again.";
       }
-      
+
       setError(errorMessage);
     }
 
@@ -1286,8 +1297,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
               ) : (
                 <div className="space-y-3">
                   {savedOASISUploads.map((oasis) => (
-                    <div 
-                      key={oasis.id} 
+                    <div
+                      key={oasis.id}
                       className="p-4 border rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
                       onClick={() => handleLoadSavedOASIS(oasis)}
                     >
@@ -1336,7 +1347,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
 
             {/* Automation Settings */}
             <OASISAutomationSettings />
-            
+
             <Alert className="bg-blue-50 border-blue-200">
               <Sparkles className="w-4 h-4 text-blue-600" />
               <AlertDescription>
@@ -1426,7 +1437,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                       {file ? file.name : "No file selected"}
                     </p>
                     <p className="text-xs text-slate-400 mb-4">Upload your OASIS PDF for accuracy review</p>
-                    <Button 
+                    <Button
                       className="bg-blue-600 hover:bg-blue-700"
                       onClick={() => document.getElementById('oasis-upload').click()}
                     >
@@ -1502,7 +1513,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
           analysisResults={analysisResults}
           pdgmData={pdgmData}
           patientId={selectedPatientId}
-          oasisUploadId={analysisId}
+          analysisId={analysisId}
         />
       )}
 
@@ -1615,6 +1626,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     pdgmData,
                     patientName,
                     patientId: selectedPatientId,
+                    uploadId: savedUploadId,
+                    analysisId,
                   })}
                 >
                   <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
@@ -1632,6 +1645,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     pdgmData,
                     patientName,
                     patientId: selectedPatientId,
+                    uploadId: savedUploadId,
+                    analysisId,
                   })}
                 >
                   <Button className="w-full bg-navy-600 hover:bg-navy-700 h-auto py-4 flex flex-col items-center gap-2">
@@ -1639,6 +1654,26 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     <div className="text-center">
                       <div className="font-bold">Documentation</div>
                       <div className="text-xs opacity-90">Quality, AI Suggestions</div>
+                    </div>
+                  </Button>
+                </Link>
+                <Link
+                  to="/OASISCenter?tab=clinical"
+                  className="md:col-span-2"
+                  onClick={() => onAnalysisHandoff?.({
+                    analysisResults,
+                    pdgmData,
+                    patientName,
+                    patientId: selectedPatientId,
+                    uploadId: savedUploadId,
+                    analysisId,
+                  })}
+                >
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700 h-auto py-4 flex flex-col items-center gap-2">
+                    <Workflow className="w-8 h-8" />
+                    <div className="text-center">
+                      <div className="font-bold">Clinical Pathways &amp; Tasks</div>
+                      <div className="text-xs opacity-90">Pathways, follow-up tasks, automation</div>
                     </div>
                   </Button>
                 </Link>
@@ -1659,7 +1694,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             pdgmData={pdgmData}
             patientId={selectedPatientId}
             patientName={patientName}
-            onTasksCreated={() => {}}
+            analysisId={analysisId}
           />
 
           {/* Documentation export — scores and findings only, no payment data. */}
@@ -1669,6 +1704,27 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
           />
 
           <KeyTakeawaysSummary analysisResults={analysisResults} />
+
+          {/* Comprehensive compliance, quality-measure and consistency review.
+              Restored from the saved record when there is one (never re-billed),
+              run on request otherwise, and persisted back onto the saved record
+              through the broker. Action-item filing stays off: nothing reads
+              OASISActionItem, so a filed item would be a record nobody sees. */}
+          <ComprehensiveOASISReviewer
+            oasisData={pdgmData}
+            analysisResults={analysisResults}
+            patientData={selectedPatient}
+            autoReview={false}
+            savedReview={comprehensiveReview}
+            analysisId={analysisId}
+            patientName={patientName}
+            canManageActionItems={false}
+            onReviewComplete={(review) => {
+              setComprehensiveReview(review);
+              comprehensiveReviewRef.current = review;
+              if (savedUploadId) persistComprehensiveReview(savedUploadId, review);
+            }}
+          />
 
           {/* AI-Powered Automatic Document Review */}
           <AIDocumentReviewer
@@ -1869,8 +1925,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
               {/* Validation Summary */}
               {analysisResults.validation_summary && (
                 <div className={`p-4 rounded-lg border-2 mb-4 ${
-                  analysisResults.validation_summary.critical_issues_found > 0 
-                    ? 'bg-red-50 border-red-300' 
+                  analysisResults.validation_summary.critical_issues_found > 0
+                    ? 'bg-red-50 border-red-300'
                     : analysisResults.validation_summary.warnings_found > 0
                       ? 'bg-yellow-50 border-yellow-300'
                       : 'bg-green-50 border-green-300'
@@ -2018,8 +2074,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                          <p className="text-xs text-slate-500 mb-1">Recommendation:</p>
                          <p className="text-sm text-green-700">{issue.recommendation}</p>
                        </div>
-                       <InlineDocumentationAssistant 
-                         issue={issue} 
+                       <InlineDocumentationAssistant
+                         issue={issue}
                          issueType="accuracy"
                          pdgmData={pdgmData}
                        />
@@ -2055,8 +2111,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                          <p className="text-xs text-slate-500 mb-1">Recommendation:</p>
                          <p className="text-sm text-green-700">{concern.recommendation}</p>
                        </div>
-                       <InlineDocumentationAssistant 
-                         issue={concern} 
+                       <InlineDocumentationAssistant
+                         issue={concern}
                          issueType="compliance"
                          pdgmData={pdgmData}
                        />
@@ -2134,8 +2190,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                          </div>
                        )}
                        <p className="text-xs text-slate-600 mt-2 italic">{imp.rationale}</p>
-                       <InlineDocumentationAssistant 
-                         issue={imp} 
+                       <InlineDocumentationAssistant
+                         issue={imp}
                          issueType="documentation_improvement"
                          pdgmData={pdgmData}
                        />

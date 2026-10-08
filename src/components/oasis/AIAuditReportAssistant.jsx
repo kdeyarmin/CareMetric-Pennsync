@@ -37,8 +37,8 @@ AUDIT DATA:
 KEY ISSUES:
 ${JSON.stringify(audit.key_issues, null, 2)}
 
-RESCORE OPPORTUNITIES:
-${JSON.stringify(audit.rescore_opportunities, null, 2)}
+DOCUMENTATION GAPS:
+${JSON.stringify(audit.documentation_gaps, null, 2)}
 
 Generate:
 1. Professional audit findings summary
