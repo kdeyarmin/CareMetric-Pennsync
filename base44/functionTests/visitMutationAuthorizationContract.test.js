@@ -998,9 +998,190 @@ test('source pins service-role exact filters, two-phase authorization, server-de
   assert.equal((source.match(/authoritySignature\(/g) || []).length >= 5, true);
 });
 
-test('processCompletedVisit remains paused and delegates both Visit writes to the broker', async () => {
+// Released by the owner on 2026-10-08. The processor reaches the Visit only
+// through the broker loaded above, so these tests wire the REAL broker behind
+// the processor's functions.fetch rather than a stub of it.
+async function loadProcessor(broker, {
+  caller = USER,
+  llm = null,
+  internalSecret = INTERNAL_SECRET,
+  notificationRows = [],
+} = {}) {
+  let source = await readFile(processorUrl, 'utf8');
+  source = source.replace(
+    /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';/,
+    'const createClientFromRequest = globalThis.__processVisitMakeClient;',
+  );
+  const temporaryModule = join(tmpdir(), `process_visit_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(temporaryModule, transpileTs(source).outputText);
+  const calls = { fetches: [], llm: [], taskCreates: [], notificationCreates: [], bodyReads: 0 };
+  const notifications = structuredClone(notificationRows);
+  const client = {
+    auth: { me: async () => caller },
+    functions: {
+      fetch: async (path, init) => {
+        calls.fetches.push({ path, action: JSON.parse(init.body).action });
+        return broker.handler(new Request(`http://local${path}`, init));
+      },
+    },
+    entities: {
+      Task: {
+        filter: async () => [],
+        create: async (row) => {
+          calls.taskCreates.push(structuredClone(row));
+          return { id: `task-${calls.taskCreates.length}`, ...row };
+        },
+      },
+    },
+    asServiceRole: {
+      integrations: {
+        Core: {
+          InvokeLLM: async (input) => {
+            calls.llm.push(input);
+            if (llm) return llm(input);
+            return input.response_json_schema
+              ? { tasks: [{ title: 'Call physician', description: 'BP high', type: 'call', priority: 'high', due_timeframe: 'today', reason: 'BP' }] }
+              : 'Generated Medicare-compliant narrative. Patient stable; teaching provided.';
+          },
+        },
+      },
+      entities: {
+        AgencyMembership: { filter: async (query) => broker.state.memberships.filter((row) => row.agency_id === query.agency_id && row.user_id === query.user_id) },
+        Notification: {
+          filter: async (query) => notifications.filter((row) => row.agency_id === query.agency_id && row.dedupe_key === query.dedupe_key),
+          create: async (row) => {
+            calls.notificationCreates.push(structuredClone(row));
+            notifications.push({ id: `notification-${notifications.length + 1}`, ...row });
+            return row;
+          },
+        },
+      },
+    },
+  };
+  let handler;
+  globalThis.__processVisitMakeClient = () => client;
+  globalThis.Deno = {
+    env: { get: (name) => (name === 'INTERNAL_FN_SECRET' ? internalSecret : name === 'SUPER_ADMIN_EMAIL' ? 'owner@platform.test' : undefined) },
+    serve: (candidate) => { handler = candidate; },
+  };
+  try {
+    await import(pathToFileURL(temporaryModule).href);
+  } finally {
+    await unlink(temporaryModule).catch(() => {});
+    delete globalThis.__processVisitMakeClient;
+  }
+  return {
+    calls,
+    run: async (body = { visit_id: 'visit-a' }, { authorization = 'Bearer clinician' } = {}) => {
+      const request = new Request('http://local/processCompletedVisit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(authorization ? { authorization } : {}) },
+        body: JSON.stringify(body),
+      });
+      const json = request.json.bind(request);
+      request.json = async () => { calls.bodyReads += 1; return json(); };
+      const response = await handler(request);
+      return { response, json: await response.json() };
+    },
+  };
+}
+
+test('processCompletedVisit runs end to end through the Visit broker and notifies only the caller', async () => {
+  const broker = await loadBroker({ visits: [visit({ status: 'completed', raw_transcription: 'Original dictated note.' })] });
+  const processor = await loadProcessor(broker);
+  const first = await processor.run();
+  assert.equal(first.response.status, 200, JSON.stringify(first.json));
+  assert.equal(first.json.success, true);
+  assert.equal(first.json.tasks_created, 1);
+  assert.equal(first.json.notified, true);
+  assert.deepEqual(processor.calls.fetches.map((call) => call.action), [
+    'read_ai_processing_source', 'claim_ai_processing', 'read_ai_processing_source', 'publish_ai_processing',
+  ]);
+  // The narrative was published through the broker, with the raw note kept.
+  const stored = broker.state.visits[0];
+  assert.match(stored.nurse_notes, /Generated Medicare-compliant narrative/);
+  assert.equal(stored.raw_transcription, 'Original dictated note.');
+  assert.ok(Number.isFinite(Date.parse(stored.ai_processed_at)));
+  assert.equal(stored.documentation_review_ack, null, 'publication resets the clinician review acknowledgement');
+  // Tasks are the caller's own; the notice carries the recipient envelope and no patient name.
+  assert.equal(processor.calls.taskCreates[0].assigned_to, USER.email);
+  const notice = processor.calls.notificationCreates[0];
+  assert.deepEqual({
+    agency_id: notice.agency_id,
+    recipient_user_id: notice.recipient_user_id,
+    recipient_membership_id: notice.recipient_membership_id,
+    recipient_membership_version: notice.recipient_membership_version,
+    authority_version: notice.authority_version,
+    dedupe_key: notice.dedupe_key,
+  }, {
+    agency_id: 'agency-a',
+    recipient_user_id: 'user-1',
+    recipient_membership_id: 'membership-a',
+    recipient_membership_version: 2,
+    authority_version: 1,
+    dedupe_key: 'visit-ai-processed:visit-a',
+  });
+  for (const phi of ['Example', 'Heart failure', 'Original dictated note']) {
+    assert.equal(JSON.stringify(notice).includes(phi), false, phi);
+  }
+
+  // A second run is answered from the durable stamp: no model call, no write.
+  const llmCalls = processor.calls.llm.length;
+  const updates = broker.calls.updates.length;
+  const second = await processor.run();
+  assert.equal(second.response.status, 200);
+  assert.equal(second.json.already_processed, true);
+  assert.equal(processor.calls.llm.length, llmCalls);
+  assert.equal(broker.calls.updates.length, updates);
+  assert.equal(processor.calls.notificationCreates.length, 1);
+});
+
+test('processCompletedVisit refuses an anonymous caller before the body and a non-clinician before the model', async () => {
+  const broker = await loadBroker({ visits: [visit({ status: 'completed' })] });
+  let processor = await loadProcessor(broker, { caller: null });
+  let result = await processor.run(undefined, { authorization: null });
+  assert.equal(result.response.status, 401);
+  assert.equal(processor.calls.bodyReads, 0);
+  assert.equal(processor.calls.fetches.length, 0);
+
+  // A manager opens every chart but is not the visit's clinician: the broker
+  // refuses the source read and the refusal reaches the caller as a 403.
+  const managerBroker = await loadBroker({
+    visits: [visit({ status: 'completed' })],
+    memberships: [membership({ tenant_role: 'manager' })],
+  });
+  processor = await loadProcessor(managerBroker);
+  result = await processor.run();
+  assert.equal(result.response.status, 403);
+  assert.equal(processor.calls.llm.length, 0);
+  assert.equal(managerBroker.calls.updates.length, 0);
+
+  // A revoked care-team assignment: refused, nothing sent to the model.
+  const revokedBroker = await loadBroker({
+    visits: [visit({ status: 'completed' })],
+    assignments: [assignment({
+      status: 'revoked', revoked_at: '2026-09-03T12:00:00.000Z', revocation_reason: 'Removed',
+      last_transition_action: 'revoke', version: 2,
+    })],
+  });
+  processor = await loadProcessor(revokedBroker);
+  result = await processor.run();
+  assert.notEqual(result.response.status, 200);
+  assert.equal(processor.calls.llm.length, 0);
+  assert.equal(revokedBroker.calls.updates.length, 0);
+
+  // Without the server-held secret the broker refuses every nested action.
+  processor = await loadProcessor(broker, { internalSecret: 'short' });
+  result = await processor.run();
+  assert.equal(result.response.status, 500);
+  assert.equal(processor.calls.llm.length, 0);
+});
+
+test('processCompletedVisit is released and delegates both Visit writes to the broker', async () => {
   const source = await readFile(processorUrl, 'utf8');
-  assert.match(source, /const PROCESS_COMPLETED_VISIT_PAUSED = true/);
+  assert.match(source, /const PROCESS_COMPLETED_VISIT_PAUSED = false/);
+  assert.doesNotMatch(source, /base44\.entities\.Notification\.create/);
+  assert.match(source, /recipient_membership_id: membership\.id/);
   assert.match(source, /functions\.fetch\('\/updateAuthorizedVisit'/);
   assert.match(source, /action:\s*'claim_ai_processing'/);
   assert.match(source, /action:\s*'publish_ai_processing'/);

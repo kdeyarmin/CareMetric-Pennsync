@@ -239,13 +239,6 @@
       "error": "Staging readiness preflight is disabled"
     }
   },
-  "processCompletedVisit": {
-    "status": 503,
-    "body": {
-      "error": "Completed-visit AI processing is temporarily unavailable pending tenant-safe Visit update migration",
-      "code": "visit_update_security_validation_pending"
-    }
-  },
   "processInboundFaxes": {
     "status": 503,
     "body": {

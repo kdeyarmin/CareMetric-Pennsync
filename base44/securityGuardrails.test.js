@@ -957,13 +957,15 @@ test('messagingAssistant routes only to the purpose-bound brokers and reads no r
 
 test('processCompletedVisit delegates PHI reads and Visit writes through updateAuthorizedVisit', () => {
   const src = read('base44/functions/processCompletedVisit/entry.ts');
-  const markerIndex = src.indexOf('const PROCESS_COMPLETED_VISIT_PAUSED = true;');
+  // Released by the owner on 2026-10-08; the static gate stays as the
+  // operator's off switch and still answers before SDK construction.
+  const markerIndex = src.indexOf('const PROCESS_COMPLETED_VISIT_PAUSED = false;');
   const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
   const guardIndex = src.indexOf('if (PROCESS_COMPLETED_VISIT_PAUSED)', handlerIndex);
   const clientIndex = src.indexOf('createClientFromRequest(', handlerIndex);
   assert.ok(markerIndex !== -1 && markerIndex < handlerIndex
     && handlerIndex < guardIndex && guardIndex < clientIndex,
-  'processCompletedVisit must pause before SDK construction');
+  'processCompletedVisit gate must precede SDK construction');
   assert.match(src.slice(guardIndex, clientIndex), /status:\s*503/);
   assert.match(src, /base44\.functions\.fetch\('\/updateAuthorizedVisit'/);
   for (const action of ['read_ai_processing_source', 'claim_ai_processing', 'publish_ai_processing']) {
