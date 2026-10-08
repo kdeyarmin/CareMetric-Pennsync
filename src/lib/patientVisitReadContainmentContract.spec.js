@@ -803,7 +803,11 @@ describe('Patient/Visit direct-read containment', () => {
     }
   });
 
-  it('keeps the incomplete AI compliance full-chart path statically unreachable', () => {
+  it('mounts the AI compliance full-chart audit only behind the reviewed chart-audit panel', () => {
+    // 2026-10-08 owner decision: the auditor is on. It is reachable from the
+    // Compliance Center's chart-audit panel alone, assembles its chart from
+    // three reviewed read purposes instead of a widened one, and validates the
+    // model's answer before anything is shown or stored.
     const auditorPath = path.join(SRC, 'components/compliance/AIComplianceAuditor.jsx');
     const references = [];
     for (const absolute of productionModules(SRC)) {
@@ -822,11 +826,23 @@ describe('Patient/Visit direct-read containment', () => {
         if (importedModule || jsxMount) references.push(path.relative(ROOT, absolute));
       }
     }
-    expect([...new Set(references)]).toEqual([]);
+    expect([...new Set(references)]).toEqual(['src/components/compliance/AIChartAuditPanel.jsx']);
+    expect(readFileSync(path.join(SRC, 'pages/ComplianceCenter.jsx'), 'utf8'))
+      .toContain('import("@/components/compliance/AIChartAuditPanel")');
 
     const auditor = readFileSync(auditorPath, 'utf8');
-    expect(auditor).toMatch(/const AI_COMPLIANCE_AUDITOR_ENABLED\s*=\s*false\s*;/);
-    expect(auditor).toMatch(/if \(!AI_COMPLIANCE_AUDITOR_ENABLED\)[\s\S]*?AI Compliance Audit Paused[\s\S]*?return <EnabledAIComplianceAuditor/);
+    expect(auditor).not.toContain('AI_COMPLIANCE_AUDITOR_ENABLED');
+    for (const purpose of ['oasis_analysis_context', 'smart_note_context', 'education_context']) {
+      expect(auditor).toMatch(new RegExp(`useAuthorizedPatient\\(\\{[\\s\\S]{0,160}purpose: '${purpose}'`));
+    }
+    expect(auditor).toContain('parts.some((part) => !part || part.id !== patientId)');
+    const validate = auditor.indexOf('normalizeComplianceAuditResult(result)');
+    const show = auditor.indexOf('setAuditResults(normalized)');
+    const store = auditor.indexOf('ComplianceAudit.create(buildComplianceAuditRecord(');
+    expect(validate).toBeGreaterThan(-1);
+    expect(show).toBeGreaterThan(validate);
+    expect(store).toBeGreaterThan(show);
+    expect(auditor).not.toContain("|| 'system'");
   });
 });
 
