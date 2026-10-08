@@ -18,6 +18,7 @@ import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch'
 import { installAuthorityBoundClipboard } from '@/lib/authorityBoundClipboard'
 import { closePublicCapabilityRealm } from '@/lib/publicCapabilityRealmGate'
 import { renderSecureBootstrapNotice } from '@/lib/secureBootstrapUi'
+import { isTrustedEditorPreviewFrame } from '@/lib/editorPreviewFrame'
 
 const authorityGuardCleanups = []
 // Non-sensitive stage codes distinguish a blocked frame from a failed native
@@ -63,8 +64,11 @@ function currentFrameMayBootstrap() {
   // the app in the frame instead hands the parent a live clinical DOM and
   // lets the frame make API calls, both of which `e2e/secure-preview.spec.js`
   // asserts must not happen.
-  // Owner decision: allow loading inside the Base44 editor preview panel.
-  return true
+  //
+  // Owner decision (2026-10-08): allow loading inside the Base44 editor preview
+  // panel. That is permission for that parent only, so every ancestor must be
+  // a Base44 editor origin; any other parent still gets the notice above.
+  return isTrustedEditorPreviewFrame(window.location, document.referrer)
 }
 
 function renderSecureBootstrapBlocked() {
