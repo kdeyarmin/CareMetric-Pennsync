@@ -376,8 +376,12 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
     handler.indexOf('if (OASIS_V2_WRITES_PAUSED)') < handler.indexOf('createClientFromRequest('),
     'saveOasisResponses must return 503 before client creation or any data access.',
   );
-  assert.ok(!/base44|useQuery|useAgencyScopedQuery|useScopedPatients|\.entities\./.test(dashboard));
-  assert.match(dashboard, /paused pending tenant security validation/i);
+  // 2026-10-08 owner decision: the KPI dashboard is on again, reading only
+  // through reviewed brokers — never Patient, Visit, Referral or OASIS directly.
+  assert.match(dashboard, /useScopedPatients\(\{ purpose: 'roster'/);
+  assert.match(dashboard, /useAuthorizedVisits\(\{ purpose: 'reporting'/);
+  assert.match(dashboard, /useReferralReportRows\(\)/);
+  assert.ok(!/entities\.(?:Patient|Visit|Referral|OASISAssessment|AgencyKPI|PatientOutcomeMetric)\b/.test(dashboard));
   const adapter = read('src/components/oasis/responseSchema/oasisWriteAdapter.js');
   assert.ok(!/base44|functions\.invoke|OASISAssessment\.(create|update)/.test(adapter));
   assert.match(adapter, /tenant_security_validation_pending/);
