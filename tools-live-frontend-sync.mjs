@@ -1,5 +1,8 @@
 // Exact, read-only comparison of a local build with the published frontend.
 // Usage: node tools-live-frontend-sync.mjs [allowed-origin] [--dist dist] [--json]
+//        node tools-live-frontend-sync.mjs [allowed-origin] --published-revision
+// `--published-revision` reads the revision off the served entry filename and
+// needs no local build; it reports and never judges staleness (see below).
 // Default: check BOTH production addresses. Exit 0 = exact static publication,
 // 1 = observed drift, 2 = unavailable/invalid verification. This never proves
 // authenticated workflows, tenant isolation, data migration, or release gates.
@@ -239,13 +242,57 @@ export async function verifyOrigin(origin, inventory, { fetchImpl = fetch, concu
   }
 }
 
+// The published REVISION, read off the entry filename, with no local build.
+//
+// Why this exists beside the byte comparison above. That comparison answers
+// "does production serve THIS build", and it can only answer it where the
+// local build reproduces the publish inventory — same app id, same flags, same
+// `PENNSYNC_ASSET_REVISION`. Anywhere else it reports HTML_RELEASE_MISMATCH for
+// a build-input difference, which reads exactly like staleness and is not.
+// That trap is not hypothetical: a build here without `VITE_BASE44_APP_ID`
+// produced `index-WwVTi7Pz-a615d9a8c78f-dirty-muzlom2s.js` against a served
+// `index-Cq2uld1D-8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c.js`, and the
+// mismatch alone proved nothing.
+//
+// The entry name itself does prove something. `resolveBuildAssetRevision` in
+// vite.config.js stamps `PENNSYNC_ASSET_REVISION`, else `GITHUB_SHA`, else the
+// short HEAD (plus `-dirty-<t>` for a dirty tree), through a charset of
+// `[A-Za-z0-9_-]`. So the revision a deployment was built from is legible from
+// its filename, needs no build to read, and cannot be confused by local flags.
+//
+// This reports and does not judge: whether a revision is STALE depends on what
+// the branch head is, which is the caller's to supply. Exit 2 where an origin
+// could not be read, because a question that was not answered must not read as
+// a clean one; exit 0 once every origin answered.
+const ENTRY_REVISION = /^\/assets\/index-[A-Za-z0-9_-]{8}-([A-Za-z0-9_-]+)\.js$/;
+
+export function entryRevision(entryPath) {
+  const match = ENTRY_REVISION.exec(String(entryPath ?? ''));
+  return match ? match[1] : null;
+}
+
+export async function readPublishedRevisions(origins, { fetchImpl = fetch, allowed = ALLOWED_ORIGINS } = {}) {
+  const reports = [];
+  for (const candidate of origins) {
+    const origin = validateOrigin(candidate, allowed);
+    try {
+      const html = (await fetchBytes(`${origin}/`, MAX_HTML_BYTES, fetchImpl)).toString('utf8');
+      const { entry } = htmlReferences(html, origin);
+      reports.push({ origin, entry, revision: entryRevision(entry), read: true });
+    } catch (error) {
+      reports.push({ origin, read: false, code: error?.code || 'VERIFICATION_UNAVAILABLE' });
+    }
+  }
+  return reports;
+}
+
 export async function main(args = process.argv.slice(2), { fetchImpl = fetch, log = console.log, env = process.env } = {}) {
   let dist = 'dist';
   const origins = [];
   let allowlist = 'production';
   try {
     for (let i = 0; i < args.length; i++) {
-      if (args[i] === '--json') continue;
+      if (args[i] === '--json' || args[i] === '--published-revision') continue;
       if (args[i] === '--dist') {
         if (!args[i + 1] || args[i + 1].startsWith('--')) throw new VerificationError('INVALID_ARGUMENTS');
         dist = args[++i]; continue;
@@ -262,6 +309,15 @@ export async function main(args = process.argv.slice(2), { fetchImpl = fetch, lo
       origins.push(fromEnvironment);
       allowed = new Set([...ALLOWED_ORIGINS, fromEnvironment]);
       allowlist = 'environment';
+    }
+    // Before the inventory, because the inventory is the part that needs a
+    // local build and this mode deliberately does not.
+    if (args.includes('--published-revision')) {
+      const reports = await readPublishedRevisions(origins.length ? origins : PRODUCTION_ORIGINS,
+        { fetchImpl, allowed });
+      log(JSON.stringify({ checked_at: new Date().toISOString(),
+        scope: 'published_revision_only', origin_allowlist: allowlist, reports }, null, 2));
+      return reports.every((report) => report.read && report.revision) ? 0 : 2;
     }
     const inventory = createBuildInventory(dist);
     const reports = [];
