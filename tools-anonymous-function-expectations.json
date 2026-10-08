@@ -7,13 +7,6 @@
       "available": false
     }
   },
-  "analyzeDocument": {
-    "status": 503,
-    "body": {
-      "error": "Document analysis is temporarily unavailable",
-      "code": "document_analysis_private_write_broker_required"
-    }
-  },
   "analyzeNursePerformance": {
     "status": 503,
     "body": {

@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
 import { openExternalUrl } from "@/components/utils/security";
 import { toast } from 'sonner';
+import DocumentAIAnalysis from "@/components/documents/DocumentAIAnalysis";
 
 const CATEGORIES = [
   { value: "all", label: "All Categories" },
@@ -27,6 +28,7 @@ const DocumentCard = ({
   getCategoryLabel,
   getCategoryColor,
   showPatientInfo,
+  agencyId,
 }) => {
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -81,6 +83,10 @@ const DocumentCard = ({
           >
             <Download className="w-4 h-4" />
           </Button>
+        </div>
+
+        <div className="mt-3">
+          <DocumentAIAnalysis document={doc} agencyId={agencyId} />
         </div>
 
         <div className="mt-3 pt-3 border-t text-xs text-slate-500">
@@ -236,6 +242,7 @@ export default function DocumentList({
               getCategoryLabel={getCategoryLabel}
               getCategoryColor={getCategoryColor}
               showPatientInfo={showPatientInfo}
+              agencyId={agencyId}
             />
           ))}
         </div>
