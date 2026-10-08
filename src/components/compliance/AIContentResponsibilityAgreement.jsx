@@ -10,6 +10,7 @@ import { BRAND_LOGO_URL } from "@/lib/brand";
 import {
   AI_CONTENT_AGREEMENT_TITLE,
   AI_CONTENT_AGREEMENT_INTRO,
+  AI_CONTENT_AGREEMENT_DATA_SHARING,
   AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS,
   AI_CONTENT_AGREEMENT_VERSION,
 } from "@/lib/aiContentAgreement";
@@ -98,9 +99,21 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               </p>
             </div>
 
-            <p className="mb-5 text-sm leading-relaxed text-slate-600">
+            <p className="mb-4 text-sm leading-relaxed text-slate-600">
               {AI_CONTENT_AGREEMENT_INTRO}
             </p>
+
+            <section
+              aria-labelledby="ai-data-sharing-heading"
+              className="mb-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4"
+            >
+              <h2 id="ai-data-sharing-heading" className="text-sm font-semibold text-slate-900">
+                Where your information goes when you use AI
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-slate-700">
+                {AI_CONTENT_AGREEMENT_DATA_SHARING}
+              </p>
+            </section>
 
             <ScrollArea className="max-h-[40vh] rounded-xl border border-slate-200 bg-slate-50 p-1">
               <ul className="space-y-3 p-3">
@@ -131,8 +144,9 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-navy-600" />
               <span>
                 By selecting <strong>I Agree &amp; Continue</strong>, you attest that you
-                understand and accept these responsibilities. Your name, the date, and
-                this agreement version are recorded for compliance.
+                understand and accept these responsibilities, and you agree that what you
+                give an AI feature is sent to the providers named above. Your name, the
+                date, and this agreement version are recorded for compliance.
               </span>
             </div>
 

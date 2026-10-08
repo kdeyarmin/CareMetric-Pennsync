@@ -25,8 +25,11 @@ import {
  * (added 2026-10-08 for Guideline 5.1.2(i)), which names the providers the code
  * calls: OpenAI in transcribeAudioWithWhisper / transcribeAndGenerateSOAPNote,
  * Anthropic in transcribeAndGenerateSOAPNote, and Google (Gemini) through
- * Base44's InvokeLLM. Re-check that list whenever a provider changes, and confirm
- * a business-associate agreement covers each before claiming one here.
+ * Base44's InvokeLLM. Re-check that list whenever a provider changes. The owner
+ * confirmed on 2026-10-08 that business associate agreements are in place for
+ * every provider, which is what the paragraph now states. The same providers are
+ * named in the AI agreement gate (AI_CONTENT_AGREEMENT_DATA_SHARING in
+ * src/lib/aiContentAgreement.js); change both together.
  */
 
 const SectionTitle = ({ children }) => (
@@ -125,8 +128,10 @@ const PrivacyPolicy = () => {
             — which can include patient health information — are sent to third-party AI model
             providers to produce the result, either directly or through our platform hosting
             provider. These currently include OpenAI (speech-to-text transcription and text
-            generation), Anthropic, and Google. That data is sent only to return the requested
-            output and is never used to advertise to you.
+            generation), Anthropic, and Google. Each processes it on our behalf under a
+            business associate agreement and may not use it to train its models. That data is sent
+            only to return the requested output and is never used to advertise to you. You agree to
+            this before your first use of the app, and using an AI feature is always optional.
           </p>
 
           <SectionTitle>Retention and deletion</SectionTitle>

@@ -38,6 +38,21 @@ export const AI_CONTENT_AGREEMENT_INTRO =
   'use PennSync, please review and accept the responsibilities below.';
 
 /**
+ * Third-party AI data-sharing disclosure (App Store Guideline 5.1.2(i)): says
+ * which providers receive what, before the user agrees. It is shown on the gate
+ * beside the acknowledgments and is accepted with them. It is not one of the
+ * acknowledgments because those are pinned, word for word, by the attestation
+ * broker and the owned store's contract; adding one is a coordinated version
+ * bump across all three. The providers named here must match the Privacy Policy.
+ */
+export const AI_CONTENT_AGREEMENT_DATA_SHARING =
+  'When you use an AI feature, the text, audio, or documents you provide to it, which ' +
+  'can include patient health information, are sent to our AI service providers ' +
+  '(OpenAI, Anthropic, and Google) to generate the result. They process it on our ' +
+  'behalf under business associate agreements and may not use it to train their ' +
+  'models. Using an AI feature is optional; you can document without one.';
+
+/**
  * The specific acknowledgments the user must affirm. Each renders as its own
  * required checkbox in the gate; the user cannot continue until all are checked.
  * Order and wording are the audited record of what was agreed to.
