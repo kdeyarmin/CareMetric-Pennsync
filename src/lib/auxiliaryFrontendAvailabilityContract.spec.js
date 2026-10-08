@@ -29,12 +29,40 @@ describe('auxiliary frontend availability containment', () => {
       /entities\.(?:NoteConversion|ComplianceAudit|TrainingAssignment)\.(?:list|filter)/,
     );
     expect(agencyAnalytics).toContain('tenant-bound reporting projections');
-    expect(adminReports).not.toContain('NoteConversionReport');
-    expect(adminReports).toContain('Note analytics are unavailable');
-    expect(reportsCenter).not.toMatch(/entities\.NoteConversion\.(?:list|filter)/);
-    expect(reportsCenter).toContain('NOTE_CONVERSION_REPORTS_AVAILABLE = false');
-    expect(dataQuality).not.toMatch(/entities\.PersonnelCredential\.(?:list|filter)/);
-    expect(dataQuality).toContain('CREDENTIAL_METRICS_AVAILABLE = false');
+  });
+
+  it('loads productivity and note analytics from fresh, roster-bounded NoteConversion reads', () => {
+    // 2026-10-08 owner decision: productivity reports and note analytics are
+    // back. The read is loaded only while productivity is selected, only a
+    // fresh post-mount answer counts, and rows outside the passed roster are
+    // never attributed to this agency.
+    expect(adminReports).toContain('<NoteConversionReport />');
+    expect(adminReports).not.toContain('Note analytics are unavailable');
+    expect(reportsCenter).not.toContain('NOTE_CONVERSION_REPORTS_AVAILABLE');
+    expect(reportsCenter).toMatch(
+      /const noteConversionQuery = useQuery\(\{[\s\S]{0,200}NoteConversion\.list\('-created_date', NOTE_CONVERSION_ROWS\)[\s\S]{0,120}enabled: sourceSnapshotAvailable && reportType === 'productivity'/,
+    );
+    expect(reportsCenter).toContain('noteConversionsSettled(noteConversionQuery)');
+    expect(reportsCenter).toContain("rosterEmails.has(String(nc.nurse_email || '').trim().toLowerCase())");
+    expect(reportsCenter).not.toMatch(/initialData\s*:/);
+    expect(read('src/components/admin/NoteConversionReport.jsx'))
+      .toMatch(/useAgencyScopedQuery\(\{[\s\S]{0,200}authorOf: \(conversion\) => conversion\?\.nurse_email/);
+  });
+
+  it('measures credential coverage only from a fresh, roster-wide read', () => {
+    // 2026-10-08 owner decision: credential coverage is back. The read rule
+    // admits an owner's own rows and the administrator, so only the
+    // administrator's answer covers the roster; nobody else gets a figure the
+    // rule silently narrowed, and an unmeasured source never joins the score.
+    expect(dataQuality).not.toContain('CREDENTIAL_METRICS_AVAILABLE');
+    expect(dataQuality).toMatch(
+      /const credentialsQuery = useQuery\(\{[\s\S]{0,200}PersonnelCredential\.list\('-expiration_date', ALL_ROWS\)[\s\S]{0,200}enabled: Boolean\(dataQualityAuthorityKey && auxiliaryAuthorityMatches && credentialMetricsPermitted\),\s*\.\.\.FRESH_QUERY_OPTIONS/,
+    );
+    expect(dataQuality).toContain("const credentialReadCoversRoster = (user) => user?.role === 'admin';");
+    expect(dataQuality).toContain('settledSuccessfullyAfterMount(credentialsQuery)');
+    expect(dataQuality).toContain('if (qualityMetrics.credentialCoverage !== null)');
+    expect(dataQuality).toContain('No nurse denominator');
+    expect(dataQuality).toContain('Administrator account required');
   });
 
   it('quarantines the cross-authority patient import and prepaint filter state', () => {
