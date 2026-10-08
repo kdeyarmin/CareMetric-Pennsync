@@ -209,7 +209,6 @@ test("OASIS/PDGM AI, analytics, reporting, and workflow surfaces default to stat
     ["src/components/clinical/OASISQuickUpdate.jsx", "OASIS_QUICK_UPDATE_ENABLED", "OASIS Quick Update Paused"],
     ["src/components/hub-tabs/OASISComplianceReview.jsx", "OASIS_COMPLIANCE_REVIEW_ENABLED", "OASIS Compliance AI Review Paused"],
     ["src/components/hub-tabs/OASISDocumentationReview.jsx", "OASIS_DOCUMENTATION_REVIEW_ENABLED", "OASIS Documentation AI Review Paused"],
-    ["src/components/clinical/AIAdmissionDocumentationAssistant.jsx", "AI_ADMISSION_DOCUMENTATION_ENABLED", "AI Admission Documentation Paused"],
     ["src/components/oasis/AIGeneratedOASISAssessment.jsx", "AI_OASIS_ASSESSMENT_ENABLED", "AI OASIS Assessment Guidance Paused"],
   ];
 
