@@ -108,18 +108,23 @@ test('security audit authorizes from protected role or service-owned membership,
   assert.doesNotMatch(source, /SECURITY_AUDIT_PAUSED/);
 });
 
-test('unused clinical data analysis is unavailable before SDK, request, data, or AI work', () => {
-  // Its patient gate trusted the self-editable account_type claim as platform
-  // admin authority, and nothing in the app calls it (2026-09-10 security scan).
+test('clinical data analysis decides chart access from trusted rows and predicts no risk', () => {
+  // Released by the owner on 2026-10-08. Its old gate trusted the self-editable
+  // account_type claim; now chart access is callerMayAccessPatient (membership
+  // and the care-team table) before any record or model call, and the owner's
+  // removal of risk prediction holds: no readmission or deterioration scores.
   const source = readEntry('analyzeClinicalData');
-
-  assert.match(source, /code:\s*'CLINICAL_DATA_ANALYSIS_PAUSED'/);
-  assert.match(source, /status:\s*503/);
-  assert.match(source, /'Cache-Control':\s*'no-store'/);
-  assert.doesNotMatch(
-    source,
-    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|InvokeLLM|account_type|agency_name/,
-  );
+  const own = source.slice(source.lastIndexOf('// <<<END SHARED HELPER'))
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const handler = own.slice(own.indexOf('Deno.serve('));
+  assert.match(source, /<<<BEGIN SHARED HELPER: patientCareTeamAccess/);
+  assert.ok(handler.indexOf('await loadAccessiblePatient(') > 0);
+  assert.ok(handler.indexOf('await loadAccessiblePatient(') < handler.indexOf('extractEvents('));
+  assert.doesNotMatch(own, /account_type|agency_name|assigned_nurses/);
+  assert.doesNotMatch(own, /readmission|predictive_analytics|deterioration_risk|risk_score/i);
+  assert.doesNotMatch(own, /\.create\(|\.update\(|updateMany/);
+  assert.match(own, /'Cache-Control':\s*'no-store'/);
 });
 
 test('patient-bearing clinical helpers retain exact creator and assigned-nurse checks', () => {

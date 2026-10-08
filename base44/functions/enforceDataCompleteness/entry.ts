@@ -159,157 +159,190 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
+// <<<BEGIN SHARED HELPER: dataQualityScoring — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PATIENT_CRITICAL_FIELDS = [
+  'first_name', 'last_name', 'date_of_birth', 'phone', 'address',
+  'emergency_contact_name', 'emergency_contact_phone', 'physician_name', 'primary_diagnosis',
+];
+const USER_CRITICAL_FIELDS = ['phone', 'care_scope', 'credential_type', 'license_number'];
+const VISIT_DOCUMENTATION_FIELDS = [
+  'nurse_notes', 'homebound_justification', 'vital_signs', 'skilled_intervention_documented',
+];
+function qualityFieldMissing(row, field) {
+  const value = row ? row[field] : undefined;
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return value === false;
+}
+function missingQualityFields(row, fields) {
+  return fields.filter((field) => qualityFieldMissing(row, field));
+}
+function completenessScore(fields, missing) {
+  return Math.round(((fields.length - missing.length) / fields.length) * 100);
+}
+function visitDocumentationGaps(visit) {
+  const missing = VISIT_DOCUMENTATION_FIELDS.filter((field) => (field === 'nurse_notes'
+    ? typeof visit?.nurse_notes !== 'string' || visit.nurse_notes.trim().length < 100
+    : qualityFieldMissing(visit, field)));
+  return { missing, score: completenessScore(VISIT_DOCUMENTATION_FIELDS, missing) };
+}
+function sameQualityList(left, right) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+async function writePatientQuality(entities, patient, agencyId) {
+  const missing = missingQualityFields(patient, PATIENT_CRITICAL_FIELDS);
+  const score = completenessScore(PATIENT_CRITICAL_FIELDS, missing);
+  if (patient.data_completeness_score === score && sameQualityList(patient.missing_critical_fields, missing)) {
+    return { outcome: 'unchanged', score, missing };
+  }
+  if (patient.agency_id !== agencyId || typeof patient.updated_date !== 'string' || !patient.updated_date) {
+    return { outcome: 'skipped', score, missing };
+  }
+  const result = await entities.Patient.updateMany(
+    { id: patient.id, agency_id: agencyId, updated_date: patient.updated_date },
+    { $set: { data_completeness_score: score, missing_critical_fields: missing } },
+  );
+  const updated = !!result && result.success === true && result.updated === 1;
+  return { outcome: updated ? 'updated' : 'conflict', score, missing };
+}
+// <<<END SHARED HELPER: dataQualityScoring>>>
+
+/**
+ * enforceDataCompleteness — score ONE record's critical-field completeness.
+ *
+ * Released by the owner on 2026-10-08 ("turn everything on"). It was one of
+ * the legacy Patient service-role writers: an editable agency_name decided
+ * which tenant's rows an "admin" could rewrite. Now:
+ *   - the caller is the built-in administrator or an agency_admin/manager
+ *     whose exact active membership withTrustedClaims rebuilds from
+ *     service-owned rows; it is decided before the body is read;
+ *   - the record must belong to that agency by its OWN agency_id (a Patient or
+ *     Visit) or by an active membership there (a User);
+ *   - a Patient's quality fields are written with the shared compare-and-swap
+ *     (agency_id + updated_date) and only when they changed; a User's
+ *     profile_completeness_score is written; a Visit is scored and REPORTED,
+ *     because its compliance_score is the clinician's own SmartNote result.
+ *
+ * Body: { entity_type: 'Patient' | 'User' | 'Visit', entity_id }
+ */
+const DATA_COMPLETENESS_ENABLED = true;
+const MAX_BODY_BYTES = 1_000;
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+
+const json = (body, status = 200, headers = {}) => Response.json(body, {
+  status,
+  headers: { ...NO_STORE_HEADERS, ...headers },
+});
+
+async function readBody(req) {
+  const declared = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return { error: json({ error: 'Request body is too large' }, 413) };
+  let body;
+  try {
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+      return { error: json({ error: 'Request body is too large' }, 413) };
+    }
+    body = JSON.parse(raw);
+  } catch {
+    return { error: json({ error: 'Invalid JSON body' }, 400) };
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: json({ error: 'Request body must be an object' }, 400) };
+  if (Object.keys(body).some((key) => !['entity_type', 'entity_id'].includes(key))) {
+    return { error: json({ error: 'Request contains unsupported fields' }, 400) };
+  }
+  if (!['Patient', 'User', 'Visit'].includes(body.entity_type)) {
+    return { error: json({ error: 'entity_type must be Patient, User or Visit' }, 400) };
+  }
+  if (!claimIdentifier(body.entity_id)) return { error: json({ error: 'entity_id is required' }, 400) };
+  return { entityType: body.entity_type, entityId: body.entity_id };
+}
+
+async function exactRow(entity, id) {
+  const found = await entity.filter({ id }, undefined, 2);
+  return Array.isArray(found) && found.length === 1 && found[0]?.id === id ? found[0] : null;
+}
 
 Deno.serve(async (req) => {
-  // SECURITY CONTAINMENT: keep the legacy bulk Patient writer unreachable
-  // until an immutable tenant-authorized, atomic replacement is available.
-  return Response.json({
-    error: 'Legacy Patient service-role writer is temporarily unavailable',
-    code: 'legacy_patient_service_writer_paused',
-    reason: 'immutable_tenant_authorization_and_atomic_write_broker_required',
-    endpoint: 'enforceDataCompleteness',
-  }, { status: 503 });
-
+  if (!DATA_COMPLETENESS_ENABLED) {
+    return json({ error: 'Data completeness scoring is unavailable', code: 'data_completeness_paused' }, 503);
+  }
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, { Allow: 'POST' });
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await withTrustedClaims(base44, await base44.auth.me());
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-
-    if (!isAdminLike(user)) {
-      return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
-    }
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-    }
-
-    const payload = await req.json();
-    const { entity_type, entity_id } = payload;
-
-    if (!entity_type || !entity_id) {
-      return Response.json({ error: 'Missing entity_type or entity_id' }, { status: 400 });
+    const profile = await base44.auth.me().catch(() => null);
+    if (!profile) return json({ error: 'Unauthorized' }, 401);
+    if (isDeactivatedUser(profile)) return DEACTIVATED_USER_RESPONSE();
+    if (profile.disabled === true || profile.is_service === true) return json({ error: 'Forbidden' }, 403);
+    const user = await withTrustedClaims(base44, profile);
+    const builtInAdmin = isAdminLike(user);
+    if (!builtInAdmin && !(claimIdentifier(user.agency_id) && user.is_manager === true)) {
+      return json({ error: 'Agency administrator or manager access required' }, 403);
     }
 
-    let entity;
-    let criticalFields = [];
-    let score = 0;
-    let missing = [];
+    const input = await readBody(req);
+    if (input.error) return input.error;
+    const entities = base44.asServiceRole.entities;
+    const inScope = (agencyId) => builtInAdmin ? claimIdentifier(agencyId) : agencyId === user.agency_id;
 
-    if (entity_type === 'Patient') {
-      entity = await base44.asServiceRole.entities.Patient.get(entity_id);
-      if (!entity) return Response.json({ error: 'Patient not found' }, { status: 404 });
-      // Agency-scope: an agency_admin must not rewrite quality fields on another
-      // tenant's chart via a guessed entity_id.
-      if (user.account_type !== 'super_admin' && user.agency_name) {
-        const agencyUsers = await base44.asServiceRole.entities.User
-          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
-          .catch(() => []);
-        const agencyEmails = new Set(
-          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+    if (input.entityType === 'Patient') {
+      const patient = await exactRow(entities.Patient, input.entityId);
+      if (!patient || !inScope(patient.agency_id)) return json({ error: 'Patient not found in your agency' }, 404);
+      const result = await writePatientQuality(entities, patient, patient.agency_id);
+      if (result.outcome === 'conflict') return json({ error: 'The chart changed while it was scored; retry' }, 409);
+      return json({
+        entity_type: 'Patient',
+        entity_id: patient.id,
+        completeness_score: result.score,
+        missing_fields: result.missing,
+        critical: result.missing.length >= 3,
+        updated: result.outcome === 'updated',
+      });
+    }
+
+    if (input.entityType === 'User') {
+      const target = await exactRow(entities.User, input.entityId);
+      if (!target) return json({ error: 'User not found in your agency' }, 404);
+      if (!builtInAdmin) {
+        const memberships = await entities.AgencyMembership.filter(
+          { agency_id: user.agency_id, user_id: target.id, status: 'active' }, undefined, 2,
         );
-        const inAgency = (entity.created_by && agencyEmails.has(entity.created_by))
-          || (Array.isArray(entity.assigned_nurses)
-            && entity.assigned_nurses.some((e) => agencyEmails.has(e)));
-        if (!inAgency) {
-          return Response.json({ error: 'Forbidden: patient is outside your agency' }, { status: 403 });
+        if (!Array.isArray(memberships) || memberships.length !== 1
+          || memberships[0]?.agency_id !== user.agency_id || memberships[0]?.user_id !== target.id) {
+          return json({ error: 'User not found in your agency' }, 404);
         }
       }
-      criticalFields = [
-        'first_name', 'last_name', 'date_of_birth', 'phone', 'address',
-        'emergency_contact_name', 'emergency_contact_phone', 
-        'physician_name', 'primary_diagnosis'
-      ];
-      
-      missing = criticalFields.filter(field => !entity[field] || entity[field] === '');
-      score = ((criticalFields.length - missing.length) / criticalFields.length * 100).toFixed(0);
-
-      // Update patient record with quality metrics
-      await base44.asServiceRole.entities.Patient.update(entity_id, {
-        data_completeness_score: parseInt(score),
-        missing_critical_fields: missing
-      });
-
-    } else if (entity_type === 'User') {
-      entity = await base44.asServiceRole.entities.User.get(entity_id);
-      if (!entity) return Response.json({ error: 'User not found' }, { status: 404 });
-      // Agency-scoped admins require a matching non-empty target agency —
-      // empty target agency previously bypassed the check (`entity.agency_name &&`).
-      const isSuperAdmin = user.account_type === 'super_admin';
-      const isAgencyScopedAdmin = user.account_type === 'agency_admin'
-        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-      if (isAgencyScopedAdmin
-        && entity.account_type !== 'super_admin'
-        && (!entity.agency_name || entity.agency_name !== user.agency_name)) {
-        return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
+      const missing = missingQualityFields(target, USER_CRITICAL_FIELDS);
+      const score = completenessScore(USER_CRITICAL_FIELDS, missing);
+      if (target.profile_completeness_score !== score) {
+        await entities.User.update(target.id, { profile_completeness_score: score });
       }
-      criticalFields = [
-        'credential_type', 'phone', 'care_scope', 'license_number'
-      ];
-      
-      missing = criticalFields.filter(field => !entity[field] || entity[field] === '');
-      score = ((criticalFields.length - missing.length) / criticalFields.length * 100).toFixed(0);
-
-      // Update user record with quality metrics
-      await base44.asServiceRole.entities.User.update(entity_id, {
-        profile_completeness_score: parseInt(score)
+      return json({
+        entity_type: 'User',
+        entity_id: target.id,
+        completeness_score: score,
+        missing_fields: missing,
+        critical: missing.length >= 3,
+        updated: target.profile_completeness_score !== score,
       });
-
-    } else if (entity_type === 'Visit') {
-      entity = await base44.asServiceRole.entities.Visit.get(entity_id);
-      if (!entity) return Response.json({ error: 'Visit not found' }, { status: 404 });
-      if (user.account_type !== 'super_admin' && user.agency_name && entity.patient_id) {
-        const [visitPatient] = await base44.asServiceRole.entities.Patient
-          .filter({ id: entity.patient_id }, '', 1).catch(() => []);
-        const agencyUsers = await base44.asServiceRole.entities.User
-          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
-          .catch(() => []);
-        const agencyEmails = new Set(
-          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
-        );
-        const inAgency = visitPatient
-          && ((visitPatient.created_by && agencyEmails.has(visitPatient.created_by))
-            || (Array.isArray(visitPatient.assigned_nurses)
-              && visitPatient.assigned_nurses.some((e) => agencyEmails.has(e))));
-        if (!inAgency) {
-          return Response.json({ error: 'Forbidden: visit is outside your agency' }, { status: 403 });
-        }
-      }
-      criticalFields = [
-        'nurse_notes', 'homebound_justification', 'vital_signs', 'skilled_intervention_documented'
-      ];
-      
-      missing = criticalFields.filter(field => {
-        if (field === 'nurse_notes') return !entity.nurse_notes || entity.nurse_notes.length < 100;
-        return !entity[field];
-      });
-      score = ((criticalFields.length - missing.length) / criticalFields.length * 100).toFixed(0);
-
-      const complianceIssues = [];
-      if (!entity.homebound_justification) complianceIssues.push('Missing homebound justification');
-      if (!entity.skilled_intervention_documented) complianceIssues.push('Skilled intervention not documented');
-      if (!entity.nurse_notes || entity.nurse_notes.length < 100) complianceIssues.push('Insufficient documentation');
-
-      // Update visit record with compliance metrics
-      await base44.asServiceRole.entities.Visit.update(entity_id, {
-        compliance_score: parseInt(score),
-        compliance_issues: complianceIssues
-      });
-    } else {
-      // Unrecognized entity_type would otherwise fall through to a bogus
-      // "success" with completeness_score 0; reject it explicitly.
-      return Response.json({ error: `Unsupported entity_type: ${entity_type}` }, { status: 400 });
     }
 
-    return Response.json({
-      entity_type,
-      entity_id,
-      completeness_score: parseInt(score),
-      missing_fields: missing,
-      critical: missing.length >= 3,
-      message: `Data quality metrics updated for ${entity_type}`
+    const visit = await exactRow(entities.Visit, input.entityId);
+    if (!visit || !inScope(visit.agency_id)) return json({ error: 'Visit not found in your agency' }, 404);
+    const gaps = visitDocumentationGaps(visit);
+    return json({
+      entity_type: 'Visit',
+      entity_id: visit.id,
+      completeness_score: gaps.score,
+      missing_fields: gaps.missing,
+      critical: gaps.missing.length >= 3,
+      updated: false,
     });
-
-  } catch (error) {
-    console.error('Data completeness enforcement error:', error);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+  } catch {
+    console.error('enforceDataCompleteness failed');
+    return json({ error: 'Internal server error' }, 500);
   }
 });

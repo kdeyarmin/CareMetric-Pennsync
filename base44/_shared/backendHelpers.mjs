@@ -1685,6 +1685,63 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
   };
 }`,
 
+  // Data-quality scoring shared by calculateDataQualityScores (per agency, also
+  // scheduled) and enforceDataCompleteness (one record). Released by the owner
+  // on 2026-10-08. One list per record type so the two can never disagree about
+  // what "complete" means. A Patient's two quality fields are written with a
+  // compare-and-swap on the row's own agency_id and updated_date, never an
+  // unconditional service-role update, so a concurrent chart edit wins and the
+  // next run recomputes. A Visit's compliance_score belongs to the clinician's
+  // SmartNote save and is REPORTED here, never overwritten.
+  dataQualityScoring: `const PATIENT_CRITICAL_FIELDS = [
+  'first_name', 'last_name', 'date_of_birth', 'phone', 'address',
+  'emergency_contact_name', 'emergency_contact_phone', 'physician_name', 'primary_diagnosis',
+];
+const USER_CRITICAL_FIELDS = ['phone', 'care_scope', 'credential_type', 'license_number'];
+const VISIT_DOCUMENTATION_FIELDS = [
+  'nurse_notes', 'homebound_justification', 'vital_signs', 'skilled_intervention_documented',
+];
+function qualityFieldMissing(row, field) {
+  const value = row ? row[field] : undefined;
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return value === false;
+}
+function missingQualityFields(row, fields) {
+  return fields.filter((field) => qualityFieldMissing(row, field));
+}
+function completenessScore(fields, missing) {
+  return Math.round(((fields.length - missing.length) / fields.length) * 100);
+}
+function visitDocumentationGaps(visit) {
+  const missing = VISIT_DOCUMENTATION_FIELDS.filter((field) => (field === 'nurse_notes'
+    ? typeof visit?.nurse_notes !== 'string' || visit.nurse_notes.trim().length < 100
+    : qualityFieldMissing(visit, field)));
+  return { missing, score: completenessScore(VISIT_DOCUMENTATION_FIELDS, missing) };
+}
+function sameQualityList(left, right) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+async function writePatientQuality(entities, patient, agencyId) {
+  const missing = missingQualityFields(patient, PATIENT_CRITICAL_FIELDS);
+  const score = completenessScore(PATIENT_CRITICAL_FIELDS, missing);
+  if (patient.data_completeness_score === score && sameQualityList(patient.missing_critical_fields, missing)) {
+    return { outcome: 'unchanged', score, missing };
+  }
+  if (patient.agency_id !== agencyId || typeof patient.updated_date !== 'string' || !patient.updated_date) {
+    return { outcome: 'skipped', score, missing };
+  }
+  const result = await entities.Patient.updateMany(
+    { id: patient.id, agency_id: agencyId, updated_date: patient.updated_date },
+    { $set: { data_completeness_score: score, missing_critical_fields: missing } },
+  );
+  const updated = !!result && result.success === true && result.updated === 1;
+  return { outcome: updated ? 'updated' : 'conflict', score, missing };
+}`,
+
   // Resolve AgencySettings for a caller's (or patient's) agency. Multi-tenant
   // deployments have one row per agency; newest-row-wins silently applies another
   // tenant's fax line / dial allowlist / wage index / quiet-hour timezone.

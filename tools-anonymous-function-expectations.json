@@ -1,12 +1,4 @@
 {
-  "analyzeClinicalData": {
-    "status": 503,
-    "body": {
-      "error": "Clinical data analysis is unavailable pending a tenant-authorized broker",
-      "code": "CLINICAL_DATA_ANALYSIS_PAUSED",
-      "available": false
-    }
-  },
   "archiveSignedDocument": {
     "status": 503,
     "body": {
@@ -28,15 +20,6 @@
     "body": {
       "error": "Bulk document-signing packages are temporarily unavailable.",
       "code": "bulk_document_packages_unavailable"
-    }
-  },
-  "calculateDataQualityScores": {
-    "status": 503,
-    "body": {
-      "error": "Legacy Patient service-role writer is temporarily unavailable",
-      "code": "legacy_patient_service_writer_paused",
-      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
-      "endpoint": "calculateDataQualityScores"
     }
   },
   "centralAdminRead": {
@@ -104,15 +87,6 @@
     "body": {
       "error": "PDF annotation and signature embedding are temporarily unavailable.",
       "code": "pdf_annotation_embedding_unavailable"
-    }
-  },
-  "enforceDataCompleteness": {
-    "status": 503,
-    "body": {
-      "error": "Legacy Patient service-role writer is temporarily unavailable",
-      "code": "legacy_patient_service_writer_paused",
-      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
-      "endpoint": "enforceDataCompleteness"
     }
   },
   "generateDocumentPackageFromTemplate": {

@@ -12,11 +12,12 @@ import { transpileTs } from '../../tools-transpile-ts.mjs';
 // monitorClinicalDataForCarePlanUpdates left this list on 2026-10-08 (owner:
 // "turn everything on"): it writes no Patient row any more, and
 // carePlanAiAuthorizationContract.test.js pins its agency-scoped authority.
+// calculateDataQualityScores and enforceDataCompleteness left it the same day:
+// they write a chart only through an agency + updated_date compare-and-swap,
+// and dataQualityAuthorizationContract.test.js pins that boundary.
 const FUNCTION_NAMES = [
   'deletePatientsMissingFirstName',
   'migrateExistingData',
-  'calculateDataQualityScores',
-  'enforceDataCompleteness',
   'predictPatientRisks',
   'predictiveRiskAnalysis',
 ];

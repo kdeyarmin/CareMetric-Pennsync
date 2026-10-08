@@ -337,3 +337,46 @@ test('the care-plan monitor proposes once per finding and day, never writes a Pa
   await fn.call({});
   assert.deepEqual(fn.state.tables.CarePlanProposal.map((row) => row.id), ['careplanproposal-000']);
 });
+
+test('clinical data analysis reads a chart only after care-team access and asks for no risk prediction', async () => {
+  let fn = await loadFunction('analyzeClinicalData', { user: null });
+  let result = await fn.call({ action: 'analyze_trends', patient_id: patient.id });
+  assert.equal(result.status, 401);
+  assert.equal(fn.state.bodyReads, 0);
+
+  // An agency member who is not on the care team: refused before any record or model.
+  fn = await loadFunction('analyzeClinicalData', { user: outsider });
+  result = await fn.call({ action: 'full_clinical_analysis', patient_id: patient.id });
+  assert.equal(result.status, 403);
+  assert.equal(fn.state.llm.length, 0);
+  assert.deepEqual(fn.state.reads.filter((read) => ['ClinicalEvent', 'Visit'].includes(read.table)), []);
+
+  // A forged profile with no membership cannot even extract from its own text.
+  fn = await loadFunction('analyzeClinicalData', {
+    user: { id: 'user-new', email: 'new@example.com', role: 'user', is_active: true, account_type: 'super_admin' },
+  });
+  result = await fn.call({ action: 'extract_events', noteText: 'BP 160/95' });
+  assert.equal(result.status, 403);
+  assert.equal(fn.state.llm.length, 0);
+
+  fn = await loadFunction('analyzeClinicalData', {
+    user: nurse,
+    tables: baseTables({ Visit: [{ ...VISIT }] }),
+    llm: () => JSON.stringify({
+      vital_trends: [{ vital_type: 'bp', trend_direction: 'up' }],
+      predictive_analytics: { readmission_risk_score: 80 },
+      overall_trajectory: 'declining',
+    }),
+  });
+  result = await fn.call({ action: 'analyze_trends', patient_id: patient.id });
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(result.json.vital_trends.length, 1);
+  assert.equal(result.json.predictive_analytics, undefined, 'no risk prediction is returned');
+  assert.doesNotMatch(fn.state.llm[0].prompt, /readmission|Readmission/);
+  assert.doesNotMatch(fn.state.llm[0].prompt, /Robin|Synthetic/, 'the patient name is not sent to the model');
+  assert.deepEqual(fn.state.creates, []);
+
+  result = await fn.call({ action: 'extract_events', noteText: 'BP 160/95, new cough' });
+  assert.equal(result.status, 200);
+  assert.deepEqual(fn.state.creates, [], 'extraction persists nothing');
+});

@@ -21,6 +21,15 @@ const EXPECTED = {
     releaseEnv: 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS',
     releaseConst: 'STALE_FOLLOW_UP_WORKFLOW_ENABLED',
   },
+  // Added 2026-10-08 when the owner released data-quality scoring. It runs
+  // each active agency separately under the scheduler auth helper (built-in
+  // admin or INTERNAL_FN_SECRET); the legacy "Daily Data Quality Score
+  // Update" automation stays quarantined and is not this workflow.
+  'Daily Data Quality Scores.jsonc': {
+    target: 'calculateDataQualityScores',
+    schedule: { mode: 'recurring', cron: '30 5 * * *' },
+    releaseState: 'live',
+  },
   'Dispatch Scheduled Signature Reminders.jsonc': {
     target: 'dispatchScheduledSignatureReminders',
     schedule: { mode: 'interval', value: 15, unit: 'minutes' },

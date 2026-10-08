@@ -9,6 +9,7 @@ const FUNCTIONS_URL = new URL('./functions/', import.meta.url);
 const EXPECTED_TARGETS = {
   'Auto Retry Failed Faxes.jsonc': 'autoRetryFailedFaxes',
   'Check Stale Follow-Up Requests.jsonc': 'checkStaleFollowUpRequests',
+  'Daily Data Quality Scores.jsonc': 'calculateDataQualityScores',
   'Dispatch Scheduled Signature Reminders.jsonc': 'dispatchScheduledSignatureReminders',
   'Dispatch Scheduled SMS.jsonc': 'dispatchScheduledSms',
   'Nightly Outcome Measure Computation.jsonc': 'dispatchNightlyOutcomeMeasures',
