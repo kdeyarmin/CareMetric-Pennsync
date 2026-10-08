@@ -36,3 +36,38 @@ describe('AI admission documentation', () => {
     );
   });
 });
+
+describe('agency KPI and analytics reporting', () => {
+  it('computes KPI trends only against a real baseline', async () => {
+    const { averageScore, parseKpiDate, percentTrend } = await import('@/components/reports/KPIDashboard');
+    expect(percentTrend(12, 10)).toBe('20.0');
+    expect(percentTrend(5, 0)).toBeNull();
+    expect(percentTrend(null, 10)).toBeNull();
+    expect(averageScore([{ compliance_score: 80 }, { compliance_score: '90' }, { compliance_score: null }])).toBe(85);
+    expect(averageScore([])).toBeNull();
+    expect(parseKpiDate('2026-07-27').getDate()).toBe(27);
+  });
+
+  it('exports unavailable sources as Unavailable and carries no revenue figures', async () => {
+    const { buildAgencyAnalyticsCsv, trainingCompletionStats } = await import('@/components/analytics/agencyAnalyticsExport');
+    expect(trainingCompletionStats([{ status: 'completed' }, { pass_fail_result: 'passed' }, {}]))
+      .toEqual({ completed: 2, total: 3, rate: '66.7' });
+    expect(trainingCompletionStats([]).rate).toBeNull();
+    const csv = buildAgencyAnalyticsCsv({
+      overallStats: {
+        visits: { total: 4, completed: 3, completionRate: 75 },
+        patients: { total: 2, active: 1 },
+        incidents: { total: 0 },
+        compliance: { auditsInRange: 0, avgScore: 0 },
+      },
+      topPerformers: [],
+      trainingStats: null,
+      available: { compliance: true, incidents: false },
+      generatedAt: '2026-10-08T00:00:00.000Z',
+    });
+    expect(csv).toContain('Total Incidents,Unavailable');
+    expect(csv).toContain('Avg Compliance Score,Unavailable');
+    expect(csv).toContain('Training Completion Rate (%),Unavailable');
+    expect(csv).not.toMatch(/Revenue|Cost Savings/);
+  });
+});

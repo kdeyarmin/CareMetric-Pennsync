@@ -24,11 +24,23 @@ describe('auxiliary frontend availability containment', () => {
     expect(dataQuality).toContain('auxiliaryAuthorityMatches');
   });
 
-  it('does not load platform-wide reporting entities as agency evidence', () => {
+  it('bounds the restored agency reporting sources to the verified authority and agency', () => {
+    // 2026-10-08 owner decision: Agency Analytics loads its note-conversion,
+    // compliance-audit, incident and training sources again — only after the
+    // Patient/Visit authority and roster agree, each filtered to the agency by
+    // the person its rows are attributed to, and only from a fresh answer.
+    const auxiliary = read('src/components/analytics/useAgencyAnalyticsAuxiliary.js');
     expect(agencyAnalytics).not.toMatch(
       /entities\.(?:NoteConversion|ComplianceAudit|TrainingAssignment)\.(?:list|filter)/,
     );
-    expect(agencyAnalytics).toContain('tenant-bound reporting projections');
+    expect(agencyAnalytics).toMatch(/useAgencyAnalyticsAuxiliary\(\{\s*authorityKey: analyticsAuthorityKey,\s*enabled: analyticsAvailable,/);
+    for (const entity of ['NoteConversion', 'ComplianceAudit', 'Incident', 'TrainingAssignment']) {
+      expect(auxiliary).toContain(`base44.entities.${entity}.list(`);
+    }
+    expect(auxiliary).toContain('filterRecordsByAuthorAgency(');
+    expect(auxiliary).toContain('settledSuccessfullyAfterMount(query)');
+    expect(auxiliary).not.toMatch(/initialData\s*:/);
+    expect(read('src/components/analytics/agencyAnalyticsExport.js')).not.toMatch(/Revenue|Cost Savings/);
   });
 
   it('loads productivity and note analytics from fresh, roster-bounded NoteConversion reads', () => {

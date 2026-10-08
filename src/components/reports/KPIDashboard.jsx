@@ -34,8 +34,12 @@ export function parseKpiDate(raw) {
 }
 
 export function averageScore(audits) {
+  // A missing score is not a zero: Number(null) is 0, so absent values are
+  // dropped before conversion rather than averaged in.
   const scores = audits
-    .map((audit) => Number(audit?.compliance_score))
+    .map((audit) => audit?.compliance_score)
+    .filter((score) => typeof score === 'number' || (typeof score === 'string' && score.trim()))
+    .map(Number)
     .filter((score) => Number.isFinite(score));
   return scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
 }

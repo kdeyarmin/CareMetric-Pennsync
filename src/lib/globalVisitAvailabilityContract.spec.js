@@ -43,7 +43,7 @@ describe('global Visit unavailable-state containment', () => {
     expect(tagger).toContain('visitSnapshotRef.current !== authorizedSnapshot');
     expect(quality).toContain('disabled={!analyticsSnapshot}');
     expect(agency).toMatch(/onClick=\{handleExport\}[\s\S]{0,160}\bdisabled\b/);
-    expect(agency).toContain('Tenant-bound reporting projections are not available');
+    expect(agency).toContain('disabled={!analyticsAvailable}');
     expect(dedupe).toContain('disabled={isScanning || !scanSnapshot');
   });
 
