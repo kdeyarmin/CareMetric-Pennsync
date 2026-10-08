@@ -213,6 +213,7 @@
     "manageAgencyMembership": "port",
     "manageAuthorizedReferral": "port",
     "manageMyNotifications": "port",
+    "manageOASISRecords": "preserved_paused",
     "managePatientCareTeamAssignment": "port",
     "managePhoneNumberPool": "preserved_paused",
     "manageSmsConsent": "preserved_paused",

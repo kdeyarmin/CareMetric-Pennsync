@@ -311,13 +311,6 @@
       "retryable": false
     }
   },
-  "saveOasisResponses": {
-    "status": 503,
-    "body": {
-      "error": "OASIS v2 response writes are temporarily unavailable pending tenant and patient-access security validation.",
-      "reason": "tenant_security_validation_pending"
-    }
-  },
   "scheduleSignatureReminders": {
     "status": 503,
     "body": {

@@ -109,7 +109,7 @@ export default function OASISClinicalReview({ analysisHandoff }) {
       <Card className="border-2 border-amber-300">
         <CardHeader className="bg-amber-50">
           <CardTitle className="flex items-center gap-2 text-amber-950">
-            <Stethoscope className="h-5 w-5" /> OASIS Clinical AI Review Paused
+            <Stethoscope className="h-5 w-5" /> OASIS Clinical Review Off
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 pt-5 text-sm text-slate-700">

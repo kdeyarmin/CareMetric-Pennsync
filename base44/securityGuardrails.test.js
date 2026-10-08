@@ -358,7 +358,13 @@ test('browser outcome surfaces do not read outcome entities or invoke the secret
   }
 });
 
-test('OASIS writes and browser KPI reporting remain paused behind server-owned tenant security', () => {
+// The owner turned OASIS writes on on 2026-10-08 ("turn everything on"). What
+// stays pinned is how a write is safe: the entities still refuse every direct
+// hosted mutation, the one writer decides authority from the protected admin
+// role or an exact active membership (never a profile field), keeps its static
+// off switch ahead of any data access, and the browser reaches it through one
+// adapter that sends no provenance, tenancy or schema of its own.
+test('OASIS writes go only through the authorized response writer, and browser KPI reporting through reviewed brokers', () => {
   const oasisEntity = read('base44/entities/OASISAssessment.jsonc');
   const oasisUploadEntity = read('base44/entities/OASISUpload.jsonc');
   const oasisWriter = read('base44/functions/saveOasisResponses/entry.ts');
@@ -370,12 +376,30 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
         `${name} ${operation} must deny direct hosted API mutation.`);
     }
   }
-  assert.ok(/const OASIS_V2_WRITES_PAUSED = true;/.test(oasisWriter));
+  assert.ok(/const OASIS_V2_WRITES_PAUSED = false;/.test(oasisWriter));
   const handler = oasisWriter.slice(oasisWriter.indexOf('Deno.serve'));
   assert.ok(
     handler.indexOf('if (OASIS_V2_WRITES_PAUSED)') < handler.indexOf('createClientFromRequest('),
-    'saveOasisResponses must return 503 before client creation or any data access.',
+    'the off switch still answers before client creation or any data access.',
   );
+  const authority = oasisWriter.slice(
+    oasisWriter.indexOf('async function loadAuthority('),
+    oasisWriter.indexOf('\n}\n', oasisWriter.indexOf('async function loadAuthority(')),
+  );
+  assert.match(authority, /const isPlatformOwner = user\.role === 'admin';/);
+  assert.match(authority, /entities\.AgencyMembership\.filter\(\s*\{ user_id: userId \}/);
+  assert.match(authority, /row\.agency_id === agencyId && row\.status === 'active'/);
+  assert.match(authority, /if \(!OASIS_WRITER_ROLES\.has\(String\(selected\.tenant_role \|\| ''\)\)\)/);
+  assert.doesNotMatch(authority, /user\.(?:account_type|is_manager|agency_id|agency_name|assigned_nurses)/,
+    'no self-editable profile field authorizes an OASIS write.');
+  assert.match(oasisWriter, /^const OASIS_WRITER_ROLES = new Set\(\['agency_admin', 'manager', 'clinician'\]\);$/m);
+  assert.match(oasisWriter, /^const AGENCY_WIDE_WRITER_ROLES = new Set\(\['platform_owner', 'agency_admin', 'manager'\]\);$/m);
+  const write = handler.indexOf('OASISAssessment.create(');
+  assert.ok(write > 0, 'one create');
+  for (const step of ['loadAuthority(', 'loadPatientAccess(', 'recheckWriteAccess(', 'validateOasisResponseWrite(']) {
+    const at = handler.indexOf(step);
+    assert.ok(at > 0 && at < write, `${step} runs before the write`);
+  }
   // 2026-10-08 owner decision: the KPI dashboard is on again, reading only
   // through reviewed brokers — never Patient, Visit, Referral or OASIS directly.
   assert.match(dashboard, /useScopedPatients\(\{ purpose: 'roster'/);
@@ -383,27 +407,36 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   assert.match(dashboard, /useReferralReportRows\(\)/);
   assert.ok(!/entities\.(?:Patient|Visit|Referral|OASISAssessment|AgencyKPI|PatientOutcomeMetric)\b/.test(dashboard));
   const adapter = read('src/components/oasis/responseSchema/oasisWriteAdapter.js');
-  assert.ok(!/base44|functions\.invoke|OASISAssessment\.(create|update)/.test(adapter));
-  assert.match(adapter, /tenant_security_validation_pending/);
+  assert.ok(!/\.entities\.|OASISAssessment\.(create|update)/.test(adapter));
+  assert.equal((adapter.match(/functions\.invoke\(/g) || []).length, 1);
+  assert.match(adapter, /base44\.functions\.invoke\("saveOasisResponses", body\)/);
+  assert.match(adapter, /items\.push\(\{ definition_id: built\.row\.definition_id, response_value: sel\.responseValue \}\);/,
+    'only the definition id and the structured value travel');
+  assert.doesNotMatch(adapter.slice(adapter.indexOf('const body = {'), adapter.indexOf('let data;')),
+    /created_by|clinician_email|response_origin|ai_suggested|response_schema_id|instrument_version/,
+    'the browser sends no provenance or schema claim');
+  assert.match(adapter, /legacy_schema_read_only/);
   for (const file of [
     'src/components/hub-tabs/SmartOASISAssessment.jsx',
     'src/components/clinical/OASISQuickUpdate.jsx',
   ]) {
     const src = read(file);
-    assert.ok(!/saveLegacyScreeningDraft|saveOfficialResponses/.test(src));
-    assert.match(src, /saving is temporarily unavailable pending tenant security validation/i);
+    assert.ok(/saveOfficialResponses\(/.test(src), `${file} saves through the one adapter`);
+    assert.ok(!/\.entities\.OASISAssessment|functions\.invoke\(/.test(src), `${file} has no other write path`);
   }
   const uploadWidget = read('src/components/oasis/OASISUploadWidget.jsx');
   assert.ok(!/from ["']@\/api\/base44Client|UploadFile\s*\(|OASISUpload\.create\s*\(/.test(uploadWidget));
   assert.match(uploadWidget, /No file is uploaded from this screen/i);
+  assert.match(uploadWidget, /to="\/OASISCenter\?tab=analyze"/);
   for (const [file, gate] of [
     ['src/components/hub-tabs/OASISAnalyzer.jsx', 'OASIS_ANALYZER_ENABLED'],
     ['src/components/hub-tabs/OASISReview.jsx', 'OASIS_AI_REVIEW_ENABLED'],
     ['src/components/hub-tabs/OASISAnalyticsDashboard.jsx', 'OASIS_AI_ANALYTICS_ENABLED'],
   ]) {
     const surface = read(file);
-    assert.match(surface, new RegExp(`const ${gate} = false;`));
-    assert.match(surface, new RegExp(`if \\(!${gate}\\)`));
+    assert.match(surface, new RegExp(`const ${gate} = true;`));
+    assert.match(surface, new RegExp(`if \\(!${gate}\\)`), `${file} keeps its off switch`);
+    assert.doesNotMatch(surface, /\.entities\.OASIS[A-Za-z]*\./, `${file} reads no OASIS entity directly`);
   }
 });
 

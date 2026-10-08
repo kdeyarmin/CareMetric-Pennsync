@@ -123,7 +123,7 @@ export default function OASISComplianceReview({ analysisHandoff }) {
     return (
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="p-6">
-          <p className="font-semibold text-amber-900">OASIS Compliance AI Review Paused</p>
+          <p className="font-semibold text-amber-900">OASIS Compliance Review Off</p>
           <p className="mt-2 text-sm text-amber-800">
             Compliance review is switched off for this deployment.
           </p>

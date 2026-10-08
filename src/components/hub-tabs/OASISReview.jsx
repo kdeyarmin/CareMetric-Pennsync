@@ -299,7 +299,7 @@ export default function OASISReview() {
       <Card className="border-2 border-amber-300">
         <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
           <div className="flex items-center gap-2 font-semibold text-amber-950">
-            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Suggestion Review Paused
+            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS Extraction Review Off
           </div>
           <p>Extraction review is switched off for this deployment.</p>
         </CardContent>

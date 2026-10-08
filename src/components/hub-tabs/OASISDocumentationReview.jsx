@@ -59,7 +59,7 @@ export default function OASISDocumentationReview({ analysisHandoff }) {
   if (!OASIS_DOCUMENTATION_REVIEW_ENABLED) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
-        <p className="font-semibold text-amber-900">OASIS Documentation AI Review Paused</p>
+        <p className="font-semibold text-amber-900">OASIS Documentation Review Off</p>
         <p className="mt-2 text-sm text-amber-800">
           Documentation review is switched off for this deployment.
         </p>

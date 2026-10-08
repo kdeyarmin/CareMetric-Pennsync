@@ -2284,14 +2284,11 @@ export default function OASISAnalyzer({ onAnalysisHandoff }) {
         <CardHeader className="bg-amber-50">
           <CardTitle className="flex items-center gap-2 text-amber-950">
             <AlertTriangle className="h-5 w-5 text-amber-700" />
-            OASIS AI Analyzer Paused
+            OASIS Analyzer Off
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 pt-5 text-sm text-slate-700">
-          <p>
-            This analyzer is unavailable while its OASIS response, tenant-access,
-            and workflow-automation safety controls are being verified.
-          </p>
+          <p>The OASIS analyzer is switched off for this deployment.</p>
           <p>
             No analysis, background query, AI request, or automated patient-chart
             action runs from this screen.

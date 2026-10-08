@@ -355,11 +355,22 @@ test('OCR feedback is directly readable only by its owner/admin and directly imm
   assert.match(retrain, /asServiceRole\.entities\.OCRFeedback\.update/);
 });
 
-test('paused OASIS recommendation and automation entities stay behind containment gates', () => {
+// The owner turned the OASIS Center on on 2026-10-08. Its automation and
+// recommendation entities stay service-only in the schema, and the only code
+// that touches them is the OASIS record broker, which scopes every read and
+// write from trusted claims and the chart rule. The browser surfaces mount the
+// broker's client, never the entities.
+test('OASIS recommendation and automation entities are reached only through the record broker', () => {
   const analyzer = readFileSync(join(REPO_DIR, 'src', 'components', 'hub-tabs', 'OASISAnalyzer.jsx'), 'utf8');
   const clinicalReview = readFileSync(join(REPO_DIR, 'src', 'components', 'hub-tabs', 'OASISClinicalReview.jsx'), 'utf8');
-  assert.match(analyzer, /const OASIS_ANALYZER_ENABLED = false;/);
-  assert.match(clinicalReview, /const OASIS_CLINICAL_AI_ENABLED = false;/);
+  assert.match(analyzer, /const OASIS_ANALYZER_ENABLED = true;/);
+  assert.match(clinicalReview, /const OASIS_CLINICAL_AI_ENABLED = true;/);
+  for (const name of ['OASISAutomationRule', 'OASISWorkflowExecution', 'PatientRecommendation', 'OASISAudit', 'OASISFeedback']) {
+    const rls = byName.get(name)?.rls;
+    for (const operation of ['read', 'create', 'update', 'delete']) {
+      assert.equal(rls?.[operation], false, `${name}.${operation} stays service-only`);
+    }
+  }
 
   const codeFiles = [];
   const visit = (directory) => {
@@ -375,16 +386,19 @@ test('paused OASIS recommendation and automation entities stay behind containmen
   visit(join(BASE44_DIR, 'functions'));
 
   const expectedEntityConsumers = {
+    // The three browser components that read and wrote rules directly now go
+    // through the broker's list_rules / save_rule / delete_rule.
     OASISAutomationRule: [
-      'src/components/oasis/OASISAutomationSettings.jsx',
-      'src/components/oasis/WorkflowExecutionEngine.jsx',
-      'src/components/oasis/WorkflowMonitoringDashboard.jsx',
+      'base44/functions/manageOASISRecords/entry.ts',
     ],
-    // PredictiveOutcomesAnalyzer.jsx (AI outcome prediction) was the second
-    // writer until it was deleted with the clinical risk-prediction features.
-    PatientRecommendation: [
-      'src/components/oasis/OASISToPatientChartPusher.jsx',
+    OASISWorkflowExecution: [
+      'base44/functions/manageOASISRecords/entry.ts',
     ],
+    // OASISToPatientChartPusher.jsx was the last writer: it now adds follow-up
+    // Tasks through the broker's chart-checked create_tasks instead.
+    // (PredictiveOutcomesAnalyzer.jsx left earlier, with the clinical
+    // risk-prediction features.)
+    PatientRecommendation: [],
   };
   const actualEntityConsumers = Object.fromEntries(
     Object.keys(expectedEntityConsumers).map((name) => [name, []]),

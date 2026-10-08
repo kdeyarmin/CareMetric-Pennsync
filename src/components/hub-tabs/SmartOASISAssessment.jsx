@@ -788,7 +788,7 @@ export default function SmartOASISAssessment() {
       <PageContainer>
         <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-6 text-sm text-amber-950">
           <div className="flex items-center gap-2 font-semibold">
-            <ShieldAlert className="h-5 w-5" /> Smart OASIS Assessment Paused
+            <ShieldAlert className="h-5 w-5" /> OASIS Assessment Entry Off
           </div>
           <p className="mt-2">OASIS entry is switched off for this deployment.</p>
         </div>

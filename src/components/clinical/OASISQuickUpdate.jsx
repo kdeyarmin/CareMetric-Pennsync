@@ -294,7 +294,7 @@ export default function OASISQuickUpdate(props) {
       <Card className="border-2 border-amber-300 bg-amber-50">
         <CardContent className="space-y-2 p-5 text-sm text-amber-950">
           <div className="flex items-center gap-2 font-semibold">
-            <AlertTriangle className="h-5 w-5" /> OASIS Quick Update Paused
+            <AlertTriangle className="h-5 w-5" /> OASIS Quick Update Off
           </div>
           <p>Response entry is switched off for this deployment.</p>
         </CardContent>

@@ -21,7 +21,7 @@
 // choices do not reproduce the CMS response sets, so it is never written as a
 // response. `saveLegacyScreeningDraft` says so by name rather than writing.
 //
-// A direct `OASISAssessment.create/update` outside the broker is a contract
+// A direct OASISAssessment write outside the broker is a contract
 // violation; `base44/oasisWriterContract.test.js` fails the build on one.
 
 import { base44 } from "@/api/base44Client";

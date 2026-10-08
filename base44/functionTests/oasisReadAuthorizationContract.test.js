@@ -784,7 +784,7 @@ async function collectFiles(root, relative = '') {
   return output;
 }
 
-test('static contract keeps the broker service-role-only, read-only, finite, and unwired', async () => {
+test('static contract keeps the broker service-role-only, read-only, finite, and its one consumer on summaries', async () => {
   const [broker, wrapper, entityText] = await Promise.all([
     readFile(brokerUrl, 'utf8'),
     readFile(wrapperUrl, 'utf8'),
@@ -829,9 +829,10 @@ test('static contract keeps the broker service-role-only, read-only, finite, and
     if (file === 'functions/readAuthorizedOASISAssessments.js'
       || file === 'functions/readAuthorizedOASISAssessments.spec.js') continue;
     const text = await readFile(new URL(file, sourceRootUrl), 'utf8');
-    if (text.includes('readAuthorizedOASISAssessments')
+    // A spec that mocks the wrapper names it without consuming it.
+    if (!/\.(?:spec|test)\.[jt]sx?$/.test(file) && (text.includes('readAuthorizedOASISAssessments')
       || text.includes('getAuthorizedOASISAssessment')
-      || text.includes('listAuthorizedOASISAssessments')) {
+      || text.includes('listAuthorizedOASISAssessments'))) {
       consumers.push(file);
     }
     if (
@@ -841,11 +842,20 @@ test('static contract keeps the broker service-role-only, read-only, finite, and
       directEntityReaders.push(file);
     }
   }
-  assert.deepEqual(consumers, [], 'OASIS read wrapper must remain unwired pending hosted proof');
-  // PDGMReimbursementReport.jsx left this set when the PDGM payment report
-  // was deleted with the PDGM payment features.
-  assert.deepEqual(directEntityReaders.sort(), [
-    'components/clinical/OASISQuickUpdate.jsx',
-    'components/reports/OASISComplianceReport.jsx',
-  ], 'every remaining direct OASIS browser reader must stay in the reviewed hard-paused set');
+  // The owner turned the OASIS Center on on 2026-10-08. The quick update's
+  // recent-assessment list is the wrapper's one consumer, and it asks only for
+  // the response-free summary projection; a new consumer has to be added here
+  // by name.
+  assert.deepEqual(consumers, ['components/clinical/OASISQuickUpdate.jsx'],
+    'the OASIS read wrapper has exactly the reviewed consumers');
+  const quickUpdate = await readFile(new URL('components/clinical/OASISQuickUpdate.jsx', sourceRootUrl), 'utf8');
+  assert.match(quickUpdate, /listAuthorizedOASISAssessments\(\{[\s\S]*?purpose: "summary",[\s\S]*?\}\)/);
+  assert.doesNotMatch(quickUpdate, /verified_responses|getAuthorizedOASISAssessment/);
+  // The last two direct readers left this set when the center was turned on:
+  // OASISQuickUpdate.jsx reads through the wrapper above and
+  // OASISComplianceReport.jsx through the OASIS record broker's projected
+  // assessment_report. (PDGMReimbursementReport.jsx left earlier, with the
+  // PDGM payment features.)
+  assert.deepEqual(directEntityReaders.sort(), [],
+    'no browser module reads OASISAssessment directly');
 });
