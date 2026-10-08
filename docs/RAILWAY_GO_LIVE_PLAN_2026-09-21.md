@@ -4071,9 +4071,8 @@ owner's decision to remove the clinical risk-prediction and PDGM payment
 features from the frontend** — another printer run, not an adjustment of
 anything above it.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 99 declared, 159/256 landable call sites SERVED, 97 still to adopt
@@ -4094,6 +4093,34 @@ seven, and the refusals, the unreadable sites and the remainder did not move.
 The fifteen other entity call sites the removal deleted were on paused OASIS
 entities that this gate never counted as landable; they belong to the
 destination gate, below.
+
+**That block is a dated record as well. What follows is this tree after the
+owner turned the phone, PDF, feedback and activity-report features back on** —
+another printer run, not an adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 99 declared, 160/263 landable call sites SERVED, 103 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 68 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 103, across 34 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 102 need a named capability
+```
+
+**Nothing was declared between these two blocks, and the move is again a
+POPULATION change rather than progress.** The screens that came back brought
+their own entity calls with them. The provider follow-up page's
+physician-directory read returned, so the served read that left with it four
+blocks above is back. The rest arrived UNROUTED: the dashboard's Time Saved
+card reads the caller's own note conversions again, the restored nurse
+performance page reads and writes nurse goals, and the activity logger appends a
+user-activity row again — six sites, five of them over keys the remainder did
+not hold before. The restored texts tab and scheduled-text queue read entities
+with no owned-store table at all, so they never reach this pool and move the
+destination gate instead. So the remainder rose without anybody's adoption work
+going backwards, and the totals are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4236,20 +4263,22 @@ different kinds of work:
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Twenty-five have no route declared at all**, over twenty-one entity and
-  operation keys: seventeen reads over fourteen keys, and eight writes over seven.
+- **Thirty-one have no route declared at all**, over twenty-six entity and
+  operation keys: nineteen reads over fifteen keys, and twelve writes over eleven.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
   adding two branches' deltas is wrong in both directions. **The write half fell
-  furthest, and not because anyone worked on it** — the reference writes took
-  eight sites out of this pool and the withdrawn duty toggle put nothing back,
-  so a bucket nobody touched moved twice. That is what a remainder does: it is a
-  property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.59 call sites and a write
+  furthest once, and not because anyone worked on it** — the reference writes
+  took eight sites out of this pool and the withdrawn duty toggle put nothing
+  back — and has since grown again as restored screens brought their own writes
+  back, so a bucket nobody adopted from has moved in both directions. That is
+  what a remainder does: it is a property of what is LEFT, and of what ARRIVES.
+  The reason the shape keeps moving is measurable on
+  the sites already served: a read key there carries 2.61 call sites and a write
   key 1.28, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.21 sites and a
-  write key 1.14, which is nothing like the served spread.
+  the remainder, though**: inside this pool a read key covers 1.27 sites and a
+  write key 1.09, which is nothing like the served spread.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it
@@ -4366,6 +4395,16 @@ different kinds of work:
   served write pair and all four of the remainder's figures stayed exactly where
   they were. A served ratio falling for that reason is screens deleted on
   purpose, not routes going thinner.
+
+  **And again when the phone, PDF, feedback and activity-report features came
+  back, which moved both pools.** The provider follow-up page's directory read
+  rejoined a key the served pool already held, so its read pair went from 127
+  sites over 49 keys to 128 over the same 49. The remainder took six sites:
+  the goal read and a second note-conversion read moved its read pair from
+  seventeen over fourteen to nineteen over fifteen, and the goal create, update
+  and delete with the activity append moved its write pair from eight over seven
+  to twelve over eleven — four writes over four new keys, which is why the write
+  ratio fell back toward one.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the

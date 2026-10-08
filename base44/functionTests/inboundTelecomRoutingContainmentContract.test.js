@@ -249,9 +249,15 @@ test("every live consent broker uses composite authority while unsafe provider p
   assert.match(webhook, /console\.error\('handleTelnyxStatusWebhook failed'\)/);
   assert.doesNotMatch(webhook, /handleTelnyxStatusWebhook error:[^\n]*error\?\.message/);
 
+  // scheduleSms and dispatchScheduledSms were released 2026-10-08 and now read
+  // only the scoped consent ledger (pinned in
+  // mutableProfileAuthorizationContainmentContract.test.js).
+  for (const name of ["scheduleSms", "dispatchScheduledSms"]) {
+    const source = await readFile(new URL(`${name}/entry.ts`, FUNCTIONS_URL), "utf8");
+    assert.match(source, /loadLatestScopedSmsConsent\(/, `${name} uses the scoped consent ledger`);
+    assert.doesNotMatch(source, /SmsConsent\s*\.filter\(\{ phone_e164/, `${name} never reads a phone-only consent row`);
+  }
   const paused = [
-    ["scheduleSms", "const SCHEDULED_SMS_CREATION_PAUSED = true;"],
-    ["dispatchScheduledSms", "const SCHEDULED_SMS_DISPATCH_PAUSED = true;"],
     ["redriveFailedSms", "const SMS_REDRIVE_MIGRATION_PAUSED = true;"],
   ];
   for (const [name, literal] of paused) {
@@ -692,10 +698,14 @@ test("the same subscriber has independent consent scopes across provider profile
   }
 });
 
-test("signed inbound patient telecom events stay paused or require exact fax destination authority", async () => {
+test("signed inbound SMS stays paused, fax requires exact destination authority, and inbound calls route", async () => {
+  // Inbound patient CALL routing was released by the owner on 2026-10-08
+  // (single agency, staff-only). SMS stays literally paused, except that a
+  // provider-classified STOP/START is recorded in the scoped consent ledger
+  // first, so releasing SMS later can no longer skip consent (28d3f369).
   const source = await readFile(ENTRY_URL, "utf8");
   assert.match(source, /const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;/);
-  assert.match(source, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;/);
+  assert.match(source, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = false;/);
   assert.match(source, /async function resolveActiveTelnyxFaxBinding/);
   assert.match(source, /TelecomDestinationBinding\.filter\(\{[\s\S]{0,240}destination_e164:\s*destinationE164/);
   assert.match(source, /handleInboundFax\(base44, telnyxCreds, payload\)/);
@@ -709,16 +719,17 @@ test("signed inbound patient telecom events stay paused or require exact fax des
   const entry = source.slice(source.indexOf("Deno.serve"));
   const verification = entry.indexOf("await verifyTelnyxSignature");
   const extraction = entry.indexOf("extractTelnyxEvent(body)");
-  const smsGate = entry.indexOf("eventType === 'message.received' && INBOUND_PATIENT_SMS_ROUTING_PAUSED");
+  const smsBranch = entry.indexOf("if (eventType === 'message.received') {");
   const keywordBinding = entry.indexOf("handleInboundConsentKeyword(base44, telnyxCreds, event, payload)");
+  const smsGate = entry.indexOf("if (INBOUND_PATIENT_SMS_ROUTING_PAUSED) return inboundRoutingPausedResponse('SMS')");
   const callGate = entry.indexOf("INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent");
   const smsDispatch = entry.indexOf("return await handleInboundMessage");
   const faxDispatch = entry.indexOf("return await handleInboundFax");
   const callDispatch = entry.indexOf("return await handleCallEvent");
   assert.ok(verification >= 0 && verification < extraction, "signature verification precedes event extraction");
   assert.ok(
-    extraction < smsGate && smsGate < keywordBinding && keywordBinding < smsDispatch,
-    "signed extraction precedes the narrow keyword binding path and legacy SMS dispatch stays paused",
+    extraction < smsBranch && smsBranch < keywordBinding && keywordBinding < smsGate && smsGate < smsDispatch,
+    "signed extraction precedes the scoped keyword path, which precedes the SMS pause and any SMS dispatch",
   );
   assert.ok(extraction < faxDispatch, "signed extraction precedes exact-bound fax dispatch");
   assert.ok(extraction < callGate && callGate < callDispatch, "call pause precedes legacy call dispatch");
@@ -796,19 +807,6 @@ test("signed inbound patient telecom events stay paused or require exact fax des
     assert.equal(smsResponse.headers.get("retry-after"), "300");
     assert.equal((await smsResponse.json()).code, "INBOUND_TELECOM_BINDING_MIGRATION_PAUSED");
 
-    const inboundCallResponse = await handler(signedWebhook(privateKey, {
-      data: {
-        event_type: "call.initiated",
-        payload: {
-          call_control_id: "inbound-call-1",
-          direction: "incoming",
-          from: "+13125550182",
-          to: "+12155550100",
-        },
-      },
-    }));
-    assert.equal(inboundCallResponse.status, 503);
-
     const inboundFaxResponse = await handler(signedWebhook(privateKey, {
       data: {
         event_type: "fax.received",
@@ -823,8 +821,44 @@ test("signed inbound patient telecom events stay paused or require exact fax des
     }));
     assert.equal(inboundFaxResponse.status, 503);
 
-    // Follow-on ringdown legs can be direction=outgoing or omit direction, but
-    // they still execute targets derived by the paused inbound routing chain.
+    assert.equal(
+      entityCalls.filter((call) => call.name === "User").length,
+      0,
+      "paused inbound SMS and unbound fax never consult mutable User telecom fields",
+    );
+    assert.equal(
+      entityCalls.filter((call) => call.name === "AgencySettings").length,
+      0,
+      "paused inbound fax events never consult mutable agency routing settings",
+    );
+    assert.equal(fetchCalls.length, 0, "paused SMS and unbound fax execute no Telnyx routing command");
+
+    const inboundCallResponse = await handler(signedWebhook(privateKey, {
+      data: {
+        event_type: "call.initiated",
+        payload: {
+          call_control_id: "inbound-call-1",
+          direction: "incoming",
+          from: "+13125550182",
+          to: "+12155550100",
+        },
+      },
+    }));
+
+    // Inbound calls now route: the call is logged (that row is what fills the
+    // Phone Center Recents/Callbacks tabs) and answered through the gated
+    // Call Control wrapper.
+    assert.equal(inboundCallResponse.status, 200);
+    assert.equal((await inboundCallResponse.json()).inbound, "hangup",
+      "with no nurse on the dialed number and no office line, the caller hears a message");
+    const inboundLog = entityCalls.find((call) => call.name === "CallLog" && call.operation === "create");
+    assert.ok(inboundLog, "the inbound call is logged");
+    assert.equal(inboundLog.args[0].direction, "inbound");
+    assert.equal(inboundLog.args[0].provider_call_id, "inbound-call-1");
+    assert.ok(fetchCalls.some((call) => call.url.endsWith("/v2/calls/inbound-call-1/actions/answer")));
+
+    // Follow-on ringdown legs (direction=outgoing or omitted) continue the
+    // released inbound routing chain rather than being refused.
     const ringdownState = Buffer.from(JSON.stringify({
       t: "ringdown",
       a_leg: "inbound-call-1",
@@ -840,19 +874,10 @@ test("signed inbound patient telecom events stay paused or require exact fax des
         },
       },
     }));
-    assert.equal(continuationResponse.status, 503);
-
-    assert.equal(
-      entityCalls.filter((call) => call.name === "User").length,
-      0,
-      "paused inbound events never consult mutable User telecom fields",
-    );
-    assert.equal(
-      entityCalls.filter((call) => call.name === "AgencySettings").length,
-      0,
-      "paused inbound fax events never consult mutable agency routing settings",
-    );
-    assert.equal(fetchCalls.length, 0, "paused inbound events execute no Telnyx routing command");
+    assert.equal(continuationResponse.status, 200);
+    assert.equal((await continuationResponse.json()).exhausted, true);
+    assert.ok(fetchCalls.some((call) => call.url.endsWith("/v2/calls/inbound-call-1/actions/hangup")),
+      "an exhausted ringdown hangs up the caller leg");
 
     // Delivery receipts remain live; only message.received is paused.
     const deliveryResponse = await handler(signedWebhook(privateKey, {

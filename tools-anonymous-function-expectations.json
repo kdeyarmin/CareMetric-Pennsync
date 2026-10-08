@@ -14,14 +14,6 @@
       "code": "document_analysis_private_write_broker_required"
     }
   },
-  "analyzeNursePerformance": {
-    "status": 503,
-    "body": {
-      "error": "Nurse performance analysis is unavailable pending immutable tenant provenance",
-      "code": "NURSE_PERFORMANCE_ANALYSIS_PAUSED",
-      "available": false
-    }
-  },
   "archiveSignedDocument": {
     "status": 503,
     "body": {
@@ -194,14 +186,6 @@
       "code": "signer_token_issuance_unavailable"
     }
   },
-  "getUserActivityLog": {
-    "status": 503,
-    "body": {
-      "error": "User activity history is unavailable pending immutable tenant provenance",
-      "code": "USER_ACTIVITY_LOG_PAUSED",
-      "available": false
-    }
-  },
   "handleTelnyxStatusWebhook": {
     "status": 503,
     "body": {
@@ -324,15 +308,6 @@
     "body": {
       "error": "Completed-visit AI processing is temporarily unavailable pending tenant-safe Visit update migration",
       "code": "visit_update_security_validation_pending"
-    }
-  },
-  "processDischargeReport": {
-    "status": 503,
-    "body": {
-      "error": "Legacy Patient service-role writer is temporarily unavailable",
-      "code": "legacy_patient_service_writer_paused",
-      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
-      "endpoint": "processDischargeReport"
     }
   },
   "processInboundFaxes": {
