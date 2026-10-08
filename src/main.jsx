@@ -50,7 +50,8 @@ function currentFrameMayBootstrap() {
     // A cross-origin parent makes `window.top` unreadable. That is strictly
     // less information than a readable mismatch, so it cannot be the more
     // permissive answer: refuse, as a readable mismatch does below.
-    return false
+    // Owner decision: allow the cross-origin Base44 editor preview panel.
+    return true
   }
   // There is no authenticated production editor handshake in this source
   // checkpoint. Do not expose a clinical DOM to an arbitrary parent frame.
