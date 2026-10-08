@@ -7,13 +7,6 @@
       "available": false
     }
   },
-  "analyzeDocument": {
-    "status": 503,
-    "body": {
-      "error": "Document analysis is temporarily unavailable",
-      "code": "document_analysis_private_write_broker_required"
-    }
-  },
   "archiveSignedDocument": {
     "status": 503,
     "body": {
@@ -140,15 +133,6 @@
       "endpoint": "enforceDataCompleteness"
     }
   },
-  "generateDischargeSummary": {
-    "status": 503,
-    "body": {
-      "success": false,
-      "paused": true,
-      "code": "DISCHARGE_SUMMARY_GENERATION_PAUSED",
-      "error": "Discharge summary generation is temporarily unavailable pending tenant-safe storage"
-    }
-  },
   "generateDocumentPackageFromTemplate": {
     "status": 503,
     "body": {
@@ -161,15 +145,6 @@
     "body": {
       "error": "Secure messaging is temporarily unavailable",
       "code": "secure_message_tenant_broker_required"
-    }
-  },
-  "generatePatientEducation": {
-    "status": 503,
-    "body": {
-      "success": false,
-      "paused": true,
-      "code": "PATIENT_EDUCATION_GENERATION_PAUSED",
-      "error": "Patient education generation is temporarily unavailable pending tenant-safe storage"
     }
   },
   "generateSignatureCertificate": {
@@ -334,14 +309,6 @@
       "code": "OUTBOUND_DELIVERY_RELEASE_PAUSED",
       "channel": "sms",
       "retryable": false
-    }
-  },
-  "runSecurityAudit": {
-    "status": 503,
-    "body": {
-      "error": "Security audit is unavailable pending immutable tenant provenance",
-      "code": "SECURITY_AUDIT_PAUSED",
-      "available": false
     }
   },
   "saveOasisResponses": {

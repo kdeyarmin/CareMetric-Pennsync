@@ -12,6 +12,7 @@ import { AlertTriangle, BarChart3, Gauge, Brain, FileText } from "lucide-react";
 import ReportsCenter from "@/components/admin/ReportsCenter";
 import QualityMetricsDashboard from "@/components/admin/QualityMetricsDashboard";
 import AIKPIReportGenerator from "@/components/admin/AIKPIReportGenerator";
+import NoteConversionReport from "@/components/admin/NoteConversionReport";
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
 
 const FRESH_QUERY_OPTIONS = Object.freeze({
@@ -189,14 +190,7 @@ export default function AdminReportsCenterPage() {
           <AIKPIReportGenerator />
         </TabsContent>
         <TabsContent value="notes">
-          <Alert className="border-amber-300 bg-amber-50" role="status">
-            <AlertTriangle className="h-4 w-4 text-amber-700" />
-            <AlertDescription className="text-amber-950">
-              Note analytics are unavailable until NoteConversion has a tenant-bound
-              reporting projection. The platform-wide administrator read is not used
-              for agency metrics or exports.
-            </AlertDescription>
-          </Alert>
+          <NoteConversionReport />
         </TabsContent>
       </Tabs>
     </div>

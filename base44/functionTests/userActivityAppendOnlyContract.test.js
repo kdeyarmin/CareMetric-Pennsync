@@ -253,28 +253,42 @@ const agreementRequest = (body, method = 'POST') => new Request('http://local/ac
   ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
 });
 
-test('UserActivity is append-only: callers append their own events and only the built-in admin reads', async () => {
+test('UserActivity is append-only: callers append their own events, and the creator or an admin reads', async () => {
   // Owner decision 2026-10-08: browser activity is recorded again. A caller may
   // create only a row naming themselves, nobody may update or delete a row,
-  // and the direct read is the built-in admin's. An agency administrator reads
-  // through getUserActivityLog, which scopes to their own agency's members.
+  // and the direct read is the row's creator or the built-in admin (the
+  // reviewed security views). An agency administrator reads through
+  // getUserActivityLog, which scopes to their own agency's members.
   const schema = JSON5.parse(await readFile(
     new URL('../entities/UserActivity.jsonc', import.meta.url),
     'utf8',
   ));
 
   assert.deepEqual(schema.rls, {
-    read: { user_condition: { role: 'admin' } },
+    read: {
+      $or: [
+        { created_by: '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
     create: { 'data.user_email': '{{user.email}}' },
     update: false,
     delete: false,
   });
 });
 
-test('browser source reads UserActivity history only through the scoped broker', async () => {
-  // The single browser handle is the append in activityLogger.jsx; every
-  // read goes through getUserActivityLog, never a direct entity read.
+test('browser source reads UserActivity history through the scoped broker or the reviewed admin views', async () => {
+  // The only write handle is the append in activityLogger.jsx. The full-log
+  // reads are the four reviewed security views, each gated on the built-in
+  // administrator account; every other read goes through getUserActivityLog.
   const ACTIVITY_LOGGER = '/src/components/utils/activityLogger.jsx';
+  const ADMIN_READERS = [
+    'src/components/security/AIAuditAnalyzer.jsx',
+    'src/components/security/BreachDetectionSystem.jsx',
+    'src/components/security/SecurityAnomalyDetector.jsx',
+    'src/components/security/SecurityLogTabs.jsx',
+  ];
+  const readers = new Set();
   const violations = [];
   for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
     const source = await readFile(url, 'utf8');
@@ -287,12 +301,16 @@ test('browser source reads UserActivity history only through the scoped broker',
       }
       continue;
     }
-    if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
-    if (/\b(?:functions\.)?invoke\s*\(\s*['"]runSecurityAudit['"]/.test(source)) {
-      violations.push(`${url.pathname}: provenance-derived analysis invocation`);
-    }
+    const relative = url.pathname.slice(url.pathname.indexOf('/src/') + 1);
+    if (handles.length && ADMIN_READERS.includes(relative)) readers.add(relative);
+    else if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
   }
   assert.deepEqual(violations, []);
+  assert.deepEqual([...readers].sort(), ADMIN_READERS);
+  for (const reader of readers) {
+    const source = await readFile(new URL(`../../${reader}`, import.meta.url), 'utf8');
+    assert.match(source, /isAdminLike\(/, `${reader} must gate the full-log read on the administrator account`);
+  }
 
   // Both restored readers build a pinned client, rebuild the caller's claims
   // from the service-owned membership, and never read the self-editable
@@ -311,26 +329,24 @@ test('browser source reads UserActivity history only through the scoped broker',
     new URL('../../src/components/security/UserActivityUnavailable.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(unavailable, /immutable agency provenance/);
-  assert.match(unavailable, /tenant-authorized server broker/);
   assert.match(unavailable, /must not be interpreted as zero events or an all-clear result/);
 
-  for (const [name, code] of [
-    ['runSecurityAudit', 'SECURITY_AUDIT_PAUSED'],
-  ]) {
-    const source = await readFile(
-      new URL(`../functions/${name}/entry.ts`, import.meta.url),
-      'utf8',
-    );
-    assert.match(source, new RegExp(`code:\\s*'${code}'`));
-    assert.match(source, /status:\s*503/);
-    assert.match(source, /'Cache-Control':\s*'no-store'/);
-    assert.doesNotMatch(
-      source,
-      /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|InvokeLLM|account_type|agency_name/,
-      `${name} must fail before every authority, input, data, or AI operation`,
-    );
-  }
+  // runSecurityAudit runs again (owner decision, 2026-10-08): it authorizes the
+  // built-in administrator or a service-owned agency_admin membership before
+  // any cohort read, and scopes an agency administrator to their agency.
+  const audit = await readFile(
+    new URL('../functions/runSecurityAudit/entry.ts', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(audit, /SECURITY_AUDIT_PAUSED/);
+  assert.match(audit, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.ok(
+    audit.indexOf('const authority = await auditAuthority(base44, user)')
+      < audit.indexOf('cohort = await loadCohort(base44, authority)'),
+    'runSecurityAudit must authorize before reading its cohort',
+  );
+  assert.match(audit, /claims\.account_type === 'agency_admin' && claimIdentifier\(claims\.agency_id\)/);
+  assert.match(audit, /entities\.Patient\.filter\(\{ agency_id: authority\.agencyId \}/);
 
   const personalized = await readFile(
     new URL('../functions/generatePersonalizedTraining/entry.ts', import.meta.url),

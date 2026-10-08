@@ -40,10 +40,14 @@ describe('purpose-bound Patient projection migration', () => {
     expect(report).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
   });
 
-  it('keeps discharge static-quarantined and loads audio through the selector projection', () => {
+  it('loads the discharge workflow and audio through the selector projection', () => {
+    // 2026-10-08 owner decision: discharge summaries are restored; the
+    // workflow's patient header comes from the reviewed selector projection.
     const discharge = read('src/components/discharge/DischargeSummaryWorkflow.jsx');
-    expect(discharge).toMatch(/Discharge summaries are temporarily unavailable/);
-    expect(discharge).not.toMatch(/useAuthorizedPatient\(\{|entities\.Patient\.(?:get|filter|list)/);
+    expect(discharge).toMatch(/useAuthorizedPatient\(\{/);
+    expect(discharge).toMatch(/purpose:\s*'selector'/);
+    expect(discharge).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
+    expect(discharge).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
 
     const audio = read('src/components/visit/AudioVisitCapture.jsx');
     expect(audio).toMatch(/useAuthorizedPatient\(\{/);

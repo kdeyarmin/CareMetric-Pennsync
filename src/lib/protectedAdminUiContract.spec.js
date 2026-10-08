@@ -31,19 +31,23 @@ describe('protected-admin frontend alignment', () => {
   // The follow-up page was restored on 2026-10-08 (owner decision), so this is
   // again an alignment of `src/pages/ReferralFollowUp.jsx` with the backend gate
   // on `saveFollowUpRuleConfig`: referral review is shown to any admin view
-  // while the rule-settings form is gated on `isAdminLike`. The page's
+  // while the rule-settings form is gated on `isAdminLike`. The shared read
+  // helper in `src/lib/agencySettings.js` reads the rules with `action: 'get'`,
+  // which the backend answers before its built-in-admin save gate. The page's
   // payment-estimate panel was not restored, so nothing here asserts it.
   it('keeps referral review available while protecting agency-wide rule changes', () => {
     const page = read('src/pages/ReferralFollowUp.jsx');
     const backend = read('base44/functions/saveFollowUpRuleConfig/entry.ts');
 
     expect(backend).toMatch(/const isAdmin = user\?\.role === 'admin'/);
+    expect(backend.indexOf("body.action === 'get'")).toBeLessThan(backend.indexOf('const isAdmin = user?.role'));
     expect(page).toMatch(/const adminView = isAdminView\(currentUser\)/);
     expect(page).toMatch(/const canManageRuleSettings = isAdminLike\(currentUser\)/);
     expect(page).toMatch(/disabled=\{!canManageRuleSettings\}/);
     expect(page).toMatch(/\{canManageRuleSettings && showSettings && \(/);
     expect(page).not.toMatch(/estimateFollowUpRevenueImpact|fmtUsd|PdgmRateConfig/);
     expect(browserSourcesContaining('saveFollowUpRuleConfig')).toEqual([
+      'src/lib/agencySettings.js',
       'src/pages/ReferralFollowUp.jsx',
     ]);
   });

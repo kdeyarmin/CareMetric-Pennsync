@@ -4098,9 +4098,8 @@ destination gate, below.
 owner turned the phone, PDF, feedback and activity-report features back on** —
 another printer run, not an adjustment of anything above it.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 99 declared, 160/263 landable call sites SERVED, 103 still to adopt
@@ -4121,6 +4120,33 @@ not hold before. The restored texts tab and scheduled-text queue read entities
 with no owned-store table at all, so they never reach this pool and move the
 destination gate instead. So the remainder rose without anybody's adoption work
 going backwards, and the totals are the block's to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner turned the admin, AI, security, education and discharge screens back on**
+— another printer run, not an adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 99 declared, 167/292 landable call sites SERVED, 125 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 75 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 125, across 37 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 124 need a named capability
+```
+
+**No route was declared between these two blocks, and the move is again a
+POPULATION change and not adoption.** The restored screens brought new landable
+call sites into the tree: seven are reads a declared route already serves, seven
+more build their arguments in a variable and joined the population the scan
+cannot read, and fifteen joined the unrouted remainder over eight keys it did
+not hold before — the security and activity logs, discharge summaries, education
+deliveries and the job log. One restored site, the system health monitor's
+incident count, was written to list the agency's incidents and narrow them on
+the screen rather than filter on a field the incident route refuses, so it
+landed in SERVED instead of adding a refused site. The totals are the block's
+to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4257,14 +4283,15 @@ different kinds of work:
   confidently showing nobody. The approver dropdown in the same file was repaired
   and asks only for `tenant_role`, which the roster does project. That contrast
   is the reason a refusal is read per SITE and not per file.
-- **Sixty-eight pass arguments the scan cannot read**, because the call builds
+- **Seventy-five pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Thirty-one have no route declared at all**, over twenty-six entity and
-  operation keys: nineteen reads over fifteen keys, and twelve writes over eleven.
+- **Forty-six have no route declared at all**, over thirty-four entity and
+  operation keys: thirty-two reads over twenty-one keys, and fourteen writes over
+  thirteen.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
   adding two branches' deltas is wrong in both directions. **The write half fell
@@ -4274,11 +4301,11 @@ different kinds of work:
   back, so a bucket nobody adopted from has moved in both directions. That is
   what a remainder does: it is a property of what is LEFT, and of what ARRIVES.
   The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.61 call sites and a write
+  the sites already served: a read key there carries 2.76 call sites and a write
   key 1.28, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.27 sites and a
-  write key 1.09, which is nothing like the served spread.
+  the remainder, though**: inside this pool a read key covers 1.52 sites and a
+  write key 1.08, which is nothing like the served spread.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it
@@ -4405,6 +4432,16 @@ different kinds of work:
   and delete with the activity append moved its write pair from eight over seven
   to twelve over eleven — four writes over four new keys, which is why the write
   ratio fell back toward one.
+
+  **And again when the admin, AI, security, education and discharge screens
+  were turned back on — the reverse of every earlier cause: screens came back
+  ON.** They put fifteen new sites into the no-route pool over eight new keys,
+  so its read pair went from nineteen sites over fifteen keys to thirty-two over
+  twenty-one and its write pair from twelve over eleven to fourteen over
+  thirteen, and seven new reads into the served pool over keys it already held,
+  so the served read pair went from 128 sites over 49 keys to 135 over the same
+  49 and its ratio rose with no route declared. Nothing was declared and nothing
+  was repaired; both pools grew because the population did.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the

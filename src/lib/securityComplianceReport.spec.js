@@ -45,15 +45,31 @@ describe("security compliance report", () => {
       complianceScore: 0,
       assessedChecks: checks,
     })).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       userActivityEvents: null,
-      userActivityHistory: "unavailable_pending_tenant_authorized_provenance",
+      userActivityHistory: "unavailable",
+      securityEventHistory: "unavailable",
       criticalSecurityEvents: null,
       phiAccessSecurityEvents: null,
       checks: [
         { name: "Platform control", status: "attested", attested: true },
         { name: "Audit Trails", status: "attention", attested: false },
       ],
+    });
+  });
+
+  it("exports measured log metrics when the logs were read", () => {
+    expect(buildSecurityComplianceReport({
+      generatedDate: "2026-10-08T00:00:00.000Z",
+      complianceScore: 100,
+      assessedChecks: checks,
+      logMetrics: { userActivityEvents: 12, criticalEvents: 2, phiAccess: 5 },
+    })).toMatchObject({
+      userActivityEvents: 12,
+      userActivityHistory: "loaded",
+      securityEventHistory: "loaded",
+      criticalSecurityEvents: 2,
+      phiAccessSecurityEvents: 5,
     });
   });
 });

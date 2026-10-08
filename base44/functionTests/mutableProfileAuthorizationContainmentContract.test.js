@@ -94,16 +94,18 @@ test('the patient merge broker admits the platform tier or a membership-backed a
   assert.doesNotMatch(authority, /account_type|agency_name|is_approved/);
 });
 
-test('provenance-derived security audit is unavailable before SDK or request work', () => {
+test('security audit authorizes from protected role or service-owned membership, never profile claims', () => {
+  // 2026-10-08 owner decision: the audit runs again. Its agency authority is
+  // the withTrustedClaims result (a service-owned agency_admin membership),
+  // read off the rebuilt claims object rather than the caller's own profile.
   const source = readEntry('runSecurityAudit');
+  const authority = source.slice(source.indexOf('async function auditAuthority'), source.indexOf('async function loadCohort'));
 
-  assert.match(source, /code:\s*'SECURITY_AUDIT_PAUSED'/);
-  assert.match(source, /status:\s*503/);
-  assert.match(source, /'Cache-Control':\s*'no-store'/);
-  assert.doesNotMatch(
-    source,
-    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
-  );
+  assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/);
+  assert.match(authority, /if \(user\.role === 'admin'\) return \{ scope: 'platform', agencyId: null \}/);
+  assert.match(authority, /const claims = await withTrustedClaims\(base44, user\)/);
+  assert.doesNotMatch(authority, /user\.(?:account_type|agency_name|agency_id)/);
+  assert.doesNotMatch(source, /SECURITY_AUDIT_PAUSED/);
 });
 
 test('unused clinical data analysis is unavailable before SDK, request, data, or AI work', () => {

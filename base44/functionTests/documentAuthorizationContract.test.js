@@ -215,25 +215,142 @@ const request = (body) => {
   };
 };
 
-test('analyzeDocument is a static fail-closed boundary until an authorized write broker exists', async () => {
-  const fixture = makeDocumentClient();
-  const handler = await loadHandler('analyzeDocument', fixture.client);
-  let bodyReads = 0;
-  const response = await handler({ json: async () => { bodyReads += 1; return {}; } });
+// 2026-10-08 owner decision: document AI analysis is back on. Access is
+// decided by the reviewed Document read broker, asked as the caller; nothing
+// here re-derives it from Patient.assigned_nurses or Document fields.
+function brokerFor(fixture, {
+  refuseWith = null,
+  documentId = 'document-a',
+  agencyId = 'agency-a',
+  downloadUrl = 'https://storage.example.test/signed/document-a?sig=1',
+} = {}) {
+  const calls = [];
+  fixture.client.functions = {
+    invoke: async (name, payload) => {
+      calls.push({ name, payload });
+      if (refuseWith) {
+        const error = new Error('refused');
+        error.response = { status: refuseWith };
+        throw error;
+      }
+      return {
+        data: {
+          success: true,
+          purpose: payload.purpose,
+          document: { id: documentId, category: 'other' },
+          ...(payload.purpose === 'download'
+            ? { delivery: { download_url: downloadUrl, expires_in_seconds: 60 } }
+            : {}),
+          scope: { agency_id: agencyId, membership_id: 'membership-a', membership_version: 1, tenant_role: 'clinician' },
+        },
+      };
+    },
+  };
+  return calls;
+}
 
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), {
-    error: 'Document analysis is temporarily unavailable',
-    code: 'document_analysis_private_write_broker_required',
-  });
+test('analyzeDocument asks the Document read broker before reading, analyzing or storing', async () => {
+  const source = await readFile(new URL('../functions/analyzeDocument/entry.ts', import.meta.url), 'utf8');
+  const body = source.slice(source.lastIndexOf('// <<<END SHARED HELPER'));
+  assert.doesNotMatch(source, /document_analysis_private_write_broker_required/);
+  assert.match(body, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.doesNotMatch(body, /assigned_nurses|agency_name|created_by_user_email_normalized/);
+
+  const fixture = makeDocumentClient();
+  const brokerCalls = brokerFor(fixture);
+  const handler = await loadHandler('analyzeDocument', fixture.client);
+  const response = await handler(request({ agency_id: 'agency-a', document_id: 'document-a' }));
+
+  assert.equal(response.status, 200);
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
-  assert.equal(bodyReads, 0);
-  assert.deepEqual(fixture.state.calls.documents, []);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.analysis.summary, 'Summary');
+  assert.equal(payload.analysis.suggested_category, 'progress_note');
+  assert.deepEqual(brokerCalls.map((call) => call.payload.purpose), ['download', 'metadata']);
+  assert.ok(brokerCalls.every((call) => call.name === 'getAuthorizedDocument'
+    && call.payload.agency_id === 'agency-a' && call.payload.document_id === 'document-a'));
+  assert.deepEqual(fixture.state.calls.llm[0].file_urls, ['https://storage.example.test/signed/document-a?sig=1']);
+  assert.equal(fixture.state.calls.updates.length, 1);
+  const [updatedId, patch] = fixture.state.calls.updates[0];
+  assert.equal(updatedId, 'document-a');
+  assert.deepEqual(Object.keys(patch), ['ai_analysis']);
+  assert.equal(patch.ai_analysis.analyzed, true);
+  // No legacy chart or membership scan runs here; the broker owns access.
   assert.deepEqual(fixture.state.calls.patients, []);
   assert.deepEqual(fixture.state.calls.memberships, []);
-  assert.deepEqual(fixture.state.calls.agencies, []);
+});
+
+test('analyzeDocument refuses with one answer whenever the broker does, before any read or model call', async () => {
+  for (const status of [400, 403, 404, 409]) {
+    const fixture = makeDocumentClient();
+    brokerFor(fixture, { refuseWith: status });
+    const handler = await loadHandler('analyzeDocument', fixture.client);
+    const response = await handler(request({ agency_id: 'agency-a', document_id: 'document-a' }));
+    assert.equal(response.status, 403, `broker ${status}`);
+    assert.deepEqual(await response.json(), { error: 'Document is unavailable' });
+    assert.deepEqual(fixture.state.calls.documents, []);
+    assert.deepEqual(fixture.state.calls.llm, []);
+    assert.deepEqual(fixture.state.calls.updates, []);
+  }
+});
+
+test('analyzeDocument refuses a broker answer about another document or agency', async () => {
+  for (const options of [{ documentId: 'document-b' }, { agencyId: 'agency-b' }]) {
+    const fixture = makeDocumentClient();
+    brokerFor(fixture, options);
+    const handler = await loadHandler('analyzeDocument', fixture.client);
+    const response = await handler(request({ agency_id: 'agency-a', document_id: 'document-a' }));
+    assert.equal(response.status, 403);
+    assert.deepEqual(fixture.state.calls.llm, []);
+    assert.deepEqual(fixture.state.calls.updates, []);
+  }
+});
+
+test('analyzeDocument returns a stored analysis under the metadata purpose without calling the model', async () => {
+  const fixture = makeDocumentClient({
+    documents: [document({
+      ai_analysis: {
+        analyzed: true,
+        summary: 'Stored summary',
+        critical_flags: [{ severity: 'HIGH', finding: 'Potassium 6.1', details: 'Repeat lab' }],
+        suggested_category: 'lab_results',
+        confidence_score: 140,
+        analyzed_date: NOW,
+      },
+    })],
+  });
+  const brokerCalls = brokerFor(fixture);
+  const handler = await loadHandler('analyzeDocument', fixture.client);
+  const response = await handler(request({ agency_id: 'agency-a', document_id: 'document-a', action: 'get' }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.analysis.summary, 'Stored summary');
+  assert.equal(payload.analysis.confidence_score, 100);
+  assert.equal(payload.analysis.critical_flags[0].severity, 'high');
+  assert.equal(payload.analysis.analyzed_date, NOW);
+  assert.deepEqual(brokerCalls.map((call) => call.payload.purpose), ['metadata']);
   assert.deepEqual(fixture.state.calls.llm, []);
   assert.deepEqual(fixture.state.calls.updates, []);
+});
+
+test('analyzeDocument stores nothing when the model answer is unusable, and rejects bad input', async () => {
+  const fixture = makeDocumentClient();
+  brokerFor(fixture);
+  fixture.client.integrations.Core.InvokeLLM = async (args) => {
+    fixture.state.calls.llm.push(args);
+    return { summary: '' };
+  };
+  const handler = await loadHandler('analyzeDocument', fixture.client);
+  const response = await handler(request({ agency_id: 'agency-a', document_id: 'document-a' }));
+  assert.equal(response.status, 502);
+  assert.deepEqual(fixture.state.calls.updates, []);
+
+  assert.equal((await handler(request({ agency_id: 'agency-a', document_id: 'document-a', extra: 1 }))).status, 400);
+  assert.equal((await handler(request({ agency_id: 'agency-a', document_id: 'document-a', action: 'delete' }))).status, 400);
+  assert.equal((await handler(request({ document_id: 'document-a' }))).status, 400);
+  const methodDenied = await handler({ method: 'GET', headers: new Headers(), text: async () => '' });
+  assert.equal(methodDenied.status, 405);
 });
 
 test('generateFaxCoverPage rejects every legacy Document identifier before reads or AI', async () => {

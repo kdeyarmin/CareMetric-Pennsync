@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useAgencyScopedQuery } from "@/hooks/useAgencyScopedQuery";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,9 +44,13 @@ const COLORS = ['#3557b0', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0d9488'
 export default function NoteEnhancementReport() {
   const [timeRange, setTimeRange] = useState("7");
 
-  const { data: enhancements = [], isLoading } = useQuery({
+  // NoteConversion's read rule admits the nurse a row belongs to and the
+  // administrator. Rows are attributed to that nurse, so the agency filter
+  // keys on nurse_email rather than on whichever account wrote the row.
+  const { data: enhancements = [], isLoading, isError } = useAgencyScopedQuery({
     queryKey: ['allNoteConversions', 10000],
-    queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
+    fetch: () => base44.entities.NoteConversion.list('-created_date', 10000),
+    authorOf: (conversion) => conversion?.nurse_email,
   });
 
   // Filter by time range
@@ -126,6 +130,16 @@ export default function NoteEnhancementReport() {
       <Card>
         <CardContent className="py-8 text-center text-slate-500">
           Loading enhancement data...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-amber-800" role="status">
+          Note enhancement records could not be loaded, so no statistics are shown.
         </CardContent>
       </Card>
     );

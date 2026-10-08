@@ -49,11 +49,21 @@
     "user_email",
     "action"
   ],
+  // 2026-10-08 owner decision: the record's creator or an administrator may
+  // read a row; rows stay append-only through service-role writers, so every
+  // browser create, update and delete is still refused.
   "rls": {
     "read": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
     },
     "create": {
       "data.user_email": "{{user.email}}"

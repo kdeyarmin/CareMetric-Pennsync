@@ -112,15 +112,23 @@ describe('residual RLS source containment', () => {
   it('locks patient education records to their sender or protected admins', () => {
     // 2026-10-08, released by the owner with Care Plans: an assignment is the
     // assigning clinician's or a protected admin's, and is never deleted. The
-    // delivery table still has no live consumer, so it stays fully closed.
-    const closed = { read: false, create: false, update: false, delete: false };
+    // same day deliveries reopened to the record's creator or an administrator,
+    // with deletion still refused.
     const assignment = entity('PatientEducationAssignment').rls;
     expect(assignment.read).toEqual(ownerOrAdmin('assigned_by'));
     expect(assignment.create).toEqual(ownerOrAdmin('assigned_by'));
     expect(assignment.update).toEqual(ownerOrAdmin('assigned_by'));
     expect(assignment.delete).toBe(false);
-    expect(entity('PatientEducationDelivery').rls).toEqual(closed);
-    expect(directConsumers('PatientEducationDelivery')).toEqual([]);
+    const creatorOrAdmin = { $or: [{ created_by: '{{user.email}}' }, ADMIN] };
+    expect(entity('PatientEducationDelivery').rls).toEqual({
+      read: creatorOrAdmin,
+      create: creatorOrAdmin,
+      update: creatorOrAdmin,
+      delete: false,
+    });
+    expect(directConsumers('PatientEducationDelivery')).toEqual([
+      'src/components/hub-tabs/PatientEducationPortal.jsx',
+    ]);
     // The recommender and tracker that touch assignments are mounted only by the
     // released Care Plan page; the recommender stamps assigned_by (below), so the
     // rows it writes are the ones the creator rule above lets it read back.
@@ -128,10 +136,18 @@ describe('residual RLS source containment', () => {
       expect(sourcesContaining(`/${component}`, [`src/components/carePlan/${component}.jsx`]), component)
         .toEqual(['src/pages/CarePlanManagement.jsx']);
     }
+    // The generator reads the chart only to decide access, admits the caller
+    // through the care-team check, and saves through the caller's own client so
+    // the creator rule above decides who reads the material back.
     const generator = read('base44/functions/generatePatientEducation/entry.ts');
-    expect(generator).toMatch(/code:\s*'PATIENT_EDUCATION_GENERATION_PAUSED'/);
-    expect(generator).toMatch(/status:\s*503/);
-    expect(generator).not.toMatch(/createClientFromRequest|\.entities\b|InvokeLLM/);
+    expect(generator).not.toMatch(/PATIENT_EDUCATION_GENERATION_PAUSED/);
+    expect(generator).toMatch(/createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+    const access = generator.indexOf('await callerMayAccessPatient(base44, user, patient)');
+    expect(access).toBeGreaterThan(-1);
+    expect(generator.indexOf('InvokeLLM')).toBeGreaterThan(access);
+    expect(generator).toMatch(/await base44\.entities\.PatientEducationDelivery\.create\(/);
+    expect(generator).not.toMatch(/asServiceRole\.entities\.PatientEducationDelivery/);
+    expect(generator.slice(generator.lastIndexOf('// <<<END SHARED HELPER'))).not.toMatch(/assigned_nurses|agency_name/);
 
     const sent = entity('SentEducationMaterial').rls;
     expect(sent.read).toEqual(ownerOrAdmin('sent_by'));
@@ -163,7 +179,7 @@ describe('residual RLS source containment', () => {
     );
   });
 
-  it('stamps remaining browser-created education records and keeps the portal unavailable', () => {
+  it('stamps remaining browser-created education records and generates portal material server-side', () => {
     const recommender = read('src/components/carePlan/AIEducationRecommender.jsx');
     const sender = read('src/components/education/PersonalizedMaterialSender.jsx');
     const portal = read('src/components/hub-tabs/PatientEducationPortal.jsx');
@@ -173,8 +189,11 @@ describe('residual RLS source containment', () => {
     expect(recommender).toMatch(/assigned_by:\s*assignedBy/);
     expect(sender).toMatch(/if \(!currentUser\?\.email\)/);
     expect(sender).toMatch(/sent_by:\s*currentUser\.email/);
-    expect(portal).toMatch(/Patient education generation is temporarily unavailable/);
-    expect(portal).not.toMatch(/base44|PatientEducationDelivery/);
+    expect(portal).not.toMatch(/Patient education generation is temporarily unavailable/);
+    expect(portal).toMatch(/purpose:\s*"education_delivery"/);
+    expect(portal).toMatch(/functions\.invoke\("generatePatientEducation", \{ patientId \}\)/);
+    // The portal reads no chart or visit rows of its own.
+    expect(portal).not.toMatch(/entities\.(?:Patient|Visit)\b/);
   });
 
   it('fails every ClinicalEvent operation closed while its only browser reader stays unmounted', () => {
@@ -187,13 +206,17 @@ describe('residual RLS source containment', () => {
       .toEqual([]);
   });
 
-  it('fails every ClinicalPathway operation closed while all direct hosts remain literally paused', () => {
+  it('admits every ClinicalPathway operation for the administrator only, and only the manager is on', () => {
+    // 2026-10-08 owner decision: the Clinical Pathway Manager is on again, so
+    // pathways are administrator-managed content rather than fully locked. The
+    // OASIS hosts that read them stay paused (another workstream owns OASIS).
     expect(entity('ClinicalPathway').rls).toEqual({
-      read: false,
-      create: false,
-      update: false,
-      delete: false,
+      read: ADMIN,
+      create: ADMIN,
+      update: ADMIN,
+      delete: ADMIN,
     });
+    expect(entity('ClinicalPathway').required).toEqual(['pathway_name', 'condition']);
     expect(directConsumers('ClinicalPathway')).toEqual([
       'src/components/clinical/AIPathwayGenerator.jsx',
       'src/components/clinical/AIPathwayUpdater.jsx',
@@ -202,8 +225,14 @@ describe('residual RLS source containment', () => {
       'src/pages/ClinicalPathwayManager.jsx',
     ]);
 
-    expect(read('src/pages/ClinicalPathwayManager.jsx'))
-      .toMatch(/const CLINICAL_PATHWAY_MANAGER_ENABLED\s*=\s*false\s*;/);
+    const manager = read('src/pages/ClinicalPathwayManager.jsx');
+    expect(manager).not.toContain('CLINICAL_PATHWAY_MANAGER_ENABLED');
+    expect(manager).toContain('ClinicalPathway.create(pathwayCreatePayload(data))');
+    expect(manager).toContain('ClinicalPathway.update(id, pathwayCreatePayload(data))');
+    expect(read('src/components/clinical/AIPathwayGenerator.jsx'))
+      .toContain('ClinicalPathway.create(pathwayCreatePayload(pathway, { fallbackCondition: diagnosis }))');
+    expect(read('src/components/clinical/AIPathwayUpdater.jsx'))
+      .toContain('pathwayUpdatePayload(pathway, recommendation.suggested_change)');
     expect(read('src/components/hub-tabs/OASISAnalyzer.jsx'))
       .toMatch(/const OASIS_ANALYZER_ENABLED\s*=\s*false\s*;/);
     expect(read('src/components/hub-tabs/OASISClinicalReview.jsx'))
@@ -251,7 +280,10 @@ describe('residual RLS source containment', () => {
     expect(panel).toMatch(/queryFn:\s*\(\)\s*=>\s*base44\.entities\.PhoneNumber\.list[\s\S]{0,120}?enabled:\s*isAdmin/);
   });
 
-  it('hard-pauses FollowUpRuleConfig reads and leaves callers on built-in rules', () => {
+  it('reads FollowUpRuleConfig only through the membership-scoped function', () => {
+    // 2026-10-08 owner decision: the agency's follow-up rules apply again. The
+    // entity still denies every direct read; the helper asks the function,
+    // which picks the agency from the caller's service-owned membership.
     expect(entity('FollowUpRuleConfig').rls).toEqual({
       read: false,
       create: SERVICE_ROLE,
@@ -273,8 +305,12 @@ describe('residual RLS source containment', () => {
       settings.indexOf('export function fetchCallerFollowUpRuleConfig'),
       settings.indexOf('export function fetchCallerFaxRetryConfig'),
     );
-    expect(helper).toMatch(/return Promise\.resolve\(null\)/);
-    expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities|base44\.functions/);
+    expect(helper).toContain("base44.functions.invoke('saveFollowUpRuleConfig', { action: 'get' })");
+    expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities/);
+    const backend = read('base44/functions/saveFollowUpRuleConfig/entry.ts');
+    const getPath = backend.slice(backend.indexOf('async function readRuleConfig'), backend.indexOf('Deno.serve'));
+    expect(getPath).toContain("String(user.agency_name || '').trim()");
+    expect(backend).toMatch(/const user = await withTrustedClaims\(base44, await base44\.auth\.me\(\)/);
     for (const caller of [
       'src/components/referral/ProviderFaxRequestCard.jsx',
       'src/pages/ReferralFollowUp.jsx',
@@ -283,16 +319,28 @@ describe('residual RLS source containment', () => {
     }
   });
 
-  it('keeps discharge-summary storage owner-scoped while all generation paths are quarantined', () => {
+  it('keeps discharge-summary storage owner-scoped and generates drafts behind the care-team check', () => {
     const rls = entity('DischargeSummary').rls;
     expect(rls.create).toEqual(ownerOrAdmin('generated_by'));
     expect(rls.update).toEqual(ownerOrAdmin('generated_by'));
     expect(rls.delete).toBe(false);
-    expect(directConsumers('DischargeSummary')).toEqual([]);
+    expect(directConsumers('DischargeSummary')).toEqual([
+      'src/components/discharge/DischargeSummaryWorkflow.jsx',
+      'src/components/hub-tabs/DischargeSummaries.jsx',
+    ]);
     const generator = read('base44/functions/generateDischargeSummary/entry.ts');
-    expect(generator).toMatch(/code:\s*'DISCHARGE_SUMMARY_GENERATION_PAUSED'/);
-    expect(generator).toMatch(/status:\s*503/);
-    expect(generator).not.toMatch(/createClientFromRequest|\.entities\b|InvokeLLM/);
+    expect(generator).not.toMatch(/DISCHARGE_SUMMARY_GENERATION_PAUSED/);
+    expect(generator).toMatch(/createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+    const access = generator.indexOf('await callerMayAccessPatient(base44, user, patient)');
+    expect(access).toBeGreaterThan(-1);
+    expect(generator.indexOf('entities.Visit.filter(')).toBeGreaterThan(access);
+    expect(generator.indexOf('InvokeLLM')).toBeGreaterThan(access);
+    // The draft is written through the caller's client and stamped with the
+    // caller, which is what the generated_by rule above reads.
+    expect(generator).toMatch(/await base44\.entities\.DischargeSummary\.create\(/);
+    expect(generator).toMatch(/generated_by:\s*user\.email/);
+    expect(generator).not.toMatch(/asServiceRole\.entities\.DischargeSummary/);
+    expect(generator.slice(generator.lastIndexOf('// <<<END SHARED HELPER'))).not.toMatch(/assigned_nurses|agency_name/);
   });
 
   it('matches ClinicalLibraryFolder authorization to templates and keeps foreign shared folders read-only', () => {
@@ -327,6 +375,10 @@ describe('residual RLS source containment', () => {
     expect(directConsumers('NoteConversion', 'update')).toEqual([]);
     expect(directConsumers('NoteConversion', '(?:filter|list|get)')).toEqual([
       'src/components/admin/NoteConversionReport.jsx',
+      'src/components/admin/QualityMetricsDashboard.jsx',
+      'src/components/admin/ReportsCenter.jsx',
+      'src/components/analytics/useAgencyAnalyticsAuxiliary.js',
+      'src/components/hub-tabs/RealTimeComplianceDashboard.jsx',
       'src/components/reports/NursePerformanceReport.jsx',
       'src/components/smartNote/persistVisitNote.js',
       'src/lib/retiredOfflineQueue.js',

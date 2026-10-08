@@ -55,6 +55,15 @@ function freshQuerySuccess(query) {
     && !query.isFetching;
 }
 
+export function averageAuditScore(audits) {
+  const scores = (audits || [])
+    .map((audit) => audit?.compliance_score)
+    .filter((score) => typeof score === 'number' && Number.isFinite(score));
+  return scores.length > 0
+    ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+    : null;
+}
+
 export default function QualityMetricsDashboard() {
   const currentUserQuery = useQuery({
     queryKey: ['currentUser'],
@@ -142,9 +151,37 @@ export default function QualityMetricsDashboard() {
     staleTime: 0,
     refetchOnMount: 'always',
   });
+  // 2026-10-08 owner decision: documentation quality (from compliance audits)
+  // and AI time saved (from note enhancements) are measured again. Both are
+  // attributed to the nurse, so the agency filter keys on nurse_email, and
+  // both must settle freshly like every other source before metrics render.
+  const complianceAuditQuery = useAgencyScopedQuery({
+    queryKey: ['complianceAuditsMetrics', timeRange],
+    fetch: async () => {
+      const audits = await base44.entities.ComplianceAudit.list('-audit_date', 1000);
+      return audits.filter((audit) => {
+        const day = String(audit.audit_date || audit.created_date || '').slice(0, 10);
+        return day >= dateRange.start && day <= dateRange.end;
+      });
+    },
+    authorOf: (audit) => audit?.nurse_email,
+  });
+  const noteConversionQuery = useAgencyScopedQuery({
+    queryKey: ['noteConversionsMetrics', timeRange],
+    fetch: async () => {
+      const conversions = await base44.entities.NoteConversion.list('-created_date', 5000);
+      return conversions.filter((conversion) => {
+        const day = String(conversion.created_date || '').slice(0, 10);
+        return day >= dateRange.start && day <= dateRange.end;
+      });
+    },
+    authorOf: (conversion) => conversion?.nurse_email,
+  });
   const currentUserFresh = freshQuerySuccess(currentUserQuery);
   const incidentFresh = freshQuerySuccess(incidentQuery);
   const userFresh = freshQuerySuccess(userQuery);
+  const complianceAuditFresh = freshQuerySuccess(complianceAuditQuery);
+  const noteConversionFresh = freshQuerySuccess(noteConversionQuery);
 
   const analyticsSnapshot = useMemo(() => (
     tenantSnapshot
@@ -152,18 +189,26 @@ export default function QualityMetricsDashboard() {
       && sameAuthorizedTenantScope(auxiliaryTenantScope, patientQuery.tenantScope)
       && incidentFresh
       && userFresh
+      && complianceAuditFresh
+      && noteConversionFresh
       ? {
         ...tenantSnapshot,
         auxiliaryTenantScope,
         incidents: incidentQuery.data,
         users: userQuery.data,
+        complianceAudits: complianceAuditQuery.data,
+        noteConversions: noteConversionQuery.data,
       }
       : null
   ), [
     auxiliaryTenantScope,
+    complianceAuditFresh,
+    complianceAuditQuery.data,
     currentUserFresh,
     incidentQuery.data,
     incidentFresh,
+    noteConversionFresh,
+    noteConversionQuery.data,
     patientQuery.tenantScope,
     tenantSnapshot,
     userQuery.data,
@@ -175,6 +220,8 @@ export default function QualityMetricsDashboard() {
   const allPatients = analyticsSnapshot?.patients || EMPTY_ROWS;
   const allIncidents = analyticsSnapshot?.incidents || EMPTY_ROWS;
   const allUsers = analyticsSnapshot?.users || EMPTY_ROWS;
+  const allComplianceAudits = analyticsSnapshot?.complianceAudits || EMPTY_ROWS;
+  const allNoteConversions = analyticsSnapshot?.noteConversions || EMPTY_ROWS;
 
   // Filter visits by selected nurse
   const filteredVisits = useMemo(() => {
@@ -284,15 +331,15 @@ export default function QualityMetricsDashboard() {
       hospitalizationRate,
       fallRate,
       avgVisitsPerPatient,
-      // SecurityLog has no immutable tenant provenance, so a missing quality
-      // score is represented as unavailable rather than a misleading zero.
-      avgQualityScore: null,
+      // Documentation quality is the average compliance-audit score; with no
+      // scored audit in range it is null — unavailable, never a zero.
+      avgQualityScore: averageAuditScore(allComplianceAudits),
       nurseStats,
       activePatients,
-      // NoteConversion has no reviewed tenant-authorized aggregate source.
-      totalTimeSavedHours: null
+      // 20 minutes saved per AI-enhanced note.
+      totalTimeSavedHours: Math.round((allNoteConversions.length * 20) / 60)
     };
-  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers]);
+  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers, allComplianceAudits, allNoteConversions]);
   const metricsRef = useRef(metrics);
   metricsRef.current = metrics;
   const generationSequenceRef = useRef(0);
@@ -323,7 +370,7 @@ Total Visits,${metrics.totalVisits}
 Completed Visits,${metrics.completedVisits}
 Completion Rate,${metrics.completionRate}%
 Average Documentation Time,${metrics.avgDocTime} minutes
-Average Quality Score,Unavailable pending tenant-authorized audit provenance
+Average Quality Score,${metrics.avgQualityScore === null ? 'No scored audits in range' : `${metrics.avgQualityScore}/100`}
 
 === PATIENT OUTCOMES ===
 Active Patients,${metrics.activePatients}
@@ -337,7 +384,7 @@ Total Hospitalizations,${metrics.hospitalizations}
 Medication Errors,${metrics.medErrors}
 
 === AI IMPACT ===
-Total Time Saved,Unavailable pending tenant-authorized NoteConversion provenance
+Total Time Saved,${metrics.totalTimeSavedHours} hours
 
 === NURSE PRODUCTIVITY ===
 Nurse,Total Visits,Completed,Completion Rate,Avg Doc Time
@@ -375,15 +422,19 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
     insightsText += `Based on the data for the last ${timeRange} days (${dateRange.start} to ${dateRange.end}):\n\n`;
 
     insightsText += `### Overall Performance Summary:\n`;
-    if (authorizedMetrics.completionRate >= 90 && authorizedMetrics.avgDocTime <= 45 && authorizedMetrics.fallRate < 10 && authorizedMetrics.hospitalizationRate < 15) {
-        insightsText += `- The currently available operational and patient-outcome metrics are meeting their targets. Documentation quality is excluded because its tenant-authorized source is unavailable.\n`;
-    } else if (authorizedMetrics.completionRate >= 80 && authorizedMetrics.fallRate < 15 && authorizedMetrics.hospitalizationRate < 20) {
-        insightsText += `- The currently available metrics show generally good performance, with some areas for potential optimization. Documentation quality is excluded.\n`;
+    const qualityMeetsTarget = authorizedMetrics.avgQualityScore === null || authorizedMetrics.avgQualityScore >= 85;
+    const qualityAcceptable = authorizedMetrics.avgQualityScore === null || authorizedMetrics.avgQualityScore >= 75;
+    if (authorizedMetrics.completionRate >= 90 && qualityMeetsTarget && authorizedMetrics.avgDocTime <= 45 && authorizedMetrics.fallRate < 10 && authorizedMetrics.hospitalizationRate < 15) {
+        insightsText += `- Your agency is meeting or exceeding its targets on every measured metric.\n`;
+    } else if (authorizedMetrics.completionRate >= 80 && qualityAcceptable && authorizedMetrics.fallRate < 15 && authorizedMetrics.hospitalizationRate < 20) {
+        insightsText += `- Performance is **Good**, with some areas for potential optimization.\n`;
     } else {
         insightsText += `- Performance indicates **Areas for Improvement**, particularly in key quality and patient outcome metrics. Targeted interventions are recommended.\n`;
     }
     insightsText += `* Current Visit Completion Rate: ${authorizedMetrics.completionRate}% (Target: 90%+)\n`;
-    insightsText += `* Average Quality Score: unavailable pending tenant-authorized audit provenance\n`;
+    insightsText += authorizedMetrics.avgQualityScore === null
+      ? `* Average Quality Score: no scored compliance audits in this period\n`
+      : `* Average Quality Score: ${authorizedMetrics.avgQualityScore}/100 (Target: 85+/100)\n`;
     insightsText += `* Average Documentation Time: ${authorizedMetrics.avgDocTime} minutes (Target: <45 min)\n\n`;
 
     insightsText += `### Key Recommendations:\n`;
@@ -391,6 +442,10 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
 
     if (authorizedMetrics.completionRate < 85) {
         insightsText += `- **Boost Completion Rate:** Your completion rate of ${authorizedMetrics.completionRate}% is below the desired target. Consider reviewing visit scheduling, staff availability, and common reasons for cancellations to improve adherence. Targeted training on visit protocols could also help.\n`;
+        hasRecommendations = true;
+    }
+    if (authorizedMetrics.avgQualityScore !== null && authorizedMetrics.avgQualityScore < 80) {
+        insightsText += `- **Enhance Quality Scores:** With an average compliance-audit score of ${authorizedMetrics.avgQualityScore}/100, there's room to improve documentation quality. Review the most common audit findings with the team.\n`;
         hasRecommendations = true;
     }
     if (authorizedMetrics.avgDocTime > 50) {
@@ -423,8 +478,10 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
     }
 
     insightsText += `\n### PennSync AI Impact & Value:\n`;
-    insightsText += `- AI time-saved metrics are unavailable pending a tenant-authorized NoteConversion aggregate source.\n`;
-    insightsText += `- Documentation quality scoring is excluded until an immutable, tenant-authorized audit source is available.\n`;
+    insightsText += `- PennSync AI has saved an estimated **${authorizedMetrics.totalTimeSavedHours} hours** of documentation time during this period.\n`;
+    if (authorizedMetrics.avgQualityScore !== null) {
+      insightsText += `- The average compliance-audit score of **${authorizedMetrics.avgQualityScore}/100** reflects documentation quality across audited visits.\n`;
+    }
 
     if (
       visitSnapshotRef.current === authorizedVisitSnapshot
@@ -449,6 +506,8 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
                 || currentUserQuery.isError
                 || incidentQuery.isError
                 || userQuery.isError
+                || complianceAuditQuery.isError
+                || noteConversionQuery.isError
                 ? 'Quality metrics are unavailable because one or more authorized data sources could not be verified. Platform owners remain blocked until a reviewed agency selector is available.'
                 : 'Reverifying matching tenant access and every metric source before loading quality metrics…'}
             </AlertDescription>
@@ -475,16 +534,6 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
           </div>
         </CardContent>
       </Card>
-
-      <Alert className="border-amber-300 bg-amber-50">
-        <AlertTriangle className="w-4 h-4 text-amber-700" />
-        <AlertDescription className="text-amber-950">
-          <p className="font-semibold">Documentation quality and AI time-saved metrics unavailable</p>
-          <p className="text-sm">
-            Security audit and NoteConversion rows do not yet have reviewed tenant-authorized aggregate sources, so this dashboard does not read them or interpret missing values as zero.
-          </p>
-        </AlertDescription>
-      </Alert>
 
       {/* Filters and Export Button */}
       <Card>
@@ -764,12 +813,16 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
             </Alert>
           )}
 
-          {metrics.completionRate >= 90 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15 && (
+          {metrics.completionRate >= 90 && (metrics.avgQualityScore === null || metrics.avgQualityScore >= 85) && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15 && (
             <Alert className="bg-green-50 border-green-200">
               <CheckCircle2 className="w-4 h-4 text-green-600" />
               <AlertDescription className="text-green-900">
-                <p className="font-semibold">Available metrics are meeting targets</p>
-                <p className="text-sm">Documentation quality scoring is excluded until its tenant-authorized source is available.</p>
+                <p className="font-semibold">Measured metrics are meeting targets</p>
+                <p className="text-sm">
+                  {metrics.avgQualityScore === null
+                    ? 'No compliance audits were scored in this period, so documentation quality is not part of this check.'
+                    : `Documentation quality averages ${metrics.avgQualityScore}/100 across audited visits.`}
+                </p>
               </AlertDescription>
             </Alert>
           )}

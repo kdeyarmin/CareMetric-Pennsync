@@ -337,15 +337,11 @@ test("OASIS AI, analytics, reporting, and workflow surfaces default to static pr
     ["src/components/hub-tabs/OASISAnalyticsDashboard.jsx", "OASIS_AI_ANALYTICS_ENABLED", "OASIS AI Analytics Paused"],
     ["src/components/hub-tabs/OASISClinicalReview.jsx", "OASIS_CLINICAL_AI_ENABLED", "OASIS Clinical AI Review Paused"],
     ["src/components/hub-tabs/OASISAuditDashboard.jsx", "OASIS_AUDIT_AI_ENABLED", "OASIS AI Audit Dashboard Paused"],
-    ["src/pages/ClinicalPathwayManager.jsx", "CLINICAL_PATHWAY_MANAGER_ENABLED", "Clinical Pathway AI Paused"],
-    ["src/components/hub-tabs/RealTimeComplianceDashboard.jsx", "REALTIME_COMPLIANCE_ANALYTICS_ENABLED", "Real-Time Compliance Analytics Paused"],
     ["src/components/reports/OASISComplianceReport.jsx", "OASIS_COMPLIANCE_REPORT_ENABLED", "OASIS Compliance Report Paused"],
-    ["src/components/compliance/AIComplianceAuditor.jsx", "AI_COMPLIANCE_AUDITOR_ENABLED", "AI Compliance Audit Paused"],
     ["src/components/hub-tabs/SmartOASISAssessment.jsx", "SMART_OASIS_ASSESSMENT_ENABLED", "Smart OASIS Assessment Paused"],
     ["src/components/clinical/OASISQuickUpdate.jsx", "OASIS_QUICK_UPDATE_ENABLED", "OASIS Quick Update Paused"],
     ["src/components/hub-tabs/OASISComplianceReview.jsx", "OASIS_COMPLIANCE_REVIEW_ENABLED", "OASIS Compliance AI Review Paused"],
     ["src/components/hub-tabs/OASISDocumentationReview.jsx", "OASIS_DOCUMENTATION_REVIEW_ENABLED", "OASIS Documentation AI Review Paused"],
-    ["src/components/clinical/AIAdmissionDocumentationAssistant.jsx", "AI_ADMISSION_DOCUMENTATION_ENABLED", "AI Admission Documentation Paused"],
     ["src/components/oasis/AIGeneratedOASISAssessment.jsx", "AI_OASIS_ASSESSMENT_ENABLED", "AI OASIS Assessment Guidance Paused"],
   ];
 

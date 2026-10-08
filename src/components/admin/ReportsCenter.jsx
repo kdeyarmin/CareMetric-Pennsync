@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -34,10 +36,23 @@ import { startOfLocalDay } from "@/lib/dateLocal";
 import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
 
 const EMPTY_ROWS = Object.freeze([]);
-// NoteConversion's administrator read arm is platform-wide and each row can
-// carry patient_id/diagnosis. Productivity reporting stays unavailable until a
-// tenant-bound service projection exists; client-side filtering is not authz.
-const NOTE_CONVERSION_REPORTS_AVAILABLE = false;
+const NOTE_CONVERSION_ROWS = 1000;
+const NOTE_CONVERSION_QUERY_OPTIONS = Object.freeze({
+  retry: false,
+  staleTime: 0,
+  refetchOnMount: 'always',
+  refetchOnWindowFocus: 'always',
+  refetchOnReconnect: 'always',
+});
+
+function noteConversionsSettled(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error
+    && !query.isFetching
+    && !query.isPaused;
+}
 
 export default function ReportsCenter({
   authorityKey,
@@ -46,7 +61,7 @@ export default function ReportsCenter({
   visits,
   incidents,
 }) {
-  const [reportType, setReportType] = useState("quality");
+  const [reportType, setReportType] = useState("productivity");
   const [dateRange, setDateRange] = useState("30");
   const [_selectedNurse, _setSelectedNurse] = useState("all");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -64,8 +79,20 @@ export default function ReportsCenter({
     && Array.isArray(allPatients)
     && Array.isArray(visits)
     && Array.isArray(incidents);
+  // Productivity reads NoteConversion, whose own read rule admits the nurse it
+  // belongs to and the administrator. It is loaded only while that report is
+  // selected, and only a fresh post-mount answer is used; the rows are then
+  // bounded to the agency roster passed in, so a conversion by somebody
+  // outside it is never counted as this agency's work.
+  const noteConversionQuery = useQuery({
+    queryKey: ['reports-note-conversions', authorityKey, NOTE_CONVERSION_ROWS],
+    queryFn: () => base44.entities.NoteConversion.list('-created_date', NOTE_CONVERSION_ROWS),
+    enabled: sourceSnapshotAvailable && reportType === 'productivity',
+    ...NOTE_CONVERSION_QUERY_OPTIONS,
+  });
+  const noteConversionsAvailable = noteConversionsSettled(noteConversionQuery);
   const selectedSourceUnavailable = reportType === 'productivity'
-    && !NOTE_CONVERSION_REPORTS_AVAILABLE;
+    && !noteConversionsAvailable;
   const reportActionsAvailable = sourceSnapshotAvailable && !selectedSourceUnavailable;
 
   useEffect(() => {
@@ -100,7 +127,7 @@ export default function ReportsCenter({
       setReportPreview(null);
       setShowPreview(false);
       toast.error(selectedSourceUnavailable
-        ? 'Productivity reports are unavailable until NoteConversion has a tenant-bound reporting projection.'
+        ? 'Productivity data has not loaded yet. Wait for it to finish, or reload if it failed.'
         : 'Report access must be freshly verified before generating a preview.');
       return;
     }
@@ -142,7 +169,7 @@ export default function ReportsCenter({
       setReportPreview(null);
       setShowPreview(false);
       toast.error(selectedSourceUnavailable
-        ? 'Productivity reports are unavailable until NoteConversion has a tenant-bound reporting projection.'
+        ? 'Productivity data has not loaded yet. Wait for it to finish, or reload if it failed.'
         : 'Report access must be freshly verified before exporting.');
       return;
     }
@@ -349,20 +376,28 @@ export default function ReportsCenter({
     }
   };
 
-  const allNoteEnhancements = EMPTY_ROWS;
+  const allNoteEnhancements = noteConversionsAvailable && Array.isArray(noteConversionQuery.data)
+    ? noteConversionQuery.data
+    : EMPTY_ROWS;
 
   // Helper functions for PDF data
   const generateProductivityReportData = (visits, allUsers) => {
-    if (!NOTE_CONVERSION_REPORTS_AVAILABLE) {
-      throw new Error('Tenant-bound NoteConversion reporting is unavailable');
+    if (!noteConversionsAvailable) {
+      throw new Error('Productivity data has not finished loading');
     }
     const endDate = todayEastern();
     const startDate = format(subDays(new Date(), parseInt(dateRange, 10)), 'yyyy-MM-dd');
-    
-    // Filter all note enhancements by date range FIRST
+    const rosterEmails = new Set(
+      (allUsers || []).map((user) => String(user?.email || '').trim().toLowerCase()).filter(Boolean),
+    );
+
+    // Filter all note enhancements by date range FIRST, and to this roster.
     const filteredEnhancements = allNoteEnhancements.filter(nc => {
       const createdDate = nc.created_date ? nc.created_date.split('T')[0] : null;
-      return createdDate && createdDate >= startDate && createdDate <= endDate;
+      return createdDate
+        && createdDate >= startDate
+        && createdDate <= endDate
+        && rosterEmails.has(String(nc.nurse_email || '').trim().toLowerCase());
     });
     
     const nursesData = allUsers.filter(u => u.role === 'user').map(nurse => {
@@ -844,9 +879,9 @@ export default function ReportsCenter({
             <Alert className="mb-6 border-amber-300 bg-amber-50" role="status">
               <AlertTriangle className="h-4 w-4 text-amber-700" />
               <AlertDescription className="text-amber-950">
-                Productivity metrics and exports are unavailable because NoteConversion
-                does not yet have a tenant-bound reporting projection. No platform-wide
-                rows are loaded or treated as agency data.
+                {noteConversionQuery.isError
+                  ? 'Productivity metrics and exports are unavailable because the note-enhancement records could not be loaded. Nothing is reported as zero.'
+                  : 'Loading note-enhancement records for the productivity report…'}
               </AlertDescription>
             </Alert>
           )}
@@ -860,7 +895,7 @@ export default function ReportsCenter({
                 <SelectContent>
                   {reportTypes.map(type => (
                     <SelectItem key={type.value} value={type.value}>
-                      {type.label}{type.value === 'productivity' ? ' (Unavailable)' : ''}
+                      {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

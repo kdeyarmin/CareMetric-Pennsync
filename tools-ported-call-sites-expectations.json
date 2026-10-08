@@ -68,7 +68,7 @@
     "src/pages/ReferralIntake.jsx:616 matchPatientWithAI",
     "src/pages/TimeOff.jsx:55 getApprovedTimeOff",
     "src/pages/UserGuides.jsx:25 generateUserGuidePDF",
-    "src/pages/UserManagement.jsx:149 resendInvitationV2",
+    "src/pages/UserManagement.jsx:154 resendInvitationV2",
     "src/pages/UserSettings.jsx:251 createNotification"
   ]
 }

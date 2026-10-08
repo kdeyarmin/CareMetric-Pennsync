@@ -53,9 +53,17 @@ const renderCard = (props = {}) =>
     </QueryClientProvider>
   );
 
+// The card reads the agency's follow-up rules through the same invoke seam
+// (saveFollowUpRuleConfig, action 'get'); fax assertions look only at sends.
+const faxInvocations = () => invoke.mock.calls.filter(([fn]) => fn !== 'saveFollowUpRuleConfig');
+
 beforeEach(() => {
   authMe.mockReset().mockResolvedValue({ email: 'intake@a.example', agency_name: 'Agency A' });
-  invoke.mockReset().mockResolvedValue({ data: { success: true, log_id: 'fx1' } });
+  invoke.mockReset().mockImplementation(async (fn) => (
+    fn === 'saveFollowUpRuleConfig'
+      ? { data: { config: null } }
+      : { data: { success: true, log_id: 'fx1' } }
+  ));
   uploadFile.mockReset().mockResolvedValue({ file_url: 'https://files.example/request.pdf' });
   exportToPDF.mockReset().mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
   ruleConfigFilter.mockReset().mockResolvedValue([]);
@@ -94,10 +102,10 @@ describe('ProviderFaxRequestCard', () => {
     await userEvent.type(screen.getByLabelText(/Provider fax #/), '570-555-0199');
     await userEvent.click(screen.getByRole('button', { name: /Fax to provider/ }));
 
-    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(faxInvocations()).toHaveLength(1));
     expect(exportToPDF).toHaveBeenCalledWith(expect.objectContaining({ output: 'blob' }));
     expect(uploadFile).toHaveBeenCalledTimes(1);
-    const [fn, payload] = invoke.mock.calls[0];
+    const [fn, payload] = faxInvocations()[0];
     expect(fn).toBe('sendFax');
     expect(payload).toMatchObject({
       file_url: 'https://files.example/request.pdf',
@@ -115,7 +123,7 @@ describe('ProviderFaxRequestCard', () => {
     await screen.findByText(/Face-to-Face encounter documentation missing/);
     await userEvent.click(screen.getByRole('button', { name: /Fax to provider/ }));
     expect(toast.error).toHaveBeenCalledWith("Enter the provider's fax number first.");
-    expect(invoke).not.toHaveBeenCalled();
+    expect(faxInvocations()).toEqual([]);
   });
 
   it('downloads the PDF without faxing', async () => {
@@ -124,7 +132,7 @@ describe('ProviderFaxRequestCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /Download PDF/ }));
     await waitFor(() => expect(exportToPDF).toHaveBeenCalledTimes(1));
     expect(exportToPDF.mock.calls[0][0].output).toBe('save');
-    expect(invoke).not.toHaveBeenCalled();
+    expect(faxInvocations()).toEqual([]);
   });
 
   it('switching to a different referral clears the destination fax number (PHI guard)', async () => {

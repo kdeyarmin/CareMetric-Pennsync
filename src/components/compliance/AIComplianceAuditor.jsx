@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -27,10 +27,23 @@ import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 import { useAuth } from '@/lib/AuthContext';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
+import {
+  buildComplianceAuditRecord,
+  normalizeComplianceAuditResult,
+} from '@/components/compliance/complianceAuditResult';
 
-const AI_COMPLIANCE_AUDITOR_ENABLED = false;
+/**
+ * The chart this audit reads is assembled from three reviewed, purpose-limited
+ * projections rather than one widened one: `oasis_analysis_context` carries
+ * the clinical history, `smart_note_context` adds care type, status, MRN and
+ * wounds, and `education_context` adds the attending physician. Fields none of
+ * them disclose (insurance, emergency contact, mental health and pain plans)
+ * are named in the prompt as outside the audit, so the model does not report
+ * them as documentation gaps.
+ */
+const OUTSIDE_AUDIT_VIEW = 'Not included in this audit\'s authorized chart view — do not report this as a documentation gap';
 
-function EnabledAIComplianceAuditor({
+export default function AIComplianceAuditor({
   patientId,
   visitId = null,
   autoRun = false,
@@ -43,12 +56,33 @@ function EnabledAIComplianceAuditor({
   const queryClient = useQueryClient();
   const { tenantContext } = useAuth();
 
-  const { data: patient } = useAuthorizedPatient({
+  const chartReadsEnabled = !!patientId && !!tenantContext?.agency_id;
+  const { data: oasisContextPatient, isError: oasisContextError } = useAuthorizedPatient({
     patientId,
     agencyId: tenantContext?.agency_id,
     purpose: 'oasis_analysis_context',
-    enabled: !!patientId && !!tenantContext?.agency_id,
+    enabled: chartReadsEnabled,
   });
+  const { data: noteContextPatient, isError: noteContextError } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'smart_note_context',
+    enabled: chartReadsEnabled,
+  });
+  const { data: educationContextPatient, isError: educationContextError } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'education_context',
+    enabled: chartReadsEnabled,
+  });
+  // All three projections must describe the same chart before any of it is
+  // combined; a partial chart would audit as a chart missing whole sections.
+  const patient = useMemo(() => {
+    const parts = [educationContextPatient, noteContextPatient, oasisContextPatient];
+    if (parts.some((part) => !part || part.id !== patientId)) return null;
+    return { ...educationContextPatient, ...noteContextPatient, ...oasisContextPatient };
+  }, [educationContextPatient, noteContextPatient, oasisContextPatient, patientId]);
+  const chartReadFailed = oasisContextError || noteContextError || educationContextError;
 
   const { data: visits = [] } = useAuthorizedVisits({
     patientId,
@@ -153,20 +187,9 @@ ${patient.social_history ? `
 - Support System: ${patient.social_history.support_system || 'Not documented'}
 ` : 'Social history not documented'}
 
-MENTAL HEALTH:
-${patient.mental_health ? `
-- Depression Screening: ${patient.mental_health.depression_screening || 'Not completed'}
-- Anxiety Level: ${patient.mental_health.anxiety_level || 'Not assessed'}
-- Psychiatric History: ${patient.mental_health.psychiatric_history || 'None documented'}
-` : 'Mental health assessment not documented'}
+MENTAL HEALTH: ${OUTSIDE_AUDIT_VIEW}
 
-PAIN MANAGEMENT:
-${patient.pain_management ? `
-- Chronic Pain: ${patient.pain_management.chronic_pain ? 'Yes' : 'No'}
-- Pain Locations: ${patient.pain_management.pain_location?.join(', ') || 'None'}
-- Interventions: ${patient.pain_management.pain_interventions?.join(', ') || 'None'}
-- Pain Goals: ${patient.pain_management.pain_goals || 'Not established'}
-` : 'Pain management plan not documented'}
+PAIN MANAGEMENT: ${OUTSIDE_AUDIT_VIEW}
 
 WOUNDS: ${patient.wounds?.length > 0 ? 
   patient.wounds.map(w => `${w.location} - ${w.type} (${w.stage}): ${w.size_length}x${w.size_width}x${w.size_depth}cm`).join('; ') : 
@@ -180,17 +203,13 @@ ${patient.advance_directives ? `
 - Proxy: ${patient.advance_directives.proxy_name || 'Not designated'}
 ` : 'Advance directives not documented'}
 
-INSURANCE:
-Primary: ${patient.insurance_primary?.provider || 'Not documented'}
-Secondary: ${patient.insurance_secondary?.provider || 'None'}
+INSURANCE: ${OUTSIDE_AUDIT_VIEW}
 
-EMERGENCY CONTACT:
-${patient.emergency_contact_name || 'Not provided'} (${patient.emergency_contact_relationship || 'Unknown'})
-Phone: ${patient.emergency_contact_phone || 'Not provided'}
+EMERGENCY CONTACT: ${OUTSIDE_AUDIT_VIEW}
 
 PHYSICIAN:
 ${patient.physician_name || 'Not provided'}
-Phone: ${patient.physician_phone || 'Not provided'}
+Phone: ${OUTSIDE_AUDIT_VIEW}
 
 RECENT VISITS (Last ${visits.length}):
 ${visits.map(v => `
@@ -220,16 +239,13 @@ Analyze this comprehensive patient record against the following compliance areas
    - Is admission documentation complete?
    - Are baseline assessments documented?
    - Are all required patient demographics captured?
-   - Is emergency contact information complete?
    - Are advance directives documented?
-   - Is insurance information complete?
 
 2. CLINICAL ASSESSMENT (CMS CoP ${isHospice ? '418.54 — initial and comprehensive assessment' : '484.55'})
    - Are baseline vitals documented?
    - Is functional status properly assessed?
    - Is pain assessed and managed?
    - Are wounds properly documented and tracked?
-   - Is mental health screening completed?
    - Are social determinants addressed?
 
 3. MEDICATION MANAGEMENT (CMS CoP ${isHospice ? '418.56 — IDG care planning and coordination' : '484.60'})
@@ -451,7 +467,12 @@ For each area, provide:
         }
       });
 
-      setAuditResults(result);
+      const normalized = normalizeComplianceAuditResult(result);
+      if (!normalized) {
+        toast.error("The AI response did not include a usable compliance score and level, so nothing was shown or saved. Please run the audit again.");
+        return;
+      }
+      setAuditResults(normalized);
 
       // Client-side AI findings are displayed and stored in ComplianceAudit
       // below, but are not copied into integrity-sensitive training evidence.
@@ -461,15 +482,15 @@ For each area, provide:
       logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {
         patient_id: patientId,
         visit_id: visitId,
-        compliance_score: result.overall_compliance_score,
-        critical_findings_count: result.critical_findings?.length || 0,
-        minor_findings_count: result.minor_findings?.length || 0,
+        compliance_score: normalized.overall_compliance_score,
+        critical_findings_count: normalized.critical_findings.length,
+        minor_findings_count: normalized.minor_findings.length,
         page: 'AIComplianceAuditor'
       });
 
       // Callback with issues
       if (onIssuesFound) {
-        onIssuesFound(result);
+        onIssuesFound(normalized);
       }
 
       // Create ComplianceAudit record. visit_id is required; for a patient with no
@@ -481,32 +502,19 @@ For each area, provide:
         toast.warning('Audit completed, but there is no visit on file to attach it to. Document a visit to save this compliance audit.');
         return;
       }
-      await base44.entities.ComplianceAudit.create({
-        visit_id: resolvedVisitId,
-        nurse_email: currentUser?.email || 'system',
-        patient_id: patientId,
-        // Without audit_date the record is silently excluded from the Medicare
-        // compliance report (ComplianceReportGenerator drops rows lacking it).
-        // Mirror AIProactiveOASISAssistant.jsx which sets it explicitly.
-        audit_date: new Date().toISOString(),
-        compliance_score: result.overall_compliance_score,
-        status: result.compliance_level === 'compliant' ? 'passed' :
-                result.compliance_level === 'critical_issues' ? 'critical' : 'flagged',
-        // Map findings to the ComplianceAudit.issues schema shape
-        // ({element, severity, problem, suggestion}); the raw finding shape
-        // ({category, regulation, issue, risk_level, ...}) is not what the
-        // report reads (it keys gaps/critical issues off issue.element/severity).
-        issues: [...(result.critical_findings || []), ...(result.minor_findings || [])].map((f) => ({
-          element: f.category,
-          severity: f.risk_level,
-          problem: f.issue,
-          suggestion: Array.isArray(f.actionable_steps) && f.actionable_steps.length
-            ? f.actionable_steps.join('; ')
-            : (f.required_state || '')
-        })),
-        compliant_elements: result.compliance_strengths || [],
-        audit_type: 'automated'
-      });
+      try {
+        await base44.entities.ComplianceAudit.create(buildComplianceAuditRecord({
+          normalized,
+          nurseEmail: currentUser?.email,
+          patientId,
+          visitId: resolvedVisitId,
+        }));
+      } catch (saveError) {
+        console.error("Compliance audit save failed:", saveError);
+        toast.error(`The audit is shown but was not saved: ${saveError?.message || 'the save was refused'}.`);
+        return;
+      }
+      toast.success('Compliance audit saved.');
 
       // Refresh the compliance dashboards that read ComplianceAudit (prefix match
       // covers the keyed variants ['complianceAudits', dateRange|timeRange]).
@@ -548,8 +556,12 @@ For each area, provide:
   if (!patient) {
     return (
       <Card>
-        <CardContent className="p-6 text-center text-slate-500">
-          No patient data available
+        <CardContent className="p-6 text-center text-slate-500" role="status">
+          {!chartReadsEnabled
+            ? 'An active agency membership is required to audit a chart.'
+            : chartReadFailed
+              ? 'This chart could not be loaded for your account, so no audit can be run.'
+              : 'Loading the authorized chart…'}
         </CardContent>
       </Card>
     );
@@ -891,21 +903,4 @@ For each area, provide:
       </CardContent>
     </Card>
   );
-}
-
-export default function AIComplianceAuditor(props) {
-  if (!AI_COMPLIANCE_AUDITOR_ENABLED) {
-    return (
-      <Card className="border-2 border-amber-300 bg-amber-50">
-        <CardContent className="space-y-2 p-5 text-sm text-amber-950">
-          <div className="flex items-center gap-2 font-semibold">
-            <Shield className="h-5 w-5" /> AI Compliance Audit Paused
-          </div>
-          <p>This audit is unavailable pending tenant-scoped patient/OASIS access and a validated, human-reviewed compliance workflow.</p>
-          <p>No patient record, OASIS upload, model request, training recommendation, activity score, or compliance audit is read or written from this panel.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-  return <EnabledAIComplianceAuditor {...props} />;
 }

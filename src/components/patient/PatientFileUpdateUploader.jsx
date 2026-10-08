@@ -41,6 +41,7 @@ const ACTION_STYLES = {
   create: { label: "Will add", className: "bg-green-100 text-green-800" },
   discharge: { label: "Will discharge", className: "bg-slate-200 text-slate-800" },
   matched: { label: "Already in system", className: "bg-amber-100 text-amber-800" },
+  needs_review: { label: "Needs review", className: "bg-purple-100 text-purple-800" },
   in_file_duplicate: { label: "Duplicate in file", className: "bg-orange-100 text-orange-800" },
   no_change: { label: "No change", className: "bg-slate-100 text-slate-600" },
   error: { label: "Needs attention", className: "bg-red-100 text-red-800" },
@@ -54,23 +55,20 @@ export default function PatientFileUpdateUploader() {
   // stage: "idle" -> "preview" (dry run shown) -> "done" (committed)
   const [stage, setStage] = useState("idle");
   const [preview, setPreview] = useState(null);
-  const [pendingFileUrl, setPendingFileUrl] = useState("");
+  // The CSV text and the agency its preview was computed for. The text is
+  // sent inline (never uploaded to storage), and the commit names the agency
+  // so the server refuses it if the caller's agency changed in between.
+  const [pendingFile, setPendingFile] = useState(null);
   const [results, setResults] = useState(null);
   const queryClient = useQueryClient();
 
-  const uploadFileMutation = useMutation({
-    mutationFn: async (file) => {
-      const response = await base44.integrations.Core.UploadFile({ file });
-      return response.file_url;
-    },
-  });
-
   const processFileMutation = useMutation({
-    mutationFn: async ({ fileUrl, selectedReportType, dryRun }) => {
+    mutationFn: async ({ fileContent, selectedReportType, dryRun, agencyId }) => {
       const response = await base44.functions.invoke("processPatientFileUpdate", {
-        file_url: fileUrl,
+        file_content: fileContent,
         report_type: selectedReportType,
         dry_run: dryRun,
+        ...(dryRun ? {} : { agency_id: agencyId }),
       });
       return response.data || response;
     },
@@ -80,7 +78,7 @@ export default function PatientFileUpdateUploader() {
     setFileName("");
     setStage("idle");
     setPreview(null);
-    setPendingFileUrl("");
+    setPendingFile(null);
     setResults(null);
   };
 
@@ -99,9 +97,9 @@ export default function PatientFileUpdateUploader() {
     setStage("idle");
 
     try {
-      const fileUrl = await uploadFileMutation.mutateAsync(selectedFile);
+      const fileContent = await selectedFile.text();
       const previewResults = await processFileMutation.mutateAsync({
-        fileUrl,
+        fileContent,
         selectedReportType: reportType,
         dryRun: true,
       });
@@ -110,7 +108,7 @@ export default function PatientFileUpdateUploader() {
         throw new Error(previewResults.error || "Failed to analyze file");
       }
 
-      setPendingFileUrl(fileUrl);
+      setPendingFile({ fileContent, agencyId: previewResults.results?.agency_id });
       setPreview(previewResults.results);
       setStage("preview");
     } catch (error) {
@@ -124,15 +122,16 @@ export default function PatientFileUpdateUploader() {
 
   // Step 2: the admin confirmed the preview — re-run for real to commit.
   const handleConfirmImport = async () => {
-    if (!pendingFileUrl) return;
+    if (!pendingFile?.fileContent || !pendingFile.agencyId) return;
     setIsProcessing(true);
     setProcessingLabel("Applying changes...");
 
     try {
       const committed = await processFileMutation.mutateAsync({
-        fileUrl: pendingFileUrl,
+        fileContent: pendingFile.fileContent,
         selectedReportType: reportType,
         dryRun: false,
+        agencyId: pendingFile.agencyId,
       });
 
       if (!committed.success) {
@@ -257,7 +256,7 @@ export default function PatientFileUpdateUploader() {
             <Alert>
               <Eye className="w-4 h-4 text-blue-600" />
               <AlertDescription>
-                <span className="font-semibold">Preview only — nothing has been saved yet.</span> Review the planned changes below for <span className="font-medium">{fileName}</span>, then confirm to apply them.
+                <span className="font-semibold">Preview only — nothing has been saved yet.</span> Review the planned changes below for <span className="font-medium">{fileName}</span>{preview.agency_name ? <> in <span className="font-medium">{preview.agency_name}</span></> : null}, then confirm to apply them.
               </AlertDescription>
             </Alert>
 

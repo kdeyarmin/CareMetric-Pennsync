@@ -47,8 +47,11 @@ test('no committed disposition contradicts the source it describes', () => {
   const report = checkCoverage(discoverCapabilities(repository), parseManifest(raw), discoverEvidence(repository));
   assert.deepEqual(report.contradicted_disposition, []);
   assert.equal(report.evidence_consistent, true);
-  // The check must be looking at a real population, not an empty one.
-  assert.ok(report.inert_functions > 25, `only ${report.inert_functions} inert functions found`);
+  // The check must be looking at a real population, not an empty one. The
+  // floor guards against a discovery that finds nothing; it is not a count to
+  // hold. The owner's 2026-10-08 releases took the population below the 25 it
+  // used to name, because each released endpoint does work again.
+  assert.ok(report.inert_functions > 15, `only ${report.inert_functions} inert functions found`);
 });
 
 test('every retirement says where its existing rows go', () => {
@@ -110,9 +113,11 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
   // send a reviewer to port an endpoint that has no behavior left to port.
   const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
   const inert = discoverInertFunctions(repository);
-  for (const name of ['analyzeClinicalData', 'analyzeDocument',
-    'autoAssignNurseToPatient', 'generateDischargeSummary', 'generatePatientEducation',
-    'getPatientContext', 'runSecurityAudit']) {
+  // runSecurityAudit, generateDischargeSummary, generatePatientEducation,
+  // analyzeDocument, analyzeNursePerformance and getUserActivityLog left this
+  // list on 2026-10-08 (owner decision): they do work again and keep their
+  // preserved_paused disposition.
+  for (const name of ['analyzeClinicalData', 'autoAssignNurseToPatient', 'getPatientContext']) {
     assert.ok(inert.includes(name), `${name} should be detected as inert`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but performs no work`);
