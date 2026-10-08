@@ -72,10 +72,9 @@ export default function AIConfigurationManager() {
           <div className="py-12 text-center text-slate-500">Loading configuration…</div>
         ) : (
         <Tabs defaultValue="compliance" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
             <TabsTrigger value="documentation">Documentation</TabsTrigger>
-            <TabsTrigger value="analysis">Analysis</TabsTrigger>
             <TabsTrigger value="general">General</TabsTrigger>
           </TabsList>
 
@@ -88,13 +87,6 @@ export default function AIConfigurationManager() {
 
           <TabsContent value="documentation" className="space-y-6">
             <DocumentationSettings 
-              getConfigValue={getConfigValue}
-              onSave={handleSaveConfig}
-            />
-          </TabsContent>
-
-          <TabsContent value="analysis" className="space-y-6">
-            <AnalysisSettings 
               getConfigValue={getConfigValue}
               onSave={handleSaveConfig}
             />
@@ -200,59 +192,6 @@ function DocumentationSettings({ getConfigValue, onSave }) {
               onCheckedChange={(checked) => {
                 setAutoEnhance(checked);
                 onSave('documentation_auto_enhance', 'documentation', { enabled: checked }, 'Auto-enhance notes');
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function AnalysisSettings({ getConfigValue, onSave }) {
-  const [riskSensitivity, setRiskSensitivity] = useState(getConfigValue('risk_analysis_sensitivity', { level: 50 }).level);
-  const [autoAnalyze, setAutoAnalyze] = useState(getConfigValue('risk_auto_analyze', { enabled: true }).enabled);
-
-  return (
-    <>
-      <div className="space-y-4">
-        <div>
-          <Label className="text-base font-semibold mb-3 block">Risk Detection Sensitivity</Label>
-          <p className="text-sm text-slate-600 mb-3">Higher = more alerts, Lower = only critical risks</p>
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-slate-500">Conservative</span>
-            <Slider
-              value={[riskSensitivity]}
-              onValueChange={([val]) => setRiskSensitivity(val)}
-              min={0}
-              max={100}
-              step={10}
-              className="flex-1"
-            />
-            <span className="text-xs text-slate-500">Aggressive</span>
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <Badge variant="outline">{riskSensitivity}% Sensitivity</Badge>
-            <Button 
-              size="sm"
-              onClick={() => onSave('risk_analysis_sensitivity', 'analysis', { level: riskSensitivity }, 'Risk detection sensitivity')}
-            >
-              Save Sensitivity
-            </Button>
-          </div>
-        </div>
-
-        <div className="border-t pt-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-base font-semibold">Auto-Run Risk Analysis</Label>
-              <p className="text-sm text-slate-600 mt-1">Automatically analyze patient risk after each visit completion</p>
-            </div>
-            <Switch
-              checked={autoAnalyze}
-              onCheckedChange={(checked) => {
-                setAutoAnalyze(checked);
-                onSave('risk_auto_analyze', 'analysis', { enabled: checked }, 'Auto-run risk analysis');
               }}
             />
           </div>

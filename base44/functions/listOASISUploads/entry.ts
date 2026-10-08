@@ -65,9 +65,10 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// Fail closed until reads are brokered through immutable tenant/patient
-// authority and a source-projected response that excludes legacy OASIS/PDGM AI.
-const OASIS_UPLOAD_LIST_ENABLED = false;
+// Released by the owner on 2026-10-08 ("approve everything"). Reads run as the
+// requesting user, so OASISUpload's own read rule (creator or protected admin)
+// decides which rows return; every money-shaped field is stripped below.
+const OASIS_UPLOAD_LIST_ENABLED = true;
 
 // Recursively drop any object key whose name implies money (revenue / payment /
 // reimbursement) so an OASISUpload returned to a non-financial user (a nurse)

@@ -15,6 +15,22 @@ const MESSAGE_DOMAIN_FUNCTIONS = [
   'messagingAssistant',
   'notifyUrgentMessage',
 ];
+// Released by the owner on 2026-10-08 ("approve everything"): the inbox read
+// and the two writes the Messages page uses. The AI helpers, the retired
+// assistant and the urgent fan-out have no browser caller and stay paused.
+const RELEASED_MESSAGE_FUNCTIONS = ['listMyMessages', 'sendMessage', 'markMessageRead'];
+const PAUSED_MESSAGE_FUNCTIONS = MESSAGE_DOMAIN_FUNCTIONS
+  .filter((name) => !RELEASED_MESSAGE_FUNCTIONS.includes(name));
+
+// A released broker already carries the open literal; a paused one is opened
+// here so its dormant code stays exercised. Either way the gate must exist.
+function openGate(source, constant, functionName, label) {
+  const paused = `const ${constant} = true;`;
+  const released = `const ${constant} = false;`;
+  if (source.includes(paused)) return source.replace(paused, released);
+  assert.ok(source.includes(released), `${functionName} must retain the static ${label} gate`);
+  return source;
+}
 
 async function loadHandler(functionName, client, {
   enableDomain = true,
@@ -26,22 +42,8 @@ async function loadHandler(functionName, client, {
     new URL(`../functions/${functionName}/entry.ts`, import.meta.url),
     'utf8',
   );
-  if (enableDomain) {
-    const activeSource = source.replace(
-      'const SECURE_MESSAGE_DOMAIN_PAUSED = true;',
-      'const SECURE_MESSAGE_DOMAIN_PAUSED = false;',
-    );
-    assert.notEqual(activeSource, source, `${functionName} must retain the static domain gate`);
-    source = activeSource;
-  }
-  if (enableMutations) {
-    const activeSource = source.replace(
-      'const SECURE_MESSAGE_MUTATIONS_PAUSED = true;',
-      'const SECURE_MESSAGE_MUTATIONS_PAUSED = false;',
-    );
-    assert.notEqual(activeSource, source, `${functionName} must retain the static mutation gate`);
-    source = activeSource;
-  }
+  if (enableDomain) source = openGate(source, 'SECURE_MESSAGE_DOMAIN_PAUSED', functionName, 'domain');
+  if (enableMutations) source = openGate(source, 'SECURE_MESSAGE_MUTATIONS_PAUSED', functionName, 'mutation');
   if (enableOutbox) {
     const activeSource = source.replace(
       'const URGENT_MESSAGE_OUTBOX_PAUSED = true;',
@@ -296,13 +298,16 @@ async function createVerifiedMessage(fixture, overrides = {}) {
   return { response, body: await response.json() };
 }
 
-test('all six raw entries pause before touching a poison request or SDK client', async () => {
+test('every unreleased raw entry pauses before touching a poison request or SDK client', async () => {
   const poisonRequest = new Proxy({}, {
     get(_target, property) {
       throw new Error(`paused handler touched request.${String(property)}`);
     },
   });
-  for (const functionName of MESSAGE_DOMAIN_FUNCTIONS) {
+  assert.deepEqual(PAUSED_MESSAGE_FUNCTIONS, [
+    'summarizeMessageThread', 'generateMessageSuggestions', 'messagingAssistant', 'notifyUrgentMessage',
+  ]);
+  for (const functionName of PAUSED_MESSAGE_FUNCTIONS) {
     const handler = await loadHandler(functionName, null, { enableDomain: false, enableMutations: false });
     const response = await handler(poisonRequest);
     assert.equal(response.status, 503, functionName);
@@ -315,8 +320,15 @@ test('all six raw entries pause before touching a poison request or SDK client',
   }
 });
 
-test('message mutations retain a second static gate after the domain gate', async () => {
-  for (const functionName of ['sendMessage', 'markMessageRead', 'notifyUrgentMessage']) {
+test('the released brokers open both gates, and the urgent fan-out keeps its mutation gate', async () => {
+  for (const functionName of RELEASED_MESSAGE_FUNCTIONS) {
+    const source = await readFile(new URL(`../functions/${functionName}/entry.ts`, import.meta.url), 'utf8');
+    assert.match(source, /const SECURE_MESSAGE_DOMAIN_PAUSED = false;/, functionName);
+    if (functionName !== 'listMyMessages') {
+      assert.match(source, /const SECURE_MESSAGE_MUTATIONS_PAUSED = false;/, functionName);
+    }
+  }
+  for (const functionName of ['notifyUrgentMessage']) {
     const handler = await loadHandler(functionName, null, {
       enableDomain: true,
       enableMutations: false,
@@ -805,23 +817,30 @@ test('all three message schemas expose v2 provenance and remain fully service-on
   ]) assert.ok(message.properties[field], `Message.${field}`);
 });
 
-test('browser messaging surfaces remain paused with no entity or function bypass', async () => {
+test('only the Messages page reaches the released brokers, and nothing reads message rows directly', async () => {
   const messagesPage = await readFile(new URL('../../src/pages/Messages.jsx', import.meta.url), 'utf8');
   const careTeam = await readFile(new URL('../../src/components/messaging/CareTeamMessaging.jsx', import.meta.url), 'utf8');
-  assert.match(messagesPage, /TENANT_MESSAGES_RELEASE_REQUIREMENTS/);
-  assert.match(messagesPage, /Legacy and ambiguous rows are quarantined/);
+  for (const name of RELEASED_MESSAGE_FUNCTIONS) {
+    assert.match(messagesPage, new RegExp(`functions\\.invoke\\(\\s*["']${name}["']`), name);
+  }
   assert.match(careTeam, /Care-team messages remain paused/);
 
-  const brokerNames = MESSAGE_DOMAIN_FUNCTIONS.join('|');
-  const forbidden = [
+  const pausedNames = PAUSED_MESSAGE_FUNCTIONS.join('|');
+  const releasedNames = RELEASED_MESSAGE_FUNCTIONS.join('|');
+  const everywhere = [
     /entities\s*(?:\?\.|\.)\s*(?:Message|AgencyMessage|PatientMessage)\b/,
     /\b(?:Message|AgencyMessage|PatientMessage)\s*(?:\?\.|\.)\s*(?:list|filter|get|create|update|delete|updateMany)\s*\(/,
-    new RegExp(`functions\\s*(?:\\?\\.|\\.)\\s*invoke\\s*\\(\\s*['"](?:${brokerNames})['"]`),
-    new RegExp(`functions\\s*(?:\\?\\.|\\.)\\s*(?:${brokerNames})\\s*\\(`),
+    new RegExp(`functions\\s*(?:\\?\\.|\\.)\\s*invoke\\s*\\(\\s*['"](?:${pausedNames})['"]`),
+    new RegExp(`functions\\s*(?:\\?\\.|\\.)\\s*(?:${pausedNames})\\s*\\(`),
+  ];
+  const outsideMessagesPage = [
+    new RegExp(`functions\\s*(?:\\?\\.|\\.)\\s*invoke\\s*\\(\\s*['"](?:${releasedNames})['"]`),
   ];
   const violations = [];
   for (const { path, source } of await productionBrowserSources()) {
-    for (const pattern of forbidden) if (pattern.test(source)) violations.push(`${path}: ${pattern}`);
+    for (const pattern of everywhere) if (pattern.test(source)) violations.push(`${path}: ${pattern}`);
+    if (path.endsWith('/src/pages/Messages.jsx')) continue;
+    for (const pattern of outsideMessagesPage) if (pattern.test(source)) violations.push(`${path}: ${pattern}`);
   }
   assert.deepEqual(violations, [], `Browser message bypasses:\n${violations.join('\n')}`);
 });
@@ -829,17 +848,68 @@ test('browser messaging surfaces remain paused with no entity or function bypass
 test('secure-message sources retain projections, sanitized logging, and no direct notification fan-out', async () => {
   for (const functionName of MESSAGE_DOMAIN_FUNCTIONS) {
     const source = await readFile(new URL(`../functions/${functionName}/entry.ts`, import.meta.url), 'utf8');
-    assert.match(source, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/, functionName);
+    const literal = RELEASED_MESSAGE_FUNCTIONS.includes(functionName) ? 'false' : 'true';
+    assert.match(source, new RegExp(`const SECURE_MESSAGE_DOMAIN_PAUSED = ${literal};`), functionName);
     assert.match(source, /'Cache-Control': 'no-store'/, functionName);
     assert.doesNotMatch(source, /console\.error\([^)]*error\b/, functionName);
   }
   for (const functionName of ['sendMessage', 'markMessageRead', 'notifyUrgentMessage']) {
     const source = await readFile(new URL(`../functions/${functionName}/entry.ts`, import.meta.url), 'utf8');
-    assert.match(source, /const SECURE_MESSAGE_MUTATIONS_PAUSED = true;/, functionName);
+    const literal = RELEASED_MESSAGE_FUNCTIONS.includes(functionName) ? 'false' : 'true';
+    assert.match(source, new RegExp(`const SECURE_MESSAGE_MUTATIONS_PAUSED = ${literal};`), functionName);
   }
   const urgent = await readFile(new URL('../functions/notifyUrgentMessage/entry.ts', import.meta.url), 'utf8');
   assert.match(urgent, /const URGENT_MESSAGE_OUTBOX_PAUSED = true;/);
   assert.doesNotMatch(urgent, /Notification\.create\s*\(/);
   const assistant = await readFile(new URL('../functions/messagingAssistant/entry.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(assistant, /req\.json|req\.text|auth\.me/);
+});
+test('listMyMessages returns only the caller\'s verified threads, through the pinned positional SDK form', async () => {
+  const caller = { id: 'user-caller', email: 'caller@agency.test', full_name: 'Casey Caller', is_active: true };
+  const calls = [];
+  const rows = {
+    AgencyMembership: [
+      { agency_id: 'agency-1', user_id: 'user-caller', status: 'active', user_email_normalized: 'caller@agency.test', tenant_role: 'clinician' },
+      { agency_id: 'agency-1', user_id: 'user-peer', status: 'active', user_email_normalized: 'peer@agency.test', tenant_role: 'manager' },
+    ],
+    Message: [
+      { id: 'm-1', thread_id: 't-1', agency_id: 'agency-1', provenance_status: 'verified_v2', participant_user_ids: ['user-caller', 'user-peer'] },
+      { id: 'm-2', thread_id: 't-2', agency_id: 'agency-1', provenance_status: 'verified_v2', participant_user_ids: ['user-peer'] },
+    ],
+    User: [{ id: 'user-peer', full_name: 'Pat Peer', email: 'peer@agency.test' }],
+  };
+  const matches = (row, query) => Object.entries(query).every(([key, value]) => {
+    if (value && typeof value === 'object' && Array.isArray(value.$in)) return value.$in.includes(row[key]);
+    if (Array.isArray(row[key])) return row[key].includes(value);
+    return row[key] === value;
+  });
+  const entity = (name) => ({
+    filter: async (query, sort, limit, skip, fields) => {
+      calls.push({ name, query, sort, limit, skip, fields });
+      // The pinned SDK's positional form: an options object in the sort slot is a bug.
+      assert.ok(sort === undefined || typeof sort === 'string', `${name} sort must be positional`);
+      return rows[name].filter((row) => matches(row, query)).slice(0, limit ?? 50);
+    },
+  });
+  const client = {
+    auth: { me: async () => caller },
+    asServiceRole: { entities: { AgencyMembership: entity('AgencyMembership'), Message: entity('Message'), User: entity('User') } },
+  };
+  const handler = await loadHandler('listMyMessages', client, { enableDomain: true, enableMutations: false });
+
+  const response = await handler(post({ agency_id: 'agency-1' }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.me, 'user-caller');
+  assert.deepEqual(body.messages.map((m) => m.id), ['m-1']);
+  assert.deepEqual(body.directory, [{ id: 'user-peer', name: 'Pat Peer', role: 'manager' }]);
+  const messageRead = calls.find((call) => call.name === 'Message');
+  assert.deepEqual(messageRead.query, { agency_id: 'agency-1', provenance_status: 'verified_v2', participant_user_ids: 'user-caller' });
+  assert.equal(messageRead.sort, '-created_date');
+  assert.equal(messageRead.limit, 300);
+
+  const outsider = await handler(post({ agency_id: 'agency-2' }));
+  assert.equal(outsider.status, 403);
+  const missing = await handler(post({}));
+  assert.equal(missing.status, 400);
 });

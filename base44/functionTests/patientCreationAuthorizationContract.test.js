@@ -633,20 +633,21 @@ test('ambiguous replays fail closed and post-create stamp mismatches are removed
   assert.equal(mismatch.state.patients.length, 0);
 });
 
-test('bulk Patient import commit is hard-paused before file or Patient reads and writes', async () => {
+test('bulk Patient import creates charts only through the authorized creation broker', async () => {
+  // 2026-10-08 owner decision: the roster import commits again. New charts are
+  // created through createAuthorizedPatient as the caller, so they carry the
+  // same immutable tenant and creator provenance as a chart created by hand.
   const source = await readFile(importUrl, 'utf8');
   const handlerStart = source.indexOf('Deno.serve');
   assert.notEqual(handlerStart, -1);
   const handler = source.slice(handlerStart);
-  const dryRunIndex = handler.indexOf('const dryRun');
-  const inlineFileReadIndex = handler.indexOf('cleanValue(body.file_content)');
-  const patientAccessIndex = handler.search(/(?:asServiceRole\.)?entities\.Patient\.(?:list|filter|get|create|update|delete)\s*\(/);
-  assert.ok(dryRunIndex >= 0, 'the handler must resolve preview versus commit mode');
-  assert.ok(inlineFileReadIndex > dryRunIndex, 'inline file content must be read after mode resolution');
-  assert.ok(patientAccessIndex > inlineFileReadIndex, 'Patient access must remain after the file-input boundary');
-
-  const guardRegion = handler.slice(dryRunIndex, Math.min(inlineFileReadIndex, patientAccessIndex));
-  assert.match(guardRegion, /if\s*\(\s*!dryRun\s*\)/);
-  assert.match(guardRegion, /status\s*:\s*503/);
-  assert.match(guardRegion, /(?:disabled|paused)/i);
+  assert.doesNotMatch(handler, /Patient import commit is paused/);
+  assert.doesNotMatch(handler, /entities\.Patient\.create\s*\(/);
+  assert.match(handler, /base44\.functions\.invoke\('createAuthorizedPatient', \{/);
+  assert.match(handler, /agency_id: agencyId,\s*client_request_id: clientRequestId,/);
+  const tenantGate = handler.indexOf('await loadTrustedTenantClaim(');
+  const bodyRead = handler.indexOf('await req.json()');
+  const patientRead = handler.search(/entities\.Patient\.(?:list|filter)\s*\(/);
+  assert.ok(tenantGate >= 0 && tenantGate < bodyRead, 'tenant authority is decided before input');
+  assert.ok(patientRead > bodyRead, 'Patient reads stay after the input boundary');
 });

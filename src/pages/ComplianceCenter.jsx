@@ -46,6 +46,7 @@ const ComplianceMonitoringDashboard = lazy(() => import("@/components/hub-tabs/C
 const RealTimeComplianceDashboard = lazy(() => import("@/components/hub-tabs/RealTimeComplianceDashboard"));
 const SecurityCompliance = lazy(() => import("@/components/hub-tabs/SecurityCompliance"));
 const SecurityPolicy = lazy(() => import("@/components/hub-tabs/SecurityPolicy"));
+const AIChartAuditPanel = lazy(() => import("@/components/compliance/AIChartAuditPanel"));
 
 // Top-level tab keys, kept in sync with the TabsTrigger values below. Used to
 // validate the ?tab= deep-link so the retired standalone pages (Compliance
@@ -74,7 +75,7 @@ export default function ComplianceCenter() {
   // Nested sub-tab selection, driven by ?view= so deep links (e.g. a retired
   // /ComplianceMonitoringDashboard or /SecurityPolicy bookmark) open the right
   // inner page instead of the sub-tab default.
-  const DASHBOARD_VIEWS = ["overview", "live", "monitoring", "realtime"];
+  const DASHBOARD_VIEWS = ["overview", "live", "monitoring", "realtime", "chart-audit"];
   const SECURITY_VIEWS = ["audit-logs", "policies"];
   const dashboardView = DASHBOARD_VIEWS.includes(requestedView) ? requestedView : "overview";
   const securityView = SECURITY_VIEWS.includes(requestedView) ? requestedView : "audit-logs";
@@ -406,6 +407,10 @@ export default function ComplianceCenter() {
                   <BarChart3 className="w-4 h-4 mr-2" />
                   Real-Time Insights
                 </TabsTrigger>
+                <TabsTrigger value="chart-audit" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
+                  <Shield className="w-4 h-4 mr-2" />
+                  AI Chart Audit
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -661,6 +666,13 @@ Provide: overall_assessment, critical_priorities (array), systemic_issues, actio
             <TabsContent value="realtime">
               <Suspense fallback={tabLoader}>
                 <RealTimeComplianceDashboard />
+              </Suspense>
+            </TabsContent>
+
+            {/* AI chart compliance audit for one selected patient */}
+            <TabsContent value="chart-audit">
+              <Suspense fallback={tabLoader}>
+                <AIChartAuditPanel />
               </Suspense>
             </TabsContent>
           </Tabs>

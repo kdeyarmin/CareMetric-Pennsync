@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,21 +7,6 @@ import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 const FUNCTION_NAME = 'sendAuthorizedReferralFax';
-const SRC_URL = new URL('../../src/', import.meta.url);
-
-// A local copy rather than an import: `referralAuthorizationContract.test.js`
-// exports nothing, and a test in this directory may not reach outside it.
-async function browserSourceFiles(directoryUrl) {
-  const files = [];
-  for (const entry of await readdir(directoryUrl, { withFileTypes: true })) {
-    const child = new URL(entry.isDirectory() ? `${entry.name}/` : entry.name, directoryUrl);
-    if (entry.isDirectory()) files.push(...await browserSourceFiles(child));
-    else if (/\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) {
-      files.push(child);
-    }
-  }
-  return files;
-}
 
 async function loadHandler(makeClient) {
   let source = await readFile(
@@ -935,44 +920,18 @@ test('referral fax requires exactly one active, exact Telnyx integration', async
   }
 });
 
-// `src/pages/ReferralFollowUp.jsx` held the only browser path that minted a NEW
-// referral fax: it uploaded through `createAuthorizedDocument` with
-// `purpose: 'referral'`, invoked this broker with that document, and guarded
-// against a double submission with `faxSubmissionInFlightRef` plus a
-// reconciliation notice. That page is deleted, so the assertions over its source
-// are replaced by the pin below rather than dropped — the contract they were
-// protecting is that no browser code sends a referral fax with a
-// caller-supplied document, and that has to keep being checked somewhere.
-test('no browser caller mints a new referral fax after the follow-up page was deleted', async () => {
-  const pageUrl = new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url);
-  await assert.rejects(readFile(pageUrl, 'utf8'), { code: 'ENOENT' }, 'the page is still deleted');
-
-  // Every surviving caller retries a fax log the broker already authorized. A
-  // caller passing a `document_id` would be a fresh send and has to be reviewed
-  // against this broker's own authority checks, which the rest of this file
-  // exercises. Scoped to this broker's callers deliberately: `Core.UploadFile`
-  // and `sendFax` are live in unrelated fax features (the camera, cover-sheet,
-  // annotator and photo senders), so a repository-wide absence scan here would
-  // pin nine pre-existing call sites that have nothing to do with referrals.
-  const callers = [
-    'components/fax/RealtimeFaxStatusTracker.jsx',
-    'components/hub-tabs/FaxLogsDashboard.jsx',
-  ];
-  const discovered = [];
-  for (const path of await browserSourceFiles(SRC_URL)) {
-    if (/\/functions\//.test(path.pathname)) continue;
-    const source = await readFile(path, 'utf8');
-    if (!new RegExp(`\\b${FUNCTION_NAME}\\b`).test(source)) continue;
-    discovered.push(path.pathname.slice(SRC_URL.pathname.length));
-    assert.match(
-      source,
-      /retry_fax_log_id/,
-      `${path.pathname} reaches ${FUNCTION_NAME} without being a retry`,
-    );
-    assert.doesNotMatch(source, /document_id\s*:/, path.pathname);
-    assert.doesNotMatch(source, /purpose:\s*["']referral["']/, path.pathname);
-  }
-  assert.deepEqual(discovered.sort(), callers, 'a new browser caller of this broker appeared');
+test('ReferralFollowUp uses private document authority and the dedicated fax broker', async () => {
+  const page = await readFile(
+    new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /createAuthorizedDocument\(\{/);
+  assert.match(page, /purpose:\s*["']referral["']/);
+  assert.match(page, /functions\.invoke\(["']sendAuthorizedReferralFax["']/);
+  assert.match(page, /data\.requires_reconciliation\s*\|\|\s*data\.status\s*===\s*["']submission_unknown["']/);
+  assert.match(page, /do not send it again until its status is reconciled/i);
+  assert.match(page, /faxSubmissionInFlightRef\.current/);
+  assert.doesNotMatch(page, /Core\.UploadFile|functions\.invoke\(["']sendFax["']/);
 
   const source = await readFile(
     new URL(`../functions/${FUNCTION_NAME}/entry.ts`, import.meta.url),

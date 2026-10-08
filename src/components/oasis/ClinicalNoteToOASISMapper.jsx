@@ -68,11 +68,7 @@ Focus on:
                   supporting_quote: { type: "string" },
                   confidence: { type: "number" },
                   rationale: { type: "string" },
-                  additional_documentation_needed: { type: "string" },
-                  revenue_impact: { 
-                    type: "string",
-                    enum: ["high", "medium", "low", "none"]
-                  }
+                  additional_documentation_needed: { type: "string" }
                 }
               }
             },
@@ -218,11 +214,6 @@ Focus on:
                             }>
                               {field.confidence}% confidence
                             </Badge>
-                            {field.revenue_impact !== 'none' && field.revenue_impact !== 'low' && (
-                              <Badge className="bg-green-600 text-white">
-                                💰 {field.revenue_impact}
-                              </Badge>
-                            )}
                           </div>
                         </div>
 

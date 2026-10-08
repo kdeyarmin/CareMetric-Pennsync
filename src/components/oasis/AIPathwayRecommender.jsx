@@ -259,7 +259,7 @@ Return JSON:
           <div className="text-center py-8">
             <Loader2 className="w-8 h-8 animate-spin text-navy-600 mx-auto mb-3" />
             <p className="text-sm text-slate-600">Analyzing clinical pathways and interventions...</p>
-            <p className="text-xs text-slate-400 mt-1">Evaluating diagnosis, functional status, and PDGM optimization</p>
+            <p className="text-xs text-slate-400 mt-1">Evaluating diagnosis and functional status</p>
           </div>
         ) : !recommendations ? (
           <Button

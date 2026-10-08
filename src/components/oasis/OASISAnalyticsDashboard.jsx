@@ -11,7 +11,6 @@ import EmptyState from "@/components/ui/empty-state";
 import {
   FileText,
   Target,
-  DollarSign,
   Activity,
   TrendingUp,
   ClipboardCheck,
@@ -21,8 +20,8 @@ import { BarChart3 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 import DocumentationGapAdminPanel from "@/components/oasis/DocumentationGapAdminPanel";
-// Analytics Dashboard Component — clinical/documentation trends. PDGM payment
-// analytics remain fail-closed until the verified CMS grouper is available.
+// Analytics Dashboard Component — clinical/documentation trends only; no
+// payment, revenue or case-mix figure is computed or shown.
 // Extracted from OASISAnalyzer.jsx; pure aggregation logic lives in oasisAnalytics.js (unit-tested).
 export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
   const COLORS = CHART_COLORS;
@@ -46,7 +45,7 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border-2 border-blue-200 bg-blue-50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -67,32 +66,6 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
                 <p className="text-3xl font-bold text-green-700">{summaryStats.avgScore.toFixed(0)}%</p>
               </div>
               <Target className="w-10 h-10 text-green-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 border-navy-200 bg-navy-50">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-navy-600 font-medium">Avg Payment</p>
-                <p className="text-2xl font-bold text-amber-700">Unavailable</p>
-                <p className="mt-1 text-xs text-navy-600">Not a $0 result</p>
-              </div>
-              <DollarSign className="w-10 h-10 text-navy-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 border-orange-200 bg-orange-50">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-orange-600 font-medium">Total Revenue</p>
-                <p className="text-2xl font-bold text-amber-700">Unavailable</p>
-                <p className="mt-1 text-xs text-orange-600">Official CMS grouper required</p>
-              </div>
-              <TrendingUp className="w-10 h-10 text-orange-400" />
             </div>
           </CardContent>
         </Card>
@@ -205,8 +178,8 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
         </Card>
       )}
 
-      {/* Documentation gaps and their revenue context — administrators only.
-          The panel gates itself; it is not relying on this placement. */}
+      {/* Documentation-gap patterns — administrators only. The panel gates
+          itself; it is not relying on this placement. */}
       <DocumentationGapAdminPanel uploads={savedOASISUploads} />
 
     </div>

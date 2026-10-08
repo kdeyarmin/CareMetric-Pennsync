@@ -96,23 +96,28 @@ test('an incomplete sweep is reported to the caller, not just logged', () => {
   );
 });
 
-test('the client exposes offboarding only to the protected owner and cannot invoke reactivation', () => {
+test('the client offers offboarding to the owner and reactivation to the owner and agency admins', () => {
+  // 2026-10-08 owner decision: reactivation is open to the owner and to agency
+  // administrators; offboarding stays with the protected owner.
   const client = readFileSync(join(process.cwd(), 'src/pages/UserManagement.jsx'), 'utf8');
   assert.match(client, /import \{[^}]*\bisSuperAdmin\b[^}]*\} from ["']@\/lib\/superAdmin["']/, 'UI must use the protected owner helper');
-  assert.match(client, /const canManageOffboarding = isSuperAdmin\(currentUser\)/, 'UI gate must require the protected owner');
-  assert.match(client, /disabled=\{!isActive \|\| currentUser\.email === user\.email \|\| !canManageOffboarding\}/, 'inactive accounts and ordinary admins must not receive an actionable status control');
-  assert.match(client, /Reactivation temporarily unavailable pending retirement of legacy PHI grants/, 'inactive-account control must explain the hard pause');
-  assert.doesNotMatch(client, /Reactivate Identity Only/, 'the confirmation dialog must not offer reactivation');
+  assert.match(client, /const canManageOffboarding = isSuperAdmin\(currentUser\)/, 'offboarding must require the protected owner');
+  assert.match(client, /const canReactivateUsers = canManageOffboarding \|\| callerTenantRole === 'agency_admin'/, 'reactivation must be offered to the owner and agency administrators');
+  assert.doesNotMatch(client, /Reactivation temporarily unavailable pending retirement of legacy PHI grants/, 'the inactive-account control must no longer claim a pause');
+  assert.match(client, /buildOffboardInvokeArgs\(\{[\s\S]{0,200}enabling: true/, 'reactivation must go through the shared args builder');
 });
 
-test('reactivation is hard-paused before Base44 client creation while source remains preserved', () => {
-  const pause = SRC.indexOf("if (action === 'reactivate')");
+test('reactivation authorizes on the owner or a service-owned agency_admin membership', () => {
   const clientCreation = SRC.indexOf('const base44 = createClientFromRequest(');
-  const preservedSource = SRC.indexOf('async function reactivateUser');
-  assert.ok(pause !== -1 && pause < clientCreation, 'reactivation must return 503 before client creation');
-  assert.ok(preservedSource > clientCreation, 'the dormant implementation source must remain available for review');
-  assert.match(SRC.slice(pause, clientCreation), /USER_REACTIVATION_PAUSED/);
-  assert.match(SRC.slice(pause, clientCreation), /status: 503/);
+  const dispatch = SRC.indexOf("if (action === 'reactivate')");
+  assert.ok(dispatch > clientCreation, 'reactivation is authorized after the caller is read');
+  assert.doesNotMatch(SRC, /USER_REACTIVATION_PAUSED/);
+  const authorize = SRC.slice(SRC.indexOf('async function authorizeAndReactivate'));
+  assert.match(authorize, /isProtectedSuperAdmin\(currentUser\)/);
+  assert.match(authorize, /loadTrustedTenantClaim\(base44, actorId, actorEmail\)/);
+  assert.match(authorize, /tenant\.tenantRole !== 'agency_admin'/);
+  assert.doesNotMatch(authorize.slice(0, authorize.indexOf('async function reactivateUser')), /account_type|agency_name/,
+    'self-editable profile fields must not decide reactivation authority');
 });
 
 test('the patient sweep filters server-side instead of scanning every patient', () => {
@@ -188,6 +193,7 @@ async function loadRuntime({
   freshUserReadObjects = false,
   sweepRows = {},
   sweepNoopEntities = [],
+  agencies = [{ id: 'agency-a', agency_name: 'Agency A', status: 'active' }],
 } = {}) {
   let source = await readFile(
     join(process.cwd(), 'base44/functions/offboardUser/entry.ts'),
@@ -312,6 +318,12 @@ async function loadRuntime({
         return state.memberships[index];
       },
     },
+    Agency: {
+      filter: async (query, sort, limit) => agencies
+        .filter((row) => matches(row, query))
+        .slice(0, limit)
+        .map((row) => ({ ...row })),
+    },
     Patient: sweepEntity('Patient'),
     PhoneNumber: sweepEntity('PhoneNumber'),
     OnCallShift: sweepEntity('OnCallShift'),
@@ -384,29 +396,95 @@ test('offboard denies every non-owner before service-role reads', async () => {
   assert.equal(runtime.calls.membershipUpdates.length, 0);
 });
 
-test('reactivation returns controlled 503 before client creation, privileged reads, or writes', async () => {
+const AGENCY_ADMIN = {
+  id: 'admin-a',
+  email: 'admin@example.test',
+  full_name: 'Agency Admin',
+  role: 'user',
+  is_active: true,
+};
+const adminMembership = (overrides = {}) => membership({
+  id: 'membership-admin',
+  membership_key: 'agency-a:admin-a',
+  user_id: 'admin-a',
+  user_email_normalized: 'admin@example.test',
+  tenant_role: 'agency_admin',
+  ...overrides,
+});
+
+test('the owner reactivates an offboarded identity without restoring tenant authority', async () => {
   const runtime = await loadRuntime({
     users: [{ ...TARGET, is_active: false }, OWNER],
     memberships: [membership({ status: 'revoked' })],
   });
-  const result = await invokeRuntime(runtime.handler, {
-    action: 'reactivate',
-    user_id: 'target-1',
-  });
-  assert.equal(result.response.status, 503);
-  assert.deepEqual(result.json, {
-    error: 'User reactivation is temporarily unavailable pending retirement of legacy PHI grants',
-    code: 'USER_REACTIVATION_PAUSED',
-  });
-  assert.equal(runtime.calls.clientCreations, 0);
-  assert.equal(runtime.calls.userFilters.length, 0);
-  assert.equal(runtime.calls.membershipFilters.length, 0);
-  assert.equal(runtime.calls.userUpdates.length, 0);
+  const result = await invokeRuntime(runtime.handler, { action: 'reactivate', user_id: 'target-1' });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.json.success, true);
+  assert.equal(result.json.membership_authority_restored, false);
+  assert.equal(runtime.state.users[0].is_active, true);
   assert.equal(runtime.calls.membershipUpdates.length, 0);
-  assert.equal(runtime.calls.sweepFilters.length, 0);
-  assert.equal(runtime.calls.sweepUpdates.length, 0);
-  assert.equal(runtime.calls.activityCreates.length, 0);
+  assert.equal(runtime.state.memberships[0].status, 'revoked');
+});
+
+test('an agency admin reactivates a former member of their own agency', async () => {
+  const runtime = await loadRuntime({
+    caller: AGENCY_ADMIN,
+    users: [{ ...TARGET, is_active: false }, OWNER, AGENCY_ADMIN],
+    memberships: [membership({ status: 'revoked' }), adminMembership()],
+  });
+  const result = await invokeRuntime(runtime.handler, { action: 'reactivate', user_id: 'target-1' });
+  assert.equal(result.response.status, 200);
+  assert.equal(runtime.state.users[0].is_active, true);
+  assert.equal(runtime.calls.membershipUpdates.length, 0);
+});
+
+test('an agency admin cannot reactivate somebody from another agency', async () => {
+  const runtime = await loadRuntime({
+    caller: AGENCY_ADMIN,
+    users: [{ ...TARGET, is_active: false }, OWNER, AGENCY_ADMIN],
+    memberships: [
+      membership({ status: 'revoked', agency_id: 'agency-b', membership_key: 'agency-b:target-1' }),
+      adminMembership(),
+    ],
+  });
+  const result = await invokeRuntime(runtime.handler, { action: 'reactivate', user_id: 'target-1' });
+  assert.equal(result.response.status, 403);
+  assert.equal(runtime.calls.userUpdates.length, 0);
   assert.equal(runtime.state.users[0].is_active, false);
+});
+
+test('a caller without an agency_admin membership cannot reactivate, whatever its profile claims', async () => {
+  const claimant = { ...AGENCY_ADMIN, account_type: 'agency_admin', agency_name: 'Agency A' };
+  const runtime = await loadRuntime({
+    caller: claimant,
+    users: [{ ...TARGET, is_active: false }, OWNER, claimant],
+    memberships: [membership({ status: 'revoked' }), adminMembership({ tenant_role: 'clinician' })],
+  });
+  const result = await invokeRuntime(runtime.handler, { action: 'reactivate', user_id: 'target-1' });
+  assert.equal(result.response.status, 403);
+  assert.equal(runtime.calls.userFilters.length, 0);
+  assert.equal(runtime.calls.userUpdates.length, 0);
+});
+
+test('an agency admin cannot reactivate a built-in administrator', async () => {
+  const runtime = await loadRuntime({
+    caller: AGENCY_ADMIN,
+    users: [{ ...TARGET, role: 'admin', is_active: false }, OWNER, AGENCY_ADMIN],
+    memberships: [membership({ status: 'revoked' }), adminMembership()],
+  });
+  const result = await invokeRuntime(runtime.handler, { action: 'reactivate', user_id: 'target-1' });
+  assert.equal(result.response.status, 403);
+  assert.equal(runtime.calls.userUpdates.length, 0);
+});
+
+test('reactivation refuses while a non-revoked membership remains', async () => {
+  const runtime = await loadRuntime({
+    users: [{ ...TARGET, is_active: false }, OWNER],
+    memberships: [membership({ status: 'suspended' })],
+  });
+  const result = await invokeRuntime(runtime.handler, { action: 'reactivate', user_id: 'target-1' });
+  assert.equal(result.response.status, 409);
+  assert.equal(runtime.calls.userUpdates.length, 0);
 });
 
 test('an anonymous auth rejection returns 401 before every service-role read or write', async () => {

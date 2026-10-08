@@ -8,24 +8,36 @@ import JSON5 from 'json5';
 const here = dirname(fileURLToPath(import.meta.url));
 const readEntry = (name) => readFileSync(join(here, '..', 'functions', name, 'entry.ts'), 'utf8');
 
-test('SmsMessage direct access is fully service-only', () => {
+test('SmsMessage: a nurse reads their own texts and may only mark their own rows; writers stay server-side', () => {
+  // Restored 2026-10-08 for the Phone Center inbox. Nobody creates or deletes
+  // an SmsMessage from a browser; a nurse may update (mark read) only rows
+  // addressed to them.
   const schema = JSON5.parse(readFileSync(join(here, '..', 'entities', 'SmsMessage.jsonc'), 'utf8'));
   assert.deepEqual(schema.rls, {
-    read: false,
+    read: {
+      $or: [
+        { 'data.nurse_email': '{{user.email}}' },
+        { 'data.sent_by': '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
     create: false,
-    update: false,
+    update: { 'data.nurse_email': '{{user.email}}' },
     delete: false,
   });
 });
 
-test('scheduled SMS workers apply the global outbound gate before every worker-specific pause', () => {
+test('scheduled SMS workers apply the global outbound gate before SDK creation', () => {
+  // dispatchScheduledSms lost its narrower pause when scheduled texting was
+  // released (2026-10-08); redriveFailedSms keeps its own.
+  assert.doesNotMatch(readEntry('dispatchScheduledSms'), /SCHEDULED_SMS_DISPATCH_PAUSED/);
   for (const [name, literal] of [
-    ['dispatchScheduledSms', 'const SCHEDULED_SMS_DISPATCH_PAUSED = true;'],
+    ['dispatchScheduledSms', null],
     ['redriveFailedSms', 'const SMS_REDRIVE_MIGRATION_PAUSED = true;'],
   ]) {
     const source = readEntry(name);
     assert.match(source, /<<<BEGIN SHARED HELPER: outboundDeliveryGate/);
-    assert.ok(source.includes(literal), `${name} retains its narrower migration pause`);
+    if (literal) assert.ok(source.includes(literal), `${name} retains its narrower migration pause`);
     const handler = source.indexOf('Deno.serve(async (req) =>');
     const releaseGate = source.indexOf("if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('sms')", handler);
     const sdk = source.indexOf('createClientFromRequest(', handler);

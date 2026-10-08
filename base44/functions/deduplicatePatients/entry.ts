@@ -75,6 +75,95 @@ function isProtectedSuperAdmin(user) {
     && normalizeProtectedEmail(user.email) === configuredEmail;
 }
 // <<<END SHARED HELPER: protectedUserAuthz>>>
+// <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
+}
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
+  try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId }, undefined, 101,
+    );
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
+    }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
+  } catch {
+    // No lookup failure may be interpreted as membership approval.
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
+  if (profile.role === 'admin') return profile;
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
+}
+// <<<END SHARED HELPER: trustedCallerClaims>>>
 
 
 // <<<BEGIN GENERATED ENGINE — DO NOT EDIT BY HAND.
@@ -990,87 +1079,215 @@ export function findDuplicateGroups(patients, opts = {}) {
 }
 // <<<END GENERATED ENGINE>>>
 
-// Every entity that references a patient via `patient_id` must follow the
-// patient when duplicates merge — mirrors PATIENT_RELATED_ENTITIES in
-// src/components/patient/mergePatients.js (Deno cannot import from src/; the
-// entity-list parity test on that module guards this copy's source of truth).
-// Before this loop existed, the confirm path ONLY archived the duplicate: its
-// entire clinical history stayed pointed at the invisible archived record.
-const PATIENT_RELATED_ENTITIES = [
-  'AdrAuditCase', 'AppliedDataLog', 'AppointmentForm', 'Billing', 'CallLog',
-  'CareCoordinationAlert', 'CarePlan', 'CarePlanProposal', 'ClinicalEvent',
-  'ClinicalLibraryTemplate', 'ComplianceAudit', 'DigitalSignature',
-  'DischargeSummary', 'Document', 'DocumentAnalysisHistory', 'DocumentPackage',
-  'DocumentRecord', 'DocumentSignature', 'FaceToFaceEncounter', 'FaxDraft',
-  'FaxHistory', 'FaxLog', 'GeneratedDocument', 'HealthRecord', 'Immunization',
-  'Incident', 'InterventionLog', 'Invoice', 'MaterialInteraction', 'MedicalCode',
-  'Medication', 'MedicationReconciliation', 'Message', 'NoteConversion',
-  'NoteFeedback', 'OASISAssessment', 'OASISAudit', 'OASISFeedback',
-  'OASISScenario', 'OASISUpload', 'OASISWorkflowExecution', 'PDFIndex',
-  'PDGMCaseMix', 'PatientAlert', 'PatientBillingInfo', 'PatientDocument',
-  'PatientEducationAssignment', 'PatientEducationDelivery',
-  'PatientEducationDraft', 'PatientEducationEngagement', 'PatientMessage',
-  'PatientNoteHistoryEntry', 'PatientOutcome', 'PatientOutcomeMetric', 'PatientPathwayAssignment',
-  'PatientRecommendation', 'PatientRiskAssessment', 'Payment', 'PaymentRecord',
-  'PendingPatientUpdate', 'ProviderPatientAssignment', 'Referral', 'RiskAlert',
-  'RiskAnalysis', 'ScheduledFax', 'ScheduledSms', 'SentEducationMaterial',
-  'SmsConsent', 'SmsMessage', 'SuggestedIntervention', 'SupplyPrediction',
-  'SupplyUsageLog', 'Task', 'TeamMessage', 'TeamNote', 'TelehealthSession',
-  'TimeSavings', 'TrainingRecommendation', 'Visit',
+// ---------------------------------------------------------------------------
+// Patient merge broker
+// ---------------------------------------------------------------------------
+//
+// One server-side path merges duplicate charts. It runs as the service role,
+// because Patient and most of its linked clinical tables deny every client
+// read and write, and it is authorized here rather than by the entity RLS:
+//   * the platform tier (built-in role admin), for any agency; or
+//   * an ACTIVE agency_admin or manager membership in the patients' agency,
+//     rebuilt by withTrustedClaims from the service-owned AgencyMembership.
+// Every patient in one merge must carry the same agency_id.
+//
+// Base44 has no multi-entity transaction, so the merge is ordered so that a
+// retry can always finish a half-done one, and so that no step leaves a chart
+// less reachable than before it ran:
+//   1. the SURVIVOR is written first (its empty fields are filled; nothing it
+//      already holds is overwritten);
+//   2. every record that references a duplicate is re-pointed at the survivor
+//      (care-team grants are CREATED on the survivor before the duplicate's
+//      grant is revoked, and immutable note revisions are COPIED rather than
+//      rewritten);
+//   3. a duplicate is archived LAST, and only when every one of its linked
+//      records moved. A failed or unfinished step leaves the duplicate active
+//      and is reported, so a retry with the same ids resumes where it stopped:
+//      every step is idempotent (rows already moved are no longer found under
+//      the duplicate's id, grants already present are not re-created, copies
+//      already made are found by their key).
+
+// Every entity field that holds a Patient id, and what a merge does with it.
+// patientMergeBrokerContract.test.js scans base44/entities and fails when a
+// patient-referencing field is in none of the tables below, so a new
+// patient-linked entity cannot silently strand records on an archived chart.
+const PATIENT_REFERENCE_FIELDS = [
+  ['AdrAuditCase', 'patient_id'], ['AgencyMessage', 'related_patient_id'],
+  ['AppliedDataLog', 'patient_id'], ['AppointmentForm', 'patient_id'],
+  ['Billing', 'patient_id'], ['CallLog', 'patient_id'],
+  ['CareCoordinationAlert', 'patient_id'], ['CarePlan', 'patient_id'],
+  ['CarePlanProposal', 'patient_id'], ['ClinicalEvent', 'patient_id'],
+  ['ClinicalLibraryTemplate', 'patient_id'], ['ComplianceAudit', 'patient_id'],
+  ['DigitalSignature', 'patient_id'], ['DischargeSummary', 'patient_id'],
+  ['DocumentAnalysisHistory', 'patient_id'], ['DocumentPackage', 'patient_id'],
+  ['DocumentRecord', 'patient_id'], ['DocumentSignature', 'patient_id'],
+  ['FaceToFaceEncounter', 'patient_id'], ['FaxDraft', 'patient_id'],
+  ['FaxHistory', 'patient_id'], ['FaxLog', 'patient_id'],
+  ['GeneratedDocument', 'patient_id'], ['HealthRecord', 'patient_id'],
+  ['Immunization', 'patient_id'], ['IncomingFax', 'suggested_patient_id'],
+  ['Incident', 'patient_id'], ['InterventionLog', 'patient_id'],
+  ['Invoice', 'patient_id'], ['MaterialInteraction', 'patient_id'],
+  ['MedicalCode', 'patient_id'], ['Medication', 'patient_id'],
+  ['MedicationReconciliation', 'patient_id'], ['Message', 'patient_id'],
+  ['MicroLearningProgress', 'related_patient_id'], ['NoteConversion', 'patient_id'],
+  ['NoteFeedback', 'patient_id'], ['OASISAssessment', 'patient_id'],
+  ['OASISAudit', 'patient_id'], ['OASISFeedback', 'patient_id'],
+  ['OASISFeedback', 'suggested_patient_id'], ['OASISFeedback', 'actual_patient_id'],
+  ['OASISScenario', 'patient_id'], ['OASISUpload', 'patient_id'],
+  ['OASISWorkflowExecution', 'patient_id'], ['PDFIndex', 'patient_id'],
+  ['PDGMCaseMix', 'patient_id'], ['PatientAlert', 'patient_id'],
+  ['PatientBillingInfo', 'patient_id'], ['PatientDocument', 'patient_id'],
+  ['PatientEducationAssignment', 'patient_id'], ['PatientEducationDelivery', 'patient_id'],
+  ['PatientEducationDraft', 'patient_id'], ['PatientEducationEngagement', 'patient_id'],
+  ['PatientEducationMaterial', 'target_patient_id'], ['PatientMessage', 'patient_id'],
+  ['PatientOutcome', 'patient_id'], ['PatientPathwayAssignment', 'patient_id'],
+  ['PatientRecommendation', 'patient_id'], ['PatientRiskAssessment', 'patient_id'],
+  ['Payment', 'patient_id'], ['PaymentRecord', 'patient_id'],
+  ['PendingPatientUpdate', 'patient_id'], ['ProviderPatientAssignment', 'patient_id'],
+  ['Referral', 'patient_id'], ['RiskAlert', 'patient_id'],
+  ['RiskAnalysis', 'patient_id'], ['ScheduledFax', 'patient_id'],
+  ['ScheduledSms', 'patient_id'], ['SentEducationMaterial', 'patient_id'],
+  ['SharedDocument', 'related_patient_id'], ['SmsMessage', 'patient_id'],
+  ['SuggestedIntervention', 'patient_id'], ['SupplyPrediction', 'patient_id'],
+  ['SupplyUsageLog', 'patient_id'], ['Task', 'patient_id'],
+  ['TeamMessage', 'patient_id'], ['TeamNote', 'patient_id'],
+  ['TelehealthSession', 'patient_id'], ['TimeSavings', 'patient_id'],
+  ['TrainingRecommendation', 'patient_id'], ['Visit', 'patient_id'],
 ];
 
-const REASSIGN_PAGE_SIZE = 5000;
+// Entities whose rows carry a monotonic `version` that their brokers use for
+// conditional updates. A re-pointed row bumps it in the same conditional write,
+// so a broker holding the old revision reloads instead of overwriting.
+const VERSIONED_REFERENCE_ENTITIES = new Set(['IncomingFax', 'Referral']);
 
-// Re-point every related record from the archived duplicate to the survivor.
-// Best-effort per record; pages until a short page or a fully-stuck page.
-async function reassignPatientRecords(base44, fromId, toId) {
-  const reassigned = {};
-  for (const entityName of PATIENT_RELATED_ENTITIES) {
-    const api = base44.asServiceRole.entities[entityName];
-    if (!api?.filter || !api?.update) continue;
-    let moved = 0;
-    try {
-      let fetched = REASSIGN_PAGE_SIZE;
-      while (fetched === REASSIGN_PAGE_SIZE) {
-        const records = (await api.filter({ patient_id: fromId }, undefined, REASSIGN_PAGE_SIZE)) || [];
-        fetched = records.length;
-        let movedThisPage = 0;
-        for (const record of records) {
-          try {
-            await api.update(record.id, { patient_id: toId });
-            moved += 1;
-            movedThisPage += 1;
-          } catch (err) {
-            // Status-only log (no record ids — retained logs must stay identifier-free).
-            console.error(`reassignPatientRecords: could not move a ${entityName} record:`, err?.message);
-          }
-        }
-        if (movedThisPage === 0) break;
-      }
-    } catch (err) {
-      console.error(`reassignPatientRecords: could not read ${entityName}:`, err?.message);
-    }
-    if (moved > 0) reassigned[entityName] = moved;
+// References a dedicated step moves, because a plain pointer rewrite would
+// break the entity's own integrity rules.
+const SPECIAL_PATIENT_REFERENCES = {
+  // Patient.agency_id/patient_id are immutable on an assignment row, so the
+  // grant is re-created on the survivor and the duplicate's grant revoked.
+  'PatientCareTeamAssignment.patient_id': 'care-team lifecycle: grant on the survivor, then revoke on the duplicate',
+  // Stored note revisions are never updated; their keys hash the patient id.
+  'PatientNoteHistoryEntry.patient_id': 'immutable revisions are copied onto the survivor under survivor-derived keys',
+  // getAuthorizedDocument requires Document.patient_id === binding.patient_id,
+  // and a document on an archived chart is unreadable, so the binding's patient
+  // pointer moves WITH its Document. Nothing else on the binding changes.
+  'DocumentTenantBinding.patient_id': 'moved together with its Document so the binding integrity check still holds',
+  'Document.patient_id': 'moved together with its DocumentTenantBinding',
+  // Charts previously merged into the duplicate now resolve to the survivor.
+  'Patient.merged_into_id': 'merge chains are re-pointed at the survivor',
+};
+
+// References deliberately left on the archived duplicate, each with its reason.
+// The duplicate stays recoverable (merged_into_id points at the survivor).
+const RETAINED_PATIENT_REFERENCES = {
+  'PatientOutcomeMetric.patient_id': 'append-only rows whose row_content_hash covers patient_id inside a published run; rewriting one makes the whole published generation fail its integrity check, and the next outcome run re-derives the survivor from the moved OASIS assessments',
+  'SmsConsent.patient_id': 'append-only consent ledger keyed by phone number, not by patient; consent for the survivor is governed by the same phone-scoped rows',
+  'StagingReadinessFixture.patient_ids': 'synthetic staging fixture manifest, never a production chart reference',
+  'User.favorited_patients': 'per-user UI convenience on a self-editable profile; an archived chart is hidden from every roster',
+  'ProviderPermission.scope.patient_ids': 'no reader in the application, and the entity carries no agency_id to bind a service-role rewrite to one tenant',
+  'ProviderFollowUpToken.request_snapshot': 'immutable minimum-necessary disclosure snapshot of a quarantined capability',
+};
+
+// Survivor fields a merge may FILL (never overwrite) from a duplicate, and the
+// only keys a caller-supplied field_patch may name. Identifiers, tenancy,
+// creator stamps, claim tokens, archive markers and every other field
+// updateAuthorizedPatient protects are absent by construction; the legacy
+// enhanced_notes_history array is read-only ("never update this whole array").
+const FILL_EMPTY_PATIENT_FIELDS = [
+  'date_of_birth', 'medical_record_number', 'phone', 'email', 'address',
+  'primary_diagnosis', 'allergies', 'physician_name', 'physician_phone',
+  'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+  'insurance_primary', 'insurance_secondary', 'care_type', 'admission_date',
+  'advance_directives', 'baseline_vitals', 'functional_status',
+];
+const UNION_ARRAY_PATIENT_FIELDS = ['secondary_diagnoses', 'current_medications', 'past_medical_history', 'wounds'];
+const MERGE_PATCH_FIELDS = new Set([...FILL_EMPTY_PATIENT_FIELDS, ...UNION_ARRAY_PATIENT_FIELDS]);
+const OBJECT_PATCH_FIELDS = new Set([
+  'insurance_primary', 'insurance_secondary', 'advance_directives', 'baseline_vitals', 'functional_status',
+]);
+
+const MERGE_REQUEST_KEYS = new Set(['action', 'keep_id', 'duplicate_ids', 'field_patch', 'agency_id']);
+const SCAN_REQUEST_KEYS = new Set(['action', 'confirm']);
+const MAX_MERGE_DUPLICATES = 25;
+const MAX_IDENTIFIER_LENGTH = 200;
+const MAX_BODY_BYTES = 400_000;
+const MAX_PATCH_STRING_LENGTH = 20_000;
+const MAX_PATCH_ARRAY_ITEMS = 1_000;
+const MAX_PATCH_VALUE_BYTES = 200_000;
+const REASSIGN_PAGE_SIZE = 5000;
+const REASSIGN_MAX_PASSES = 20;
+const REASSIGN_CONCURRENCY = 6;
+const EXACT_ROW_LIMIT = 10;
+const CARE_TEAM_SCAN_LIMIT = 500;
+const NOTE_HISTORY_SCAN_LIMIT = 5000;
+// Stop starting new work before the platform's request timeout; a merge that
+// runs out of time leaves its duplicates active and reports itself incomplete.
+const MERGE_TIME_BUDGET_MS = 25_000;
+const CARE_TEAM_ASSIGNMENT_SOURCES = new Set([
+  'manual', 'patient_creator', 'legacy_assigned_nurses', 'legacy_provider_patient_assignment',
+]);
+const CARE_TEAM_GRANT_REASON = 'Carried over from a merged duplicate patient record';
+const CARE_TEAM_REVOKE_REASON = 'Duplicate patient record merged into its surviving chart';
+const NOTE_HISTORY_COPY_FIELDS = [
+  'agency_id', 'visit_id', 'payload_fingerprint', 'source_entry_id', 'mode', 'visit_date',
+  'visit_type', 'visit_revision_at', 'note', 'clinical_notes', 'compliance_score',
+  'actor_user_id', 'actor_email_normalized', 'membership_id', 'membership_version', 'recorded_at',
+];
+
+class PublicError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PublicError';
+    this.status = status;
   }
-  return reassigned;
 }
 
-// This admin-only operation DELETES records, so it only acts on HIGH-confidence
-// duplicates (shared score >= 70). A name match alone scores 60, so it never
-// qualifies on its own — corroboration (DOB / phone / email / address / ...) is
-// required. Exact Medical Record Number matches are treated as definitive and
-// handled separately.
-//
-// Candidate generation is intentionally bucketed by exact MRN and exact
-// normalized name (rather than an O(n^2) cross-scan) to stay within the edge
-// function timeout. The interactive UI performs the full fuzzy/phonetic scan.
-const BACKEND_MIN_SCORE = 70;
+function exactIdentifier(value) {
+  if (typeof value !== 'string') return null;
+  if (!value || value.length > MAX_IDENTIFIER_LENGTH || value.trim() !== value) return null;
+  if (value.startsWith('$')) return null;
+  return value;
+}
 
-// Source-level containment until a server-owned tenant authority and atomic
-// patient merge transaction exist. Even the old "dry-run" used service-role
-// Patient.list and could expose another tenant's PHI when mutable user claims
-// failed to establish a trustworthy agency scope.
-const PATIENT_DEDUPLICATION_PAUSED = true;
+function canonicalEmail(value) {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!normalized || normalized.length > 320 || !normalized.includes('@') || /\s/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+function validInstant(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function plainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validSha256(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function requireRows(value, label) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned no rows array`);
+  return value;
+}
+
+function bump(tally, key, amount = 1) {
+  if (amount > 0) tally[key] = (tally[key] || 0) + amount;
+}
+
+// ---------------------------------------------------------------------------
+// Survivor selection and field merge
+// ---------------------------------------------------------------------------
 
 // Completeness score for survivor selection: when a duplicate group is merged,
 // keep the MORE COMPLETE record rather than just the newest, so a sparse stub
@@ -1100,294 +1317,915 @@ function completenessScore(p) {
   return score;
 }
 
+const isEmptyPatientValue = (v) =>
+  v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
+  || (Array.isArray(v) && v.length === 0)
+  || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
+
+// Server copy of src/components/patient/mergePatients.js buildFieldMergePatch
+// (Deno cannot import src/); patientMergeBrokerContract.test.js drives both
+// over the same records and requires the survivor write to equal it.
+function buildSurvivorFieldPatch(winner, loser) {
+  const patch = {};
+  if (!winner || !loser) return patch;
+  for (const field of FILL_EMPTY_PATIENT_FIELDS) {
+    if (isEmptyPatientValue(winner[field]) && !isEmptyPatientValue(loser[field])) patch[field] = loser[field];
+  }
+  for (const field of UNION_ARRAY_PATIENT_FIELDS) {
+    const w = Array.isArray(winner[field]) ? winner[field] : [];
+    const l = Array.isArray(loser[field]) ? loser[field] : [];
+    if (!l.length) continue;
+    const seen = new Set(w.map((x) => JSON.stringify(x)));
+    const merged = [...w];
+    for (const item of l) {
+      const key = JSON.stringify(item);
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    }
+    if (merged.length > w.length) patch[field] = merged;
+  }
+  return patch;
+}
+
+function validatePatchValue(field, value) {
+  if (value === null || value === undefined) return false;
+  let size;
+  try {
+    size = JSON.stringify(value).length;
+  } catch {
+    return false;
+  }
+  if (size > MAX_PATCH_VALUE_BYTES) return false;
+  if (UNION_ARRAY_PATIENT_FIELDS.includes(field)) {
+    return Array.isArray(value) && value.length <= MAX_PATCH_ARRAY_ITEMS;
+  }
+  if (OBJECT_PATCH_FIELDS.has(field)) return plainObject(value);
+  return typeof value === 'string' && value.length <= MAX_PATCH_STRING_LENGTH;
+}
+
+// ---------------------------------------------------------------------------
+// Authorization
+// ---------------------------------------------------------------------------
+
+function mergeAuthority(user) {
+  if (isProtectedAdmin(user)) return { platform: true, agencyId: null };
+  // withTrustedClaims rebuilt agency_id and is_manager from exactly one active,
+  // service-owned AgencyMembership in an active Agency: is_manager is true for
+  // the agency_admin and manager tenant roles only.
+  if (user && user.is_manager === true && claimIdentifier(user.agency_id)) {
+    return { platform: false, agencyId: user.agency_id };
+  }
+  return null;
+}
+
+function patientAgency(row) {
+  return exactIdentifier(row?.agency_id);
+}
+
+function survivorUnavailable(row) {
+  return row.is_archived === true || row.status === 'merged' || row.status === 'archived'
+    || !!exactIdentifier(row.merged_into_id);
+}
+
+async function loadExactPatient(entities, patientId) {
+  const rows = requireRows(await entities.Patient.filter({ id: patientId }, undefined, 2), 'Patient.filter');
+  if (rows.some((row) => row?.id !== patientId)) {
+    throw new PublicError(409, 'Patient query scope could not be verified');
+  }
+  if (rows.length > 1) throw new PublicError(409, 'Patient record is ambiguous');
+  return rows[0] || null;
+}
+
+function parseMergeRequest(body) {
+  for (const key of Object.keys(body)) {
+    if (!MERGE_REQUEST_KEYS.has(key)) throw new PublicError(400, `Unknown merge field: ${key}`);
+  }
+  const keepId = exactIdentifier(body.keep_id);
+  if (!keepId) throw new PublicError(400, 'keep_id is required');
+  if (!Array.isArray(body.duplicate_ids) || body.duplicate_ids.length === 0) {
+    throw new PublicError(400, 'duplicate_ids must name at least one patient');
+  }
+  if (body.duplicate_ids.length > MAX_MERGE_DUPLICATES) {
+    throw new PublicError(400, `A merge may name at most ${MAX_MERGE_DUPLICATES} duplicates`);
+  }
+  const duplicateIds = [];
+  for (const value of body.duplicate_ids) {
+    const id = exactIdentifier(value);
+    if (!id) throw new PublicError(400, 'duplicate_ids must contain exact patient ids');
+    if (id === keepId) throw new PublicError(400, 'A patient cannot be merged into itself');
+    if (duplicateIds.includes(id)) throw new PublicError(400, 'duplicate_ids must be unique');
+    duplicateIds.push(id);
+  }
+  let agencyId = null;
+  if (body.agency_id !== undefined && body.agency_id !== null) {
+    agencyId = exactIdentifier(body.agency_id);
+    if (!agencyId) throw new PublicError(400, 'agency_id is invalid');
+  }
+  let fieldPatch = null;
+  if (body.field_patch !== undefined && body.field_patch !== null) {
+    if (!plainObject(body.field_patch)) throw new PublicError(400, 'field_patch must be an object');
+    for (const [field, value] of Object.entries(body.field_patch)) {
+      // Refused rather than filtered: a silently dropped key would read as a
+      // field the merge carried when it did not.
+      if (!MERGE_PATCH_FIELDS.has(field)) {
+        throw new PublicError(400, `field_patch may not set ${field}`);
+      }
+      if (!validatePatchValue(field, value)) {
+        throw new PublicError(400, `field_patch.${field} is invalid`);
+      }
+    }
+    fieldPatch = body.field_patch;
+  }
+  return { keepId, duplicateIds, agencyId, fieldPatch };
+}
+
+// ---------------------------------------------------------------------------
+// Merge steps
+// ---------------------------------------------------------------------------
+
+// Fill the survivor's empty fields from every duplicate (and from a validated
+// caller patch, applied with the same fill-empty/union rules). The write is
+// conditional on the survivor's observed revision so a concurrent edit is never
+// overwritten; a lost race reloads once and recomputes.
+async function fillSurvivorFields(entities, keep, duplicates, fieldPatch) {
+  let survivor = keep;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const patch = {};
+    const view = { ...survivor };
+    for (const source of [...duplicates, ...(fieldPatch ? [fieldPatch] : [])]) {
+      const delta = buildSurvivorFieldPatch(view, source);
+      Object.assign(patch, delta);
+      Object.assign(view, delta);
+    }
+    const fields = Object.keys(patch);
+    if (fields.length === 0) return { fields, survivor };
+    if (!validInstant(survivor.updated_date)) {
+      await entities.Patient.update(survivor.id, patch);
+      return { fields, survivor: view };
+    }
+    const result = await entities.Patient.updateMany(
+      { id: survivor.id, updated_date: survivor.updated_date },
+      { $set: patch },
+    );
+    if (plainObject(result) && result.success === true && result.updated === 1) {
+      return { fields, survivor: view };
+    }
+    survivor = await loadExactPatient(entities, keep.id);
+    if (!survivor || survivorUnavailable(survivor) || patientAgency(survivor) !== patientAgency(keep)) {
+      throw new PublicError(409, 'The surviving patient record changed during the merge');
+    }
+  }
+  throw new PublicError(409, 'The surviving patient record changed during the merge; retry');
+}
+
+// Re-point every row whose `field` names `fromId`. Rows that move drop out of
+// the next page, so re-querying from the top walks the whole set; a page that
+// moves nothing stops the walk so a permanently failing row cannot loop.
+async function reassignReference(entities, entityName, field, fromId, toId) {
+  const api = entities[entityName];
+  if (!api || typeof api.filter !== 'function') throw new Error(`${entityName} is unavailable`);
+  const versioned = VERSIONED_REFERENCE_ENTITIES.has(entityName);
+  let moved = 0;
+  const failedIds = new Set();
+  for (let pass = 0; pass < REASSIGN_MAX_PASSES; pass += 1) {
+    const rows = requireRows(
+      await api.filter({ [field]: fromId }, undefined, REASSIGN_PAGE_SIZE),
+      `${entityName}.filter`,
+    );
+    if (rows.length === 0) return { moved, failed: failedIds.size };
+    let movedThisPage = 0;
+    for (const row of rows) {
+      const id = exactIdentifier(row?.id);
+      // Never write a row the query did not provably select.
+      if (!id || row[field] !== fromId) {
+        failedIds.add(id || `unverified-${failedIds.size}`);
+        continue;
+      }
+      try {
+        // A legacy row with no revision takes part in no conditional update,
+        // so it moves with a plain write; a malformed revision is refused.
+        if (versioned && row.version !== undefined && row.version !== null) {
+          if (!Number.isSafeInteger(row.version) || row.version < 1) {
+            failedIds.add(id);
+            continue;
+          }
+          const result = await api.updateMany(
+            { id, version: row.version, [field]: fromId },
+            { $set: { [field]: toId }, $inc: { version: 1 } },
+          );
+          if (!plainObject(result) || result.success !== true || result.updated !== 1) {
+            failedIds.add(id);
+            continue;
+          }
+        } else {
+          await api.update(id, { [field]: toId });
+        }
+        failedIds.delete(id);
+        moved += 1;
+        movedThisPage += 1;
+      } catch {
+        failedIds.add(id);
+      }
+    }
+    if (rows.length < REASSIGN_PAGE_SIZE || movedThisPage === 0) {
+      return { moved, failed: failedIds.size };
+    }
+  }
+  // Still finding rows after the pass cap: report rather than archive.
+  return { moved, failed: Math.max(1, failedIds.size) };
+}
+
+async function loadActiveMembership(entities, agencyId, userId, email) {
+  const rows = requireRows(
+    await entities.AgencyMembership.filter(
+      { agency_id: agencyId, user_id: userId, status: 'active' },
+      undefined,
+      EXACT_ROW_LIMIT,
+    ),
+    'AgencyMembership.filter',
+  );
+  if (rows.length !== 1) return null;
+  const row = rows[0];
+  if (
+    !exactIdentifier(row?.id)
+    || row.agency_id !== agencyId
+    || row.user_id !== userId
+    || row.status !== 'active'
+    || row.membership_key !== `${agencyId}:${userId}`
+    || canonicalEmail(row.user_email_normalized) !== email
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
+  ) {
+    return null;
+  }
+  return row;
+}
+
+async function loadSurvivorAssignments(entities, agencyId, patientId, userId) {
+  const key = `${agencyId}:${patientId}:${userId}`;
+  const rows = requireRows(
+    await entities.PatientCareTeamAssignment.filter(
+      { assignment_key: key, agency_id: agencyId, patient_id: patientId, user_id: userId },
+      '-updated_date',
+      EXACT_ROW_LIMIT,
+    ),
+    'PatientCareTeamAssignment.filter',
+  );
+  if (rows.some((row) => row?.assignment_key !== key || row?.agency_id !== agencyId
+    || row?.patient_id !== patientId || row?.user_id !== userId)) {
+    throw new Error('Care-team assignment query scope could not be verified');
+  }
+  return rows;
+}
+
+function careTeamTransition(key, requestId, action, actor, reason, now) {
+  return {
+    last_transition_by_user_id: actor.userId,
+    last_transition_by_email_normalized: actor.email,
+    last_transition_at: now,
+    last_transition_reason: reason,
+    last_transition_action: action,
+    last_transition_request_id: requestId,
+    last_transition_request_key: `${key}:${requestId}`,
+  };
+}
+
+// managePatientCareTeamAssignment's conventions: an assignment row's agency,
+// patient and user are immutable, so an ACTIVE grant on the duplicate becomes
+// a new version-1 grant on the survivor (never a second active grant for the
+// same user), and only then is the duplicate's grant revoked through a
+// conditional, version-incrementing transition. A survivor row the agency
+// already suspended or revoked for that user is the deliberate state and wins;
+// the duplicate's grant is then left on the archived chart, where it opens
+// nothing. Suspended or revoked grants on the duplicate open nothing and stay.
+async function moveCareTeam(entities, ctx, duplicate, tally) {
+  const agencyId = ctx.agencyId;
+  const rows = requireRows(
+    await entities.PatientCareTeamAssignment.filter(
+      { patient_id: duplicate.id, agency_id: agencyId },
+      undefined,
+      CARE_TEAM_SCAN_LIMIT + 1,
+    ),
+    'PatientCareTeamAssignment.filter',
+  );
+  if (rows.length > CARE_TEAM_SCAN_LIMIT) throw new Error('Too many care-team assignments to merge');
+  let failed = 0;
+  const requestId = `patient-merge:${duplicate.id}`;
+  for (const row of rows) {
+    if (row?.patient_id !== duplicate.id || row?.agency_id !== agencyId) {
+      failed += 1;
+      continue;
+    }
+    if (row.status !== 'active') continue;
+    const userId = exactIdentifier(row.user_id);
+    const userEmail = canonicalEmail(row.user_email_normalized);
+    const duplicateKey = `${agencyId}:${duplicate.id}:${userId}`;
+    if (!userId || !userEmail || row.assignment_key !== duplicateKey
+      || !exactIdentifier(row.id) || !Number.isSafeInteger(row.version) || row.version < 1) {
+      failed += 1;
+      continue;
+    }
+    try {
+      const survivorRows = await loadSurvivorAssignments(entities, agencyId, ctx.keep.id, userId);
+      if (survivorRows.length > 1) {
+        bump(tally.care_team, 'conflicts');
+        continue;
+      }
+      let survivorRow = survivorRows[0] || null;
+      if (survivorRow && survivorRow.status !== 'active') {
+        bump(tally.care_team, 'conflicts');
+        continue;
+      }
+      if (!survivorRow) {
+        const membership = await loadActiveMembership(entities, agencyId, userId, userEmail);
+        if (!membership) {
+          // An inactive member's grant already opens nothing; carrying it would.
+          bump(tally.care_team, 'skipped_inactive_member');
+          continue;
+        }
+        const survivorKey = `${agencyId}:${ctx.keep.id}:${userId}`;
+        const now = new Date().toISOString();
+        const payload = {
+          assignment_key: survivorKey,
+          agency_id: agencyId,
+          patient_id: ctx.keep.id,
+          user_id: userId,
+          user_email_normalized: userEmail,
+          assignee_membership_id: membership.id,
+          assignee_membership_version_at_enablement: membership.version,
+          status: 'active',
+          source: CARE_TEAM_ASSIGNMENT_SOURCES.has(row.source) ? row.source : 'manual',
+          created_by_user_id: ctx.actor.userId,
+          created_by_user_email_normalized: ctx.actor.email,
+          activated_at: now,
+          version: 1,
+          ...careTeamTransition(survivorKey, requestId, 'grant', ctx.actor, CARE_TEAM_GRANT_REASON, now),
+        };
+        const created = await entities.PatientCareTeamAssignment.create(payload);
+        const createdId = exactIdentifier(created?.id);
+        const reconciled = await loadSurvivorAssignments(entities, agencyId, ctx.keep.id, userId);
+        if (!createdId || reconciled.length !== 1 || reconciled[0].id !== createdId
+          || reconciled[0].status !== 'active') {
+          failed += 1;
+          continue;
+        }
+        survivorRow = reconciled[0];
+        bump(tally.care_team, 'granted_on_survivor');
+      } else {
+        bump(tally.care_team, 'already_on_survivor');
+      }
+      const now = new Date().toISOString();
+      const result = await entities.PatientCareTeamAssignment.updateMany(
+        { id: row.id, assignment_key: duplicateKey, status: 'active', version: row.version },
+        {
+          $set: {
+            status: 'revoked',
+            revoked_at: now,
+            revocation_reason: CARE_TEAM_REVOKE_REASON,
+            ...careTeamTransition(duplicateKey, requestId, 'revoke', ctx.actor, CARE_TEAM_REVOKE_REASON, now),
+          },
+          $inc: { version: 1 },
+        },
+      );
+      if (!plainObject(result) || result.success !== true || result.updated !== 1 || result.has_more === true) {
+        failed += 1;
+        continue;
+      }
+      bump(tally.care_team, 'revoked_on_duplicate');
+    } catch {
+      failed += 1;
+    }
+  }
+  return failed;
+}
+
+// PatientNoteHistoryEntry rows are immutable and their keys hash the patient,
+// so each of the duplicate's revisions is COPIED onto the survivor exactly as
+// appendPatientNoteHistory would have keyed it there (same payload, author,
+// membership and revision time). The originals stay on the archived duplicate.
+// A copy already made is found by its event_key, so a retry never doubles one.
+async function copyNoteHistory(entities, ctx, duplicate, tally) {
+  const agencyId = ctx.agencyId;
+  const rows = requireRows(
+    await entities.PatientNoteHistoryEntry.filter(
+      { patient_id: duplicate.id, agency_id: agencyId },
+      undefined,
+      NOTE_HISTORY_SCAN_LIMIT + 1,
+    ),
+    'PatientNoteHistoryEntry.filter',
+  );
+  if (rows.length > NOTE_HISTORY_SCAN_LIMIT) throw new Error('Too many note revisions to merge');
+  let failed = 0;
+  for (const row of rows) {
+    const visitId = exactIdentifier(row?.visit_id);
+    if (row?.patient_id !== duplicate.id || row?.agency_id !== agencyId || !visitId
+      || !validSha256(row.payload_fingerprint)) {
+      failed += 1;
+      continue;
+    }
+    try {
+      const scope = exactIdentifier(row.source_entry_id) || row.payload_fingerprint;
+      const logicalNoteKey = await sha256Hex(JSON.stringify([agencyId, ctx.keep.id, visitId]));
+      const eventKey = await sha256Hex(JSON.stringify([agencyId, ctx.keep.id, visitId, scope]));
+      const existing = requireRows(
+        await entities.PatientNoteHistoryEntry.filter(
+          { event_key: eventKey, agency_id: agencyId, patient_id: ctx.keep.id },
+          undefined,
+          2,
+        ),
+        'PatientNoteHistoryEntry.filter',
+      );
+      if (existing.some((copy) => copy?.event_key === eventKey && copy?.patient_id === ctx.keep.id)) {
+        bump(tally.note_history, 'already_on_survivor');
+        continue;
+      }
+      const payload = {};
+      for (const field of NOTE_HISTORY_COPY_FIELDS) {
+        if (row[field] !== undefined && row[field] !== null) payload[field] = row[field];
+      }
+      Object.assign(payload, {
+        agency_id: agencyId,
+        patient_id: ctx.keep.id,
+        logical_note_key: logicalNoteKey,
+        event_key: eventKey,
+      });
+      await entities.PatientNoteHistoryEntry.create(payload);
+      bump(tally.note_history, 'copied_to_survivor');
+    } catch {
+      failed += 1;
+    }
+  }
+  return failed;
+}
+
+async function runPool(tasks, limit) {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const index = next;
+      next += 1;
+      await tasks[index]();
+    }
+  });
+  await Promise.all(workers);
+}
+
+// Move everything that references one duplicate. Never throws: every failure
+// is counted against the step that failed, so the caller can decide not to
+// archive and still report exactly what happened.
+async function moveDuplicateRecords(entities, ctx, duplicate, totals) {
+  const failed = {};
+  const pending = [];
+  const fail = (label, amount = 1) => bump(failed, label, amount);
+  const timeUp = () => Date.now() > ctx.deadline;
+  const step = async (label, run) => {
+    if (timeUp()) {
+      pending.push(label);
+      return;
+    }
+    try {
+      const count = await run();
+      if (count > 0) fail(label, count);
+    } catch {
+      fail(label);
+    }
+  };
+  const moveField = (entityName, field) => async () => {
+    const outcome = await reassignReference(entities, entityName, field, duplicate.id, ctx.keep.id);
+    bump(totals.reassigned, `${entityName}.${field}`, outcome.moved);
+    return outcome.failed;
+  };
+
+  if (ctx.agencyId) {
+    await step('PatientCareTeamAssignment.patient_id', () => moveCareTeam(entities, ctx, duplicate, totals));
+    await step('PatientNoteHistoryEntry.patient_id', () => copyNoteHistory(entities, ctx, duplicate, totals));
+  }
+  // A binding and its Document move as a pair, back to back, so the window in
+  // which one names the survivor and the other the duplicate is one write wide.
+  await step('DocumentTenantBinding.patient_id', moveField('DocumentTenantBinding', 'patient_id'));
+  await step('Document.patient_id', moveField('Document', 'patient_id'));
+  await runPool(
+    PATIENT_REFERENCE_FIELDS.map(([entityName, field]) => () => step(`${entityName}.${field}`, moveField(entityName, field))),
+    REASSIGN_CONCURRENCY,
+  );
+  await step('Patient.merged_into_id', moveField('Patient', 'merged_into_id'));
+  return { failed, pending };
+}
+
+async function archiveDuplicate(entities, ctx, duplicate) {
+  await entities.Patient.update(duplicate.id, {
+    status: 'merged',
+    is_archived: true,
+    merged_into_id: ctx.keep.id,
+    merged_at: new Date().toISOString(),
+    merged_by: ctx.actor.email,
+  });
+}
+
+// Validate a merge completely before the first write: survivor live, every
+// duplicate present and not merged elsewhere, one shared agency the caller may
+// act in. Caller-invisible patients and missing ids answer the same 404, so a
+// manager cannot probe another agency's ids.
+async function prepareMerge(entities, authority, user, request) {
+  const visible = (row) => !!row && (authority.platform || patientAgency(row) === authority.agencyId);
+  const keep = await loadExactPatient(entities, request.keepId);
+  if (!visible(keep)) throw new PublicError(404, 'Patient record was not found');
+  if (survivorUnavailable(keep)) {
+    throw new PublicError(409, 'The surviving patient record is archived or already merged');
+  }
+  const duplicates = [];
+  for (const id of request.duplicateIds) {
+    const row = await loadExactPatient(entities, id);
+    if (!visible(row)) throw new PublicError(404, 'Patient record was not found');
+    const mergedInto = exactIdentifier(row.merged_into_id);
+    if ((mergedInto || row.status === 'merged') && mergedInto !== keep.id) {
+      throw new PublicError(409, 'A duplicate patient record was already merged into a different patient');
+    }
+    duplicates.push(row);
+  }
+  const agencyId = patientAgency(keep);
+  for (const row of [keep, ...duplicates]) {
+    if (patientAgency(row) !== agencyId) {
+      throw new PublicError(409, 'Patients in one merge must belong to the same agency');
+    }
+    if (row.is_sample === true) throw new PublicError(409, 'Sample patient records cannot be merged');
+  }
+  if (!agencyId && !authority.platform) throw new PublicError(404, 'Patient record was not found');
+  if (request.agencyId && request.agencyId !== agencyId) {
+    throw new PublicError(409, 'Patients do not belong to the requested agency');
+  }
+  const actor = { userId: exactIdentifier(user.id), email: canonicalEmail(user.email) };
+  if (!actor.userId || !actor.email) throw new PublicError(403, 'Forbidden');
+  return { keep, duplicates, agencyId, actor };
+}
+
+async function executeMerge(entities, prepared, fieldPatch, deadline) {
+  const { keep, duplicates, agencyId, actor } = prepared;
+  const totals = { reassigned: {}, care_team: {}, note_history: {} };
+  const result = {
+    keep_id: keep.id,
+    merged_ids: [],
+    incomplete: [],
+    fields_merged: [],
+    totals,
+  };
+  // 1. Survivor first.
+  const filled = await fillSurvivorFields(entities, keep, duplicates, fieldPatch);
+  result.fields_merged = filled.fields;
+  const ctx = { keep, agencyId, actor, deadline };
+  // 2-3. Move each duplicate's records; archive it last, only when complete.
+  for (const duplicate of duplicates) {
+    const alreadyMerged = duplicate.status === 'merged' && duplicate.merged_into_id === keep.id
+      && duplicate.is_archived === true;
+    const { failed, pending } = await moveDuplicateRecords(entities, ctx, duplicate, totals);
+    if (Object.keys(failed).length > 0 || pending.length > 0) {
+      result.incomplete.push({ duplicate_id: duplicate.id, failed, pending });
+      continue;
+    }
+    if (!alreadyMerged) {
+      try {
+        await archiveDuplicate(entities, ctx, duplicate);
+      } catch {
+        result.incomplete.push({ duplicate_id: duplicate.id, failed: { 'Patient.archive': 1 }, pending: [] });
+        continue;
+      }
+    }
+    result.merged_ids.push(duplicate.id);
+  }
+  result.complete = result.incomplete.length === 0;
+  return result;
+}
+
+// Opaque record ids only: MRNs, names and demographics stay on the patient
+// records and are never copied into the broad activity log.
+async function recordMergeAudit(base44, user, mode, groups) {
+  const changed = groups.filter((d) => d.removed.length > 0 || d.incomplete.length > 0);
+  if (changed.length === 0) return;
+  const removedCount = changed.reduce((sum, d) => sum + d.removed.length, 0);
+  const complete = changed.every((d) => d.incomplete.length === 0);
+  await base44.asServiceRole.entities.UserActivity.create({
+    user_email: user.email,
+    user_name: user.full_name,
+    action: 'patients_deduplicated',
+    entity_type: 'Patient',
+    details: {
+      mode,
+      removed_count: removedCount,
+      groups: changed.map((d) => ({
+        kept_id: d.kept.id,
+        removed_ids: d.removed.map((r) => r.id),
+        incomplete_ids: d.incomplete.map((r) => r.id),
+      })),
+      timestamp: new Date().toISOString(),
+    },
+    status: complete ? 'success' : 'partial',
+  }).catch(() => console.error('Failed to write patient merge audit'));
+}
+
+function auditGroup(result) {
+  return {
+    kept: { id: result.keep_id },
+    removed: result.merged_ids.map((id) => ({ id })),
+    incomplete: result.incomplete.map((entry) => ({ id: entry.duplicate_id })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scan (dry-run preview) and confirm
+// ---------------------------------------------------------------------------
+
+// The confirm path only acts on HIGH-confidence duplicates (shared score >=
+// 70). A name match alone scores 60, so it never qualifies on its own —
+// corroboration (DOB / phone / email / address / ...) is required. Exact
+// Medical Record Number matches still have to clear the identity guards.
+//
+// Candidate generation is intentionally bucketed by agency + exact MRN and
+// agency + exact normalized name (rather than an O(n^2) cross-scan) to stay
+// within the edge function timeout. The interactive UI performs the full
+// fuzzy/phonetic scan. Bucketing by agency means a group never spans tenants.
+const BACKEND_MIN_SCORE = 70;
+
+// Placeholder MRNs are shared by unrelated patients — bucketing on them
+// would mark every "N/A" patient a 100%-confidence duplicate of the rest.
+const PLACEHOLDER_MRNS = new Set(['N/A', 'NA', 'NONE', 'UNKNOWN', 'PENDING', 'TBD', 'TEMP', '0', '00', '000', '0000', 'X', 'XX', 'XXX']);
+
+function findBackendDuplicateGroups(patients, startTime) {
+  const mrnGroups = new Map();
+  const nameGroups = new Map();
+  patients.forEach((patient) => {
+    const agencyKey = patientAgency(patient) || '';
+    if (patient.medical_record_number) {
+      const mrn = patient.medical_record_number.toString().trim().toUpperCase();
+      if (mrn && !PLACEHOLDER_MRNS.has(mrn)) {
+        const key = `${agencyKey}|${mrn}`;
+        if (!mrnGroups.has(key)) mrnGroups.set(key, []);
+        mrnGroups.get(key).push(patient);
+      }
+    }
+    const nameKey = `${normalizeName(patient.first_name)}|${normalizeName(patient.last_name)}`;
+    if (nameKey !== '|') {
+      const key = `${agencyKey}|${nameKey}`;
+      if (!nameGroups.has(key)) nameGroups.set(key, []);
+      nameGroups.get(key).push(patient);
+    }
+  });
+
+  const duplicateGroups = [];
+  const processed = new Set();
+
+  // Phase 1: exact MRN matches — but a shared MRN alone is NOT definitive.
+  // Each candidate must also clear the engine's identity guards
+  // (scorePatientPair hard-blocks different-name + different-DOB pairs), so
+  // a typo'd or recycled MRN can never merge two different people at 100%.
+  for (const [, group] of mrnGroups) {
+    const unprocessed = group.filter((p) => !processed.has(p.id));
+    if (unprocessed.length > 1) {
+      const primary = unprocessed[0];
+      const verified = unprocessed.slice(1).filter((p) => (scorePatientPair(primary, p)?.score ?? 0) > 0);
+      if (verified.length > 0) {
+        duplicateGroups.push({
+          primary,
+          duplicates: verified.map((p) => ({
+            patient: p,
+            score: 100,
+            matches: [REASON.MRN],
+            confidenceLevel: 'high',
+            confidencePercent: 100,
+          })),
+        });
+        processed.add(primary.id);
+        verified.forEach((p) => processed.add(p.id));
+      }
+    }
+  }
+
+  // Phase 2: same-name buckets scored with the shared engine, high confidence
+  // only, so two genuinely different people who share a name are not removed.
+  let groupsProcessed = 0;
+  for (const [, group] of nameGroups) {
+    const unprocessed = group.filter((p) => !processed.has(p.id));
+    if (unprocessed.length > 1) {
+      const found = findDuplicateGroups(unprocessed, { minScore: BACKEND_MIN_SCORE });
+      for (const g of found) {
+        duplicateGroups.push(g);
+        processed.add(g.primary.id);
+        g.duplicates.forEach((d) => processed.add(d.patient.id));
+      }
+      groupsProcessed++;
+    }
+    if (groupsProcessed % 20 === 0 && Date.now() - startTime > 20000) break;
+  }
+  return duplicateGroups;
+}
+
+// Choose the survivor: active first, then the MOST COMPLETE record, then
+// newest as a tiebreak, so a sparse just-created stub never survives over an
+// older rich chart.
+function orderGroupForMerge(group) {
+  const allInGroup = [group.primary, ...group.duplicates.map((d) => d.patient)];
+  allInGroup.sort((a, b) => {
+    if (a.status === 'active' && b.status !== 'active') return -1;
+    if (a.status !== 'active' && b.status === 'active') return 1;
+    const ca = completenessScore(a);
+    const cb = completenessScore(b);
+    if (cb !== ca) return cb - ca;
+    const dateA = a.created_date ? new Date(a.created_date).getTime() : 0;
+    const dateB = b.created_date ? new Date(b.created_date).getTime() : 0;
+    return dateB - dateA;
+  });
+  return { keep: allInGroup[0], toRemove: allInGroup.slice(1) };
+}
+
+async function loadScanCandidates(entities, authority) {
+  // Bounded to the SDK's 5000/request max; omitting a limit silently caps at
+  // the SDK default of 50. An agency caller only ever loads its own agency.
+  const loaded = requireRows(
+    authority.platform
+      ? await entities.Patient.list('-created_date', 5000)
+      : await entities.Patient.filter({ agency_id: authority.agencyId }, '-created_date', 5000),
+    'Patient read',
+  );
+  if (!authority.platform && loaded.some((p) => p?.agency_id !== authority.agencyId)) {
+    throw new Error('Patient scan scope could not be verified');
+  }
+  // Exclude merged / soft-archived duplicates from the candidate set: a merged
+  // loser keeps the survivor's MRN and name, so re-scanning it re-buckets the
+  // same pair as a phantom duplicate on every run (and could even pick an
+  // archived stub as the survivor).
+  return loaded.filter((p) => !p.is_archived && p.status !== 'merged' && p.is_sample !== true);
+}
+
+async function handleScan(base44, user, authority, confirm, startTime) {
+  const entities = base44.asServiceRole.entities;
+  const patients = await loadScanCandidates(entities, authority);
+  const duplicateGroups = findBackendDuplicateGroups(patients, startTime);
+  const removed = [];
+  const detailsArray = [];
+  const auditGroups = [];
+  let mergeFailures = 0;
+  const deadline = startTime + MERGE_TIME_BUDGET_MS;
+
+  for (const group of duplicateGroups) {
+    const { keep, toRemove } = orderGroupForMerge(group);
+    const entries = toRemove.map((patient) => ({
+      id: patient.id,
+      name: `${patient.first_name} ${patient.last_name}`,
+      mrn: patient.medical_record_number || 'N/A',
+      // null (not a fabricated 100) when the group carries no per-patient
+      // score — e.g. the removed record was the group's primary.
+      match_score: group.duplicates.find((d) => d.patient.id === patient.id)?.score ?? null,
+    }));
+    const detail = {
+      kept: {
+        id: keep.id,
+        name: `${keep.first_name} ${keep.last_name}`,
+        mrn: keep.medical_record_number || 'N/A',
+        status: keep.status,
+      },
+      removed: entries,
+    };
+    if (confirm) {
+      if (Date.now() > deadline) {
+        detail.removed = [];
+        detail.failed = entries.map(({ id, name, mrn }) => ({ id, name, mrn }));
+        mergeFailures += entries.length;
+        detailsArray.push(detail);
+        continue;
+      }
+      try {
+        const prepared = await prepareMerge(entities, authority, user, {
+          keepId: keep.id,
+          duplicateIds: toRemove.map((p) => p.id),
+          agencyId: null,
+        });
+        const outcome = await executeMerge(entities, prepared, null, deadline);
+        const merged = new Set(outcome.merged_ids);
+        detail.removed = entries.filter((e) => merged.has(e.id));
+        detail.failed = entries.filter((e) => !merged.has(e.id)).map(({ id, name, mrn }) => ({ id, name, mrn }));
+        mergeFailures += detail.failed.length;
+        auditGroups.push(auditGroup(outcome));
+      } catch {
+        detail.removed = [];
+        detail.failed = entries.map(({ id, name, mrn }) => ({ id, name, mrn }));
+        mergeFailures += entries.length;
+      }
+    }
+    removed.push(...detail.removed);
+    detailsArray.push(detail);
+  }
+
+  if (confirm) await recordMergeAudit(base44, user, 'confirm', auditGroups);
+
+  const resultsWithConfidence = detailsArray.map((detail) => {
+    // Average only the records that actually carry a score. A deliberate null
+    // match_score (the removed record was the group's primary) coerced to 0
+    // through the sum, dragging an MRN-verified merge down to "Low" at 0%.
+    const scored = detail.removed.filter((r) => typeof r.match_score === 'number');
+    if (scored.length === 0) return { ...detail, confidence: null, average_match_score: null };
+    const avgScore = scored.reduce((sum, r) => sum + r.match_score, 0) / scored.length;
+    let confidence = 'High';
+    if (avgScore < 70) confidence = 'Medium';
+    if (avgScore < 50) confidence = 'Low';
+    return { ...detail, confidence, average_match_score: Math.round(avgScore) };
+  });
+
+  return jsonResponse({
+    success: true,
+    dry_run: !confirm,
+    // In dry-run these are the groups/records that WOULD be merged; with
+    // confirm:true they are the records actually archived (merged).
+    duplicate_groups_found: duplicateGroups.length,
+    patients_removed: confirm ? removed.length : 0,
+    patients_to_remove: confirm ? 0 : removed.length,
+    merge_failures: mergeFailures,
+    removed_patients: removed,
+    details: resultsWithConfidence,
+  });
+}
+
+async function handleMerge(base44, user, authority, body, startTime) {
+  const request = parseMergeRequest(body);
+  const entities = base44.asServiceRole.entities;
+  const prepared = await prepareMerge(entities, authority, user, request);
+  const outcome = await executeMerge(entities, prepared, request.fieldPatch, startTime + MERGE_TIME_BUDGET_MS);
+  await recordMergeAudit(base44, user, 'merge', [auditGroup(outcome)]);
+  return jsonResponse({
+    success: outcome.complete,
+    complete: outcome.complete,
+    keep_id: outcome.keep_id,
+    merged_ids: outcome.merged_ids,
+    incomplete: outcome.incomplete,
+    fields_merged: outcome.fields_merged,
+    reassigned: outcome.totals.reassigned,
+    care_team: outcome.totals.care_team,
+    note_history: outcome.totals.note_history,
+    retained_on_duplicate: Object.keys(RETAINED_PATIENT_REFERENCES),
+  }, { status: outcome.complete ? 200 : 207 });
+}
+
+function jsonResponse(body, init = {}) {
+  return Response.json(body, {
+    ...init,
+    headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache', ...(init.headers || {}) },
+  });
+}
+
+// Kill switch. Flip to true to refuse every caller before any client, auth or
+// patient read happens.
+const PATIENT_DEDUPLICATION_PAUSED = false;
+
 Deno.serve(async (req) => {
   if (PATIENT_DEDUPLICATION_PAUSED) {
     return Response.json({
-      error: 'Patient duplicate scanning and merging are temporarily unavailable pending an authorized, atomic server broker',
-      code: 'patient_merge_security_validation_pending',
+      error: 'Patient duplicate scanning and merging are temporarily unavailable',
+      code: 'patient_merge_paused',
     }, { status: 503 });
   }
 
   const startTime = Date.now();
 
   try {
+    if (req.method !== 'POST') {
+      return jsonResponse({ error: 'Method not allowed' }, { status: 405, headers: { Allow: 'POST' } });
+    }
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await base44.auth.me();
+    const user = await withTrustedClaims(base44, await base44.auth.me().catch(() => null));
+    if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    if (!isProtectedSuperAdmin(user)) {
-      return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+    const authority = mergeAuthority(user);
+    if (!authority) {
+      return jsonResponse({ error: 'Unauthorized - agency administrator or manager access required' }, { status: 403 });
     }
 
-    // DRY-RUN BY DEFAULT. The merge is destructive, so callers must explicitly
-    // pass { confirm: true } to apply it; any other invocation only PREVIEWS the
-    // groups that would be merged (no DB changes). The function may be invoked
-    // with no body, so parse defensively.
+    const contentLength = Number(req.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+      return jsonResponse({ error: 'Request body is too large' }, { status: 413 });
+    }
+    // DRY-RUN BY DEFAULT. Merging is destructive, so callers either name the
+    // exact records with action:'merge' or pass { confirm: true } to apply the
+    // high-confidence scan; any other invocation only PREVIEWS the groups that
+    // would be merged. The function may be invoked with no body.
     const body = await req.json().catch(() => ({}));
-    const confirm = body?.confirm === true;
+    if (!plainObject(body)) return jsonResponse({ error: 'Request body must be an object' }, { status: 400 });
 
-    // APPLY is intentionally unavailable. Reassigning dozens of clinical
-    // entities one record at a time and then archiving the duplicate is not
-    // atomic, and tenant authority is not yet backed by an immutable server
-    // source. In particular, OASISAssessment and PatientOutcomeMetric are now
-    // service-only and must move in the same protected transaction. Keep the
-    // non-mutating preview for review, but require a redesigned broker before
-    // any patient chart is merged.
-    if (confirm) {
-      return Response.json({
-        error: 'Patient merging is temporarily unavailable pending an authorized, atomic server merge broker',
-        code: 'patient_merge_security_validation_pending',
-      }, { status: 503 });
+    if (body.action === 'merge') return await handleMerge(base44, user, authority, body, startTime);
+    if (body.action !== undefined && body.action !== 'scan') {
+      return jsonResponse({ error: "action must be 'scan' or 'merge'" }, { status: 400 });
     }
-
-    console.log(`Starting deduplication (${confirm ? 'APPLY' : 'dry-run preview'})...`);
-
-    // Bounded to the SDK's 5000/request max; omitting a limit silently caps at
-    // the SDK default of 50. Re-run the scan if more patients remain.
-    const loadedPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
-    // Exclude merged / soft-archived duplicates from the candidate set: a merged
-    // loser keeps the survivor's MRN and name, so re-scanning it re-buckets the
-    // same pair as a phantom duplicate on every run (and could even pick an
-    // archived stub as the survivor).
-    const patients = loadedPatients.filter((p) => !p.is_archived && p.status !== 'merged');
-    console.log(`Loaded ${loadedPatients.length} patients (${patients.length} active candidates) in ${Date.now() - startTime}ms`);
-
-    // Quick candidate bucketing by exact MRN and exact normalized name.
-    const mrnGroups = new Map();
-    const nameGroups = new Map();
-
-    // Placeholder MRNs are shared by unrelated patients — bucketing on them
-    // would mark every "N/A" patient a 100%-confidence duplicate of the rest.
-    const PLACEHOLDER_MRNS = new Set(['N/A', 'NA', 'NONE', 'UNKNOWN', 'PENDING', 'TBD', 'TEMP', '0', '00', '000', '0000', 'X', 'XX', 'XXX']);
-
-    patients.forEach((patient) => {
-      if (patient.medical_record_number) {
-        const mrn = patient.medical_record_number.toString().trim().toUpperCase();
-        if (mrn && !PLACEHOLDER_MRNS.has(mrn)) {
-          if (!mrnGroups.has(mrn)) mrnGroups.set(mrn, []);
-          mrnGroups.get(mrn).push(patient);
-        }
-      }
-
-      const nameKey = `${normalizeName(patient.first_name)}|${normalizeName(patient.last_name)}`;
-      if (nameKey !== '|') {
-        if (!nameGroups.has(nameKey)) nameGroups.set(nameKey, []);
-        nameGroups.get(nameKey).push(patient);
-      }
-    });
-
-    console.log(`Grouped into ${mrnGroups.size} MRN groups, ${nameGroups.size} name groups`);
-
-    const duplicateGroups = [];
-    const processed = new Set();
-
-    // Phase 1: exact MRN matches — but a shared MRN alone is NOT definitive.
-    // Each candidate must also clear the engine's identity guards
-    // (scorePatientPair hard-blocks different-name + different-DOB pairs), so
-    // a typo'd or recycled MRN can never merge two different people at 100%.
-    for (const [, group] of mrnGroups) {
-      const unprocessed = group.filter((p) => !processed.has(p.id));
-      if (unprocessed.length > 1) {
-        const primary = unprocessed[0];
-        const verified = [];
-        for (const p of unprocessed.slice(1)) {
-          const pair = scorePatientPair(primary, p);
-          if ((pair?.score ?? 0) > 0) {
-            verified.push(p);
-          } else {
-            // Status-only log (no record ids — retained logs must stay identifier-free).
-            console.log('Skipping an MRN-bucket candidate: shared MRN but conflicting identity (name/DOB)');
-          }
-        }
-        if (verified.length > 0) {
-          duplicateGroups.push({
-            primary,
-            duplicates: verified.map((p) => ({
-              patient: p,
-              score: 100,
-              matches: [REASON.MRN],
-              confidenceLevel: 'high',
-              confidencePercent: 100,
-            })),
-          });
-          processed.add(primary.id);
-          verified.forEach((p) => processed.add(p.id));
-        }
-      }
+    for (const key of Object.keys(body)) {
+      if (!SCAN_REQUEST_KEYS.has(key)) return jsonResponse({ error: `Unknown scan field: ${key}` }, { status: 400 });
     }
-
-    // Phase 2: same-name buckets scored with the shared engine, high confidence
-    // only, so two genuinely different people who share a name are not removed.
-    let groupsProcessed = 0;
-    for (const [, group] of nameGroups) {
-      const unprocessed = group.filter((p) => !processed.has(p.id));
-      if (unprocessed.length > 1) {
-        const found = findDuplicateGroups(unprocessed, { minScore: BACKEND_MIN_SCORE });
-        for (const g of found) {
-          duplicateGroups.push(g);
-          processed.add(g.primary.id);
-          g.duplicates.forEach((d) => processed.add(d.patient.id));
-        }
-        groupsProcessed++;
-      }
-
-      // Check timeout every 20 groups
-      if (groupsProcessed % 20 === 0 && Date.now() - startTime > 20000) {
-        console.log('Approaching timeout, stopping search');
-        break;
-      }
-    }
-
-    console.log(`Found ${duplicateGroups.length} groups in ${Date.now() - startTime}ms`);
-
-    // Remove duplicates with timeout protection
-    const removed = [];
-    const detailsArray = [];
-
-    const batchSize = 5;
-    for (let i = 0; i < duplicateGroups.length; i += batchSize) {
-      if (Date.now() - startTime > 25000) {
-        console.log('Timeout protection - stopping removal');
-        break;
-      }
-
-      const batch = duplicateGroups.slice(i, i + batchSize);
-
-      for (const group of batch) {
-        // Choose the survivor: active first, then the MOST COMPLETE record, then
-        // newest as a tiebreak. (Previously this kept the newest active record,
-        // so a sparse just-created stub could survive over an older rich chart
-        // and silently lose its identifiers/clinical data.)
-        const allInGroup = [group.primary, ...group.duplicates.map((d) => d.patient)];
-        allInGroup.sort((a, b) => {
-          if (a.status === 'active' && b.status !== 'active') return -1;
-          if (a.status !== 'active' && b.status === 'active') return 1;
-          const ca = completenessScore(a);
-          const cb = completenessScore(b);
-          if (cb !== ca) return cb - ca; // keep the more complete record
-          const dateA = a.created_date ? new Date(a.created_date).getTime() : 0;
-          const dateB = b.created_date ? new Date(b.created_date).getTime() : 0;
-          return dateB - dateA;
-        });
-
-        const keep = allInGroup[0];
-        const toRemove = allInGroup.slice(1);
-
-        const removedFromGroup = [];
-        for (const patient of toRemove) {
-          const entry = {
-            id: patient.id,
-            name: `${patient.first_name} ${patient.last_name}`,
-            mrn: patient.medical_record_number || 'N/A',
-            // null (not a fabricated 100) when the group carries no per-patient
-            // score — e.g. the removed record was the group's primary.
-            match_score: group.duplicates.find((d) => d.patient.id === patient.id)?.score ?? null,
-          };
-
-          if (!confirm) {
-            // Dry-run preview: report what WOULD be merged; change nothing.
-            removedFromGroup.push(entry);
-            continue;
-          }
-
-          // Move the duplicate's clinical history onto the survivor BEFORE
-          // archiving, so the active chart keeps every visit/OASIS/document.
-          entry.reassigned = await reassignPatientRecords(base44, patient.id, keep.id);
-
-          // SOFT-delete (archive) — NOT an irreversible hard cascade-delete. The
-          // duplicate is marked merged/archived and pointed at the survivor; the
-          // main patient list filters is_archived, so it disappears from view
-          // while its record and clinical history (visits, care plans, alerts,
-          // incidents, tasks) are preserved and fully recoverable (clear
-          // is_archived/status to restore). The previous Patient.delete() also
-          // cascade-deleted all of that with no recovery.
-          try {
-            await base44.asServiceRole.entities.Patient.update(patient.id, {
-              status: 'merged',
-              is_archived: true,
-              merged_into_id: keep.id,
-              merged_at: new Date().toISOString(),
-              merged_by: user.email,
-            });
-            removedFromGroup.push(entry);
-          } catch (err) {
-            console.error('Failed to archive duplicate patient record:', err.message);
-          }
-        }
-
-        removed.push(...removedFromGroup);
-        detailsArray.push({
-          kept: {
-            id: keep.id,
-            name: `${keep.first_name} ${keep.last_name}`,
-            mrn: keep.medical_record_number || 'N/A',
-            status: keep.status,
-          },
-          removed: removedFromGroup,
-        });
-      }
-    }
-
-    // Persist an audit trail of an APPLIED merge (skip for dry-run previews,
-    // which change nothing). Opaque record ids are the minimum correlation data
-    // needed to investigate a wrongful merge; MRNs and demographics stay only
-    // on the patient records and are never copied into the broad activity log.
-    if (confirm && removed.length > 0) {
-      await base44.asServiceRole.entities.UserActivity.create({
-        user_email: user.email,
-        user_name: user.full_name,
-        action: 'patients_deduplicated',
-        entity_type: 'Patient',
-        details: {
-          removed_count: removed.length,
-          groups: detailsArray.map((d) => ({
-            kept_id: d.kept.id,
-            removed_ids: d.removed.map((r) => r.id),
-          })),
-          timestamp: new Date().toISOString(),
-        },
-        status: 'success',
-      }).catch((err) => console.error('Failed to write dedup audit:', err));
-    }
-
-    // Calculate confidence levels for results
-    const resultsWithConfidence = detailsArray.map((detail) => {
-      // Average only the records that actually carry a score. A deliberate null
-      // match_score (the removed record was the group's primary) coerced to 0
-      // through the sum, dragging an MRN-verified merge down to "Low" at 0%.
-      const scored = detail.removed.filter((r) => typeof r.match_score === 'number');
-      if (scored.length === 0) {
-        // No per-patient score in this group — report no confidence, not 0%.
-        return { ...detail, confidence: null, average_match_score: null };
-      }
-      const avgScore = scored.reduce((sum, r) => sum + r.match_score, 0) / scored.length;
-
-      let confidence = 'High';
-      if (avgScore < 70) confidence = 'Medium';
-      if (avgScore < 50) confidence = 'Low';
-
-      return {
-        ...detail,
-        confidence,
-        average_match_score: Math.round(avgScore),
-      };
-    });
-
-    return Response.json({
-      success: true,
-      dry_run: !confirm,
-      // In dry-run these are the groups/records that WOULD be merged; with
-      // confirm:true they are the records actually archived (merged).
-      duplicate_groups_found: duplicateGroups.length,
-      patients_removed: confirm ? removed.length : 0,
-      patients_to_remove: confirm ? 0 : removed.length,
-      removed_patients: removed,
-      details: resultsWithConfidence,
-    });
+    return await handleScan(base44, user, authority, body.confirm === true, startTime);
   } catch (error) {
-    console.error('Deduplication error:', error);
-    // Generic message — don't leak internals to the client.
-    return Response.json({
+    if (error instanceof PublicError) {
+      return jsonResponse({ error: error.message }, { status: error.status });
+    }
+    // Status-only log: no record ids, names or datastore error strings.
+    console.error('Patient deduplication failed');
+    return jsonResponse({
       error: 'Deduplication failed',
       details: 'Check function logs for more information',
     }, { status: 500 });

@@ -59,16 +59,13 @@ function serviceRoleClientRequest(req, expectedAppId) {
 // <<<END SHARED HELPER: base44ClientRequest>>>
 
 // Returns only the signed-in clinician's own upcoming telehealth sessions.
-// Scoped server-side by the authenticated email; no caller input is trusted.
 //
-// Paused at source for the same reason createTelehealthToken is: TelehealthSession
-// rows are still caller-shaped, so `host_email` is not authority — a browser that
-// can write the row chooses whose schedule this reads. It also projects
-// `patient_name`, so answering before the session broker is server-owned
-// discloses a patient list derived from a mutable field. Keep this literal true
-// until session creation and provider room binding sit behind a server-owned
-// broker with an immutable binding record.
-const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;
+// Released by the owner on 2026-10-08 ("approve everything"). TelehealthSession
+// denies every client operation, so its only writer is manageTelehealthSession,
+// which stamps agency_id and host_user_id server-side. This reads by those
+// stamped ids (never the mutable host_email) inside an agency where the caller
+// holds exactly one active membership.
+const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -91,14 +88,36 @@ Deno.serve(async (req) => {
   if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
   if (!user?.email) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const page = await base44.asServiceRole.entities.TelehealthSession.filter(
+  const body = await req.json().catch(() => ({}));
+  const agencyId = typeof body?.agency_id === 'string' && body.agency_id.length <= 200 ? body.agency_id : '';
+  if (!agencyId) return Response.json({ error: 'agency_id is required' }, { status: 400 });
+
+  const entities = base44.asServiceRole.entities;
+  // Ceiling of 2: a duplicate active grant is ambiguous and refused.
+  const mine = await entities.AgencyMembership.filter(
+    { agency_id: agencyId, user_id: user.id, status: 'active' }, undefined, 2,
+  );
+  if (!Array.isArray(mine) || mine.length !== 1 || mine[0]?.user_id !== user.id || mine[0]?.agency_id !== agencyId) {
+    return Response.json({ error: 'No active membership for agency' }, { status: 403 });
+  }
+
+  // The pinned SDK takes positional arguments (query, sort, limit, skip,
+  // fields) and returns an array; the options-object form returned nothing.
+  const rows = await entities.TelehealthSession.filter(
     {
-      host_email: user.email,
+      agency_id: agencyId,
+      host_user_id: user.id,
       status: { $in: ['scheduled', 'active'] },
       scheduled_at: { $gte: new Date(Date.now() - 60 * 60 * 1000).toISOString() },
     },
-    { sort: 'scheduled_at', limit: 5, fields: ['patient_name', 'scheduled_at', 'status', 'visit_type'] },
+    'scheduled_at',
+    5,
+    0,
+    ['id', 'agency_id', 'host_user_id', 'patient_name', 'scheduled_at', 'status', 'visit_type'],
   );
+  const sessions = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row?.agency_id === agencyId && row?.host_user_id === user.id)
+    .map(({ id, patient_name, scheduled_at, status, visit_type }) => ({ id, patient_name, scheduled_at, status, visit_type }));
 
-  return Response.json({ sessions: page.items || [] });
+  return Response.json({ sessions }, { headers: { 'Cache-Control': 'no-store' } });
 });

@@ -157,43 +157,42 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 // Even an evidence-only prompt can leak an OASIS response through unconstrained
 // model text when a direct caller bypasses the browser sanitizer. Keep the
-// endpoint paused until server-side output validation and tenant provenance are
-// implemented and clinically verified.
-const OASIS_ASSESSMENT_AI_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on", option 1). The
+// deployment serves one agency, chart access is checked against membership and
+// the care-team assignment table, and the output is guidance a clinician reviews.
+const OASIS_ASSESSMENT_AI_ENABLED = true;
 
 
-/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
-async function assertPatientAccess(base44, user, patient) {
+/**
+ * Chart access for an OASIS AI request, from the same authority the chart
+ * brokers use rather than the legacy Patient.assigned_nurses / agency_name scan
+ * (patients created through createAuthorizedPatient never fill assigned_nurses,
+ * so that scan refused every nurse). The platform owner may open any chart. Any
+ * other caller needs an active membership (from withTrustedClaims) in the
+ * patient's own agency, and then an agency-wide role (agency_admin or manager),
+ * to be the patient's creator, or an exact active PatientCareTeamAssignment.
+ */
+async function assertOasisChartAccess(base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isSuperAdmin = user.account_type === 'super_admin';
-  const isAgencyScopedAdmin =
-    user.account_type === 'agency_admin'
-    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-  const isAssigned = Array.isArray(patient.assigned_nurses)
-    && patient.assigned_nurses.includes(user.email);
-  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+  if (user.role === 'admin') return null;
+  const agencyId = typeof user.agency_id === 'string' ? user.agency_id : '';
+  if (!agencyId || patient.agency_id !== agencyId) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (isAgencyScopedAdmin) {
-    if (!user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const agencyUsers = await base44.asServiceRole.entities.User
-      .list('-created_date', 5000).catch(() => []);
-    const agencyEmails = new Set(
-      (agencyUsers || [])
-        .filter((u) => u.agency_name === user.agency_name && u.email)
-        .map((u) => u.email),
-    );
-    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-      || (Array.isArray(patient.assigned_nurses)
-        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-    if (!inAgency) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-  }
-  return null;
+  if (user.account_type === 'agency_admin' || user.is_manager === true) return null;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (email && String(patient.created_by_user_email_normalized || '') === email
+    && patient.created_by_user_id === user.id) return null;
+  const assignments = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+    { agency_id: agencyId, patient_id: patient.id, user_id: user.id }, '-updated_date', 5,
+  ).catch(() => []);
+  const active = (Array.isArray(assignments) ? assignments : []).some((row) => (
+    row?.status === 'active'
+    && row.agency_id === agencyId
+    && row.patient_id === patient.id
+    && row.user_id === user.id
+  ));
+  return active ? null : Response.json({ error: 'Forbidden' }, { status: 403 });
 }
 
 Deno.serve(async (req) => {
@@ -227,7 +226,7 @@ Deno.serve(async (req) => {
     if (patient_id) {
       const [claimed] = await base44.asServiceRole.entities.Patient
         .filter({ id: patient_id }, '', 1).catch(() => []);
-      const denied = await assertPatientAccess(base44, user, claimed);
+      const denied = await assertOasisChartAccess(base44, user, claimed);
       if (denied) return denied;
       patientData = claimed;
     } else if (referral_data) {

@@ -44,14 +44,13 @@ export const adminBlocks = [
         ['<strong>Training Management</strong>', 'Assign courses and learning plans, auto-generate AI in-services, and track completion.'],
         ['<strong>Compliance Center</strong>', 'Real-time monitoring, regulatory tracking, and security/audit logs.'],
         ['<strong>Facility Documentation Rules</strong>', 'Define agency charting requirements (e.g. SpO₂ for oxygen patients) enforced live in every Smart Note.'],
-        ['<strong>Reports &amp; Analytics</strong>', 'KPI, performance, OASIS/PDGM, predictive analytics, and documentation-impact ROI.'],
+        ['<strong>Reports &amp; Analytics</strong>', 'KPI, performance, referral, and OASIS reporting.'],
         ['<strong>Data Management</strong>', 'Patient import/export, duplicate merge, and bulk discharge.'],
       ])}
 
       <h3 id="af-config"><span class="h3-eyebrow">Configuration</span>Agency setup</h3>
       ${table(['Tool', 'What it does'], [
-        ['<strong>Agency Settings</strong>', 'Office info, cost calculations, AI/learning, communications (TCPA), phone/fax, billing, and validation rules.'],
-        ['<strong>PDGM Rate Settings</strong>', 'Configure Medicare case-mix weights, thresholds, and ICD-10 mappings.'],
+        ['<strong>Agency Settings</strong>', 'Office info, AI/learning, communications (TCPA), phone/fax, billing, and validation rules.'],
         ['<strong>On-Call, Pathways &amp; Announcements</strong>', 'Coverage scheduling, clinical protocols, and staff-wide announcements.'],
       ])}
     `,
@@ -70,11 +69,11 @@ export const adminBlocks = [
 
       <h3 id="ar-tiers"><span class="h3-eyebrow">Who sees what</span>The three role tiers</h3>
       ${table(['Role', 'Who they are', 'What they can access'], [
-        ['<strong>Clinical user</strong> (nurse)', 'Nurses, social workers, spiritual care, therapists, aides.', 'Clinical work only — patients, documentation, communication, learning. No admin, analytics, or financial data.'],
+        ['<strong>Clinical user</strong> (nurse)', 'Nurses, social workers, spiritual care, therapists, aides.', 'Clinical work only — patients, documentation, communication, learning. No admin or analytics data.'],
         ['<strong>Facility administrator</strong>', 'Your agency’s administrators and managers.', 'Everything a clinician sees, plus user & staff management, back-office workflows, training administration, compliance, analytics, and agency configuration.'],
         ['<strong>Platform administrator</strong> (super admin)', 'The PennSync platform owner.', 'All of the above, plus platform-level setup (telephony, background jobs, AI/OCR configuration).'],
       ])}
-      ${callout('note', 'Financial data is admin-only', '<p>Dollar amounts — PDGM revenue, reimbursement estimates, and cost figures — are visible to administrators only. Clinicians never see financials, by design.</p>')}
+      ${callout('note', 'No payment estimates', '<p>PennSync does not estimate PDGM payment, reimbursement, or revenue, and does not score patients for clinical risk. Use your agency’s billing system and official CMS tools for payment questions.</p>')}
 
       <h3 id="ar-scope"><span class="h3-eyebrow">Your surface</span>What a facility admin can do</h3>
       <p>Two sidebar sections appear only for administrators:</p>
@@ -323,28 +322,26 @@ export const adminBlocks = [
     title: 'Reports & Analytics',
     sub: [
       { id: 'ra-hub', title: 'The analytics hub' },
-      { id: 'ra-more', title: 'Predictive, agency & impact views' },
+      { id: 'ra-more', title: 'Agency & activity views' },
     ],
     html: `
-      <p class="sec-intro">Understand your agency’s performance — clinical, operational, and financial — and turn documentation quality into measurable value.</p>
+      <p class="sec-intro">Understand your agency’s clinical and operational performance and where documentation quality can improve.</p>
       ${roleLine('Facility Admin')}
       ${navpath(['Sidebar', 'Administration', 'Reports & Analytics'])}
 
       <h3 id="ra-hub"><span class="h3-eyebrow">Your numbers</span>The analytics hub</h3>
       ${table(['Tab', 'What it shows'], [
-        ['<strong>KPI Dashboard</strong>', 'Volume, outcomes, on-time visits, and financial KPIs.'],
+        ['<strong>KPI Dashboard</strong>', 'Volume, outcomes, and on-time visits.'],
         ['<strong>Performance Dashboard</strong>', 'Documentation time, AI utilization, and quality scores, with per-clinician drill-down.'],
         ['<strong>Referral Volume</strong>', 'Admissions by source and timing, and referral-to-admission conversion.'],
         ['<strong>Nurse Performance</strong>', 'Individual clinician metrics with benchmarking.'],
-        ['<strong>OASIS & PDGM</strong>', 'Assessment compliance/outcomes, case-mix distribution, and reimbursement impact.'],
+        ['<strong>OASIS</strong>', 'Assessment compliance and outcomes.'],
         ['<strong>Reports Center</strong>', 'Pre-built and custom reports; schedule and email them, exportable to PDF/CSV.'],
       ])}
 
-      <h3 id="ra-more"><span class="h3-eyebrow">Look ahead</span>Predictive, agency & impact views</h3>
+      <h3 id="ra-more"><span class="h3-eyebrow">Look closer</span>Agency & activity views</h3>
       ${grid2([
-        { h: 'Predictive Analytics', p: 'AI risk scoring (readmission, deterioration) and population trends. The Rehospitalization tab now leads with a PPH Prevention Worklist — patients ranked by preventable-hospitalization risk (urgent / high / moderate / watch), flagged when inside the 31-day post-discharge window, with recommended interventions. Risk-list rows link straight to the patient chart.' },
         { h: 'Agency Analytics', p: 'Operational KPIs: census, utilization, and outcome benchmarking.' },
-        { h: 'Documentation Impact', p: 'How stronger documentation lifts PDGM case-mix weight and estimated reimbursement (before vs. after). Financial figures are admin-only.' },
         { h: 'User Activity Report', p: 'A detailed, exportable audit log of user actions.' },
       ])}
     `,
@@ -375,30 +372,23 @@ export const adminBlocks = [
     title: 'System Configuration',
     sub: [
       { id: 'sc-agency', title: 'Agency Settings' },
-      { id: 'sc-pdgm', title: 'PDGM Rate Settings' },
       { id: 'sc-oncall', title: 'On-Call Schedule' },
       { id: 'sc-extras', title: 'Pathways & announcements' },
     ],
     html: `
-      <p class="sec-intro">Configure how PennSync works for your agency — from office details and communication rules to reimbursement rates and clinical protocols.</p>
+      <p class="sec-intro">Configure how PennSync works for your agency — from office details and communication rules to clinical protocols.</p>
       ${roleLine('Facility Admin')}
 
       <h3 id="sc-agency"><span class="h3-eyebrow">Your agency, your rules</span>Agency Settings</h3>
       ${navpath(['Admin Console', 'System & Configuration', 'Agency Settings'])}
       ${table(['Group', 'What you configure'], [
-        ['<strong>General</strong>', 'Office name, address, ZIP, and wage index (used in PDGM calculations).'],
-        ['<strong>Cost Calculations</strong>', 'Staff and audit hourly rates, training cost, documentation time per episode, and episodes per year — these power ROI and Documentation Impact figures.'],
+        ['<strong>General</strong>', 'Office name, address, and ZIP code.'],
         ['<strong>AI & Learning</strong>', 'Enable AI learning and pattern sharing, choose a model preference (fast / balanced / accurate), set a confidence threshold, and add custom prompts or terminology.'],
         ['<strong>Communications (TCPA)</strong>', 'Enable SMS, set quiet hours and a monthly SMS cap, define business hours and after-hours handling, and manage SMS templates.'],
         ['<strong>Phone & Fax</strong>', 'Main office number, fax number, fax receiving, and voicemail settings.'],
         ['<strong>Billing & Subscription</strong>', 'Enterprise status, the agency code providers use to join, and enabled features.'],
         ['<strong>Validation Rules</strong>', 'Create agency-specific data-validation rules with field constraints and messages.'],
       ])}
-
-      <h3 id="sc-pdgm"><span class="h3-eyebrow">Reimbursement</span>PDGM Rate Settings</h3>
-      ${navpath(['Admin Console', 'System & Configuration', 'PDGM Rate Settings'])}
-      <p>Configure the Medicare PDGM tables that drive payment estimates: the base payment rate, clinical-group case-mix weights, functional-impairment thresholds and multipliers, comorbidity multipliers, and ICD-10-to-clinical-group mappings.</p>
-      ${callout('note', 'Keep rates current each year', '<p>CMS updates PDGM rates annually. Review these settings when new rates take effect so revenue estimates and Documentation Impact stay accurate.</p>')}
 
       <h3 id="sc-oncall"><span class="h3-eyebrow">Coverage</span>On-Call Schedule</h3>
       ${navpath(['Sidebar', 'Tools', 'On-Call'])}
@@ -485,7 +475,6 @@ export const adminBlocks = [
         { q: 'Why can’t I see Telnyx, background jobs, or AI Tools?', a: 'Those are platform-administrator (super-admin) tools, not facility-admin tools. Contact your PennSync platform administrator for changes there.' },
         { q: 'How do I approve a clinician’s license or certification?', a: 'Open Personnel File → Approvals, review the uploaded credential, and approve or reject it. Expiration Tracking and Credential Compliance then keep it monitored.' },
         { q: 'How do I export a report?', a: 'In Reports & Analytics, open the relevant tab or the Reports Center and export to PDF or CSV; you can also schedule recurring reports by email.' },
-        { q: 'Where do I update Medicare PDGM rates?', a: 'Admin Console → System & Configuration → PDGM Rate Settings. Update the base rate, case-mix weights, thresholds, multipliers, and ICD-10 mappings when CMS publishes new rates.' },
         { q: 'How do I post an announcement to all staff?', a: 'Use the Announcements manager to publish an info, warning, or urgent message with optional scheduling and expiration; it appears on every user’s Dashboard.' },
         { q: 'How do I create a facility documentation rule?', a: 'Administration → Facility Doc Rules. Start from a Quick add preset or New Rule: define who it applies to (diagnosis, medication, wound, care type, or everyone), the requirement text nurses see, the required-in-note keywords (list every synonym), and the severity — only critical rules block saving, and acknowledged overrides are audit-logged.' },
         { q: 'How do I approve timesheets and run payroll?', a: 'Tools → Timesheets. The Approvals tab lists submitted sheets — approve or return each (or Approve all). Then in Payroll Export, pick the pay period and export Home Health and Hospice as separate CSV or PDF files. Only approved timesheets are included; the coverage strip flags anyone who hasn’t submitted.' },

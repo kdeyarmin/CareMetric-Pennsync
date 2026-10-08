@@ -3,8 +3,9 @@ import { base44 } from '@/api/base44Client';
 // Exact runtime allowlist: never index the SDK entity registry with caller-
 // supplied text. In particular, Patient/Visit must remain unreachable through
 // this generic configuration helper now that their direct reads are disabled.
+// (The payer-rate config entity left this allowlist with the PDGM payment
+// features: the payer-rate editor that was its only reader was removed.)
 const CONFIG_ENTITIES = Object.freeze({
-  PayerRateConfig: base44.entities.PayerRateConfig,
   FaxRetryConfig: base44.entities.FaxRetryConfig,
 });
 
@@ -36,12 +37,11 @@ export async function fetchCallerAgencySettings(agencyName) {
 }
 
 /**
- * Resolve a per-agency config entity (PDGMRateConfig, FollowUpRuleConfig, …)
- * by agency_name. Keyed miss → null. Legacy single unscoped row only when the
+ * Resolve a per-agency config entity (FaxRetryConfig) by agency_name. Keyed miss → null. Legacy single unscoped row only when the
  * caller has no agency key (or exactly one unscoped row when keyed miss is
  * handled by returning null — no foreign-row fallback).
  *
- * @param {'FaxRetryConfig' | 'PayerRateConfig'} entityName
+ * @param {'FaxRetryConfig'} entityName
  * @param {string | null | undefined} agencyName
  * @returns {Promise<object | null>}
  */
@@ -65,27 +65,35 @@ export async function fetchCallerScopedConfig(entityName, agencyName) {
   return newest?.[0] || null;
 }
 
-/** @param {string | null | undefined} agencyName */
-export function fetchCallerPdgmRateConfig(_agencyName) {
-  // The browser read path is paused until Base44 provides a tenant authority
-  // that callers cannot edit through auth.updateMe / Agency-row writes. Do not
-  // silently seed an editor from defaults or call a broker whose membership
-  // claims are not immutable.
-  return Promise.resolve(null);
-}
+const ruleConfigShape = (config) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
+  return {
+    disabled_rules: Array.isArray(config.disabled_rules)
+      ? config.disabled_rules.filter((rule) => typeof rule === 'string')
+      : [],
+    severity_overrides: config.severity_overrides && typeof config.severity_overrides === 'object'
+      && !Array.isArray(config.severity_overrides)
+      ? config.severity_overrides
+      : {},
+    custom_items: Array.isArray(config.custom_items)
+      ? config.custom_items.filter((item) => item && typeof item === 'object')
+      : [],
+  };
+};
 
-/** @param {string | null | undefined} agencyName */
+/**
+ * The caller's agency follow-up rules. The agency is decided server-side from
+ * the caller's service-owned membership, so the agency hint a caller passes is
+ * ignored rather than trusted, and the entity is never read directly. Any
+ * failure falls back to the built-in rules, which are the floor.
+ *
+ * @param {string | null | undefined} _agencyName ignored; the server decides the agency
+ */
 export function fetchCallerFollowUpRuleConfig(_agencyName) {
-  // Follow-up rules are agency-wide policy. A caller-controlled agency_name is
-  // not authority, and there is not yet an immutable membership-scoped read
-  // broker. Use the built-in rules until that broker exists; do not read the
-  // entity directly or adopt a legacy row from another agency.
-  return Promise.resolve(null);
-}
-
-/** @param {string | null | undefined} agencyName */
-export function fetchCallerPayerRateConfig(agencyName) {
-  return fetchCallerScopedConfig('PayerRateConfig', agencyName);
+  return Promise.resolve()
+    .then(() => base44.functions.invoke('saveFollowUpRuleConfig', { action: 'get' }))
+    .then((res) => ruleConfigShape((res?.data ?? res)?.config))
+    .catch(() => null);
 }
 
 /** @param {string | null | undefined} agencyName */

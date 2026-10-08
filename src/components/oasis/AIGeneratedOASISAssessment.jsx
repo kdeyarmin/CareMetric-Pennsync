@@ -12,7 +12,6 @@ import {
   ClipboardList,
   CheckCircle2,
   AlertTriangle,
-  TrendingUp,
   MessageSquare,
   ChevronDown,
   ChevronUp,
@@ -242,16 +241,6 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
           </Alert>
         )}
 
-        {/* PDGM Estimate */}
-        {assessment.estimated_pdgm_group && (
-          <Alert className="bg-navy-50 border-navy-300">
-            <TrendingUp className="w-4 h-4 text-navy-600" />
-            <AlertDescription className="text-xs text-navy-900">
-              <strong>Estimated PDGM Group:</strong> {assessment.estimated_pdgm_group}
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Assessment Priorities */}
         {assessment.assessment_priorities?.length > 0 && (
           <Card className="bg-white">
@@ -397,12 +386,6 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
                         </div>
                       )}
 
-                      {item.pdgm_impact && (
-                        <div className="bg-navy-100 border border-navy-300 rounded p-2">
-                          <p className="text-xs font-semibold text-navy-900 mb-1">PDGM Impact:</p>
-                          <p className="text-xs text-navy-800">{item.pdgm_impact}</p>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -459,9 +442,10 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
           </TabsContent>
         </Tabs>
 
-        {/* The "PDGM Optimization" panel is REMOVED. It surfaced model notes on
-            how to raise the PDGM result, which is an instruction to code for
-            payment rather than for the patient. */}
+        {/* No PDGM estimate, per-item PDGM impact, or PDGM optimization notes
+            are shown: they surfaced model notes on how to raise the PDGM
+            result, which is an instruction to code for payment rather than for
+            the patient. */}
 
         <Alert>
           <AlertTriangle className="w-4 h-4" />

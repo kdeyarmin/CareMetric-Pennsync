@@ -76,7 +76,7 @@ PERFORM COMPREHENSIVE COMPLIANCE CHECK:
 1. Evaluate each required element against the documentation
 2. Identify what's PRESENT, PARTIAL, or MISSING
 3. For missing/partial elements, provide specific CMS-compliant language to add
-4. Flag critical compliance gaps that could impact reimbursement or audits
+4. Flag critical compliance gaps that could affect compliance or audits (do not estimate payment or reimbursement)
 5. Reference specific CMS regulations violated
 
 Return detailed compliance analysis in JSON format.`;

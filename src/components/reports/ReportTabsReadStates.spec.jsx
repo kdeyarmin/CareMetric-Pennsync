@@ -13,10 +13,9 @@ vi.mock('@/api/base44Client', () => ({ base44: { auth: { me: mocks.me }, entitie
 } } }));
 vi.mock('@/functions/manageAuthorizedReferral', () => ({ listAuthorizedReferrals: mocks.referrals }));
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => mocks.auth }));
-vi.mock('@/lib/roles', () => ({ isAdminView: user => user?.role === 'admin' }));
+vi.mock('@/lib/roles', async (importOriginal) => ({ ...(await importOriginal()), isAdminView: user => user?.role === 'admin' }));
 vi.mock('@/lib/agencyRoster', () => ({ agencyQueryKey: mocks.authority }));
 vi.mock('@/lib/agencyScope', () => ({ filterUsersByCallerAgency: rows => rows, isCallerAgencyScoped: () => mocks.scoped }));
-vi.mock('@/lib/agencySettings', () => ({ fetchCallerPdgmRateConfig: async () => null }));
 vi.mock('@/components/utils/pdfExporter', () => ({ exportToPDF: mocks.pdf }));
 vi.mock('sonner', () => ({ toast: { error: mocks.toast } }));
 vi.mock('recharts', () => Object.fromEntries(['ResponsiveContainer', 'BarChart', 'Bar', 'PieChart', 'Pie', 'Cell', 'CartesianGrid', 'XAxis', 'YAxis', 'Tooltip'].map(name => [name, ({ children }) => <div>{children}</div>])));
@@ -213,6 +212,22 @@ describe('referral report read integrity', () => {
     expect(await screen.findByText('Requests generated / responses recorded')).toBeInTheDocument();
     expect(screen.getByText('3 / 1')).toBeInTheDocument();
     expect(screen.queryByText('Requests sent / answered')).not.toBeInTheDocument();
+  });
+  it('shows no revenue or reimbursement estimate in the follow-up loop, even to an administrator', async () => {
+    mocks.referrals.mockResolvedValue({ referrals: [
+      { ...referral, extracted_data: {}, analysis_results: {}, follow_up_requests: { status: 'open', generated_at: '2026-09-01T10:00:00Z' } },
+    ] });
+    mount(FollowUpAnalytics);
+    expect(await screen.findByText('Requests generated / responses recorded')).toBeInTheDocument();
+    expect(screen.queryByText(/Open exposure/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/upside|not \$0/i)).not.toBeInTheDocument();
+    expect(mocks.me).not.toHaveBeenCalled();
+  });
+  it('offers no PDGM tab on the reports hub', async () => {
+    mount(ReportsAnalytics);
+    await screen.findByText('Reports & Analytics');
+    expect(screen.queryByRole('tab', { name: 'PDGM' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'OASIS' })).toBeInTheDocument();
   });
   it.each([ReferralVolumeReport, FollowUpAnalytics])('rejects malformed referral collections instead of showing zero data', async Component => {
     mocks.referrals.mockResolvedValue({ referrals: [null] });

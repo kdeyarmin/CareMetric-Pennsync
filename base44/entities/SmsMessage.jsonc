@@ -98,9 +98,25 @@
     "to_number"
   ],
   "rls": {
-    "read": false,
+    "read": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "data.sent_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "create": false,
-    "update": false,
+    "update": {
+      "data.nurse_email": "{{user.email}}"
+    },
     "delete": false
   }
 }

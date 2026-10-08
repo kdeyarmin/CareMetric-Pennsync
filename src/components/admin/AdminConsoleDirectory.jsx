@@ -74,11 +74,11 @@ const GROUPS = [
   },
   {
     title: "Reports & Analytics",
-    description: "Agency reporting, KPIs, predictive analytics, and exports.",
+    description: "Agency reporting, KPIs, and exports.",
     icon: BarChart3,
     color: "text-navy-600 bg-navy-50",
     pages: [
-      "ReportsAnalytics", "AgencyAnalytics", "PredictiveAnalytics", "DocumentationImpact",
+      "ReportsAnalytics", "AgencyAnalytics",
     ],
   },
   {
@@ -94,11 +94,11 @@ const GROUPS = [
   },
   {
     title: "System & Configuration",
-    description: "Agency settings, PDGM rates, integrations, communications, and system health.",
+    description: "Agency settings, integrations, communications, and system health.",
     icon: Settings,
     color: "text-slate-600 bg-slate-100",
     pages: [
-      "AgencySettings", "PDGMRateSettings", "CommsDashboard",
+      "AgencySettings", "CommsDashboard",
       "SuperAdminConfig", "SystemJobMonitor",
     ],
   },

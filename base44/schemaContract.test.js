@@ -380,9 +380,10 @@ test('paused OASIS recommendation and automation entities stay behind containmen
       'src/components/oasis/WorkflowExecutionEngine.jsx',
       'src/components/oasis/WorkflowMonitoringDashboard.jsx',
     ],
+    // PredictiveOutcomesAnalyzer.jsx (AI outcome prediction) was the second
+    // writer until it was deleted with the clinical risk-prediction features.
     PatientRecommendation: [
       'src/components/oasis/OASISToPatientChartPusher.jsx',
-      'src/components/oasis/PredictiveOutcomesAnalyzer.jsx',
     ],
   };
   const actualEntityConsumers = Object.fromEntries(
@@ -401,13 +402,12 @@ test('paused OASIS recommendation and automation entities stay behind containmen
 
   const expectedImportHosts = {
     OASISToPatientChartPusher: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
-    PredictiveOutcomesAnalyzer: [
-      'src/components/hub-tabs/OASISAnalyzer.jsx',
-      'src/components/hub-tabs/OASISClinicalReview.jsx',
-    ],
+    // PredictiveOutcomesAnalyzer is gone entirely, and OASISAnalyzer no longer
+    // mounts WorkflowExecutionEngine: that mount sat behind the permanently-off
+    // PDGM legacy gate, which was removed with the PDGM payment features.
+    PredictiveOutcomesAnalyzer: [],
     OASISAutomationSettings: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
     WorkflowExecutionEngine: [
-      'src/components/hub-tabs/OASISAnalyzer.jsx',
       'src/components/hub-tabs/OASISClinicalReview.jsx',
     ],
     WorkflowMonitoringDashboard: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
@@ -639,13 +639,9 @@ test('interim-locked content entities keep a reviewed direct-consumer inventory'
       'src/components/fax/FaxRecipientFields.jsx :: user-scope :: list',
       'src/components/physician/PhysicianDirectory.jsx :: user-scope :: delete,filter,update',
       'src/components/physician/PhysicianForm.jsx :: user-scope :: create,update',
-      // `src/pages/ReferralFollowUp.jsx :: user-scope :: list` was here until that
-      // page was deleted. It read the directory to prefill a provider's fax number
-      // by best name match, and that read did not relocate: this test derives
-      // `actual` from the whole of `src/` and `base44/functions`, so a surviving
-      // caller would show up as an ADDED line rather than leave this one stale.
-      // Recorded rather than quietly dropped, because a shrinking inventory is the
-      // one direction this contract cannot tell from a consumer going unreviewed.
+      // Restored 2026-10-08 with the follow-up page: it reads the directory to
+      // prefill a provider's fax number by best name match.
+      'src/pages/ReferralFollowUp.jsx :: user-scope :: list',
     ],
     TrainingModule: [
       'base44/functions/duplicateInService/entry.ts :: service-role :: create,filter',

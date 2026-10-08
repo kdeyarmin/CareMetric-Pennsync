@@ -33,7 +33,6 @@ AUDIT DATA:
 - Patient: ${audit.patient_name}
 - Flag Reason: ${audit.flag_reason}
 - Scores: Overall ${audit.overall_score}%, Accuracy ${audit.accuracy_score}%, Compliance ${audit.compliance_score}%
-- Estimated Revenue Impact: $${audit.estimated_revenue_impact || 0}
 
 KEY ISSUES:
 ${JSON.stringify(audit.key_issues, null, 2)}

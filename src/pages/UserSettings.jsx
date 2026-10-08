@@ -35,7 +35,8 @@ import {
   Shield
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
-import { logSecurityEvent, isSafeExternalUrl } from "@/components/utils/security";
+import { isSafeExternalUrl } from "@/components/utils/security";
+import { CENTRAL_SUPPORT_EMAIL, accountDeletionEmailHref } from "@/lib/supportContacts";
 import { formatLocalDate } from "@/lib/dateLocal";
 import PageContainer from "@/components/ui/PageContainer";
 import PersonnelCredentialForm from "@/components/personnel/PersonnelCredentialForm";
@@ -66,6 +67,9 @@ export default function UserSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  // Set once a deletion request has been started in this session; drives the
+  // "finish by email" panel below the Delete button.
+  const [deletionRequest, setDeletionRequest] = useState(null);
   const [showCredentialForm, setShowCredentialForm] = useState(false);
   const [editingCredential, setEditingCredential] = useState(null);
   const [profileData, setProfileData] = useState({
@@ -232,15 +236,18 @@ export default function UserSettings() {
     setIsDeleting(true);
     try {
       // A user cannot hard-delete their own record under RLS, and clinical/PHI
-      // records are subject to retention rules. Submit an audited deletion request
-      // that an administrator processes, then sign the user out.
-      await logSecurityEvent('ACCOUNT_DELETION_REQUESTED', {
-        user_email: currentUser?.email,
-        requested_at: new Date().toISOString(),
-      }, 'warning');
-
+      // records are subject to retention rules, so deletion is a REQUEST that a
+      // person processes. What used to stand here told the user it had been
+      // "submitted" and "recorded in the security audit log" when, for anyone
+      // but a platform admin, nothing was: `logSecurityEvent` deliberately
+      // records nothing, and the User read rule (`email == me` or built-in
+      // `role == admin`) hides every admin row from a non-admin, so no
+      // notification had a recipient. The request a person can rely on is the
+      // email to central support, which the panel below opens pre-filled; the
+      // administrator notifications still go out where the caller can see an
+      // administrator, and the panel says how many did.
       const admins = await base44.entities.User.filter({ role: 'admin' }, undefined, ALL_ROWS).catch(() => []);
-      await Promise.all((admins || []).map((admin) =>
+      const delivered = await Promise.allSettled((admins || []).map((admin) =>
         base44.functions.invoke('createNotification', {
           user_email: admin.email,
           title: 'Account deletion requested',
@@ -248,11 +255,13 @@ export default function UserSettings() {
           type: 'system_update',
           priority: 'high',
           metadata: { requested_by: currentUser?.email },
-        }).catch((e) => console.warn("Failed to notify admin of account-deletion request:", e?.message))
+        })
       ));
-
-      toast.success('Your account deletion request has been submitted. An administrator will process it. You will be signed out now.');
-      await logout();
+      const notified = delivered.filter((result) => result.status === 'fulfilled').length;
+      setDeletionRequest({ requestedAt: new Date().toISOString(), notified });
+      setDeleteConfirm("");
+      // No toast: the tenant-safe sonner wrapper replaces caller text with a
+      // generic line, so the instructions live in the status panel instead.
     } catch (error) {
       console.error('Error requesting account deletion:', error);
       toast.error('Failed to submit account deletion request. Please contact support.');
@@ -844,7 +853,8 @@ export default function UserSettings() {
               Delete Account
             </CardTitle>
             <CardDescription className="text-red-600">
-              Permanently delete your account and all associated data. This action cannot be undone.
+              Request deletion of your PennSync account. CareMetric support processes the request with your
+              agency; clinical records your agency is legally required to keep are retained under its policy.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -861,17 +871,17 @@ export default function UserSettings() {
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                     <p className="text-sm text-red-900 font-semibold flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                      This submits a deletion request
+                      This starts a deletion request
                     </p>
                   </div>
                   <p className="text-sm text-slate-700">
-                    You are about to request deletion of your PennSync by CareMetric account. This action:
+                    You are about to request deletion of your PennSync by CareMetric account. Next you will:
                   </p>
                   <ul className="text-sm text-slate-700 space-y-1 ml-4 list-disc">
-                    <li>Notifies your administrators to process the deletion</li>
-                    <li>Is recorded in the security audit log</li>
-                    <li>Signs you out immediately</li>
-                    <li>Retains clinical/PHI records per your agency's data-retention policy</li>
+                    <li>Send a pre-filled email to CareMetric support ({CENTRAL_SUPPORT_EMAIL}) to complete the request</li>
+                    <li>Receive a reply from support once your account has been deleted</li>
+                    <li>Keep access until then; your agency&apos;s administrators are alerted where the app can reach them</li>
+                    <li>Have clinical/PHI records retained per your agency&apos;s data-retention policy</li>
                   </ul>
                   <div className="pt-3 border-t">
                     <label htmlFor="delete-account-confirm" className="text-sm font-medium text-slate-900 block mb-2">
@@ -901,6 +911,34 @@ export default function UserSettings() {
                 </div>
               </AlertDialogContent>
             </AlertDialog>
+            {deletionRequest && (
+              <div role="status" className="mt-4 space-y-3 rounded-lg border border-red-200 bg-white p-4">
+                <p className="text-sm font-semibold text-red-800">
+                  Finish your request: send the email to CareMetric support
+                </p>
+                <p className="text-sm text-slate-700">
+                  Send it from the address you use for PennSync so support can verify it is you. Support replies
+                  when your account has been deleted.
+                  {deletionRequest.notified > 0
+                    ? ` Your administrators were also alerted (${deletionRequest.notified}).`
+                    : ''}
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Button asChild variant="destructive" className="min-h-[44px]">
+                    <a href={accountDeletionEmailHref(currentUser?.email, deletionRequest.requestedAt)}>
+                      Email {CENTRAL_SUPPORT_EMAIL}
+                    </a>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="min-h-[44px]"
+                    onClick={async () => { await logout(); }}
+                  >
+                    Sign out
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

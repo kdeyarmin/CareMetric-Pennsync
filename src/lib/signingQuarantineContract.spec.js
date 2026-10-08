@@ -88,16 +88,25 @@ describe('document-signing quarantine contract', () => {
     expect(source).not.toMatch(/\bbase44\b|useQuery|useScopedPatients|<input|<textarea|bulkCreateDocumentPackages/);
   });
 
-  it('keeps the entire discharge-summary UI static and data-free', () => {
+  it('keeps clinician signature capture out of the restored discharge-summary UI', () => {
+    // 2026-10-08 owner decision: discharge drafts are generated and reviewed
+    // again, but signing stays with the agency's approved signing workflow.
     for (const file of [
       'src/components/discharge/DischargeSummaryWorkflow.jsx',
       'src/components/hub-tabs/DischargeSummaries.jsx',
     ]) {
       const source = read(file);
-      expect(source, file).toMatch(/Discharge summaries are temporarily unavailable/);
       expect(source, file).not.toMatch(
-        /\bbase44\b|useQuery|useMutation|DischargeSummary\.|DigitalSignaturePad|handleSignature|signature_data|status:\s*['"]signed['"]/,
+        /DigitalSignaturePad|handleSignature|signature_data|status:\s*['"]signed['"]/,
       );
+      for (const handler of Object.keys(quarantinedHandlers)) {
+        expect(source, `${file} ${handler}`).not.toContain(handler);
+      }
+      for (const name of quarantinedEntities) {
+        expect(source, `${file} ${name}`).not.toMatch(new RegExp(`entities\\.${name}\\b`));
+      }
     }
+    expect(read('src/components/discharge/DischargeSummaryWorkflow.jsx'))
+      .toMatch(/Clinician signature capture is unavailable/);
   });
 });

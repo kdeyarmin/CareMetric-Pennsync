@@ -568,32 +568,36 @@ function scanDirectPatientVisitReads(fileName, sourceText) {
   return [...findings.values()];
 }
 
-// The 42 removed calls across these 37 modules are a reviewed migration
+// The 37 removed calls across these 32 modules are a reviewed migration
 // inventory. Each entry records its original direct-read count and the broker
 // token(s) that must remain present after the cutover.
 //
 // It was 43 across 38 until `HospitalizationRiskWidget.jsx` — one read, on
 // the `hospitalization_risk` visit purpose — was deleted with the dashboard's
-// hospitalization risk monitor. The purpose itself stays: `PredictiveAnalytics.jsx`
-// below is its other caller, so nothing was removed from the purpose policies.
+// hospitalization risk monitor. It was then 42 across 37 until the clinical
+// risk-prediction and PDGM payment features were removed, which deleted
+// `PatientAlertAnalyzer.jsx`, `PredictiveOutcomesAnalyzer.jsx`,
+// `ClinicalInsightsDashboard.jsx` and `PredictiveAnalytics.jsx` (one read
+// each) and dropped `OASISAnalyzer.jsx`'s only read, a patient-history loader
+// whose sole consumer sat behind the permanently-off PDGM legacy gate. The
+// `hospitalization_risk` and `clinical_insights` visit purposes now have no
+// frontend caller; they stay in the purpose policies untouched, because the
+// backend capability is not part of this removal.
 const MIGRATED_CALLSITES = Object.freeze({
   'src/components/admin/AIAutoTagger.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'ai_tagging'/],
   'src/components/admin/AIKPIReportGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
   'src/components/admin/DataQualityDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'data_quality'/],
   'src/components/admin/QualityMetricsDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'operations_analytics'/],
-  'src/components/admin/SystemHealthMonitor.jsx': [2, /visitAggregatesAvailable\s*=\s*false/, /listAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'[\s\S]*?pageSize:\s*1/],
-  'src/components/alerts/PatientAlertAnalyzer.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
+  'src/components/admin/SystemHealthMonitor.jsx': [2, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/, /listAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'[\s\S]*?pageSize:\s*1/],
   'src/components/clinical/VitalsChart.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'vitals_trend'/],
   'src/components/compliance/AIComplianceAuditor.jsx': [2, /useAuthorizedPatient\s*\([\s\S]*?purpose:\s*'oasis_analysis_context'/, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/ProgressReportGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/ReferralLetterGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/SmartNotesContextPanel.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/hub-tabs/AdminReportsCenter.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
-  'src/components/hub-tabs/ComplianceMonitoringDashboard.jsx': [1, /visitComplianceAvailable\s*=\s*false/],
-  'src/components/hub-tabs/OASISAnalyzer.jsx': [1, /collectAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
-  'src/components/hub-tabs/PatientEducationPortal.jsx': [1, /Patient education generation is temporarily unavailable[\s\S]*?tenant-safe storage/],
+  'src/components/hub-tabs/ComplianceMonitoringDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'compliance_monitoring'/],
+  'src/components/hub-tabs/PatientEducationPortal.jsx': [1, /purpose: "education_delivery"/],
   'src/components/oasis/AIProactiveOASISAssistant.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
-  'src/components/oasis/PredictiveOutcomesAnalyzer.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
   'src/components/oasis/SmartNoteDataImport.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/patient/ClinicalEventsTimeline.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
   'src/components/patient/PatientMergeDialog.jsx': [2, /purpose:\s*'activity'/],
@@ -606,13 +610,11 @@ const MIGRATED_CALLSITES = Object.freeze({
   'src/components/voice/CallbackQueue.jsx': [1, /useScopedPatients\s*\([\s\S]*?purpose:\s*'contact'/],
   'src/hooks/useScopedPatients.js': [2, /listAuthorizedPatients\s*\(/],
   'src/pages/AgencyAnalytics.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'operations_analytics'/],
-  'src/pages/ClinicalInsightsDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'clinical_insights'/],
   'src/pages/ComplianceCenter.jsx': [1, /useScopedPatients\s*\([\s\S]*?purpose:\s*'roster'/],
   'src/pages/DuplicatePatients.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'deduplication'/],
   'src/pages/PatientDataManagement.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
   'src/pages/PatientRecordDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
   'src/pages/Patients.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
-  'src/pages/PredictiveAnalytics.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'hospitalization_risk'/],
   'src/pages/SmartNoteAssistant.jsx': [1, /useAuthorizedVisit\s*\([\s\S]*?purpose:\s*'documentation'/],
 });
 
@@ -766,7 +768,8 @@ describe('Patient/Visit direct-read containment', () => {
 
   it('keeps generic configuration lookup on an exact non-PHI runtime allowlist', () => {
     const source = readFileSync(path.join(SRC, 'lib/agencySettings.js'), 'utf8');
-    expect(source).toMatch(/const CONFIG_ENTITIES = Object\.freeze\(\{[\s\S]*?PayerRateConfig:[\s\S]*?FaxRetryConfig:/);
+    expect(source).toMatch(/const CONFIG_ENTITIES = Object\.freeze\(\{\s*FaxRetryConfig:[^,}]*,?\s*\}\)/);
+    expect(source).not.toMatch(/PayerRateConfig:|PDGMRateConfig:/);
     expect(source).toMatch(/if \(!Object\.hasOwn\(CONFIG_ENTITIES, entityName\)\) return null/);
     expect(source).not.toMatch(/base44\.entities\s*\[/);
     expect(source).not.toMatch(/\b(?:Patient|Visit)\s*:/);
@@ -787,9 +790,9 @@ describe('Patient/Visit direct-read containment', () => {
     expect(failures).toEqual([]);
   });
 
-  it('keeps the complete 42-read/37-module migration inventory on reviewed brokers', () => {
-    expect(Object.keys(MIGRATED_CALLSITES)).toHaveLength(37);
-    expect(Object.values(MIGRATED_CALLSITES).reduce((sum, [count]) => sum + count, 0)).toBe(42);
+  it('keeps the complete 37-read/32-module migration inventory on reviewed brokers', () => {
+    expect(Object.keys(MIGRATED_CALLSITES)).toHaveLength(32);
+    expect(Object.values(MIGRATED_CALLSITES).reduce((sum, [count]) => sum + count, 0)).toBe(37);
     for (const [relative, [, ...requirements]] of Object.entries(MIGRATED_CALLSITES)) {
       const source = readFileSync(path.join(ROOT, relative), 'utf8');
       for (const requirement of requirements) expect(source, relative).toMatch(requirement);
@@ -803,7 +806,11 @@ describe('Patient/Visit direct-read containment', () => {
     }
   });
 
-  it('keeps the incomplete AI compliance full-chart path statically unreachable', () => {
+  it('mounts the AI compliance full-chart audit only behind the reviewed chart-audit panel', () => {
+    // 2026-10-08 owner decision: the auditor is on. It is reachable from the
+    // Compliance Center's chart-audit panel alone, assembles its chart from
+    // three reviewed read purposes instead of a widened one, and validates the
+    // model's answer before anything is shown or stored.
     const auditorPath = path.join(SRC, 'components/compliance/AIComplianceAuditor.jsx');
     const references = [];
     for (const absolute of productionModules(SRC)) {
@@ -822,11 +829,23 @@ describe('Patient/Visit direct-read containment', () => {
         if (importedModule || jsxMount) references.push(path.relative(ROOT, absolute));
       }
     }
-    expect([...new Set(references)]).toEqual([]);
+    expect([...new Set(references)]).toEqual(['src/components/compliance/AIChartAuditPanel.jsx']);
+    expect(readFileSync(path.join(SRC, 'pages/ComplianceCenter.jsx'), 'utf8'))
+      .toContain('import("@/components/compliance/AIChartAuditPanel")');
 
     const auditor = readFileSync(auditorPath, 'utf8');
-    expect(auditor).toMatch(/const AI_COMPLIANCE_AUDITOR_ENABLED\s*=\s*false\s*;/);
-    expect(auditor).toMatch(/if \(!AI_COMPLIANCE_AUDITOR_ENABLED\)[\s\S]*?AI Compliance Audit Paused[\s\S]*?return <EnabledAIComplianceAuditor/);
+    expect(auditor).not.toContain('AI_COMPLIANCE_AUDITOR_ENABLED');
+    for (const purpose of ['oasis_analysis_context', 'smart_note_context', 'education_context']) {
+      expect(auditor).toMatch(new RegExp(`useAuthorizedPatient\\(\\{[\\s\\S]{0,160}purpose: '${purpose}'`));
+    }
+    expect(auditor).toContain('parts.some((part) => !part || part.id !== patientId)');
+    const validate = auditor.indexOf('normalizeComplianceAuditResult(result)');
+    const show = auditor.indexOf('setAuditResults(normalized)');
+    const store = auditor.indexOf('ComplianceAudit.create(buildComplianceAuditRecord(');
+    expect(validate).toBeGreaterThan(-1);
+    expect(show).toBeGreaterThan(validate);
+    expect(store).toBeGreaterThan(show);
+    expect(auditor).not.toContain("|| 'system'");
   });
 });
 

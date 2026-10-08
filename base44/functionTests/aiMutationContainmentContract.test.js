@@ -7,7 +7,6 @@ const read = (relativePath) => readFile(new URL(`../../${relativePath}`, import.
 const REVIEW_ONLY_COMPONENTS = [
   'src/components/oasis/OASISTaskGenerator.jsx',
   'src/components/carePlan/AutomatedTaskGenerator.jsx',
-  'src/components/alerts/PatientAlertAnalyzer.jsx',
   'src/components/tasks/ProactiveClinicalTaskGenerator.jsx',
   'src/components/oasis/ClinicalPathwayTrigger.jsx',
   'src/components/oasis/AIPathwayRecommender.jsx',

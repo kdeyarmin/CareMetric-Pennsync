@@ -20,7 +20,6 @@ import {
   FolderArchive,
   AlertTriangle,
   BarChart3,
-  GitCompare,
   Pause,
   StopCircle,
   FileSpreadsheet,
@@ -28,7 +27,6 @@ import {
   AlertCircle
 } from "lucide-react";
 import { processOASISBatch } from "@/functions/processOASISBatch";
-import EnhancedMultiReportComparison from "./EnhancedMultiReportComparison";
 
 export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }) {
   const [files, setFiles] = useState([]);
@@ -46,7 +44,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
   const [batchResults, setBatchResults] = useState(null);
   const [overallProgress, setOverallProgress] = useState(0);
   const [error, setError] = useState(null);
-  const [showComparison, setShowComparison] = useState(false);
   const [groupBy, setGroupBy] = useState('none'); // none, patient, issue_type, score
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(null);
 
@@ -276,9 +273,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
       'Primary Diagnosis',
       'Clinical Group',
       'Functional Level',
-      'PDGM Payment',
-      'PDGM Payment Reason',
-      'PDGM Payment Action',
       'Critical Issues',
       'Status'
     ];
@@ -299,9 +293,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
         pdgm.primary_diagnosis || 'Not specified',
         'Unavailable',
         'Unavailable',
-        'Unavailable',
-        'Verified CMS HHGS 432-group grouper is not implemented; legacy estimates are excluded.',
-        'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.',
         result.accuracy_issues?.length || 0,
         file.status
       ];
@@ -607,17 +598,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                         Export CSV
                       </Button>
                     )}
-                    {successCount >= 2 && (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => setShowComparison(!showComparison)} 
-                        className="border-navy-300 text-navy-700 hover:bg-navy-50"
-                      >
-                        <GitCompare className="w-4 h-4 mr-1" />
-                        {showComparison ? 'Hide' : 'Compare'}
-                      </Button>
-                    )}
                     {successCount > 0 && (
                       <Button size="sm" onClick={downloadAllReports} >
                         <Download className="w-4 h-4 mr-1" />
@@ -730,20 +710,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
               </Card>
             )}
           </div>
-        )}
-
-        {/* Comparison View */}
-        {showComparison && successCount >= 2 && (
-          <EnhancedMultiReportComparison
-            savedReports={files
-              .filter(f => f.status === 'success' && f.result)
-              .map(f => ({
-                ...f.result,
-                fileName: f.name,
-                pdgm_data: f.result?.pdgm_data,
-                timestamp: new Date().toISOString()
-              }))}
-          />
         )}
 
         {/* Error */}

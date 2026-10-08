@@ -191,12 +191,14 @@ function telnyxCredsMessage(creds, what) {
 
 const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
 
-// TelehealthSession records are still caller-shaped: a browser can currently
-// choose the host and room identifiers that this broker would otherwise treat
-// as authorization and provider-routing authority. Keep the complete Telnyx
-// implementation dormant until session creation and provider room binding are
-// moved behind a server-owned broker with an immutable binding record.
-const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;
+// Released by the owner on 2026-10-08 ("approve everything"). The reason this
+// was dormant, caller-shaped TelehealthSession rows, no longer holds: the
+// entity denies every client operation, and manageTelehealthSession is its only
+// writer, minting the room name, host ids and join-token hash server-side. The
+// room this mints a token for is the session row's own, found by exact name,
+// and staff are authorized by the stamped host_user_id (or the host/participant
+// identities the host recorded); a guest needs the session's join token.
+const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;
 
 /** Find a Telnyx room by unique_name, creating it if it doesn't exist yet. */
 async function findOrCreateRoom(apiKey, uniqueName) {
@@ -309,7 +311,8 @@ Deno.serve(async (req) => {
       // bypass is the protected built-in admin role plus the backend-configured
       // platform-owner email; custom account and agency fields are not authority.
       const participants = Array.isArray(session.participant_list) ? session.participant_list : [];
-      const isHostOrParticipant = normalizeProtectedEmail(session.host_email) === callerEmail
+      const isHostOrParticipant = (typeof session.host_user_id === 'string' && session.host_user_id === user.id)
+        || normalizeProtectedEmail(session.host_email) === callerEmail
         || participants.some((identity) => normalizeProtectedEmail(identity) === callerEmail);
       if (!isHostOrParticipant && !isProtectedSuperAdmin(user)) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });

@@ -16,8 +16,7 @@ async function autoFlagOASIS(oasisUpload, analysisResults) {
   const shouldFlag = 
     (analysisResults.accuracy_score < THRESHOLDS.accuracy) ||
     (analysisResults.compliance_score < THRESHOLDS.compliance) ||
-    (analysisResults.overall_score < THRESHOLDS.overall) ||
-    (analysisResults.specific_rescore_opportunities?.length > 2);
+    (analysisResults.overall_score < THRESHOLDS.overall);
 
   if (!shouldFlag) return null;
 
@@ -34,12 +33,6 @@ async function autoFlagOASIS(oasisUpload, analysisResults) {
     // Was < 70 while the trigger uses < 80, so a compliance shortfall in [70, 80)
     // fell through to the default low_accuracy/medium labels.
     flagReason = 'low_compliance';
-    priority = 'high';
-  } else if (analysisResults.specific_rescore_opportunities?.length > 2) {
-    // Must match the shouldFlag trigger above (> 2). Previously > 3, so a record
-    // flagged solely for having exactly 3 rescore opportunities fell through to
-    // the default low_accuracy/medium labels instead of revenue_opportunity/high.
-    flagReason = 'revenue_opportunity';
     priority = 'high';
   } else if (analysisResults.audit_risk_areas?.some(r => r.risk_level === 'high')) {
     flagReason = 'high_audit_risk';
@@ -93,13 +86,13 @@ async function autoFlagOASIS(oasisUpload, analysisResults) {
 
   // Rescore opportunities are no longer compiled. They carried
   // `current_score → recommended_score` per M-item with a dollar figure — an
-  // AI-chosen OASIS response presented as money left on the table.
+  // AI-chosen OASIS response presented as money left on the table. No revenue
+  // score or revenue-impact figure is written either.
   //
   // Documentation gaps REPLACE them in the audit record. Leaving this as an
   // empty array dropped the replacement findings entirely, so a new auto-flagged
   // audit rendered blank where the old one had content.
   const rescoreOpps = [];
-  const estimatedRevenue = 0;
   const documentationGaps = (analysisResults.documentation_gaps || []).map((gap) => ({
     m_item: gap.m_item_code || gap.m_item,
     gap_description: gap.gap_description,
@@ -115,11 +108,9 @@ async function autoFlagOASIS(oasisUpload, analysisResults) {
     documentation_gaps: documentationGaps,
     accuracy_score: analysisResults.accuracy_score,
     compliance_score: analysisResults.compliance_score,
-    revenue_score: analysisResults.revenue_optimization_score,
     overall_score: analysisResults.overall_score,
     key_issues: keyIssues,
     rescore_opportunities: rescoreOpps,
-    estimated_revenue_impact: estimatedRevenue,
     status: 'pending_review',
     priority: priority
   };

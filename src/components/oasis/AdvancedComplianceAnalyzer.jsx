@@ -114,7 +114,7 @@ COMPLIANCE ANALYSIS REQUIREMENTS:
 3. TAILORED REMEDIATION:
    - Provide patient-specific recommendations based on diagnosis, functional status, and clinical context
    - Suggest exact documentation language that satisfies regulatory requirements
-   - Prioritize fixes by audit risk level and revenue impact
+   - Prioritize fixes by audit risk level and patient-safety impact
    - Include preventive measures to avoid similar issues in future assessments
 
 DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,

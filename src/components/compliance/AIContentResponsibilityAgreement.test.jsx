@@ -37,6 +37,16 @@ describe('AIContentResponsibilityAgreement', () => {
     expect(boxes).toHaveLength(AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.length);
   });
 
+  it('names the third-party AI providers before the user agrees (Guideline 5.1.2(i))', () => {
+    render(<AIContentResponsibilityAgreement />);
+    const disclosure = screen.getByRole('region', { name: /where your information goes when you use ai/i });
+    for (const provider of ['OpenAI', 'Anthropic', 'Google']) {
+      expect(disclosure).toHaveTextContent(provider);
+    }
+    expect(disclosure).toHaveTextContent(/patient health information/i);
+    expect(screen.getByText(/sent to the providers named above/i)).toBeInTheDocument();
+  });
+
   it('keeps "I Agree & Continue" disabled until every acknowledgment is checked', () => {
     render(<AIContentResponsibilityAgreement />);
     const agree = screen.getByRole('button', { name: /i agree & continue/i });

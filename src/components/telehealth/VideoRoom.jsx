@@ -38,7 +38,7 @@ function identityFromParticipant(p) {
   return p.id;
 }
 
-export default function VideoRoom({ roomName, identity, onDisconnect, onParticipantListChange, joinToken, videoDeviceId, audioDeviceId, waitingMessage = "Waiting for patient to join..." }) {
+export default function VideoRoom({ roomName, identity, onDisconnect, onParticipantListChange, joinToken, requestToken = createTelehealthToken, videoDeviceId, audioDeviceId, waitingMessage = "Waiting for patient to join..." }) {
   // Remote participants, keyed for rendering. Each: { id, identity, streamKeys }
   const [participants, setParticipants] = useState([]);
   const [status, setStatus] = useState("connecting"); // connecting | connected | reconnecting | error | disconnected
@@ -124,8 +124,10 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
     try {
       setStatus("connecting");
       // Patients authenticate with the per-session capability token from their
-      // invite link; staff authenticate with their app session.
-      const res = await createTelehealthToken(
+      // invite link, through the public capability lease their page passes as
+      // `requestToken` (the tenant SDK is closed on public routes); staff
+      // authenticate with their app session through the default.
+      const res = await requestToken(
         joinToken ? { room_name: roomName, join_token: joinToken } : { room_name: roomName, identity }
       );
       const { token, room_id } = res.data || {};
@@ -250,7 +252,7 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
     // onDisconnect intentionally omitted: it's read through onDisconnectRef so a
     // new callback identity from the parent doesn't rebuild (and prematurely tear
     // down) the room.
-  }, [roomName, identity, joinToken, videoDeviceId, audioDeviceId, syncParticipants, subscribeRemote, handleIncomingMessage]);
+  }, [roomName, identity, joinToken, requestToken, videoDeviceId, audioDeviceId, syncParticipants, subscribeRemote, handleIncomingMessage]);
 
   useEffect(() => {
     connectToRoom();

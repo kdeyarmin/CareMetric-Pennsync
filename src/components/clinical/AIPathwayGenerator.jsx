@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Sparkles, Brain, CheckCircle2, AlertCircle } from "lucide-react";
 import AICaveat from "@/components/ui/AICaveat";
+import { pathwayCreatePayload } from "@/components/clinical/clinicalPathwayRecord";
 
 export default function AIPathwayGenerator({ onPathwayGenerated }) {
   const [diagnosis, setDiagnosis] = useState("");
@@ -51,7 +52,6 @@ Generate a detailed clinical pathway with the following components:
    - m_item (specific OASIS item)
    - typical_score_range
    - documentation_to_support
-   - revenue_impact
 8. Recommended Tasks: Array of auto-tasks with:
    - task_title
    - task_description
@@ -61,7 +61,7 @@ Generate a detailed clinical pathway with the following components:
 9. Comorbidity Checklist: Array of common comorbidities to assess
 10. Functional Focus Areas: Array of key functional areas to assess
 
-Base recommendations on current Medicare guidelines, evidence-based practice, and PDGM optimization strategies.
+Base recommendations on current Medicare guidelines and evidence-based practice. Do not optimize for payment, reimbursement, case mix, or revenue.
 
 Return ONLY valid JSON without any markdown formatting or explanations.`;
 
@@ -110,8 +110,7 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
                       properties: {
                         m_item: { type: "string" },
                         typical_score_range: { type: "string" },
-                        documentation_to_support: { type: "string" },
-                        revenue_impact: { type: "string" }
+                        documentation_to_support: { type: "string" }
                       }
                     }
                   },
@@ -151,7 +150,7 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
 
   const handleSavePathway = async (pathway) => {
     try {
-      await base44.entities.ClinicalPathway.create(pathway);
+      await base44.entities.ClinicalPathway.create(pathwayCreatePayload(pathway, { fallbackCondition: diagnosis }));
       if (onPathwayGenerated) {
         onPathwayGenerated(pathway);
       }

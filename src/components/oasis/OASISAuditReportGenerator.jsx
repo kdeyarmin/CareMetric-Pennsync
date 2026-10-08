@@ -92,9 +92,7 @@ export default function OASISAuditReportGenerator({ audit, isOpen, onClose, curr
           overall: audit.overall_score,
           accuracy: audit.accuracy_score,
           compliance: audit.compliance_score,
-          revenue: audit.revenue_score
         },
-        estimated_revenue_impact: audit.estimated_revenue_impact,
         key_issues: audit.key_issues,
         rescore_opportunities: audit.rescore_opportunities,
         auditor_findings: audit.auditor_findings,
@@ -122,9 +120,10 @@ Format as a professional clinical audit report. Include:
 1. Header with patient name, date, auditor name
 2. Executive summary
 3. Detailed findings with severity levels
-4. Revenue impact analysis
-5. Action items and recommendations
-6. Signature line for auditor
+4. Action items and recommendations
+5. Signature line for auditor
+
+Do not estimate payment, reimbursement, revenue, or case-mix impact.
 
 Use proper markdown formatting with headers, bullet points, and tables where appropriate.`,
         response_json_schema: {
@@ -183,9 +182,6 @@ Use proper markdown formatting with headers, bullet points, and tables where app
 | Overall | ${data.scores.overall}% | ${data.scores.overall >= 70 ? '✓ Pass' : '✗ Needs Review'} |
 | Accuracy | ${data.scores.accuracy}% | ${data.scores.accuracy >= 75 ? '✓ Pass' : '✗ Needs Review'} |
 | Compliance | ${data.scores.compliance}% | ${data.scores.compliance >= 80 ? '✓ Pass' : '✗ Needs Review'} |
-
-## Estimated Revenue Impact
-**$${data.estimated_revenue_impact?.toLocaleString() || 0}** potential recovery
 
 ## Key Issues Identified
 ${data.key_issues?.map(issue => `
@@ -350,8 +346,7 @@ ${data.corrections?.map(c => `
               <AlertDescription className="text-blue-800 text-sm">
                 <strong>Report Preview:</strong> {audit.patient_name} | 
                 Overall: {audit.overall_score}% | 
-                {audit.key_issues?.length || 0} issues | 
-                ${audit.estimated_revenue_impact?.toLocaleString() || 0} revenue impact
+                {audit.key_issues?.length || 0} issues
               </AlertDescription>
             </Alert>
 

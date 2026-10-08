@@ -3,8 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle } from "lucide-react";
 import OASISNoAnalysisCard from "@/components/oasis/OASISNoAnalysisCard";
 import OASISValidationPanel from "@/components/oasis/OASISValidationPanel";
-import AuditRiskPredictor from "@/components/oasis/AuditRiskPredictor";
-import AIAuditRiskPredictor from "@/components/oasis/AIAuditRiskPredictor";
 import AdvancedComplianceAnalyzer from "@/components/oasis/AdvancedComplianceAnalyzer";
 
 const OASIS_COMPLIANCE_REVIEW_ENABLED = false;
@@ -112,17 +110,6 @@ function EnabledOASISComplianceReview({ analysisHandoff }) {
           </CardContent>
         </Card>
       )}
-
-      {/* Audit Risk Predictors */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AuditRiskPredictor analysisResults={analysisResults} />
-        {patientId && (
-          <AIAuditRiskPredictor 
-            currentOASISData={analysisResults}
-            patientId={patientId}
-          />
-        )}
-      </div>
     </div>
   );
 }

@@ -73,8 +73,9 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
 import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
-import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { STAFF_ROLE_OPTIONS, getStaffRole, getTrustedTenantContext, staffRoleLabel } from "@/lib/roles";
 import { isAdminLike, isSuperAdmin } from "@/lib/superAdmin";
+import AgencyAccessPanel from "@/components/admin/AgencyAccessPanel";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,6 +108,11 @@ export default function UserManagement() {
   // admins must not be shown controls that those APIs will reject.
   const canManageUsers = isAdminLike(currentUser);
   const canManageOffboarding = isSuperAdmin(currentUser);
+  // Reactivation (owner decision, 2026-10-08) is the owner's and an agency
+  // administrator's; offboardUser re-checks the service-owned membership and
+  // limits an agency administrator to former members of their own agency.
+  const callerTenantRole = getTrustedTenantContext(currentUser)?.tenant_role || null;
+  const canReactivateUsers = canManageOffboarding || callerTenantRole === 'agency_admin';
 
   const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ['allUsersManagement', agencyQueryKey(currentUser)],
@@ -270,24 +276,59 @@ export default function UserManagement() {
   };
 
   const handleToggleActive = (user) => {
-    if (user?.is_active === false) {
-      toast.error('User reactivation is temporarily unavailable pending retirement of legacy PHI grants.');
-      return;
-    }
     setSelectedUser(user);
     setShowDisableDialog(true);
   };
 
-  const confirmToggleActive = async () => {
+  const confirmReactivate = async () => {
     if (!selectedUser) return;
-    if (!canManageOffboarding) {
-      toast.error('Offboarding is restricted to the protected platform owner while tenant membership migration is in progress.');
+    if (!canReactivateUsers) {
+      toast.error('Reactivation is limited to the platform owner and agency administrators.');
       return;
     }
-    if (selectedUser.is_active === false) {
-      toast.error('User reactivation is temporarily unavailable pending retirement of legacy PHI grants.');
+    try {
+      const args = buildOffboardInvokeArgs({
+        targetUser: selectedUser,
+        currentUser,
+        enabling: true,
+      });
+      const res = await base44.functions.invoke('offboardUser', args);
+      const payload = res?.data || res || {};
+      if (payload.error) throw new Error(payload.error);
+      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      logActivity(ActivityActions.USER_ENABLED, {
+        user_email: selectedUser.email,
+        user_name: selectedUser.full_name,
+        entity_type: 'User',
+        entity_id: selectedUser.id,
+        membership_authority_restored: payload.membership_authority_restored === true,
+      });
+      // The identity is active again, but offboarding revoked every agency
+      // membership and a revoked membership stays revoked: say so, rather than
+      // implying the person can use the agency's records again.
+      toast.success(
+        payload.membership_authority_restored === true
+          ? 'User reactivated.'
+          : 'Account reactivated. Their agency access was revoked at offboarding and must be granted again before they can see agency records.',
+        { duration: 10000 },
+      );
       setShowDisableDialog(false);
       setSelectedUser(null);
+    } catch (err) {
+      toast.error(err?.message || 'Could not reactivate user');
+    }
+  };
+
+  const confirmToggleActive = async () => {
+    if (!selectedUser) return;
+    if (selectedUser.is_active === false) {
+      await confirmReactivate();
+      return;
+    }
+    if (!canManageOffboarding) {
+      toast.error('Offboarding is restricted to the protected platform owner while tenant membership migration is in progress.');
       return;
     }
     try {
@@ -457,6 +498,8 @@ export default function UserManagement() {
         <StatCard label="Active" value={stats.active} icon={UserCheck} tone="emerald" />
         <StatCard label="Inactive" value={stats.inactive} icon={UserX} tone="red" />
       </div>
+
+      <AgencyAccessPanel currentUser={currentUser} users={allUsers} />
 
       <Card className="mb-4 sm:mb-6 modern-card">
         <CardContent className="p-3 sm:p-4">
@@ -758,11 +801,11 @@ export default function UserManagement() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={isActive ? () => handleToggleActive(user) : undefined}
-                              disabled={!isActive || currentUser.email === user.email || !canManageOffboarding}
+                              onClick={() => handleToggleActive(user)}
+                              disabled={currentUser.email === user.email || (isActive ? !canManageOffboarding : !canReactivateUsers)}
                               className={`min-h-[44px] w-10 sm:w-auto p-2 ${isActive ? 'text-red-600 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-700'}`}
                               title={!isActive
-                                ? 'Reactivation temporarily unavailable pending retirement of legacy PHI grants'
+                                ? (canReactivateUsers ? 'Reactivate user' : 'Platform owner or agency administrator only')
                                 : !canManageOffboarding
                                 ? 'Protected platform owner only while tenant membership migration is in progress'
                                 : 'Disable / offboard user'}
@@ -902,18 +945,22 @@ export default function UserManagement() {
       <AlertDialog open={showDisableDialog} onOpenChange={setShowDisableDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Disable / Offboard User</AlertDialogTitle>
+            <AlertDialogTitle>{selectedUser?.is_active === false ? 'Reactivate User' : 'Disable / Offboard User'}</AlertDialogTitle>
             <AlertDialogDescription>
-              <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This first revokes every validated tenant membership, then deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
+              {selectedUser?.is_active === false ? (
+                <>Reactivate <strong>{selectedUser?.full_name}</strong>? Their account becomes active again. The agency memberships revoked at offboarding stay revoked, so they see no agency records until access is granted again.</>
+              ) : (
+                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This first revokes every validated tenant membership, then deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmToggleActive}
-              className="bg-red-600"
+              className={selectedUser?.is_active === false ? 'bg-emerald-600' : 'bg-red-600'}
             >
-              Offboard
+              {selectedUser?.is_active === false ? 'Reactivate' : 'Offboard'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

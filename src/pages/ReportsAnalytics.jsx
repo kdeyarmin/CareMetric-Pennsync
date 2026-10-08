@@ -15,7 +15,6 @@ import ReferralVolumeReport from "@/components/reports/ReferralVolumeReport";
 import FollowUpAnalytics from "@/components/reports/FollowUpAnalytics";
 import NursePerformanceReport from "@/components/reports/NursePerformanceReport";
 import OASISComplianceReport from "@/components/reports/OASISComplianceReport";
-import PDGMReimbursementReport from "@/components/reports/PDGMReimbursementReport";
 import KPIDashboard from "@/components/reports/KPIDashboard";
 import MetricDictionaryStrip from "@/components/reports/MetricDictionaryStrip";
 import LoadingState from "@/components/ui/LoadingState";
@@ -30,8 +29,9 @@ const AnalyticsDashboard = lazy(() => import("@/pages/AnalyticsDashboard"));
 
 // Tab keys, kept in sync with the TabsTrigger values below. Used to validate the
 // ?tab= deep-link so the retired Reports Center / Analytics Dashboard pages
-// redirect to the right tab.
-const TAB_KEYS = ["kpi", "perf-dashboard", "referrals", "performance", "oasis", "pdgm", "reports-center"];
+// redirect to the right tab. (The former "pdgm" reimbursement tab was removed
+// with the PDGM payment features; a stale ?tab=pdgm resolves to the default.)
+const TAB_KEYS = ["kpi", "perf-dashboard", "referrals", "performance", "oasis", "reports-center"];
 
 const tabLoader = <LoadingState className="py-12" />;
 
@@ -81,7 +81,7 @@ export default function ReportsAnalytics() {
         icon={BarChart3}
         eyebrow="Analytics"
         title="Reports & Analytics"
-        description="KPIs, documentation performance, outcomes, OASIS/PDGM, and agency reports"
+        description="KPIs, documentation performance, outcomes, OASIS, and agency reports"
         favoritePage="ReportsAnalytics"
       />
 
@@ -107,9 +107,6 @@ export default function ReportsAnalytics() {
             </TabsTrigger>
             <TabsTrigger value="oasis" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               OASIS
-            </TabsTrigger>
-            <TabsTrigger value="pdgm" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
-              PDGM
             </TabsTrigger>
             <TabsTrigger value="reports-center" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <Building2 className="w-4 h-4 mr-2" />
@@ -139,10 +136,6 @@ export default function ReportsAnalytics() {
 
         <TabsContent value="oasis">
           <OASISComplianceReport dateRange={dateRange} />
-        </TabsContent>
-
-        <TabsContent value="pdgm">
-          <PDGMReimbursementReport dateRange={dateRange} />
         </TabsContent>
 
         <TabsContent value="reports-center">

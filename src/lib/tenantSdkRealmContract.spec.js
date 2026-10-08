@@ -66,6 +66,7 @@ describe('protected SDK browser-realm contract', () => {
 
     expect(consumers('tenantAuthorityClient')).toEqual(allowedTenantAuthorityConsumers);
     expect(consumers('publicCapabilityClient')).toEqual([
+      'src/pages/JoinTelehealth.jsx',
       'src/pages/ProviderFollowUpPortal.jsx',
     ]);
 
@@ -79,6 +80,8 @@ describe('protected SDK browser-realm contract', () => {
     expect(client).toMatch(/export const publicCapabilityClient = Object\.freeze\(\{/);
     expect(client).toMatch(/validateFollowUpToken: \(lease, payload\) => runPublicCapabilityOperation\(/);
     expect(client).toMatch(/submitFollowUpResponse: \(lease, payload\) => runPublicCapabilityOperation\(/);
+    // The patient's /join page, released 2026-10-08: lease-fenced like the others.
+    expect(client).toMatch(/createTelehealthToken: \(lease, payload\) => runPublicCapabilityOperation\(/);
     expect(client).not.toMatch(/submitSignerSignature|validateSignerToken|uploadSignerArtifact|UploadFile/);
     expect(client).not.toMatch(/tenantAuthorityClient[\s\S]{0,500}\binvoke\s*:/);
     expect(client).not.toMatch(/publicCapabilityClient[\s\S]{0,1200}\binvoke\s*:/);
