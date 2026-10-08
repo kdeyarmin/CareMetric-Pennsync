@@ -51,8 +51,16 @@ describe('global Visit unavailable-state containment', () => {
     expect(quality).toContain('freshQuerySuccess(incidentQuery)');
     expect(quality).toContain('freshQuerySuccess(userQuery)');
     expect(quality).toContain('sameAuthorizedTenantScope(auxiliaryTenantScope, patientQuery.tenantScope)');
-    expect(quality).not.toContain('NoteConversion.list');
-    expect(quality).toContain('tenant-authorized NoteConversion');
+    // 2026-10-08 owner decision: quality score (compliance audits) and AI time
+    // saved (note enhancements) are measured again, from fresh nurse-attributed
+    // agency reads that gate the snapshot like every other source.
+    expect(quality).toMatch(/const noteConversionQuery = useAgencyScopedQuery\(\{[\s\S]{0,300}NoteConversion\.list\(/);
+    expect(quality).toMatch(/const complianceAuditQuery = useAgencyScopedQuery\(\{[\s\S]{0,300}ComplianceAudit\.list\(/);
+    expect(quality).toContain('freshQuerySuccess(noteConversionQuery)');
+    expect(quality).toContain('freshQuerySuccess(complianceAuditQuery)');
+    expect(quality).toMatch(/&& complianceAuditFresh\s*&& noteConversionFresh/);
+    expect(quality).toContain('avgQualityScore: averageAuditScore(allComplianceAudits)');
+    expect(quality).not.toContain('SecurityLog');
     expect(kpi).toContain('freshQuerySuccess(incidentQuery)');
     // 2026-10-08 owner decision: KPI reports are on. The compliance-audit
     // source is loaded again, but only a FRESH post-mount answer may feed the
