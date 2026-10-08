@@ -6,12 +6,16 @@ import { describe, expect, it } from 'vitest';
 const readSource = (relative) => readFileSync(path.join(process.cwd(), relative), 'utf8');
 
 describe('Patient/Visit aggregate UI quarantine', () => {
-  it('keeps System Health off the full-list collector and exposes only a bounded tenant probe', () => {
+  it('loads System Health visit counts once through the broker and never polls them', () => {
+    // 2026-10-08 owner decision: visit volume and error rate are measured
+    // again — through the purpose-limited broker, loaded once and refreshed on
+    // demand, with an unsettled source shown as a dash rather than zero.
     const source = readSource('src/components/admin/SystemHealthMonitor.jsx');
 
-    expect(source).not.toMatch(/\buseAuthorizedVisits\b/);
+    expect(source).toMatch(/useAuthorizedVisits\(\{\s*purpose: 'activity',/);
     expect(source).not.toMatch(/refetchInterval\s*:/);
-    expect(source).toMatch(/visitAggregatesAvailable\s*=\s*false/);
+    expect(source).not.toMatch(/visitAggregatesAvailable\s*=\s*false/);
+    expect(source).toMatch(/const healthVisits = visitAggregatesAvailable \? visitQuery\.data : null;/);
     expect(source).toMatch(
       /listAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'[\s\S]*?sort:\s*'id_asc'[\s\S]*?pageSize:\s*1/,
     );
@@ -24,15 +28,19 @@ describe('Patient/Visit aggregate UI quarantine', () => {
     expect(source).toMatch(/They are not reported as zero/);
   });
 
-  it('withholds Compliance metrics while sources reauthorize and pauses Visit aggregation', () => {
+  it('withholds Compliance metrics while sources reauthorize and loads Visit documentation once', () => {
+    // 2026-10-08 owner decision: incomplete-documentation compliance is back,
+    // from one broker read (no timer) that the Refresh button re-runs.
     const source = readSource('src/components/hub-tabs/ComplianceMonitoringDashboard.jsx');
 
-    expect(source).not.toMatch(/\buseAuthorizedVisits\b|\blistAuthorizedVisits\b/);
+    expect(source).toMatch(/useAuthorizedVisits\(\{\s*purpose: 'compliance_monitoring',/);
+    expect(source).not.toMatch(/\blistAuthorizedVisits\b/);
     expect(source).not.toMatch(/refetchInterval\s*:|initialData\s*:/);
-    expect(source).toMatch(/visitComplianceAvailable\s*=\s*false/);
+    expect(source).not.toMatch(/visitComplianceAvailable\s*=\s*false/);
+    expect(source).toMatch(/const incompleteDoc = visitComplianceAvailable/);
     expect(source.match(/isFetchedAfterMount:/g)).toHaveLength(4);
     expect(source.match(/isFetching:/g)).toHaveLength(4);
-    expect(source).toMatch(/results\.some\(\(result\)\s*=>\s*result\.isError\s*\|\|\s*result\.error\)/);
+    expect(source).toMatch(/results\.some\(\(result\)\s*=>\s*result && \(result\.isError\s*\|\|\s*result\.error\)\)/);
     expect(source).toMatch(/cached metrics are withheld/);
     expect(source).toMatch(/No empty result is being reported as compliant/);
     expect(source).not.toMatch(/All Clear!/);

@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { listAuthorizedVisits } from '@/functions/listAuthorizedVisits';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
+import { toLocalISODate } from '@/lib/dateLocal';
 import { useAuth } from '@/lib/AuthContext';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,9 +84,28 @@ export default function SystemHealthMonitor() {
     apiOk: null,
   });
   const upProbesRef = useRef({ ok: 0, total: 0 });
-  // Visit volume/error-rate metrics require a reviewed bounded aggregate.
-  // Do not poll the paginated PHI broker and misrepresent denial as zero data.
-  const visitAggregatesAvailable = false;
+  // Visit volume and the incident-per-visit error rate come from the
+  // purpose-limited Visit broker and the agency incident read. Neither polls:
+  // they load once, refresh on demand, and a source that has not settled is
+  // shown as a dash rather than as zero.
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'activity',
+    sort: '-created_date',
+    limit: 500,
+    enabled: Boolean(probeAgencyId),
+  });
+  const incidentQuery = useAgencyScopedQuery({
+    queryKey: ['health-incidents'],
+    fetch: () => base44.entities.Incident.filter({ status: 'reported' }, '-created_date', 500),
+  });
+  const visitAggregatesAvailable = visitQuery.isSuccess
+    && Array.isArray(visitQuery.data)
+    && incidentQuery.isSuccess
+    && incidentQuery.isFetchedAfterMount
+    && !incidentQuery.isFetching
+    && Array.isArray(incidentQuery.data);
+  const healthVisits = visitAggregatesAvailable ? visitQuery.data : null;
+  const healthIncidents = visitAggregatesAvailable ? incidentQuery.data : null;
   const {
     data: users = [],
     isSuccess: usersReady,
@@ -161,16 +183,22 @@ export default function SystemHealthMonitor() {
     const today = new Date();
 
     const probes = upProbesRef.current;
+    const todayKey = toLocalISODate(today);
     const newMetrics = {
       api_response: scopedApiLatency ?? undefined,
-      error_rate: undefined,
+      // Open (reported) incidents per loaded visit, as a percentage.
+      error_rate: healthVisits && healthIncidents
+        ? parseFloat(((healthIncidents.length / Math.max(healthVisits.length, 1)) * 100).toFixed(2))
+        : undefined,
       uptime: probes.total ? parseFloat(((probes.ok / probes.total) * 100).toFixed(3)) : undefined,
       active_users: userMetricsAvailable ? users.filter(u => {
         const d = new Date(u.updated_date || u.created_date);
         return (today - d) < 60 * 60 * 1000;
       }).length : undefined,
       db_latency: scopedDbLatency ?? undefined,
-      visits_today: undefined,
+      visits_today: healthVisits
+        ? healthVisits.filter((visit) => visit.visit_date === todayKey).length
+        : undefined,
       total_users: userMetricsAvailable ? users.length : undefined,
     };
     setMetrics(newMetrics);
@@ -187,7 +215,7 @@ export default function SystemHealthMonitor() {
     if (newMetrics.uptime < 99) newAlerts.push({ level: "critical", title: "Uptime Below Threshold", message: `System uptime at ${newMetrics.uptime}% — investigate immediately.` });
     setAlerts(newAlerts);
     setDismissed([]);
-  }, [users, userMetricsAvailable, notificationsEnabled, scopedApiLatency, scopedDbLatency, scopedApiOk]);
+  }, [users, userMetricsAvailable, notificationsEnabled, scopedApiLatency, scopedDbLatency, scopedApiOk, healthVisits, healthIncidents]);
 
   useEffect(() => {
     refresh();
@@ -245,7 +273,11 @@ export default function SystemHealthMonitor() {
               variant="outline"
               size="sm"
               className="h-8 gap-1 text-xs"
-              onClick={refresh}
+              onClick={() => {
+                visitQuery.refetch?.();
+                incidentQuery.refetch();
+                refresh();
+              }}
             >
               <RefreshCw className="w-3.5 h-3.5" /> Refresh
             </Button>
@@ -253,10 +285,10 @@ export default function SystemHealthMonitor() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!visitAggregatesAvailable && (
+        {!visitAggregatesAvailable && (visitQuery.isError || incidentQuery.isError) && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Visit volume and Visit-derived error-rate metrics are unavailable until a bounded,
-            tenant-scoped aggregate broker is reviewed. They are not reported as zero.
+            Visit volume and error-rate metrics are unavailable because the visit or incident
+            records could not be loaded. They are not reported as zero.
           </div>
         )}
         {!tenantContext?.agency_id && (
@@ -300,7 +332,7 @@ export default function SystemHealthMonitor() {
             label="Error Rate"
             value={metricValue(metrics.error_rate, "%")}
             tone={metricTone(metrics.error_rate, getStatus("error_rate", metrics.error_rate))}
-            sub="Visit aggregate paused"
+            sub="open incidents per visit"
             icon={AlertTriangle}
           />
           <StatCard
@@ -336,7 +368,7 @@ export default function SystemHealthMonitor() {
           ))}
         </div>
 
-        <p className="text-xs text-slate-400 text-center">Bounded API and DB latency probes refresh every 30s; full-list Visit polling is paused</p>
+        <p className="text-xs text-slate-400 text-center">Bounded API and DB latency probes refresh every 30s; visit and incident counts refresh on demand</p>
       </CardContent>
     </Card>
   );
