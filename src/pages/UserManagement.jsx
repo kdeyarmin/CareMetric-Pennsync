@@ -75,6 +75,7 @@ import UserActivityUnavailable from "@/components/security/UserActivityUnavailab
 import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
 import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
 import { isAdminLike, isSuperAdmin } from "@/lib/superAdmin";
+import AgencyAccessPanel from "@/components/admin/AgencyAccessPanel";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -457,6 +458,8 @@ export default function UserManagement() {
         <StatCard label="Active" value={stats.active} icon={UserCheck} tone="emerald" />
         <StatCard label="Inactive" value={stats.inactive} icon={UserX} tone="red" />
       </div>
+
+      <AgencyAccessPanel currentUser={currentUser} users={allUsers} />
 
       <Card className="mb-4 sm:mb-6 modern-card">
         <CardContent className="p-3 sm:p-4">
