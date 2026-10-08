@@ -126,7 +126,7 @@ ${JSON.stringify(flaggedItems, null, 2)}
 For each item, provide:
 1. The specific CMS regulation or guideline that applies
 2. Plain-language explanation of what CMS requires
-3. Why this matters for reimbursement and audit protection
+3. Why this matters for compliance and audit protection (do not discuss payment or reimbursement)
 4. Common mistakes agencies make
 5. Best practice documentation tips
 
@@ -138,7 +138,6 @@ Return JSON:
       "regulation_reference": "Specific CMS reference (e.g., CMS-HH-PPS, OASIS-E Guidance)",
       "requirement_summary": "What CMS specifically requires",
       "plain_language": "Simple explanation for clinicians",
-      "reimbursement_impact": "How this affects payment",
       "audit_risk": "What auditors look for",
       "common_mistakes": ["mistake 1", "mistake 2"],
       "best_practices": ["practice 1", "practice 2"],
@@ -159,7 +158,6 @@ Return JSON:
                   regulation_reference: { type: "string" },
                   requirement_summary: { type: "string" },
                   plain_language: { type: "string" },
-                  reimbursement_impact: { type: "string" },
                   audit_risk: { type: "string" },
                   common_mistakes: { type: "array", items: { type: "string" } },
                   best_practices: { type: "array", items: { type: "string" } },
@@ -394,11 +392,7 @@ Return JSON:
                             <p className="text-sm text-slate-800 bg-white p-2 rounded border">{exp.plain_language}</p>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-green-50 p-2 rounded border border-green-200">
-                              <p className="text-xs font-semibold text-green-700">Reimbursement Impact:</p>
-                              <p className="text-xs text-green-800">{exp.reimbursement_impact}</p>
-                            </div>
+                          <div className="grid grid-cols-1 gap-2">
                             <div className="bg-red-50 p-2 rounded border border-red-200">
                               <p className="text-xs font-semibold text-red-700">Audit Risk:</p>
                               <p className="text-xs text-red-800">{exp.audit_risk}</p>

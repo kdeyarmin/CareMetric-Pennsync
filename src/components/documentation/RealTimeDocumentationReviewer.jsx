@@ -10,7 +10,6 @@ import {
   CheckCircle2, 
   FileText, 
   Shield, 
-  DollarSign,
   Eye,
   Sparkles,
   Copy,
@@ -54,7 +53,7 @@ export default function RealTimeDocumentationReviewer({
         model: "automatic",
         prompt: `You are an expert Medicare compliance auditor and clinical documentation specialist with 20+ years of experience reviewing home health nursing documentation.
 
-Analyze the following nursing note for completeness, accuracy, Medicare/OASIS compliance, and PDGM optimization:
+Analyze the following nursing note for completeness, accuracy, clarity, and Medicare/OASIS compliance. Do not reason about payment, reimbursement, case mix, or PDGM grouping, and never suggest documentation in order to change a payment:
 
 NOTE TYPE: ${noteType}
 PATIENT DATA: ${JSON.stringify(patientData || {}, null, 2)}
@@ -78,7 +77,7 @@ Each issue should include:
 - section: which part of note (e.g., "Objective", "Assessment")
 - issue: clear description of the problem
 - suggestion: specific fix with example language
-- why_it_matters: compliance/reimbursement impact
+- why_it_matters: compliance and patient-care impact
 
 **COMPLETENESS GAPS:**
 Missing elements that strengthen documentation:
@@ -105,18 +104,6 @@ Each improvement should include:
 - improved_version: specific, measurable alternative
 - why_better: why this is clearer
 
-**PDGM OPTIMIZATION:**
-Opportunities to improve case mix/reimbursement:
-- Comorbidities that should be documented more clearly
-- Functional limitations needing detailed documentation
-- Skilled interventions to emphasize
-- Clinical complexity indicators to highlight
-Each opportunity should include:
-- area: "diagnosis", "functional", "comorbidity", "clinical_complexity"
-- current_documentation: what's currently stated
-- enhanced_documentation: improved version
-- pdgm_impact: how it affects case mix/reimbursement
-
 **OASIS ALIGNMENT:**
 Note elements that support or conflict with OASIS coding:
 - Functional status consistency
@@ -133,7 +120,6 @@ Each alignment check should include:
 - compliance_score: 0-100 (100 = fully compliant)
 - completeness_score: 0-100
 - clarity_score: 0-100
-- pdgm_optimization_score: 0-100
 
 **QUICK WINS:**
 3-5 highest priority changes that will make the biggest impact:
@@ -187,18 +173,6 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
                 }
               }
             },
-            pdgm_optimization: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  area: { type: "string" },
-                  current_documentation: { type: "string" },
-                  enhanced_documentation: { type: "string" },
-                  pdgm_impact: { type: "string" }
-                }
-              }
-            },
             oasis_alignment: {
               type: "array",
               items: {
@@ -216,8 +190,7 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
               properties: {
                 compliance_score: { type: "number" },
                 completeness_score: { type: "number" },
-                clarity_score: { type: "number" },
-                pdgm_optimization_score: { type: "number" }
+                clarity_score: { type: "number" }
               }
             },
             quick_wins: {
@@ -300,7 +273,7 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
         </CardHeader>
         <CardContent>
           <p className="text-sm text-slate-600 mb-4">
-            Get instant AI-powered analysis of your documentation for compliance, completeness, and PDGM optimization.
+            Get instant AI-powered analysis of your documentation for compliance, completeness, and clarity.
           </p>
           <Button onClick={analyzeDocumentation} className="bg-blue-600 hover:bg-blue-700">
             <Sparkles className="w-4 h-4 mr-2" />
@@ -316,7 +289,7 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
   // "NaN%". (These fields aren't required in the LLM schema.)
   const avgScore = Math.round(
     ((scores.compliance_score || 0) + (scores.completeness_score || 0) +
-     (scores.clarity_score || 0) + (scores.pdgm_optimization_score || 0)) / 4
+     (scores.clarity_score || 0)) / 3
   );
 
   return (
@@ -335,7 +308,7 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div>
               <p className="text-xs text-slate-600 mb-1">Compliance</p>
               <div className="flex items-center gap-2">
@@ -360,15 +333,6 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
                 <Progress value={scores.clarity_score} className="flex-1" />
                 <span className={`text-sm font-bold ${getScoreColor(scores.clarity_score)}`}>
                   {scores.clarity_score}%
-                </span>
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-slate-600 mb-1">PDGM</p>
-              <div className="flex items-center gap-2">
-                <Progress value={scores.pdgm_optimization_score} className="flex-1" />
-                <span className={`text-sm font-bold ${getScoreColor(scores.pdgm_optimization_score)}`}>
-                  {scores.pdgm_optimization_score}%
                 </span>
               </div>
             </div>
@@ -557,64 +521,6 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* PDGM Optimization */}
-      {analysis.pdgm_optimization?.length > 0 && (
-        <Card className="border-2 border-green-300">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-900">
-              <DollarSign className="w-5 h-5" />
-              PDGM Optimization ({analysis.pdgm_optimization.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Accordion type="multiple" className="space-y-2">
-              {analysis.pdgm_optimization.map((item, index) => (
-                <AccordionItem key={index} value={`pdgm-${index}`} className="border rounded-lg">
-                  <AccordionTrigger className="px-3 hover:no-underline">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-green-100 text-green-800 border-green-300">
-                        {item.area}
-                      </Badge>
-                      <span className="font-medium text-sm text-left">Enhancement Opportunity</span>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="px-3 pb-3">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-700 mb-1">Current:</p>
-                        <p className="text-sm text-slate-600 bg-slate-50 p-2 rounded">{item.current_documentation}</p>
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs font-semibold text-green-900">Enhanced:</p>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => copySuggestion(item.enhanced_documentation)}
-                            className="h-6 px-2"
-                          >
-                            <Copy className="w-3 h-3" />
-                          </Button>
-                        </div>
-                        <p className="text-sm text-slate-900 bg-green-50 p-2 rounded border border-green-200">
-                          {item.enhanced_documentation}
-                        </p>
-                      </div>
-                      <Alert className="bg-blue-50 border-blue-200">
-                        <DollarSign className="w-4 h-4 text-blue-600" />
-                        <AlertDescription className="text-xs text-blue-900">
-                          {item.pdgm_impact}
-                        </AlertDescription>
-                      </Alert>
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
           </CardContent>
         </Card>
       )}

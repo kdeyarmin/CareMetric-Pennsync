@@ -3,8 +3,9 @@ import { base44 } from '@/api/base44Client';
 // Exact runtime allowlist: never index the SDK entity registry with caller-
 // supplied text. In particular, Patient/Visit must remain unreachable through
 // this generic configuration helper now that their direct reads are disabled.
+// (The payer-rate config entity left this allowlist with the PDGM payment
+// features: the payer-rate editor that was its only reader was removed.)
 const CONFIG_ENTITIES = Object.freeze({
-  PayerRateConfig: base44.entities.PayerRateConfig,
   FaxRetryConfig: base44.entities.FaxRetryConfig,
 });
 
@@ -36,12 +37,11 @@ export async function fetchCallerAgencySettings(agencyName) {
 }
 
 /**
- * Resolve a per-agency config entity (PDGMRateConfig, FollowUpRuleConfig, …)
- * by agency_name. Keyed miss → null. Legacy single unscoped row only when the
+ * Resolve a per-agency config entity (FaxRetryConfig) by agency_name. Keyed miss → null. Legacy single unscoped row only when the
  * caller has no agency key (or exactly one unscoped row when keyed miss is
  * handled by returning null — no foreign-row fallback).
  *
- * @param {'FaxRetryConfig' | 'PayerRateConfig'} entityName
+ * @param {'FaxRetryConfig'} entityName
  * @param {string | null | undefined} agencyName
  * @returns {Promise<object | null>}
  */
@@ -66,26 +66,12 @@ export async function fetchCallerScopedConfig(entityName, agencyName) {
 }
 
 /** @param {string | null | undefined} agencyName */
-export function fetchCallerPdgmRateConfig(_agencyName) {
-  // The browser read path is paused until Base44 provides a tenant authority
-  // that callers cannot edit through auth.updateMe / Agency-row writes. Do not
-  // silently seed an editor from defaults or call a broker whose membership
-  // claims are not immutable.
-  return Promise.resolve(null);
-}
-
-/** @param {string | null | undefined} agencyName */
 export function fetchCallerFollowUpRuleConfig(_agencyName) {
   // Follow-up rules are agency-wide policy. A caller-controlled agency_name is
   // not authority, and there is not yet an immutable membership-scoped read
   // broker. Use the built-in rules until that broker exists; do not read the
   // entity directly or adopt a legacy row from another agency.
   return Promise.resolve(null);
-}
-
-/** @param {string | null | undefined} agencyName */
-export function fetchCallerPayerRateConfig(agencyName) {
-  return fetchCallerScopedConfig('PayerRateConfig', agencyName);
 }
 
 /** @param {string | null | undefined} agencyName */

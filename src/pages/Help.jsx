@@ -89,7 +89,7 @@ export default function Help() {
     },
     {
       title: "OASIS Tools",
-      description: "OASIS/PDGM AI guidance is paused pending verified CMS clinical content, tenant-scoped authorization, and required human review",
+      description: "OASIS AI guidance is paused pending verified CMS clinical content, tenant-scoped authorization, and required human review",
       icon: ClipboardList,
       topics: ["Feature status", "CMS content verification", "Tenant-scoped access", "Human review"]
     },
@@ -139,8 +139,8 @@ export default function Help() {
       a: "Yes! Use Clinical Library to create quick phrases that expand into full documentation. Support both generic and patient-specific templates with variables."
     },
     {
-      q: "Are AI OASIS and PDGM suggestions available?",
-      a: "No. Automated OASIS response guidance, PDGM reimbursement optimization, and M-item financial-impact recommendations are paused pending verified CMS clinical content, tenant-scoped authorization, and required human review. Use the official clinician OASIS workflow and CMS-approved grouper."
+      q: "Are AI OASIS suggestions available?",
+      a: "No. Automated OASIS response guidance is paused pending verified CMS clinical content, tenant-scoped authorization, and required human review. Use the official clinician OASIS workflow in your agency's EMR. PennSync does not estimate payment or reimbursement."
     },
     {
       q: "What happens to flagged compliance issues?",

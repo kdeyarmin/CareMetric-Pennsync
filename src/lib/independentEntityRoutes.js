@@ -1210,7 +1210,6 @@ export const ALERT_CEILING = 500;
 
 export const SCREEN_CEILINGS = Object.freeze({
   listChartClinicalEvents: 200,
-  listChartRecommendations: 200,
   listOcrCorrections: 500,
   listOcrTrainingRuns: 200,
   listSentEducationMaterials: 200,
@@ -1219,7 +1218,7 @@ export const SCREEN_CEILINGS = Object.freeze({
 
 
 /**
- * Batch E's nine reads, each a named contract that orders and pages IN SQL.
+ * Batch E's eight reads, each a named contract that orders and pages IN SQL.
  *
  * So no re-ordering happens here and the complete-set rule has nothing to
  * prove about the order — the contract's `order by` is the screen's own. What
@@ -1426,7 +1425,11 @@ const DECLARED_ROUTES = Object.freeze({
    * store's policies do not — so these routes reach named contracts that carry
    * it, never a generic read.
    *
-   * Nine of the twelve batch E call sites are here. The other three are
+   * Eight of the eleven remaining batch E call sites are here. (A ninth,
+   * `PatientRecommendation.filter`, went with its only caller — the AI
+   * outcomes analyser removed with the clinical risk-prediction features —
+   * so its route was withdrawn; `listChartRecommendations` itself stays in
+   * the service.) The other three are
    * `NotificationPreference.create`/`.update` and `PatientRecommendation.
    * create`, which pass a whole variable as their payload: the route gate
    * proves a declaration by running each call site's real arguments, and it
@@ -1452,23 +1455,6 @@ const DECLARED_ROUTES = Object.freeze({
       build: (query, limit) => ({ patient_id: query.patient_id ?? null, ...(limit === undefined ? {} : { limit }) }),
     }),
     reason: 'The chart timeline reads one patient\'s events, which D24 narrows to the caller\'s care team.',
-  }),
-  'PatientRecommendation.filter': Object.freeze({
-    ...screenRead({
-      answerKey: 'entries',
-      entity: 'PatientRecommendation',
-      function: 'listChartRecommendations',
-      projection: 'chart_recommendation_status',
-      order: '-created_date',
-      ceiling: SCREEN_CEILINGS.listChartRecommendations,
-      query: { patient_id: true },
-      filtered: true,
-      build: (query, limit) => ({ patient_id: query.patient_id ?? null, ...(limit === undefined ? {} : { limit }) }),
-    }),
-    // The projection name is doing work: the analyser counts statuses and the
-    // contract returns the id and the status ONLY (D64), so a screen reading
-    // a title here gets `undefined` rather than a row that rode into a prompt.
-    reason: 'The outcomes analyser counts a chart\'s recommendations by status and reads no other field.',
   }),
   /**
    * Patient alerts: four of the five `PatientAlert` call sites, over

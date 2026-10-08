@@ -160,14 +160,12 @@ function EnabledClinicalPathwayManager() {
           {
             m_item: "M1860 (Ambulation)",
             typical_score_range: "3-5",
-            documentation_to_support: "Document dyspnea limiting ambulation distance, need for frequent rests, oxygen use during ambulation",
-            revenue_impact: "$200-400"
+            documentation_to_support: "Document dyspnea limiting ambulation distance, need for frequent rests, oxygen use during ambulation"
           },
           {
             m_item: "M1400 (Dyspnea)",
             typical_score_range: "2-3",
-            documentation_to_support: "Document specific activities causing shortness of breath, oxygen requirements",
-            revenue_impact: "Supports higher functional scores"
+            documentation_to_support: "Document specific activities causing shortness of breath, oxygen requirements"
           }
         ],
         recommended_tasks: [
@@ -242,8 +240,7 @@ function EnabledClinicalPathwayManager() {
           {
             m_item: "M1023 (Other Diagnoses)",
             typical_score_range: "Multiple codes",
-            documentation_to_support: "Document specific diabetic complications with ICD-10 codes (E11.21 nephropathy, E11.40 neuropathy, E11.65 hyperglycemia)",
-            revenue_impact: "$300-600"
+            documentation_to_support: "Document specific diabetic complications with ICD-10 codes (E11.21 nephropathy, E11.40 neuropathy, E11.65 hyperglycemia)"
           }
         ],
         recommended_tasks: [
@@ -311,8 +308,7 @@ function EnabledClinicalPathwayManager() {
           {
             m_item: "M1330/M1340 (Surgical Wound)",
             typical_score_range: "Present with status",
-            documentation_to_support: "Document wound characteristics, dressing changes needed, skilled assessment requirements",
-            revenue_impact: "Supports complex nursing grouping"
+            documentation_to_support: "Document wound characteristics, dressing changes needed, skilled assessment requirements"
           }
         ],
         recommended_tasks: [
@@ -646,7 +642,7 @@ export default function ClinicalPathwayManager() {
               <Route className="h-5 w-5 text-amber-700" /> Clinical Pathway AI Paused
             </div>
             <p>This manager is unavailable while global pathway access, AI-authored OASIS response suggestions, PDGM grouping claims, and automated clinical writes are being tenant-scoped and clinically validated.</p>
-            <p>No pathway list, AI generator, OASIS drafter, rescore recommendation, or revenue-impact field is loaded from this page.</p>
+            <p>No pathway list, AI generator, OASIS drafter, or rescore recommendation is loaded from this page.</p>
           </CardContent>
         </Card>
       </PageContainer>

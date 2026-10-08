@@ -123,17 +123,6 @@ export const calculateStats = (data) => {
     : 0;
 
   // ====================
-  // FINANCIAL ESTIMATES
-  // ====================
-  const estimatedRevenuePerVisit = 180; // Average Medicare reimbursement
-  const estimatedRevenue = completedVisits * estimatedRevenuePerVisit;
-  const estimatedRevenueInRange = completedVisitsInRange * estimatedRevenuePerVisit;
-
-  const nurseHourlyCost = 40;
-  const costSavings = totalTimeSavedHours * nurseHourlyCost;
-  const costSavingsInRange = timeSavedInRangeHours * nurseHourlyCost;
-
-  // ====================
   // RETURN CONSOLIDATED STATS
   // ====================
   return {
@@ -197,15 +186,6 @@ export const calculateStats = (data) => {
       passedAudits
     },
 
-    // Financial
-    financial: {
-      estimatedRevenue,
-      estimatedRevenueInRange,
-      costSavings,
-      costSavingsInRange,
-      roi: estimatedRevenue > 0 ? Math.round((costSavings / estimatedRevenue) * 100) : 0
-    },
-
     // Metadata
     meta: {
       dateRange,
@@ -259,11 +239,4 @@ export const calculateNurseStats = (nurseEmail, data) => {
     timeSavedHoursInRange,
     timeSavedDisplayInRange: timeSavedHoursInRange > 0 ? `${timeSavedHoursInRange}h ${timeSavedMinutesInRange % 60}m` : `${timeSavedMinutesInRange}m`
   };
-};
-
-/**
- * Format currency
- */
-export const formatCurrency = (amount) => {
-  return `$${amount.toLocaleString()}`;
 };

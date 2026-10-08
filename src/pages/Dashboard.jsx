@@ -16,7 +16,6 @@ import { BRAND_LOGO_URL } from "@/lib/brand";
 
 // Critical above-the-fold — eager loaded
 import SmartRouteOptimizer from "@/components/scheduling/SmartRouteOptimizer";
-import ProactiveClinicalSupport from "@/components/clinical/ProactiveClinicalSupport";
 import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
 import TodayPriorities from "@/components/dashboard/TodayPriorities.jsx";
@@ -347,18 +346,6 @@ export default function Dashboard() {
           />
         </div>
       )}
-
-      {/* Proactive Clinical Support - Show for first scheduled patient */}
-      {visits.length > 0 && visits[0]?.patient_id && (
-        <div>
-          <ProactiveClinicalSupport
-            patientId={visits[0].patient_id}
-            compact={true}
-          />
-        </div>
-      )}
-
-
 
       <Suspense fallback={<LoadingState className="py-12" />}>
         {/* Pending Referrals */}

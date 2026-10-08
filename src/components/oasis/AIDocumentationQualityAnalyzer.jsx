@@ -25,7 +25,6 @@ import {
   Brain,
   AlertCircle,
   Copy,
-  DollarSign,
   Shield,
   FileText,
   Stethoscope,
@@ -94,7 +93,6 @@ export default function AIDocumentationQualityAnalyzer({ analysisResults, pdgmDa
         accuracy_issues: analysisResults.accuracy_issues || [],
         documentation_improvements: analysisResults.documentation_improvements || [],
         validation_issues: analysisResults.validation_summary?.issues || [],
-        revenue_tips: analysisResults.revenue_tips || [],
         overall_score: analysisResults.overall_score,
         accuracy_score: analysisResults.accuracy_score,
         compliance_score: analysisResults.compliance_score
@@ -123,8 +121,9 @@ Perform a comprehensive documentation quality analysis:
 3. DOCUMENTATION GAPS: Identify missing elements that could:
    - Lead to claim denials
    - Trigger audit findings
-   - Reduce PDGM payment
    - Create compliance risk
+
+Do not estimate payment, reimbursement, case mix, or PDGM impact, and never suggest documentation in order to change a payment.
 
 4. IMPROVEMENT SUGGESTIONS: Provide specific, actionable suggestions for each gap
 
@@ -161,16 +160,9 @@ Return JSON:
       "gap_type": "narrative/specificity/consistency/completeness",
       "area": "affected area",
       "description": "what is missing",
-      "risk": "payment/audit/compliance",
+      "risk": "audit/compliance",
       "severity": "critical/high/medium/low",
       "fix": "specific action to address"
-    }
-  ],
-  "payment_risk_factors": [
-    {
-      "factor": "risk description",
-      "potential_impact": "$X per episode or percentage",
-      "documentation_needed": "what to document"
     }
   ],
   "audit_vulnerabilities": [
@@ -193,7 +185,6 @@ Return JSON:
             narrative_analysis: { type: "array", items: { type: "object" } },
             diagnosis_alignment: { type: "array", items: { type: "object" } },
             documentation_gaps: { type: "array", items: { type: "object" } },
-            payment_risk_factors: { type: "array", items: { type: "object" } },
             audit_vulnerabilities: { type: "array", items: { type: "object" } },
             top_priorities: { type: "array", items: { type: "string" } }
           }
@@ -513,27 +504,6 @@ Return JSON:
 
             {/* Risks Tab */}
             <TabsContent value="risks" className="mt-4 space-y-4">
-              {/* Payment Risk Factors */}
-              {qualityAnalysis.payment_risk_factors?.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-green-600" />
-                    Payment Risk Factors
-                  </p>
-                  {qualityAnalysis.payment_risk_factors.map((risk, idx) => (
-                    <div key={idx} className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                      <div className="flex items-start justify-between mb-2">
-                        <span className="text-sm font-medium text-yellow-900">{risk.factor}</span>
-                        <Badge className="bg-yellow-200 text-yellow-800">{risk.potential_impact}</Badge>
-                      </div>
-                      <p className="text-xs text-yellow-800">
-                        <span className="font-medium">Document:</span> {risk.documentation_needed}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* Audit Vulnerabilities */}
               {qualityAnalysis.audit_vulnerabilities?.length > 0 && (
                 <div className="space-y-3">
@@ -558,11 +528,11 @@ Return JSON:
                 </div>
               )}
 
-              {(!qualityAnalysis.payment_risk_factors?.length && !qualityAnalysis.audit_vulnerabilities?.length) && (
+              {!qualityAnalysis.audit_vulnerabilities?.length && (
                 <Alert className="bg-green-50 border-green-200">
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
                   <AlertDescription className="text-green-800">
-                    No significant payment or audit risks identified.
+                    No significant audit risks identified.
                   </AlertDescription>
                 </Alert>
               )}

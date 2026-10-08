@@ -8,7 +8,7 @@ import InlineDocumentationAssistant from "@/components/oasis/InlineDocumentation
 const OASIS_DOCUMENTATION_REVIEW_ENABLED = false;
 
 function EnabledOASISDocumentationReview({ analysisHandoff }) {
-  const { analysisResults, pdgmData, navigationData } = analysisHandoff || {};
+  const { analysisResults, pdgmData } = analysisHandoff || {};
 
   if (!analysisResults) {
     return <OASISNoAnalysisCard />;
@@ -34,7 +34,6 @@ function EnabledOASISDocumentationReview({ analysisHandoff }) {
       <AIDocumentationGenerator
         analysisResults={analysisResults}
         pdgmData={pdgmData}
-        navigationData={navigationData}
       />
 
       {/* AI Documentation Assistant */}

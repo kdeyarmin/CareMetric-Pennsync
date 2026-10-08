@@ -23,11 +23,9 @@ vi.mock('@/api/base44Client', () => ({
 }));
 
 import { base44 } from '@/api/base44Client';
-import {
-  fetchCallerAgencySettings,
-  fetchCallerPdgmRateConfig,
-  fetchCallerFollowUpRuleConfig,
-} from './agencySettings.js';
+import * as agencySettings from './agencySettings.js';
+
+const { fetchCallerAgencySettings, fetchCallerFollowUpRuleConfig } = agencySettings;
 
 describe('fetchCallerAgencySettings', () => {
   beforeEach(() => {
@@ -67,17 +65,25 @@ describe('fetchCallerAgencySettings', () => {
   });
 });
 
-describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
+describe('PDGM payment configuration helpers (removed) / FollowUpRuleConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('keeps browser PDGM rate reads paused without invoking any backend or entity path', async () => {
-    const row = await fetchCallerPdgmRateConfig('Acme');
-    expect(row).toBeNull();
+  it('exposes no PDGM rate or payer-rate configuration reader', () => {
+    // Both were removed with the PDGM payment features: the rate-settings and
+    // payer-rate editors that read them no longer exist.
+    expect(agencySettings.fetchCallerPdgmRateConfig).toBeUndefined();
+    expect(agencySettings.fetchCallerPayerRateConfig).toBeUndefined();
     expect(base44.functions.invoke).not.toHaveBeenCalled();
     expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
     expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
+  });
+
+  it('refuses a payer-rate lookup through the generic config reader', async () => {
+    await expect(agencySettings.fetchCallerScopedConfig('PayerRateConfig', 'Acme')).resolves.toBeNull();
+    await expect(agencySettings.fetchCallerScopedConfig('PDGMRateConfig', 'Acme')).resolves.toBeNull();
+    expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
   });
 
   it('keeps browser follow-up-rule reads paused without invoking any entity path', async () => {
@@ -94,11 +100,4 @@ describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
     expect(base44.entities.FollowUpRuleConfig.list).not.toHaveBeenCalled();
   });
 
-  it('ignores caller-controlled agency hints while the broker is unavailable', async () => {
-    const row = await fetchCallerPdgmRateConfig('other-tenant');
-    expect(row).toBeNull();
-    expect(base44.functions.invoke).not.toHaveBeenCalled();
-    expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
-    expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
-  });
 });

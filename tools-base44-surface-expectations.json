@@ -2,18 +2,17 @@
   "format": "pennsync-base44-surface",
   "version": 1,
   "maximum": {
-    "client_importers": 366,
-    "entity_call_sites": 453,
-    "entity_types": 69,
-    "function_invocations": 198,
-    "function_wrappers": 83,
+    "client_importers": 338,
+    "entity_call_sites": 430,
+    "entity_types": 68,
+    "function_invocations": 179,
+    "function_wrappers": 80,
     "core_integration_sites": 41,
     "sdk_importers": 4
   },
   "allowed_handles": [
     "src/components/training/CourseLessonBuilder.jsx::TrainingModule",
     "src/components/training/CourseQuizBuilder.jsx::TrainingQuestion",
-    "src/lib/agencySettings.js::FaxRetryConfig",
-    "src/lib/agencySettings.js::PayerRateConfig"
+    "src/lib/agencySettings.js::FaxRetryConfig"
   ]
 }

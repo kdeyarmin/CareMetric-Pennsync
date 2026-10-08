@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { CHART_COLORS } from "@/constants/chartColors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,6 @@ import {
   BarChart3,
   Download,
   TrendingUp,
-  DollarSign,
   Users,
   Activity,
   FileText,
@@ -27,12 +25,11 @@ import {
   Loader2,
   LineChart
 } from "lucide-react";
-import { BarChart, Bar, LineChart as RechartsLineChart, Line, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { format, subDays, differenceInDays } from "date-fns";
 import { formatEastern, todayEastern } from "@/components/utils/timezone";
 import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
-import { safePercent } from "@/lib/safePercent";
 import { startOfLocalDay } from "@/lib/dateLocal";
 import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
 
@@ -127,9 +124,6 @@ export default function ReportsCenter({
         break;
       case 'staff_comparison':
         previewData = generateStaffComparisonData(filteredVisits, allUsers);
-        break;
-      case 'financial_detailed':
-        previewData = generateDetailedFinancialData(filteredVisits, allPatients);
         break;
       case 'trend_analysis':
         previewData = generateTrendAnalysisData(visits, incidents);
@@ -256,38 +250,6 @@ export default function ReportsCenter({
             break;
           }
 
-          case 'financial': {
-            reportTitle = 'Financial Report';
-            const finData = generateDetailedFinancialData(filteredVisits, allPatients);
-            pdfContent = [
-              { type: 'heading', text: 'Revenue Analysis', size: 14 },
-              { type: 'spacer', height: 5 },
-              {
-                type: 'table',
-                headers: ['Visit Type', 'Count', 'Revenue/Visit', 'Total Revenue'],
-                rows: finData.visitTypes.map(vt => [
-                  (vt.type || '').replace(/_/g, ' '),
-                  vt.count,
-                  `$${vt.count > 0 ? Math.round(vt.revenue / vt.count) : 0}`,
-                  `$${vt.revenue}`
-                ])
-              },
-              { type: 'spacer', height: 10 },
-              { type: 'heading', text: 'PennSync by CareMetric ROI', size: 14 },
-              { type: 'spacer', height: 5 },
-              {
-                type: 'table',
-                headers: ['Metric', 'Value'],
-                rows: [
-                  ['Total Estimated Revenue', `$${finData.totalRevenue.toLocaleString()}`],
-                  ['Cost Savings from Efficiency', `$${Math.round(finData.costSavings).toLocaleString()}`],
-                  ['ROI Percentage', `${finData.roi}%`]
-                ]
-              }
-            ];
-            break;
-          }
-
           case 'staff_comparison': {
             reportTitle = 'Staff Performance Comparison';
             const staffData = generateStaffComparisonData(filteredVisits, allUsers);
@@ -348,9 +310,6 @@ export default function ReportsCenter({
           case 'quality':
             ({ content: reportContent, fileName } = generateQualityReport(filteredVisits, filteredIncidents, allPatients, startDate, endDate));
             break;
-          case 'financial':
-            ({ content: reportContent, fileName } = generateFinancialReport(filteredVisits, allPatients, startDate, endDate));
-            break;
           case 'compliance':
             ({ content: reportContent, fileName } = generateComplianceReport(filteredVisits, allPatients, startDate, endDate));
             break;
@@ -365,9 +324,6 @@ export default function ReportsCenter({
             break;
           case 'staff_comparison':
             ({ content: reportContent, fileName } = generateStaffComparisonCSV(filteredVisits, allUsers, startDate, endDate));
-            break;
-          case 'financial_detailed':
-            ({ content: reportContent, fileName } = generateDetailedFinancialCSV(filteredVisits, allPatients, startDate, endDate));
             break;
           case 'trend_analysis':
             ({ content: reportContent, fileName } = generateTrendAnalysisCSV(filteredVisits, filteredIncidents, startDate, endDate));
@@ -538,56 +494,6 @@ export default function ReportsCenter({
     };
   };
 
-  // Financial Report
-  const generateFinancialReport = (visits, allPatients, startDate, endDate) => {
-    const visitTypes = {};
-    visits.forEach(v => {
-      const type = v.visit_type || 'unknown';
-      visitTypes[type] = (visitTypes[type] || 0) + 1;
-    });
-
-    // Estimated revenue per visit type (Medicare averages)
-    const revenuePerType = {
-      'skilled_nursing': 180,
-      'admission': 250,
-      'recertification': 200,
-      'discharge': 150,
-      'routine_visit': 160,
-      'prn': 170,
-      'unknown': 160
-    };
-
-    let totalRevenue = 0;
-    Object.entries(visitTypes).forEach(([type, count]) => {
-      totalRevenue += count * (revenuePerType[type] || 160);
-    });
-
-    const timeSavedHours = visits.filter(v => v.status === 'completed').length * 95 / 60;
-    const costSavings = timeSavedHours * 40; // Avg nurse hourly cost
-
-    let content = `PennSync by CareMetric Financial Report\n`;
-    content += `Date Range: ${startDate} to ${endDate}\n`;
-    content += `Generated: ${formatEastern(new Date(), 'MMM d, yyyy hh:mm a')}\n\n`;
-    content += `REVENUE ANALYSIS\n`;
-    content += `Visit Type,Count,Est. Revenue Per Visit,Total Revenue\n`;
-    
-    Object.entries(visitTypes).forEach(([type, count]) => {
-      const revenue = count * (revenuePerType[type] || 160);
-      content += `${(type || '').replace(/_/g, ' ')},${count},$${revenuePerType[type] || 160},$${revenue}\n`;
-    });
-    
-    content += `\nTOTAL ESTIMATED REVENUE,$${totalRevenue}\n\n`;
-    content += `PENN SYNC ROI\n`;
-    content += `Documentation Time Saved (hours),${Math.round(timeSavedHours)}\n`;
-    content += `Cost Savings from Efficiency,$${Math.round(costSavings)}\n`;
-    content += `Active Patients,${allPatients.filter(p => p.status === 'active').length}\n`;
-
-    return {
-      content,
-      fileName: `penn-sync-financial-report-${todayEastern()}.csv`
-    };
-  };
-
   // Compliance Report
   const generateComplianceReport = (visits, allPatients, startDate, endDate) => {
     const completedVisits = visits.filter(v => v.status === 'completed');
@@ -732,12 +638,6 @@ export default function ReportsCenter({
       description: 'Patient outcomes, incident rates, quality indicators'
     },
     {
-      value: 'financial',
-      label: 'Financial Report',
-      icon: DollarSign,
-      description: 'Revenue analysis by visit type, ROI from PennSync AI efficiency'
-    },
-    {
       value: 'compliance',
       label: 'Medicare Compliance Report',
       icon: FileText,
@@ -766,12 +666,6 @@ export default function ReportsCenter({
       label: 'Staff Performance Comparison',
       icon: Users,
       description: 'Side-by-side comparison of nurse performance metrics with rankings'
-    },
-    {
-      value: 'financial_detailed',
-      label: 'Detailed Financial Summary',
-      icon: DollarSign,
-      description: 'Comprehensive financial analysis with revenue trends and cost breakdowns'
     },
     {
       value: 'trend_analysis',
@@ -845,38 +739,6 @@ export default function ReportsCenter({
     }).sort((a, b) => b.completionRate - a.completionRate);
   };
 
-  const generateDetailedFinancialData = (filteredVisits, _allPatients) => {
-    const visitTypes = {};
-    const revenuePerType = {
-      'skilled_nursing': 180,
-      'admission': 250,
-      'recertification': 200,
-      'discharge': 150,
-      'routine_visit': 160,
-      'prn': 170
-    };
-
-    filteredVisits.forEach(v => {
-      const type = v.visit_type || 'unknown';
-      if (!visitTypes[type]) {
-        visitTypes[type] = { type, count: 0, revenue: 0 };
-      }
-      visitTypes[type].count++;
-      visitTypes[type].revenue += revenuePerType[type] || 160;
-    });
-
-    const totalRevenue = Object.values(visitTypes).reduce((sum, vt) => sum + vt.revenue, 0);
-    const timeSavedHours = filteredVisits.filter(v => v.status === 'completed').length * 95 / 60;
-    const costSavings = timeSavedHours * 40;
-
-    return {
-      visitTypes: Object.values(visitTypes),
-      totalRevenue,
-      costSavings,
-      roi: totalRevenue > 0 ? Math.round((costSavings / totalRevenue) * 100) : 0
-    };
-  };
-
   const generateTrendAnalysisData = (visitsData, incidentsData) => {
     const days = parseInt(dateRange, 10);
     const trends = [];
@@ -937,28 +799,6 @@ export default function ReportsCenter({
     };
   };
 
-  const generateDetailedFinancialCSV = (filteredVisits, allPatients, startDate, endDate) => {
-    const data = generateDetailedFinancialData(filteredVisits, allPatients);
-    
-    let content = `Detailed Financial Summary Report\n`;
-    content += `Date Range: ${startDate} to ${endDate}\n\n`;
-    content += `Visit Type,Count,Revenue Per Visit,Total Revenue\n`;
-    
-    data.visitTypes.forEach(vt => {
-      const revenuePerVisit = vt.count > 0 ? Math.round(vt.revenue / vt.count) : 0;
-      content += `${(vt.type || '').replace(/_/g, ' ')},${vt.count},$${revenuePerVisit},$${vt.revenue}\n`;
-    });
-
-    content += `\nTOTAL REVENUE,$${data.totalRevenue}\n`;
-    content += `COST SAVINGS,$${Math.round(data.costSavings)}\n`;
-    content += `ROI,${data.roi}%\n`;
-
-    return {
-      content,
-      fileName: `financial-detailed-${todayEastern()}.csv`
-    };
-  };
-
   const generateTrendAnalysisCSV = (filteredVisits, filteredIncidents, startDate, endDate) => {
     // For trend analysis, we need all visits/incidents, not just filtered ones
     const data = generateTrendAnalysisData(visits, incidents);
@@ -976,8 +816,6 @@ export default function ReportsCenter({
       fileName: `trend-analysis-${todayEastern()}.csv`
     };
   };
-
-  const COLORS = CHART_COLORS;
 
   const selectedReportType = reportTypes.find(r => r.value === reportType);
 
@@ -1075,7 +913,7 @@ export default function ReportsCenter({
           )}
 
           <div className="flex gap-3">
-            {['outcomes_by_diagnosis', 'staff_comparison', 'financial_detailed', 'trend_analysis'].includes(reportType) && (
+            {['outcomes_by_diagnosis', 'staff_comparison', 'trend_analysis'].includes(reportType) && (
               <Button
                 onClick={generatePreview}
                 variant="outline"
@@ -1242,75 +1080,6 @@ export default function ReportsCenter({
                     ))}
                   </TableBody>
                 </Table>
-              </>
-            )}
-
-            {reportType === 'financial_detailed' && reportPreview && (
-              <>
-                <div>
-                  <h3 className="font-semibold mb-4">Revenue Distribution by Visit Type</h3>
-                  <ResponsiveContainer width="100%" height={400}>
-                    <RechartsPieChart>
-                      <Pie
-                        data={reportPreview.visitTypes}
-                        dataKey="revenue"
-                        nameKey="type"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={90}
-                        labelLine={true}
-                        label={(entry) => {
-                          const name = (entry.type || '').replace(/_/g, ' ');
-                          // A window with no billable revenue made this render
-                          // "(NaN%)" on every slice; safePercent yields 0 instead.
-                          const percent = safePercent(entry.revenue, reportPreview.totalRevenue);
-                          return `${name} (${percent}%)`;
-                        }}
-                      >
-                        {reportPreview.visitTypes.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => `$${value}`} />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-4">
-                  <Card className="bg-gradient-to-br from-green-50 to-emerald-50">
-                    <CardContent className="p-6">
-                      <p className="text-sm text-slate-600 mb-1">Total Revenue</p>
-                      <p className="text-3xl font-bold text-green-600">${reportPreview.totalRevenue.toLocaleString()}</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-gradient-to-br from-blue-50 to-indigo-50">
-                    <CardContent className="p-6">
-                      <p className="text-sm text-slate-600 mb-1">Cost Savings</p>
-                      <p className="text-3xl font-bold text-blue-600">${Math.round(reportPreview.costSavings).toLocaleString()}</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-gradient-to-br from-navy-50 to-gold-50">
-                    <CardContent className="p-6">
-                      <p className="text-sm text-slate-600 mb-1">ROI</p>
-                      <p className="text-3xl font-bold text-navy-600">{reportPreview.roi}%</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-4">Revenue by Visit Type</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={reportPreview.visitTypes}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="type" angle={-45} textAnchor="end" height={100} />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="count" fill="#3557b0" name="Visit Count" />
-                      <Bar dataKey="revenue" fill="#10b981" name="Revenue ($)" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
               </>
             )}
 

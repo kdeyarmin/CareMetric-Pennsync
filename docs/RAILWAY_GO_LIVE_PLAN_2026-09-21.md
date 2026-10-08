@@ -3217,6 +3217,19 @@ not cross — so the two figures are a ceiling and a reading, and every count
 below that crosses call sites against something else is over the reading. Do not
 difference the two: they answer different questions.
 
+**Re-read on the tree that removed the clinical risk-prediction and PDGM payment
+features, beside that one rather than through it:** `entity_call_sites=430/430`,
+and this time the baseline moved WITH the reading. That removal was an owner
+decision to delete whole features, and it deleted twenty-two entity call sites;
+the same change lowered every frontend maximum it moved (`client_importers`,
+`entity_call_sites`, `entity_types`, `function_invocations`,
+`function_wrappers`) to what the tree reads, which locks in the follow-up page's
+site by the same write. The tool's own header calls a count under the baseline a
+gain to be locked in by lowering it, and a deliberate removal is that case where
+a page that merely went was not: leaving the headroom would let a later change
+re-add coupling up to the old line without the ratchet saying anything. The two
+figures still answer different questions; on that tree they are equal.
+
 **And the count understates it a second way (D80).** "Replace call sites tier
 by tier" reads as a refactor whose size is the count. Crossing all 453 against
 their entity dispositions — `pnpm run check:frontend-destination`, added
@@ -3279,6 +3292,19 @@ keeping them apart is the point of recording both:
 So the four refusal buckets that were NOT relabelled — 9, 5, 1 and the 208 they
 sum into with the other two — are unchanged across all three readings, and that
 is the stable fact.
+
+**Re-read on the tree that removed the clinical risk-prediction and PDGM payment
+features, beside both:** 430 call sites, 237 with somewhere to land
+(`record_store` 227, `broker_family` 7, `activity_trail` 3), 193 without —
+`no_table` 119 and `no_access_contract` 59, with the other three buckets
+unchanged at 9, 5 and 1. Twenty-two sites left the population and BOTH sides of
+it moved, which no earlier reading here records: seven `record_store` reads went
+with the deleted screens, and fifteen sites on paused OASIS entities went with
+them, every one of those from `no_access_contract`. So the 208 fell for the
+first time, and it fell because screens were deleted rather than because
+anything gained a destination — `hub` is untouched at 119 and nothing was
+ported. The percentage moved too, to 45%, and it is still the least informative
+figure in the reading.
 
 **Do not take the by-disposition split off this table, and note that the known
 by-one disagreement has MOVED buckets.** The per-ENTITY rollup reports one
@@ -3963,9 +3989,8 @@ repair of three admin screens that had been asking the roster for an order it
 cannot serve, so those sites moved into SERVED rather than out of the audit. The
 totals it produced are the block's to state.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+**This was the PINNED block** until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 100 declared, 163/244 landable call sites SERVED, 81 still to adopt
@@ -3989,6 +4014,35 @@ whole.** Its served read ratio moved because that same site left the served
 pool, while its three other ratios did not move at all — so a reader adjusting
 the figure that obviously changed would have been right by accident, and wrong
 the next time the denominator was what moved.
+
+**That block, and every one above it, is a DATED record. What follows is this
+tree after the owner's decision to remove the clinical risk-prediction and PDGM
+payment features from the frontend.** It is another printer run, not an
+adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 99 declared, 156/237 landable call sites SERVED, 81 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 81, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 80 need a named capability
+```
+
+**Nothing was adopted between these two blocks, and the move is again a
+POPULATION change rather than progress or a regression.** The deleted screens
+took seven served reads with them — two of `Incident.filter`, two of
+`PatientAlert.filter`, and one each of `Incident.list`, `Task.filter` and
+`PatientRecommendation.filter`. That last one was its key's only call site, and a
+declared route nothing calls fails this gate, so the route was WITHDRAWN in the
+same change: the declared count fell by one without anything being refused or
+reclassified. The landable denominator and the served numerator each fell by
+seven, and the refusals, the unreadable sites and the remainder did not move.
+The fifteen other entity call sites the removal deleted were on paused OASIS
+entities that this gate never counted as landable; they belong to the
+destination gate, below.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4140,7 +4194,7 @@ different kinds of work:
   eight sites out of this pool and the withdrawn duty toggle put nothing back,
   so a bucket nobody touched moved twice. That is what a remainder does: it is a
   property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.64 call sites and a write
+  the sites already served: a read key there carries 2.55 call sites and a write
   key 1.24, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.27 sites and a
@@ -4151,9 +4205,9 @@ different kinds of work:
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at nine consecutive heads. Across the
+  **This bullet has now been re-derived at ten consecutive heads. Across the
   first five every one of its six figures moved, reversing a finding stated in
-  its own prose three times; at the sixth, seventh and eighth only the served
+  its own prose three times; at the sixth through the tenth only the served
   read pair did, which are the first heads where re-deriving the whole bullet
   changed one figure.** One head ago the two halves were level at fifteen sites each
   and the write key was the THINNER, at 1.15 against 1.25; the head before that
@@ -4231,6 +4285,18 @@ different kinds of work:
   all. So the four pairs are not only a guard against a quotient sitting still
   while both halves move — they are also the only thing here that can tell a
   repaired site from a new route, since both raise the served count by one.
+
+  **It moved again when the clinical risk-prediction and PDGM payment features
+  were removed, and for a cause the bullet had not seen: a served KEY left.**
+  The deleted screens took seven served read sites with them, and one was the
+  only caller of `PatientRecommendation.filter`, whose route was withdrawn — so
+  the served read pair goes from 132 sites over 50 keys to 125 over 49, and its
+  ratio from 2.64 to 2.55. The other six sites were on keys the pool keeps. Every
+  earlier move of this pair came from a key being declared, a site being
+  repaired or a single site leaving; here a key left with its last site, and the
+  served write pair and all four of the remainder's figures stayed exactly where
+  they were. A served ratio falling for that reason is screens deleted on
+  purpose, not routes going thinner.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
@@ -4531,12 +4597,26 @@ about 33 hollowed-out pages — comes from a filename scan rather than that tool
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
+(Re-read on the tree that removed the clinical risk-prediction and PDGM payment
+features: **193 call sites across 77 files and 31 entities; 52 files lose
+everything they read** (reads 112, writes 80, subscriptions 1), leaving 25
+partially affected, and the generated page was rewritten in the same change.
+`OASISScenario` left the entity count because every one of its call sites was on
+a deleted screen. The population is still the destination gate's whole
+cannot-land side, so it moved exactly as that side did.)
+
 **208 of 453 — 46% — have no destination in the owned store, and 194 of those
 reach a domain the migration has decided not to carry.** (Re-read 2026-10-08:
 208 of **452**, the deleted follow-up page's site having left the population.
 **The 46% and the 194 both came out the same**, which is the hazard this
 paragraph is already about, one layer down: an operand moved and the figure
-derived from it did not, so nothing looked stale. Measure, do not re-check.) The other fourteen are
+derived from it did not, so nothing looked stale. Measure, do not re-check.)
+(Re-read again on the tree that removed the clinical risk-prediction and PDGM
+payment features: 193 of **430**, and 179 of those uncarried — 119 `hub`,
+unchanged, and 60 `preserved_paused`, fifteen fewer because those OASIS sites
+were on deleted screens. This time the numerator moved with the denominator and
+the percentage moved with them, to 45%; it is still the figure least worth
+quoting.) The other fourteen are
 writes to entities it DOES carry, read-only — nine refused by the broker
 family's D2 ceiling and five by a D83 reference table's GRANT: what has no
 destination there is the OPERATION rather than the domain, and conflating the

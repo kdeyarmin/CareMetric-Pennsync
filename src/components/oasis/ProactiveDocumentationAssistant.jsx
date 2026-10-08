@@ -17,7 +17,6 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
-  DollarSign,
   TrendingUp,
   Shield,
   Target
@@ -45,7 +44,7 @@ export default function ProactiveDocumentationAssistant({
     if (!oasisData) return;
 
     try {
-      const prompt = `You are a Medicare documentation expert. Analyze OASIS data and clinical notes to identify documentation gaps that could impact reimbursement, quality scores, or compliance.
+      const prompt = `You are a Medicare documentation expert. Analyze OASIS data and clinical notes to identify documentation gaps that could impact quality scores or compliance. Do not estimate payment, reimbursement, case mix, or revenue impact, and never suggest documentation in order to change a payment.
 
 OASIS DATA:
 ${JSON.stringify(oasisData, null, 2)}
@@ -100,12 +99,12 @@ IDENTIFY DOCUMENTATION GAPS IN THESE AREAS:
 
 For EACH gap found, provide:
 - Specific M-item or area affected
-- Why the gap matters (revenue/quality/compliance impact)
+- Why the gap matters (quality/compliance impact)
 - Current state (what's missing or weak)
 - Suggested narrative addition (exact text ready to copy)
 - Where to add it (specific location guidance)
 - Priority level
-- Estimated revenue/quality impact`;
+- Estimated quality impact`;
 
       const result = await ai.run({
         model: "automatic",
@@ -127,7 +126,6 @@ For EACH gap found, provide:
                   severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
                   current_state: { type: "string" },
                   why_it_matters: { type: "string" },
-                  revenue_impact: { type: "string" },
                   quality_impact: { type: "string" },
                   compliance_risk: { type: "string" },
                   suggested_narrative: { type: "string" },
@@ -235,7 +233,7 @@ For EACH gap found, provide:
           <div className="text-center py-12">
             <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
             <p className="text-navy-700 font-medium">AI analyzing documentation for gaps...</p>
-            <p className="text-sm text-slate-600 mt-2">Checking reimbursement, quality, and compliance areas</p>
+            <p className="text-sm text-slate-600 mt-2">Checking quality and compliance areas</p>
           </div>
         )}
 
@@ -341,15 +339,7 @@ For EACH gap found, provide:
                     </div>
 
                     {/* Impact Summary */}
-                    <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
-                      {gap.revenue_impact && (
-                        <div className="bg-green-50 p-2 rounded border border-green-200">
-                          <p className="text-green-600 font-medium flex items-center gap-1">
-                            <DollarSign className="w-3 h-3" /> Revenue
-                          </p>
-                          <p className="text-green-800">{gap.revenue_impact}</p>
-                        </div>
-                      )}
+                    <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
                       {gap.quality_impact && (
                         <div className="bg-blue-50 p-2 rounded border border-blue-200">
                           <p className="text-blue-600 font-medium flex items-center gap-1">

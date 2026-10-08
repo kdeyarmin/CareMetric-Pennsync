@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Building2, DollarSign, MapPin, Save, CheckCircle2, AlertCircle, Settings } from "lucide-react";
+import { Loader2, Building2, Save, CheckCircle2, AlertCircle, Settings } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CustomValidationRuleManager from "../components/validation/CustomValidationRuleManager";
 import PageContainer from "@/components/ui/PageContainer";
@@ -33,17 +33,14 @@ export default function AgencySettings() {
     enabled: !!currentUser,
   });
 
-  // Form state
+  // Form state. Only the office profile is edited here: the PDGM wage-index
+  // and cost-analysis (ROI) inputs were removed with the PDGM payment
+  // features. A save sends only these fields, so any legacy values already on
+  // the row are left untouched rather than overwritten.
   const [formData, setFormData] = useState({
     office_name: '',
     office_address: '',
     office_zip_code: '',
-    wage_index: 1.0,
-    avg_staff_hourly_rate: 45,
-    training_cost_per_hour: 35,
-    documentation_time_per_episode: 0.5,
-    audit_staff_hourly_rate: 50,
-    avg_episodes_per_year: 50
   });
 
   // Update form when settings load
@@ -53,12 +50,6 @@ export default function AgencySettings() {
         office_name: settings.office_name || '',
         office_address: settings.office_address || '',
         office_zip_code: settings.office_zip_code || '',
-        wage_index: settings.wage_index || 1.0,
-        avg_staff_hourly_rate: settings.avg_staff_hourly_rate || 45,
-        training_cost_per_hour: settings.training_cost_per_hour || 35,
-        documentation_time_per_episode: settings.documentation_time_per_episode || 0.5,
-        audit_staff_hourly_rate: settings.audit_staff_hourly_rate || 50,
-        avg_episodes_per_year: settings.avg_episodes_per_year || 50
       });
     }
   }, [settings]);
@@ -89,21 +80,10 @@ export default function AgencySettings() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Numeric fields are stored as raw strings while editing so that 0 and
-    // partial decimals (e.g. a sub-1.0 wage index typed as "0.85") are not
-    // clobbered per keystroke. Coerce and apply defaults only at save time.
-    const toNum = (v, def) => {
-      const n = parseFloat(v);
-      return Number.isNaN(n) ? def : n;
-    };
     saveMutation.mutate({
-      ...formData,
-      wage_index: toNum(formData.wage_index, 1.0),
-      avg_staff_hourly_rate: toNum(formData.avg_staff_hourly_rate, 45),
-      training_cost_per_hour: toNum(formData.training_cost_per_hour, 35),
-      documentation_time_per_episode: toNum(formData.documentation_time_per_episode, 0.5),
-      audit_staff_hourly_rate: toNum(formData.audit_staff_hourly_rate, 50),
-      avg_episodes_per_year: toNum(formData.avg_episodes_per_year, 50),
+      office_name: formData.office_name,
+      office_address: formData.office_address,
+      office_zip_code: String(formData.office_zip_code || '').trim(),
     });
   };
 
@@ -119,7 +99,7 @@ export default function AgencySettings() {
         icon={Settings}
         eyebrow="Configuration"
         title="Agency Settings"
-        description="Configure agency-wide settings, validation rules, and cost analysis"
+        description="Configure agency-wide settings and validation rules"
         favoritePage="AgencySettings"
       />
 
@@ -179,128 +159,20 @@ export default function AgencySettings() {
                   onChange={(e) => handleChange('office_address', e.target.value)}
                 />
               </div>
-            </CardContent>
-          </Card>
-
-          {/* PDGM Location Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-blue-600" />
-                PDGM Location Settings
-              </CardTitle>
-              <CardDescription>
-                These settings affect PDGM revenue calculations for all patients
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="office_zip_code">Office ZIP Code</Label>
                 <Input
                   id="office_zip_code"
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
                   placeholder="e.g., 19104"
                   value={formData.office_zip_code}
                   onChange={(e) => handleChange('office_zip_code', e.target.value)}
                 />
                 <p className="text-xs text-slate-500">
-                  Used to determine the wage index for your geographic area
+                  The ZIP code of your main office location. Required to complete the agency profile.
                 </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="wage_index">
-                  CMS Wage Index
-                  <span className="text-xs text-slate-500 ml-2">(Default: 1.0 = National Average)</span>
-                </Label>
-                <Input
-                  id="wage_index"
-                  type="number"
-                  step="0.0001"
-                  placeholder="1.0000"
-                  value={formData.wage_index}
-                  onChange={(e) => handleChange('wage_index', e.target.value)}
-                />
-                <p className="text-xs text-slate-500">
-                  Find your wage index at{' '}
-                  <a
-                    href="https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-pps-wage-index"
-                    className="text-blue-600 hover:underline"
-                  >
-                    CMS.gov
-                  </a>
-                </p>
-              </div>
-              <Alert className="bg-blue-50 border-blue-200">
-                <AlertDescription className="text-blue-800 text-xs">
-                  <strong>Note:</strong> The wage index adjusts PDGM base payment rates based on local labor costs. 
-                  A wage index above 1.0 increases payments, while below 1.0 decreases them.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
-
-          {/* Cost Analysis Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-emerald-600" />
-                Cost Analysis Settings
-              </CardTitle>
-              <CardDescription>
-                Used for ROI calculations and financial impact analysis
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="avg_staff_hourly_rate">Average Staff Hourly Rate ($)</Label>
-                  <Input
-                    id="avg_staff_hourly_rate"
-                    type="number"
-                    step="0.01"
-                    value={formData.avg_staff_hourly_rate}
-                    onChange={(e) => handleChange('avg_staff_hourly_rate', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="training_cost_per_hour">Training Cost Per Hour ($)</Label>
-                  <Input
-                    id="training_cost_per_hour"
-                    type="number"
-                    step="0.01"
-                    value={formData.training_cost_per_hour}
-                    onChange={(e) => handleChange('training_cost_per_hour', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="documentation_time_per_episode">Documentation Time Per Episode (hours)</Label>
-                  <Input
-                    id="documentation_time_per_episode"
-                    type="number"
-                    step="0.1"
-                    value={formData.documentation_time_per_episode}
-                    onChange={(e) => handleChange('documentation_time_per_episode', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="audit_staff_hourly_rate">Audit Staff Hourly Rate ($)</Label>
-                  <Input
-                    id="audit_staff_hourly_rate"
-                    type="number"
-                    step="0.01"
-                    value={formData.audit_staff_hourly_rate}
-                    onChange={(e) => handleChange('audit_staff_hourly_rate', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="avg_episodes_per_year">Avg Similar Episodes Per Year</Label>
-                  <Input
-                    id="avg_episodes_per_year"
-                    type="number"
-                    value={formData.avg_episodes_per_year}
-                    onChange={(e) => handleChange('avg_episodes_per_year', e.target.value)}
-                  />
-                </div>
               </div>
             </CardContent>
           </Card>

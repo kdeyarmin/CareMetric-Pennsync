@@ -13,15 +13,6 @@ describe('purpose-bound Patient projection migration', () => {
     expect(page).toMatch(/purpose:\s*'roster'/);
   });
 
-  it('loads alert-analysis Patient fields through the exact broker hook', () => {
-    const analyzer = read('src/components/alerts/PatientAlertAnalyzer.jsx');
-
-    expect(analyzer).toMatch(/useAuthorizedPatient\(\{/);
-    expect(analyzer).toMatch(/purpose:\s*'alert_analysis'/);
-    expect(analyzer).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
-    expect(analyzer).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
-  });
-
   it('loads visit-summary Patient fields through the exact broker hook', () => {
     const summary = read('src/components/smartNote/VisitSummaryGenerator.jsx');
 
@@ -80,7 +71,6 @@ describe('purpose-bound Patient projection migration', () => {
 
   it('loads OASIS analysis Patient fields through its reviewed projection', () => {
     for (const relativePath of [
-      'src/components/oasis/PredictiveOutcomesAnalyzer.jsx',
       'src/components/oasis/AIProactiveOASISAssistant.jsx',
     ]) {
       const source = read(relativePath);

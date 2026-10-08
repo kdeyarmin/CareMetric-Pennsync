@@ -11,7 +11,6 @@ import {
   Stethoscope,
   Shield,
   BarChart3,
-  TrendingUp,
   Eye,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
@@ -27,7 +26,6 @@ const OASISReview = lazy(() => import("@/components/hub-tabs/OASISReview"));
 const OASISClinicalReview = lazy(() => import("@/components/hub-tabs/OASISClinicalReview"));
 const OASISComplianceReview = lazy(() => import("@/components/hub-tabs/OASISComplianceReview"));
 const OASISDocumentationReview = lazy(() => import("@/components/hub-tabs/OASISDocumentationReview"));
-const OASISRevenueAnalysis = lazy(() => import("@/components/hub-tabs/OASISRevenueAnalysis"));
 const OASISAnalyticsDashboard = lazy(() => import("@/components/hub-tabs/OASISAnalyticsDashboard"));
 const OASISAuditDashboard = lazy(() => import("@/components/hub-tabs/OASISAuditDashboard"));
 const OutcomeMeasuresSection = lazy(() => import("@/components/oasis/OutcomeMeasuresSection"));
@@ -38,12 +36,13 @@ const OutcomeMeasuresSection = lazy(() => import("@/components/oasis/OutcomeMeas
 // right tab. "assessment" (completing an OASIS) is the default landing tab.
 // "audit" is admin-only and intentionally part of the set so admins can deep-link
 // to it; non-admins who request it fall through to the default tab below.
-const TAB_KEYS = ["assessment", "analyze", "review", "clinical", "quality", "revenue", "analytics", "audit"];
+const TAB_KEYS = ["assessment", "analyze", "review", "clinical", "quality", "analytics", "audit"];
 // Tabs whose source pages were admin-only — gated to admins (defense in depth;
 // server RLS remains the real boundary). Non-admins requesting these via ?tab=
-// fall through to the default tab. Revenue (AI OASIS revenue-uplift review) is
-// admin-only and intentionally hidden from nurses.
-const ADMIN_TABS = ["revenue", "analytics", "audit"];
+// fall through to the default tab. (The former Revenue tab — an AI OASIS
+// revenue-uplift review — was removed with the PDGM payment features; a stale
+// ?tab=revenue now resolves to the default tab like any unknown key.)
+const ADMIN_TABS = ["analytics", "audit"];
 
 const tabLoader = <LoadingState className="py-12" />;
 
@@ -66,7 +65,7 @@ export default function OASISCenter() {
   let activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "assessment";
   // Wait for auth before canonicalizing an admin tab away: on first render
   // currentUser is undefined (isAdmin false), so an admin deep-linking to e.g.
-  // ?tab=revenue must keep that tab until the user query resolves — otherwise the
+  // ?tab=audit must keep that tab until the user query resolves — otherwise the
   // effect below would strip the param and drop them on Assessment. The admin-only
   // tab *content* stays gated regardless.
   if (!isUserLoading && ADMIN_TABS.includes(activeTab) && !isAdmin) {
@@ -137,10 +136,6 @@ export default function OASISCenter() {
                   <BarChart3 className="h-4 w-4 mr-2" />
                   Analytics
                 </TabsTrigger>
-                <TabsTrigger value="revenue" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  Revenue
-                </TabsTrigger>
                 <TabsTrigger value="audit" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
                   <Eye className="h-4 w-4 mr-2" />
                   Audit
@@ -208,12 +203,6 @@ export default function OASISCenter() {
             <TabsContent value="audit">
               <Suspense fallback={tabLoader}>
                 <OASISAuditDashboard />
-              </Suspense>
-            </TabsContent>
-
-            <TabsContent value="revenue">
-              <Suspense fallback={tabLoader}>
-                <OASISRevenueAnalysis />
               </Suspense>
             </TabsContent>
           </>

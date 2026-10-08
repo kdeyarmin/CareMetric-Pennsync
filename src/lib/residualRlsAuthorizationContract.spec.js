@@ -265,7 +265,7 @@ describe('residual RLS source containment', () => {
     const settings = read('src/lib/agencySettings.js');
     const helper = settings.slice(
       settings.indexOf('export function fetchCallerFollowUpRuleConfig'),
-      settings.indexOf('export function fetchCallerPayerRateConfig'),
+      settings.indexOf('export function fetchCallerFaxRetryConfig'),
     );
     expect(helper).toMatch(/return Promise\.resolve\(null\)/);
     expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities|base44\.functions/);
