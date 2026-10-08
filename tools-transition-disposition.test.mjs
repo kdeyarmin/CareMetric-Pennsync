@@ -110,15 +110,22 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
   // send a reviewer to port an endpoint that has no behavior left to port.
   const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
   const inert = discoverInertFunctions(repository);
-  for (const name of ['analyzeClinicalData', 'analyzeDocument', 'analyzeNursePerformance',
+  for (const name of ['analyzeClinicalData', 'analyzeDocument',
     'autoAssignNurseToPatient', 'generateDischargeSummary', 'generatePatientEducation',
-    'getPatientContext', 'runSecurityAudit', 'getUserActivityLog']) {
+    'getPatientContext', 'runSecurityAudit']) {
     assert.ok(inert.includes(name), `${name} should be detected as inert`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but performs no work`);
   }
   // The retired endpoint is retired, not merely paused.
   assert.equal(declared.getPatientContext, 'retire');
+  // Restored by the owner on 2026-10-08 and doing work again; they keep
+  // `preserved_paused` (Base44-hosted, not new port work), so the port queue
+  // does not move.
+  for (const name of ['analyzeNursePerformance', 'getUserActivityLog']) {
+    assert.equal(inert.includes(name), false, `${name} performs work again`);
+    assert.equal(declared[name], 'preserved_paused');
+  }
 });
 
 test('a handler that refuses from its first statement is paused, whatever gates it', () => {

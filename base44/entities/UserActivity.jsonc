@@ -50,8 +50,14 @@
     "action"
   ],
   "rls": {
-    "read": false,
-    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "data.user_email": "{{user.email}}"
+    },
     "update": false,
     "delete": false
   }

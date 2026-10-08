@@ -167,20 +167,27 @@ describe('protected-admin frontend alignment', () => {
     expect(page).not.toMatch(/currentUser\?*\.account_type/);
   });
 
-  it('presents provenance-derived nurse conclusions as unavailable', () => {
+  it('leaves who-may-see-whom for nurse performance to the server', () => {
+    // Restored 2026-10-08 (owner decision). The page holds no role logic: the
+    // nurse picker exists only when analyzeNursePerformance's `roster` action
+    // answers, which it does for the built-in admin and a service-owned agency
+    // administrator alone, and the server re-checks every target. The burnout
+    // prediction tab is not restored.
     const dashboard = read('src/pages/NursePerformanceDashboard.jsx');
     const training = read('src/pages/NurseTrainingHub.jsx');
 
-    expect(dashboard).toMatch(/<UserActivityUnavailable title="Nurse performance analysis unavailable" \/>/);
-    expect(dashboard).not.toMatch(/analyzeNursePerformance|isAdminView|account_type/);
+    expect(dashboard).toMatch(/invoke\('analyzeNursePerformance', \{ action: 'roster' \}\)/);
+    expect(dashboard).toMatch(/const canPickNurse = Array\.isArray\(roster\);/);
+    expect(dashboard).not.toMatch(/isAdminView|account_type|entities\.User\b|burnout/i);
     expect(training).toMatch(/<UserActivityUnavailable title="Personalized skill-gap analysis unavailable" \/>/);
     expect(training).toMatch(/<StatCard label="Skill Gaps" value="Unavailable"/);
     expect(training).not.toMatch(/analyzeNursePerformance/);
 
     const features = read('src/pages/Features.jsx');
-    expect(features).toMatch(/Nurse Performance Dashboard \(Paused\)/);
+    expect(features).toMatch(/10\.2 Nurse Performance Dashboard<\/h3>/);
+    expect(features).not.toMatch(/Nurse Performance Dashboard \(Paused\)/);
     expect(features).toMatch(/personalized skill-gap analysis is currently unavailable/);
-    expect(features).not.toMatch(/Review individual nurse metrics|View your personalized learning path/);
+    expect(features).not.toMatch(/View your personalized learning path/);
   });
 
   it('does not market hard-paused Clinical Pathways as active automation', () => {

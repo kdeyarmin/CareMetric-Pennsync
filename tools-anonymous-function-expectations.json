@@ -14,14 +14,6 @@
       "code": "document_analysis_private_write_broker_required"
     }
   },
-  "analyzeNursePerformance": {
-    "status": 503,
-    "body": {
-      "error": "Nurse performance analysis is unavailable pending immutable tenant provenance",
-      "code": "NURSE_PERFORMANCE_ANALYSIS_PAUSED",
-      "available": false
-    }
-  },
   "archiveSignedDocument": {
     "status": 503,
     "body": {
@@ -199,14 +191,6 @@
     "body": {
       "error": "Secure document review and signing are temporarily unavailable.",
       "code": "signer_token_issuance_unavailable"
-    }
-  },
-  "getUserActivityLog": {
-    "status": 503,
-    "body": {
-      "error": "User activity history is unavailable pending immutable tenant provenance",
-      "code": "USER_ACTIVITY_LOG_PAUSED",
-      "available": false
     }
   },
   "handleTelnyxStatusWebhook": {

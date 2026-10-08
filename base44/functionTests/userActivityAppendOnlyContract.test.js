@@ -253,46 +253,59 @@ const agreementRequest = (body, method = 'POST') => new Request('http://local/ac
   ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
 });
 
-test('UserActivity denies every direct browser operation until tenant provenance exists', async () => {
+test('UserActivity is append-only: callers append their own events and only the built-in admin reads', async () => {
+  // Owner decision 2026-10-08: browser activity is recorded again. A caller may
+  // create only a row naming themselves, nobody may update or delete a row,
+  // and the direct read is the built-in admin's. An agency administrator reads
+  // through getUserActivityLog, which scopes to their own agency's members.
   const schema = JSON5.parse(await readFile(
     new URL('../entities/UserActivity.jsonc', import.meta.url),
     'utf8',
   ));
 
   assert.deepEqual(schema.rls, {
-    read: false,
-    create: false,
+    read: { user_condition: { role: 'admin' } },
+    create: { 'data.user_email': '{{user.email}}' },
     update: false,
     delete: false,
   });
 });
 
-test('browser source cannot obtain UserActivity history or invoke the paused broker', async () => {
+test('browser source reads UserActivity history only through the scoped broker', async () => {
+  // The single browser handle is the append in activityLogger.jsx; every
+  // read goes through getUserActivityLog, never a direct entity read.
+  const ACTIVITY_LOGGER = '/src/components/utils/activityLogger.jsx';
   const violations = [];
   for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
     const source = await readFile(url, 'utf8');
     const handles = entityHandleFindings(source, 'UserActivity');
-    if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
-    if (/\b(?:functions\.)?invoke\s*\(\s*['"]getUserActivityLog['"]/.test(source)) {
-      violations.push(`${url.pathname}: getUserActivityLog invocation`);
+    if (url.pathname.endsWith(ACTIVITY_LOGGER)) {
+      const normalized = normalizeMemberAccess(source);
+      const uses = normalized.match(/\bentities\.UserActivity\.[A-Za-z]+/g) || [];
+      if (uses.length !== 1 || uses[0] !== 'entities.UserActivity.create') {
+        violations.push(`${url.pathname}: ${uses.join(', ')}`);
+      }
+      continue;
     }
-    if (/\b(?:functions\.)?invoke\s*\(\s*['"](?:analyzeNursePerformance|runSecurityAudit)['"]/.test(source)) {
+    if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
+    if (/\b(?:functions\.)?invoke\s*\(\s*['"]runSecurityAudit['"]/.test(source)) {
       violations.push(`${url.pathname}: provenance-derived analysis invocation`);
     }
   }
   assert.deepEqual(violations, []);
 
-  const broker = await readFile(
-    new URL('../functions/getUserActivityLog/entry.ts', import.meta.url),
-    'utf8',
-  );
-  assert.match(broker, /code:\s*'USER_ACTIVITY_LOG_PAUSED'/);
-  assert.match(broker, /status:\s*503/);
-  assert.match(broker, /'Cache-Control':\s*'no-store'/);
-  assert.doesNotMatch(
-    broker,
-    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
-  );
+  // Both restored readers build a pinned client, rebuild the caller's claims
+  // from the service-owned membership, and never read the self-editable
+  // agency_name as authority.
+  for (const name of ['getUserActivityLog', 'analyzeNursePerformance']) {
+    const source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const handler = source.slice(source.indexOf('Deno.serve('));
+    assert.match(handler, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/, name);
+    assert.match(handler, /await withTrustedClaims\(base44, await base44\.auth\.me\(\)\)/, name);
+    assert.doesNotMatch(source.replace(/\/\/ <<<BEGIN SHARED HELPER: trustedCallerClaims[\s\S]*?<<<END SHARED HELPER: trustedCallerClaims>>>/, ''),
+      /\bagency_name\b/, `${name} never scopes by agency_name`);
+    assert.match(source, /user\.role === 'user' && user\.account_type === 'agency_admin'/, name);
+  }
 
   const unavailable = await readFile(
     new URL('../../src/components/security/UserActivityUnavailable.jsx', import.meta.url),
@@ -303,7 +316,6 @@ test('browser source cannot obtain UserActivity history or invoke the paused bro
   assert.match(unavailable, /must not be interpreted as zero events or an all-clear result/);
 
   for (const [name, code] of [
-    ['analyzeNursePerformance', 'NURSE_PERFORMANCE_ANALYSIS_PAUSED'],
     ['runSecurityAudit', 'SECURITY_AUDIT_PAUSED'],
   ]) {
     const source = await readFile(
@@ -349,7 +361,7 @@ test('UserActivity handle scanner covers aliases, destructuring, optional chains
   `, 'UserActivity'), []);
 });
 
-test('frontend cannot append UserActivity and backend appends use service role', async () => {
+test('the browser appends UserActivity only from activityLogger and backend appends use service role', async () => {
   const frontend = await sourceFiles(new URL('../../src/', import.meta.url));
   const backend = await sourceFiles(new URL('../functions/', import.meta.url));
   const browserCreates = [];
@@ -357,7 +369,8 @@ test('frontend cannot append UserActivity and backend appends use service role',
 
   for (const url of frontend) {
     const source = normalizeMemberAccess(await readFile(url, 'utf8'));
-    if (/\bentities\.UserActivity\.create\s*\(/.test(source)) browserCreates.push(url.pathname);
+    if (/\bentities\.UserActivity\.create\s*\(/.test(source)
+      && !url.pathname.endsWith('/src/components/utils/activityLogger.jsx')) browserCreates.push(url.pathname);
   }
   for (const url of backend) {
     const source = normalizeMemberAccess(await readFile(url, 'utf8'));
@@ -370,7 +383,7 @@ test('frontend cannot append UserActivity and backend appends use service role',
   assert.deepEqual(unprivilegedBackendCreates, []);
 });
 
-test('browser telemetry helpers are no-ops and meaningful events use purpose brokers', async () => {
+test('browser telemetry appends only the caller\'s own minimized events; meaningful events use purpose brokers', async () => {
   const activity = await readFile(
     new URL('../../src/components/utils/activityLogger.jsx', import.meta.url),
     'utf8',
@@ -392,7 +405,14 @@ test('browser telemetry helpers are no-ops and meaningful events use purpose bro
     'utf8',
   );
 
-  assert.doesNotMatch(activity, /@\/api\/base44Client|base44\.|entities\./);
+  // activityLogger appends one row per event, naming the caller from
+  // auth (which the RLS create rule also requires), with minimized details.
+  const append = activity.slice(activity.indexOf('base44.entities.UserActivity.create('));
+  assert.match(append, /^base44\.entities\.UserActivity\.create\(\{\s*user_email: email,/);
+  assert.match(activity, /const caller = await loadCurrentCaller\(\);/);
+  assert.match(append, /details: minimizeActivityDetails\(source\)/);
+  assert.equal((activity.match(/entities\./g) || []).length, 1);
+  assert.match(activity, /export const logError = async \(_errorMessage, _errorDetails = \{\}\) => undefined;/);
   assert.doesNotMatch(audit, /@\/api\/base44Client|base44\.|entities\./);
   assert.doesNotMatch(layout, /trackUserLogin/);
   assert.doesNotMatch(layout, /entities\.UserActivity\.create/);
