@@ -15,22 +15,88 @@ async function freshRealm() {
 }
 
 describe('authority-bound auxiliary-window containment', () => {
+  // Interceptors installed by a test are removed even when it fails, so a
+  // failure cannot leave window.open patched for the tests after it.
+  const cleanups = [];
+
   beforeEach(() => {
     document.body.replaceChildren();
   });
 
   afterEach(() => {
+    for (const cleanup of cleanups.splice(0).reverse()) cleanup();
     vi.restoreAllMocks();
     document.body.replaceChildren();
   });
 
-  it('pauses URL and blank print windows even while tenant authority is current', async () => {
+  it('opens nothing until the document interceptor has captured the native opener', async () => {
     const { windows } = await freshRealm();
     const nativeOpen = vi.fn();
     vi.spyOn(window, 'open').mockImplementation(nativeOpen);
 
     expect(windows.openAuthorityBoundWindow('https://safe.example/file')).toBeNull();
     expect(windows.openAuthorityBoundWindow()).toBeNull();
+    expect(windows.requestAuthorityBoundWindow('https://safe.example/file').opened).toBe(false);
+    expect(nativeOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens an external URL severed, with no handle back to the app', async () => {
+    const { windows } = await freshRealm();
+    const nativeOpen = vi.fn(() => null);
+    window.open = nativeOpen;
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    const result = windows.requestAuthorityBoundWindow('https://www.cms.gov/oasis');
+    expect(result).toEqual({ opened: true, window: null });
+    expect(nativeOpen).toHaveBeenCalledWith('https://www.cms.gov/oasis', '_blank', 'noopener,noreferrer');
+    expect(windows.openAuthorityBoundWindow('https://www.cms.gov/oasis')).toBeNull();
+  });
+
+  it('gives a blank print window a handle and closes it when the tenant lease ends', async () => {
+    const { gate, windows } = await freshRealm();
+    const child = { close: vi.fn(), document: {} };
+    const nativeOpen = vi.fn(() => child);
+    window.open = nativeOpen;
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    expect(windows.openAuthorityBoundWindow()).toBe(child);
+    expect(nativeOpen).toHaveBeenCalledWith('', '_blank');
+    expect(child.close).not.toHaveBeenCalled();
+
+    gate.closeTenantSdkRealm();
+    expect(child.close).toHaveBeenCalledTimes(1);
+    expect(windows.openAuthorityBoundWindow()).toBeNull();
+  });
+
+  it('closes every open child on explicit teardown', async () => {
+    const { windows } = await freshRealm();
+    const first = { close: vi.fn() };
+    const second = { close: vi.fn() };
+    window.open = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    windows.openAuthorityBoundWindow();
+    windows.openAuthorityBoundWindow('/manuals/nurse.pdf');
+    windows.closeAuthorityBoundWindows();
+    expect(first.close).toHaveBeenCalledTimes(1);
+    expect(second.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses script, data, credentialed and untracked object URLs', async () => {
+    const { windows } = await freshRealm();
+    const nativeOpen = vi.fn(() => ({ close: vi.fn() }));
+    window.open = nativeOpen;
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    for (const url of [
+      'javascript:alert(1)',
+      'data:text/html,<p>x</p>',
+      'https://user:secret@files.example/doc.pdf',
+      `blob:${window.location.origin}/not-created-here`,
+      'ftp://files.example/doc.pdf',
+    ]) {
+      expect(windows.requestAuthorityBoundWindow(url)).toEqual({ opened: false, window: null });
+    }
     expect(nativeOpen).not.toHaveBeenCalled();
   });
 
