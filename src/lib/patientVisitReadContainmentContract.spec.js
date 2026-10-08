@@ -591,15 +591,15 @@ const MIGRATED_CALLSITES = Object.freeze({
   'src/components/admin/AIKPIReportGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
   'src/components/admin/DataQualityDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'data_quality'/],
   'src/components/admin/QualityMetricsDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'operations_analytics'/],
-  'src/components/admin/SystemHealthMonitor.jsx': [2, /visitAggregatesAvailable\s*=\s*false/, /listAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'[\s\S]*?pageSize:\s*1/],
+  'src/components/admin/SystemHealthMonitor.jsx': [2, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/, /listAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'[\s\S]*?pageSize:\s*1/],
   'src/components/clinical/VitalsChart.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'vitals_trend'/],
   'src/components/compliance/AIComplianceAuditor.jsx': [2, /useAuthorizedPatient\s*\([\s\S]*?purpose:\s*'oasis_analysis_context'/, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/ProgressReportGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/ReferralLetterGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/SmartNotesContextPanel.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/hub-tabs/AdminReportsCenter.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
-  'src/components/hub-tabs/ComplianceMonitoringDashboard.jsx': [1, /visitComplianceAvailable\s*=\s*false/],
-  'src/components/hub-tabs/PatientEducationPortal.jsx': [1, /Patient education generation is temporarily unavailable[\s\S]*?tenant-safe storage/],
+  'src/components/hub-tabs/ComplianceMonitoringDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'compliance_monitoring'/],
+  'src/components/hub-tabs/PatientEducationPortal.jsx': [1, /purpose: "education_delivery"/],
   'src/components/oasis/SmartNoteDataImport.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/patient/ClinicalEventsTimeline.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
   'src/components/patient/PatientMergeDialog.jsx': [2, /purpose:\s*'activity'/],
@@ -792,7 +792,7 @@ describe('Patient/Visit direct-read containment', () => {
     expect(failures).toEqual([]);
   });
 
-  it('keeps the complete 37-read/32-module migration inventory on reviewed brokers', () => {
+  it('keeps the complete 36-read/31-module migration inventory on reviewed brokers', () => {
     expect(Object.keys(MIGRATED_CALLSITES)).toHaveLength(31);
     expect(Object.values(MIGRATED_CALLSITES).reduce((sum, [count]) => sum + count, 0)).toBe(36);
     for (const [relative, [, ...requirements]] of Object.entries(MIGRATED_CALLSITES)) {
@@ -808,7 +808,11 @@ describe('Patient/Visit direct-read containment', () => {
     }
   });
 
-  it('keeps the incomplete AI compliance full-chart path statically unreachable', () => {
+  it('mounts the AI compliance full-chart audit only behind the reviewed chart-audit panel', () => {
+    // 2026-10-08 owner decision: the auditor is on. It is reachable from the
+    // Compliance Center's chart-audit panel alone, assembles its chart from
+    // three reviewed read purposes instead of a widened one, and validates the
+    // model's answer before anything is shown or stored.
     const auditorPath = path.join(SRC, 'components/compliance/AIComplianceAuditor.jsx');
     const references = [];
     for (const absolute of productionModules(SRC)) {
@@ -827,11 +831,23 @@ describe('Patient/Visit direct-read containment', () => {
         if (importedModule || jsxMount) references.push(path.relative(ROOT, absolute));
       }
     }
-    expect([...new Set(references)]).toEqual([]);
+    expect([...new Set(references)]).toEqual(['src/components/compliance/AIChartAuditPanel.jsx']);
+    expect(readFileSync(path.join(SRC, 'pages/ComplianceCenter.jsx'), 'utf8'))
+      .toContain('import("@/components/compliance/AIChartAuditPanel")');
 
     const auditor = readFileSync(auditorPath, 'utf8');
-    expect(auditor).toMatch(/const AI_COMPLIANCE_AUDITOR_ENABLED\s*=\s*false\s*;/);
-    expect(auditor).toMatch(/if \(!AI_COMPLIANCE_AUDITOR_ENABLED\)[\s\S]*?AI Compliance Audit Paused[\s\S]*?return <EnabledAIComplianceAuditor/);
+    expect(auditor).not.toContain('AI_COMPLIANCE_AUDITOR_ENABLED');
+    for (const purpose of ['oasis_analysis_context', 'smart_note_context', 'education_context']) {
+      expect(auditor).toMatch(new RegExp(`useAuthorizedPatient\\(\\{[\\s\\S]{0,160}purpose: '${purpose}'`));
+    }
+    expect(auditor).toContain('parts.some((part) => !part || part.id !== patientId)');
+    const validate = auditor.indexOf('normalizeComplianceAuditResult(result)');
+    const show = auditor.indexOf('setAuditResults(normalized)');
+    const store = auditor.indexOf('ComplianceAudit.create(buildComplianceAuditRecord(');
+    expect(validate).toBeGreaterThan(-1);
+    expect(show).toBeGreaterThan(validate);
+    expect(store).toBeGreaterThan(show);
+    expect(auditor).not.toContain("|| 'system'");
   });
 });
 

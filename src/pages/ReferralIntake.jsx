@@ -1460,6 +1460,20 @@ export default function ReferralIntake() {
                       </TableCell>
                       <TableCell>
                        <div className="flex flex-col gap-2 min-w-[120px]">
+                         {/* Follow-Up review requires the FULL extraction; quick-scan
+                             uploads carry a partial extracted_data until processed */}
+                         {referral.extracted_data && referral.analysis_results && (
+                           <Link to={`/ReferralFollowUp?id=${referral.id}`}>
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               className="min-h-[36px] text-xs w-full"
+                             >
+                               <ClipboardCheck className="w-4 h-4 mr-1" />
+                               {referral.follow_up_requests?.status ? `Follow-Up (${referral.follow_up_requests.status})` : 'Follow-Up'}
+                             </Button>
+                           </Link>
+                         )}
                          {referral.requires_manual_review ? (
                            <Button
                              size="sm"

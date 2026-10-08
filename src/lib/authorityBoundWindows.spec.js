@@ -691,7 +691,13 @@ describe('authority-bound auxiliary-window containment', () => {
 
     expect(scrubCall).toBeGreaterThan(-1);
     expect(scrubCall).toBeLessThan(appImport);
-    expect(main).toMatch(/segment !== 'signer' && segment !== 'followup'/);
+    // Only the retired signer bearer is scrubbed before the app loads. The
+    // provider follow-up portal was released (2026-10-08) and scrubs its own
+    // token from the URL once its capability lease has read it.
+    expect(main).toMatch(/if \(segment !== 'signer'\) return/);
+    expect(main).not.toMatch(/segment !== 'followup'/);
+    const portal = readFileSync(join(process.cwd(), 'src/pages/ProviderFollowUpPortal.jsx'), 'utf8');
+    expect(portal).toMatch(/scrubPublicCapabilityParameter\('token'\)/);
     expect(main).toMatch(/url\.searchParams\.delete\('token'\)/);
     expect(main).toMatch(/window\.history\.replaceState\(\{\}/);
   });

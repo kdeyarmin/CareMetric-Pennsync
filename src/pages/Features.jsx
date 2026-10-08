@@ -417,13 +417,13 @@ export default function FeaturesPage() {
           howToUse: "Navigate to Compliance Dashboard to review audit results and address flagged issues."
         },
         {
-          name: "User Activity History (Paused)",
+          name: "User Activity Tracking",
           icon: Users,
-          description: "User activity history is unavailable until audit rows have immutable tenant provenance",
-          timeSaved: "Unavailable",
+          description: "Review recorded user activity for audit and performance context",
+          timeSaved: "Regulatory compliance",
           impact: "critical",
-          details: "The app does not load or summarize global UserActivity rows and does not treat unavailable history as zero events",
-          howToUse: "Wait for a hosted and verified tenant-authorized server broker before using in-app activity history."
+          details: "Per-user summaries, an action log with filters, and CSV/PDF export. Agency administrators see their own agency's staff; recorded details never include patient names or contact numbers",
+          howToUse: "Admins: open User Activity Report (Report and Activity Log tabs), or a user's activity panel in User Management."
         },
         {
           name: "Regulatory Updates",
@@ -994,9 +994,18 @@ export default function FeaturesPage() {
     <h2>9. Compliance & Monitoring</h2>
     <p><span class="role-badge admin-badge">ADMIN</span>Monitor compliance and audit documentation quality</p>
 
-    <h3>9.1 User Activity History (Paused)</h3>
+    <h3>9.1 Reviewing User Activity</h3>
     <div class="step">
-      <span class="step-number">1</span>In-app activity history, filters, summaries, and exports are unavailable until a tenant-authorized server broker can verify immutable agency provenance.
+      <span class="step-number">1</span>Navigate to <strong>"User Activity Report"</strong>
+    </div>
+    <div class="step">
+      <span class="step-number">2</span>Review per-user summaries, or open the Activity Log tab for the detailed action history
+    </div>
+    <div class="step">
+      <span class="step-number">3</span>Use filters to focus on specific users, actions, or date ranges
+    </div>
+    <div class="step">
+      <span class="step-number">4</span>Export activity reports for audits
     </div>
 
     <h3>9.2 Compliance Auditing</h3>
@@ -1043,9 +1052,18 @@ export default function FeaturesPage() {
       <span class="step-number">4</span>Export reports for leadership
     </div>
 
-    <h3>10.2 Nurse Performance Dashboard (Paused)</h3>
+    <h3>10.2 Nurse Performance Dashboard</h3>
     <div class="step">
-      <span class="step-number">1</span>Derived nurse scores and recommendations are unavailable until every source record has immutable tenant provenance and a tenant-authorized analysis broker is verified.
+      <span class="step-number">1</span>Navigate to <strong>"Nurse Performance Dashboard"</strong>
+    </div>
+    <div class="step">
+      <span class="step-number">2</span>Nurses see their own metrics; agency administrators can pick any active member of their agency
+    </div>
+    <div class="step">
+      <span class="step-number">3</span>Identify strengths and training needs from the AI insights
+    </div>
+    <div class="step">
+      <span class="step-number">4</span>Set and track personal goals over time
     </div>
   </div>
 

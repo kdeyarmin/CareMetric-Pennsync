@@ -65,13 +65,35 @@ export async function fetchCallerScopedConfig(entityName, agencyName) {
   return newest?.[0] || null;
 }
 
-/** @param {string | null | undefined} agencyName */
+const ruleConfigShape = (config) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
+  return {
+    disabled_rules: Array.isArray(config.disabled_rules)
+      ? config.disabled_rules.filter((rule) => typeof rule === 'string')
+      : [],
+    severity_overrides: config.severity_overrides && typeof config.severity_overrides === 'object'
+      && !Array.isArray(config.severity_overrides)
+      ? config.severity_overrides
+      : {},
+    custom_items: Array.isArray(config.custom_items)
+      ? config.custom_items.filter((item) => item && typeof item === 'object')
+      : [],
+  };
+};
+
+/**
+ * The caller's agency follow-up rules. The agency is decided server-side from
+ * the caller's service-owned membership, so the agency hint a caller passes is
+ * ignored rather than trusted, and the entity is never read directly. Any
+ * failure falls back to the built-in rules, which are the floor.
+ *
+ * @param {string | null | undefined} _agencyName ignored; the server decides the agency
+ */
 export function fetchCallerFollowUpRuleConfig(_agencyName) {
-  // Follow-up rules are agency-wide policy. A caller-controlled agency_name is
-  // not authority, and there is not yet an immutable membership-scoped read
-  // broker. Use the built-in rules until that broker exists; do not read the
-  // entity directly or adopt a legacy row from another agency.
-  return Promise.resolve(null);
+  return Promise.resolve()
+    .then(() => base44.functions.invoke('saveFollowUpRuleConfig', { action: 'get' }))
+    .then((res) => ruleConfigShape((res?.data ?? res)?.config))
+    .catch(() => null);
 }
 
 /** @param {string | null | undefined} agencyName */

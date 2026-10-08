@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import StatCard from "@/components/ui/stat-card";
@@ -99,9 +100,17 @@ export default function ComplianceMonitoringDashboard() {
     queryFn: () => base44.entities.PersonnelCredential.list('-updated_date', 5000),
     enabled: isAdminView(currentUser),
   });
-  // Documentation compliance needs a server-side date-bounded aggregate.
-  // Paging the entire Visit population on a timer is operationally unsafe.
-  const visitComplianceAvailable = false;
+  // Documentation compliance reads the purpose-limited Visit broker once (no
+  // timer) and refreshes with the Refresh button. Until it settles, the
+  // incomplete-documentation count is a dash and no all-clear is inferred.
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'compliance_monitoring',
+    sort: '-visit_date',
+    limit: 2000,
+    enabled: isAdminView(currentUser),
+  });
+  const visitComplianceAvailable = visitQuery.isSuccess && Array.isArray(visitQuery.data);
+  const visits = visitComplianceAvailable ? visitQuery.data : null;
 
   const sendNotificationMutation = useMutation({
     mutationFn: () => rejectOutboundDelivery(),
@@ -173,8 +182,48 @@ export default function ComplianceMonitoringDashboard() {
       }
     });
 
+    // Missing documentation: visits in the last 7 days without proper notes.
+    // Without the lower bound, future-dated scheduled visits (which have no
+    // notes yet) would count as recent and be flagged incomplete.
+    if (visits) {
+      const userVisitCounts = {};
+      const userIncompleteVisits = {};
+      visits.forEach(visit => {
+        const daysUntil = visit.visit_date ? localDaysUntil(visit.visit_date) : null;
+        if (daysUntil == null || -daysUntil < 0 || -daysUntil > 7) return;
+        if (!userVisitCounts[visit.created_by]) {
+          userVisitCounts[visit.created_by] = 0;
+          userIncompleteVisits[visit.created_by] = 0;
+        }
+        userVisitCounts[visit.created_by]++;
+        // The narrative lives in `nurse_notes`.
+        if (!visit.nurse_notes || visit.nurse_notes.length < 50) {
+          userIncompleteVisits[visit.created_by]++;
+        }
+      });
+      Object.entries(userIncompleteVisits).forEach(([userEmail, count]) => {
+        if (count === 0) return;
+        const user = allUsers.find(u => u.email === userEmail);
+        if (!user) return;
+        const totalVisits = userVisitCounts[userEmail];
+        const percentage = Math.round((count / totalVisits) * 100);
+        issues.push({
+          type: 'incomplete_documentation',
+          severity: percentage >= 50 ? 'high' : 'medium',
+          userId: user.email,
+          userName: user.full_name,
+          userRole: user.role,
+          title: 'Incomplete Visit Documentation',
+          count,
+          total: totalVisits,
+          percentage,
+          details: `${count} of ${totalVisits} recent visits (${percentage}%) have incomplete documentation`
+        });
+      });
+    }
+
     return issues;
-  }, [trainingAssignments, personnelCredentials, allUsers]);
+  }, [trainingAssignments, personnelCredentials, allUsers, visits]);
 
   // Filter, group and count (shared with the Compliance Center page).
   const { filteredIssues, groupedByUser, criticalCount, highCount, affectedUsers, overdueTraining, expiringCreds } =
@@ -246,8 +295,9 @@ Compliance Management System`;
       refetchUsers({ throwOnError: true }),
       refetchAssignments({ throwOnError: true }),
       refetchCredentials({ throwOnError: true }),
+      Promise.resolve(visitQuery.refetch?.()),
     ]).then((results) => {
-      if (results.some((result) => result.isError || result.error)) {
+      if (results.some((result) => result && (result.isError || result.error))) {
         throw new Error('One or more compliance sources failed to refresh');
       }
       return results;
@@ -369,8 +419,9 @@ Compliance Management System`;
       {!visitComplianceAvailable && (
         <Card className="border-amber-300 bg-amber-50">
           <CardContent className="p-4 text-sm text-amber-900">
-            Visit-documentation compliance is unavailable pending a bounded, tenant-scoped aggregate
-            broker. No missing-documentation count or all-clear conclusion is inferred from absent data.
+            {visitQuery.isError
+              ? 'Visit-documentation compliance is unavailable because visit records could not be loaded. No missing-documentation count or all-clear conclusion is inferred.'
+              : 'Loading visit documentation for the incomplete-documentation check…'}
           </CardContent>
         </Card>
       )}

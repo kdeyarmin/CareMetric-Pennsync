@@ -211,6 +211,18 @@ export const NAV_MANIFEST = [
     keywords: ["referral", "intake", "admission", "office"],
   },
   {
+    // Coder/QA follow-up worklist: what each processed referral still needs
+    // from the provider for CMS compliance, the printable provider
+    // information-request form, and the online provider response link.
+    page: "ReferralFollowUp",
+    label: "Referral Follow-Up",
+    icon: ClipboardCheck,
+    category: "Office",
+    adminOnly: true,
+    breadcrumbParent: "ReferralIntake",
+    keywords: ["referral", "follow up", "provider", "request", "compliance", "coder", "qa"],
+  },
+  {
     // ADR / audit response workspace: analyze the contractor's ADR or audit
     // letter into a CMS-grounded documentation checklist, verify the assembled
     // response packet page by page, and generate the submission-ready packet

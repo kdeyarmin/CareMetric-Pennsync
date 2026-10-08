@@ -94,16 +94,18 @@ test('the patient merge broker admits the platform tier or a membership-backed a
   assert.doesNotMatch(authority, /account_type|agency_name|is_approved/);
 });
 
-test('provenance-derived security audit is unavailable before SDK or request work', () => {
+test('security audit authorizes from protected role or service-owned membership, never profile claims', () => {
+  // 2026-10-08 owner decision: the audit runs again. Its agency authority is
+  // the withTrustedClaims result (a service-owned agency_admin membership),
+  // read off the rebuilt claims object rather than the caller's own profile.
   const source = readEntry('runSecurityAudit');
+  const authority = source.slice(source.indexOf('async function auditAuthority'), source.indexOf('async function loadCohort'));
 
-  assert.match(source, /code:\s*'SECURITY_AUDIT_PAUSED'/);
-  assert.match(source, /status:\s*503/);
-  assert.match(source, /'Cache-Control':\s*'no-store'/);
-  assert.doesNotMatch(
-    source,
-    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
-  );
+  assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/);
+  assert.match(authority, /if \(user\.role === 'admin'\) return \{ scope: 'platform', agencyId: null \}/);
+  assert.match(authority, /const claims = await withTrustedClaims\(base44, user\)/);
+  assert.doesNotMatch(authority, /user\.(?:account_type|agency_name|agency_id)/);
+  assert.doesNotMatch(source, /SECURITY_AUDIT_PAUSED/);
 });
 
 test('unused clinical data analysis is unavailable before SDK, request, data, or AI work', () => {
@@ -143,7 +145,10 @@ test('patient-bearing clinical helpers retain exact creator and assigned-nurse c
     );
   }
 
-  for (const name of ['scheduleSms', 'sendSms']) {
+  // scheduleSms left this list on 2026-10-08: it now authorizes a chart by
+  // agency, agency-wide role, chart creator id, or an active care-team
+  // assignment (pinned in 'scheduleSms authorizes from protected sources').
+  for (const name of ['sendSms']) {
     const source = readEntry(name);
     assert.match(source, /const\s+isAssigned\s*=\s*Array\.isArray\(claimed\.assigned_nurses\)[\s\S]{0,160}claimed\.assigned_nurses\.includes\(user\.email\)/);
     assert.match(
@@ -244,45 +249,64 @@ test('record-owner exceptions remain exact and escalation requires the protected
   );
 });
 
-test('SmsConsent and ScheduledSms browser access remains fully disabled', () => {
-  for (const entity of ['SmsConsent', 'ScheduledSms']) {
-    const schema = JSON5.parse(read(`base44/entities/${entity}.jsonc`));
-    assert.equal(schema.name, entity);
-    for (const operation of ['create', 'read', 'update', 'delete']) {
-      assert.equal(
-        schema.rls?.[operation],
-        false,
-        `${entity}.${operation} must stay behind a backend workflow`,
-      );
-    }
+test('SmsConsent stays service-only; ScheduledSms is readable only by the nurse who scheduled it', () => {
+  const consent = JSON5.parse(read('base44/entities/SmsConsent.jsonc'));
+  for (const operation of ['create', 'read', 'update', 'delete']) {
+    assert.equal(consent.rls?.[operation], false, `SmsConsent.${operation} must stay behind a backend workflow`);
   }
+  // Scheduled texting was released 2026-10-08. The browser may read its own
+  // queue; creating goes through scheduleSms and canceling through
+  // cancelScheduledSms, so no browser write rule exists.
+  const scheduled = JSON5.parse(read('base44/entities/ScheduledSms.jsonc'));
+  assert.deepEqual(scheduled.rls, {
+    read: {
+      $or: [
+        { 'data.nurse_email': '{{user.email}}' },
+        { created_by: '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
+    create: false,
+    update: false,
+    delete: false,
+  });
 });
 
-test('scheduled SMS creation and dispatch pause before constructing a Base44 client', () => {
-  const pausedHandlers = new Map([
-    ['scheduleSms', 'SCHEDULED_SMS_CREATION_PAUSED'],
-    ['dispatchScheduledSms', 'SCHEDULED_SMS_DISPATCH_PAUSED'],
-  ]);
+test('scheduleSms authorizes from protected sources, never from mutable profile fields', () => {
+  const source = readEntry('scheduleSms');
+  const handler = source.slice(source.indexOf('Deno.serve'));
+  assert.doesNotMatch(source, /SCHEDULED_SMS_CREATION_PAUSED/);
+  // Caller: the protected owner or one active service-owned membership.
+  assert.match(handler, /await withTrustedClaims\(base44, await base44\.auth\.me\(\)\)/);
+  assert.match(handler, /user\.role === 'user' && claimIdentifier\(user\.agency_id\)/);
+  assert.ok(handler.indexOf("code: 'agency_membership_required'") < handler.indexOf('await req.json()'),
+    'membership is required before the body is read');
+  // Sending line: a service-owned outbound binding in the caller's agency.
+  assert.match(handler, /resolveActiveTelnyxSmsBinding\(base44, \{[\s\S]*?requireOutbound: true/);
+  assert.match(handler, /smsAuthority\.agencyId !== memberAgencyId/);
+  assert.match(handler, /const fromNumber = smsAuthority\.destinationE164;/);
+  // Consent: the scoped ledger, never a phone-only row.
+  assert.match(handler, /loadLatestScopedSmsConsent\(base44, smsAuthority, destination\)/);
+  assert.doesNotMatch(handler, /SmsConsent\s*\.filter\(\{ phone_e164/);
+  // Patient: same agency, then agency-wide role, chart creator or an active
+  // care-team assignment. The retired nurse-list and creator-email checks are gone.
+  assert.match(handler, /claimed\.agency_id !== agencyId/);
+  assert.match(source, /PatientCareTeamAssignment\.filter\(\{[\s\S]*?status: 'active'/);
+  assert.doesNotMatch(source, /assigned_nurses|claimed\.created_by ===/);
+});
 
-  for (const [name, flag] of pausedHandlers) {
-    const source = readEntry(name);
-    assert.match(source, new RegExp(`const ${flag} = true;`), `${name} pause must be literal and fail-closed`);
-
-    const handler = source.slice(source.indexOf('Deno.serve'));
-    const pauseGate = handler.indexOf(`if (${flag})`);
-    const clientCreation = handler.indexOf('createClientFromRequest(');
-    assert.notEqual(pauseGate, -1, `${name} must check ${flag} in its handler`);
-    assert.notEqual(clientCreation, -1, `${name} must retain its dormant implementation`);
-    assert.ok(
-      pauseGate < clientCreation,
-      `${name} must return from its pause gate before SDK construction or any hosted read/write`,
-    );
-    assert.match(
-      handler.slice(pauseGate, clientCreation),
-      /status:\s*503/,
-      `${name} pause response must report service unavailable`,
-    );
-  }
+test('dispatchScheduledSms re-proves the line, the membership and scoped consent at send time', () => {
+  const source = readEntry('dispatchScheduledSms');
+  const handler = source.slice(source.indexOf('Deno.serve'));
+  assert.doesNotMatch(source, /SCHEDULED_SMS_DISPATCH_PAUSED/);
+  assert.match(handler, /getSchedulerAuthError\(req, me\)/);
+  assert.match(handler, /resolveActiveTelnyxSmsBinding\(base44, \{[\s\S]*?requireOutbound: true/);
+  assert.match(handler, /AgencyMembership[\s\S]*?status: 'active'/);
+  assert.match(handler, /loadLatestScopedSmsConsent\(base44, lineAuthority, row\.to_number\)/);
+  assert.doesNotMatch(handler, /SmsConsent\s*\.filter\(\{ phone_e164/);
+  const consent = handler.indexOf('loadLatestScopedSmsConsent(base44, lineAuthority');
+  const send = handler.indexOf('await sendTelnyx(');
+  assert.ok(consent > 0 && consent < send, 'consent is checked before every provider send');
 });
 
 test('analyzeAndGenerateClinicalTasks authorizes the patient before PHI reads and returns suggestions without Task writes', () => {

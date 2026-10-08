@@ -57,16 +57,95 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
-const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
-const isProtectedAdmin = (user) => !!user && user.role === 'admin';
-function isProtectedSuperAdmin(user) {
-  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
-  return !!configuredEmail
-    && isProtectedAdmin(user)
-    && normalizeProtectedEmail(user.email) === configuredEmail;
+// <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
 }
-// <<<END SHARED HELPER: protectedUserAuthz>>>
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
+  try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId }, undefined, 101,
+    );
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
+    }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
+  } catch {
+    // No lookup failure may be interpreted as membership approval.
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
+  if (profile.role === 'admin') return profile;
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
+}
+// <<<END SHARED HELPER: trustedCallerClaims>>>
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -344,49 +423,6 @@ function resolveMatch(patient, existingByMrn, existingByNameDob) {
   };
 }
 
-// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
-// internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
-// rather than env-configured; add a host here if file storage ever moves.
-// (Allowlisting also mitigates DNS rebinding.)
-const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
-function isSafeFetchUrl(raw) {
-  let u;
-  try { u = new URL(String(raw)); } catch { return false; }
-  if (u.protocol !== 'https:') return false;
-  const host = u.hostname.toLowerCase();
-  if (['localhost', '0.0.0.0', '127.0.0.1', '::1', '169.254.169.254'].includes(host)) return false;
-  if (host.endsWith('.internal') || host.endsWith('.local')) return false;
-  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const a = +m[1], b = +m[2];
-    if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
-  }
-  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
-  return true;
-}
-
-// Fetch that re-validates every redirect hop against isSafeFetchUrl. With the
-// default redirect:'follow' the guard only checks the FIRST URL, so an
-// allowlisted host that 3xx-redirects to an internal/metadata IP would still be
-// fetched (SSRF). Returns null if a hop resolves to a disallowed host.
-async function safeFetchFollow(initialUrl) {
-  let response;
-  let nextUrl = initialUrl;
-  for (let hop = 0; hop < 4; hop++) {
-    response = await fetch(nextUrl, { redirect: 'manual' });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('location');
-      if (!location) break;
-      const resolved = new URL(location, nextUrl).toString();
-      if (!isSafeFetchUrl(resolved)) return null;
-      nextUrl = resolved;
-      continue;
-    }
-    break;
-  }
-  return response;
-}
-
 const runInBatches = async (items, batchSize, worker) => {
   for (let index = 0; index < items.length; index += batchSize) {
     const batch = items.slice(index, index + batchSize);
@@ -394,65 +430,100 @@ const runInBatches = async (items, batchSize, worker) => {
   }
 };
 
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+const MAX_FILE_CHARS = 5_000_000;
+const MAX_ROWS = 5000;
+const CREATE_BATCH = 5;
+const respond = (body, status = 200, headers = {}) => Response.json(body, {
+  status,
+  headers: { ...NO_STORE_HEADERS, ...headers },
+});
+
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function invokeErrorMessage(error) {
+  const data = error?.response?.data;
+  if (data && typeof data.error === 'string' && data.error) return data.error.slice(0, 300);
+  return 'Patient could not be created';
+}
+
+/**
+ * Patient roster import (owner decision, 2026-10-08).
+ *
+ * Admin-only and scoped to ONE agency: the caller must hold exactly one active,
+ * service-owned AgencyMembership (loadTrustedTenantClaim), and be either an
+ * agency_admin there or the built-in administrator. Every match, discharge and
+ * creation stays inside that agency: rows from other agencies are never match
+ * targets, a match against a chart with no recorded agency is reported for
+ * manual review rather than touched, and new charts are created one at a time
+ * through createAuthorizedPatient as the caller, so they carry the same
+ * immutable tenant and creator provenance as a chart created by hand. The CSV
+ * travels inline (file_content) — nothing is fetched from storage — and a
+ * commit must name the agency its preview was computed for.
+ *
+ * Body: { file_content, report_type?, dry_run?, agency_id? (required to commit) }
+ */
 Deno.serve(async (req) => {
+  if (req.method !== 'POST') {
+    return respond({ success: false, error: 'Method not allowed' }, 405, { Allow: 'POST' });
+  }
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await base44.auth.me().catch(() => null);
     if (!user) {
-      return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return respond({ success: false, error: 'Unauthorized' }, 401);
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    // This import can enumerate, create, discharge, and archive patient charts.
-    // Mutable User-schema claims cannot safely establish tenant membership, so
-    // pause facility-admin access until an immutable membership source exists.
-    // Reject before reading either inline CSV data or a caller-supplied file URL.
-    if (!isProtectedSuperAdmin(user)) {
-      return Response.json({
-        success: false,
-        error: 'Forbidden: protected platform administrator required',
-      }, { status: 403 });
+    if (user.disabled === true || user.is_service === true) {
+      return respond({ success: false, error: 'Forbidden' }, 403);
     }
+    // This import can create, discharge and archive patient charts, so it is
+    // authorized from the service-owned membership before the body is read.
+    const tenant = await loadTrustedTenantClaim(base44, user.id, normalizeClaimEmail(user.email));
+    const isBuiltInAdmin = user.role === 'admin';
+    if (!tenant || (!isBuiltInAdmin && (user.role !== 'user' || tenant.tenantRole !== 'agency_admin'))) {
+      return respond({
+        success: false,
+        error: 'Forbidden: an agency administrator with one active agency membership is required',
+      }, 403);
+    }
+    const agencyId = tenant.agencyId;
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return respond({ success: false, error: 'Request body must be an object' }, 400);
+    }
     const reportType = body.report_type === 'discharge_report' ? 'discharge_report' : 'active_census';
     // Preview mode: classify every row and return the plan without writing
     // anything, so an admin can review which patients would be added vs.
     // matched to existing records before committing the import.
     const dryRun = body.dry_run === true || body.mode === 'preview';
-    // Source/staging containment: preview remains available to the protected
-    // owner, but apply mode cannot safely create or mutate Patient rows until
-    // it requires one exact AgencyMembership-backed agency and stamps the same
-    // immutable provenance as createAuthorizedPatient. Refuse before reading a
-    // supplied file or enumerating any Patient data.
-    if (!dryRun) {
-      return Response.json({
-        success: false,
-        error: 'Patient import commit is paused pending tenant-safe agency stamping',
-      }, { status: 503 });
+    if (!dryRun && body.agency_id !== agencyId) {
+      // The preview was computed for one agency; refuse to apply it under another.
+      return respond({ success: false, error: 'This import was previewed for a different agency. Preview it again.' }, 409);
     }
-    let fileContent = cleanValue(body.file_content);
-
-    if (!fileContent && body.file_url) {
-      if (!isSafeFetchUrl(body.file_url)) return Response.json({ success: false, error: 'Invalid or disallowed file_url' }, { status: 400 });
-      const fileResponse = await safeFetchFollow(body.file_url);
-      if (!fileResponse) {
-        return Response.json({ success: false, error: 'Redirect to a disallowed host blocked' }, { status: 400 });
-      }
-      if (!fileResponse.ok) {
-        return Response.json({ success: false, error: 'Failed to read the uploaded file' }, { status: 400 });
-      }
-      fileContent = await fileResponse.text();
+    if (body.file_url !== undefined) {
+      return respond({ success: false, error: 'Send the CSV as file_content; stored file links are not read' }, 400);
     }
-
-    if (!fileContent) {
-      return Response.json({ success: false, error: 'CSV file content is required' }, { status: 400 });
+    const fileContent = typeof body.file_content === 'string' ? body.file_content : '';
+    if (!cleanValue(fileContent)) {
+      return respond({ success: false, error: 'CSV file content is required' }, 400);
+    }
+    if (fileContent.length > MAX_FILE_CHARS) {
+      return respond({ success: false, error: 'CSV file is too large' }, 413);
     }
 
     // Full CSV parse (handles quoted commas, escaped quotes, and embedded
     // newlines) so a single logical record never gets split across rows.
     const records = parseCsv(fileContent);
     if (records.length < 2) {
-      return Response.json({ success: false, error: 'CSV file must include a header row and at least one patient row' }, { status: 400 });
+      return respond({ success: false, error: 'CSV file must include a header row and at least one patient row' }, 400);
+    }
+    if (records.length - 1 > MAX_ROWS) {
+      return respond({ success: false, error: `CSV file has more than ${MAX_ROWS} patient rows` }, 413);
     }
 
     const headers = records[0];
@@ -461,16 +532,18 @@ Deno.serve(async (req) => {
       data: buildRowObject(headers, cols),
     }));
 
-    // Build the dedup source from ALL patients, not just the newest page. A
-    // returning patient whose record isn't in the fetched window would otherwise
-    // miss the match and be re-created as a duplicate chart. Page through in
-    // 5000-row chunks (the SDK per-request max) until a short page ends the roster.
+    // Match against this agency's charts, plus charts with no recorded agency
+    // so a legacy chart is never duplicated; another agency's charts are never
+    // read into the plan. Page through in 5000-row chunks until a short page.
     const PATIENT_PAGE = 5000;
     const existingPatients = [];
     for (let skip = 0; ; skip += PATIENT_PAGE) {
       const page = await base44.asServiceRole.entities.Patient.list('-created_date', PATIENT_PAGE, skip);
       if (!Array.isArray(page) || page.length === 0) break;
-      existingPatients.push(...page);
+      for (const row of page) {
+        const rowAgency = typeof row?.agency_id === 'string' ? row.agency_id : '';
+        if (rowAgency === agencyId || rowAgency === '') existingPatients.push(row);
+      }
       if (page.length < PATIENT_PAGE) break;
     }
     const { existingByMrn, existingByNameDob } = buildExistingLookups(existingPatients);
@@ -478,6 +551,8 @@ Deno.serve(async (req) => {
     const results = {
       reportType,
       dryRun,
+      agency_id: agencyId,
+      agency_name: tenant.agencyName,
       processed: 0,
       created: 0,
       matchedExisting: 0,
@@ -489,7 +564,7 @@ Deno.serve(async (req) => {
       willDischarge: 0,
       errors: [],
       // Per-row outcome for the preview table. action is one of:
-      // create | matched | discharge | no_change | in_file_duplicate | error
+      // create | matched | needs_review | discharge | no_change | in_file_duplicate | error
       plan: [],
     };
 
@@ -543,13 +618,20 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      if (matchResult.match && matchResult.match.agency_id !== agencyId) {
+        // A chart with no recorded agency: never duplicate it, never touch it.
+        const error = `Matched by ${matchResult.matchedBy} to ${existingLabel(matchResult.match)}, a chart with no agency recorded — resolve that chart before importing this row.`;
+        results.errors.push({ row: rawRow.rowNumber, patient: patient.patientLabel, error });
+        results.plan.push({ row: rawRow.rowNumber, action: 'needs_review', patient: patient.patientLabel, detail: error });
+        continue;
+      }
+
       if (reportType === 'active_census') {
         if (matchResult.match) {
           results.matchedExisting++;
           results.noChanges++;
           // An ARCHIVED/discharged chart on an active-census row means the
-          // patient is back — silently reporting "already in system" hid the
-          // readmission. Flag it for review instead (this import never
+          // patient is back — flag it for review (this import never
           // reactivates automatically).
           const archivedMatch = matchResult.match.is_archived || matchResult.match.status === 'discharged';
           results.plan.push({
@@ -568,6 +650,7 @@ Deno.serve(async (req) => {
         createQueue.push({
           rowNumber: rawRow.rowNumber,
           patientLabel: patient.patientLabel,
+          requestKey: uploadKeys[0],
           payload: {
             first_name: patient.first_name,
             middle_name: patient.middle_name || undefined,
@@ -575,18 +658,12 @@ Deno.serve(async (req) => {
             date_of_birth: patient.date_of_birth || undefined,
             medical_record_number: patient.medical_record_number || undefined,
             admission_date: patient.admission_date || undefined,
-            status: patient.status || 'active',
             payor: patient.payor || undefined,
             primary_diagnosis: patient.primary_diagnosis || undefined,
             secondary_diagnoses: patient.secondary_diagnoses.length ? patient.secondary_diagnoses : undefined,
             phone: patient.phone || undefined,
             address: patient.address || undefined,
             care_type: 'home_health',
-            is_archived: false,
-            // Bind new charts to the importing admin so agency-scoped RLS /
-            // function gates can attribute the patient to this tenant.
-            assigned_nurses: user.email ? [user.email] : undefined,
-            created_by: user.email || undefined,
           },
         });
         continue;
@@ -643,44 +720,62 @@ Deno.serve(async (req) => {
 
     // Preview mode stops here: report the plan and planned counts, write nothing.
     if (dryRun) {
-      return Response.json({ success: true, results });
+      return respond({ success: true, results });
     }
 
-    await runInBatches(createQueue, 25, async (item) => {
+    // New charts go through the reviewed creation broker as the caller, with a
+    // request id derived from the agency and the row's match key so a retried
+    // import cannot mint a second chart for the same row.
+    await runInBatches(createQueue, CREATE_BATCH, async (item) => {
       try {
-        await base44.asServiceRole.entities.Patient.create(item.payload);
+        const clientRequestId = `roster-import-${await sha256Hex(`${agencyId}|${item.requestKey}`)}`;
+        const payload = Object.fromEntries(Object.entries(item.payload).filter(([, value]) => value !== undefined));
+        const response = await base44.functions.invoke('createAuthorizedPatient', {
+          ...payload,
+          agency_id: agencyId,
+          client_request_id: clientRequestId,
+        });
+        const data = response && typeof response === 'object' && 'data' in response ? response.data : response;
+        if (!data || data.success === false) throw new Error(data?.error || 'Patient could not be created');
         results.created++;
       } catch (error) {
         results.errors.push({
           row: item.rowNumber,
           patient: item.patientLabel,
-          error: error.message,
+          error: invokeErrorMessage(error),
         });
       }
     });
 
+    // Discharges touch only charts recorded in this agency, re-read immediately
+    // before the write so a chart moved or merged since the preview is skipped.
     await runInBatches(dischargeQueue, 25, async (item) => {
       try {
+        const current = await base44.asServiceRole.entities.Patient.filter({ id: item.id }, undefined, 2);
+        const row = Array.isArray(current) && current.length === 1 ? current[0] : null;
+        if (!row || row.id !== item.id || row.agency_id !== agencyId || row.status === 'merged') {
+          throw new Error('The matched chart changed since the preview; it was not discharged.');
+        }
         await base44.asServiceRole.entities.Patient.update(item.id, item.payload);
         results.discharged++;
         results.archived++;
       } catch (error) {
         results.errors.push({
           patient: item.patientLabel,
-          error: error.message,
+          error: error?.message?.startsWith('The matched chart changed') ? error.message : 'The chart could not be discharged',
         });
       }
     });
 
-    return Response.json({
+    return respond({
       success: true,
       results,
     });
   } catch (error) {
-    console.error('processPatientFileUpdate failed:', error);
-    return Response.json({
+    console.error('processPatientFileUpdate failed:', error?.message || error);
+    return respond({
       success: false,
       error: 'Internal server error',
-    }, { status: 500 });
+    }, 500);
   }
 });

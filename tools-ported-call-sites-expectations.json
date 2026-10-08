@@ -58,7 +58,7 @@
     "src/lib/notify.js:59 createNotification",
     "src/lib/retiredOfflineQueue.js:484 appendPatientNoteHistory",
     "src/lib/retiredOfflineQueue.js:571 submitIncidentReport",
-    "src/pages/Dashboard.jsx:86 getDashboardData",
+    "src/pages/Dashboard.jsx:88 getDashboardData",
     "src/pages/Help.jsx:50 generateUserManual",
     "src/pages/PatientEducationHub.jsx:288 generatePatientHandout",
     "src/pages/PatientEducationHub.jsx:369 generatePatientHandout",
@@ -68,7 +68,7 @@
     "src/pages/ReferralIntake.jsx:616 matchPatientWithAI",
     "src/pages/TimeOff.jsx:55 getApprovedTimeOff",
     "src/pages/UserGuides.jsx:25 generateUserGuidePDF",
-    "src/pages/UserManagement.jsx:149 resendInvitationV2",
+    "src/pages/UserManagement.jsx:154 resendInvitationV2",
     "src/pages/UserSettings.jsx:251 createNotification"
   ]
 }

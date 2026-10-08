@@ -10,6 +10,7 @@ const EXPECTED_TARGETS = {
   'Auto Retry Failed Faxes.jsonc': 'autoRetryFailedFaxes',
   'Check Stale Follow-Up Requests.jsonc': 'checkStaleFollowUpRequests',
   'Dispatch Scheduled Signature Reminders.jsonc': 'dispatchScheduledSignatureReminders',
+  'Dispatch Scheduled SMS.jsonc': 'dispatchScheduledSms',
   'Nightly Outcome Measure Computation.jsonc': 'dispatchNightlyOutcomeMeasures',
   'Poll Fax Statuses.jsonc': 'pollFaxStatuses',
   'Process Inbound Referral Faxes.jsonc': 'processInboundFaxes',

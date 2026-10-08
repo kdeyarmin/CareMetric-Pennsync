@@ -95,7 +95,21 @@
     "send_at"
   ],
   "rls": {
-    "read": false,
+    "read": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "create": false,
     "update": false,
     "delete": false

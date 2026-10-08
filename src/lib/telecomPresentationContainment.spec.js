@@ -37,8 +37,6 @@ describe("telecom presentation containment", () => {
   it("keeps service-only telecom entities out of every production browser source", () => {
     for (const entityName of [
       "SmsConsent",
-      "SmsMessage",
-      "ScheduledSms",
       "ScheduledFax",
       "TelehealthSession",
     ]) {
@@ -53,10 +51,33 @@ describe("telecom presentation containment", () => {
     }
   });
 
-  it("renders unavailable states instead of zero SMS history or analytics", () => {
-    for (const relativePath of [
+  it("reads the nurse's own texts and scheduled texts, and nothing wider", () => {
+    // Restored 2026-10-08 (owner decision). Each entity has exactly one
+    // browser consumer, which filters to the caller's own rows (RLS admits a
+    // non-admin to nothing else), and every patient label comes from the
+    // authorized `contact` projection.
+    expect(directEntityConsumers("SmsMessage")).toEqual([
       "src/components/messaging/SmsConversationList.jsx",
+    ]);
+    expect(directEntityConsumers("ScheduledSms")).toEqual([
       "src/components/messaging/ScheduledSmsList.jsx",
+    ]);
+    const inbox = read("src/components/messaging/SmsConversationList.jsx");
+    expect(inbox).toMatch(/entities\.SmsMessage\.filter\(\{ nurse_email: user\.email \}/);
+    expect(inbox).toMatch(/<SmsThreadView/);
+    const queue = read("src/components/messaging/ScheduledSmsList.jsx");
+    expect(queue).toMatch(/entities\.ScheduledSms\.filter\(\{ nurse_email: user\.email, status: "pending" \}/);
+    expect(queue).toMatch(/invoke\("cancelScheduledSms"/);
+    for (const source of [inbox, queue]) {
+      expect(source).toMatch(/useScopedPatients\(\{\s*purpose: "contact"/);
+      expect(source).not.toMatch(/entities\.(?:Patient|SmsConsent)\./);
+    }
+    expect(read("src/components/messaging/ScheduleSendDialog.jsx"))
+      .toMatch(/export const SCHEDULED_SMS_UI_ENABLED = true;/);
+  });
+
+  it("renders unavailable states instead of zero SMS analytics", () => {
+    for (const relativePath of [
       "src/components/admin/PhoneAnalyticsPanel.jsx",
     ]) {
       const source = read(relativePath);

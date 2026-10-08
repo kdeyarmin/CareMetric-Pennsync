@@ -10,6 +10,7 @@ import ProviderFaxRequestCard from "@/components/referral/ProviderFaxRequestCard
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
 import { referralPatientReadiness } from "@/components/referral/referralPatientReadiness";
 import AIAdmissionDocumentationAssistant from "@/components/clinical/AIAdmissionDocumentationAssistant";
+import { appendBriefingSection } from "@/components/referral/briefingSections";
 import AIGeneratedOASISAssessment from "@/components/oasis/AIGeneratedOASISAssessment";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -159,11 +160,17 @@ export default function ReferralProcessor() {
               visitType="Start of Care"
             />
 
+            {/* An accepted draft section joins the admission narrative that the
+                nurse briefing email below carries; it is not written to a chart. */}
             <AIAdmissionDocumentationAssistant
               referralData={extractedData}
               oasisSuggestions={null}
               patientData={null}
-              onSaveSection={() => {
+              saveLabel="Add to Nurse Briefing"
+              onSaveSection={(title, content) => {
+                if (typeof content !== 'string' || !content.trim()) return;
+                setAdmissionNote((current) => appendBriefingSection(current, title, content));
+                toast.success(`${title || 'Section'} added to the nurse briefing.`);
               }}
             />
 
