@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,6 +7,20 @@ import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 const ENTRY_URL = new URL('../functions/getAuthorizedInboundReferralFax/entry.ts', import.meta.url);
+
+// A local copy rather than an import: the sibling contract files export nothing,
+// and a test in this directory may not reach outside it.
+async function browserSourceFiles(directoryUrl) {
+  const files = [];
+  for (const entry of await readdir(directoryUrl, { withFileTypes: true })) {
+    const child = new URL(entry.isDirectory() ? `${entry.name}/` : entry.name, directoryUrl);
+    if (entry.isDirectory()) files.push(...await browserSourceFiles(child));
+    else if (/\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
+}
 
 async function loadHandler(makeClient) {
   let source = await readFile(ENTRY_URL, 'utf8');
@@ -163,15 +177,38 @@ test('foreign or false-success IncomingFax rows are rejected without disclosing 
 });
 
 test('fax document path stores no capability on Referral or in browser source', async () => {
-  const [worker, page, wrapper] = await Promise.all([
+  const [worker, wrapper] = await Promise.all([
     readFile(new URL('../functions/processInboundFaxes/entry.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../../src/functions/getAuthorizedInboundReferralFax.js', import.meta.url), 'utf8'),
   ]);
   assert.doesNotMatch(worker, /fax_back\s*:\s*\{[\s\S]{0,300}document_url/);
-  assert.doesNotMatch(page, /tracking\.fax_back\.document_url/);
-  assert.match(page, /getAuthorizedInboundReferralFax\(/);
   assert.match(wrapper, /functions\.invoke\('getAuthorizedInboundReferralFax'/);
+
+  // This read used to be made of `src/pages/ReferralFollowUp.jsx`: that it did
+  // not reach `tracking.fax_back.document_url` directly, and that it went
+  // through this broker instead. The page is deleted, so the first half widens
+  // to every browser source — a stored capability is a disclosure wherever it
+  // is read, and the page was only ever the one reader that existed.
+  for (const path of await browserSourceFiles(new URL('../../src/', import.meta.url))) {
+    assert.doesNotMatch(
+      await readFile(path, 'utf8'),
+      /fax_back\s*(?:\.|\[\s*["'])/,
+      path.pathname,
+    );
+  }
+
+  // The second half cannot be re-pointed, and that is the finding: the wrapper
+  // above is the broker's only mention in `src/`, so NOTHING calls this
+  // capability now. Recorded rather than worked around — inventing a caller to
+  // keep an assertion green would be building a feature to satisfy a test.
+  const callers = [];
+  for (const path of await browserSourceFiles(new URL('../../src/', import.meta.url))) {
+    if (path.pathname.endsWith('/functions/getAuthorizedInboundReferralFax.js')) continue;
+    if (/getAuthorizedInboundReferralFax/.test(await readFile(path, 'utf8'))) {
+      callers.push(path.pathname);
+    }
+  }
+  assert.deepEqual(callers, [], 'a caller appeared; assert its authority here rather than its absence');
 });
 
 

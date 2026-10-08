@@ -253,10 +253,13 @@ describe('residual RLS source containment', () => {
       delete: SERVICE_ROLE,
     });
     expect(directConsumers('FollowUpRuleConfig')).toEqual([]);
+    // `src/pages/ReferralFollowUp.jsx` was the second caller until that page was
+    // deleted. The capability is hard-paused either way — the entity denies
+    // every read and the helper below is a `Promise.resolve(null)` stub — so
+    // losing a caller narrows the surface and opens nothing.
     expect(sourcesContaining('fetchCallerFollowUpRuleConfig', ['src/lib/agencySettings.js']))
       .toEqual([
         'src/components/referral/ProviderFaxRequestCard.jsx',
-        'src/pages/ReferralFollowUp.jsx',
       ]);
 
     const settings = read('src/lib/agencySettings.js');
@@ -268,7 +271,6 @@ describe('residual RLS source containment', () => {
     expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities|base44\.functions/);
     for (const caller of [
       'src/components/referral/ProviderFaxRequestCard.jsx',
-      'src/pages/ReferralFollowUp.jsx',
     ]) {
       expect(read(caller), caller).toMatch(/ruleConfig:\s*ruleConfig\s*\|\|\s*undefined/);
     }

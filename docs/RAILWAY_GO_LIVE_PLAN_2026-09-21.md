@@ -3201,16 +3201,27 @@ conflicts.
 This is the stage the status tables consistently understate. Nothing has moved:
 453 entity call sites across 69 entity types, 366 files importing the Base44
 client, 198 function invocations through 83 wrappers, 41 Core integration sites,
-4 SDK importers — all at ratchet baseline. **445 became 453 on 2026-09-29 with
-no call site added**: the shared matcher could not read a namespace bound into
-an object literal, and eight sites in `src/lib/retiredOfflineQueue.js` were
-invisible to this ratchet and the destination census at once. An instrument
-gained sight; the coupling did not grow.
+4 SDK importers — all at ratchet BASELINE, which is what those figures are.
+**445 became 453 on 2026-09-29 with no call site added**: the shared matcher
+could not read a namespace bound into an object literal, and eight sites in
+`src/lib/retiredOfflineQueue.js` were invisible to this ratchet and the
+destination census at once. An instrument gained sight; the coupling did not
+grow.
+
+**The baseline is a CEILING and the tree now sits one under it, which is the
+distinction to keep.** `pnpm run check:base44-surface` reads
+`entity_call_sites=452/453` on 2026-10-08: `src/pages/ReferralFollowUp.jsx` was
+deleted and its route became a redirect, taking one site with it. A ratchet
+baseline is deliberately not lowered by a deletion — it is the line coupling may
+not cross — so the two figures are a ceiling and a reading, and every count
+below that crosses call sites against something else is over the reading. Do not
+difference the two: they answer different questions.
 
 **And the count understates it a second way (D80).** "Replace call sites tier
 by tier" reads as a refactor whose size is the count. Crossing all 453 against
 their entity dispositions — `pnpm run check:frontend-destination`, added
-2026-09-22 — says otherwise:
+2026-09-22 — says otherwise. **This table is the reading at `8bc9d214`, kept as
+a dated record**; the current one is below it:
 
 | | Call sites | |
 | --- | ---: | --- |
@@ -3249,6 +3260,43 @@ tool deliberately does not answer, because answering it by inference is how a
 bucket comes to claim more than it measured." So the 242 is a statement about
 TABLES. Whether anything serves the call is a second question, and this tool is
 built not to answer it.
+
+**Re-read 2026-10-08, beside the table above rather than through it:** 452 call
+sites, 244 with somewhere to land (`record_store` 234, `broker_family` 7,
+`activity_trail` 3), 208 without. Two independent movements since that head, and
+keeping them apart is the point of recording both:
+
+- **`no_table` 193 became `no_table` 119 plus `no_access_contract` 74** without
+  a single site changing its verdict. The eight OASIS entities (#401) and the
+  fax and phone entities (#408) gained SCHEMA-ONLY tables under D7's amendment,
+  so those sites have a table and still no capability over it — a more accurate
+  REASON for the same refusal. The 208 did not move, which is how you can tell
+  this was a relabelling and not progress.
+- **`record_store` fell by one and the total with it**, because
+  `src/pages/ReferralFollowUp.jsx` was deleted and its route became a redirect.
+  That is a site leaving the population, not a destination being lost.
+
+So the four refusal buckets that were NOT relabelled — 9, 5, 1 and the 208 they
+sum into with the other two — are unchanged across all three readings, and that
+is the stable fact.
+
+**Do not take the by-disposition split off this table, and note that the known
+by-one disagreement has MOVED buckets.** The per-ENTITY rollup reports one
+destination per entity, so it disagrees with the per-SITE tally by one by
+construction — `FaxLog` carries six sites in one bucket and its one `subscribe`
+site in another, and the rollup folds both into whichever destination it reports
+for the entity. At `8bc9d214` that put the rollup one HIGH on `no_table`
+(194 against 193). On 2026-10-08 the rollup reads `no_access_contract` 75
+against the per-site 74, with `FaxLog` reporting seven sites and
+`no_realtime_seam` absent from the rollup altogether, because #408's
+schema-only table moved FaxLog's six off `no_table`. Both readings describe one
+measurement and one construction; neither bucket name is the durable part, and
+summing the rollup against the per-site tally is wrong in both.
+
+A first draft of this very paragraph carried the `8bc9d214` bucket names into a
+sentence about the 2026-10-08 reading — the page's own subject arriving inside
+the paragraph written to record it. The remedy was to run the tool, not to read
+more carefully.
 
 **That second question now has its own instrument, and the first version of it
 got the answer wrong in a way worth keeping on the page.**
@@ -3892,10 +3940,8 @@ the Base44 entity write had no role gate at all.
 **That block, and every one above it, is a DATED record. What follows is this
 tree again after the duty toggle was WITHDRAWN — superseded by the contract
 `main` already carries — and after the reference writes landed. It is another
-printer run, not an adjustment of anything above it.** This is the PINNED
-block: `tools-entity-routes.test.mjs` fails unless the page carries it byte for
-byte, so paste what `pnpm run check:entity-routes` prints and never retype,
-rewrap or re-indent it.
+printer run, not an adjustment of anything above it.** It was the PINNED block
+until the reading below it was taken, and is now a dated record like the rest.
 
 ```
 entity routes: 100 declared, 164/245 landable call sites SERVED, 81 still to adopt
@@ -3916,6 +3962,33 @@ What this head contributes to the move is the roster's telecom projection and th
 repair of three admin screens that had been asking the roster for an order it
 cannot serve, so those sites moved into SERVED rather than out of the audit. The
 totals it produced are the block's to state.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 100 declared, 163/244 landable call sites SERVED, 81 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 81, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 80 need a named capability
+```
+
+**Nothing was adopted or declared between these two blocks, and the move is a
+POPULATION change rather than progress.** `src/pages/ReferralFollowUp.jsx` was
+deleted and its route became a redirect, taking one served read of the physician
+directory with it. So the landable denominator and the served numerator each
+fell by one, the declared route count did not move, and the remainder is
+untouched — the one shape in this stage where a falling served count is neither
+a regression nor a reclassification. Difference it against the block above only
+with that in mind, which is why the cause is written here and the totals are
+left to the block.
+
+**And it is the worked example of why the audit bullet below is re-derived
+whole.** Its served read ratio moved because that same site left the served
+pool, while its three other ratios did not move at all — so a reader adjusting
+the figure that obviously changed would have been right by accident, and wrong
+the next time the denominator was what moved.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4067,7 +4140,7 @@ different kinds of work:
   eight sites out of this pool and the withdrawn duty toggle put nothing back,
   so a bucket nobody touched moved twice. That is what a remainder does: it is a
   property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.66 call sites and a write
+  the sites already served: a read key there carries 2.64 call sites and a write
   key 1.24, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.27 sites and a
@@ -4355,8 +4428,11 @@ SERVED line by ZERO.** `AIConfiguration.create` and `.update` are both served by
 All four sites — two in `src/components/admin/AIConfigurationManager.jsx`, two in
 `src/pages/UserSettings.jsx` — pass a payload object and an id held in a
 variable, so every one of them would be declared and then counted UNPROVED.
-Measured here rather than taken: the resolver reads 331 of the 453 sites and
-refuses 122, so it is not answering uniformly, and it refuses all four of these.
+Measured here rather than taken: the resolver read 331 of the 453 sites and
+refused 122 at the head this row was written on, so it is not answering
+uniformly, and it refuses all four of these. (Re-read 2026-10-08: 331 of 452
+and 121 refused. Beside that one, not through it — the population moved between
+the two heads, so the pair is two readings and not a delta.)
 **"A route to declare" and "a served site gained" are different quantities**, and
 on this row the second is zero.
 
@@ -4390,9 +4466,13 @@ and refuses a payload naming one, so a browser cannot append to it — that is
 where the screen shows them to whoever opens it today.
 
 **The unreadable population is not a tooling limit waiting to be lifted, and the
-obvious next idea buys a third of what it looks like.** Repo-wide there are 453
-entity call sites, of which 331 are readable and 122 are not. Only seven of the
-122 fail because they name a module-level constant the resolver does not carry,
+obvious next idea buys a third of what it looks like.** Repo-wide there were 453
+entity call sites when this was measured, of which 331 were readable and 122
+were not; on 2026-10-08 the same instrument reads 452, 331 and 121. The
+proportions below are of the first reading and are not re-derived, because what
+the paragraph is about is the SHAPE of the unreadable pool rather than its size.
+Only seven of the 122 fail because they name a module-level constant the
+resolver does not carry,
 over six distinct names: `tools-entity-call-arguments.mjs` resolves what
 `src/lib/queryLimits.js` exports and nothing else, while `ADR_CASE_READ_LIMIT`,
 `ROSTER_PAGE_SIZE`, `PAGE_SIZE`, `ACTION_ITEM_SCAN_LIMIT`,
@@ -4452,7 +4532,11 @@ with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
 **208 of 453 — 46% — have no destination in the owned store, and 194 of those
-reach a domain the migration has decided not to carry.** The other fourteen are
+reach a domain the migration has decided not to carry.** (Re-read 2026-10-08:
+208 of **452**, the deleted follow-up page's site having left the population.
+**The 46% and the 194 both came out the same**, which is the hazard this
+paragraph is already about, one layer down: an operand moved and the figure
+derived from it did not, so nothing looked stale. Measure, do not re-check.) The other fourteen are
 writes to entities it DOES carry, read-only — nine refused by the broker
 family's D2 ceiling and five by a D83 reference table's GRANT: what has no
 destination there is the OPERATION rather than the domain, and conflating the
@@ -4465,8 +4549,11 @@ the inventory, derived from `CARRIED_DISPOSITIONS`, and the tell was sitting in
 the next sentence the whole time — 119 plus 75 is 194, and 203 was never a
 number this paragraph could reach. 119 of the 194 are the training domain,
 whose destination is the Hub; 75 are `preserved_paused`. **That 75 is not an
-off-by-one against the table's 74**, which counts `preserved_paused` inside
-`no_table` only — the 75th is the `no_realtime_seam` site, whose entity is also
+off-by-one against the table's 74**, which counts `preserved_paused` inside one
+destination bucket only — `no_table` at the head above, `no_access_contract`
+since #408 gave those entities schema-only tables, which is why the bucket NAME
+is not the durable half of this sentence — the 75th is the `no_realtime_seam`
+site, whose entity is also
 `preserved_paused`, so it is on the uncarried side too although its bucket is
 the one bucket that could fall either way. A plan that sizes this stage by the
 call-site count is sizing the wrong thing.
