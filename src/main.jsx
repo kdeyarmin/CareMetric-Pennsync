@@ -50,8 +50,7 @@ function currentFrameMayBootstrap() {
     // A cross-origin parent makes `window.top` unreadable. That is strictly
     // less information than a readable mismatch, so it cannot be the more
     // permissive answer: refuse, as a readable mismatch does below.
-    // Owner decision: allow the cross-origin Base44 editor preview panel.
-    return true
+    return false
   }
   // There is no authenticated production editor handshake in this source
   // checkpoint. Do not expose a clinical DOM to an arbitrary parent frame.
@@ -64,8 +63,25 @@ function currentFrameMayBootstrap() {
   // the app in the frame instead hands the parent a live clinical DOM and
   // lets the frame make API calls, both of which `e2e/secure-preview.spec.js`
   // asserts must not happen.
-  // Owner decision: allow loading inside the Base44 editor preview panel.
-  return true
+  //
+  // Twice now this has been flipped to `return true` with the note "Owner
+  // decision: allow loading inside the Base44 editor preview panel" — cbc20f3
+  // took this branch, dd7c162 the cross-origin one above, and `dbd5d25` had
+  // already restored the same guard once before that. With both flipped the
+  // function returned true on EVERY path, so the caller below it was dead code
+  // and any site could frame a live clinical DOM; the a11y workflow went red at
+  // cbc20f3 and stayed red, because the embedded case here is exactly what
+  // `e2e/secure-preview.spec.js` asserts.
+  //
+  // The decision it cites is not implemented by this line. Allowing the Base44
+  // editor means allowing ONE origin, and a blanket `true` allows every one.
+  // Narrowing it needs something this checkpoint does not have: a parent-origin
+  // signal (`document.referrer` is unavailable under the `no-referrer` policy
+  // this app sets, and `ancestorOrigins` is Chromium/WebKit only) or the
+  // authenticated handshake the paragraph above says does not exist. Until one
+  // of those lands, the secure-preview link IS the accommodation — so this
+  // refuses, and widening it is a design change rather than a boolean.
+  return false
 }
 
 function renderSecureBootstrapBlocked() {

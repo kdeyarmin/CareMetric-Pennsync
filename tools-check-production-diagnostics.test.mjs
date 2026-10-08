@@ -123,7 +123,7 @@ for (const [args, directory] of [
 }
 
 for (const args of [
-  ['--mode'], ['--mode='], ['--mode', 'development'], ['--mode=staging'],
+  ['--mode'], ['--mode='], ['--mode=staging'], ['--mode', 'produktion'],
   ['--skip'], ['--force'], ['--mode=production', '--mode', 'production'],
   ['dist', 'other'], [''], [null],
 ]) {
@@ -147,3 +147,46 @@ for (const flags of [['--mode', 'production'], ['--mode=production']]) {
     assert.equal(main([join(dir, 'missing'), ...flags], { log() {} }), 1);
   });
 }
+
+// The mode is validated and DISCARDED, so it cannot become a strictness lever.
+//
+// dd7c162 widened the accepted set from {production} to
+// {production, development} to unblock a development-mode build. That is safe
+// only because `parseDiagnosticArguments` returns `{ directory }` and nothing
+// else — the mode reaches no scan. This asserts that property directly rather
+// than leaving it to the comment, because a comment is not the behaviour and
+// the previous one went stale the moment the set widened.
+for (const mode of ['production', 'development']) {
+  test(`--mode ${mode} is discarded, never a strictness lever`, (t) => {
+    const dir = fixture(t);
+    // A console diagnostic in an emitted chunk must be refused under BOTH
+    // modes, with identical findings. If a mode ever reached the scan, this is
+    // where it would show.
+    writeFileSync(join(dir, 'assets', 'app.js'), 'console.log("synthetic-only");');
+    let output;
+    const code = main(['--mode', mode, dir], { log(value) { output = JSON.parse(value); } });
+    assert.equal(code, 1, 'a development-mode invocation still fails on a diagnostic');
+    assert.equal(output.passed, false);
+    assert.equal(output.findings.length, 1);
+    assert.equal(output.findings[0].file, 'assets/app.js');
+    assert.ok(!JSON.stringify(output).includes('synthetic-only'),
+      'the offending source is never echoed back');
+    // And the parse keeps only the directory, whichever mode was given.
+    assert.deepEqual(parseDiagnosticArguments(['--mode', mode, dir]), { directory: dir });
+  });
+}
+
+test('a clean build passes identically under both accepted modes', (t) => {
+  const dir = fixture(t);
+  writeFileSync(join(dir, 'assets', 'app.js'), 'export const answer = 42;');
+  const run = (mode) => {
+    let output;
+    const code = main(['--mode', mode, dir], { log(value) { output = JSON.parse(value); } });
+    return { code, output };
+  };
+  const production = run('production');
+  const development = run('development');
+  assert.equal(production.code, 0);
+  assert.deepEqual(development, production,
+    'the two modes must produce byte-identical verdicts, or the flag is doing work');
+});
