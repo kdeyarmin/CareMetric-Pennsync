@@ -36,10 +36,12 @@ import {
  * the URL never changes, so after sign-in the user lands exactly where they
  * were headed.
  *
- * Flows handled here: email/password sign-in and a fail-closed password-reset
- * notice while outbound delivery is paused, plus staging-only email code
- * redemption. Everything else (sign-up for invited users, production OTP, captcha
- * challenges) falls back to the platform-hosted page via navigateToLogin().
+ * Flows handled here: email/password sign-in, the password-reset request
+ * (released by the owner on 2026-10-08; still paused on an owned backend), and
+ * staging-only email code redemption. The app is invite-only, so no sign-up is
+ * offered here: an invited person arrives through their invitation link.
+ * Production OTP and captcha challenges fall back to the platform-hosted page
+ * via navigateToLogin().
  *
  * Also handles a pending `?access_token=` handoff that arrived without a
  * trusted referrer or planted auth_state (email-style magic links). Those are
@@ -381,16 +383,12 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                     Enter email verification code
                   </Button>
                 )}
-                {!ownedBackendAuth && <p className="text-center text-sm text-slate-500">
-                  Need an account?{' '}
-                  <button
-                    type="button"
-                    onClick={() => navigateToLogin()}
-                    className="font-semibold text-navy-700 hover:text-navy-900"
-                  >
-                    Sign up
-                  </button>
-                </p>}
+                {/* Invite-only (owner decision, 2026-10-08): there is no open
+                    sign-up to offer. An invited person follows the link in their
+                    invitation email; onUserSignup leaves anyone else unapproved. */}
+                <p className="text-center text-sm text-slate-500">
+                  Access is by invitation only. Use the link in your invitation email, or ask your agency administrator.
+                </p>
               </form>
             )}
 

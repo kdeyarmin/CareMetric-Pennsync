@@ -246,13 +246,20 @@ describe('SignInScreen', () => {
     expect(screen.queryByText(/check your email/i)).not.toBeInTheDocument();
   });
 
-  it('falls back to the platform-hosted page for sign-up and trouble signing in', async () => {
+  it('offers no sign-up, because access is by invitation only', () => {
+    render(<SignInScreen onAuthenticated={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /sign up/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/need an account/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/access is by invitation only/i)).toBeInTheDocument();
+  });
+
+  it('falls back to the platform-hosted page for trouble signing in', async () => {
     const user = userEvent.setup();
     render(<SignInScreen onAuthenticated={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: /sign up/i }));
     await user.click(screen.getByRole('button', { name: /standard sign-in page/i }));
-    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(2);
+    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(1);
   });
 
   it('requires confirm before accepting a pending magic-link token', async () => {
