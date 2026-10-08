@@ -30,7 +30,6 @@ import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel } from "@
 // Non-critical below-the-fold — lazy loaded
 const HighRiskPatientsWidget    = lazy(() => import("@/components/dashboard/HighRiskPatientsWidget"));
 const PendingReferralsWidget    = lazy(() => import("@/components/referral/PendingReferralsWidget"));
-const OverdueFollowUpsWidget    = lazy(() => import("@/components/dashboard/OverdueFollowUpsWidget"));
 const RealTimePatientAlerts     = lazy(() => import("@/components/dashboard/RealTimePatientAlerts"));
 const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTemplatesWidget"));
 const HospitalizationRiskWidget = lazy(() => import("@/components/dashboard/HospitalizationRiskWidget"));
@@ -381,9 +380,6 @@ export default function Dashboard() {
 
         {/* Pending Referrals */}
         <PendingReferralsWidget />
-
-        {/* Provider follow-up requests needing attention (renders for admins only) */}
-        <OverdueFollowUpsWidget />
 
         {/* Real-time Patient Alerts */}
         <div>
