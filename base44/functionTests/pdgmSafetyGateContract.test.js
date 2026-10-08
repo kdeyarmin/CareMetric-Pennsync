@@ -199,7 +199,6 @@ test("OASIS/PDGM AI, analytics, reporting, and workflow surfaces default to stat
     ["src/components/hub-tabs/OASISClinicalReview.jsx", "OASIS_CLINICAL_AI_ENABLED", "OASIS Clinical AI Review Paused"],
     ["src/components/hub-tabs/OASISAuditDashboard.jsx", "OASIS_AUDIT_AI_ENABLED", "OASIS AI Audit Dashboard Paused"],
     ["src/pages/PredictiveAnalytics.jsx", "PREDICTIVE_OASIS_ANALYTICS_ENABLED", "Predictive OASIS analysis unavailable"],
-    ["src/components/hub-tabs/RealTimeComplianceDashboard.jsx", "REALTIME_COMPLIANCE_ANALYTICS_ENABLED", "Real-Time Compliance Analytics Paused"],
     ["src/pages/DocumentationImpact.jsx", "PDGM_PAYMENT_FEATURE_AVAILABLE", "OASIS/PDGM documentation impact"],
     ["src/components/reports/OASISComplianceReport.jsx", "OASIS_COMPLIANCE_REPORT_ENABLED", "OASIS Compliance Report Paused"],
     ["src/components/reports/PDGMReimbursementReport.jsx", "PDGM_REPORT_ENABLED", "PDGM Report Paused"],

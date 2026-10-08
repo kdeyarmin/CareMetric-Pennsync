@@ -37,6 +37,32 @@ describe('AI admission documentation', () => {
   });
 });
 
+describe('real-time compliance dashboard', () => {
+  const dashboard = read('src/components/hub-tabs/RealTimeComplianceDashboard.jsx');
+
+  it('renders the dashboard on reviewed reads, without OASIS or the retired activity log', () => {
+    expect(dashboard).not.toContain('REALTIME_COMPLIANCE_ANALYTICS_ENABLED');
+    expect(dashboard).toMatch(/export default function RealTimeComplianceDashboard\(\) \{/);
+    expect(dashboard).toMatch(/useAuthorizedVisits\(\{ purpose: 'data_quality'/);
+    expect(dashboard).toMatch(/useScopedPatients\(\{ purpose: 'roster'/);
+    expect(dashboard).not.toMatch(/entities\.(?:Visit|Patient|UserActivity|OASISUpload)\b/);
+    expect(dashboard.replace(/^\s*\/\/.*$/gm, '')).not.toMatch(/oasis|PDGM/i);
+  });
+
+  it('derives Smart Note activity from note enhancements', async () => {
+    const { noteConversionActivities } = await import('@/components/hub-tabs/RealTimeComplianceDashboard');
+    expect(noteConversionActivities([
+      { nurse_email: 'a@example.test', created_date: '2026-10-01', enhanced_note_compliance: 88 },
+      { nurse_email: 'b@example.test', created_date: '2026-10-02', enhanced_note_compliance: null },
+      null,
+    ])).toEqual([
+      { user_email: 'a@example.test', created_date: '2026-10-01', action: 'note_enhanced' },
+      { user_email: 'a@example.test', created_date: '2026-10-01', action: 'note_compliance_check', details: { overall_score: 88 } },
+      { user_email: 'b@example.test', created_date: '2026-10-02', action: 'note_enhanced' },
+    ]);
+  });
+});
+
 describe('agency KPI and analytics reporting', () => {
   it('computes KPI trends only against a real baseline', async () => {
     const { averageScore, parseKpiDate, percentTrend } = await import('@/components/reports/KPIDashboard');

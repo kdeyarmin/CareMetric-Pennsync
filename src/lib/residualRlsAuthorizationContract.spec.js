@@ -330,7 +330,10 @@ describe('residual RLS source containment', () => {
     expect(directConsumers('NoteConversion', 'update')).toEqual([]);
     expect(directConsumers('NoteConversion', '(?:filter|list|get)')).toEqual([
       'src/components/admin/NoteConversionReport.jsx',
+      'src/components/admin/QualityMetricsDashboard.jsx',
       'src/components/admin/ReportsCenter.jsx',
+      'src/components/analytics/useAgencyAnalyticsAuxiliary.js',
+      'src/components/hub-tabs/RealTimeComplianceDashboard.jsx',
       'src/components/reports/NursePerformanceReport.jsx',
       'src/components/smartNote/persistVisitNote.js',
       'src/lib/retiredOfflineQueue.js',
