@@ -151,11 +151,17 @@ test('a handler that refuses from its first statement is paused, whatever gates 
   const paused_names = discoverPausedFunctions(repository);
   for (const name of ['calculateDataQualityScores', 'enforceDataCompleteness',
     'monitorClinicalDataForCarePlanUpdates', 'predictPatientRisks',
-    'predictiveRiskAnalysis', 'processDischargeReport']) {
+    'predictiveRiskAnalysis']) {
     assert.ok(paused_names.includes(name), `${name} should be detected as paused`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but refuses every caller`);
   }
+  // The sixth, processDischargeReport, was released by the owner on
+  // 2026-10-08 (admin-only, one agency). Its handler no longer refuses from
+  // its first statement, and it keeps `preserved_paused` rather than moving
+  // to `port`: it runs on Base44 and is not migration work this change adds.
+  assert.equal(paused_names.includes('processDischargeReport'), false);
+  assert.equal(declared.processDischargeReport, 'preserved_paused');
 });
 
 test('a module whose only entity is the retired trail is re-classified by what else it needs', () => {
@@ -2044,7 +2050,10 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // entity reach is no longer the claims fence alone. D74's refinement is
   // unchanged and the assertions below still pin what it answers for that
   // capability — only its membership here moved, because the capability did.
-  assert.deepEqual([...claims].sort(), ['autoImportPatients']);
+  // `submitAppFeedback` (2026-10-08) joined it: its whole reach is the claims
+  // fence plus one gated `Core.SendEmail` to the configured owner, and it is
+  // carried `preserved_paused`, so it adds nothing to the port queue.
+  assert.deepEqual([...claims].sort(), ['autoImportPatients', 'submitAppFeedback']);
 
   const report = checkCoverage(
     discoverCapabilities(repository),

@@ -6,8 +6,10 @@ import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
+// processDischargeReport left this list on 2026-10-08 by the owner's decision
+// to release bulk discharge: it is now admin-only and agency-scoped, and
+// bulkPrivilegedContainmentContract.test.js pins that boundary instead.
 const FUNCTION_NAMES = [
-  'processDischargeReport',
   'monitorClinicalDataForCarePlanUpdates',
   'deletePatientsMissingFirstName',
   'migrateExistingData',

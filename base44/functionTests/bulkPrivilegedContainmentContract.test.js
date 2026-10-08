@@ -11,7 +11,15 @@ const FUNCTION_NAMES = [
   'processPatientFileUpdate',
 ];
 
-const STATICALLY_PAUSED_FUNCTIONS = new Set([
+// processDischargeReport was statically paused here until the owner released
+// bulk discharge on 2026-10-08. It now answers like the others: forged and
+// misconfigured callers are refused before the body is read, and the agency
+// administrator path is scoped to one agency (pinned below).
+const STATICALLY_PAUSED_FUNCTIONS = new Set([]);
+
+// Functions whose admitted callers also include a service-owned agency
+// administrator, so their gate reads the membership-derived claims.
+const AGENCY_ADMIN_FUNCTIONS = new Set([
   'processDischargeReport',
 ]);
 
@@ -247,11 +255,130 @@ test('active bulk entries pin authorization to the shared protected-user helper'
       new URL(`../functions/${functionName}/entry.ts`, import.meta.url),
       'utf8',
     );
-    const gate = source.indexOf('if (!isProtectedSuperAdmin(user))');
-    const bodyRead = source.indexOf('await req.json()');
-
+    const handler = source.slice(source.indexOf('Deno.serve('));
+    const bodyRead = handler.indexOf('await req.json()');
     assert.match(source, /<<<BEGIN SHARED HELPER: protectedUserAuthz/, functionName);
-    assert.ok(gate !== -1 && bodyRead !== -1 && gate < bodyRead, `${functionName} must gate before body parsing`);
+
+    if (AGENCY_ADMIN_FUNCTIONS.has(functionName)) {
+      // The agency administrator's role comes from withTrustedClaims, which
+      // rebuilds account_type from the service-owned membership for a role
+      // 'user' profile and leaves a built-in admin's self-editable fields alone
+      // — so the gate also requires role 'user' for that branch.
+      const gate = handler.indexOf("if (!isProtectedSuperAdmin(user) && !isServiceOwnedAgencyAdmin)");
+      assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/, functionName);
+      assert.match(handler, /withTrustedClaims\(base44, await base44\.auth\.me\(\)/, functionName);
+      assert.match(handler, /const isServiceOwnedAgencyAdmin = user\.role === 'user' && user\.account_type === 'agency_admin';/);
+      assert.ok(gate !== -1 && bodyRead !== -1 && gate < bodyRead, `${functionName} must gate before body parsing`);
+      assert.doesNotMatch(handler, /agency_name/, `${functionName} never scopes by the self-editable agency_name`);
+      continue;
+    }
+
+    const gate = source.indexOf('if (!isProtectedSuperAdmin(user))');
+    const sourceBodyRead = source.indexOf('await req.json()');
+    assert.ok(gate !== -1 && sourceBodyRead !== -1 && gate < sourceBodyRead, `${functionName} must gate before body parsing`);
     assert.doesNotMatch(source, /account_type|agency_name/, functionName);
   }
+});
+
+function dischargeClient({ user, memberships = [], agencies = [], patients = [], extracted = [] }) {
+  const calls = { patientFilters: [], patientUpdates: [], patientLists: 0, signed: [], extractions: [], systemLogs: [] };
+  const client = {
+    auth: { me: async () => user },
+    asServiceRole: {
+      entities: {
+        AgencyMembership: { filter: async () => memberships },
+        Agency: { filter: async (query) => agencies.filter((row) => row.id === query.id) },
+        Patient: {
+          list: async () => { calls.patientLists += 1; return patients; },
+          filter: async (...args) => { calls.patientFilters.push(args); return patients.filter((row) => row.agency_id === args[0].agency_id); },
+          update: async (...args) => { calls.patientUpdates.push(args); return {}; },
+        },
+        SystemLog: { create: async (row) => { calls.systemLogs.push(row); return row; } },
+      },
+      integrations: {
+        Core: {
+          CreateFileSignedUrl: async (args) => { calls.signed.push(args); return { signed_url: 'https://files.example.test/signed' }; },
+          ExtractDataFromUploadedFile: async (args) => {
+            calls.extractions.push(args);
+            return { status: 'success', output: { discharged_patients: extracted } };
+          },
+        },
+      },
+    },
+  };
+  return { client, calls };
+}
+
+const AGENCY_ADMIN = {
+  id: 'admin-user', email: 'admin@agency-a.test', role: 'user', account_type: 'user', is_active: true,
+};
+const AGENCY_ADMIN_MEMBERSHIP = {
+  id: 'membership-a', agency_id: 'agency-a', user_id: 'admin-user', membership_key: 'agency-a:admin-user',
+  user_email_normalized: 'admin@agency-a.test', tenant_role: 'agency_admin', status: 'active', version: 1,
+  created_by_user_id: 'owner', last_transition_by_user_id: 'owner',
+  last_transition_by_email_normalized: 'owner@example.test', last_transition_at: '2026-09-01T00:00:00.000Z',
+  last_transition_reason: 'Activated', activated_at: '2026-09-01T00:00:00.000Z',
+  revoked_at: null, revocation_reason: null,
+};
+const AGENCIES = [
+  { id: 'agency-a', agency_name: 'Agency A', status: 'active' },
+  { id: 'agency-b', agency_name: 'Agency B', status: 'active' },
+];
+const PATIENTS = [
+  { id: 'pa', agency_id: 'agency-a', first_name: 'Ada', last_name: 'Lovelace', medical_record_number: 'M1', status: 'active' },
+  { id: 'pb', agency_id: 'agency-b', first_name: 'Ada', last_name: 'Lovelace', medical_record_number: 'M1', status: 'active' },
+];
+
+test('an agency administrator discharges only inside their own membership agency', async () => {
+  const { client, calls } = dischargeClient({
+    user: AGENCY_ADMIN, memberships: [AGENCY_ADMIN_MEMBERSHIP], agencies: AGENCIES, patients: PATIENTS,
+    extracted: [{ first_name: 'Ada', last_name: 'Lovelace', medical_record_number: 'M1' }],
+  });
+  const handler = await loadHandler('processDischargeReport', client, 'owner@example.test');
+
+  const crossTenant = await invoke(handler, { bodyReads: 0 }, { file_uri: 'private/report.pdf', agency_id: 'agency-b' });
+  assert.equal(crossTenant.response.status, 403, 'naming another agency is refused');
+  assert.equal(calls.extractions.length, 0);
+
+  const publicUrl = await invoke(handler, { bodyReads: 0 }, { file_url: 'https://base44.app/report.pdf' });
+  assert.equal(publicUrl.response.status, 400, 'a public file_url is not accepted');
+
+  const { response, json } = await invoke(handler, { bodyReads: 0 }, { file_uri: 'private/report.pdf' });
+  assert.equal(response.status, 200);
+  assert.equal(calls.patientLists, 0, 'never reads every patient in the deployment');
+  assert.deepEqual(calls.patientFilters.map((args) => args[0]), [{ agency_id: 'agency-a' }]);
+  assert.deepEqual(calls.patientUpdates.map(([id]) => id), ['pa'], 'the same-named chart in agency B is untouched');
+  assert.equal(json.files_closed, 1);
+  assert.equal(calls.signed[0].file_uri, 'private/report.pdf');
+  assert.equal(calls.extractions[0].file_url, 'https://files.example.test/signed');
+  const logged = JSON.stringify(calls.systemLogs);
+  assert.doesNotMatch(logged, /Lovelace|M1|private\/report/, 'the operational log carries counts, not PHI');
+});
+
+test('a claimed agency_admin without a service-owned membership is refused before the body', async () => {
+  const { client, calls } = dischargeClient({
+    user: { ...AGENCY_ADMIN, account_type: 'agency_admin', agency_id: 'agency-a' },
+    memberships: [], agencies: AGENCIES, patients: PATIENTS,
+  });
+  const handler = await loadHandler('processDischargeReport', client, 'owner@example.test');
+  const bodyCalls = { bodyReads: 0 };
+  const { response } = await invoke(handler, bodyCalls, { file_uri: 'private/report.pdf' });
+  assert.equal(response.status, 403);
+  assert.equal(bodyCalls.bodyReads, 0);
+  assert.equal(calls.patientFilters.length + calls.patientUpdates.length + calls.extractions.length, 0);
+});
+
+test('the platform owner must name an existing agency and is scoped to it', async () => {
+  const owner = { id: 'owner', email: 'owner@example.test', role: 'admin', is_active: true };
+  const { client, calls } = dischargeClient({
+    user: owner, agencies: AGENCIES, patients: PATIENTS,
+    extracted: [{ first_name: 'Ada', last_name: 'Lovelace', medical_record_number: 'M1' }],
+  });
+  const handler = await loadHandler('processDischargeReport', client, 'owner@example.test');
+  assert.equal((await invoke(handler, { bodyReads: 0 }, { file_uri: 'private/r.pdf' })).response.status, 400);
+  assert.equal((await invoke(handler, { bodyReads: 0 }, { file_uri: 'private/r.pdf', agency_id: 'agency-z' })).response.status, 404);
+  assert.equal(calls.extractions.length, 0);
+  const { response } = await invoke(handler, { bodyReads: 0 }, { file_uri: 'private/r.pdf', agency_id: 'agency-b' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.patientUpdates.map(([id]) => id), ['pb']);
 });
