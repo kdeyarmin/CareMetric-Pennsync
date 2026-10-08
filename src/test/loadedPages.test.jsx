@@ -107,7 +107,9 @@ const importerFor = (name) => pageModules[`../pages/${name}.jsx`];
 const routePages = [...new Set(ROUTES.map((route) => route.name))];
 
 // Long enough for a mounted page's queries to resolve and re-render; short
-// enough that 77 pages stay well inside the file's budget.
+// enough that 76 pages stay well inside the file's budget. (`routePages` is
+// derived, so that figure moves on its own: it was 77 until ReferralFollowUp
+// left the nav manifest. Re-derive rather than trust it.)
 const SETTLE_MS = 60;
 // Guard against a page whose tab list keeps growing as panels mount.
 const MAX_TABS = 40;
@@ -116,6 +118,10 @@ const MAX_TABS = 40;
 // one. They get a SECOND pass with an id the fixtures actually mint. The id is
 // deliberately not applied to every page: several hubs also read `id` and switch
 // to a narrower single-subject mode that renders less than their plain listing.
+// "ReferralFollowUp" was the third entry until that page was deleted. Its route
+// is a redirect to /ReferralIntake now, so no page module resolves for it and
+// there is no second pass to make; the list is hand-written, so unlike
+// `routePages` it does not follow the manifest on its own.
 const ID_PARAM_PAGES = ["PatientDetails", "PatientAlerts"];
 const SUBJECT_ID = "Patient-0";
 

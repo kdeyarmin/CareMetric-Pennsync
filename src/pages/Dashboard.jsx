@@ -20,7 +20,6 @@ import ProactiveClinicalSupport from "@/components/clinical/ProactiveClinicalSup
 import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
 import TodayPriorities from "@/components/dashboard/TodayPriorities.jsx";
-import { useHighRiskPatientAlerts } from "@/components/dashboard/useHighRiskPatientAlerts";
 import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -28,11 +27,9 @@ import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAl
 import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel } from "@/lib/roles";
 
 // Non-critical below-the-fold — lazy loaded
-const HighRiskPatientsWidget    = lazy(() => import("@/components/dashboard/HighRiskPatientsWidget"));
 const PendingReferralsWidget    = lazy(() => import("@/components/referral/PendingReferralsWidget"));
 const RealTimePatientAlerts     = lazy(() => import("@/components/dashboard/RealTimePatientAlerts"));
 const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTemplatesWidget"));
-const HospitalizationRiskWidget = lazy(() => import("@/components/dashboard/HospitalizationRiskWidget"));
 
 
 export default function Dashboard() {
@@ -113,25 +110,19 @@ export default function Dashboard() {
     () => dashboardData.carePlans || [],
     [dashboardData.carePlans],
   );
-  // The high-risk priority and HighRiskPatientsWidget ask one question through
-  // one query key, so react-query serves both from a single request.
-  const { data: highRiskPage, error: patientAlertsError } = useHighRiskPatientAlerts();
-  const patientAlerts = highRiskPage?.alerts ?? [];
-  const patientAlertsTruncated = highRiskPage?.truncated ?? false;
-
   const visitsError = dashboardError;
   const patientsError = dashboardError;
 
   // Handle errors gracefully with user feedback
-  if (visitsError || patientsError || patientAlertsError) {
-    console.error('Dashboard data loading error:', visitsError || patientsError || patientAlertsError);
+  if (visitsError || patientsError) {
+    console.error('Dashboard data loading error:', visitsError || patientsError);
   }
 
-  // The alert read is counted here too. It feeds the high-risk priority, and a
-  // failed read is indistinguishable from an empty one once it reaches the
-  // builder — the tile would report no high-risk patients rather than saying it
-  // could not tell.
-  const hasDataError = visitsError || patientsError || patientAlertsError;
+  // getDashboardData is now the dashboard's only read, so its failure is the
+  // whole error signal. A failed read still has to reach the priority builder
+  // rather than arriving as an empty payload, or every tile would report all
+  // clear instead of saying it could not tell.
+  const hasDataError = visitsError || patientsError;
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -229,8 +220,6 @@ export default function Dashboard() {
             visits={visits}
             patients={patients}
             incidents={incidents}
-            patientAlerts={patientAlerts}
-            patientAlertsTruncated={patientAlertsTruncated}
             noteConversionsAvailable={false}
             dashboardError={hasDataError}
           />
@@ -372,12 +361,6 @@ export default function Dashboard() {
 
 
       <Suspense fallback={<LoadingState className="py-12" />}>
-        {/* Hospitalization Risk Monitor */}
-        <HospitalizationRiskWidget autoAnalyze={false} />
-
-        {/* High-Risk Patients Alert */}
-        <HighRiskPatientsWidget />
-
         {/* Pending Referrals */}
         <PendingReferralsWidget />
 

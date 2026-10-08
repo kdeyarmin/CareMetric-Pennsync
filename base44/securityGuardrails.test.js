@@ -996,21 +996,43 @@ test('assignAnnualLearningPlan prefetches enrollment and assignment Sets', () =>
   );
 });
 
-// HighRiskPatientsWidget must read scoped PatientAlert rows — PatientRiskAssessment
-// was never written and used non-existent overall_* fields.
-test('HighRiskPatientsWidget uses getScopedPatientAlerts', () => {
-  const src = read('src/components/dashboard/HighRiskPatientsWidget.jsx');
-  assert.ok(
-    /getScopedPatientAlerts/.test(src),
-    'HighRiskPatientsWidget must fetch via getScopedPatientAlerts.',
-  );
-  assert.ok(
-    !/PatientRiskAssessment\.list/.test(src),
-    'HighRiskPatientsWidget must not read the unused PatientRiskAssessment entity.',
-  );
-  assert.ok(
-    !/overall_risk_level/.test(src),
-    'HighRiskPatientsWidget must not filter on non-schema overall_risk_level.',
+// The dashboard's high-risk widget and its hospitalization risk monitor were
+// removed from the product. This guardrail used to pin the widget's read onto
+// getScopedPatientAlerts, because an earlier version of it read
+// PatientRiskAssessment — an entity with no writer anywhere — through
+// non-schema overall_* fields, and so always rendered empty. The files are
+// gone; what is worth keeping is that they do not come back, and that the dead
+// read does not reappear in the dashboard the widgets were deleted from.
+//
+// The scan is `src/components/dashboard` and not the whole of `src/`
+// DELIBERATELY. Nine files elsewhere already carry one of these names, and
+// whether each is a live defect is a separate question from this deletion —
+// widening the guardrail to cover them here would fail for reasons that have
+// nothing to do with the widgets that went.
+test('the deleted dashboard risk widgets stay deleted, and the dead risk read has no dashboard caller', () => {
+  for (const gone of [
+    'src/components/dashboard/HighRiskPatientsWidget.jsx',
+    'src/components/dashboard/HospitalizationRiskWidget.jsx',
+    'src/components/dashboard/useHighRiskPatientAlerts.js',
+  ]) {
+    assert.ok(
+      !existsSync(join(REPO, gone)),
+      `${gone} was deleted with the dashboard risk widgets and must not return.`,
+    );
+  }
+
+  const offenders = walk(join(REPO, 'src/components/dashboard'))
+    .filter((p) => {
+      const src = readFileSync(p, 'utf8');
+      return /PatientRiskAssessment\s*\.\s*(?:list|filter|get)\b/.test(src)
+        || /overall_risk_level/.test(src);
+    })
+    .map((p) => p.slice(REPO.length + 1).replace(/\\/g, '/'));
+  assert.deepEqual(
+    offenders,
+    [],
+    `PatientRiskAssessment has no producer and overall_risk_level is on no schema, `
+      + `so these dashboard reads can only render empty: ${offenders.join(', ') || '(none)'}.`,
   );
 });
 

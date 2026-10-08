@@ -4,7 +4,6 @@ import process from 'node:process';
 import { describe, expect, it } from 'vitest';
 
 const read = (relativePath) => readFileSync(path.join(process.cwd(), relativePath), 'utf8');
-const risk = read('src/components/dashboard/HospitalizationRiskWidget.jsx');
 const dataQuality = read('src/components/admin/DataQualityDashboard.jsx');
 const reports = read('src/components/hub-tabs/AdminReportsCenter.jsx');
 const quality = read('src/components/admin/QualityMetricsDashboard.jsx');
@@ -14,12 +13,12 @@ const patientData = read('src/pages/PatientDataManagement.jsx');
 const dedupe = read('src/pages/DuplicatePatients.jsx');
 const agency = read('src/pages/AgencyAnalytics.jsx');
 
-const globalViews = [risk, dataQuality, reports, quality, kpi, tagger, patientData, dedupe, agency];
-const combinedViews = [risk, dataQuality, reports, quality, kpi, patientData, dedupe, agency];
+const globalViews = [dataQuality, reports, quality, kpi, tagger, patientData, dedupe, agency];
+const combinedViews = [dataQuality, reports, quality, kpi, patientData, dedupe, agency];
 
 describe('global Visit unavailable-state containment', () => {
   it('never treats a hook default as authorized Visit data', () => {
-    expect(globalViews).toHaveLength(9);
+    expect(globalViews).toHaveLength(8);
     expect(globalViews.every((text) => text.includes('useAuthorizedVisits'))).toBe(true);
     expect(globalViews.every((text) => text.includes('.isSuccess'))).toBe(true);
     expect(globalViews.every((text) => /unavailable|withheld/i.test(text))).toBe(true);
@@ -27,11 +26,9 @@ describe('global Visit unavailable-state containment', () => {
   });
 
   it('requires exact immutable Patient/Visit authority in every combined view', () => {
-    expect(combinedViews).toHaveLength(8);
+    expect(combinedViews).toHaveLength(7);
     expect(combinedViews.every((text) => text.includes('sameAuthorizedTenantScope'))).toBe(true);
     expect(combinedViews.every((text) => text.includes('tenantScopesMismatch'))).toBe(true);
-    expect(risk).toContain('patientTenantScope: patientQuery.tenantScope');
-    expect(risk).toContain('visitTenantScope: visitQuery.tenantScope');
     expect(reports).toContain('authorityKey: reportAuthorityKey');
     expect(reports).toContain('patientQuery.tenantScope');
     expect(reports).toContain('visitQuery.tenantScope');
@@ -40,8 +37,6 @@ describe('global Visit unavailable-state containment', () => {
   });
 
   it('gates expensive or disclosing actions and rejects late derived results', () => {
-    expect(risk).toContain('disabled={analyzing || !analysisSnapshot');
-    expect(risk).toContain('analysisSnapshotRef.current === authorizedSnapshot');
     expect(kpi).toContain('disabled={ai.loading || !analysisSnapshot || !KPI_REPORTS_ENABLED}');
     expect(kpi).toContain('analysisSnapshotRef.current !== authorizedSnapshot');
     expect(tagger).toContain('disabled={isTagging || !visitSnapshot}');
@@ -71,9 +66,7 @@ describe('global Visit unavailable-state containment', () => {
     expect(tagger).toContain('sameAuthorizedTenantScope(incidentTenantScope, visitQuery.tenantScope)');
   });
 
-  it('keeps risk alert persistence quarantined and avoids duplicate report scans', () => {
-    expect(risk).not.toMatch(/PatientAlert\.(?:filter|create|update)/);
-    expect(risk).toContain('display-only');
+  it('avoids duplicate report scans', () => {
     expect(reports).toContain("activeTab === 'reports'");
     expect(reports).toContain('reportsSnapshot ?');
   });

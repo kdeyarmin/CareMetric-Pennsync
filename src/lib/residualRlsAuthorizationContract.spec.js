@@ -253,8 +253,10 @@ describe('residual RLS source containment', () => {
       delete: SERVICE_ROLE,
     });
     expect(directConsumers('FollowUpRuleConfig')).toEqual([]);
-    // One caller fewer since the ReferralFollowUp page was removed from the
-    // app. This list is derived from the tree, so it narrows with it.
+    // `src/pages/ReferralFollowUp.jsx` was the second caller until that page was
+    // deleted. The capability is hard-paused either way — the entity denies
+    // every read and the helper below is a `Promise.resolve(null)` stub — so
+    // losing a caller narrows the surface and opens nothing.
     expect(sourcesContaining('fetchCallerFollowUpRuleConfig', ['src/lib/agencySettings.js']))
       .toEqual([
         'src/components/referral/ProviderFaxRequestCard.jsx',

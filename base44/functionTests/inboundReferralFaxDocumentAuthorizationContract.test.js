@@ -1,25 +1,26 @@
 import assert from 'node:assert/strict';
-import { readdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { extname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
-async function sourceFiles(directoryUrl) {
-  const output = [];
-  async function walk(directory) {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) await walk(path);
-      else if (['.js', '.jsx', '.ts', '.tsx'].includes(extname(entry.name))) output.push(path);
+const ENTRY_URL = new URL('../functions/getAuthorizedInboundReferralFax/entry.ts', import.meta.url);
+
+// A local copy rather than an import: the sibling contract files export nothing,
+// and a test in this directory may not reach outside it.
+async function browserSourceFiles(directoryUrl) {
+  const files = [];
+  for (const entry of await readdir(directoryUrl, { withFileTypes: true })) {
+    const child = new URL(entry.isDirectory() ? `${entry.name}/` : entry.name, directoryUrl);
+    if (entry.isDirectory()) files.push(...await browserSourceFiles(child));
+    else if (/\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) {
+      files.push(child);
     }
   }
-  await walk(fileURLToPath(directoryUrl));
-  return output;
+  return files;
 }
-
-const ENTRY_URL = new URL('../functions/getAuthorizedInboundReferralFax/entry.ts', import.meta.url);
 
 async function loadHandler(makeClient) {
   let source = await readFile(ENTRY_URL, 'utf8');
@@ -182,15 +183,32 @@ test('fax document path stores no capability on Referral or in browser source', 
   ]);
   assert.doesNotMatch(worker, /fax_back\s*:\s*\{[\s\S]{0,300}document_url/);
   assert.match(wrapper, /functions\.invoke\('getAuthorizedInboundReferralFax'/);
-  // The ReferralFollowUp page was this capability's only browser caller and was
-  // removed from the app, so the two assertions over it are gone rather than
-  // matched against a missing file. The "in browser source" half of this test's
-  // name is now carried by the sweep below, which asks every file under src/
-  // instead of the one page that used to be the only one that could have it.
-  for (const file of await sourceFiles(new URL('../../src/', import.meta.url))) {
-    assert.doesNotMatch(await readFile(file, 'utf8'), /tracking\.fax_back\.document_url/,
-      `${file} reads a stored fax capability instead of the authorized broker`);
+
+  // This read used to be made of `src/pages/ReferralFollowUp.jsx`: that it did
+  // not reach `tracking.fax_back.document_url` directly, and that it went
+  // through this broker instead. The page is deleted, so the first half widens
+  // to every browser source — a stored capability is a disclosure wherever it
+  // is read, and the page was only ever the one reader that existed.
+  for (const path of await browserSourceFiles(new URL('../../src/', import.meta.url))) {
+    assert.doesNotMatch(
+      await readFile(path, 'utf8'),
+      /fax_back\s*(?:\.|\[\s*["'])/,
+      path.pathname,
+    );
   }
+
+  // The second half cannot be re-pointed, and that is the finding: the wrapper
+  // above is the broker's only mention in `src/`, so NOTHING calls this
+  // capability now. Recorded rather than worked around — inventing a caller to
+  // keep an assertion green would be building a feature to satisfy a test.
+  const callers = [];
+  for (const path of await browserSourceFiles(new URL('../../src/', import.meta.url))) {
+    if (path.pathname.endsWith('/functions/getAuthorizedInboundReferralFax.js')) continue;
+    if (/getAuthorizedInboundReferralFax/.test(await readFile(path, 'utf8'))) {
+      callers.push(path.pathname);
+    }
+  }
+  assert.deepEqual(callers, [], 'a caller appeared; assert its authority here rather than its absence');
 });
 
 

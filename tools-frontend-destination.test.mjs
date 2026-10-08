@@ -133,19 +133,19 @@ test('the activity trail succeeds a retired LOG table and nothing else', () => {
 
 test('the measured frontend is two populations, and the smaller one is the surprise', () => {
   const report = compare(measureDestinations(repository), JSON.parse(baseline(208)));
-  // 453 and 245 became 452 and 244 when the ReferralFollowUp page was removed
-  // from the app, and the shape of that movement is the thing to read: the one
-  // site it took with it was LANDABLE, so `unserved` did not move at all. A
-  // page being deleted is the first way this population has ever shrunk - every
-  // earlier movement was the matcher learning to see more - and it moves the
-  // denominator without touching the decisions. So a percentage computed off
-  // this total is the figure least worth quoting: 208/453 and 208/452 are both
-  // 46%, which is D106 arriving here for the second time.
+  // 453 became 452 and 245 became 244 when `src/pages/ReferralFollowUp.jsx` was
+  // deleted and its route became a redirect. One site LEFT the population, and
+  // it was a landable one, so both figures fell together and `unserved` did not
+  // move at all — the mirror image of the matcher fix recorded below, where
+  // eight landable sites arrived and `unserved` likewise held still. Neither is
+  // progress: the only figure that moves when a decision is taken or a contract
+  // ships is `unserved`, which is why it is the one with a baseline.
   assert.equal(report.total, 452);
   assert.equal(report.served, 244);
   // 208 of 452. Stage J reads as "replace call sites tier by tier", which is a
-  // refactor whose size is the count; 46% of them have no destination, and
-  // each one needs a product answer rather than an edit. 194 of the 208 reach
+  // refactor whose size is the count; 46% of them have no destination. The
+  // percentage is the trap: it read 46% against 453 too, so the denominator
+  // moved underneath it and the derived figure did not budge. 194 of the 208 reach
   // a domain the migration DECIDED not to carry and 14 do not — those are
   // writes to entities it carries read-only — which is a distinction this file
   // used to lose here and `tools-frontend-retired-inventory` now derives.

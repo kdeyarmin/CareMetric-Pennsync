@@ -1,7 +1,22 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const read = (path) => readFileSync(path, 'utf8');
+
+// Which browser sources mention a name, excluding the specs themselves. Used to
+// pin an endpoint as unreachable from `src/` rather than to describe one file.
+const browserSourcesContaining = (needle, directory = 'src') => {
+  const found = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...browserSourcesContaining(needle, path));
+    else if (/\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)
+      && read(path).includes(needle)) {
+      found.push(path);
+    }
+  }
+  return found.sort();
+};
 
 const expectProtectedAdminEntityWrites = (entityName) => {
   const source = read(`base44/entities/${entityName}.jsonc`);
@@ -13,16 +28,19 @@ const expectProtectedAdminEntityWrites = (entityName) => {
 };
 
 describe('protected-admin frontend alignment', () => {
-  // The front-end half of this pair was the ReferralFollowUp page, which was
-  // removed from the app. Its five assertions - the admin view, the capability
-  // flag, the disabled control and the two gated regions - described markup
-  // that no longer exists, so they are gone rather than matched against a
-  // missing file. The backend gate is what still has a subject, and it is the
-  // half that actually protects the agency-wide config.
-  it('protects agency-wide follow-up rule changes in the backend', () => {
+  // This test aligned `src/pages/ReferralFollowUp.jsx` with the backend gate on
+  // `saveFollowUpRuleConfig`: the page showed referral analytics to any admin
+  // view while gating the rule-settings form on `isAdminLike`. The page is
+  // deleted, and NOTHING in `src/` reaches that function now, so there is no
+  // frontend left to align. The backend gate is still asserted, because the
+  // endpoint survives and is what a future caller would have to respect; the
+  // frontend half becomes the absence pin below rather than being dropped, so
+  // that a new caller has to arrive with its own gate rather than silently.
+  it('keeps the agency-wide rule endpoint admin-gated with no frontend caller', () => {
     const backend = read('base44/functions/saveFollowUpRuleConfig/entry.ts');
-
     expect(backend).toMatch(/const isAdmin = user\?\.role === 'admin'/);
+    expect(() => read('src/pages/ReferralFollowUp.jsx')).toThrow(/ENOENT/);
+    expect(browserSourcesContaining('saveFollowUpRuleConfig')).toEqual([]);
   });
 
   it('keeps readable catalogs visible but gates their protected mutations', () => {

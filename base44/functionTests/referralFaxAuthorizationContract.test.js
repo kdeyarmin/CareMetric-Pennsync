@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,6 +7,21 @@ import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 const FUNCTION_NAME = 'sendAuthorizedReferralFax';
+const SRC_URL = new URL('../../src/', import.meta.url);
+
+// A local copy rather than an import: `referralAuthorizationContract.test.js`
+// exports nothing, and a test in this directory may not reach outside it.
+async function browserSourceFiles(directoryUrl) {
+  const files = [];
+  for (const entry of await readdir(directoryUrl, { withFileTypes: true })) {
+    const child = new URL(entry.isDirectory() ? `${entry.name}/` : entry.name, directoryUrl);
+    if (entry.isDirectory()) files.push(...await browserSourceFiles(child));
+    else if (/\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
+}
 
 async function loadHandler(makeClient) {
   let source = await readFile(
@@ -920,27 +935,45 @@ test('referral fax requires exactly one active, exact Telnyx integration', async
   }
 });
 
-// The ReferralFollowUp page was the browser caller this test used to cover, and
-// it was removed from the app. Its page-side half - the authorized document
-// create, the in-flight guard and the reconciliation notice - is asserted of
-// nothing now, so it is gone from here rather than kept as a passing match
-// against a file that does not exist.
-//
-// The absence is ASSERTED rather than assumed. A page that comes back would
-// restore a browser caller of the fax broker with no coverage of how it calls
-// it, and nothing else here would notice: this test would still pass, because
-// what it checks now is the function and the wrapper. So the file reappearing
-// fails this, and the failure says to bring the page assertions back with it.
-test('the removed ReferralFollowUp page has not returned uncovered', async () => {
-  await assert.rejects(
-    () => readFile(new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url), 'utf8'),
-    (error) => error.code === 'ENOENT',
-    'src/pages/ReferralFollowUp.jsx is back: restore the page-side fax and document '
-      + 'assertions removed with it, then delete this guard.',
-  );
-});
+// `src/pages/ReferralFollowUp.jsx` held the only browser path that minted a NEW
+// referral fax: it uploaded through `createAuthorizedDocument` with
+// `purpose: 'referral'`, invoked this broker with that document, and guarded
+// against a double submission with `faxSubmissionInFlightRef` plus a
+// reconciliation notice. That page is deleted, so the assertions over its source
+// are replaced by the pin below rather than dropped — the contract they were
+// protecting is that no browser code sends a referral fax with a
+// caller-supplied document, and that has to keep being checked somewhere.
+test('no browser caller mints a new referral fax after the follow-up page was deleted', async () => {
+  const pageUrl = new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url);
+  await assert.rejects(readFile(pageUrl, 'utf8'), { code: 'ENOENT' }, 'the page is still deleted');
 
-test('the referral fax broker keeps document authority server-side', async () => {
+  // Every surviving caller retries a fax log the broker already authorized. A
+  // caller passing a `document_id` would be a fresh send and has to be reviewed
+  // against this broker's own authority checks, which the rest of this file
+  // exercises. Scoped to this broker's callers deliberately: `Core.UploadFile`
+  // and `sendFax` are live in unrelated fax features (the camera, cover-sheet,
+  // annotator and photo senders), so a repository-wide absence scan here would
+  // pin nine pre-existing call sites that have nothing to do with referrals.
+  const callers = [
+    'components/fax/RealtimeFaxStatusTracker.jsx',
+    'components/hub-tabs/FaxLogsDashboard.jsx',
+  ];
+  const discovered = [];
+  for (const path of await browserSourceFiles(SRC_URL)) {
+    if (/\/functions\//.test(path.pathname)) continue;
+    const source = await readFile(path, 'utf8');
+    if (!new RegExp(`\\b${FUNCTION_NAME}\\b`).test(source)) continue;
+    discovered.push(path.pathname.slice(SRC_URL.pathname.length));
+    assert.match(
+      source,
+      /retry_fax_log_id/,
+      `${path.pathname} reaches ${FUNCTION_NAME} without being a retry`,
+    );
+    assert.doesNotMatch(source, /document_id\s*:/, path.pathname);
+    assert.doesNotMatch(source, /purpose:\s*["']referral["']/, path.pathname);
+  }
+  assert.deepEqual(discovered.sort(), callers, 'a new browser caller of this broker appeared');
+
   const source = await readFile(
     new URL(`../functions/${FUNCTION_NAME}/entry.ts`, import.meta.url),
     'utf8',

@@ -190,8 +190,6 @@ export const userBlocks = [
       ${table(['Widget', 'What it shows'], [
         ['<strong>Today’s snapshot</strong>', 'Scheduled visits (and how many you’ve completed), AI-assisted notes created, and the time you’ve saved over the last 30 days.'],
         ['<strong>Real-time patient alerts</strong>', 'New incidents, clinical changes, and risk alerts for your patients as they happen.'],
-        ['<strong>High-risk patients</strong>', 'Patients flagged for possible deterioration or hospitalization so you can prioritize outreach.'],
-        ['<strong>Hospitalization risk monitor</strong>', 'AI prediction of which patients are most at risk of an avoidable hospitalization.'],
         ['<strong>Proactive clinical support</strong>', 'AI clinical guidance for the patients you’re scheduled to see.'],
         ['<strong>Upcoming telehealth</strong>', 'Your scheduled virtual visits, with quick join links.'],
         ['<strong>Pending referrals</strong>', 'New admissions awaiting action (where your role allows).'],
