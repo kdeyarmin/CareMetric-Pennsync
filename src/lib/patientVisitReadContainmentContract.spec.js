@@ -568,9 +568,14 @@ function scanDirectPatientVisitReads(fileName, sourceText) {
   return [...findings.values()];
 }
 
-// The 43 removed calls across these 38 modules are a reviewed migration
+// The 42 removed calls across these 37 modules are a reviewed migration
 // inventory. Each entry records its original direct-read count and the broker
 // token(s) that must remain present after the cutover.
+//
+// It was 43 across 38 until `HospitalizationRiskWidget.jsx` — one read, on
+// the `hospitalization_risk` visit purpose — was deleted with the dashboard's
+// hospitalization risk monitor. The purpose itself stays: `PredictiveAnalytics.jsx`
+// below is its other caller, so nothing was removed from the purpose policies.
 const MIGRATED_CALLSITES = Object.freeze({
   'src/components/admin/AIAutoTagger.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'ai_tagging'/],
   'src/components/admin/AIKPIReportGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
@@ -580,7 +585,6 @@ const MIGRATED_CALLSITES = Object.freeze({
   'src/components/alerts/PatientAlertAnalyzer.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/clinical/VitalsChart.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'vitals_trend'/],
   'src/components/compliance/AIComplianceAuditor.jsx': [2, /useAuthorizedPatient\s*\([\s\S]*?purpose:\s*'oasis_analysis_context'/, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
-  'src/components/dashboard/HospitalizationRiskWidget.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'hospitalization_risk'/],
   'src/components/documents/ProgressReportGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/ReferralLetterGenerator.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/documents/SmartNotesContextPanel.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
@@ -783,9 +787,9 @@ describe('Patient/Visit direct-read containment', () => {
     expect(failures).toEqual([]);
   });
 
-  it('keeps the complete 43-read/38-module migration inventory on reviewed brokers', () => {
-    expect(Object.keys(MIGRATED_CALLSITES)).toHaveLength(38);
-    expect(Object.values(MIGRATED_CALLSITES).reduce((sum, [count]) => sum + count, 0)).toBe(43);
+  it('keeps the complete 42-read/37-module migration inventory on reviewed brokers', () => {
+    expect(Object.keys(MIGRATED_CALLSITES)).toHaveLength(37);
+    expect(Object.values(MIGRATED_CALLSITES).reduce((sum, [count]) => sum + count, 0)).toBe(42);
     for (const [relative, [, ...requirements]] of Object.entries(MIGRATED_CALLSITES)) {
       const source = readFileSync(path.join(ROOT, relative), 'utf8');
       for (const requirement of requirements) expect(source, relative).toMatch(requirement);

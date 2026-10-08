@@ -410,8 +410,12 @@ test('DocumentTenantBinding and Document are broker-only and the private uploade
   assert.deepEqual(
     wired.map((path) => path.slice(fileURLToPath(sourceRootUrl).length).replaceAll('\\', '/')).sort(),
     [
+      // `pages/ReferralFollowUp.jsx` was the second consumer until that page was
+      // deleted, leaving the uploader as the only browser caller of the create
+      // broker. The list shrank rather than changed: nothing else gained
+      // `createAuthorizedDocument`, which this very assertion proves by deriving
+      // `wired` from every source file under `src/`.
       'components/documents/DocumentUploader.jsx',
-      'pages/ReferralFollowUp.jsx',
     ],
     `unexpected create broker consumers: ${wired.join(', ')}`,
   );
