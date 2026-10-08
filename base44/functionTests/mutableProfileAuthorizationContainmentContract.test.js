@@ -44,7 +44,6 @@ test('reviewed privileged functions never authorize from mutable account_type cl
 
 test('provider and platform-administration handlers gate on the protected owner before parsing a request payload', () => {
   const protectedOwnerOnly = [
-    'deduplicatePatients',
     'managePhoneNumberPool',
     'manageSmsConsent',
     'provisionNurseWorkNumber',
@@ -73,6 +72,26 @@ test('provider and platform-administration handlers gate on the protected owner 
       `${name} must reject non-owners before consuming a privileged request payload`,
     );
   }
+});
+
+test('the patient merge broker admits the platform tier or a membership-backed agency manager before parsing', () => {
+  // deduplicatePatients is no longer owner-only: an active agency_admin or
+  // manager may merge their own agency's charts. That authority comes from the
+  // service-owned membership (withTrustedClaims), never the mutable profile,
+  // and is decided before the request payload is read.
+  const source = readEntry('deduplicatePatients');
+  assert.match(source, /<<<BEGIN SHARED HELPER: protectedUserAuthz/);
+  assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/);
+  const handler = source.slice(source.indexOf('Deno.serve'));
+  const claims = handler.indexOf('withTrustedClaims(base44, await base44.auth.me()');
+  const gate = handler.indexOf('mergeAuthority(user)');
+  const bodyParse = handler.indexOf('await req.json');
+  assert.ok(claims !== -1 && gate !== -1 && bodyParse !== -1);
+  assert.ok(claims < gate && gate < bodyParse, 'authorize before consuming the merge payload');
+  const authority = source.slice(source.indexOf('function mergeAuthority'), source.indexOf('function patientAgency'));
+  assert.match(authority, /isProtectedAdmin\(user\)/);
+  assert.match(authority, /user\.is_manager === true && claimIdentifier\(user\.agency_id\)/);
+  assert.doesNotMatch(authority, /account_type|agency_name|is_approved/);
 });
 
 test('provenance-derived security audit is unavailable before SDK or request work', () => {

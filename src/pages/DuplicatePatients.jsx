@@ -23,6 +23,7 @@ import {
 } from "@/components/patient/patientDuplicateUtils";
 import {
   mergePatientGroup,
+  PatientMergeIncompleteError,
   PATIENT_MERGES_PAUSED,
   PATIENT_MERGE_PAUSED_MESSAGE,
 } from "@/components/patient/mergePatients";
@@ -32,7 +33,11 @@ import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
 
 const EMPTY_ROWS = Object.freeze([]);
 
-const PATIENT_DEDUPE_UI_ENABLED = false;
+const PATIENT_DEDUPE_UI_ENABLED = true;
+
+// The merge broker admits the platform tier and an agency's administrators and
+// managers; other roles may review duplicates but cannot merge them.
+const MERGE_ROLES = new Set(['platform_owner', 'agency_admin', 'manager']);
 
 function EnabledDuplicatePatients() {
   const confirm = useConfirm();
@@ -131,6 +136,9 @@ function EnabledDuplicatePatients() {
 
   const rescan = () => runScan(scanSnapshotRef.current);
 
+  const mergeAgencyId = patientQuery.tenantScope?.agency_id || null;
+  const canMerge = !PATIENT_MERGES_PAUSED && MERGE_ROLES.has(patientQuery.tenantScope?.tenant_role);
+
   // Merge an entire group into one surviving record: reassign that record's
   // clinical history onto the survivor and archive the rest. `survivor` is the
   // record the admin chose to keep (defaults to the group's primary).
@@ -139,6 +147,7 @@ function EnabledDuplicatePatients() {
       toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
       return;
     }
+    if (!canMerge) return;
     const others = [group.primary, ...group.duplicates.map((d) => d.patient)].filter(
       (p) => p.id !== survivor.id
     );
@@ -146,8 +155,9 @@ function EnabledDuplicatePatients() {
       title: "Merge duplicates?",
       description:
         `Keep "${survivor.first_name} ${survivor.last_name}" and merge ${others.length} ` +
-        `other record(s) into it? Their visits and care plans move to the kept record, ` +
-        `and the duplicates are archived (recoverable).`,
+        `other record(s) into it? Their visits, OASIS assessments, documents, care team ` +
+        `and other linked records move to the kept record, and the duplicates are ` +
+        `archived (recoverable).`,
       confirmText: "Merge",
       destructive: true,
     });
@@ -157,7 +167,8 @@ function EnabledDuplicatePatients() {
     try {
       const { patientsMerged, reassigned } = await mergePatientGroup(
         survivor.id,
-        others.map((p) => p.id)
+        others.map((p) => p.id),
+        { agencyId: mergeAgencyId },
       );
       const moved = Object.values(reassigned).reduce((a, b) => a + b, 0);
       toast.success(
@@ -167,8 +178,15 @@ function EnabledDuplicatePatients() {
       setDuplicateGroups((prev) => prev.filter((_, i) => `group-${i}` !== groupKey));
       queryClient.invalidateQueries({ queryKey: ['patients'] });
     } catch (error) {
-      console.error('Merge error:', error);
-      toast.error('Failed to merge the duplicates. Please try again.');
+      console.error('Merge error:', error?.message);
+      toast.error(
+        error instanceof PatientMergeIncompleteError
+          ? error.message
+          : 'Failed to merge the duplicates. Please try again.'
+      );
+      if (error instanceof PatientMergeIncompleteError) {
+        queryClient.invalidateQueries({ queryKey: ['patients'] });
+      }
     } finally {
       setMergingKey(null);
     }
@@ -186,13 +204,14 @@ function EnabledDuplicatePatients() {
       toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
       return;
     }
+    if (!canMerge) return;
     const totalExtra = duplicateGroups.reduce((sum, g) => sum + g.duplicates.length, 0);
     const ok = await confirm({
       title: "Merge all duplicates?",
       description:
         `This will combine every duplicate group into a single record each, merging ` +
         `${totalExtra} extra record(s) across ${duplicateGroups.length} group(s). The kept ` +
-        `record absorbs all visits and care plans; the duplicates are archived (recoverable).`,
+        `record absorbs every linked record; the duplicates are archived (recoverable).`,
       confirmText: "Merge all",
       destructive: true,
     });
@@ -212,12 +231,13 @@ function EnabledDuplicatePatients() {
       try {
         const { patientsMerged } = await mergePatientGroup(
           survivor.id,
-          others.map((p) => p.id)
+          others.map((p) => p.id),
+          { agencyId: mergeAgencyId },
         );
         mergedGroups += 1;
         mergedRecords += patientsMerged;
       } catch (error) {
-        console.error(`Merge all: group ${i} failed:`, error);
+        console.error(`Merge all: group ${i} failed:`, error?.message);
         failedKeys.add(`group-${i}`);
       }
     }
@@ -337,13 +357,13 @@ function EnabledDuplicatePatients() {
           {scanSnapshot && hasScanned && !isScanning && duplicateGroups.length > 0 && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
               <p className="text-sm text-orange-900 flex-1">
-                Patient merge is temporarily unavailable while an authorized,
-                atomic server merge broker is completed. No duplicate will be
-                archived or partially reassigned from this page.
+                {canMerge
+                  ? 'Merge every group at once, keeping the suggested record in each. A merge that cannot finish leaves its duplicates active so you can retry.'
+                  : 'Only agency administrators and managers can merge duplicate patients. You can review the groups below.'}
               </p>
               <Button
                 onClick={handleMergeAll}
-                disabled={isMergingAll || PATIENT_MERGES_PAUSED}
+                disabled={isMergingAll || !canMerge}
                 className="whitespace-nowrap"
               >
                 {isMergingAll ? (
@@ -391,7 +411,7 @@ function EnabledDuplicatePatients() {
             <AlertDescription className="text-orange-900">
               <strong>{duplicateGroups.length} {duplicateGroups.length === 1 ? 'patient appears' : 'patients appear'} more than once.</strong>{' '}
               Use <strong>Merge all duplicates</strong> above to fix them all at once, or review each group
-              below and pick the record to keep — its visits and care plans move onto it, and the others
+              below and pick the record to keep — every linked record moves onto it, and the others
               are archived (recoverable).
             </AlertDescription>
           </Alert>
@@ -486,7 +506,7 @@ function EnabledDuplicatePatients() {
                             <Button
                               size="sm"
                               onClick={() => handleMergeGroup(group, groupKey, patient)}
-                              disabled={isMerging || PATIENT_MERGES_PAUSED}
+                              disabled={isMerging || !canMerge}
                               className="whitespace-nowrap"
                             >
                               {isMerging ? (
