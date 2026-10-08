@@ -6,7 +6,6 @@ import AIPathwayRecommender from "@/components/oasis/AIPathwayRecommender";
 import ClinicalPathwayTrigger from "@/components/oasis/ClinicalPathwayTrigger";
 import OASISTaskGenerator from "@/components/oasis/OASISTaskGenerator";
 import WorkflowExecutionEngine from "@/components/oasis/WorkflowExecutionEngine";
-import PredictiveOutcomesAnalyzer from "@/components/oasis/PredictiveOutcomesAnalyzer";
 
 const OASIS_CLINICAL_AI_ENABLED = false;
 
@@ -19,13 +18,6 @@ function EnabledOASISClinicalReview({ analysisHandoff }) {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Predictive Outcomes Analyzer */}
-      <PredictiveOutcomesAnalyzer
-        analysisResults={analysisResults}
-        pdgmData={pdgmData}
-        patientId={patientId}
-      />
-
       {/* AI Pathway Recommender */}
       <AIPathwayRecommender
         pdgmData={pdgmData}
@@ -118,8 +110,8 @@ export default function OASISClinicalReview({ analysisHandoff }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 pt-5 text-sm text-slate-700">
-          <p>This surface is unavailable while its tenant-scoped reads, clinical predictions, response suggestions, and automated workflow writes are being verified.</p>
-          <p>No AI analysis, global data query, task creation, alert creation, or PDGM guidance runs from this tab.</p>
+          <p>This surface is unavailable while its tenant-scoped reads, response suggestions, and automated workflow writes are being verified.</p>
+          <p>No AI analysis, global data query, task creation, or alert creation runs from this tab.</p>
         </CardContent>
       </Card>
     );

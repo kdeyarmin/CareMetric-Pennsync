@@ -929,14 +929,20 @@ function decodeClientState(b64) {
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { return null; }
 }
 
-// Inbound patient communications cannot be routed safely until dialed Telnyx
-// numbers, tenant ownership, and destinations are resolved from a service-owned
-// binding instead of mutable User profile fields. SMS and voice remain behind
-// literal release gates. Inbound fax now crosses only a dedicated, exact
-// service-owned destination binding; it never uses mutable User fields or a
-// newest/single-row AgencySettings fallback as tenant authority.
+// Inbound patient SMS stays behind its literal release gate until dialed
+// numbers, tenant ownership and destinations resolve from a service-owned
+// binding instead of mutable User profile fields. Inbound fax crosses only a
+// dedicated, exact service-owned destination binding.
+//
+// Inbound patient CALLS are released (owner decision, 2026-10-08: single
+// agency, staff-only, BAAs in place, outbound delivery released). Routing still
+// reads the dialed work number's User row to find the nurse, which is the
+// mutable-profile dependency the pause existed for; the owner accepted that
+// for a single-agency deployment. Every Call Control action remains behind the
+// outbound delivery gate in callCommand, and the CallLog rows this writes are
+// what fill the Phone Center's Recents and Callbacks tabs.
 const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;
-const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;
+const INBOUND_PATIENT_CALL_ROUTING_PAUSED = false;
 const INBOUND_PATIENT_CALL_STATES = new Set([
   'inbound_ivr',
   'inbound_after_greet',
@@ -2967,12 +2973,15 @@ Deno.serve(async (req) => {
 
     // These checks intentionally run only after signature verification and
     // before any inbound handler can perform a mutable User/AgencySettings
-    // lookup. Only Telnyx-classified STOP/START may cross the SMS pause, and
-    // then only through an exact service-owned destination/profile binding.
-    if (eventType === 'message.received' && INBOUND_PATIENT_SMS_ROUTING_PAUSED) {
+    // lookup. Telnyx-classified STOP/START is recorded in the scoped consent
+    // ledger (through an exact service-owned destination/profile binding)
+    // FIRST, whether or not inbound SMS routing is released: the keyword path
+    // used to live only inside the paused branch, so releasing SMS routing
+    // would have skipped it (28d3f369). Everything else stays paused.
+    if (eventType === 'message.received') {
       const keywordResponse = await handleInboundConsentKeyword(base44, telnyxCreds, event, payload);
       if (keywordResponse) return keywordResponse;
-      return inboundRoutingPausedResponse('SMS');
+      if (INBOUND_PATIENT_SMS_ROUTING_PAUSED) return inboundRoutingPausedResponse('SMS');
     }
     if (INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent(eventType, payload)) {
       return inboundRoutingPausedResponse('call');

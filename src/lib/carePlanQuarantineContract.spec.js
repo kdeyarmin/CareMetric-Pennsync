@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { describe, expect, it } from 'vitest';
+import JSON5 from 'json5';
 
 const root = process.cwd();
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
@@ -19,27 +20,33 @@ const carePlanHandlers = [
   'monitorClinicalDataForCarePlanUpdates',
 ];
 
-describe('care-plan quarantine contract', () => {
-  it('denies every direct CarePlan and automatic-trigger entity operation', () => {
-    for (const entity of ['CarePlan', 'AutomaticCarePlanTrigger']) {
-      const source = read(`base44/entities/${entity}.jsonc`);
-      for (const operation of ['read', 'create', 'update', 'delete']) {
-        expect(source, `${entity}.rls.${operation}`).toMatch(
-          new RegExp(`"${operation}"\\s*:\\s*false`),
-        );
-      }
+const ADMIN = { user_condition: { role: 'admin' } };
+const CREATOR_OR_ADMIN = { $or: [{ created_by: '{{user.email}}' }, ADMIN] };
+
+// Released by the owner on 2026-10-08 ("approve everything"). The pages work
+// again; what stays pinned is who may touch the rows and how patient data
+// reaches the pages.
+describe('care-plan access contract', () => {
+  it('limits care plans to their creator or a protected admin, and triggers to protected admins', () => {
+    const carePlan = JSON5.parse(read('base44/entities/CarePlan.jsonc')).rls;
+    const trigger = JSON5.parse(read('base44/entities/AutomaticCarePlanTrigger.jsonc')).rls;
+    for (const operation of ['read', 'create', 'update', 'delete']) {
+      expect(carePlan[operation], `CarePlan.rls.${operation}`).toEqual(CREATOR_OR_ADMIN);
+      expect(trigger[operation], `AutomaticCarePlanTrigger.rls.${operation}`).toEqual(ADMIN);
     }
   });
 
-  it('keeps every routed care-plan page static and data-free', () => {
+  it('reads patients and visits only through the authorized brokers', () => {
     for (const file of routedPages) {
       const source = read(file);
-
-      expect(source, file).toMatch(/<CarePlanUnavailable/);
-      expect(source, file).not.toMatch(
-        /\bbase44\b|useQuery|useMutation|useScopedPatients|entities\.|functions\.|<input|<textarea/,
-      );
+      // Patient and Visit deny every direct client operation; a direct read here
+      // would fail for every user, so the pages must use the purpose brokers.
+      expect(source, file).not.toMatch(/entities\.(?:Patient|Visit)\b/);
+      expect(source, file).not.toMatch(/<CarePlanUnavailable/);
     }
+    expect(read('src/pages/CarePlanManagement.jsx')).toMatch(/useScopedPatients\(\{\s*purpose: 'roster'/);
+    expect(read('src/pages/CarePlanManagement.jsx')).toMatch(/useAuthorizedVisits\(\{[\s\S]{0,80}purpose: 'documentation'/);
+    expect(read('src/pages/CarePlanBuilder.jsx')).toMatch(/useScopedPatients\(\{ purpose: 'roster'/);
   });
 
   it('keeps the retained legacy chart module inert as well as redirected', () => {

@@ -11,11 +11,12 @@ import { CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { validateScheduleTime } from "@/components/messaging/scheduledSms";
 
-// The backend is deliberately fail-closed until telecom routing and tenant
-// authority are service-owned. Keep the unavailable action out of the normal
-// compose UI rather than inviting a user into a dialog that can only return 503.
-// Flip this only in the same reviewed release that removes the server pause.
-export const SCHEDULED_SMS_UI_ENABLED = false;
+// Released 2026-10-08 together with the server: scheduleSms takes its sending
+// line from the agency's service-owned Telnyx binding, checks scoped consent,
+// and authorizes the patient by membership and care-team assignment, and the
+// "Dispatch Scheduled SMS" workflow sends due texts. Turning this off again
+// belongs in the same change as re-pausing the server.
+export const SCHEDULED_SMS_UI_ENABLED = true;
 
 /** ISO -> value for <input type="datetime-local"> (local time). */
 function toLocalInput(d) {

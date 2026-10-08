@@ -969,6 +969,34 @@ async function withTrustedClaims(base44, profile) {
   return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
 }`,
 
+  // Patient-level access for handlers re-enabled under the owner's 2026-10-08
+  // decision, replacing the legacy Patient.assigned_nurses / agency_name scans.
+  // The built-in administrator is admitted; anyone else must hold exactly one
+  // active service-owned membership (withTrustedClaims, so the trustedCallerClaims
+  // block must be inlined beside this one) in the chart's own agency, and either
+  // a manager/agency_admin role there, be the chart's creator, or hold an active
+  // PatientCareTeamAssignment for it. Any lookup failure denies.
+  patientCareTeamAccess: `async function callerMayAccessPatient(base44, user, patient) {
+  if (!user || !patient || typeof patient !== 'object') return false;
+  if (user.role === 'admin') return true;
+  const claims = await withTrustedClaims(base44, user);
+  const agencyId = claims && claimIdentifier(claims.agency_id) ? claims.agency_id : null;
+  if (!agencyId || patient.agency_id !== agencyId || !claimIdentifier(patient.id)) return false;
+  if (claims.account_type === 'agency_admin' || claims.is_manager === true) return true;
+  if (claimIdentifier(patient.created_by_user_id) && patient.created_by_user_id === user.id) return true;
+  try {
+    const rows = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+      { agency_id: agencyId, patient_id: patient.id, user_id: user.id, status: 'active' },
+      undefined,
+      2,
+    );
+    return Array.isArray(rows) && rows.some((row) => row && row.agency_id === agencyId
+      && row.patient_id === patient.id && row.user_id === user.id && row.status === 'active');
+  } catch {
+    return false;
+  }
+}`,
+
   // Offboarding sets is_active:false but deliberately leaves role/account_type
   // intact (history and audit joins key off them), and the Base44 platform does
   // not reject entity-API calls from a deactivated session. So an offboarded

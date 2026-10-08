@@ -137,7 +137,9 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
       argumentPath: ['spec', 'payload'],
       payloadPath: ['payload'],
     }),
-    legacy('create', PRODUCER_EXECUTION_STATES.RUNTIME_GATED),
+    // The new-voicemail notice. Reachable again since the owner released
+    // inbound patient call routing on 2026-10-08.
+    legacy(),
   ]),
   'monitorClinicalDataForCarePlanUpdates/entry.ts': Object.freeze([
     legacy('create', PRODUCER_EXECUTION_STATES.SOURCE_DISABLED),

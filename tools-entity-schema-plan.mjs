@@ -148,19 +148,18 @@ export const SCHEMA_ONLY = Object.freeze({
     + 'so it takes a tenant key of its own. Its own RLS reads for the built-in platform admin '
     + 'role and writes for the service role alone, so a contract over it is a D40 widening on '
     + 'the read half and the write half has no caller to widen to.',
-  // CallLog is carried for its ROWS and not for a screen, which is the opposite
-  // of the five above and is said plainly so nobody reads this entry as a claim
-  // that voice works. Its four call sites are the ones that do NOT reach a page:
-  // they sit in `CallHistoryList.jsx` and `CallbackQueue.jsx`, which nothing in
-  // `src/` imports, and `patientProjectionMigrationContract.spec.js` asserts
-  // that on purpose in a test named "keeps unverified call history and callbacks
-  // outside the routed bundle". No chunk of the live build carries
-  // `startMaskedCall`, read across all 408 of them.
-  CallLog: 'Call history: who rang whom, the disposition and any voicemail. Its screens are '
-    + 'deliberately outside the routed bundle and a test asserts that, so this entry carries '
-    + 'the ROWS and claims nothing about a screen -- the call records exist in Base44 today '
-    + 'and carrying nothing would lose them. It names no agency and its `patient_id` is '
-    + 'optional, so D61 applies and it takes a tenant key of its own.',
+  // CallLog is carried for its ROWS, and that is still the claim here even
+  // though its screens came back: on 2026-10-08 the owner restored the Phone
+  // Center's Recents and Callbacks tabs on Base44 (`CallHistoryList.jsx`,
+  // `CallbackQueue.jsx`, one shared `useNurseCallLogs` read), and
+  // `patientProjectionMigrationContract.spec.js` now pins that mount. Nothing
+  // on the owned store serves those screens; this entry is about not losing
+  // the rows, not about voice working there.
+  CallLog: 'Call history: who rang whom, the disposition and any voicemail. Its Base44 '
+    + 'screens are live again, but this entry carries the ROWS and claims nothing about a '
+    + 'screen on the owned store -- the call records exist in Base44 today and carrying '
+    + 'nothing would lose them. It names no agency and its `patient_id` is optional, so D61 '
+    + 'applies and it takes a tenant key of its own.',
 });
 
 /**

@@ -2,8 +2,9 @@ import { Activity, Pill, TrendingDown, Heart, Shield, AlertTriangle, Clock, Zap,
 import { severitySolidClass } from "@/lib/severityStyles";
 
 /**
- * Shared presentation helpers for patient alerts, used by both PatientAlertAnalyzer
- * and PatientAlertsDashboard (which previously defined identical copies).
+ * Shared presentation helpers for stored patient alerts (PatientAlertsDashboard).
+ * They used to be shared with the AI PatientAlertAnalyzer, removed with the
+ * clinical risk-prediction features.
  */
 
 const ALERT_ICONS = {

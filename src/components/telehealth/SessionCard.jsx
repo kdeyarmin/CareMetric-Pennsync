@@ -25,8 +25,9 @@ const visitLabels = {
 export default function SessionCard({ session, onJoin, onCancel, onTextPatient }) {
   // A session is shareable when it has EITHER the hashed token (new sessions —
   // the raw link is cached in-tab or minted on demand) or a legacy plaintext
-  // invite_link (pre-hash sessions).
-  const hasJoinLink = Boolean(session.join_token_hash || session.invite_link);
+  // invite_link (pre-hash sessions). The session broker keeps the hash on the
+  // server and sends `has_join_link` instead.
+  const hasJoinLink = Boolean(session.has_join_link || session.join_token_hash || session.invite_link);
 
   const copyLink = async () => {
     try {

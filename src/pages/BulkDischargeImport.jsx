@@ -4,10 +4,9 @@ import PageContainer from "@/components/ui/PageContainer";
 import DischargeReportUploader from "@/components/admin/DischargeReportUploader";
 
 /**
- * Bulk discharge processing remains visible as a dedicated route so staff can
- * see its release state without being offered a file picker. Discharge reports
- * may contain PHI, so the browser must not upload one until the purpose-bound
- * tenant and patient authorization broker is staged and verified.
+ * Bulk Discharge Import — upload a discharge report file to batch-process
+ * patient discharges. Wraps the previously-unrouted uploader so admins have a
+ * dedicated, linkable home for the workflow.
  */
 export default function BulkDischargeImportPage() {
   return (
@@ -17,7 +16,7 @@ export default function BulkDischargeImportPage() {
         iconColor="bg-amber-600"
         eyebrow="Data Management"
         title="Bulk Discharge Import"
-        description="File upload and automated bulk discharge processing are temporarily unavailable while the authorized tenant and patient-record workflow is completed."
+        description="Upload a discharge report to batch-match and process patient discharges in one pass."
         favoritePage="BulkDischargeImport"
       />
       <DischargeReportUploader />

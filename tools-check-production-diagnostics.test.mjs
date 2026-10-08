@@ -116,6 +116,11 @@ for (const [args, directory] of [
   [['--mode', 'production', 'release'], 'release'],
   [['release', '--mode=production'], 'release'],
   [['--mode=production', 'release'], 'release'],
+  // Base44's hosted build runs the final check with `--mode development`
+  // (dd7c1625). The mode names the build, not what is inspected: the same
+  // artifacts are checked for the same diagnostics either way.
+  [['--mode', 'development'], 'dist'],
+  [['--mode=development', 'release'], 'release'],
 ]) {
   test(`hosted argument compatibility preserves the inspection target: ${JSON.stringify(args)}`, () => {
     assert.deepEqual(parseDiagnosticArguments(args), { directory });

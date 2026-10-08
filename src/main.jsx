@@ -18,15 +18,20 @@ import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch'
 import { installAuthorityBoundClipboard } from '@/lib/authorityBoundClipboard'
 import { closePublicCapabilityRealm } from '@/lib/publicCapabilityRealmGate'
 import { renderSecureBootstrapNotice } from '@/lib/secureBootstrapUi'
+import { isTrustedEditorPreviewFrame } from '@/lib/editorPreviewFrame'
 
 const authorityGuardCleanups = []
 // Non-sensitive stage codes distinguish a blocked frame from a failed native
 // guard installation without logging tokens, page content, or user data.
 let bootstrapFailureCode = 'FRAME_NOT_ALLOWED'
 
+// Only the signer bearer is retired. The provider follow-up portal (/followup)
+// was released on 2026-10-08 (owner decision): its page reads the token once
+// through its capability lease and scrubs it from the URL itself
+// (scrubPublicCapabilityParameter), so it must reach the app intact.
 function scrubRetiredPublicTokenBeforeAppImport() {
   const segment = String(window.location.pathname || '').toLowerCase().split('/')[1] || ''
-  if (segment !== 'signer' && segment !== 'followup') return
+  if (segment !== 'signer') return
   const url = new URL(window.location.href)
   if (!url.searchParams.has('token')) return
   url.searchParams.delete('token')
@@ -49,8 +54,10 @@ function currentFrameMayBootstrap() {
   } catch {
     // A cross-origin parent makes `window.top` unreadable. That is strictly
     // less information than a readable mismatch, so it cannot be the more
-    // permissive answer: refuse, as a readable mismatch does below.
-    return false
+    // permissive answer: it gets exactly the same check as a readable
+    // mismatch below, which admits the Base44 editor preview panel the owner
+    // allowed on 2026-10-08 and no other parent.
+    return isTrustedEditorPreviewFrame(window.location, document.referrer)
   }
   // There is no authenticated production editor handshake in this source
   // checkpoint. Do not expose a clinical DOM to an arbitrary parent frame.
@@ -64,24 +71,10 @@ function currentFrameMayBootstrap() {
   // lets the frame make API calls, both of which `e2e/secure-preview.spec.js`
   // asserts must not happen.
   //
-  // Twice now this has been flipped to `return true` with the note "Owner
-  // decision: allow loading inside the Base44 editor preview panel" — cbc20f3
-  // took this branch, dd7c162 the cross-origin one above, and `dbd5d25` had
-  // already restored the same guard once before that. With both flipped the
-  // function returned true on EVERY path, so the caller below it was dead code
-  // and any site could frame a live clinical DOM; the a11y workflow went red at
-  // cbc20f3 and stayed red, because the embedded case here is exactly what
-  // `e2e/secure-preview.spec.js` asserts.
-  //
-  // The decision it cites is not implemented by this line. Allowing the Base44
-  // editor means allowing ONE origin, and a blanket `true` allows every one.
-  // Narrowing it needs something this checkpoint does not have: a parent-origin
-  // signal (`document.referrer` is unavailable under the `no-referrer` policy
-  // this app sets, and `ancestorOrigins` is Chromium/WebKit only) or the
-  // authenticated handshake the paragraph above says does not exist. Until one
-  // of those lands, the secure-preview link IS the accommodation — so this
-  // refuses, and widening it is a design change rather than a boolean.
-  return false
+  // Owner decision (2026-10-08): allow loading inside the Base44 editor preview
+  // panel. That is permission for that parent only, so every ancestor must be
+  // a Base44 editor origin; any other parent still gets the notice above.
+  return isTrustedEditorPreviewFrame(window.location, document.referrer)
 }
 
 function renderSecureBootstrapBlocked() {
@@ -186,26 +179,26 @@ const safeStorage = (storage) => ({
   },
 });
 
-let localStorageRef = null;
 let sessionStorageRef = null;
-// Merely TOUCHING window.localStorage throws in some privacy modes and in
+// Merely TOUCHING window.sessionStorage throws in some privacy modes and in
 // sandboxed iframes. Leaving the ref null is the intended outcome — safeStorage
-// below falls back to an in-memory shim — so both catches are deliberate no-ops.
-try { localStorageRef = window.localStorage; } catch { /* storage unavailable */ }
+// below falls back to an in-memory shim — so the catch is a deliberate no-op.
+// (localStorage was read here only for the retired `theme` preference.)
 try { sessionStorageRef = window.sessionStorage; } catch { /* storage unavailable */ }
 
-const safeLocalStorage = safeStorage(localStorageRef);
 const safeSessionStorage = safeStorage(sessionStorageRef);
 
-const savedTheme = safeLocalStorage.getItem('theme')
-const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-  document.documentElement.classList.add('dark')
-  document.documentElement.style.colorScheme = 'dark'
-} else {
-  document.documentElement.classList.remove('dark')
-  document.documentElement.style.colorScheme = 'light'
-}
+// PennSync ships ONE light theme — see the dark-class effect in Layout.jsx for
+// why. Following the OS preference here contradicted that for every screen that
+// renders before Layout mounts: measured 2026-10-08 on the live sign-in page
+// with a dark-mode device, the "Welcome to PennSync" heading is near-white on a
+// light gradient and the footer links all but vanish, because the `.dark`
+// shims in index.css flip only some slate/white utilities. Layout then removed
+// the class but left `color-scheme: dark`, so native form controls rendered
+// dark inside the light UI. Nothing writes a `theme` preference any more, so a
+// stored value is not consulted either.
+document.documentElement.classList.remove('dark')
+document.documentElement.style.colorScheme = 'light'
 
 // ── Stale-chunk auto-recovery ───────────────────────────────────────────────
 // When the Vite dev server restarts, the browser's in-memory module graph holds

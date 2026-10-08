@@ -58,20 +58,31 @@ function serviceRoleClientRequest(req, expectedAppId) {
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
 
-// Server-owned telehealth session broker. Every action is scoped to the
-// authenticated clinician (host_email); admins may see/manage all sessions.
+
+// Server-owned telehealth session broker. Released by the owner on 2026-10-08
+// ("approve everything. I want everything to work perfectly").
 //
-// Paused at source. `create` does make the room name, host and join-token hash
-// server-owned, which is half of what createTelehealthToken's pause waits for —
-// but not the immutable binding record, so nothing stops a caller-shaped row
-// from existing beside the ones minted here and `loadOwned`'s `host_email`
-// compare still reads a mutable field as authority. Two further gaps are this
-// module's own: `user.role` is read without withTrustedClaims, and `admin` is
-// the platform tier whose reach the exit decisions removed, so `action: 'list'`
-// with `all` answers `{}` — every agency's sessions, projecting `patient_name`
-// alongside `assessment`, `plan` and `notes`. Keep this literal true until the
-// binding record exists and the list action carries a tenant predicate.
-const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;
+// TelehealthSession's RLS denies every client operation, so this broker is the
+// only writer: room names, hosts and join-token hashes are minted here and
+// never accepted from the browser. Every action names its agency and is
+// authorized against the caller's exact active AgencyMembership in it (the
+// protected platform owner may act in any agency). Rows carry agency_id and
+// host_user_id, and authority is read from those, never from the mutable
+// host_email. A clinician sees and manages their own sessions; an agency_admin
+// or manager may list every session in their agency. The stored join-token hash
+// never leaves the server.
+const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;
+
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -84,73 +95,168 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 const hex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 const randomHex = (n: number) => hex(crypto.getRandomValues(new Uint8Array(n)).buffer);
 const sha256 = async (s: string) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
-const FIELDS = ['room_name', 'patient_id', 'patient_name', 'host_email', 'host_name', 'status', 'scheduled_at',
-  'started_at', 'ended_at', 'duration_minutes', 'visit_type', 'chief_complaint', 'assessment', 'plan', 'notes',
-  'follow_up_needed', 'follow_up_timeframe', 'join_token_hash', 'invite_link'];
+const FIELDS = ['id', 'agency_id', 'room_name', 'patient_id', 'patient_name', 'host_email', 'host_name', 'host_user_id',
+  'status', 'scheduled_at', 'started_at', 'ended_at', 'duration_minutes', 'visit_type', 'chief_complaint', 'assessment',
+  'plan', 'notes', 'follow_up_needed', 'follow_up_timeframe', 'invite_link', 'participant_list', 'vitals_captured',
+  'medications_reviewed', 'prescriptions_sent', 'created_date'];
 const UPDATABLE = ['status', 'notes', 'chief_complaint', 'assessment', 'plan', 'follow_up_needed', 'follow_up_timeframe', 'participant_list', 'vitals_captured', 'medications_reviewed', 'prescriptions_sent'];
+// Both sets are the entity schema's own enums (base44/entities/TelehealthSession.jsonc).
+const STATUSES = new Set(['scheduled', 'active', 'completed', 'cancelled']);
+const VISIT_TYPES = new Set(['routine_followup', 'urgent_care', 'medication_review', 'care_plan_review', 'admission_assessment', 'discharge_planning']);
+const AGENCY_WIDE_ROLES = new Set(['agency_admin', 'manager']);
+const CHART_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']);
+const MAX_ID = 200;
+
+const exactId = (value: unknown) => (typeof value === 'string' && value.length > 0 && value.length <= MAX_ID
+  && value.trim() === value && !value.startsWith('$')) ? value : '';
+const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+
+/** The stored hash stays on the server; everything else the UI shows passes. */
+function project(row: Record<string, any>) {
+  const out: Record<string, unknown> = {};
+  for (const field of FIELDS) if (row?.[field] !== undefined) out[field] = row[field];
+  out.has_join_link = Boolean(row?.join_token_hash || row?.invite_link);
+  return out;
+}
+
+async function resolveAuthority(entities: any, user: any, agencyId: string) {
+  if (isProtectedSuperAdmin(user)) return { agencyId, tenantRole: 'platform_owner', agencyWide: true };
+  const rows = await entities.AgencyMembership.filter(
+    { agency_id: agencyId, user_id: user.id, status: 'active' }, undefined, 2,
+  );
+  // Ceiling of 2: a duplicate active grant is ambiguous and refused, not resolved.
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const row = rows[0];
+  if (row?.agency_id !== agencyId || row?.user_id !== user.id || row?.status !== 'active') return null;
+  if (!CHART_ROLES.has(String(row.tenant_role)) && row.tenant_role !== 'office_staff') return null;
+  return { agencyId, tenantRole: String(row.tenant_role), agencyWide: AGENCY_WIDE_ROLES.has(String(row.tenant_role)) };
+}
+
+/** Same chart rule the patient brokers apply: agency-wide role, creator, or an active care-team seat. */
+async function canOpenChart(entities: any, authority: any, user: any, patientId: string) {
+  const patients = await entities.Patient.filter({ id: patientId }, undefined, 2);
+  const patient = Array.isArray(patients) && patients.length === 1 ? patients[0] : null;
+  if (!patient || patient.id !== patientId || patient.agency_id !== authority.agencyId) return null;
+  if (authority.agencyWide) return patient;
+  if (!CHART_ROLES.has(authority.tenantRole)) return null;
+  if (patient.created_by_user_id === user.id) return patient;
+  const seats = await entities.PatientCareTeamAssignment.filter(
+    { agency_id: authority.agencyId, patient_id: patientId, user_id: user.id }, '-updated_date', 5,
+  );
+  const active = (Array.isArray(seats) ? seats : []).some((seat: any) => seat?.status === 'active'
+    && seat.agency_id === authority.agencyId && seat.patient_id === patientId && seat.user_id === user.id);
+  return active ? patient : null;
+}
+
+function patientDisplayName(patient: Record<string, any>) {
+  return [patient.first_name, patient.last_name].filter((part) => typeof part === 'string' && part.trim()).join(' ').trim();
+}
 
 Deno.serve(async (req) => {
   if (TELEHEALTH_PROVIDER_MIGRATION_PAUSED) {
-    return Response.json({
+    return json({
       error: 'Telehealth provider access is temporarily unavailable while session authority is migrated.',
       code: 'telehealth_provider_migration_pending',
-    }, { status: 503 });
+    }, 503);
   }
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-  const user = await base44.auth.me().catch(() => null);
-  if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-  if (!user?.email) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  const isAdmin = user.role === 'admin';
-  const entities = base44.asServiceRole.entities;
-  const body = await req.json().catch(() => ({}));
-  const { action } = body;
+  try {
+    const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
+    const user = await base44.auth.me().catch(() => null);
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (!user?.id || !user?.email) return json({ error: 'Unauthorized' }, 401);
 
-  const loadOwned = async (id: string) => {
-    const s = id ? await entities.TelehealthSession.get(id).catch(() => null) : null;
-    if (!s || (!isAdmin && String(s.host_email).toLowerCase() !== user.email.toLowerCase())) return null;
-    return s;
-  };
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ error: 'Invalid request body' }, 400);
+    const agencyId = exactId(body.agency_id);
+    if (!agencyId) return json({ error: 'agency_id is required' }, 400);
+    const entities = base44.asServiceRole.entities;
+    const authority = await resolveAuthority(entities, user, agencyId);
+    if (!authority) return json({ error: 'No active membership for agency' }, 403);
+    const { action } = body;
 
-  if (action === 'list') {
-    const query: Record<string, unknown> = isAdmin && body.all ? {} : { host_email: user.email };
-    if (body.patient_id) query.patient_id = body.patient_id;
-    const page = await entities.TelehealthSession.filter(query, { sort: '-scheduled_at', limit: 50, fields: FIELDS });
-    return Response.json({ sessions: page.items || [] });
-  }
-
-  if (action === 'create') {
-    const patientName = String(body.patient_name || '').trim().slice(0, 200);
-    if (!patientName) return Response.json({ error: 'Patient name is required' }, { status: 400 });
-    const token = randomHex(32);
-    const session = await entities.TelehealthSession.create({
-      room_name: `th-${randomHex(12)}`,
-      patient_id: body.patient_id || undefined,
-      patient_name: patientName,
-      host_email: user.email,
-      host_name: user.full_name || user.email,
-      status: 'scheduled',
-      scheduled_at: body.scheduled_at || new Date().toISOString(),
-      visit_type: body.visit_type || 'routine_followup',
-      chief_complaint: body.chief_complaint || undefined,
-      join_token_hash: await sha256(token),
-    });
-    return Response.json({ session, join_token: token });
-  }
-
-  const session = await loadOwned(body.session_id);
-  if (!session) return Response.json({ error: 'Session not found' }, { status: 404 });
-
-  if (action === 'update') {
-    const patch: Record<string, unknown> = {};
-    for (const k of UPDATABLE) if (k in (body.data || {})) patch[k] = body.data[k];
-    if (patch.status === 'active' && !session.started_at) patch.started_at = new Date().toISOString();
-    if (patch.status === 'completed') {
-      patch.ended_at = new Date().toISOString();
-      if (session.started_at) patch.duration_minutes = Math.round((Date.now() - Date.parse(session.started_at)) / 60000);
+    if (action === 'list') {
+      const query: Record<string, unknown> = { agency_id: agencyId };
+      if (!(authority.agencyWide && body.all === true)) query.host_user_id = user.id;
+      if (body.patient_id != null) {
+        const patientId = exactId(body.patient_id);
+        if (!patientId) return json({ error: 'patient_id is invalid' }, 400);
+        query.patient_id = patientId;
+      }
+      const rows = await entities.TelehealthSession.filter(query, '-scheduled_at', 50, 0, [...FIELDS, 'join_token_hash']);
+      const sessions = (Array.isArray(rows) ? rows : [])
+        .filter((row: any) => row?.agency_id === agencyId
+          && (query.host_user_id === undefined || row.host_user_id === user.id))
+        .map(project);
+      return json({ sessions });
     }
-    return Response.json({ session: await entities.TelehealthSession.update(session.id, patch) });
-  }
 
-  return Response.json({ error: 'Unknown action' }, { status: 400 });
+    if (action === 'create') {
+      let patientId = '';
+      let patientName = String(body.patient_name || '').trim().slice(0, 200);
+      if (body.patient_id != null && body.patient_id !== '') {
+        patientId = exactId(body.patient_id);
+        if (!patientId) return json({ error: 'patient_id is invalid' }, 400);
+        const patient = await canOpenChart(entities, authority, user, patientId);
+        if (!patient) return json({ error: 'This chart is not open to you' }, 403);
+        patientName = patientDisplayName(patient) || patientName;
+      }
+      if (!patientName) return json({ error: 'Patient name is required' }, 400);
+      const scheduledAt = body.scheduled_at == null ? new Date().toISOString() : String(body.scheduled_at);
+      if (!Number.isFinite(Date.parse(scheduledAt))) return json({ error: 'scheduled_at is invalid' }, 400);
+      const visitType = body.visit_type == null ? 'routine_followup' : String(body.visit_type);
+      if (!VISIT_TYPES.has(visitType)) return json({ error: 'visit_type is invalid' }, 400);
+      const token = randomHex(32);
+      const session = await entities.TelehealthSession.create({
+        agency_id: agencyId,
+        room_name: `th-${randomHex(12)}`,
+        patient_id: patientId || undefined,
+        patient_name: patientName,
+        host_user_id: user.id,
+        host_email: normalizeProtectedEmail(user.email),
+        host_name: user.full_name || user.email,
+        status: 'scheduled',
+        scheduled_at: new Date(scheduledAt).toISOString(),
+        visit_type: visitType,
+        chief_complaint: typeof body.chief_complaint === 'string' ? body.chief_complaint.slice(0, 2000) : undefined,
+        join_token_hash: await sha256(token),
+      });
+      return json({ session: project(session), join_token: token });
+    }
+
+    const sessionId = exactId(body.session_id);
+    if (!sessionId) return json({ error: 'session_id is required' }, 400);
+    const found = await entities.TelehealthSession.filter({ id: sessionId, agency_id: agencyId }, undefined, 2);
+    const session = Array.isArray(found) && found.length === 1 ? found[0] : null;
+    if (!session || session.id !== sessionId || session.agency_id !== agencyId
+      || (!authority.agencyWide && session.host_user_id !== user.id)) {
+      return json({ error: 'Session not found' }, 404);
+    }
+
+    if (action === 'get') return json({ session: project(session) });
+
+    if (action === 'update') {
+      const data = body.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : {};
+      const patch: Record<string, unknown> = {};
+      for (const k of UPDATABLE) if (k in data) patch[k] = data[k];
+      if (patch.status !== undefined && !STATUSES.has(String(patch.status))) return json({ error: 'status is invalid' }, 400);
+      if (patch.participant_list !== undefined && (!Array.isArray(patch.participant_list)
+        || patch.participant_list.length > 20
+        || patch.participant_list.some((entry: unknown) => typeof entry !== 'string' || entry.length > 320))) {
+        return json({ error: 'participant_list is invalid' }, 400);
+      }
+      if (patch.status === 'active' && !session.started_at) patch.started_at = new Date().toISOString();
+      if (patch.status === 'completed') {
+        patch.ended_at = new Date().toISOString();
+        if (session.started_at) patch.duration_minutes = Math.round((Date.now() - Date.parse(session.started_at)) / 60000);
+      }
+      return json({ session: project(await entities.TelehealthSession.update(session.id, patch)) });
+    }
+
+    return json({ error: 'Unknown action' }, 400);
+  } catch {
+    console.error('manageTelehealthSession failed');
+    return json({ error: 'Telehealth session request failed' }, 500);
+  }
 });

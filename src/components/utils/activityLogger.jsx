@@ -1,8 +1,96 @@
-// Browser-reported telemetry cannot be treated as an attested audit ledger:
-// callers can alter actions, identities, entity links, and free-form details.
-// Keep this compatibility helper as an intentional no-op so product actions do
-// not fail while purpose-specific server brokers replace meaningful events.
-export const logActivity = async (_action, _details = {}) => undefined;
+import { base44 } from '@/api/base44Client';
+import { loadCurrentCaller } from '@/lib/agencyRoster';
+
+// Browser activity telemetry (owner decision 2026-10-08: record it again).
+//
+// What keeps this honest:
+//   - the row's user_email is the signed-in caller's own address, and the
+//     UserActivity RLS create rule requires exactly that, so a browser can only
+//     ever append events about itself;
+//   - UserActivity has no client update or delete rule, so the trail is
+//     append-only; reads are the built-in admin's (RLS) or an agency
+//     administrator's through getUserActivityLog;
+//   - details are PHI-minimal: numbers and booleans under non-identifying keys,
+//     and short strings only under a fixed set of operational keys. Names,
+//     emails, phone numbers, patient ids, free text and file references are
+//     dropped. An entity link travels only as entity_type + entity_id.
+// It is still self-reported telemetry, not an attested audit ledger: purpose
+// brokers on the server remain the record for anything that must be proven.
+// Logging never blocks or fails the product action that called it.
+
+const ACTION_PATTERN = /^[a-z0-9_]{1,64}$/;
+const ENTITY_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
+const ENTITY_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const SAFE_STRING_DETAIL_KEYS = new Set([
+  'page', 'page_title', 'tab', 'section', 'feature', 'source', 'mode', 'format',
+  'type', 'kind', 'status', 'user_role', 'staff_role', 'visit_type', 'old_role', 'new_role',
+]);
+const IDENTIFYING_DETAIL_KEY = /(patient|mrn|name|email|phone|e164|number|cell|thread|body|message|reason|note|query|filter|url|pdf|document|file|before|after|changes|address|dob|birth|ssn|_id$|^id$|data)/i;
+const MAX_DETAIL_KEYS = 25;
+const MAX_STRING_LENGTH = 80;
+
+/** Keep only PHI-minimal, scalar detail fields. Exported for tests. */
+export function minimizeActivityDetails(details) {
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return undefined;
+  const out = {};
+  for (const [key, value] of Object.entries(details).slice(0, 100)) {
+    if (Object.keys(out).length >= MAX_DETAIL_KEYS) break;
+    if (key === 'entity_type' || key === 'entity_id' || key === 'page') continue;
+    if (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) {
+      if (!IDENTIFYING_DETAIL_KEY.test(key)) out[key] = value;
+      continue;
+    }
+    if (typeof value === 'string' && SAFE_STRING_DETAIL_KEYS.has(key)
+      && value.length <= MAX_STRING_LENGTH && !/@|\d{4,}/.test(value)) {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function deviceType() {
+  try {
+    const width = window.innerWidth || 0;
+    if (width && width < 768) return 'mobile';
+    if (width && width < 1024) return 'tablet';
+    return 'desktop';
+  } catch {
+    return undefined;
+  }
+}
+
+export const logActivity = async (action, details = {}) => {
+  try {
+    if (typeof action !== 'string' || !ACTION_PATTERN.test(action)) return undefined;
+    const caller = await loadCurrentCaller();
+    const email = typeof caller?.email === 'string' ? caller.email : '';
+    if (!email) return undefined;
+    const source = details && typeof details === 'object' && !Array.isArray(details) ? details : {};
+    const entityType = typeof source.entity_type === 'string' && ENTITY_TYPE_PATTERN.test(source.entity_type)
+      ? source.entity_type
+      : undefined;
+    const entityId = entityType && typeof source.entity_id === 'string' && ENTITY_ID_PATTERN.test(source.entity_id)
+      ? source.entity_id
+      : undefined;
+    const page = typeof source.page === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(source.page)
+      ? source.page
+      : undefined;
+    await base44.entities.UserActivity.create({
+      user_email: email,
+      user_name: typeof caller.full_name === 'string' ? caller.full_name.slice(0, 120) : undefined,
+      action,
+      page,
+      entity_type: entityType,
+      entity_id: entityId,
+      details: minimizeActivityDetails(source),
+      status: 'success',
+      device_type: deviceType(),
+    });
+  } catch {
+    // Telemetry must never fail the action that produced it.
+  }
+  return undefined;
+};
 
 export const ActivityActions = {
   VIEW: 'view',

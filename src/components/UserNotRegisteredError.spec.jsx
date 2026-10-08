@@ -17,3 +17,15 @@ describe('UserNotRegisteredError support routes', () => {
       .toHaveAttribute('href', 'mailto:support@caremetric.ai');
   });
 });
+
+describe('UserNotRegisteredError account deletion', () => {
+  it('lets an account that never reached Settings start a deletion request (Guideline 5.1.1(v))', () => {
+    renderWithProviders(<UserNotRegisteredError />);
+
+    const link = screen.getByRole('link', { name: 'Request account deletion' });
+    const href = new URL(link.getAttribute('href'));
+    expect(href.protocol).toBe('mailto:');
+    expect(href.pathname).toBe('support@caremetric.ai');
+    expect(href.searchParams.get('subject')).toBe('PennSync account deletion request');
+  });
+});

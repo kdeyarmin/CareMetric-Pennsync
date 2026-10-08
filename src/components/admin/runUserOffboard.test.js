@@ -14,14 +14,22 @@ test('buildOffboardInvokeArgs builds offboard body', () => {
   assert.equal(args.action, undefined);
 });
 
-test('buildOffboardInvokeArgs hard-pauses reactivation before an invoke payload exists', () => {
+test('buildOffboardInvokeArgs builds a reactivation body and refuses self-reactivation', () => {
+  assert.deepEqual(
+    buildOffboardInvokeArgs({
+      targetUser: { id: 'u1', email: 'nurse@example.com' },
+      currentUser: { email: 'admin@example.com', role: 'user' },
+      enabling: true,
+    }),
+    { action: 'reactivate', user_id: 'u1' },
+  );
   assert.throws(
     () => buildOffboardInvokeArgs({
-      targetUser: { id: 'u1', email: 'nurse@example.com' },
+      targetUser: { id: 'u1', email: 'Admin@example.com' },
       currentUser: { email: 'admin@example.com', role: 'admin' },
       enabling: true,
     }),
-    /reactivation is temporarily unavailable/i,
+    /your own account/i,
   );
 });
 

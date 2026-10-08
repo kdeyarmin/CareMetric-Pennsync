@@ -9,6 +9,7 @@ import { enhanceTranscription } from "../utils/medicalDictionary";
 import DictationSectionMapper from "./DictationSectionMapper";
 import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
 import AuthorityBoundAudio from '@/components/ui/AuthorityBoundAudio';
+import { audioRecorderOptions, pickAudioRecorderMimeType, recordedAudioType } from '@/lib/audioRecordingFormat';
 import {
   getTenantSdkRealmAbortSignal,
   isTenantSdkRealmLeaseCurrent,
@@ -73,7 +74,7 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
       }
       recordingLeaseRef.current = realmLease;
       streamRef.current = stream;
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(stream, audioRecorderOptions(pickAudioRecorderMimeType()));
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -174,7 +175,9 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
   // SOAP: send the audio as base64 to the SOAP backend, which transcribes AND
   // structures it; append the formatted block.
   const processSOAP = async (realmLease, acquisition) => {
-    const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+    // The recorder's real container: on iOS this is audio/mp4, and the SOAP
+    // backend names the upload from `mime_type`.
+    const blob = new Blob(audioChunksRef.current, { type: recordedAudioType(mediaRecorderRef.current) });
     if (blob.size === 0) return;
     setProcessing(true);
     try {

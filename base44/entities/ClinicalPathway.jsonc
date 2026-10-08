@@ -178,14 +178,31 @@
     "pathway_name",
     "condition"
   ],
-  // Pathway records currently carry global clinical/PDGM assertions without an
-  // immutable tenant key. Every browser surface that consumes them is held
-  // behind a literal source pause, so fail closed until a tenant-authorized
-  // broker and clinically validated pathway model replace direct entity access.
+  // 2026-10-08 owner decision (single agency, staff-only): pathways are
+  // administrator-managed reference content. Every operation is admitted for
+  // the built-in administrator only, so the Clinical Pathway Manager — itself
+  // an admin page — can list and maintain them, and no other account can read
+  // or change one. Pathways still carry no tenant key.
   "rls": {
-    "read": false,
-    "create": false,
-    "update": false,
-    "delete": false
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
   }
 }

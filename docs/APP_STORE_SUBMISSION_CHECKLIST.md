@@ -1,6 +1,12 @@
 # Apple App Store Submission Checklist — PennSync iOS
 
 Companion to `docs/BASE44_APPSTORE_COMPAT_REVIEW_2026-07-22.md` (§5) and `ios/README.md`.
+
+> **Start with `docs/APP_STORE_RELEASE_AUDIT_2026-10-08.md`.** It records what was
+> measured on that date (the live listing, the stale published frontend, the
+> broken sign-out and hosted sign-in URLs) and lists the release blockers B1–B9
+> in the order they have to be cleared. Where it and this checklist disagree,
+> the dated audit is the newer reading.
 Some code-side foundations are present; the items below include the repository gaps and App
 Store Connect/process steps that must be resolved before another native submission.
 
@@ -94,9 +100,11 @@ Store Connect/process steps that must be resolved before another native submissi
       implementation is present in this repository.
 - [ ] **Privacy nutrition labels.** Declare (all "linked to identity", none used for tracking):
   - Health & Fitness → Health (patient clinical data processed in-app)
-  - Contact Info → Name, Email Address
-  - Identifiers → User ID
-  - Usage Data → Product Interaction (audit trails)
+  - Contact Info → Name, Email Address, Phone Number, Physical Address, Other User Contact Info
+  - User Content → Audio Data (visit recordings sent for transcription), Photos or Videos
+    (incident photos, Camera Fax)
+  - Identifiers → User ID, Device ID
+  - Usage Data → Product Interaction (audit trails), Other Usage Data
   - Sensitive Info (if patient SSN/insurance data is entered by your agency)
       The bundled `ios/PennSync/PrivacyInfo.xcprivacy` mirrors these; keep both in sync.
 - [ ] **App Review notes.** Provide:
@@ -111,15 +119,20 @@ Store Connect/process steps that must be resolved before another native submissi
     enforces an acknowledgment gate) — relevant to medical-app review (1.4.1).
 - [ ] **Export compliance**: `ITSAppUsesNonExemptEncryption = false` is already set (HTTPS
       only) — answer the App Store Connect questions accordingly.
-- [ ] **Age rating**: 17+/medical is typical for clinical tools; complete the questionnaire.
+- [ ] **Age rating**: complete Apple's REVISED questionnaire (13+/16+/18+ bands, due
+      2026-01-31; submissions are blocked until it is answered). The live 17+ is an
+      old-system rating; the medical-information answers carry over.
 - [ ] **App icon**: `ios/PennSync/Assets.xcassets` ships a generated 1024px icon. Replace with
       the official brand icon before submission if a higher-fidelity source than
       `public/icons/icon-512.png` exists.
 
 ## Build-time (see ios/README.md for the full flow)
 
+- [ ] Use **Xcode 26 or newer** — App Store Connect refuses older builds since 2026-04-28.
 - [ ] `xcodegen generate` in `ios/`, open the project, set the signing team.
-- [ ] Bump `CFBundleShortVersionString`/build number.
+- [ ] `MARKETING_VERSION` must be HIGHER than the live version (`1.0` on 2026-10-08;
+      `1.0.0` counts as equal and is refused). It is `1.1.0`; bump it for each later
+      submission. `tools-app-store-migration.test.mjs` enforces this.
 - [ ] Archive → distribute via App Store Connect.
 
 ## After any submission

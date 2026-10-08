@@ -14,9 +14,11 @@ import { ALL_ROWS } from '@/lib/queryLimits';
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
 
 const EMPTY_ROWS = Object.freeze([]);
-// PersonnelCredential's administrator read is not bound to an immutable agency
-// membership. Client-side email intersection is not sufficient authorization.
-const CREDENTIAL_METRICS_AVAILABLE = false;
+// PersonnelCredential's read rule admits each employee's own rows and the
+// built-in administrator. Only an administrator's read covers the roster, so
+// coverage is computed for that caller alone; anyone else would see their own
+// credentials and a coverage figure the rule had silently narrowed.
+const credentialReadCoversRoster = (user) => user?.role === 'admin';
 const FRESH_QUERY_OPTIONS = Object.freeze({
   retry: false,
   staleTime: 0,
@@ -119,6 +121,18 @@ export default function DataQualityDashboard() {
     && settledSuccessfullyAfterMount(agencyScopeQuery);
   const agencyScope = agencyScopeAvailable ? agencyScopeQuery.data : null;
 
+  const credentialMetricsPermitted = credentialReadCoversRoster(currentUser);
+  const credentialsQuery = useQuery({
+    queryKey: ['credentials-quality', dataQualityAuthorityKey, agencyQueryKey(currentUser)],
+    queryFn: () => base44.entities.PersonnelCredential.list('-expiration_date', ALL_ROWS),
+    enabled: Boolean(dataQualityAuthorityKey && auxiliaryAuthorityMatches && credentialMetricsPermitted),
+    ...FRESH_QUERY_OPTIONS,
+  });
+  const credentialsAvailable = credentialMetricsPermitted
+    && usersAvailable
+    && settledSuccessfullyAfterMount(credentialsQuery);
+  const credentials = credentialsAvailable ? credentialsQuery.data : EMPTY_ROWS;
+
   const allDataAvailable = authorizedDataAvailable
     && auxiliaryAuthorityMatches
     && usersAvailable
@@ -169,6 +183,26 @@ export default function DataQualityDashboard() {
         : null
       : null;
 
+    // Credential tracking. PersonnelCredential is 1-to-many per user (several
+    // credential types and renewals), so the row count is not the number of
+    // people covered — count distinct owners. The credential list is not
+    // agency-scoped while `users` is, so intersect it with the loaded nurse
+    // roster: an owner outside it (another tenant, a former employee) must not
+    // inflate coverage past 100% and hide the gap this card exists to show.
+    // PersonnelCredential.user_id holds the user's email.
+    const nurseEmails = new Set(
+      users.filter(u => getStaffRole(u) === 'nurse').map(u => u.email).filter(Boolean)
+    );
+    const credentialOwners = new Set(
+      credentials.map(c => c.user_id).filter(id => nurseEmails.has(id))
+    );
+    const missingCredentials = credentialsAvailable
+      ? Math.max(0, nurseEmails.size - credentialOwners.size)
+      : null;
+    const credentialCoverage = credentialsAvailable && nurseEmails.size > 0
+      ? ((credentialOwners.size / nurseEmails.size) * 100).toFixed(1)
+      : null;
+
     return {
       patientIssues,
       patientCompleteness,
@@ -176,8 +210,10 @@ export default function DataQualityDashboard() {
       userCompleteness,
       visitIssues,
       visitCompleteness,
+      missingCredentials,
+      credentialCoverage,
     };
-  }, [patients, patientQuery.isSuccess, users, visits, visitQuery.isSuccess]);
+  }, [credentials, credentialsAvailable, patients, patientQuery.isSuccess, users, visits, visitQuery.isSuccess]);
 
   const overallScore = useMemo(() => {
     if (
@@ -191,6 +227,11 @@ export default function DataQualityDashboard() {
       parseFloat(qualityMetrics.userCompleteness),
       parseFloat(qualityMetrics.visitCompleteness),
     ];
+    // Credential coverage joins the score only when it was measured; an
+    // unmeasured source is excluded and said so, never counted as 0 or 100.
+    if (qualityMetrics.credentialCoverage !== null) {
+      scores.push(parseFloat(qualityMetrics.credentialCoverage));
+    }
     return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
   }, [allDataAvailable, qualityMetrics]);
 
@@ -224,12 +265,15 @@ export default function DataQualityDashboard() {
         </div>
       </div>
 
-      {!CREDENTIAL_METRICS_AVAILABLE && (
+      {!credentialsAvailable && (
         <Alert className="border-amber-300 bg-amber-50" role="status">
           <AlertTriangle className="h-4 w-4 text-amber-700" />
           <AlertDescription className="text-amber-950">
-            Credential coverage is unavailable until PersonnelCredential has a
-            tenant-bound reporting projection. It is excluded from the verified-source score.
+            {!credentialMetricsPermitted
+              ? 'Credential coverage is unavailable for this account: credential records are readable only by their owner and by an administrator account, so a roster-wide figure cannot be measured here. It is excluded from the verified-source score.'
+              : credentialsQuery.isError
+                ? 'Credential coverage is unavailable because the credential records could not be loaded. It is excluded from the verified-source score.'
+                : 'Loading credential records…'}
           </AlertDescription>
         </Alert>
       )}
@@ -326,10 +370,24 @@ export default function DataQualityDashboard() {
             <ClipboardCheck className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            <p className="text-sm font-semibold text-amber-800">Unavailable</p>
-            <p className="text-xs text-slate-500 mt-2">
-              Tenant-bound credential projection required
-            </p>
+            {!credentialsAvailable ? (
+              <>
+                <p className="text-sm font-semibold text-amber-800">Unavailable</p>
+                <p className="text-xs text-slate-500 mt-2">
+                  {credentialMetricsPermitted ? 'Credential records not loaded' : 'Administrator account required'}
+                </p>
+              </>
+            ) : qualityMetrics.credentialCoverage === null ? (
+              <p className="text-sm font-semibold text-amber-800">No nurse denominator</p>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{qualityMetrics.credentialCoverage}%</div>
+                <Progress value={parseFloat(qualityMetrics.credentialCoverage)} className="mt-2" />
+                <p className="text-xs text-slate-500 mt-2">
+                  {qualityMetrics.missingCredentials} employees need credential upload
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

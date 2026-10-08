@@ -91,10 +91,10 @@ function pdgmUnavailablePayload(extra = {}) {
 }
 // <<<END SHARED HELPER: pdgmReimbursementGate>>>
 
-// This endpoint otherwise turns arbitrary caller payloads into an authoritative
-// OASIS report. Pause it until the server can resolve a tenant-bound,
-// clinician-reviewed analysis record instead of trusting request data.
-const COMPREHENSIVE_OASIS_REPORT_ENABLED = false;
+// Released by the owner on 2026-10-08 ("approve everything"). It formats the
+// caller's own analysis payload into a report for that caller; PDGM payment
+// figures stay off through the pdgmReimbursementGate above.
+const COMPREHENSIVE_OASIS_REPORT_ENABLED = true;
 
 Deno.serve(async (req) => {
   if (!COMPREHENSIVE_OASIS_REPORT_ENABLED) {

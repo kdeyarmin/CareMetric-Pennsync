@@ -257,8 +257,8 @@ export function resolveScenario(referralData) {
  *
  * @param {object} referralData extracted referral data (referralExtraction.js shape)
  * @param {object} [opts]
- * @param {object} [opts.rates] saved PDGMRateConfig.rates (merged over defaults)
- * @param {object} [opts.icdGroups] saved PDGMRateConfig.icd10_clinical_groups
+ * @param {object} [opts.rates] legacy; ignored — no payment table is read
+ * @param {object} [opts.icdGroups] legacy; ignored — no grouping table is read
  * @returns {{
  *   sequenced: Array<{position:number, role:'primary'|'secondary', code:string,
  *     displayCode:string, description:string, clinicalGroupKey:string|null,

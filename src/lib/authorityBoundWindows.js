@@ -13,7 +13,12 @@ import {
 } from '@/lib/publicCapabilityRealmGate';
 
 const authorityBoundObjectUrls = new Map();
+const authorityBoundChildWindows = new Set();
 const interceptorRecords = new WeakMap();
+// While a document interceptor is installed it replaces window.open with a
+// refusal; this keeps the native opener it replaced so that the one sanctioned
+// path below (openAuthorityBoundWindow) can still reach it.
+let nativeAuxiliaryOpener = null;
 const defaultUrlConstructor = typeof URL !== 'undefined' ? URL : null;
 const defaultRevokeObjectUrl = defaultUrlConstructor?.revokeObjectURL;
 const BLOCKED_EVENT_TYPES = Object.freeze([
@@ -368,17 +373,114 @@ function trackAuthorityBoundObjectUrl(url, nativeRevoke, signal = null) {
   return active ? key : null;
 }
 
+function trackAuthorityBoundChildWindow(child, signal) {
+  let active = true;
+  const record = {
+    close() {
+      if (!active) return;
+      active = false;
+      authorityBoundChildWindows.delete(record);
+      try { signal?.removeEventListener('abort', record.close); } catch { /* already detached */ }
+      try { child.close(); } catch { /* already closed or severed */ }
+    },
+  };
+  authorityBoundChildWindows.add(record);
+  try { signal?.addEventListener('abort', record.close, { once: true }); } catch { record.close(); }
+  return record;
+}
+
 /**
- * Auxiliary browsing contexts are intentionally unavailable in this source
- * checkpoint. A cross-origin page can opt into COOP and sever its WindowProxy;
- * native wrappers can redirect the request to Safari, a share sheet, a print
- * controller, or WKDownload. None of those surfaces can be synchronously
- * scrubbed when the exact tenant lease is revoked, so returning a raw child
- * handle would make the boundary dishonest.
+ * Classify a requested auxiliary-window URL. Only three kinds may open:
+ * a blank same-origin window (print and receipt flows write into it), an
+ * object URL this document created and tracks, and an http(s) URL. Anything
+ * else (javascript:, data:, an untracked blob:, credentials in the URL) is
+ * refused.
  */
-export function openAuthorityBoundWindow(_url = '', _target = '_blank', _features = '') {
-  if (!isTenantSdkRealmOpen()) return null;
-  return null;
+function auxiliaryWindowRequest(url, ownerWindow) {
+  const raw = url == null ? '' : String(url).trim();
+  if (raw === '' || raw === 'about:blank') return { href: '', external: false };
+  let parsed;
+  try {
+    parsed = new ownerWindow.URL(raw, ownerWindow.location.href);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol === 'blob:') {
+    return isTrackedObjectUrl(parsed.href) ? { href: parsed.href, external: false } : null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  if (parsed.username || parsed.password) return null;
+  return { href: parsed.href, external: parsed.origin !== ownerWindow.location.origin };
+}
+
+/**
+ * The one sanctioned way to open another browsing context while a staff realm
+ * is open. Returns `{ opened, window }`: `opened` says the request was allowed
+ * and handed to the browser (a popup blocker or the iOS shell's Safari hand-off
+ * can still leave `window` null), and `window` is a handle only for a
+ * same-origin child.
+ *
+ * - An external http(s) URL opens severed (`noopener,noreferrer`): the page
+ *   gets no handle back to this app and learns nothing from the referrer. In
+ *   the iOS shell it opens in Safari.
+ * - A blank window or a tracked object URL opens with a handle the caller can
+ *   write into or print. That child is registered with the tenant lease and is
+ *   closed when the lease ends (sign-out, workspace switch, page exit), the
+ *   same teardown an object URL gets.
+ *
+ * This replaces a pause that returned null for every request, which left every
+ * open, view and print button in the app doing nothing.
+ */
+export function requestAuthorityBoundWindow(url = '') {
+  const refused = { opened: false, window: null };
+  if (!isTenantSdkRealmOpen()) return refused;
+  const opener = nativeAuxiliaryOpener;
+  if (!opener) return refused;
+  const { open, ownerWindow } = opener;
+  const request = auxiliaryWindowRequest(url, ownerWindow);
+  if (!request) return refused;
+
+  let lease;
+  let signal;
+  try {
+    lease = captureTenantSdkRealmLease();
+    signal = getTenantSdkRealmAbortSignal(lease);
+  } catch {
+    return refused;
+  }
+
+  if (request.external) {
+    try {
+      Reflect.apply(open, ownerWindow, [request.href, '_blank', 'noopener,noreferrer']);
+    } catch {
+      return refused;
+    }
+    return { opened: true, window: null };
+  }
+
+  let child = null;
+  try {
+    child = Reflect.apply(open, ownerWindow, [request.href, '_blank']);
+  } catch {
+    return refused;
+  }
+  if (!child) return { opened: true, window: null };
+  const record = trackAuthorityBoundChildWindow(child, signal);
+  if (!isTenantSdkRealmLeaseCurrent(lease)) {
+    record.close();
+    return refused;
+  }
+  return { opened: true, window: child };
+}
+
+/**
+ * Open a URL (or a blank window when no URL is given) through
+ * `requestAuthorityBoundWindow`. Returns the child's handle for a blank or
+ * object-URL window, and null otherwise, including for an external URL that
+ * did open (it is opened severed, so there is no handle to return).
+ */
+export function openAuthorityBoundWindow(url = '', _target = '_blank', _features = '') {
+  return requestAuthorityBoundWindow(url).window;
 }
 
 /** Public capabilities share the same explicit auxiliary-window pause. */
@@ -430,6 +532,9 @@ export function registerAuthorityBoundObjectUrl(url) {
 
 /** Revoke every tracked object URL before cache/storage teardown can await. */
 export function closeAuthorityBoundWindows() {
+  for (const record of [...authorityBoundChildWindows]) {
+    try { record.close(); } catch { /* continue closing every child */ }
+  }
   for (const record of [...authorityBoundObjectUrls.values()]) {
     try { record.revoke(); } catch { /* continue closing every URL */ }
   }
@@ -467,6 +572,7 @@ export function installAuthorityBoundLinkInterceptor(documentObject = document) 
     listeners.push(() => target.removeEventListener(type, listener, true));
   };
   const rollback = () => {
+    if (nativeAuxiliaryOpener?.ownerWindow === ownerWindow) nativeAuxiliaryOpener = null;
     closeAuthorityBoundWindows();
     for (const remove of [...listeners].reverse()) {
       try { remove(); } catch { /* continue rollback */ }
@@ -578,6 +684,7 @@ export function installAuthorityBoundLinkInterceptor(documentObject = document) 
     if (typeof nativeWindowOpen !== 'function') throw new Error('window.open is unavailable');
     const guardedWindowOpen = () => null;
     patchFunction(ownerWindow, 'open', guardedWindowOpen, restorers, { required: true });
+    nativeAuxiliaryOpener = { open: nativeWindowOpen, ownerWindow };
     if (typeof windowPrototype?.open === 'function') {
       patchFunction(windowPrototype, 'open', guardedWindowOpen, restorers);
     }

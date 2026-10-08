@@ -572,15 +572,7 @@ export default function ReferralIntake() {
       // not inside extracted_data — so it can't leak into the
       // referral→admission-note bridges. Best-effort: never blocks intake.
       try {
-        const me = await base44.auth.me().catch(() => null);
-        const { fetchCallerPdgmRateConfig } = await import('@/lib/agencySettings');
-        const rateRow = await fetchCallerPdgmRateConfig(me?.agency_name);
-        updates.diagnosis_coding = toPersistedCoding(
-          generateDiagnosisCodes(extractedData, {
-            rates: rateRow?.rates,
-            icdGroups: rateRow?.icd10_clinical_groups,
-          })
-        );
+        updates.diagnosis_coding = toPersistedCoding(generateDiagnosisCodes(extractedData));
       } catch (codingError) {
         console.error('Diagnosis coding skipped:', codingError);
       }
@@ -1468,6 +1460,20 @@ export default function ReferralIntake() {
                       </TableCell>
                       <TableCell>
                        <div className="flex flex-col gap-2 min-w-[120px]">
+                         {/* Follow-Up review requires the FULL extraction; quick-scan
+                             uploads carry a partial extracted_data until processed */}
+                         {referral.extracted_data && referral.analysis_results && (
+                           <Link to={`/ReferralFollowUp?id=${referral.id}`}>
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               className="min-h-[36px] text-xs w-full"
+                             >
+                               <ClipboardCheck className="w-4 h-4 mr-1" />
+                               {referral.follow_up_requests?.status ? `Follow-Up (${referral.follow_up_requests.status})` : 'Follow-Up'}
+                             </Button>
+                           </Link>
+                         )}
                          {referral.requires_manual_review ? (
                            <Button
                              size="sm"

@@ -376,8 +376,12 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
     handler.indexOf('if (OASIS_V2_WRITES_PAUSED)') < handler.indexOf('createClientFromRequest('),
     'saveOasisResponses must return 503 before client creation or any data access.',
   );
-  assert.ok(!/base44|useQuery|useAgencyScopedQuery|useScopedPatients|\.entities\./.test(dashboard));
-  assert.match(dashboard, /paused pending tenant security validation/i);
+  // 2026-10-08 owner decision: the KPI dashboard is on again, reading only
+  // through reviewed brokers — never Patient, Visit, Referral or OASIS directly.
+  assert.match(dashboard, /useScopedPatients\(\{ purpose: 'roster'/);
+  assert.match(dashboard, /useAuthorizedVisits\(\{ purpose: 'reporting'/);
+  assert.match(dashboard, /useReferralReportRows\(\)/);
+  assert.ok(!/entities\.(?:Patient|Visit|Referral|OASISAssessment|AgencyKPI|PatientOutcomeMetric)\b/.test(dashboard));
   const adapter = read('src/components/oasis/responseSchema/oasisWriteAdapter.js');
   assert.ok(!/base44|functions\.invoke|OASISAssessment\.(create|update)/.test(adapter));
   assert.match(adapter, /tenant_security_validation_pending/);
@@ -401,49 +405,57 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
     assert.match(surface, new RegExp(`const ${gate} = false;`));
     assert.match(surface, new RegExp(`if \\(!${gate}\\)`));
   }
+});
+
+// Patient merges run only through the deduplicatePatients server broker. The
+// browser never reads, re-points or archives a chart itself, and the broker is
+// pinned behaviourally by base44/functionTests/patientMergeBrokerContract.test.js.
+test('patient merges go through the authorized server broker, never a browser write', () => {
   const merge = read('src/components/patient/mergePatients.js');
-  const serverMergeRequired = merge.match(
-    /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\[([\s\S]*?)\]/,
+  assert.match(merge, /export const PATIENT_MERGES_PAUSED = false;/);
+  assert.match(merge, /functions\.invoke\("deduplicatePatients", payload\)/);
+  assert.match(merge, /action: "merge"/);
+  assert.ok(
+    !/\.entities\b|asServiceRole|\.update\(|\.create\(|PATIENT_RELATED_ENTITIES/.test(merge),
+    'the browser merge boundary must not touch an entity directly',
   );
-  assert.ok(serverMergeRequired, 'server-only patient references must stay explicit');
-  for (const entity of [
-    'DocumentTenantBinding',
-    'OASISAssessment',
-    'PatientCareTeamAssignment',
-    'PatientNoteHistoryEntry',
-    'PatientOutcomeMetric',
+  for (const file of [
+    'src/pages/DuplicatePatients.jsx',
+    'src/components/patient/DuplicateScanner.jsx',
+    'src/components/patient/PatientMergeDialog.jsx',
   ]) {
-    assert.match(serverMergeRequired[1], new RegExp(`"${entity}"`));
+    const ui = read(file);
+    assert.ok(!/\.entities\.Patient|functions\.invoke\(/.test(ui), `${file} must merge only through mergePatients`);
   }
-  assert.match(merge, /PATIENT_MERGE_PAUSED_MESSAGE/);
-  const mergeBoundary = merge.slice(
-    merge.indexOf('export async function mergePatientInto'),
-    merge.indexOf('// Scalar chart fields'),
-  );
-  assert.match(mergeBoundary, /throw new Error\(PATIENT_MERGE_PAUSED_MESSAGE\)/);
-  assert.ok(!/base44|\.entities\.|\.filter\(|\.update\(/.test(mergeBoundary));
-  assert.ok(!/^import .*base44Client/m.test(merge));
-  const dedupe = read('base44/functions/deduplicatePatients/entry.ts');
-  const dedupeHandler = dedupe.slice(dedupe.indexOf('Deno.serve'));
-  assert.match(dedupe, /const PATIENT_DEDUPLICATION_PAUSED = true;/);
-  assert.ok(
-    dedupeHandler.indexOf('if (PATIENT_DEDUPLICATION_PAUSED)')
-      < dedupeHandler.indexOf('createClientFromRequest('),
-    'deduplicatePatients must return 503 before client creation, auth, or service-role PHI reads.',
-  );
-  assert.ok(
-    dedupeHandler.indexOf('if (confirm)') < dedupeHandler.indexOf('entities.Patient.list'),
-    'deduplicatePatients confirm mode must return 503 before service-role patient reads or writes.',
-  );
-  assert.match(dedupeHandler, /patient_merge_security_validation_pending/);
   for (const file of [
     'src/pages/DuplicatePatients.jsx',
     'src/components/patient/DuplicateScanner.jsx',
   ]) {
     const ui = read(file);
-    assert.match(ui, /const PATIENT_DEDUPE_UI_ENABLED = false;/);
+    assert.match(ui, /const PATIENT_DEDUPE_UI_ENABLED = true;/);
     assert.match(ui, /if \(PATIENT_DEDUPE_UI_ENABLED\) return <EnabledDuplicate/);
   }
+  // The scanner reads its roster only through the authorized Patient list.
+  const scanner = read('src/components/patient/DuplicateScanner.jsx');
+  assert.match(scanner, /useScopedPatients\(\{ purpose: 'deduplication'/);
+  assert.doesNotMatch(scanner, /from "@\/api\/base44Client"/);
+
+  const dedupe = read('base44/functions/deduplicatePatients/entry.ts');
+  const dedupeHandler = dedupe.slice(dedupe.indexOf('Deno.serve'));
+  assert.match(dedupe, /const PATIENT_DEDUPLICATION_PAUSED = false;/);
+  assert.match(dedupe, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.ok(
+    dedupeHandler.indexOf('if (PATIENT_DEDUPLICATION_PAUSED)') < dedupeHandler.indexOf('createClientFromRequest('),
+    'the kill switch must still refuse before client creation, auth, or service-role PHI reads.',
+  );
+  assert.ok(
+    dedupeHandler.indexOf('mergeAuthority(user)') < dedupeHandler.indexOf('await req.json'),
+    'deduplicatePatients must authorize before reading any request payload.',
+  );
+  // A merge archives a duplicate only after its records moved.
+  const execute = dedupe.slice(dedupe.indexOf('async function executeMerge'), dedupe.indexOf('async function recordMergeAudit'));
+  assert.ok(execute.indexOf('fillSurvivorFields(') < execute.indexOf('moveDuplicateRecords('));
+  assert.ok(execute.indexOf('moveDuplicateRecords(') < execute.indexOf('archiveDuplicate('));
 });
 
 // 12-14. Residual document-signing capabilities remain static early 503s.
@@ -583,12 +595,16 @@ test('Codex review: scheduleSms auth, digests, fax authority, audit pause', () =
     /legacy\.length === 1/.test(timesheet) && /VisitPointConfig/.test(timesheet),
     'submitTimesheet must adopt a single unscoped VisitPointConfig legacy row.',
   );
+  // 2026-10-08 owner decision: the security audit runs again, on a pinned
+  // client, authorizing before it parses the body or reads any cohort.
+  const auditHandler = audit.slice(audit.indexOf('Deno.serve'));
   assert.ok(
-    /Deno\.serve\(\(\)\s*=>\s*Response\.json/.test(audit)
-    && /status:\s*503/.test(audit)
+    /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/.test(audit)
+    && auditHandler.indexOf('await auditAuthority(base44, user)') < auditHandler.indexOf('await req.json')
+    && auditHandler.indexOf('await req.json') < auditHandler.indexOf('await loadCohort(')
     && /Cache-Control['"]?:\s*['"]no-store['"]/.test(audit)
-    && !/createClientFromRequest|auth\.me\(|req\.(?:json|text|arrayBuffer|formData)\(|entities\.|integrations\./.test(audit),
-    'runSecurityAudit must fail before SDK construction, auth, request parsing, data reads, or AI calls.',
+    && !/integrations\./.test(audit),
+    'runSecurityAudit must authorize on a pinned client before parsing its body or reading a cohort.',
   );
   assert.ok(
     /isProtectedSuperAdmin\(user\)/.test(smsConsent)
@@ -621,7 +637,8 @@ for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'disp
 //     The dormant backend must retain hashed-at-rest validation, while every
 //     browser creation/join surface stays static until server-owned session and
 //     provider-room authority is hosted.
-test('telehealth join tokens stay hashed while browser session flows remain paused', () => {
+test('telehealth join tokens stay hashed and every session flow goes through the server brokers', () => {
+  // Released by the owner on 2026-10-08. What stays pinned is how it is safe.
   const backend = read('base44/functions/createTelehealthToken/entry.ts');
   assert.ok(
     /join_token_hash/.test(backend),
@@ -632,21 +649,31 @@ test('telehealth join tokens stay hashed while browser session flows remain paus
     /"join_token_hash"/.test(entity),
     'TelehealthSession must define the join_token_hash field.',
   );
-  for (const file of ['src/pages/Telehealth.jsx', 'src/components/telehealth/PatientTelehealthPanel.jsx']) {
+  const broker = read('base44/functions/manageTelehealthSession/entry.ts');
+  assert.ok(!/const FIELDS = \[[^\]]*'join_token_hash'/.test(broker),
+    'the session broker must not project the stored join-token hash.');
+  assert.ok(/agency_id: agencyId,\s*\n\s*room_name: `th-\$\{randomHex\(12\)\}`/.test(broker),
+    'the session broker stamps the agency and mints the room name itself.');
+
+  for (const file of [
+    'src/pages/Telehealth.jsx',
+    'src/components/telehealth/TelehealthWorkspace.jsx',
+    'src/components/dashboard/UpcomingTelehealthWidget.jsx',
+  ]) {
     const src = read(file);
     assert.ok(
-      /TELEHEALTH_UNAVAILABLE_MESSAGE/.test(src),
-      `${file} must render the explicit telehealth migration boundary.`,
-    );
-    assert.ok(
-      !/base44\.entities\.TelehealthSession|join_token_hash:|invite_link:|base44\.|useQuery|useMutation/.test(src),
-      `${file} must not read, create, or update caller-shaped sessions while migration is paused.`,
+      !/entities\.TelehealthSession|join_token_hash:|invite_link:/.test(src),
+      `${file} must not read, create, or update session rows directly.`,
     );
   }
+  const workspace = read('src/components/telehealth/TelehealthWorkspace.jsx');
+  assert.ok(/manageTelehealthSession\(\{ action: "list", agency_id: agencyId/.test(workspace));
 
   const joinPage = read('src/pages/JoinTelehealth.jsx');
-  assert.ok(/TELEHEALTH_UNAVAILABLE_MESSAGE/.test(joinPage));
-  assert.ok(!/TelehealthCall|PreJoinDeviceCheck|VideoRoom|useSearchParams/.test(joinPage));
+  assert.ok(/publicCapabilityClient\.createTelehealthToken\(lease, payload\)/.test(joinPage),
+    'the public join page requests its token through the leased public capability client.');
+  assert.ok(/searchParams\.delete\("t"\)/.test(joinPage), 'the join token is scrubbed from the address bar.');
+  assert.ok(!/\bbase44\./.test(joinPage), 'the public join page never touches the tenant SDK.');
 });
 
 // 17. Operational logs from backend service-role functions must not include
@@ -857,29 +884,29 @@ for (const file of ['base44/functions/generateFaxCoverPage/entry.ts']) {
   });
 }
 
-// These generators cannot retain a safe implementation until their output
-// entities have immutable tenant provenance and a reviewed brokered lifecycle.
-// Their route-level pause must remain before SDK construction, chart reads,
-// model invocation, or sink access.
-for (const [file, pauseCode] of [
-  [
-    'base44/functions/generateDischargeSummary/entry.ts',
-    'DISCHARGE_SUMMARY_GENERATION_PAUSED',
-  ],
-  [
-    'base44/functions/generatePatientEducation/entry.ts',
-    'PATIENT_EDUCATION_GENERATION_PAUSED',
-  ],
+// 2026-10-08 owner decision: these generators run again. The chart is read
+// with service-role authority only to decide access; callerMayAccessPatient
+// (built-in administrator, or a member of the chart's agency who manages it,
+// created it, or holds an active PatientCareTeamAssignment) must admit the
+// caller before any model call, and output is written through the caller's own
+// client so the output entity's creator rule governs read-back.
+for (const [file, sink] of [
+  ['base44/functions/generateDischargeSummary/entry.ts', 'DischargeSummary'],
+  ['base44/functions/generatePatientEducation/entry.ts', 'PatientEducationDelivery'],
 ]) {
-  test(`${file} remains statically quarantined before any PHI access or side effect`, () => {
+  test(`${file} checks care-team access before any PHI use or side effect`, () => {
     const src = read(file);
-    assert.match(src, new RegExp(`code:\\s*['"]${pauseCode}['"]`));
-    assert.match(src, /status:\s*503/);
-    assert.match(src, /'Cache-Control':\s*'no-store'/);
-    assert.doesNotMatch(
-      src,
-      /createClientFromRequest|@base44\/sdk|asServiceRole|\.entities\b|InvokeLLM|\bfetch\s*\(/,
-    );
+    const body = src.slice(src.lastIndexOf('// <<<END SHARED HELPER'));
+    assert.doesNotMatch(src, /GENERATION_PAUSED/);
+    assert.match(body, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+    assert.match(src, /<<<BEGIN SHARED HELPER: patientCareTeamAccess/);
+    const access = body.indexOf('await callerMayAccessPatient(base44, user, patient)');
+    assert.ok(access > -1, `${file} must use callerMayAccessPatient`);
+    assert.ok(body.indexOf('InvokeLLM') > access, `${file} must not call the model before access`);
+    assert.match(body, new RegExp(`await base44\\.entities\\.${sink}\\.create\\(`));
+    assert.doesNotMatch(body, new RegExp(`asServiceRole\\.entities\\.${sink}`));
+    assert.doesNotMatch(body, /assigned_nurses|agency_name|\bfetch\s*\(/);
+    assert.match(body, /'Cache-Control': 'no-store'/);
   });
 }
 

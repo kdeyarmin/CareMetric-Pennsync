@@ -93,9 +93,24 @@
     "assigned_by"
   ],
   "rls": {
-    "read": false,
-    "create": false,
-    "update": false,
+    "read": {
+      "$or": [
+        { "data.assigned_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "create": {
+      "$or": [
+        { "data.assigned_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": {
+      "$or": [
+        { "data.assigned_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
     "delete": false
   }
 }

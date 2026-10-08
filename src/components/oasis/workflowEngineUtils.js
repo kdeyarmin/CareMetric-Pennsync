@@ -12,7 +12,10 @@ export const deriveActionTypes = (rule = {}) => {
   return [];
 };
 
-export const evaluateRuleTrigger = (rule = {}, analysis = {}, pdgm = {}) => {
+// Revenue-driven triggers ("revenue_opportunity" and the revenue-tip based
+// "pdgm_discrepancy") were removed with the PDGM payment features: a stored
+// rule of either type falls through to the default branch and never fires.
+export const evaluateRuleTrigger = (rule = {}, analysis = {}, _pdgm = {}) => {
   const conditions = rule.trigger_conditions || {};
   let triggered = false;
   let reason = "";
@@ -30,19 +33,6 @@ export const evaluateRuleTrigger = (rule = {}, analysis = {}, pdgm = {}) => {
         };
       }
       break;
-
-    case "revenue_opportunity": {
-      const matchingOpportunities = analysis.revenue_tips?.filter((tip) =>
-        conditions.severity_levels?.includes(tip.potential_impact)
-      ) || [];
-
-      if (matchingOpportunities.length > 0) {
-        triggered = true;
-        reason = "High-impact revenue opportunities identified";
-        context = { opportunities: matchingOpportunities };
-      }
-      break;
-    }
 
     case "accuracy_concern":
       if (analysis.accuracy_score == null) break;
@@ -137,17 +127,6 @@ export const evaluateRuleTrigger = (rule = {}, analysis = {}, pdgm = {}) => {
       }
       break;
     }
-
-    case "pdgm_discrepancy":
-      if (pdgm?.clinical_group && (analysis.revenue_tips?.length || 0) > 0) {
-        triggered = true;
-        reason = "PDGM grouping opportunities identified";
-        context = {
-          clinical_group: pdgm.clinical_group,
-          revenue_tips: analysis.revenue_tips?.slice(0, 2) || []
-        };
-      }
-      break;
 
     default:
       break;

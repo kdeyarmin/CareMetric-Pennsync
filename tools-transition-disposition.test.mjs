@@ -47,8 +47,11 @@ test('no committed disposition contradicts the source it describes', () => {
   const report = checkCoverage(discoverCapabilities(repository), parseManifest(raw), discoverEvidence(repository));
   assert.deepEqual(report.contradicted_disposition, []);
   assert.equal(report.evidence_consistent, true);
-  // The check must be looking at a real population, not an empty one.
-  assert.ok(report.inert_functions > 25, `only ${report.inert_functions} inert functions found`);
+  // The check must be looking at a real population, not an empty one. The
+  // floor guards against a discovery that finds nothing; it is not a count to
+  // hold. The owner's 2026-10-08 releases took the population below the 25 it
+  // used to name, because each released endpoint does work again.
+  assert.ok(report.inert_functions > 15, `only ${report.inert_functions} inert functions found`);
 });
 
 test('every retirement says where its existing rows go', () => {
@@ -110,15 +113,24 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
   // send a reviewer to port an endpoint that has no behavior left to port.
   const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
   const inert = discoverInertFunctions(repository);
-  for (const name of ['analyzeClinicalData', 'analyzeDocument', 'analyzeNursePerformance',
-    'autoAssignNurseToPatient', 'generateDischargeSummary', 'generatePatientEducation',
-    'getPatientContext', 'runSecurityAudit', 'getUserActivityLog']) {
+  // runSecurityAudit, generateDischargeSummary, generatePatientEducation,
+  // analyzeDocument, analyzeNursePerformance and getUserActivityLog left this
+  // list on 2026-10-08 (owner decision): they do work again and keep their
+  // preserved_paused disposition.
+  for (const name of ['analyzeClinicalData', 'autoAssignNurseToPatient', 'getPatientContext']) {
     assert.ok(inert.includes(name), `${name} should be detected as inert`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but performs no work`);
   }
   // The retired endpoint is retired, not merely paused.
   assert.equal(declared.getPatientContext, 'retire');
+  // Restored by the owner on 2026-10-08 and doing work again; they keep
+  // `preserved_paused` (Base44-hosted, not new port work), so the port queue
+  // does not move.
+  for (const name of ['analyzeNursePerformance', 'getUserActivityLog']) {
+    assert.equal(inert.includes(name), false, `${name} performs work again`);
+    assert.equal(declared[name], 'preserved_paused');
+  }
 });
 
 test('a handler that refuses from its first statement is paused, whatever gates it', () => {
@@ -151,11 +163,17 @@ test('a handler that refuses from its first statement is paused, whatever gates 
   const paused_names = discoverPausedFunctions(repository);
   for (const name of ['calculateDataQualityScores', 'enforceDataCompleteness',
     'monitorClinicalDataForCarePlanUpdates', 'predictPatientRisks',
-    'predictiveRiskAnalysis', 'processDischargeReport']) {
+    'predictiveRiskAnalysis']) {
     assert.ok(paused_names.includes(name), `${name} should be detected as paused`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but refuses every caller`);
   }
+  // The sixth, processDischargeReport, was released by the owner on
+  // 2026-10-08 (admin-only, one agency). Its handler no longer refuses from
+  // its first statement, and it keeps `preserved_paused` rather than moving
+  // to `port`: it runs on Base44 and is not migration work this change adds.
+  assert.equal(paused_names.includes('processDischargeReport'), false);
+  assert.equal(declared.processDischargeReport, 'preserved_paused');
 });
 
 test('a module whose only entity is the retired trail is re-classified by what else it needs', () => {
@@ -2044,7 +2062,10 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // entity reach is no longer the claims fence alone. D74's refinement is
   // unchanged and the assertions below still pin what it answers for that
   // capability — only its membership here moved, because the capability did.
-  assert.deepEqual([...claims].sort(), ['autoImportPatients']);
+  // `submitAppFeedback` (2026-10-08) joined it: its whole reach is the claims
+  // fence plus one gated `Core.SendEmail` to the configured owner, and it is
+  // carried `preserved_paused`, so it adds nothing to the port queue.
+  assert.deepEqual([...claims].sort(), ['autoImportPatients', 'submitAppFeedback']);
 
   const report = checkCoverage(
     discoverCapabilities(repository),
@@ -2109,24 +2130,50 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
   assert.equal(isPausedFunction('const RELEASED = true;\nif (!RELEASED) { return refusal(); }\n'),
     false, 'a true RELEASED with a negated guard is the live branch');
 
-  // Thirteen modules in the tree use the flipped polarity, and the check saw
+  // Thirteen modules in the tree used the flipped polarity, and the check saw
   // none of them. Twelve already carried `preserved_paused` because somebody
-  // had read them; the thirteenth carried `port`.
+  // had read them; the thirteenth carried `port`. `deduplicatePatients` has
+  // since been switched back ON at source by an owner decision (its flag now
+  // reads `false`), so it is no longer detected as paused; it keeps
+  // `preserved_paused` because that disposition answers the migration question,
+  // not whether the Base44 handler serves, and a live handler under it
+  // contradicts nothing.
   const paused = new Set(discoverPausedFunctions(repository));
   const manifest = parseManifest(
     readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
-  const flipped = ['createTelehealthToken', 'deduplicatePatients', 'dispatchScheduledSms',
+  assert.equal(paused.has('deduplicatePatients'), false, 'the merge broker is live at source');
+  assert.equal(manifest.functions.deduplicatePatients, 'preserved_paused');
+  const flipped = ['createTelehealthToken',
     'generateMessageSuggestions', 'markMessageRead', 'messagingAssistant',
     'notifyUrgentMessage', 'processCompletedVisit', 'redriveFailedSms',
-    'saveOasisResponses', 'scheduleSms', 'sendMessage', 'summarizeMessageThread'];
+    'saveOasisResponses', 'sendMessage', 'summarizeMessageThread'];
+  // scheduleSms and dispatchScheduledSms were released by the owner on
+  // 2026-10-08 and no longer pause; they keep the `preserved_paused`
+  // disposition (Base44-hosted, no port-queue movement).
+  for (const name of ['scheduleSms', 'dispatchScheduledSms']) {
+    assert.equal(paused.has(name), false, `${name} is released`);
+    assert.equal(manifest.functions[name], 'preserved_paused');
+  }
+  // Released by the owner on 2026-10-08 ("approve everything"). A released
+  // module keeps its flag, now pinned false, and must no longer read as paused;
+  // its disposition stays `preserved_paused`, which the one-directional gate
+  // permits for a live module.
+  const releasedByOwner = new Set(['createTelehealthToken', 'markMessageRead', 'sendMessage']);
   for (const name of flipped) {
     const source = readFileSync(
       resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
-    assert.match(source, /^const\s+[A-Z][A-Z0-9_]*\s*=\s*true\s*;/m, `${name} pins a flag`);
-    assert.ok(paused.has(name), `${name} is detected as paused`);
     assert.equal(manifest.functions[name], 'preserved_paused',
       `${name} carries the disposition its source already had`);
+    if (releasedByOwner.has(name)) {
+      assert.match(source, /^const\s+[A-Z][A-Z0-9_]*_PAUSED\s*=\s*false\s*;/m, `${name} keeps its released flag`);
+      assert.ok(!paused.has(name), `${name} is released and not detected as paused`);
+      continue;
+    }
+    assert.match(source, /^const\s+[A-Z][A-Z0-9_]*\s*=\s*true\s*;/m, `${name} pins a flag`);
+    assert.ok(paused.has(name), `${name} is detected as paused`);
   }
+  // The flipped polarity stays exercised by real modules, not only by fixtures.
+  assert.ok(flipped.filter((name) => !releasedByOwner.has(name)).length >= 3);
   // D47's rule: switching a capability off means changing its disposition in
   // the same change. `processCompletedVisit` was switched off long ago and the
   // disposition never caught up, so the gate contradicted it until it did.

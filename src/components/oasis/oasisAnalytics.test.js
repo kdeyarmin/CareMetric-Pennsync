@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
+import * as oasisAnalytics from "./oasisAnalytics.js";
+
+const {
   aggregateDemographics,
   aggregateTopDiagnoses,
   aggregateFunctionalScores,
-  aggregatePaymentTrends,
   computeSummaryStats,
   computeAge,
-} from "./oasisAnalytics.js";
+} = oasisAnalytics;
 
 const u = (over = {}) => ({ pdgm_data: {}, ...over });
 
@@ -112,13 +113,9 @@ test("before cutover the series is EMPTY rather than mixing incompatible scales"
   assert.ok(res.excluded_reason.length > 0);
 });
 
-test("aggregatePaymentTrends excludes legacy estimator values", () => {
-  const rows = aggregatePaymentTrends([
-    u({ assessment_date: "2026-01-01", estimated_payment: 100, patient_name: "Amy" }),
-    u({ assessment_date: "2026-02-01" }), // no payment
-    u({ estimated_payment: 200 }), // no date
-  ]);
-  assert.deepEqual(rows, []);
+test("no PDGM payment-trend aggregate is exported", () => {
+  // Removed with the PDGM payment features.
+  assert.equal(oasisAnalytics.aggregatePaymentTrends, undefined);
 });
 
 test("computeSummaryStats handles populated and empty inputs", () => {
@@ -128,11 +125,11 @@ test("computeSummaryStats handles populated and empty inputs", () => {
   ]);
   assert.equal(stats.totalAssessments, 2);
   assert.equal(stats.avgScore, 85);
-  assert.equal(stats.avgPayment, null);
-  assert.equal(stats.totalRevenue, null);
+  // Legacy estimated_payment values never surface as a payment or revenue figure.
+  assert.deepEqual(Object.keys(stats).sort(), ["avgScore", "totalAssessments"]);
 
   const empty = computeSummaryStats([]);
-  assert.deepEqual(empty, { totalAssessments: 0, avgScore: 0, avgPayment: null, totalRevenue: null });
+  assert.deepEqual(empty, { totalAssessments: 0, avgScore: 0 });
 });
 
 test("aggregateDemographics routes an unparseable dob to Unknown, not 85+", () => {

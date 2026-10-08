@@ -2114,8 +2114,11 @@ describe("what batch E's routes take on trust", () => {
     // the point: the loop below reaches each new route by construction, so a
     // route cannot land without its argument count being checked. The number is
     // re-measured on each rebase rather than added to, because a figure arrived
-    // at by arithmetic over two branches is not a reading of either.
-    expect(paged.length).toBe(50);
+    // at by arithmetic over two branches is not a reading of either. It SHRANK
+    // once, by one, when `PatientRecommendation.filter` was withdrawn with its
+    // only caller (the AI outcomes analyser, removed with the clinical
+    // risk-prediction features) — a route without a call site fails the gate.
+    expect(paged.length).toBe(49);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;

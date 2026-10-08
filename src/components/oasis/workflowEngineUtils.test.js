@@ -33,16 +33,17 @@ test('evaluateRuleTrigger flags compliance issues below threshold', () => {
   assert.equal(result.context.concerns.length, 3);
 });
 
-test('evaluateRuleTrigger supports pdgm discrepancy when pdgm data exists', () => {
-  const result = evaluateRuleTrigger(
-    { trigger_type: 'pdgm_discrepancy' },
-    { revenue_tips: [{ id: 1 }, { id: 2 }, { id: 3 }] },
-    { clinical_group: 'MMTA' }
-  );
+test('evaluateRuleTrigger never fires the removed revenue-driven triggers', () => {
+  for (const trigger_type of ['pdgm_discrepancy', 'revenue_opportunity']) {
+    const result = evaluateRuleTrigger(
+      { trigger_type, trigger_conditions: { severity_levels: ['high'] } },
+      { revenue_tips: [{ id: 1, potential_impact: 'high' }, { id: 2 }, { id: 3 }] },
+      { clinical_group: 'MMTA' }
+    );
 
-  assert.equal(result.triggered, true);
-  assert.equal(result.context.clinical_group, 'MMTA');
-  assert.equal(result.context.revenue_tips.length, 2);
+    assert.equal(result.triggered, false, trigger_type);
+    assert.deepEqual(result.context, {}, trigger_type);
+  }
 });
 
 test('deriveActionTypes returns empty array when no actions configured', () => {

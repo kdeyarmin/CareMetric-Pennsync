@@ -9,6 +9,7 @@ export default function TelehealthCall({
   roomName,
   identity,
   joinToken,
+  requestToken,
   role = 'patient',
   waitingMessage,
   onDisconnect,
@@ -25,6 +26,7 @@ export default function TelehealthCall({
       roomName={roomName}
       identity={identity}
       joinToken={joinToken}
+      requestToken={requestToken}
       waitingMessage={waitingMessage}
       videoDeviceId={devices.videoDeviceId}
       audioDeviceId={devices.audioDeviceId}

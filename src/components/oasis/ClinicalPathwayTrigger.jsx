@@ -11,7 +11,6 @@ import { severitySolidClass } from "@/lib/severityStyles";
 import {
   Route,
   Zap,
-  DollarSign,
   FileText,
   ClipboardList,
   Target,
@@ -228,12 +227,6 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                       <div key={oIdx} className="bg-white p-2 rounded border border-green-200">
                         <div className="flex items-center justify-between mb-1">
                           <Badge className="bg-green-700 text-white font-mono">{opp.m_item}</Badge>
-                          {opp.revenue_impact && (
-                            <Badge className="bg-emerald-600 text-white">
-                              <DollarSign className="w-3 h-3 mr-1" />
-                              {opp.revenue_impact}
-                            </Badge>
-                          )}
                         </div>
                         <p className="text-xs text-slate-600 mb-1">
                           Typical Range: <span className="font-medium">{opp.typical_score_range}</span>

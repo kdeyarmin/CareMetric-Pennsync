@@ -29,7 +29,6 @@ import {
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
   Target,
   AlertTriangle,
   CheckCircle2,
@@ -42,7 +41,6 @@ import {
   Filter
 } from "lucide-react";
 import { format, subDays } from "date-fns";
-import { formatPdgmCurrency } from "@/components/pdgm/pdgmAvailability";
 
 const OASIS_AI_ANALYTICS_ENABLED = false;
 
@@ -82,11 +80,6 @@ function EnabledOASISAnalyticsDashboard() {
     const avgCompliance = filteredData.reduce((sum, d) => sum + (d.scores?.compliance || 0), 0) / totalAnalyses;
     const avgOverall = filteredData.reduce((sum, d) => sum + (d.scores?.overall || 0), 0) / totalAnalyses;
 
-    // Historical estimated_payment values came from the non-CMS factorized
-    // estimator. Do not aggregate them while the verified grouper is disabled.
-    const totalEstimatedPayment = null;
-    const avgPayment = null;
-
     // Count issues
     const totalAccuracyIssues = filteredData.reduce((sum, d) => 
       sum + (d.analysis_results?.accuracy_issues?.length || 0), 0);
@@ -122,8 +115,6 @@ function EnabledOASISAnalyticsDashboard() {
       avgAccuracy,
       avgCompliance,
       avgOverall,
-      totalEstimatedPayment,
-      avgPayment,
       totalAccuracyIssues,
       totalComplianceIssues,
       statusCounts,
@@ -142,7 +133,6 @@ function EnabledOASISAnalyticsDashboard() {
         accuracy: d.scores?.accuracy || 0,
         compliance: d.scores?.compliance || 0,
         overall: d.scores?.overall || 0,
-        payment: null,
         patientName: d.patient_name || 'Unknown'
       }));
 
@@ -169,14 +159,10 @@ function EnabledOASISAnalyticsDashboard() {
       value: count
     }));
 
-    // Payment vs Score scatter
-    const paymentScoreData = [];
-
     return {
       timeSeriesData,
       scoreDistribution,
       typeDistribution,
-      paymentScoreData
     };
   }, [filteredData, metrics]);
 
@@ -304,22 +290,6 @@ function EnabledOASISAnalyticsDashboard() {
               </CardContent>
             </Card>
 
-            {/* Revenue */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-slate-600">Total PDGM Payment</span>
-                  <DollarSign className="w-4 h-4 text-green-600" />
-                </div>
-                <div className="flex items-end justify-between">
-                  <div>
-                    <p className="text-2xl font-bold text-amber-700">{formatPdgmCurrency(metrics.totalEstimatedPayment)}</p>
-                    <p className="text-xs text-slate-500 mt-1">Official CMS-approved grouper required</p>
-                  </div>
-                  <DollarSign className="w-8 h-8 text-green-500 opacity-20" />
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Charts Row 1 */}
@@ -412,20 +382,6 @@ function EnabledOASISAnalyticsDashboard() {
               </CardContent>
             </Card>
 
-            {/* Payment vs Score Correlation */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                  Payment vs Quality Score
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
-                  <strong>Unavailable — not $0.</strong> Historical estimator values are excluded until a verified CMS HHGS 432-group grouper is available.
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Recent Submissions */}
@@ -455,9 +411,6 @@ function EnabledOASISAnalyticsDashboard() {
                       <div className="text-right">
                         <p className="text-sm font-medium text-slate-900">
                           Score: {upload.scores?.overall?.toFixed(1) || 'N/A'}%
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {formatPdgmCurrency(null)}
                         </p>
                       </div>
                       <Badge className={
@@ -497,8 +450,8 @@ export default function OASISAnalyticsDashboard() {
           <div className="flex items-center gap-2 font-semibold text-amber-950">
             <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Analytics Paused
           </div>
-          <p>This dashboard is unavailable while tenant-scoped analytics reads and legacy AI-derived quality and financial fields are being verified.</p>
-          <p>No OASIS upload list, patient detail, legacy score, payment trend, or AI recommendation is loaded from this tab.</p>
+          <p>This dashboard is unavailable while tenant-scoped analytics reads and legacy AI-derived quality fields are being verified.</p>
+          <p>No OASIS upload list, patient detail, legacy score, or AI recommendation is loaded from this tab.</p>
         </CardContent>
       </Card>
     );

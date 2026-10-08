@@ -3,19 +3,20 @@ import { base44 } from "@/api/base44Client";
 import { canViewFinancials } from "@/lib/permissions";
 
 /**
- * FinancialGate — renders its children only for users allowed to see financial
- * data (see canViewFinancials). It is FAIL-CLOSED: while the current user is
- * still loading, and for every non-admin (e.g. a nurse/clinician), nothing
- * financial is rendered.
+ * FinancialGate — renders its children only for administrator-level users (see
+ * canViewFinancials). It is FAIL-CLOSED: while the current user is still
+ * loading, and for every non-admin (e.g. a nurse/clinician), nothing is
+ * rendered.
  *
- * Use this to wrap revenue / PDGM-payment / reimbursement / billing UI that
- * lives on NURSE-VISIBLE surfaces (e.g. the OASIS Analyzer's "Analyze" tab) so
- * clinical staff never see dollar figures. It reads the shared ['currentUser']
- * query that the app already caches app-wide, so wrapping many blocks is cheap
- * (React Query dedupes by key).
+ * The app no longer shows any revenue, PDGM-payment or reimbursement figure
+ * (those features were removed). The gate survives as the shared fail-closed
+ * administrator check for admin-only tools that sit on NURSE-VISIBLE surfaces,
+ * such as the OASIS Analyzer's batch tab and the documentation-gap admin panel.
+ * It reads the shared ['currentUser'] query that the app already caches
+ * app-wide, so wrapping many blocks is cheap (React Query dedupes by key).
  *
  *   <FinancialGate>
- *     <RevenueCard ... />
+ *     <AdminOnlyPanel ... />
  *   </FinancialGate>
  *
  * Pass `fallback` to render a placeholder for non-financial users; the default

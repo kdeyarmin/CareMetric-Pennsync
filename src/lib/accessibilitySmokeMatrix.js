@@ -38,7 +38,7 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
     route: '/join',
     page: 'JoinTelehealth',
     expectedTitle: 'Telehealth visit | PennSync by CareMetric',
-    expectedHeading: 'Telehealth visit unavailable',
+    expectedHeading: 'This join link is not valid',
     requiresAuth: false,
     expectedNoCredentialState: 'invalid_visit_link',
     requiredChecks: ['document-title', 'main-landmark', 'form-labels', 'focus-visible', 'color-contrast'],
