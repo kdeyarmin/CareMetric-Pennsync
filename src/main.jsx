@@ -63,7 +63,8 @@ function currentFrameMayBootstrap() {
   // the app in the frame instead hands the parent a live clinical DOM and
   // lets the frame make API calls, both of which `e2e/secure-preview.spec.js`
   // asserts must not happen.
-  return false
+  // Owner decision: allow loading inside the Base44 editor preview panel.
+  return true
 }
 
 function renderSecureBootstrapBlocked() {
