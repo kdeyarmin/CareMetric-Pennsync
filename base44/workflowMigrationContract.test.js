@@ -38,7 +38,9 @@ const EXPECTED = {
     target: 'dispatchNightlyOutcomeMeasures',
     legacyTarget: 'computeOutcomeMeasures',
     schedule: { mode: 'recurring', cron: '0 6 * * *' },
-    releaseState: 'paused_outcome_dispatch',
+    // Released 2026-10-08: runs by default; OUTCOME_PIPELINE_RELEASE=paused
+    // is the operator's kill switch.
+    releaseState: 'live_outcome_dispatch',
   },
   'Poll Fax Statuses.jsonc': {
     target: 'pollFaxStatuses',
@@ -136,9 +138,22 @@ function assertHandlerReleaseState(source, expected, file) {
     return;
   }
 
-  const marker = expected.releaseState === 'paused_outcome_dispatch'
-    ? 'const OUTCOME_DISPATCH_ENABLED ='
-    : 'const FAX_TRANSMISSION_MIGRATION_PAUSED = true;';
+  if (expected.releaseState === 'live_outcome_dispatch') {
+    // Live by default: the only gate left is the operator's explicit pause,
+    // and it still answers before any SDK construction.
+    const gateIndex = source.indexOf('const OUTCOME_DISPATCH_ENABLED =');
+    const handlerIndex = source.indexOf('Deno.serve');
+    const guardIndex = source.indexOf('if (!OUTCOME_DISPATCH_ENABLED())', handlerIndex);
+    assert.notEqual(gateIndex, -1, `${file} must keep its operator kill switch`);
+    assert.match(source.slice(gateIndex, gateIndex + 200), /!== 'paused'/,
+      `${file} must run unless explicitly paused`);
+    assert.ok(gateIndex < handlerIndex && handlerIndex < guardIndex && guardIndex < clientIndex,
+      `${file} operator pause must answer before SDK construction`);
+    assert.match(source.slice(guardIndex, clientIndex), /status:\s*503/);
+    return;
+  }
+
+  const marker = 'const FAX_TRANSMISSION_MIGRATION_PAUSED = true;';
   const markerIndex = source.indexOf(marker);
   assert.notEqual(markerIndex, -1, `${file} target must retain its fail-closed marker`);
   assert.notEqual(clientIndex, -1, `${file} target must retain its dormant implementation`);
@@ -194,22 +209,25 @@ test('migrated Base44 workflows preserve exact schedules, targets, and release c
     const source = await readFile(entryUrl, 'utf8');
     assertHandlerReleaseState(source, expected, file);
 
-    if (expected.releaseState === 'paused_outcome_dispatch') {
+    if (expected.releaseState === 'live_outcome_dispatch') {
       assert.equal(
         workflow['x-base44-migrated-from-automation']?.replacement_dispatch_function,
         expected.target,
       );
       assert.equal(
         workflow['x-base44-migrated-from-automation']?.release_state,
-        'inactive_pending_hosted_outcome_validation',
+        'live_operator_pausable',
       );
       assert.match(source, /loadScheduledAgencyIds/);
       assert.match(source, /createOutcomeDispatchProof/);
       assert.match(source, /idempotency_key:\s*`nightly-outcome-daily:/);
       assert.match(source, /functions\.invoke\(\s*'computeOutcomeMeasuresV2'/);
-      const retiredSource = await readFile(new URL(`${expected.legacyTarget}/entry.ts`, FUNCTIONS_URL), 'utf8');
-      assert.match(retiredSource, /status: 503/);
-      assert.doesNotMatch(retiredSource, /createClientFromRequest/);
+      // The legacy name is now the membership-checked on-demand door to the
+      // same worker: it never runs a schedule and never computes itself.
+      const legacySource = await readFile(new URL(`${expected.legacyTarget}/entry.ts`, FUNCTIONS_URL), 'utf8');
+      assert.match(legacySource, /createOutcomeDispatchProof/);
+      assert.match(legacySource, /functions\.invoke\(\s*'computeOutcomeMeasuresV2'/);
+      assert.doesNotMatch(legacySource, /PatientOutcomeMetric|AgencyKPI\.(?:create|update)/);
       const workerSource = await readFile(
         new URL('computeOutcomeMeasuresV2/entry.ts', FUNCTIONS_URL),
         'utf8',

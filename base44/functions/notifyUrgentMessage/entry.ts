@@ -58,24 +58,43 @@ function serviceRoleClientRequest(req, expectedAppId) {
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
 /**
- * Dormant urgent-message trigger validator.
+ * Urgent secure-message notifier.
  *
- * The retired entity trigger is not an authority boundary. A future dispatcher
- * must call this endpoint with a short-lived, purpose-bound HMAC capability.
- * Notification.create has no documented atomic create-if-absent primitive, so
- * delivery remains separately paused until a uniquely keyed outbox is proven.
+ * Released by the owner on 2026-10-08 ("turn everything on"). It was paused
+ * because nothing proved that an urgent message notified each recipient once:
+ * the retired entity trigger could fire twice and Notification has no unique
+ * constraint. That is now solved on the MESSAGE row itself:
+ *
+ *   1. Only the message's own sender may ask, and only while their exact
+ *      active membership still matches the binding the message was sent
+ *      under. Authentication precedes the body; membership precedes any
+ *      Message read.
+ *   2. The sender takes a claim on the message with the same state_version
+ *      compare-and-swap markMessageRead uses. A second caller sees the live
+ *      claim (409, in progress) or the finished urgent_notified_at stamp
+ *      (already_notified) and creates nothing.
+ *   3. Each recipient's notification carries a deterministic dedupe_key
+ *      (urgent-message:<message>:<recipient>). An existing row is never
+ *      re-created, and if a claim that outlived its lease was taken over
+ *      while its first holder was still writing, every duplicate but the
+ *      lowest id is removed, so each recipient converges on exactly one row.
+ *   4. urgent_notified_at is stamped under the same claim once the fan-out
+ *      finishes; every later call answers already_notified.
+ *
+ * A recipient whose membership, identity or chart access no longer matches
+ * the thread's binding is skipped, never notified. The notification names the
+ * sender only: no subject, body or patient reaches the notification surface.
  */
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
-const SECURE_MESSAGE_MUTATIONS_PAUSED = true;
-const URGENT_MESSAGE_OUTBOX_PAUSED = true;
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
+const SECURE_MESSAGE_MUTATIONS_PAUSED = false;
 
-const URGENT_TRIGGER_ACTION = 'notify_urgent_message_v2';
-const MAX_BODY_BYTES = 8_000;
+const MAX_BODY_BYTES = 2_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;
 const THREAD_ROW_LIMIT = 101;
-const CAPABILITY_MAX_LIFETIME_MS = 5 * 60 * 1_000;
-const CAPABILITY_CLOCK_SKEW_MS = 30 * 1_000;
+const CAS_ATTEMPTS = 3;
+const CLAIM_LEASE_MS = 2 * 60 * 1_000;
+const NOTIFICATION_TITLE = 'Urgent secure message';
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
 const VISIBLE_PATIENT_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 const TENANT_ROLES = new Set([
@@ -97,6 +116,8 @@ const MESSAGE_FIELDS = [
   'recipient_user_ids', 'recipients', 'client_request_id', 'message_creation_key',
   'payload_sha256', 'subject', 'message_text', 'priority', 'read_by_user_ids',
   'read_by', 'is_read', 'state_version', 'created_by', 'created_date',
+  'urgent_notification_claim_token', 'urgent_notification_claimed_at',
+  'urgent_notified_at', 'urgent_notification_recipient_count',
 ];
 const MEMBERSHIP_FIELDS = [
   'id', 'membership_key', 'agency_id', 'user_id', 'user_email_normalized',
@@ -121,6 +142,7 @@ const ASSIGNMENT_FIELDS = [
   'last_transition_at', 'last_transition_reason', 'last_transition_action',
   'last_transition_request_id', 'last_transition_request_key', 'version', 'updated_date',
 ];
+
 
 class PublicError extends Error {
   status: number;
@@ -205,32 +227,7 @@ async function sha256(value: unknown) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function timingSafeEqual(left: string, right: string) {
-  const leftBytes = new TextEncoder().encode(left);
-  const rightBytes = new TextEncoder().encode(right);
-  let difference = leftBytes.length ^ rightBytes.length;
-  const length = Math.max(leftBytes.length, rightBytes.length);
-  for (let index = 0; index < length; index += 1) {
-    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
-  }
-  return difference === 0;
-}
-
-async function capabilityMac(secret: string, capability: Record<string, any>) {
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  );
-  const payload = [
-    capability.version, capability.action, capability.message_id,
-    capability.trigger_id, capability.issued_at, capability.expires_at,
-    capability.nonce,
-  ].join('\u0000');
-  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function parseAuthenticatedTrigger(req: Request) {
-  if (req.method !== 'POST') throw new PublicError(405, 'Method not allowed');
+async function parseRequest(req: Request) {
   const declaredLength = Number(req.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
     throw new PublicError(413, 'Request body is too large');
@@ -253,40 +250,55 @@ async function parseAuthenticatedTrigger(req: Request) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new PublicError(400, 'Request body must be an object');
   }
-  const record = body as Record<string, any>;
-  if (Object.keys(record).some((key) => !['action', 'message_id', 'trigger_id', 'capability'].includes(key))) {
+  const record = body as Record<string, unknown>;
+  if (Object.keys(record).some((key) => !['agency_id', 'message_id'].includes(key))) {
     throw new PublicError(400, 'Request contains unsupported fields');
   }
+  const agencyId = exactIdentifier(record.agency_id);
   const messageId = exactIdentifier(record.message_id);
-  const triggerId = exactIdentifier(record.trigger_id);
-  if (record.action !== URGENT_TRIGGER_ACTION || !messageId || !triggerId) {
-    throw new PublicError(400, 'Urgent-message trigger is invalid');
+  if (!agencyId) throw new PublicError(400, 'agency_id is invalid');
+  if (!messageId) throw new PublicError(400, 'message_id is invalid');
+  return { agencyId, messageId };
+}
+
+function requireUsableCaller(user: Record<string, any> | null) {
+  if (!user) throw new PublicError(401, 'Unauthorized');
+  if (user.is_active === false) throw new PublicError(403, 'Unauthorized - account is deactivated');
+  if (!exactIdentifier(user.id) || !canonicalEmail(user.email)
+    || user.disabled === true || user.is_service === true || user.is_verified === false) {
+    throw new PublicError(403, 'Forbidden');
   }
-  const capability = record.capability;
-  if (!capability || typeof capability !== 'object' || Array.isArray(capability)
-    || Object.keys(capability).some((key) => ![
-      'version', 'action', 'message_id', 'trigger_id', 'issued_at', 'expires_at', 'nonce', 'mac',
-    ].includes(key))) {
-    throw new PublicError(401, 'Urgent-message trigger authentication failed');
+  return user;
+}
+
+async function loadCallerMembership(
+  entities: Record<string, any>,
+  agencyId: string,
+  user: Record<string, any>,
+) {
+  const memberships = requireRows(await entities.AgencyMembership.filter(
+    { agency_id: agencyId, user_id: user.id }, '-updated_date', EXACT_ROW_LIMIT, undefined, MEMBERSHIP_FIELDS,
+  ), 'AgencyMembership.filter');
+  if (memberships.length >= EXACT_ROW_LIMIT || memberships.length > 1
+    || memberships.some((row) => row?.agency_id !== agencyId || row?.user_id !== user.id)) {
+    throw new PublicError(409, 'Tenant membership query is ambiguous');
   }
-  const issuedAt = Date.parse(capability.issued_at);
-  const expiresAt = Date.parse(capability.expires_at);
-  const now = Date.now();
-  if (capability.version !== 1 || capability.action !== URGENT_TRIGGER_ACTION
-    || capability.message_id !== messageId || capability.trigger_id !== triggerId
-    || !exactIdentifier(capability.nonce) || !validInstant(capability.issued_at)
-    || !validInstant(capability.expires_at) || !/^[a-f0-9]{64}$/.test(String(capability.mac || ''))
-    || issuedAt > now + CAPABILITY_CLOCK_SKEW_MS || expiresAt <= now
-    || expiresAt < issuedAt || expiresAt - issuedAt > CAPABILITY_MAX_LIFETIME_MS) {
-    throw new PublicError(401, 'Urgent-message trigger authentication failed');
+  if (memberships.length !== 1) throw new PublicError(403, 'No exact active membership for agency');
+  const row = memberships[0];
+  const email = canonicalEmail(user.email);
+  const transitionEmail = canonicalEmail(row?.last_transition_by_email_normalized);
+  if (!exactIdentifier(row?.id) || !email || row.membership_key !== `${agencyId}:${user.id}`
+    || row.user_email_normalized !== email || row.status !== 'active'
+    || !TENANT_ROLES.has(String(row.tenant_role || ''))
+    || !exactIdentifier(row.created_by_user_id) || !validInstant(row.activated_at)
+    || row.revoked_at != null || row.revocation_reason != null
+    || !exactIdentifier(row.last_transition_by_user_id) || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.last_transition_at) || !boundedReason(row.last_transition_reason)
+    || !Number.isSafeInteger(row.version) || row.version < 1) {
+    throw new PublicError(403, 'No exact active membership for agency');
   }
-  const secret = String(Deno.env.get('INTERNAL_FN_SECRET') || '');
-  if (secret.length < 32) throw new PublicError(503, 'Urgent-message trigger authentication is unavailable');
-  const expected = await capabilityMac(secret, capability);
-  if (!timingSafeEqual(String(capability.mac), expected)) {
-    throw new PublicError(401, 'Urgent-message trigger authentication failed');
-  }
-  return { messageId, triggerId };
+  return row;
 }
 
 function validBinding(binding: Record<string, any>) {
@@ -555,36 +567,258 @@ async function requirePatientAccess(
   if (status !== 'active') throw new PublicError(409, 'Participant patient authority changed');
 }
 
+function plainObject(value: unknown): value is Record<string, any> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function requireReconcilableUpdate(outcome: unknown) {
+  if (!plainObject(outcome) || outcome.success !== true || !Number.isInteger(outcome.updated)
+    || outcome.updated < 0 || outcome.updated > 1 || outcome.has_more !== false) {
+    throw new Error('Message CAS returned an ambiguous result');
+  }
+  return outcome.updated === 1;
+}
+
+function claimToken() {
+  return typeof crypto.randomUUID === 'function'
+    ? `urgent-v1:${crypto.randomUUID()}`
+    : `urgent-v1:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function liveClaim(message: Record<string, any>, now: number) {
+  return typeof message.urgent_notification_claim_token === 'string'
+    && message.urgent_notification_claim_token.length > 0
+    && validInstant(message.urgent_notification_claimed_at)
+    && Date.parse(message.urgent_notification_claimed_at) > now - CLAIM_LEASE_MS;
+}
+
+// Take (or take over an expired) claim with the state_version CAS. Returns the
+// reloaded message carrying OUR token, or an outcome another caller decided.
+async function claimMessage(entities: Record<string, any>, initial: Record<string, any>, token: string) {
+  let message = initial;
+  for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt += 1) {
+    if (validInstant(message.urgent_notified_at)) return { outcome: 'already_notified', message };
+    if (liveClaim(message, Date.now())) return { outcome: 'in_progress', message };
+    const expectedVersion = message.state_version;
+    const claimedAt = new Date().toISOString();
+    const updated = requireReconcilableUpdate(await entities.Message.updateMany(
+      {
+        id: message.id,
+        agency_id: message.agency_id,
+        provenance_version: 2,
+        provenance_status: 'verified_v2',
+        state_version: expectedVersion,
+      },
+      {
+        $set: {
+          state_version: expectedVersion + 1,
+          urgent_notification_claim_token: token,
+          urgent_notification_claimed_at: claimedAt,
+        },
+      },
+    ));
+    message = await loadExactMessage(entities, message.id);
+    if (updated && message.urgent_notification_claim_token === token) {
+      return { outcome: 'claimed', message };
+    }
+  }
+  throw new PublicError(409, 'Message state changed; retry');
+}
+
+async function stampNotified(
+  entities: Record<string, any>,
+  initial: Record<string, any>,
+  token: string,
+  recipientCount: number,
+) {
+  let message = initial;
+  for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt += 1) {
+    if (message.urgent_notification_claim_token !== token) {
+      throw new PublicError(409, 'Urgent notification claim was taken over; retry');
+    }
+    if (validInstant(message.urgent_notified_at)) return message;
+    const expectedVersion = message.state_version;
+    const updated = requireReconcilableUpdate(await entities.Message.updateMany(
+      {
+        id: message.id,
+        agency_id: message.agency_id,
+        provenance_version: 2,
+        provenance_status: 'verified_v2',
+        state_version: expectedVersion,
+        urgent_notification_claim_token: token,
+      },
+      {
+        $set: {
+          state_version: expectedVersion + 1,
+          urgent_notified_at: new Date().toISOString(),
+          urgent_notification_recipient_count: recipientCount,
+        },
+      },
+    ));
+    message = await loadExactMessage(entities, message.id);
+    if (updated && message.urgent_notification_claim_token === token
+      && validInstant(message.urgent_notified_at)) return message;
+  }
+  throw new PublicError(409, 'Message state changed; retry');
+}
+
+function urgentDedupeKey(messageId: string, recipientUserId: string) {
+  return `urgent-message:${messageId}:${recipientUserId}`;
+}
+
+function expectedNotification(
+  message: Record<string, any>,
+  participant: Record<string, any>,
+  senderName: string,
+) {
+  return {
+    agency_id: message.agency_id,
+    dedupe_key: urgentDedupeKey(message.id, participant.user.id),
+    recipient_user_id: participant.user.id,
+    recipient_membership_id: participant.membership.id,
+    recipient_membership_version: participant.membership.version,
+    authority_version: 1,
+    authority_state: 'active',
+    version: 1,
+    user_email: participant.membership.user_email_normalized,
+    title: NOTIFICATION_TITLE,
+    message: `${senderName} sent you an urgent secure message. Open Messages to read it.`,
+    type: 'message_received',
+    priority: 'critical',
+    is_read: false,
+    dismissed: false,
+    action_url: '/Messages',
+    action_label: 'Open Messages',
+    metadata: {
+      agency_id: message.agency_id,
+      related_entity: 'Message',
+      related_entity_id: message.id,
+      thread_id: message.thread_id,
+      workflow: 'urgent_secure_message',
+    },
+  };
+}
+
+async function notificationsFor(entities: Record<string, any>, agencyId: string, dedupeKey: string) {
+  const rows = requireRows(await entities.Notification.filter(
+    { agency_id: agencyId, dedupe_key: dedupeKey }, 'created_date', EXACT_ROW_LIMIT,
+  ), 'Notification.filter');
+  if (rows.length >= EXACT_ROW_LIMIT
+    || rows.some((row) => row?.agency_id !== agencyId || row?.dedupe_key !== dedupeKey)) {
+    throw new PublicError(409, 'Urgent notification query is ambiguous');
+  }
+  return rows;
+}
+
+// Exactly one row per (message, recipient). A duplicate can only exist when an
+// expired claim was taken over while its first holder was still writing; both
+// writers keep the lowest id and remove the rest, so they converge.
+async function ensureNotification(entities: Record<string, any>, expected: Record<string, any>) {
+  let rows = await notificationsFor(entities, expected.agency_id, expected.dedupe_key);
+  let created = false;
+  if (rows.length === 0) {
+    await entities.Notification.create(expected);
+    created = true;
+    rows = await notificationsFor(entities, expected.agency_id, expected.dedupe_key);
+  }
+  if (rows.length === 0) throw new Error('Urgent notification was not persisted');
+  const survivor = [...rows].sort((left, right) => String(left.id).localeCompare(String(right.id)))[0];
+  for (const row of rows) {
+    if (row.id !== survivor.id) await entities.Notification.delete(row.id);
+  }
+  if (survivor.recipient_user_id !== expected.recipient_user_id
+    || survivor.recipient_membership_id !== expected.recipient_membership_id
+    || survivor.recipient_membership_version !== expected.recipient_membership_version) {
+    throw new PublicError(409, 'Urgent notification recipient binding changed');
+  }
+  return created;
+}
+
 Deno.serve(async (req) => {
   if (SECURE_MESSAGE_DOMAIN_PAUSED) return secureMessageUnavailable();
   if (SECURE_MESSAGE_MUTATIONS_PAUSED) return secureMessageMutationUnavailable();
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, { Allow: 'POST' });
 
   try {
-    const input = await parseAuthenticatedTrigger(req);
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
+    // Authentication precedes the body; the caller's exact membership in the
+    // named agency precedes any Message read.
+    const user = requireUsableCaller(await base44.auth.me().catch(() => null));
+    const input = await parseRequest(req);
     const entities = base44.asServiceRole.entities;
-    const message = await loadExactMessage(entities, input.messageId);
+    await requireEnabledAgency(entities, input.agencyId);
+    const callerMembership = await loadCallerMembership(entities, input.agencyId, user);
+
+    let message = await loadExactMessage(entities, input.messageId);
+    if (message.agency_id !== input.agencyId) throw new PublicError(404, 'Message unavailable');
+    // Only the sender may announce their own message as urgent, and only under
+    // the membership the message was sent with.
+    if (message.sender_user_id !== user.id) {
+      throw new PublicError(403, 'Only the sender can send urgent notifications');
+    }
+    const senderBinding = message.participant_membership_bindings
+      .find((binding: Record<string, any>) => binding.user_id === user.id);
+    if (!senderBinding || senderBinding.membership_id !== callerMembership.id
+      || senderBinding.membership_version !== callerMembership.version
+      || senderBinding.user_email_normalized !== canonicalEmail(user.email)) {
+      throw new PublicError(409, 'Sender membership changed since the message was sent');
+    }
     await loadVerifiedThread(entities, message);
-    if (message.priority !== 'urgent') return json({ success: true, ignored: true });
-    await requireEnabledAgency(entities, message.agency_id);
-    const participants = [];
-    for (const binding of message.participant_membership_bindings) {
-      participants.push(await requireCurrentParticipant(entities, message.agency_id, binding));
+    const sender = await requireCurrentParticipant(entities, message.agency_id, senderBinding);
+    const patient = message.patient_id
+      ? await loadExactPatient(entities, message.agency_id, message.patient_id)
+      : null;
+    if (patient) await requirePatientAccess(entities, patient, sender);
+
+    if (message.priority !== 'urgent') {
+      return json({ success: true, ignored: true, reason: 'not_urgent', notified: 0 });
     }
-    if (message.patient_id) {
-      const patient = await loadExactPatient(entities, message.agency_id, message.patient_id);
-      for (const participant of participants) await requirePatientAccess(entities, patient, participant);
-    }
-    if (URGENT_MESSAGE_OUTBOX_PAUSED) {
+
+    const token = claimToken();
+    const claim = await claimMessage(entities, message, token);
+    if (claim.outcome === 'already_notified') {
       return json({
-        error: 'Urgent-message delivery requires a durable unique outbox',
-        code: 'secure_message_notification_outbox_required',
-      }, 503);
+        success: true,
+        already_notified: true,
+        notified: Number.isSafeInteger(claim.message.urgent_notification_recipient_count)
+          ? claim.message.urgent_notification_recipient_count
+          : null,
+      });
     }
-    // Deliberately unreachable until a durable outbox entity atomically claims
-    // input.triggerId and is proven under concurrent replay.
-    void input.triggerId;
-    return json({ error: 'Urgent-message delivery is unavailable' }, 503);
+    if (claim.outcome === 'in_progress') {
+      return json({ error: 'Urgent notification is already in progress; retry shortly' }, 409);
+    }
+    message = claim.message;
+
+    const senderName = typeof message.sender_name === 'string' && message.sender_name.trim()
+      ? message.sender_name.trim().slice(0, 200)
+      : 'A colleague';
+    let notified = 0;
+    let created = 0;
+    let skipped = 0;
+    for (const binding of message.participant_membership_bindings) {
+      if (binding.user_id === message.sender_user_id) continue;
+      let participant;
+      try {
+        participant = await requireCurrentParticipant(entities, message.agency_id, binding);
+        if (patient) await requirePatientAccess(entities, patient, participant);
+      } catch (error) {
+        // A recipient whose identity, membership or chart access no longer
+        // matches the thread's binding is skipped, never notified.
+        if (error instanceof PublicError && error.status === 409) {
+          skipped += 1;
+          continue;
+        }
+        throw error;
+      }
+      if (await ensureNotification(entities, expectedNotification(message, participant, senderName))) {
+        created += 1;
+      }
+      notified += 1;
+    }
+
+    await stampNotified(entities, message, token, notified);
+    return json({ success: true, notified, created, skipped });
   } catch (error) {
     if (error instanceof PublicError) {
       return json({ error: error.message }, error.status, error.status === 405 ? { Allow: 'POST' } : {});

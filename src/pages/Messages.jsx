@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Mail, Plus } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
+import { useScopedPatients } from "@/hooks/useScopedPatients";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
@@ -17,7 +18,10 @@ import ThreadView from "@/components/messaging/ThreadView";
  * Every read and write goes through the v2 brokers (listMyMessages,
  * sendMessage, markMessageRead), which check the caller's exact active
  * AgencyMembership on each request. The page never reads Message rows itself.
- * Released by the owner on 2026-10-08.
+ * Released by the owner on 2026-10-08. An urgent message is announced to its
+ * recipients through notifyUrgentMessage, which only the sender may call and
+ * which notifies each recipient once however often it is retried. The AI
+ * summary and suggestion helpers live in MessageAssistPanel.
  *
  * Outcomes are shown inline because production replaces toast text with a
  * generic line (src/lib/tenantSonner.js), which would hide why a send failed.
@@ -36,6 +40,17 @@ export default function Messages() {
   const [composing, setComposing] = useState(false);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState(null);
+
+  // The optional "about patient" list is the caller's own authorized roster;
+  // a role without roster access simply composes without it.
+  const patientQuery = useScopedPatients({
+    purpose: "roster",
+    status: "active",
+    sort: "first_name",
+    limit: 2000,
+    enabled: !!agencyId,
+  });
+  const patients = patientQuery.isSuccess && Array.isArray(patientQuery.data) ? patientQuery.data : [];
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["myMessages", agencyId],
@@ -56,15 +71,45 @@ export default function Messages() {
   const send = async (payload) => {
     setSending(true);
     setNotice(null);
+    let sent;
     try {
-      await base44.functions.invoke("sendMessage", { agency_id: agencyId, client_request_id: crypto.randomUUID(), ...payload });
-      await qc.invalidateQueries({ queryKey: ["myMessages", agencyId] });
-      setComposing(false);
-      setNotice({ tone: "success", text: "Message sent." });
-      return true;
+      sent = await base44.functions.invoke("sendMessage", { agency_id: agencyId, client_request_id: crypto.randomUUID(), ...payload });
     } catch (e) {
       setNotice({ tone: "error", text: brokerError(e, "The message could not be sent. Please try again.") });
+      setSending(false);
       return false;
+    }
+    try {
+      await qc.invalidateQueries({ queryKey: ["myMessages", agencyId] });
+      setComposing(false);
+      const messageId = sent?.data?.message?.id;
+      if (payload.priority === "urgent" && typeof messageId === "string" && messageId) {
+        try {
+          const { data: urgent } = await base44.functions.invoke("notifyUrgentMessage", {
+            agency_id: agencyId,
+            message_id: messageId,
+          });
+          const count = Number(urgent?.notified);
+          setNotice({
+            tone: "success",
+            text: Number.isFinite(count)
+              ? `Urgent message sent. ${count} recipient${count === 1 ? "" : "s"} notified.`
+              : "Urgent message sent and recipients notified.",
+          });
+        } catch (e) {
+          setNotice({
+            tone: "error",
+            text: `Message sent, but recipients could not be alerted: ${brokerError(e, "please tell them directly.")}`,
+          });
+        }
+      } else {
+        setNotice({ tone: "success", text: "Message sent." });
+      }
+      return true;
+    } catch {
+      // The send itself succeeded; only the refresh failed.
+      setNotice({ tone: "success", text: "Message sent. Refresh to see it in the thread list." });
+      return true;
     } finally {
       setSending(false);
     }
@@ -136,9 +181,16 @@ export default function Messages() {
               </p>
             )}
             {composing ? (
-              <NewThreadForm directory={data?.directory || []} onSend={send} sending={sending} />
+              <NewThreadForm directory={data?.directory || []} patients={patients} onSend={send} sending={sending} />
             ) : current ? (
-              <ThreadView key={current.id} thread={current} me={data.me} sending={sending} onReply={(text) => send({ thread_id: current.id, message_text: text })} />
+              <ThreadView
+                key={current.id}
+                thread={current}
+                me={data.me}
+                agencyId={agencyId}
+                sending={sending}
+                onReply={(text, priority) => send({ thread_id: current.id, message_text: text, priority: priority || "normal" })}
+              />
             ) : (
               <p className="text-sm text-slate-500">Select a conversation or start a new message.</p>
             )}

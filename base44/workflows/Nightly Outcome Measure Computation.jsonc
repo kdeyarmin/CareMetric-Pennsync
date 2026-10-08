@@ -41,6 +41,6 @@
   "x-base44-migrated-from-automation": {
     "legacy_payload_function": "computeOutcomeMeasures",
     "replacement_dispatch_function": "dispatchNightlyOutcomeMeasures",
-    "release_state": "inactive_pending_hosted_outcome_validation"
+    "release_state": "live_operator_pausable"
   }
 }
