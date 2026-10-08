@@ -25,9 +25,20 @@ const REVIEWED_NATIVE_CHANGES = Object.freeze({
     + 'so a later hosting move is a DNS change rather than a second App Store release.',
   'ios/PennSync/Info.plist':
     'WKAppBoundDomains gains caremetricai.com for that origin and KEEPS both Base44 domains, '
-    + 'so one binary works either side of the move while sign-in is still Base44 hosted.',
+    + 'so one binary works either side of the move while sign-in is still Base44 hosted. The 2026-10-08 '
+    + 'release audit adds UIUserInterfaceStyle Light (white status-bar text over a white header, and a '
+    + 'half-dark sign-in page, on dark-mode devices) and NSSpeechRecognitionUsageDescription, without '
+    + 'which WebKit denies every dictation request.',
   'ios/README.md':
-    'Documents the two changes above and the transitional domain set.',
+    'Documents the two changes above and the transitional domain set, plus the 2026-10-08 release '
+    + 'audit: the Xcode 26 upload floor, the version rule, light-only appearance and speech dictation.',
+  'ios/PennSync/PrivacyInfo.xcprivacy':
+    'The 2026-10-08 release audit found the manifest omitting data the app transmits: visit audio sent '
+    + 'for transcription, incident and Camera Fax photos, and patient phone numbers and postal addresses. '
+    + 'Additions only; every entry already declared is unchanged.',
+  'ios/project.yml':
+    'MARKETING_VERSION 1.0.0 cannot be uploaded over the live 1.0 (App Store Connect treats them as '
+    + 'equal), so it becomes 1.1.0. Bundle id, deployment target and signing are untouched.',
   // The first entries here that are not `ios/`. The constant is named for the
   // native shell, but the assertion below only requires a path be in the pinned
   // baseline, and `public/` is pinned by the same `ls-tree`. A pinned file that
@@ -269,6 +280,49 @@ test('the invitation takes the app origin from configuration, never a literal', 
   for (const origin of ['caremetricai.base44.app', 'app.caremetricai.com']) {
     assert.ok(!own.includes(origin), `${origin} is hard-coded where APP_PUBLIC_URL should decide`);
   }
+});
+
+test('the next upload can actually be accepted as an update of the live record', () => {
+  // Read from itunes.apple.com/lookup?id=6757097720 on 2026-10-08. App Store
+  // Connect refuses a CFBundleShortVersionString that is not HIGHER than the
+  // last approved one, comparing component-wise with missing components as
+  // zero — so "1.0.0" equals "1.0" and fails at upload, after the archive.
+  const LAST_APPROVED = '1.0';
+  const project = readFileSync('ios/project.yml', 'utf8');
+  const version = project.match(/^\s*MARKETING_VERSION:\s*"([0-9.]+)"\s*$/m)?.[1];
+  assert.ok(version, 'MARKETING_VERSION must be a quoted dotted number');
+  const parts = value => value.split('.').map(Number);
+  const [a, b] = [parts(version), parts(LAST_APPROVED)];
+  let comparison = 0;
+  for (let i = 0; i < Math.max(a.length, b.length) && comparison === 0; i += 1) {
+    comparison = Math.sign((a[i] ?? 0) - (b[i] ?? 0));
+  }
+  assert.equal(comparison, 1, `MARKETING_VERSION ${version} is not higher than the live ${LAST_APPROVED}`);
+  assert.match(project, /CURRENT_PROJECT_VERSION:\s*"[1-9][0-9]*"/);
+});
+
+test('the shell declares what the hosted app needs from iOS', () => {
+  const plist = readFileSync('ios/PennSync/Info.plist', 'utf8');
+  const value = key => plist.match(new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`))?.[1];
+  // One light theme: a dark-mode device otherwise draws white status-bar text
+  // over the page's white header and half-darkens the sign-in screen.
+  assert.equal(value('UIUserInterfaceStyle'), 'Light');
+  // WebKit checks each of these itself and denies the capability without it.
+  for (const key of ['NSCameraUsageDescription', 'NSMicrophoneUsageDescription', 'NSSpeechRecognitionUsageDescription']) {
+    assert.ok((value(key) ?? '').length >= 40, `${key} needs a specific purpose string`);
+  }
+
+  // What the web app transmits, by Apple's data-type name. Apple rejects a
+  // build whose privacy label understates collection; the manifest and the
+  // App Store Connect label are kept identical.
+  const manifest = readFileSync('ios/PennSync/PrivacyInfo.xcprivacy', 'utf8');
+  const declared = [...manifest.matchAll(/<string>NSPrivacyCollectedDataType([A-Za-z]+)<\/string>/g)]
+    .map(m => m[1]).filter(name => !name.startsWith('Purpose'));
+  for (const type of ['Health', 'Name', 'EmailAddress', 'PhoneNumber', 'PhysicalAddress', 'UserID', 'AudioData', 'PhotosorVideos']) {
+    assert.ok(declared.includes(type), `privacy manifest must declare ${type}`);
+  }
+  assert.match(manifest, /<key>NSPrivacyTracking<\/key>\s*<false\/>/);
+  assert.doesNotMatch(manifest, /<key>NSPrivacyCollectedDataTypeTracking<\/key>\s*<true\/>/);
 });
 
 test('the transitional build loads the custom domain and keeps it reachable', () => {

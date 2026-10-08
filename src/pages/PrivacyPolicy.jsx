@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router';
 import { Shield, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { APP_NAME, PLATFORM_NAME } from '@/lib/brand';
+import {
+  CENTRAL_SUPPORT_EMAIL,
+  CENTRAL_SUPPORT_EMAIL_HREF,
+  CENTRAL_SUPPORT_PHONE_DISPLAY,
+  CENTRAL_SUPPORT_PHONE_HREF,
+} from '@/lib/supportContacts';
 
 /**
  * PrivacyPolicy — PUBLIC page (routed pre-auth in App.jsx).
@@ -15,7 +21,12 @@ import { APP_NAME, PLATFORM_NAME } from '@/lib/brand';
  * The text below is a working draft tailored to how PennSync actually handles
  * data (agency-provisioned accounts, PHI processed for the agency, no ads, no
  * data sales, request-based account deletion). Have counsel review it before
- * public App Store submission.
+ * public App Store submission — in particular the third-party AI paragraph
+ * (added 2026-10-08 for Guideline 5.1.2(i)), which names the providers the code
+ * calls: OpenAI in transcribeAudioWithWhisper / transcribeAndGenerateSOAPNote,
+ * Anthropic in transcribeAndGenerateSOAPNote, and Google (Gemini) through
+ * Base44's InvokeLLM. Re-check that list whenever a provider changes, and confirm
+ * a business-associate agreement covers each before claiming one here.
  */
 
 const SectionTitle = ({ children }) => (
@@ -47,7 +58,7 @@ const PrivacyPolicy = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Privacy Policy</h1>
-              <p className="text-sm text-slate-500">PennSync by CareMetric · Effective July 22, 2026</p>
+              <p className="text-sm text-slate-500">PennSync by CareMetric · Effective July 22, 2026 · Updated October 8, 2026</p>
             </div>
           </div>
 
@@ -83,7 +94,9 @@ const PrivacyPolicy = () => {
               <span className="font-medium text-slate-800">Device data you choose to share</span> —
               camera and microphone input when you use telehealth, dictation, document scanning, or
               photo attachment features. Access is requested only when you use those features and can
-              be revoked in your device settings.
+              be revoked in your device settings. Visit audio you record is uploaded for
+              transcription, and photos you attach are stored with the record they belong to. On
+              Apple devices, the dictation button uses Apple&apos;s speech recognition service.
             </li>
           </ul>
 
@@ -106,17 +119,27 @@ const PrivacyPolicy = () => {
             fax/SMS/voice delivery, AI processing); and (3) authorities when required by law. Patient
             information is never shared for marketing.
           </p>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            <span className="font-medium text-slate-800">Third-party AI processing.</span> When you
+            use an AI-assisted feature, the text, documents, images, or visit audio you submit to it
+            — which can include patient health information — are sent to third-party AI model
+            providers to produce the result, either directly or through our platform hosting
+            provider. These currently include OpenAI (speech-to-text transcription and text
+            generation), Anthropic, and Google. That data is sent only to return the requested
+            output and is never used to advertise to you.
+          </p>
 
           <SectionTitle>Retention and deletion</SectionTitle>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             Clinical records are retained according to your agency&apos;s medical-record retention
             obligations under federal and state law; the retention period is controlled by your
             agency, not by PennSync. You can request deletion of your account at any time from
-            Settings &rarr; Delete My Account inside the app. Deletion requests are routed to your
-            agency&apos;s administrators, who must complete them within the timeframes the law
-            allows; records your agency is legally required to retain (for example, signed clinical
-            documentation and audit trails) are retained by the agency for the mandated period and
-            then destroyed.
+            Settings &rarr; Delete My Account inside the app, which prepares a deletion request to
+            CareMetric support ({CENTRAL_SUPPORT_EMAIL}); you can also email that address directly.
+            Support confirms the request with you, completes it with your agency within the
+            timeframes the law allows, and replies when your account has been deleted. Records your
+            agency is legally required to retain (for example, signed clinical documentation and
+            audit trails) are retained by the agency for the mandated period and then destroyed.
           </p>
 
           <SectionTitle>Security</SectionTitle>
@@ -138,7 +161,13 @@ const PrivacyPolicy = () => {
           <SectionTitle>Contact</SectionTitle>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             Questions about this policy or our data practices: contact your agency administrator, or
-            reach CareMetric at the support contact provided by your agency.
+            reach CareMetric support at{' '}
+            <a href={CENTRAL_SUPPORT_EMAIL_HREF} className="font-medium text-navy-700 underline-offset-2 hover:underline">
+              {CENTRAL_SUPPORT_EMAIL}
+            </a>{' '}or{' '}
+            <a href={CENTRAL_SUPPORT_PHONE_HREF} className="font-medium text-navy-700 underline-offset-2 hover:underline">
+              {CENTRAL_SUPPORT_PHONE_DISPLAY}
+            </a>.
           </p>
 
           <p className="mt-8 border-t border-slate-100 pt-4 text-xs text-slate-600">

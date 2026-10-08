@@ -33,6 +33,14 @@
 	<string>PennSync uses the camera for telehealth video visits, scanning documents with Camera Fax, and capturing incident or wound photos for the patient chart.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PennSync uses the microphone for telehealth video visits and to record visit audio for SmartNote clinical documentation and transcription.</string>
+	<!--
+	  The dictation buttons (SmartNote DictationButton, the visit Real-Time
+	  Dictation Scribe) use the Web Speech API. WebKit backs it with Apple's
+	  speech recognizer and checks for this key itself: an app without it has
+	  every recognition request denied, so dictation silently never starts.
+	-->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>PennSync uses speech recognition so you can dictate visit notes and clinical documentation instead of typing them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>PennSync accesses your photo library so you can attach existing photos of documents, wounds, or incidents to the patient chart and Camera Fax.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
@@ -102,6 +110,19 @@
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
+	<!--
+	  PennSync ships ONE light theme (see the comment on the dark-class effect
+	  in src/components/Layout.jsx). Without this key a dark-mode device does two
+	  things to the shell: the status bar draws WHITE text over the page's white
+	  header (the page is drawn under it — contentInsetAdjustmentBehavior is
+	  .never), and WKWebView reports `prefers-color-scheme: dark`, which the
+	  pre-sign-in screens partially honour — measured 2026-10-08 on the live
+	  sign-in page, the "Welcome to PennSync" heading renders near-white on a
+	  light gradient. Pinning the app to Light fixes both, for whatever frontend
+	  build the origin happens to serve.
+	-->
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>

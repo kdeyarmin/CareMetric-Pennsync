@@ -168,26 +168,26 @@ const safeStorage = (storage) => ({
   },
 });
 
-let localStorageRef = null;
 let sessionStorageRef = null;
-// Merely TOUCHING window.localStorage throws in some privacy modes and in
+// Merely TOUCHING window.sessionStorage throws in some privacy modes and in
 // sandboxed iframes. Leaving the ref null is the intended outcome — safeStorage
-// below falls back to an in-memory shim — so both catches are deliberate no-ops.
-try { localStorageRef = window.localStorage; } catch { /* storage unavailable */ }
+// below falls back to an in-memory shim — so the catch is a deliberate no-op.
+// (localStorage was read here only for the retired `theme` preference.)
 try { sessionStorageRef = window.sessionStorage; } catch { /* storage unavailable */ }
 
-const safeLocalStorage = safeStorage(localStorageRef);
 const safeSessionStorage = safeStorage(sessionStorageRef);
 
-const savedTheme = safeLocalStorage.getItem('theme')
-const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-  document.documentElement.classList.add('dark')
-  document.documentElement.style.colorScheme = 'dark'
-} else {
-  document.documentElement.classList.remove('dark')
-  document.documentElement.style.colorScheme = 'light'
-}
+// PennSync ships ONE light theme — see the dark-class effect in Layout.jsx for
+// why. Following the OS preference here contradicted that for every screen that
+// renders before Layout mounts: measured 2026-10-08 on the live sign-in page
+// with a dark-mode device, the "Welcome to PennSync" heading is near-white on a
+// light gradient and the footer links all but vanish, because the `.dark`
+// shims in index.css flip only some slate/white utilities. Layout then removed
+// the class but left `color-scheme: dark`, so native form controls rendered
+// dark inside the light UI. Nothing writes a `theme` preference any more, so a
+// stored value is not consulted either.
+document.documentElement.classList.remove('dark')
+document.documentElement.style.colorScheme = 'light'
 
 // ── Stale-chunk auto-recovery ───────────────────────────────────────────────
 // When the Vite dev server restarts, the browser's in-memory module graph holds

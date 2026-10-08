@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 import { formatTime } from "@/lib/formatTime";
 import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
 import { isTenantSdkRealmLeaseCurrent } from '@/lib/tenantSdkRealmGate';
+import {
+  audioFileExtension, audioRecorderOptions, pickAudioRecorderMimeType, recordedAudioType,
+} from '@/lib/audioRecordingFormat';
 
 export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -58,8 +61,8 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
       }
       recordingLeaseRef.current = realmLease;
       streamRef.current = stream;
-      const mediaRecorder = new MediaRecorder(stream);
-      
+      const mediaRecorder = new MediaRecorder(stream, audioRecorderOptions(pickAudioRecorderMimeType()));
+
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -80,7 +83,8 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
           || acquisition !== mediaAcquisitionRef.current
           || !isTenantSdkRealmLeaseCurrent(realmLease)
         ) return;
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        // Label it with what the recorder wrote — audio/mp4 on iOS.
+        const blob = new Blob(chunksRef.current, { type: recordedAudioType(mediaRecorder) });
         setAudioBlob(blob);
         stopMediaStream(stream);
         streamRef.current = null;
@@ -122,7 +126,8 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
 
   const handleUpload = () => {
     if (audioBlob) {
-      const file = new File([audioBlob], 'clinical-notes.webm', { type: 'audio/webm' });
+      const type = audioBlob.type || 'audio/webm';
+      const file = new File([audioBlob], `clinical-notes.${audioFileExtension(type)}`, { type });
       onAudioProcessed(file);
       setAudioBlob(null);
       setRecordingTime(0);

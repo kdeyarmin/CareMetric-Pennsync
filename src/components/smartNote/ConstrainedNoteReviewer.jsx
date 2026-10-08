@@ -421,7 +421,11 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
         generated = res.note.trim();
       } catch (genErr) {
         const credits = genErr?.status === 402 || genErr?.data?.extra_data?.reason === "integration_credits_limit_reached";
-        toast.error(credits ? "Monthly integration limit reached. Please upgrade your plan to continue." : (genErr?.message?.includes("timed out") ? genErr.message : "Note generation failed. Please try again."));
+        // The 402 is the hosting platform's monthly AI quota, which only the
+        // agency's account owner can raise — nothing in the app sells a plan, so
+        // telling a nurse to "upgrade your plan" pointed at a purchase that does
+        // not exist (and, in the iOS app, at App Store Guideline 3.1.1).
+        toast.error(credits ? "Your agency has reached its monthly AI usage limit. Please contact your agency administrator." : (genErr?.message?.includes("timed out") ? genErr.message : "Note generation failed. Please try again."));
         setBuilding(false);
         return;
       }

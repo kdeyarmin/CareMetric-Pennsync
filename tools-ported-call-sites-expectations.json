@@ -73,6 +73,6 @@
     "src/pages/TimeOff.jsx:55 getApprovedTimeOff",
     "src/pages/UserGuides.jsx:25 generateUserGuidePDF",
     "src/pages/UserManagement.jsx:148 resendInvitationV2",
-    "src/pages/UserSettings.jsx:244 createNotification"
+    "src/pages/UserSettings.jsx:251 createNotification"
   ]
 }

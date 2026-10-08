@@ -21,6 +21,7 @@ import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
 import CommandPalette from "@/components/navigation/CommandPalette";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
+import AccountDeletionRequestLink from "@/components/auth/AccountDeletionRequestLink";
 
 const SIDEBAR_COLLAPSED_KEY = "caremetric_sidebar_collapsed";
 
@@ -209,6 +210,7 @@ export default function Layout() {
               <Button onClick={handleLogout} variant="outline" className="w-full">
                 <LogOut className="w-4 h-4 mr-2" /> Sign Out
               </Button>
+              <AccountDeletionRequestLink email={currentUser.email} className="mt-4" />
             </CardContent>
           </Card>
           <p className="mt-6 text-center text-xs text-slate-400">
