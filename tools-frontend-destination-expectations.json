@@ -1,6 +1,6 @@
 {
   "format": "pennsync-frontend-destination",
   "version": 1,
-  "maximum_unserved": 208,
-  "note": "Raised from 203 to 208 on 2026-09-25 because the MEASUREMENT widened, not the coupling: D83's five global-reference write sites (ComplianceRule, MedicareComplianceRule, MedicareGuideline) were counted as landable while no caller can write those tables. A rise here is otherwise a build failure; this one is the tool telling the truth about call sites that were always refused."
+  "maximum_unserved": 210,
+  "note": "Raised from 208 to 210 on 2026-10-08 by the owner's decision to turn Base44 features back on: the restored Phone Center texts tab and scheduled-text queue read SmsMessage (filter, update) and ScheduledSms (filter), three sites on preserved_paused entities with no owned-store destination, while the shared call-log hook removed one CallLog site. Earlier: raised from 203 to 208 on 2026-09-25 because the MEASUREMENT widened, not the coupling (D83's five global-reference write sites). A rise here is otherwise a build failure."
 }

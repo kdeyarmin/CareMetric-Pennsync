@@ -3963,9 +3963,9 @@ repair of three admin screens that had been asking the roster for an order it
 cannot serve, so those sites moved into SERVED rather than out of the audit. The
 totals it produced are the block's to state.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+**This block was the PINNED one until the reading below it was taken (2026-10-08)
+and is now a dated record like the rest.** It was pasted from
+`pnpm run check:entity-routes` and is left exactly as printed.
 
 ```
 entity routes: 100 declared, 163/244 landable call sites SERVED, 81 still to adopt
@@ -3989,6 +3989,31 @@ whole.** Its served read ratio moved because that same site left the served
 pool, while its three other ratios did not move at all — so a reader adjusting
 the figure that obviously changed would have been right by accident, and wrong
 the next time the denominator was what moved.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 100 declared, 164/251 landable call sites SERVED, 87 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 87, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 86 need a named capability
+```
+
+**Nothing was declared between the block above and this one, and the move is
+again a POPULATION change rather than progress.** On 2026-10-08 the owner turned
+several Base44 features back on, and the screens that came back brought their
+own entity calls with them. The follow-up page's physician-directory read
+returned, so the served read that left with it in the block above is back. The
+rest arrived UNROUTED: the dashboard's Time Saved card reads the caller's own
+note conversions again, the restored nurse performance page reads and writes
+nurse goals, and the activity logger appends a user-activity row again — six
+sites over four keys that no route covers, all of them still Base44 calls. The
+restored texts tab and scheduled-text queue read entities with no owned-store
+table at all, so they never reach this pool and move the destination gate
+instead. So the remainder ROSE without anybody's adoption work going backwards,
+and the totals it produced are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4131,20 +4156,24 @@ different kinds of work:
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Seventeen have no route declared at all**, over fourteen entity and
-  operation keys: fourteen reads over eleven keys, and three writes over three.
-  Re-derived on this head rather than reconciled from either side of the merge,
-  because every figure in this bullet is a property of the whole population and
-  adding two branches' deltas is wrong in both directions. **The write half fell
-  furthest, and not because anyone worked on it** — the reference writes took
-  eight sites out of this pool and the withdrawn duty toggle put nothing back,
-  so a bucket nobody touched moved twice. That is what a remainder does: it is a
-  property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.64 call sites and a write
-  key 1.24, so a read port has historically served many screens per route while
-  a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.27 sites and a
-  write key 1.00, which is nothing like the served spread — a write key there
+- **Twenty-three have no route declared at all**, over nineteen entity and
+  operation keys: sixteen reads over twelve keys, and seven writes over seven.
+  Re-derived on this head (2026-10-08) rather than adjusted from the last one,
+  because every figure in this bullet is a property of the whole population.
+  **The write half more than doubled, and not because any route was withdrawn**
+  — the owner restored screens that write through Base44 directly: the nurse
+  performance page's goal create, update and delete, and the activity logger's
+  append, each a key of its own with one site. The read half gained the goal
+  read and a second note-conversion read over a key the pool already held. A
+  head earlier the write half had FALLEN furthest for the opposite reason — the
+  reference writes took eight sites out — so a bucket nobody adopted from has
+  now moved in both directions. That is what a remainder does: it is a property
+  of what is LEFT, and of what ARRIVES. The reason the shape keeps moving is
+  measurable on the sites already served: a read key there carries 2.66 call
+  sites and a write key 1.24, so a read port has historically served many
+  screens per route while a write port served the one form that calls it. **Do
+  not carry that ratio into the remainder, though**: inside this pool a read key
+  covers 1.33 sites and a write key 1.00, which is nothing like the served spread — a write key there
   now covers exactly one site each, so the ratio has no spread left to read.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
