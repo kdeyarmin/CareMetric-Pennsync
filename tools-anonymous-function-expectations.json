@@ -101,13 +101,6 @@
       "code": "telehealth_provider_migration_pending"
     }
   },
-  "deduplicatePatients": {
-    "status": 503,
-    "body": {
-      "error": "Patient duplicate scanning and merging are temporarily unavailable pending an authorized, atomic server broker",
-      "code": "patient_merge_security_validation_pending"
-    }
-  },
   "deletePatientsMissingFirstName": {
     "status": 503,
     "body": {

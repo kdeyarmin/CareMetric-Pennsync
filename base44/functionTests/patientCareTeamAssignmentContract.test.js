@@ -14,6 +14,7 @@ const functionUrl = new URL(
 const entityUrl = new URL('../entities/PatientCareTeamAssignment.jsonc', import.meta.url);
 const wrapperUrl = new URL('../../src/functions/managePatientCareTeamAssignment.js', import.meta.url);
 const mergeUrl = new URL('../../src/components/patient/mergePatients.js', import.meta.url);
+const mergeBrokerUrl = new URL('../functions/deduplicatePatients/entry.ts', import.meta.url);
 const srcRoot = fileURLToPath(new URL('../../src/', import.meta.url));
 
 async function listSourceFiles(directory) {
@@ -401,7 +402,7 @@ async function invoke(handler, body = grantBody(), { method = 'POST', invalidJso
   return { response, json: await response.json() };
 }
 
-test('PatientCareTeamAssignment is service-owned, fully versioned, and merge-blocking', async () => {
+test('PatientCareTeamAssignment is service-owned, fully versioned, and never re-pointed by a merge', async () => {
   const schema = JSON5.parse(await readFile(entityUrl, 'utf8'));
   assert.deepEqual(schema.rls, { create: false, read: false, update: false, delete: false });
   for (const field of [
@@ -415,9 +416,16 @@ test('PatientCareTeamAssignment is service-owned, fully versioned, and merge-blo
     'last_transition_request_key', 'version',
   ]) assert.equal(schema.required.includes(field), true, field);
 
+  // A patient merge never rewrites an assignment's immutable patient_id: the
+  // server broker grants on the survivor and then revokes on the duplicate
+  // (patientMergeBrokerContract.test.js proves it), and the browser boundary
+  // only invokes that broker.
   const mergeSource = await readFile(mergeUrl, 'utf8');
-  assert.match(mergeSource, /SERVER_MERGE_REQUIRED_ENTITIES[\s\S]*PatientCareTeamAssignment/);
-  assert.match(mergeSource, /PATIENT_MERGES_PAUSED\s*=\s*true/);
+  assert.match(mergeSource, /functions\.invoke\("deduplicatePatients"/);
+  assert.doesNotMatch(mergeSource, /PatientCareTeamAssignment/);
+  const brokerSource = await readFile(mergeBrokerUrl, 'utf8');
+  assert.match(brokerSource, /'PatientCareTeamAssignment\.patient_id': 'care-team lifecycle/);
+  assert.doesNotMatch(brokerSource, /\['PatientCareTeamAssignment', 'patient_id'\]/);
 });
 
 test('the client boundary is unwired and invokes only the finite broker', async () => {

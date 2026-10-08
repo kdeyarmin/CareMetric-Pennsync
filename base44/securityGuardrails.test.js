@@ -401,49 +401,57 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
     assert.match(surface, new RegExp(`const ${gate} = false;`));
     assert.match(surface, new RegExp(`if \\(!${gate}\\)`));
   }
+});
+
+// Patient merges run only through the deduplicatePatients server broker. The
+// browser never reads, re-points or archives a chart itself, and the broker is
+// pinned behaviourally by base44/functionTests/patientMergeBrokerContract.test.js.
+test('patient merges go through the authorized server broker, never a browser write', () => {
   const merge = read('src/components/patient/mergePatients.js');
-  const serverMergeRequired = merge.match(
-    /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\[([\s\S]*?)\]/,
+  assert.match(merge, /export const PATIENT_MERGES_PAUSED = false;/);
+  assert.match(merge, /functions\.invoke\("deduplicatePatients", payload\)/);
+  assert.match(merge, /action: "merge"/);
+  assert.ok(
+    !/\.entities\b|asServiceRole|\.update\(|\.create\(|PATIENT_RELATED_ENTITIES/.test(merge),
+    'the browser merge boundary must not touch an entity directly',
   );
-  assert.ok(serverMergeRequired, 'server-only patient references must stay explicit');
-  for (const entity of [
-    'DocumentTenantBinding',
-    'OASISAssessment',
-    'PatientCareTeamAssignment',
-    'PatientNoteHistoryEntry',
-    'PatientOutcomeMetric',
+  for (const file of [
+    'src/pages/DuplicatePatients.jsx',
+    'src/components/patient/DuplicateScanner.jsx',
+    'src/components/patient/PatientMergeDialog.jsx',
   ]) {
-    assert.match(serverMergeRequired[1], new RegExp(`"${entity}"`));
+    const ui = read(file);
+    assert.ok(!/\.entities\.Patient|functions\.invoke\(/.test(ui), `${file} must merge only through mergePatients`);
   }
-  assert.match(merge, /PATIENT_MERGE_PAUSED_MESSAGE/);
-  const mergeBoundary = merge.slice(
-    merge.indexOf('export async function mergePatientInto'),
-    merge.indexOf('// Scalar chart fields'),
-  );
-  assert.match(mergeBoundary, /throw new Error\(PATIENT_MERGE_PAUSED_MESSAGE\)/);
-  assert.ok(!/base44|\.entities\.|\.filter\(|\.update\(/.test(mergeBoundary));
-  assert.ok(!/^import .*base44Client/m.test(merge));
-  const dedupe = read('base44/functions/deduplicatePatients/entry.ts');
-  const dedupeHandler = dedupe.slice(dedupe.indexOf('Deno.serve'));
-  assert.match(dedupe, /const PATIENT_DEDUPLICATION_PAUSED = true;/);
-  assert.ok(
-    dedupeHandler.indexOf('if (PATIENT_DEDUPLICATION_PAUSED)')
-      < dedupeHandler.indexOf('createClientFromRequest('),
-    'deduplicatePatients must return 503 before client creation, auth, or service-role PHI reads.',
-  );
-  assert.ok(
-    dedupeHandler.indexOf('if (confirm)') < dedupeHandler.indexOf('entities.Patient.list'),
-    'deduplicatePatients confirm mode must return 503 before service-role patient reads or writes.',
-  );
-  assert.match(dedupeHandler, /patient_merge_security_validation_pending/);
   for (const file of [
     'src/pages/DuplicatePatients.jsx',
     'src/components/patient/DuplicateScanner.jsx',
   ]) {
     const ui = read(file);
-    assert.match(ui, /const PATIENT_DEDUPE_UI_ENABLED = false;/);
+    assert.match(ui, /const PATIENT_DEDUPE_UI_ENABLED = true;/);
     assert.match(ui, /if \(PATIENT_DEDUPE_UI_ENABLED\) return <EnabledDuplicate/);
   }
+  // The scanner reads its roster only through the authorized Patient list.
+  const scanner = read('src/components/patient/DuplicateScanner.jsx');
+  assert.match(scanner, /useScopedPatients\(\{ purpose: 'deduplication'/);
+  assert.doesNotMatch(scanner, /from "@\/api\/base44Client"/);
+
+  const dedupe = read('base44/functions/deduplicatePatients/entry.ts');
+  const dedupeHandler = dedupe.slice(dedupe.indexOf('Deno.serve'));
+  assert.match(dedupe, /const PATIENT_DEDUPLICATION_PAUSED = false;/);
+  assert.match(dedupe, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.ok(
+    dedupeHandler.indexOf('if (PATIENT_DEDUPLICATION_PAUSED)') < dedupeHandler.indexOf('createClientFromRequest('),
+    'the kill switch must still refuse before client creation, auth, or service-role PHI reads.',
+  );
+  assert.ok(
+    dedupeHandler.indexOf('mergeAuthority(user)') < dedupeHandler.indexOf('await req.json'),
+    'deduplicatePatients must authorize before reading any request payload.',
+  );
+  // A merge archives a duplicate only after its records moved.
+  const execute = dedupe.slice(dedupe.indexOf('async function executeMerge'), dedupe.indexOf('async function recordMergeAudit'));
+  assert.ok(execute.indexOf('fillSurvivorFields(') < execute.indexOf('moveDuplicateRecords('));
+  assert.ok(execute.indexOf('moveDuplicateRecords(') < execute.indexOf('archiveDuplicate('));
 });
 
 // 12-14. Residual document-signing capabilities remain static early 503s.

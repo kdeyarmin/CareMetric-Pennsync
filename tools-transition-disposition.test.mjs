@@ -2109,13 +2109,20 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
   assert.equal(isPausedFunction('const RELEASED = true;\nif (!RELEASED) { return refusal(); }\n'),
     false, 'a true RELEASED with a negated guard is the live branch');
 
-  // Thirteen modules in the tree use the flipped polarity, and the check saw
+  // Thirteen modules in the tree used the flipped polarity, and the check saw
   // none of them. Twelve already carried `preserved_paused` because somebody
-  // had read them; the thirteenth carried `port`.
+  // had read them; the thirteenth carried `port`. `deduplicatePatients` has
+  // since been switched back ON at source by an owner decision (its flag now
+  // reads `false`), so it is no longer detected as paused; it keeps
+  // `preserved_paused` because that disposition answers the migration question,
+  // not whether the Base44 handler serves, and a live handler under it
+  // contradicts nothing.
   const paused = new Set(discoverPausedFunctions(repository));
   const manifest = parseManifest(
     readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
-  const flipped = ['createTelehealthToken', 'deduplicatePatients', 'dispatchScheduledSms',
+  assert.equal(paused.has('deduplicatePatients'), false, 'the merge broker is live at source');
+  assert.equal(manifest.functions.deduplicatePatients, 'preserved_paused');
+  const flipped = ['createTelehealthToken', 'dispatchScheduledSms',
     'generateMessageSuggestions', 'markMessageRead', 'messagingAssistant',
     'notifyUrgentMessage', 'processCompletedVisit', 'redriveFailedSms',
     'saveOasisResponses', 'scheduleSms', 'sendMessage', 'summarizeMessageThread'];

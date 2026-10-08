@@ -18,7 +18,7 @@
     "check:shared-helpers": "node tools-sync-shared-helpers.mjs --check",
     "audit:notification-producers": "node tools-notification-producer-inventory.mjs",
     "audit:notification-authority": "node tools-notification-authority-audit.mjs",
-    "test:dedupe": "node --test src/components/patient/patientDuplicateUtils.test.js base44/functions/deduplicatePatients/engineSync.test.js",
+    "test:dedupe": "node --test src/components/patient/patientDuplicateUtils.test.js base44/functions/deduplicatePatients/engineSync.test.js base44/functionTests/patientMergeBrokerContract.test.js",
     "test:care-team-assignment": "node --test base44/functionTests/patientCareTeamAssignmentContract.test.js && vitest run src/functions/managePatientCareTeamAssignment.spec.js",
     "test:referrals": "node --test base44/functionTests/referralAuthorizationContract.test.js base44/functionTests/referralPrivilegedPathContainmentContract.test.js base44/functionTests/providerFollowUpCapabilityContract.test.js base44/functionTests/referralFaxAuthorizationContract.test.js base44/functionTests/inboundReferralFaxAuthorizationContract.test.js base44/functionTests/inboundReferralFaxDocumentAuthorizationContract.test.js && vitest run src/functions/manageAuthorizedReferral.spec.js src/functions/getAuthorizedInboundReferralFax.spec.js src/pages/PausedPublicCapabilities.spec.jsx src/lib/tenantSdkRealmContract.spec.js",
     "check:backend-transpile": "node tools-check-backend-transpile.mjs",

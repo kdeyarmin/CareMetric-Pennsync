@@ -26,18 +26,19 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { logActivity, ActivityActions } from "../utils/activityLogger";
 import {
   mergePatientInto,
+  PatientMergeIncompleteError,
   PATIENT_MERGES_PAUSED,
   PATIENT_MERGE_PAUSED_MESSAGE,
 } from "./mergePatients";
 
-export default function PatientMergeDialog({ 
-  open, 
-  onOpenChange, 
-  patient1, 
-  patient2 
+export default function PatientMergeDialog({
+  open,
+  onOpenChange,
+  patient1,
+  patient2,
+  agencyId = null,
 }) {
   const queryClient = useQueryClient();
   const [selectedPrimary, setSelectedPrimary] = useState(null);
@@ -66,29 +67,32 @@ export default function PatientMergeDialog({
       const primaryPatient = selectedPrimary === 'patient1' ? patient1 : patient2;
       const secondaryPatient = selectedPrimary === 'patient1' ? patient2 : patient1;
 
-      // The shared helper is a fail-closed boundary until an authorized,
-      // transactional server broker can move every linked clinical record.
-      await mergePatientInto(primaryPatient.id, secondaryPatient.id);
+      // The server merge broker authorizes the caller, moves every linked
+      // record onto the primary and archives the duplicate last. It writes its
+      // own ids-only audit entry, so no patient name is logged from here.
+      const outcome = await mergePatientInto(primaryPatient.id, secondaryPatient.id, { agencyId });
 
-      return { primaryPatient, secondaryPatient };
+      return { outcome };
     },
-    onSuccess: ({ primaryPatient, secondaryPatient }) => {
+    onSuccess: ({ outcome }) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      logActivity(ActivityActions.UPDATE, {
-        entity_type: 'Patient',
-        action: 'merge_patients',
-        primary_patient: `${primaryPatient.first_name} ${primaryPatient.last_name}`,
-        merged_patient: `${secondaryPatient.first_name} ${secondaryPatient.last_name}`,
-        page: 'Patients'
-      });
-      toast.success('Patients merged. The duplicate was archived (recoverable).');
+      const moved = Object.values(outcome?.reassigned || {}).reduce((sum, count) => sum + count, 0);
+      toast.success(
+        `Patients merged${moved > 0 ? ` and ${moved} linked record(s) moved` : ''}. ` +
+          'The duplicate was archived (recoverable).'
+      );
       onOpenChange(false);
       setStep(1);
       setSelectedPrimary(null);
     },
     onError: (error) => {
-      // Surface failures instead of leaving the button stuck and the merge silently
-      // half-applied with no feedback.
+      // Surface failures instead of leaving the button stuck. A merge the
+      // broker could not finish left the duplicate active; retrying resumes it.
+      if (error instanceof PatientMergeIncompleteError) {
+        queryClient.invalidateQueries({ queryKey: ['patients'] });
+        toast.error(error.message);
+        return;
+      }
       toast.error(`Merge failed: ${error?.message || 'Please try again.'}`);
     },
   });
@@ -263,7 +267,7 @@ export default function PatientMergeDialog({
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5" />
-                  <span>Transfer the secondary patient's other clinical records (OASIS, alerts, pending updates) to primary</span>
+                  <span>Transfer the secondary patient's other linked records (OASIS, documents, care team, notes, alerts, tasks) to primary</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
