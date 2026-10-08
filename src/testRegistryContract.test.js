@@ -248,7 +248,14 @@ test('every test file has a home: a script, a runner glob, or a workflow step', 
   const playwrightDir = String(playwright.testDir ?? '').replace(/^\.\//, '');
 
   const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'dist', 'dist-ssr', 'coverage', 'vendor', 'ios', 'public', 'docs', '.pnpm-store']);
-  const TEST_FILE = /\.(?:test|spec)\.(?:js|mjs|cjs|jsx|ts|tsx)$/;
+  // Every module extension Node and TypeScript recognise, not a sample of them.
+  // The first version listed js/mjs/cjs/jsx/ts/tsx and omitted `.mts` and
+  // `.cts`, so an unregistered `src/x.spec.mts` never entered the candidate
+  // list and this closure passed while no runner collected it — the staleness
+  // this test exists to catch, arriving in the test's own allowlist. The set is
+  // closed because these are all of them, so it cannot go stale the way a
+  // subset does.
+  const TEST_FILE = /\.(?:test|spec)\.(?:js|mjs|cjs|jsx|ts|mts|cts|tsx)$/;
   const walk = (dir, out = []) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (EXCLUDED_DIRS.has(entry.name)) continue;

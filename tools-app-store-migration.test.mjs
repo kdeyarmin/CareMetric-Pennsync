@@ -98,17 +98,37 @@ const paths = output => output.split('\0').filter(Boolean).sort();
 // exactly the case it exists for.
 const BASELINE_FETCH = ['fetch', '--depth=1', '--no-tags', 'origin', BASELINE];
 
-// git exits 128 with its reason on stderr for an object it cannot resolve.
-// Anything else — ENOBUFS, a missing binary, a killed fetch — must NOT read as
-// "absent", or the stand-down below swallows a real error, which is the defect
+// Which git failures mean "the objects are not in this store", MEASURED rather
+// than assumed — the first version of this classifier was `status === 128` and
+// was derived from one case, the absent commit. There are two shapes, and the
+// second is the one a partial clone produces:
+//
+//   absent commit        → status 128, `fatal: not a tree object`
+//   absent SUBTREE       → status 1,   `error: Could not read <oid>`
+//
+// So a missing `ios/` tree under a present root tree exits 1, which the old
+// `=== 128` test read as NOT-absent and rethrew — escaping the fetch and the
+// stand-down both, and taking the chain down exactly as before. Everything else
+// (a signal from the timeout, ENOBUFS, a missing binary) still must NOT read as
+// absent, or the stand-down swallows a real error: the defect
 // tools-decision-register.test.mjs records against the same helper.
-const isMissingObject = error => error?.status === 128;
+const isMissingObject = error => error?.status === 128
+  || (error?.status === 1 && /could not read/i.test(String(error?.stderr ?? '')));
 
 // null when the baseline's `ios`/`public` trees can be walked here; the git
 // error when they cannot.
+//
+// `-r` is load-bearing and is the whole point: WITHOUT it this lists the root
+// tree's two entries and never reads the trees underneath, so on a store whose
+// root tree is present and whose `ios` tree is not it exits 0 and reports the
+// baseline readable, while the assertion's own `-r` walk fails. Measured on a
+// constructed store (root tree kept, `ios` tree object deleted): probe exit 0,
+// assertion exit 1. A probe weaker than the operation it stands in for reports
+// the wrong answer in exactly the case it exists for — which is what this
+// file's own comment says about `cat-file -e`, one level further down.
 function baselineUnreadable() {
   try {
-    git('ls-tree', '--name-only', BASELINE, '--', 'ios', 'public');
+    git('ls-tree', '-r', '--name-only', BASELINE, '--', 'ios', 'public');
     return null;
   } catch (error) {
     if (!isMissingObject(error)) throw error;
@@ -116,12 +136,24 @@ function baselineUnreadable() {
   }
 }
 
-// Try once to make the baseline readable. Returns null on success, else the
-// error that still stands. The fetch is bounded and cannot block on
-// credentials: an offline container must report, not hang.
+// Try once to make the baseline readable.
+//
+// Returns null on success, else `{ probeError, fetchError }` — the fetch's own
+// error is CARRIED rather than discarded, because a `git fetch` exits 128
+// whether the remote refused the object or there is no network at all (both
+// measured), so its status cannot classify it and substituting the probe's
+// error would report a dead network as `fatal: not a tree object`. A wrong
+// reason inside a reported skip looks deliberate, which is why nothing catches
+// it.
+//
+// A fetch killed by the timeout, or one that never ran, is NOT an unavailable
+// baseline: it is this harness failing, so it rethrows instead of standing
+// down. The fetch is bounded and cannot block on credentials — an offline
+// container must report, not hang.
 function acquireBaseline() {
-  const first = baselineUnreadable();
-  if (!first) return null;
+  const probeError = baselineUnreadable();
+  if (!probeError) return null;
+  let fetchError = null;
   try {
     execFileSync('git', BASELINE_FETCH, {
       encoding: 'utf8',
@@ -130,10 +162,14 @@ function acquireBaseline() {
       stdio: ['ignore', 'ignore', 'pipe'],
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     });
-  } catch {
-    return first;
+  } catch (error) {
+    // Cut off (SIGTERM/SIGKILL from `timeout`) or never a git-level failure at
+    // all (ENOENT on the binary, ENOBUFS): the recovery attempt itself broke.
+    if (error?.signal || typeof error?.status !== 'number') throw error;
+    fetchError = error;
   }
-  return baselineUnreadable() ?? null;
+  const stillUnreadable = baselineUnreadable();
+  return stillUnreadable ? { probeError: stillUnreadable, fetchError } : null;
 }
 
 test('every native and packaged public asset is byte-preserved, or enumerated with a reason', t => {
@@ -146,10 +182,16 @@ test('every native and packaged public asset is byte-preserved, or enumerated wi
   // `pnpm test` scripts that follow this one.
   const unreadable = acquireBaseline();
   if (unreadable) {
-    const detail = `baseline ${BASELINE} is not readable in this checkout `
-      + `(shallow=${(() => { try { return git('rev-parse', '--is-shallow-repository').trim(); } catch { return 'unknown'; } })()}). `
+    const said = error => String(error?.stderr ?? '').trim() || '(nothing)';
+    const shallow = (() => { try { return git('rev-parse', '--is-shallow-repository').trim(); } catch { return 'unknown'; } })();
+    // Both errors, separately. The probe says what could not be read; the fetch
+    // says why recovering it did not work, and those are different sentences —
+    // reporting the probe's words for a dead network is how a stand-down comes
+    // to carry a reason that was never measured.
+    const detail = `baseline ${BASELINE} is not readable in this checkout (shallow=${shallow}). `
       + `Native/public byte preservation was NOT checked. Run: git ${BASELINE_FETCH.join(' ')}. `
-      + `git said: ${String(unreadable.stderr || '').trim() || '(nothing)'}`;
+      + `reading it said: ${said(unreadable.probeError)}`
+      + (unreadable.fetchError ? `; fetching it said: ${said(unreadable.fetchError)}` : '; the fetch was not attempted or reported nothing');
     assert.ok(!process.env.CI,
       `CI checks out full history, so an absent baseline here is a real failure, not a shallow clone: ${detail}`);
     t.skip(detail);
