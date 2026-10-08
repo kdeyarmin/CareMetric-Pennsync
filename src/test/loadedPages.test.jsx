@@ -116,7 +116,7 @@ const MAX_TABS = 40;
 // one. They get a SECOND pass with an id the fixtures actually mint. The id is
 // deliberately not applied to every page: several hubs also read `id` and switch
 // to a narrower single-subject mode that renders less than their plain listing.
-const ID_PARAM_PAGES = ["PatientDetails", "PatientAlerts", "ReferralFollowUp"];
+const ID_PARAM_PAGES = ["PatientDetails", "PatientAlerts"];
 const SUBJECT_ID = "Patient-0";
 
 function Providers({ children, search = "" }) {

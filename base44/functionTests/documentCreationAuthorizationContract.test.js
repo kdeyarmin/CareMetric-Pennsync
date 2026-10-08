@@ -410,8 +410,10 @@ test('DocumentTenantBinding and Document are broker-only and the private uploade
   assert.deepEqual(
     wired.map((path) => path.slice(fileURLToPath(sourceRootUrl).length).replaceAll('\\', '/')).sort(),
     [
+      // Narrowed when the ReferralFollowUp page was removed from the app: one
+      // fewer browser caller of the create broker. This list is closed, so a
+      // new consumer still has to be added here deliberately.
       'components/documents/DocumentUploader.jsx',
-      'pages/ReferralFollowUp.jsx',
     ],
     `unexpected create broker consumers: ${wired.join(', ')}`,
   );

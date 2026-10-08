@@ -13,16 +13,16 @@ const expectProtectedAdminEntityWrites = (entityName) => {
 };
 
 describe('protected-admin frontend alignment', () => {
-  it('keeps referral analytics available while protecting agency-wide rule changes', () => {
-    const page = read('src/pages/ReferralFollowUp.jsx');
+  // The front-end half of this pair was the ReferralFollowUp page, which was
+  // removed from the app. Its five assertions - the admin view, the capability
+  // flag, the disabled control and the two gated regions - described markup
+  // that no longer exists, so they are gone rather than matched against a
+  // missing file. The backend gate is what still has a subject, and it is the
+  // half that actually protects the agency-wide config.
+  it('protects agency-wide follow-up rule changes in the backend', () => {
     const backend = read('base44/functions/saveFollowUpRuleConfig/entry.ts');
 
     expect(backend).toMatch(/const isAdmin = user\?\.role === 'admin'/);
-    expect(page).toMatch(/const adminView = isAdminView\(currentUser\)/);
-    expect(page).toMatch(/const canManageRuleSettings = isAdminLike\(currentUser\)/);
-    expect(page).toMatch(/disabled=\{!canManageRuleSettings\}/);
-    expect(page).toMatch(/\{canManageRuleSettings && showSettings && \(/);
-    expect(page).toMatch(/adminView && selectedPlan/);
   });
 
   it('keeps readable catalogs visible but gates their protected mutations', () => {

@@ -3898,7 +3898,7 @@ byte, so paste what `pnpm run check:entity-routes` prints and never retype,
 rewrap or re-indent it.
 
 ```
-entity routes: 100 declared, 164/245 landable call sites SERVED, 81 still to adopt
+entity routes: 100 declared, 163/244 landable call sites SERVED, 81 still to adopt
   4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
   25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
   of those 81, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 80 need a named capability
@@ -4067,7 +4067,7 @@ different kinds of work:
   eight sites out of this pool and the withdrawn duty toggle put nothing back,
   so a bucket nobody touched moved twice. That is what a remainder does: it is a
   property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.66 call sites and a write
+  the sites already served: a read key there carries 2.64 call sites and a write
   key 1.24, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.27 sites and a
@@ -4078,7 +4078,7 @@ different kinds of work:
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at eight consecutive heads. Across the
+  **This bullet has now been re-derived at nine consecutive heads. Across the
   first five every one of its six figures moved, reversing a finding stated in
   its own prose three times; at the sixth, seventh and eighth only the served
   read pair did, which are the first heads where re-deriving the whole bullet

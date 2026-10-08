@@ -639,7 +639,6 @@ test('interim-locked content entities keep a reviewed direct-consumer inventory'
       'src/components/fax/FaxRecipientFields.jsx :: user-scope :: list',
       'src/components/physician/PhysicianDirectory.jsx :: user-scope :: delete,filter,update',
       'src/components/physician/PhysicianForm.jsx :: user-scope :: create,update',
-      'src/pages/ReferralFollowUp.jsx :: user-scope :: list',
     ],
     TrainingModule: [
       'base44/functions/duplicateInService/entry.ts :: service-role :: create,filter',

@@ -920,19 +920,27 @@ test('referral fax requires exactly one active, exact Telnyx integration', async
   }
 });
 
-test('ReferralFollowUp uses private document authority and the dedicated fax broker', async () => {
-  const page = await readFile(
-    new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url),
-    'utf8',
+// The ReferralFollowUp page was the browser caller this test used to cover, and
+// it was removed from the app. Its page-side half - the authorized document
+// create, the in-flight guard and the reconciliation notice - is asserted of
+// nothing now, so it is gone from here rather than kept as a passing match
+// against a file that does not exist.
+//
+// The absence is ASSERTED rather than assumed. A page that comes back would
+// restore a browser caller of the fax broker with no coverage of how it calls
+// it, and nothing else here would notice: this test would still pass, because
+// what it checks now is the function and the wrapper. So the file reappearing
+// fails this, and the failure says to bring the page assertions back with it.
+test('the removed ReferralFollowUp page has not returned uncovered', async () => {
+  await assert.rejects(
+    () => readFile(new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url), 'utf8'),
+    (error) => error.code === 'ENOENT',
+    'src/pages/ReferralFollowUp.jsx is back: restore the page-side fax and document '
+      + 'assertions removed with it, then delete this guard.',
   );
-  assert.match(page, /createAuthorizedDocument\(\{/);
-  assert.match(page, /purpose:\s*["']referral["']/);
-  assert.match(page, /functions\.invoke\(["']sendAuthorizedReferralFax["']/);
-  assert.match(page, /data\.requires_reconciliation\s*\|\|\s*data\.status\s*===\s*["']submission_unknown["']/);
-  assert.match(page, /do not send it again until its status is reconciled/i);
-  assert.match(page, /faxSubmissionInFlightRef\.current/);
-  assert.doesNotMatch(page, /Core\.UploadFile|functions\.invoke\(["']sendFax["']/);
+});
 
+test('the referral fax broker keeps document authority server-side', async () => {
   const source = await readFile(
     new URL(`../functions/${FUNCTION_NAME}/entry.ts`, import.meta.url),
     'utf8',

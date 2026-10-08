@@ -253,10 +253,11 @@ describe('residual RLS source containment', () => {
       delete: SERVICE_ROLE,
     });
     expect(directConsumers('FollowUpRuleConfig')).toEqual([]);
+    // One caller fewer since the ReferralFollowUp page was removed from the
+    // app. This list is derived from the tree, so it narrows with it.
     expect(sourcesContaining('fetchCallerFollowUpRuleConfig', ['src/lib/agencySettings.js']))
       .toEqual([
         'src/components/referral/ProviderFaxRequestCard.jsx',
-        'src/pages/ReferralFollowUp.jsx',
       ]);
 
     const settings = read('src/lib/agencySettings.js');
@@ -268,7 +269,6 @@ describe('residual RLS source containment', () => {
     expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities|base44\.functions/);
     for (const caller of [
       'src/components/referral/ProviderFaxRequestCard.jsx',
-      'src/pages/ReferralFollowUp.jsx',
     ]) {
       expect(read(caller), caller).toMatch(/ruleConfig:\s*ruleConfig\s*\|\|\s*undefined/);
     }

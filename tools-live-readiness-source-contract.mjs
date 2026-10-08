@@ -383,7 +383,6 @@ const REFERRAL_BROWSER_PATHS = Object.freeze([
   "src/components/referral/ScannedResponseUpload.jsx",
   "src/components/reports/FollowUpAnalytics.jsx",
   "src/components/reports/ReferralVolumeReport.jsx",
-  "src/pages/ReferralFollowUp.jsx",
   "src/pages/ReferralIntake.jsx",
   "src/pages/ReferralTriage.jsx",
 ]);

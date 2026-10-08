@@ -1,10 +1,23 @@
 import assert from 'node:assert/strict';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { extname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+
+async function sourceFiles(directoryUrl) {
+  const output = [];
+  async function walk(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) await walk(path);
+      else if (['.js', '.jsx', '.ts', '.tsx'].includes(extname(entry.name))) output.push(path);
+    }
+  }
+  await walk(fileURLToPath(directoryUrl));
+  return output;
+}
 
 const ENTRY_URL = new URL('../functions/getAuthorizedInboundReferralFax/entry.ts', import.meta.url);
 
@@ -163,15 +176,21 @@ test('foreign or false-success IncomingFax rows are rejected without disclosing 
 });
 
 test('fax document path stores no capability on Referral or in browser source', async () => {
-  const [worker, page, wrapper] = await Promise.all([
+  const [worker, wrapper] = await Promise.all([
     readFile(new URL('../functions/processInboundFaxes/entry.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../../src/pages/ReferralFollowUp.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../../src/functions/getAuthorizedInboundReferralFax.js', import.meta.url), 'utf8'),
   ]);
   assert.doesNotMatch(worker, /fax_back\s*:\s*\{[\s\S]{0,300}document_url/);
-  assert.doesNotMatch(page, /tracking\.fax_back\.document_url/);
-  assert.match(page, /getAuthorizedInboundReferralFax\(/);
   assert.match(wrapper, /functions\.invoke\('getAuthorizedInboundReferralFax'/);
+  // The ReferralFollowUp page was this capability's only browser caller and was
+  // removed from the app, so the two assertions over it are gone rather than
+  // matched against a missing file. The "in browser source" half of this test's
+  // name is now carried by the sweep below, which asks every file under src/
+  // instead of the one page that used to be the only one that could have it.
+  for (const file of await sourceFiles(new URL('../../src/', import.meta.url))) {
+    assert.doesNotMatch(await readFile(file, 'utf8'), /tracking\.fax_back\.document_url/,
+      `${file} reads a stored fax capability instead of the authorized broker`);
+  }
 });
 
 
