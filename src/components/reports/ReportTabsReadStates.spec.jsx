@@ -13,7 +13,7 @@ vi.mock('@/api/base44Client', () => ({ base44: { auth: { me: mocks.me }, entitie
 } } }));
 vi.mock('@/functions/manageAuthorizedReferral', () => ({ listAuthorizedReferrals: mocks.referrals }));
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => mocks.auth }));
-vi.mock('@/lib/roles', () => ({ isAdminView: user => user?.role === 'admin' }));
+vi.mock('@/lib/roles', async (importOriginal) => ({ ...(await importOriginal()), isAdminView: user => user?.role === 'admin' }));
 vi.mock('@/lib/agencyRoster', () => ({ agencyQueryKey: mocks.authority }));
 vi.mock('@/lib/agencyScope', () => ({ filterUsersByCallerAgency: rows => rows, isCallerAgencyScoped: () => mocks.scoped }));
 vi.mock('@/lib/agencySettings', () => ({ fetchCallerPdgmRateConfig: async () => null }));
