@@ -19,7 +19,7 @@ vi.mock("@/lib/superAdmin", () => ({
   isSuperAdminEmail: (email) => email === "owner@agency.test",
 }));
 
-import AgencyAccessPanel from "./AgencyAccessPanel";
+import AgencyAccessPanel, { suggestedTenantRole } from "./AgencyAccessPanel";
 
 const owner = { id: "owner-1", email: "owner@agency.test", role: "admin" };
 const nurse = { id: "user-2", email: "Nurse@Agency.test", full_name: "Pat Nurse", role: "user", is_active: true };
@@ -28,6 +28,18 @@ const notFound = Object.assign(new Error("Membership not found"), { status: 404 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.agencies.mockResolvedValue([{ id: "agency-1", agency_name: "Penn Home Health", status: "active" }]);
+});
+
+describe("suggestedTenantRole", () => {
+  it("pre-selects the tenant role matching the invited staff discipline", () => {
+    expect(suggestedTenantRole({ staff_role: "nurse" })).toBe("clinician");
+    expect(suggestedTenantRole({ staff_role: "office_staff" })).toBe("office_staff");
+    expect(suggestedTenantRole({ staff_role: "social_worker" })).toBe("social_worker");
+    expect(suggestedTenantRole({ staff_role: "spiritual_care" })).toBe("spiritual_care");
+    // Never pre-selects a privileged role: an administrator is chosen by hand.
+    expect(suggestedTenantRole({ staff_role: "agency_admin" })).toBe("clinician");
+    expect(suggestedTenantRole(undefined)).toBe("clinician");
+  });
 });
 
 describe("AgencyAccessPanel", () => {

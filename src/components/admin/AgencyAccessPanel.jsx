@@ -40,6 +40,20 @@ export const TENANT_ROLE_OPTIONS = Object.freeze([
   { value: "spiritual_care", label: "Spiritual care" },
 ]);
 
+// The invitation records a staff discipline (`staff_role`, applied to the User
+// by onUserSignup); the membership needs a tenant role. This only pre-selects
+// the dropdown, and the owner still chooses before granting.
+const STAFF_ROLE_TO_TENANT_ROLE = Object.freeze({
+  nurse: "clinician",
+  office_staff: "office_staff",
+  social_worker: "social_worker",
+  spiritual_care: "spiritual_care",
+});
+
+export function suggestedTenantRole(user) {
+  return STAFF_ROLE_TO_TENANT_ROLE[user?.staff_role] || "clinician";
+}
+
 const STATUS_TONE = {
   active: "bg-emerald-100 text-emerald-800",
   pending: "bg-amber-100 text-amber-800",
@@ -82,7 +96,7 @@ function AccessRow({ agencyId, user, onChanged }) {
     queryFn: () => inspect(agencyId, user),
     enabled: Boolean(agencyId && user.id && email),
   });
-  const [role, setRole] = useState("clinician");
+  const [role, setRole] = useState(() => suggestedTenantRole(user));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
 
