@@ -155,15 +155,6 @@
       "endpoint": "enforceDataCompleteness"
     }
   },
-  "generateDischargeSummary": {
-    "status": 503,
-    "body": {
-      "success": false,
-      "paused": true,
-      "code": "DISCHARGE_SUMMARY_GENERATION_PAUSED",
-      "error": "Discharge summary generation is temporarily unavailable pending tenant-safe storage"
-    }
-  },
   "generateDocumentPackageFromTemplate": {
     "status": 503,
     "body": {
@@ -176,15 +167,6 @@
     "body": {
       "error": "Secure messaging is temporarily unavailable",
       "code": "secure_message_tenant_broker_required"
-    }
-  },
-  "generatePatientEducation": {
-    "status": 503,
-    "body": {
-      "success": false,
-      "paused": true,
-      "code": "PATIENT_EDUCATION_GENERATION_PAUSED",
-      "error": "Patient education generation is temporarily unavailable pending tenant-safe storage"
     }
   },
   "generateSignatureCertificate": {

@@ -865,29 +865,29 @@ for (const file of ['base44/functions/generateFaxCoverPage/entry.ts']) {
   });
 }
 
-// These generators cannot retain a safe implementation until their output
-// entities have immutable tenant provenance and a reviewed brokered lifecycle.
-// Their route-level pause must remain before SDK construction, chart reads,
-// model invocation, or sink access.
-for (const [file, pauseCode] of [
-  [
-    'base44/functions/generateDischargeSummary/entry.ts',
-    'DISCHARGE_SUMMARY_GENERATION_PAUSED',
-  ],
-  [
-    'base44/functions/generatePatientEducation/entry.ts',
-    'PATIENT_EDUCATION_GENERATION_PAUSED',
-  ],
+// 2026-10-08 owner decision: these generators run again. The chart is read
+// with service-role authority only to decide access; callerMayAccessPatient
+// (built-in administrator, or a member of the chart's agency who manages it,
+// created it, or holds an active PatientCareTeamAssignment) must admit the
+// caller before any model call, and output is written through the caller's own
+// client so the output entity's creator rule governs read-back.
+for (const [file, sink] of [
+  ['base44/functions/generateDischargeSummary/entry.ts', 'DischargeSummary'],
+  ['base44/functions/generatePatientEducation/entry.ts', 'PatientEducationDelivery'],
 ]) {
-  test(`${file} remains statically quarantined before any PHI access or side effect`, () => {
+  test(`${file} checks care-team access before any PHI use or side effect`, () => {
     const src = read(file);
-    assert.match(src, new RegExp(`code:\\s*['"]${pauseCode}['"]`));
-    assert.match(src, /status:\s*503/);
-    assert.match(src, /'Cache-Control':\s*'no-store'/);
-    assert.doesNotMatch(
-      src,
-      /createClientFromRequest|@base44\/sdk|asServiceRole|\.entities\b|InvokeLLM|\bfetch\s*\(/,
-    );
+    const body = src.slice(src.lastIndexOf('// <<<END SHARED HELPER'));
+    assert.doesNotMatch(src, /GENERATION_PAUSED/);
+    assert.match(body, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+    assert.match(src, /<<<BEGIN SHARED HELPER: patientCareTeamAccess/);
+    const access = body.indexOf('await callerMayAccessPatient(base44, user, patient)');
+    assert.ok(access > -1, `${file} must use callerMayAccessPatient`);
+    assert.ok(body.indexOf('InvokeLLM') > access, `${file} must not call the model before access`);
+    assert.match(body, new RegExp(`await base44\\.entities\\.${sink}\\.create\\(`));
+    assert.doesNotMatch(body, new RegExp(`asServiceRole\\.entities\\.${sink}`));
+    assert.doesNotMatch(body, /assigned_nurses|agency_name|\bfetch\s*\(/);
+    assert.match(body, /'Cache-Control': 'no-store'/);
   });
 }
 

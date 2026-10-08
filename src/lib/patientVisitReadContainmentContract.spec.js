@@ -591,7 +591,7 @@ const MIGRATED_CALLSITES = Object.freeze({
   'src/components/hub-tabs/AdminReportsCenter.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'reporting'/],
   'src/components/hub-tabs/ComplianceMonitoringDashboard.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'compliance_monitoring'/],
   'src/components/hub-tabs/OASISAnalyzer.jsx': [1, /collectAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
-  'src/components/hub-tabs/PatientEducationPortal.jsx': [1, /Patient education generation is temporarily unavailable[\s\S]*?tenant-safe storage/],
+  'src/components/hub-tabs/PatientEducationPortal.jsx': [1, /purpose: "education_delivery"/],
   'src/components/oasis/AIProactiveOASISAssistant.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],
   'src/components/oasis/PredictiveOutcomesAnalyzer.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'activity'/],
   'src/components/oasis/SmartNoteDataImport.jsx': [1, /useAuthorizedVisits\s*\([\s\S]*?purpose:\s*'documentation'/],

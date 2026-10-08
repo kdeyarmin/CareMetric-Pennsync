@@ -110,11 +110,11 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
   // send a reviewer to port an endpoint that has no behavior left to port.
   const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
   const inert = discoverInertFunctions(repository);
-  // runSecurityAudit left this list on 2026-10-08 (owner decision): it does
-  // work again and keeps its preserved_paused disposition.
+  // runSecurityAudit, generateDischargeSummary and generatePatientEducation
+  // left this list on 2026-10-08 (owner decision): they do work again and keep
+  // their preserved_paused disposition.
   for (const name of ['analyzeClinicalData', 'analyzeDocument', 'analyzeNursePerformance',
-    'autoAssignNurseToPatient', 'generateDischargeSummary', 'generatePatientEducation',
-    'getPatientContext', 'getUserActivityLog']) {
+    'autoAssignNurseToPatient', 'getPatientContext', 'getUserActivityLog']) {
     assert.ok(inert.includes(name), `${name} should be detected as inert`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but performs no work`);
