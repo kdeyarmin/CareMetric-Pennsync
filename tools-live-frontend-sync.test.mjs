@@ -332,3 +332,61 @@ test('an entry whose name carries no revision is read but reported without one, 
     assert.equal(entry.revision, null);
   }
 });
+
+// --- the scheduled drift report's own hazard --------------------------------
+//
+// `workflow_dispatch` names no branch, so a manual run selects its own ref and
+// `actions/checkout` takes it. `pennsync-authority.yml` records that mechanism
+// at length for its credential steps, where the consequence is a leak. Here it
+// is a FALSE READING instead: the distance measured from a feature branch's
+// HEAD, printed under a label saying `main`. A branch whose HEAD happened to
+// match would be reported as "current" while production sat weeks behind, and
+// the distance to an unmerged branch answers a question nobody asked.
+//
+// These assert the two halves that stop it — the ref is PINNED, and the label
+// is DERIVED from that pin rather than restated beside it.
+
+const DRIFT_WORKFLOW = new URL('./.github/workflows/deployment-drift-report.yml', import.meta.url);
+
+function driftFrontendJob() {
+  const workflow = readFileSync(DRIFT_WORKFLOW, 'utf8');
+  const at = workflow.indexOf('\n  frontend:');
+  assert.ok(at > 0, 'the drift report no longer has a frontend job');
+  const next = workflow.indexOf('\n  dependencies:', at + 1);
+  const job = next === -1 ? workflow.slice(at) : workflow.slice(at, next);
+  // Comments describe this hazard in detail, so a check that read them would
+  // pass on the prose explaining the very bug it is looking for.
+  return job.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+}
+
+test('the drift report measures against a pinned ref, not the dispatched one', () => {
+  const code = driftFrontendJob();
+  const pinned = code.match(/^\s*ref:\s*(\S+)\s*$/m);
+  assert.ok(pinned,
+    'the checkout does not pin a ref, so a manual dispatch measures whatever ref it was run from');
+  assert.equal(pinned[1], 'main',
+    'drift is only meaningful against the branch that actually gets published');
+  assert.match(code, /fetch-depth:\s*0/,
+    'a shallow clone cannot resolve a weeks-old published revision, so the distance would be unknown');
+});
+
+test('the ref the drift report names is the ref it checked out, stated once', () => {
+  const code = driftFrontendJob();
+  // The label was the literal "`main` here is …" sitting beside the checkout:
+  // two representations of one fact, which is the shape this repository is
+  // repeatedly bitten by. The branch name may appear ONCE, in the line that
+  // decides it. If a second mention is ever legitimate, derive it from the
+  // first rather than retyping it.
+  assert.equal([...code.matchAll(/\bmain\b/g)].length, 1,
+    'the branch name appears more than once, so a restated copy can disagree with the checkout');
+  assert.match(code, /ref:\s*main/);
+  // ...and the name in the summary must come from git, not from a constant.
+  assert.match(code, /head_ref="\$\(git rev-parse --abbrev-ref HEAD\)"/,
+    'the step no longer resolves the ref it is reporting about');
+  assert.match(code, /' "\$head_sha" "\$head_ref"/,
+    'the resolved ref is not passed into the script that writes the summary');
+  assert.match(code, /const ref = process\.argv\[2\];/,
+    'the summary script does not read the resolved ref');
+  assert.match(code, /\$\{ref\}/,
+    'the summary label does not interpolate the resolved ref, so it is a constant again');
+});
