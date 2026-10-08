@@ -98,13 +98,11 @@ const ruleConfigShape = (config) => {
  *
  * @param {string | null | undefined} _agencyName ignored; the server decides the agency
  */
-export async function fetchCallerFollowUpRuleConfig(_agencyName) {
-  try {
-    const res = await base44.functions.invoke('saveFollowUpRuleConfig', { action: 'get' });
-    return ruleConfigShape((res?.data ?? res)?.config);
-  } catch {
-    return null;
-  }
+export function fetchCallerFollowUpRuleConfig(_agencyName) {
+  return Promise.resolve()
+    .then(() => base44.functions.invoke('saveFollowUpRuleConfig', { action: 'get' }))
+    .then((res) => ruleConfigShape((res?.data ?? res)?.config))
+    .catch(() => null);
 }
 
 /** @param {string | null | undefined} agencyName */

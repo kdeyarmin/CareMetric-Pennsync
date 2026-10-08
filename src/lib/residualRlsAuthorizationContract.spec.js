@@ -297,7 +297,7 @@ describe('residual RLS source containment', () => {
 
     const settings = read('src/lib/agencySettings.js');
     const helper = settings.slice(
-      settings.indexOf('export async function fetchCallerFollowUpRuleConfig'),
+      settings.indexOf('export function fetchCallerFollowUpRuleConfig'),
       settings.indexOf('export function fetchCallerPayerRateConfig'),
     );
     expect(helper).toContain("base44.functions.invoke('saveFollowUpRuleConfig', { action: 'get' })");
