@@ -132,7 +132,15 @@ test('the activity trail succeeds a retired LOG table and nothing else', () => {
 });
 
 test('the measured frontend is two populations, and the smaller one is the surprise', () => {
-  const report = compare(measureDestinations(repository), JSON.parse(baseline(208)));
+  const report = compare(measureDestinations(repository), JSON.parse(baseline(209)));
+  // 452 became 482, 244 became 273 and 208 became 209 on 2026-10-08, when the
+  // owner turned the admin, security, education and discharge screens back on.
+  // Thirty sites ARRIVED: twenty-nine are landable (most on carried entities,
+  // nine more on the activity trail's retired logs) and one, Agency Analytics'
+  // restored training section, reads a `hub` entity and so has no table here.
+  // A population that grows is not a regression in what was decided, which is
+  // why the baseline moved by exactly the one unserved site.
+  //
   // 453 became 452 and 245 became 244 when `src/pages/ReferralFollowUp.jsx` was
   // deleted and its route became a redirect. One site LEFT the population, and
   // it was a landable one, so both figures fell together and `unserved` did not
@@ -140,9 +148,9 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // eight landable sites arrived and `unserved` likewise held still. Neither is
   // progress: the only figure that moves when a decision is taken or a contract
   // ships is `unserved`, which is why it is the one with a baseline.
-  assert.equal(report.total, 452);
-  assert.equal(report.served, 244);
-  // 208 of 452. Stage J reads as "replace call sites tier by tier", which is a
+  assert.equal(report.total, 482);
+  assert.equal(report.served, 273);
+  // 208 of 452 before that. Stage J reads as "replace call sites tier by tier", which is a
   // refactor whose size is the count; 46% of them have no destination. The
   // percentage is the trap: it read 46% against 453 too, so the denominator
   // moved underneath it and the derived figure did not budge. 194 of the 208 reach
@@ -155,7 +163,7 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // did not move, and `record_store` absorbed all of them. So the blind spot
   // was hiding work rather than hiding decisions, which is the better of the
   // two ways for a census to be wrong and is not a reason to trust the next one.
-  assert.equal(report.unserved, 208);
+  assert.equal(report.unserved, 209);
   assert.equal(report.served + report.unserved, report.total);
   //
   // `no_table` 193 split into 148 + 45 when D7's eight OASIS entities got
@@ -171,21 +179,21 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // and did not change. So derive this from the per-entity rollup rather than
   // by adding an entity's whole site count to the moving side.
   assert.deepEqual(report.by_destination, {
-    record_store: 234, broker_family: 7, activity_trail: 3,
-    no_table: 119, no_access_contract: 74,
+    record_store: 254, broker_family: 7, activity_trail: 12,
+    no_table: 120, no_access_contract: 74,
     broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
   });
-  assert.equal(report.by_destination.no_table + report.by_destination.no_access_contract, 193);
+  assert.equal(report.by_destination.no_table + report.by_destination.no_access_contract, 194);
   // The training domain alone is more call sites than the broker family serves
   // in total, and it is `hub` — a different destination entirely.
-  assert.equal(report.by_disposition.hub, 119);
+  assert.equal(report.by_disposition.hub, 120);
   assert.equal(report.by_disposition.preserved_paused, 75);
   assert.equal(report.within_baseline, true);
 });
 
 test('every unserved entity names why, so the decision has a subject', () => {
-  const report = compare(measureDestinations(repository), JSON.parse(baseline(208)));
+  const report = compare(measureDestinations(repository), JSON.parse(baseline(209)));
   const entries = Object.entries(report.unserved_entities);
   assert.equal(entries.reduce((total, [, entry]) => total + entry.sites, 0), report.unserved);
   for (const [name, entry] of entries) {
@@ -200,9 +208,9 @@ test('every unserved entity names why, so the decision has a subject', () => {
 
 test('the baseline ratchets one way and refuses a malformed one', () => {
   const measured = measureDestinations(repository);
-  assert.equal(compare(measured, JSON.parse(baseline(208))).regressed, false);
-  assert.equal(compare(measured, JSON.parse(baseline(209))).regressed, false, 'below the ceiling passes');
-  const tightened = compare(measured, JSON.parse(baseline(207)));
+  assert.equal(compare(measured, JSON.parse(baseline(209))).regressed, false);
+  assert.equal(compare(measured, JSON.parse(baseline(210))).regressed, false, 'below the ceiling passes');
+  const tightened = compare(measured, JSON.parse(baseline(208)));
   assert.equal(tightened.regressed, true, 'a call site above the ceiling fails');
   assert.equal(tightened.within_baseline, false);
   assert.throws(() => parseBaseline('{'), /BASELINE_INVALID_JSON/);
@@ -279,8 +287,8 @@ test('the command line refuses an unknown argument and an unavailable baseline',
 test('the summary names what cannot land and stays quiet about what can', () => {
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
-  assert.match(lines[0], /452 call sites, 244 can land, 208\/208 cannot/);
-  assert.ok(lines.some(line => /no_table: 119/.test(line)));
+  assert.match(lines[0], /482 call sites, 273 can land, 209\/209 cannot/);
+  assert.ok(lines.some(line => /no_table: 120/.test(line)));
   assert.ok(lines.some(line => /no_access_contract: 74/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));
   assert.ok(!lines.some(line => /record_store/.test(line)), 'the served destinations are not the finding');

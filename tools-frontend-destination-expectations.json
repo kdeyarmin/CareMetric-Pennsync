@@ -1,6 +1,6 @@
 {
   "format": "pennsync-frontend-destination",
   "version": 1,
-  "maximum_unserved": 208,
-  "note": "Raised from 203 to 208 on 2026-09-25 because the MEASUREMENT widened, not the coupling: D83's five global-reference write sites (ComplianceRule, MedicareComplianceRule, MedicareGuideline) were counted as landable while no caller can write those tables. A rise here is otherwise a build failure; this one is the tool telling the truth about call sites that were always refused."
+  "maximum_unserved": 209,
+  "note": "Raised from 208 to 209 on 2026-10-08 by the owner's decision to turn the admin and AI screens back on: Agency Analytics' restored training section reads TrainingAssignment (dispositioned hub, so its call site has no table here). Raised earlier from 203 to 208 on 2026-09-25 because the MEASUREMENT widened, not the coupling: D83's five global-reference write sites (ComplianceRule, MedicareComplianceRule, MedicareGuideline) were counted as landable while no caller can write those tables. A rise here is otherwise a build failure."
 }
