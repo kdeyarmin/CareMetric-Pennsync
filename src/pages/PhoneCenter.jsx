@@ -18,9 +18,9 @@ import { cn } from "@/lib/utils";
 import PageContainer from "@/components/ui/PageContainer";
 
 /**
- * PhoneCenter — a nurse's hub for masked call history, callbacks, duty controls,
- * and explicit availability notices for service-only text data. Calls go through
- * the nurse's Telnyx work number so their personal cell is never exposed.
+ * PhoneCenter — a nurse's hub for texts (including scheduled texts), masked
+ * call history, callbacks and duty controls. Calls and texts go through the
+ * agency's Telnyx work number so the nurse's personal cell is never exposed.
  */
 export default function PhoneCenter() {
   const [activeTab, setActiveTab] = useState("texts");
@@ -90,7 +90,7 @@ export default function PhoneCenter() {
         icon={Phone}
         eyebrow="Communication"
         title="Phone Center"
-        description="Call patients privately through your work number. Text history and scheduling remain unavailable until the tenant broker is ready."
+        description="Text and call patients privately through your work number — your personal cell stays hidden."
         favoritePage="PhoneCenter"
         badges={headerBadges}
       />

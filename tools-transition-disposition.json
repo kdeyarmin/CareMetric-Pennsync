@@ -601,6 +601,7 @@
     "Auto Retry Failed Faxes.jsonc": "preserved_paused",
     "Check Stale Follow-Up Requests.jsonc": "preserved_paused",
     "Dispatch Scheduled Signature Reminders.jsonc": "preserved_paused",
+    "Dispatch Scheduled SMS.jsonc": "preserved_paused",
     "Nightly Outcome Measure Computation.jsonc": "preserved_paused",
     "Poll Fax Statuses.jsonc": "preserved_paused",
     "Process Inbound Referral Faxes.jsonc": "preserved_paused",

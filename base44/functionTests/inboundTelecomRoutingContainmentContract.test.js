@@ -249,9 +249,15 @@ test("every live consent broker uses composite authority while unsafe provider p
   assert.match(webhook, /console\.error\('handleTelnyxStatusWebhook failed'\)/);
   assert.doesNotMatch(webhook, /handleTelnyxStatusWebhook error:[^\n]*error\?\.message/);
 
+  // scheduleSms and dispatchScheduledSms were released 2026-10-08 and now read
+  // only the scoped consent ledger (pinned in
+  // mutableProfileAuthorizationContainmentContract.test.js).
+  for (const name of ["scheduleSms", "dispatchScheduledSms"]) {
+    const source = await readFile(new URL(`${name}/entry.ts`, FUNCTIONS_URL), "utf8");
+    assert.match(source, /loadLatestScopedSmsConsent\(/, `${name} uses the scoped consent ledger`);
+    assert.doesNotMatch(source, /SmsConsent\s*\.filter\(\{ phone_e164/, `${name} never reads a phone-only consent row`);
+  }
   const paused = [
-    ["scheduleSms", "const SCHEDULED_SMS_CREATION_PAUSED = true;"],
-    ["dispatchScheduledSms", "const SCHEDULED_SMS_DISPATCH_PAUSED = true;"],
     ["redriveFailedSms", "const SMS_REDRIVE_MIGRATION_PAUSED = true;"],
   ];
   for (const [name, literal] of paused) {

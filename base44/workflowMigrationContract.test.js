@@ -26,6 +26,14 @@ const EXPECTED = {
     schedule: { mode: 'interval', value: 15, unit: 'minutes' },
     releaseState: 'paused_signature',
   },
+  // Added 2026-10-08 when the owner released scheduled texting. It has no
+  // workflow-specific release key: the dispatcher is gated by the shared
+  // OUTBOUND_DELIVERY_RELEASE and by the scheduler auth helper.
+  'Dispatch Scheduled SMS.jsonc': {
+    target: 'dispatchScheduledSms',
+    schedule: { mode: 'interval', value: 5, unit: 'minutes' },
+    releaseState: 'live',
+  },
   'Nightly Outcome Measure Computation.jsonc': {
     target: 'dispatchNightlyOutcomeMeasures',
     legacyTarget: 'computeOutcomeMeasures',

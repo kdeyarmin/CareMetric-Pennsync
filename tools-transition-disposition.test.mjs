@@ -2131,10 +2131,17 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
   const paused = new Set(discoverPausedFunctions(repository));
   const manifest = parseManifest(
     readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
-  const flipped = ['createTelehealthToken', 'deduplicatePatients', 'dispatchScheduledSms',
+  const flipped = ['createTelehealthToken', 'deduplicatePatients',
     'generateMessageSuggestions', 'markMessageRead', 'messagingAssistant',
     'notifyUrgentMessage', 'processCompletedVisit', 'redriveFailedSms',
-    'saveOasisResponses', 'scheduleSms', 'sendMessage', 'summarizeMessageThread'];
+    'saveOasisResponses', 'sendMessage', 'summarizeMessageThread'];
+  // Two of the thirteen, scheduleSms and dispatchScheduledSms, were released
+  // by the owner on 2026-10-08 and no longer pause; they keep the
+  // `preserved_paused` disposition (Base44-hosted, no port-queue movement).
+  for (const name of ['scheduleSms', 'dispatchScheduledSms']) {
+    assert.equal(paused.has(name), false, `${name} is released`);
+    assert.equal(manifest.functions[name], 'preserved_paused');
+  }
   for (const name of flipped) {
     const source = readFileSync(
       resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
