@@ -73,7 +73,130 @@ const git = (...args) =>
   execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const paths = output => output.split('\0').filter(Boolean).sort();
 
-test('every native and packaged public asset is byte-preserved, or enumerated with a reason', () => {
+// Acquiring the baseline is part of the test, not a precondition a reader is
+// assumed to have met.
+//
+// `BASELINE` is an old commit, and a cloud container clones SHALLOW
+// (`git rev-parse --is-shallow-repository` answers true in the one this was
+// written in), so its objects can be absent. When they are, the `ls-tree`
+// below dies with a bare `fatal: not a tree object` — which names neither this
+// pin nor the clone depth — and because `test:external-integrations` is THIRD
+// in the `pnpm test` chain, the nine scripts after it never run and nothing
+// says so. An environment condition presented as an asset-drift failure, with
+// the rest of the suite hidden behind it.
+//
+// The condition is measured rather than predicted, and the measurement moved:
+// on 2026-10-01 a shallow container here had the baseline trees anyway and both
+// probes answered PRESENT; on 2026-10-08 a fresh one answered ABSENT to both,
+// and `git fetch --depth=1 origin <sha>` took about a second to fix it. So fetch
+// it. Depth is a property of the checkout, never of what this test asserts.
+//
+// Note which probe is used: the tree WALK, which is the operation the test
+// needs. `git cat-file -e <sha>^{commit}` resolves the commit object alone and
+// can answer PRESENT in a tree-filtered partial clone whose walk still fails —
+// a check weaker than the thing it stands in for, reporting the wrong answer in
+// exactly the case it exists for.
+const BASELINE_FETCH = ['fetch', '--depth=1', '--no-tags', 'origin', BASELINE];
+
+// Which git failures mean "the objects are not in this store", MEASURED rather
+// than assumed — the first version of this classifier was `status === 128` and
+// was derived from one case, the absent commit. There are two shapes, and the
+// second is the one a partial clone produces:
+//
+//   absent commit        → status 128, `fatal: not a tree object`
+//   absent SUBTREE       → status 1,   `error: Could not read <oid>`
+//
+// So a missing `ios/` tree under a present root tree exits 1, which the old
+// `=== 128` test read as NOT-absent and rethrew — escaping the fetch and the
+// stand-down both, and taking the chain down exactly as before. Everything else
+// (a signal from the timeout, ENOBUFS, a missing binary) still must NOT read as
+// absent, or the stand-down swallows a real error: the defect
+// tools-decision-register.test.mjs records against the same helper.
+const isMissingObject = error => error?.status === 128
+  || (error?.status === 1 && /could not read/i.test(String(error?.stderr ?? '')));
+
+// null when the baseline's `ios`/`public` trees can be walked here; the git
+// error when they cannot.
+//
+// `-r` is load-bearing and is the whole point: WITHOUT it this lists the root
+// tree's two entries and never reads the trees underneath, so on a store whose
+// root tree is present and whose `ios` tree is not it exits 0 and reports the
+// baseline readable, while the assertion's own `-r` walk fails. Measured on a
+// constructed store (root tree kept, `ios` tree object deleted): probe exit 0,
+// assertion exit 1. A probe weaker than the operation it stands in for reports
+// the wrong answer in exactly the case it exists for — which is what this
+// file's own comment says about `cat-file -e`, one level further down.
+function baselineUnreadable() {
+  try {
+    git('ls-tree', '-r', '--name-only', BASELINE, '--', 'ios', 'public');
+    return null;
+  } catch (error) {
+    if (!isMissingObject(error)) throw error;
+    return error;
+  }
+}
+
+// Try once to make the baseline readable.
+//
+// Returns null on success, else `{ probeError, fetchError }` — the fetch's own
+// error is CARRIED rather than discarded, because a `git fetch` exits 128
+// whether the remote refused the object or there is no network at all (both
+// measured), so its status cannot classify it and substituting the probe's
+// error would report a dead network as `fatal: not a tree object`. A wrong
+// reason inside a reported skip looks deliberate, which is why nothing catches
+// it.
+//
+// A fetch killed by the timeout, or one that never ran, is NOT an unavailable
+// baseline: it is this harness failing, so it rethrows instead of standing
+// down. The fetch is bounded and cannot block on credentials — an offline
+// container must report, not hang.
+function acquireBaseline() {
+  const probeError = baselineUnreadable();
+  if (!probeError) return null;
+  let fetchError = null;
+  try {
+    execFileSync('git', BASELINE_FETCH, {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 120_000,
+      stdio: ['ignore', 'ignore', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+  } catch (error) {
+    // Cut off (SIGTERM/SIGKILL from `timeout`) or never a git-level failure at
+    // all (ENOENT on the binary, ENOBUFS): the recovery attempt itself broke.
+    if (error?.signal || typeof error?.status !== 'number') throw error;
+    fetchError = error;
+  }
+  const stillUnreadable = baselineUnreadable();
+  return stillUnreadable ? { probeError: stillUnreadable, fetchError } : null;
+}
+
+test('every native and packaged public asset is byte-preserved, or enumerated with a reason', t => {
+  // Fetch the pinned baseline if this checkout lacks it, and say so plainly when
+  // it still cannot be read. CI clones at `fetch-depth: 0` (see ci.yml), so there
+  // the objects are always present and an unreadable baseline would be a real
+  // regression — fail. Elsewhere a stand-down names what was NOT checked rather
+  // than reading as a pass, which is the shape tools-decision-register.test.mjs
+  // settled on, and it keeps one environment condition from hiding the nine
+  // `pnpm test` scripts that follow this one.
+  const unreadable = acquireBaseline();
+  if (unreadable) {
+    const said = error => String(error?.stderr ?? '').trim() || '(nothing)';
+    const shallow = (() => { try { return git('rev-parse', '--is-shallow-repository').trim(); } catch { return 'unknown'; } })();
+    // Both errors, separately. The probe says what could not be read; the fetch
+    // says why recovering it did not work, and those are different sentences —
+    // reporting the probe's words for a dead network is how a stand-down comes
+    // to carry a reason that was never measured.
+    const detail = `baseline ${BASELINE} is not readable in this checkout (shallow=${shallow}). `
+      + `Native/public byte preservation was NOT checked. Run: git ${BASELINE_FETCH.join(' ')}. `
+      + `reading it said: ${said(unreadable.probeError)}`
+      + (unreadable.fetchError ? `; fetching it said: ${said(unreadable.fetchError)}` : '; the fetch was not attempted or reported nothing');
+    assert.ok(!process.env.CI,
+      `CI checks out full history, so an absent baseline here is a real failure, not a shallow clone: ${detail}`);
+    t.skip(detail);
+    return;
+  }
   const baseline = paths(git('ls-tree', '-r', '-z', '--name-only', BASELINE, '--', 'ios', 'public'));
   const current = paths(git('ls-files', '-z', '--', 'ios', 'public'));
   assert.equal(baseline.length, 25, 'Review baseline inventory changes explicitly.');

@@ -35,10 +35,19 @@ const round = (n) => Math.round(n);
  * @param {object} plan  buildFollowUpPlan() result ({ items, coding })
  * @param {object} [opts] { rates } — saved PDGMRateConfig.rates (merged over defaults)
  * @returns {{
- *   isEstimate: true,
+ *   available: boolean,
+ *   isEstimate: boolean,
  *   perItem: Object<string, {type:'at_risk'|'upside', low:number, high:number, note:string}>,
- *   totalAtRisk: number, totalUpsideLow: number, totalUpsideHigh: number,
- * }} perItem is keyed by item.id; items with no defensible estimate are omitted.
+ *   totalAtRisk: (number|null),
+ *   totalUpsideLow: (number|null),
+ *   totalUpsideHigh: (number|null),
+ *   reason?: string,
+ *   message?: string,
+ *   actionRequired?: string[],
+ * }} Check `available` before reading any total. When it is false the totals are
+ * null and perItem is empty, and `message` says why — that is NOT a $0 estimate,
+ * and a caller that renders it as one is the defect this flag exists to prevent.
+ * perItem is keyed by item.id; items with no defensible estimate are omitted.
  */
 export function estimateFollowUpRevenueImpact(plan, opts = {}) {
   if (!PDGM_LEGACY_SURFACES_ENABLED) {

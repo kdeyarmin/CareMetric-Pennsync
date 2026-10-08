@@ -135,6 +135,7 @@ function item(fields) {
  *   counts: {critical:number, high:number, medium:number,
  *            compliance:number, reimbursement:number, total:number},
  *   coding: object, f2f: object|null,
+ *   internal_notes: string[],
  * }}
  */
 export function buildFollowUpPlan(extractedData, opts = {}) {
