@@ -310,6 +310,7 @@
     "stampSignatureOnPDF": "preserved_paused",
     "startMaskedCall": "preserved_paused",
     "startTrainingAssignment": "hub",
+    "submitAppFeedback": "preserved_paused",
     "submitCourseFeedback": "hub",
     "submitDocumentSignatures": "preserved_paused",
     "submitFollowUpResponse": "preserved_paused",
