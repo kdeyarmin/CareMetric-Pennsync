@@ -94,9 +94,14 @@ export default function SystemHealthMonitor() {
     limit: 500,
     enabled: Boolean(probeAgencyId),
   });
+  // Listed and narrowed here rather than filtered on status: the independent
+  // backend's incident route filters only by patient or request id.
   const incidentQuery = useAgencyScopedQuery({
     queryKey: ['health-incidents'],
-    fetch: () => base44.entities.Incident.filter({ status: 'reported' }, '-created_date', 500),
+    fetch: async () => {
+      const rows = await base44.entities.Incident.list('-created_date', 500);
+      return Array.isArray(rows) ? rows.filter((row) => row?.status === 'reported') : rows;
+    },
   });
   const visitAggregatesAvailable = visitQuery.isSuccess
     && Array.isArray(visitQuery.data)
