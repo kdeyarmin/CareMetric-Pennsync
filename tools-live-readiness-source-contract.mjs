@@ -375,7 +375,6 @@ const CONTRACT_TEST_PATHS = Object.freeze([
 
 const REFERRAL_BROWSER_PATHS = Object.freeze([
   "src/components/clinical/OASISQuickUpdate.jsx",
-  "src/components/dashboard/OverdueFollowUpsWidget.jsx",
   "src/components/documents/ReferralDocumentViewer.jsx",
   "src/components/hub-tabs/ReferralAdmissionNote.jsx",
   "src/components/referral/DocumentToTriageMapper.jsx",

@@ -4151,7 +4151,7 @@ different kinds of work:
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at eight consecutive heads. Across the
+  **This bullet has now been re-derived at nine consecutive heads. Across the
   first five every one of its six figures moved, reversing a finding stated in
   its own prose three times; at the sixth, seventh and eighth only the served
   read pair did, which are the first heads where re-deriving the whole bullet

@@ -744,6 +744,15 @@ function notificationPayload(
     },
     is_read: false,
     dismissed: false,
+    // Do NOT repoint or remove this `action_url`, although the route it names
+    // was removed from the app. `notificationMatches` below compares it EXACTLY
+    // against the stored row, so changing the value makes every notification
+    // already written mismatch, and a mismatch is not a benign re-render: it
+    // throws 409 and the capability stops working for that referral until the
+    // rows are migrated. The same function matches `message` LOOSELY and says
+    // why in its own comment - "presentation, not the immutable identity used
+    // for reconciliation" - so the code already tells you which side this field
+    // is on. Removing the dead link means migrating the rows first.
     action_url: `/ReferralFollowUp?id=${encodeURIComponent(token.referral_id)}`,
   };
 }

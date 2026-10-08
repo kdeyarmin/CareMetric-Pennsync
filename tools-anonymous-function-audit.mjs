@@ -17,8 +17,13 @@ const unavailableExpectations = JSON.parse(readFileSync(
   new URL('./tools-anonymous-function-expectations.json', import.meta.url), 'utf8',
 ));
 
-export async function auditAnonymousSource(source, name, payload = {}) {
+// A bodyless method may not carry one: `new Request` throws rather than dropping
+// it, which would turn a method sweep into an execution_error.
+const bodyless = (method) => method === 'GET' || method === 'HEAD';
+
+export async function auditAnonymousSource(source, name, payload = {}, { method = 'POST' } = {}) {
   const operations = [];
+  const environmentKeys = [];
   let interceptedNetworkAttempts = 0;
   const rejectOperation = path => {
     operations.push(path);
@@ -47,7 +52,20 @@ export async function auditAnonymousSource(source, name, payload = {}) {
       });
       return provider;
     },
-    Deno: { env: { get: key => key === 'INTERNAL_FN_SECRET' ? 'synthetic-audit-secret-never-sent' : undefined }, serve: callback => { handler = callback; } },
+    // Every environment read goes through this one accessor, at module scope as
+    // well as inside the handler, so recording the key here is the complete set
+    // of values whose answer could differ in a deployed environment. A consumer
+    // comparing this result with a running deployment needs that: a refusal a
+    // release variable can open is not evidence about the deployed code.
+    Deno: {
+      env: {
+        get: key => {
+          environmentKeys.push(String(key));
+          return key === 'INTERNAL_FN_SECRET' ? 'synthetic-audit-secret-never-sent' : undefined;
+        },
+      },
+      serve: callback => { handler = callback; },
+    },
     Request, Response, Headers, URL, URLSearchParams, TextEncoder, TextDecoder,
     AbortController, AbortSignal, Blob, FormData, crypto: webcrypto, atob, btoa,
     fetch: () => { interceptedNetworkAttempts += 1; return rejectOperation('network.fetch'); },
@@ -63,10 +81,10 @@ export async function auditAnonymousSource(source, name, payload = {}) {
   try {
     const code = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022', logLevel: 'silent' }).code;
     runInNewContext(code, context, { timeout: 1000, filename: `${name}.ts` });
-    if (typeof handler !== 'function') return { name, status, outcome: 'handler_not_captured', operations, unexpectedOperations: operations, interceptedNetworkAttempts, safeNegativeResult: false, importNames };
-    const req = new Request(`https://audit.invalid/functions/${name}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-    });
+    if (typeof handler !== 'function') return { name, status, outcome: 'handler_not_captured', operations, unexpectedOperations: operations, interceptedNetworkAttempts, safeNegativeResult: false, importNames, environmentKeys: [...new Set(environmentKeys)] };
+    const req = new Request(`https://audit.invalid/functions/${name}`, bodyless(method)
+      ? { method }
+      : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     let timeout;
     try {
       const response = await Promise.race([
@@ -99,12 +117,13 @@ export async function auditAnonymousSource(source, name, payload = {}) {
   const unexpectedOperations = operations.filter(path => !(name === 'handleTelnyxStatusWebhook'
     && path === 'entities.IntegrationSecret.filter' && expectedUnavailable));
   return { name, status, outcome, responseCode, authChecks, operations: [...new Set(operations)],
+    environmentKeys: [...new Set(environmentKeys)],
     interceptedNetworkAttempts, unexpectedOperations: [...new Set(unexpectedOperations)],
     safeNegativeResult: (outcome === 'rejected' || retirementNoop || expectedUnavailable) && !unexpectedOperations.length,
     importNames: [...new Set(importNames)] };
 }
 
-export async function auditAnonymousFunctions(root = process.cwd(), payload = {}, { readSource = readFileSync } = {}) {
+export async function auditAnonymousFunctions(root = process.cwd(), payload = {}, { readSource = readFileSync, method = 'POST' } = {}) {
   const directory = join(root, 'base44/functions');
   const results = [];
   const discoveryErrors = [];
@@ -122,16 +141,21 @@ export async function auditAnonymousFunctions(root = process.cwd(), payload = {}
       if (!lstatSync(parent).isDirectory() || !lstatSync(entry).isFile()) throw new Error('ENTRY_NOT_REGULAR_FILE');
       const source = readSource(entry, 'utf8');
       if (typeof source !== 'string' || !source.trim()) throw new Error('ENTRY_EMPTY_OR_INVALID');
-      results.push(await auditAnonymousSource(source, name, payload));
+      results.push(await auditAnonymousSource(source, name, payload, { method }));
     } catch {
       // Never silently skip an entry. Return a named failing result without
       // printing filesystem errors that could contain private paths/source.
       discoveryErrors.push({ name, code: 'FUNCTION_ENTRY_UNREADABLE' });
       results.push({ name, status: null, outcome: 'entry_unreadable', operations: [],
-        unexpectedOperations: [], interceptedNetworkAttempts: 0, safeNegativeResult: false });
+        unexpectedOperations: [], interceptedNetworkAttempts: 0, safeNegativeResult: false,
+        environmentKeys: [] });
     }
   }
-  return { scope: 'isolated no-session POST with synthetic payload; SDK and fetch calls intercepted',
+  // The method and whether a payload was sent are both part of what was asked,
+  // so neither is described from a constant: a GET carries no body at all, and
+  // a scope line claiming a synthetic payload for one would be false.
+  return { scope: `isolated no-session ${method} ${bodyless(method) ? 'with no body' : 'with synthetic payload'}`
+      + '; SDK and fetch calls intercepted',
     measurementBoundary: 'Intercepted calls in this cooperative repository-source test harness; not a process/network security boundary or hosted traffic measurement.',
     discoveredFunctionNames, discoveryErrors, total: results.length,
     byOutcome: Object.fromEntries([...new Set(results.map(row => row.outcome))].map(key => [key, results.filter(row => row.outcome === key).length])),
