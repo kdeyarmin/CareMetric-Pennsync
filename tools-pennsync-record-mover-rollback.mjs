@@ -34,6 +34,8 @@ export class RollbackError extends Error {
 }
 
 const rowKey = (r) => `${r.table}|${r.source_app_id}|${r.id}`;
+/** A PostgreSQL error's five-character SQLSTATE, or null: a code, never a message. */
+const sqlstateOf = (error) => (typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : null);
 
 /** Compare a new plan's rows with the rows of the last receipt. Hashes and ids only. */
 export function planDelta({ landing, receipt }) {
@@ -86,9 +88,10 @@ async function referenceColumns(db, inReceipt) {
  * The receipt entries still marked `deleted` that a row which is NOT being deleted
  * points at: a receipt row that stays, or a row created since the run, which no receipt
  * names. Asked of the store itself, one reference column at a time, within one source
- * app, since an id is only unique within one.
+ * app, since an id is only unique within one. `at` is told each referencing table
+ * before it is queried, so a refusal names it.
  */
-async function pointedAt({ db, references, ordered, outcomes, byKey }) {
+async function pointedAt({ db, references, ordered, outcomes, byKey, at }) {
   const doomed = new Map();
   for (const e of ordered) {
     if (outcomes.get(rowKey(e)) !== 'deleted') continue;
@@ -99,6 +102,7 @@ async function pointedAt({ db, references, ordered, outcomes, byKey }) {
   for (const { table, column, target } of references) {
     for (const [app, ids] of doomed.get(target) ?? []) {
       const going = doomed.get(table)?.get(app) ?? [];
+      at(table);
       const res = await db.query(`select distinct r.${q(column)}::text ref from ${q(SCHEMA)}.${q(table)} r where r.source_app_id = $1 and r.${q(column)}::text = any($2::text[]) and not (r.id = any($3::text[]))`, [app, ids, going]);
       for (const { ref } of res.rows) held.push(byKey.get(`${target}|${app}|${ref}`));
     }
@@ -132,10 +136,14 @@ export async function rollbackRun({ db, receipt, tableWaves, tables, dryRun = fa
   const inReceipt = new Set(receipt.entries.map((e) => e.table));
   const ordered = [...receipt.entries].sort((a, b) => tableWaves.get(b.table) - tableWaves.get(a.table) || (rowKey(a) < rowKey(b) ? -1 : 1));
   const outcomes = new Map();
+  // Where a refusal happened, for the operator: never a value, since rows hold PHI.
+  let phase = 'classify';
+  let table = null;
   await db.query('begin');
   try {
     // Phase 1: classify every entry, locking the rows it may delete.
     for (const e of ordered) {
+      table = e.table;
       const T = `${q(SCHEMA)}.${q(e.table)}`;
       const held = await db.query(`select ${HASH_SQL} h from ${T} r where r.source_app_id = $1 and r.id = $2 for update`, [e.source_app_id, e.id]);
       let outcome;
@@ -150,22 +158,32 @@ export async function rollbackRun({ db, receipt, tableWaves, tables, dryRun = fa
     // receipt row that stays. A parent kept in one pass is a row that stays in the next,
     // which is what makes it transitive; each pass keeps at least one more entry, so the
     // passes end.
+    phase = 'dependents';
+    table = null;
     const byKey = new Map(ordered.map((e) => [rowKey(e), e]));
     const references = await referenceColumns(db, inReceipt);
-    for (let held; (held = await pointedAt({ db, references, ordered, outcomes, byKey })).length;) {
+    const at = (t) => { table = t; };
+    for (let held; (held = await pointedAt({ db, references, ordered, outcomes, byKey, at })).length;) {
+      table = null;
       for (const e of held) outcomes.set(rowKey(e), 'kept_for_dependent');
     }
     // Phase 3: delete what is still marked, children first.
+    phase = 'delete';
     for (const e of ordered) {
       if (outcomes.get(rowKey(e)) === 'deleted') {
+        table = e.table;
         await db.query(`delete from ${q(SCHEMA)}.${q(e.table)} where source_app_id = $1 and id = $2`, [e.source_app_id, e.id]);
       }
     }
+    phase = dryRun ? 'dry_run_rollback' : 'commit';
+    table = null;
     await db.query(dryRun ? 'rollback' : 'commit');
   } catch (e) {
     try { await db.query('rollback'); } catch { /* already closed out */ }
     if (e instanceof RollbackError) throw e;
-    throw new RollbackError('rollback_refused');
+    // The whole run is undone either way; this says where and how it was refused. Only
+    // the SQLSTATE travels, never the message, which can quote a row's values.
+    throw new RollbackError('rollback_refused', { phase, table, sqlstate: sqlstateOf(e) });
   }
   const entries = ordered.map((e) => ({ table: e.table, source_app_id: e.source_app_id, id: e.id, outcome: outcomes.get(rowKey(e)) }));
   const counts = {};

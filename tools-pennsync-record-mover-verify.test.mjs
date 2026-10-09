@@ -226,3 +226,22 @@ test('visibility: a planned table whose rows carry no agency is judged through t
   assert.ok(visits.every((x) => x.missing === 0 && x.leaked === 0) && visits.some((x) => x.expected > 0));
   assert.ok(!visibility.unclassified_tables.includes('visit'));
 });
+
+test('sameValue compares types and never coerces a number', () => {
+  // Each of these was reported equal before (Number("") is 0, Number([]) is 0,
+  // Number("0x10") is 16), which let a wrong stored value pass as content-equal.
+  for (const [planned, stored] of [
+    [0, ''], [0, ' '], [0, []], [16, '0x10'], [5, '5'], ['5', 5], [1, true], [0, false],
+    [{ count: 1 }, { count: '1' }], [[1, 2], ['1', '2']],
+  ]) {
+    assert.equal(sameValue(planned, stored), false, `${JSON.stringify(planned)} vs ${JSON.stringify(stored)}`);
+  }
+  // What the store legitimately hands back for what was planned still matches.
+  for (const [planned, stored] of [
+    [5, 5], [1.25, 1.25], [0, 0], ['text', 'text'], [true, true], [null, null], [null, undefined],
+    ['2026-01-07T09:30:00.000Z', '2026-01-07T09:30:00+00:00'],
+    [{ count: 1, tags: ['a'] }, { tags: ['a'], count: 1 }], [[{ code: 'Z00.0' }], [{ code: 'Z00.0' }]],
+  ]) {
+    assert.equal(sameValue(planned, stored), true, `${JSON.stringify(planned)} vs ${JSON.stringify(stored)}`);
+  }
+});

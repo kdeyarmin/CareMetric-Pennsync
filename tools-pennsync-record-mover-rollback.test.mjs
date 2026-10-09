@@ -195,3 +195,64 @@ test('a conflicted row is still in the comparison, not reported as new', async (
   d = planDelta({ landing: landing.filter((r) => r !== p), receipt: conflicted });
   assert.deepEqual(d.removed_from_source.map((x) => x.id), [p.id]);
 });
+
+test('a refused delete says the phase, table and SQLSTATE, never a value, and undoes the whole run', async () => {
+  await wipe();
+  const receipt = await load();
+  const before = await total();
+  // The store refuses with a message that quotes the row, as a real constraint error does.
+  await db.exec(`
+    create function pennsync_records.refuse_patient_delete() returns trigger language plpgsql as $$
+    begin raise exception using errcode = '42501', message = 'refusing to delete ' || old.last_name; end $$;
+    create trigger refuse_patient_delete before delete on pennsync_records.patient
+      for each row execute function pennsync_records.refuse_patient_delete();`);
+  try {
+    await assert.rejects(rollbackRun({ db, receipt, tableWaves, tables }), (e) => {
+      assert.ok(e instanceof RollbackError);
+      assert.equal(e.code, 'rollback_refused');
+      assert.equal(e.phase, 'delete');
+      assert.equal(e.table, 'patient');
+      assert.equal(e.sqlstate, '42501');
+      const said = JSON.stringify({ ...e, message: e.message });
+      assert.doesNotMatch(said, /Alpha|Beta|Gamma|refusing to delete/, 'no row value and no store message on the error');
+      return true;
+    });
+    assert.equal(await total(), before, 'children deleted before the refusal are restored with it');
+  } finally {
+    await db.exec(`drop trigger refuse_patient_delete on pennsync_records.patient;
+      drop function pennsync_records.refuse_patient_delete();`);
+  }
+});
+
+test('a refused dependent scan names the referencing table it was scanning', async () => {
+  await wipe();
+  const receipt = await load();
+  const before = await total();
+  // The store refuses the scan of visit rows pointing at rows about to go, with a
+  // message that quotes a value. PGlite runs as a superuser, so the refusal is injected
+  // at the connection rather than raised by a policy.
+  // Matched on the scan's FROM and WHERE alone, so the classify read (`r.id = $2`) and
+  // the delete (no alias) never match, whatever the scan selects.
+  const scanned = /from "pennsync_records"\."visit" r where r\.source_app_id = \$1 and r\."[a-z_]+"::text = any/;
+  let refused = 0;
+  const refusing = {
+    query: (sql, params) => {
+      if (scanned.test(sql)) {
+        refused += 1;
+        return Promise.reject(Object.assign(new Error('could not obtain lock on row for Alpha'), { code: '55P03' }));
+      }
+      return db.query(sql, params);
+    },
+  };
+  await assert.rejects(rollbackRun({ db: refusing, receipt, tableWaves, tables }), (e) => {
+    assert.ok(e instanceof RollbackError);
+    assert.equal(e.code, 'rollback_refused');
+    assert.equal(e.phase, 'dependents');
+    assert.equal(e.table, 'visit', 'the referencing table being scanned, not null');
+    assert.equal(e.sqlstate, '55P03');
+    assert.doesNotMatch(JSON.stringify({ ...e, message: e.message }), /Alpha|could not obtain/);
+    return true;
+  });
+  assert.equal(refused, 1, 'the scan of visit was reached and refused once');
+  assert.equal(await total(), before, 'nothing was deleted');
+});
