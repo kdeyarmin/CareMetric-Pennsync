@@ -887,12 +887,18 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
   const publicKeyB64 = rawEd25519PublicKeyB64(publicKey);
   const entityCalls = [];
   const fetchCalls = [];
+  // Call events are claimed by envelope id in UserActivity before they act, so
+  // those rows are remembered and answered by exact match.
+  const claimRows = [];
   const entities = new Proxy({}, {
     get: (_target, nameValue) => {
       const name = String(nameValue);
       return {
         filter: async (...args) => {
           entityCalls.push({ name, operation: "filter", args });
+          if (name === "UserActivity") {
+            return claimRows.filter((row) => Object.entries(args[0] || {}).every(([key, value]) => row[key] === value));
+          }
           if (name === "IntegrationSecret") {
             return [{
               id: "integration_1",
@@ -912,7 +918,9 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
         },
         create: async (...args) => {
           entityCalls.push({ name, operation: "create", args });
-          return { id: `${name}_1`, ...args[0] };
+          const created = { id: `${name}_${entityCalls.length}`, created_date: new Date(Date.now() + entityCalls.length).toISOString(), ...args[0] };
+          if (name === "UserActivity") claimRows.push(created);
+          return created;
         },
         update: async (...args) => {
           entityCalls.push({ name, operation: "update", args });
@@ -985,6 +993,7 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
 
     const inboundCallResponse = await handler(signedWebhook(privateKey, {
       data: {
+        id: "inbound-call-event-1",
         event_type: "call.initiated",
         payload: {
           call_control_id: "inbound-call-1",
@@ -1016,6 +1025,7 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
     })).toString("base64");
     const continuationResponse = await handler(signedWebhook(privateKey, {
       data: {
+        id: "ringdown-hangup-event-1",
         event_type: "call.hangup",
         payload: {
           call_control_id: "ringdown-leg-1",
@@ -1047,20 +1057,23 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
     assert.equal(faxDeliveryResponse.status, 404, "outbound fax status reaches its existing reconciliation handler");
 
     // Outbound masked-call continuation remains live and is not mistaken for
-    // inbound IVR merely because it is a call event.
+    // inbound IVR merely because it is a call event. The nurse leg is screened,
+    // so the bridge follows the detection verdict.
     const maskedBridgeState = Buffer.from(JSON.stringify({
       t: "masked_bridge",
       bridge_to: "+12155550144",
       caller_id: "+12155550100",
       call_log_id: "CallLog_1",
+      amd: true,
     })).toString("base64");
     const outboundCallResponse = await handler(signedWebhook(privateKey, {
       data: {
-        event_type: "call.answered",
+        id: "outbound-call-event-1",
+        event_type: "call.machine.detection.ended",
         payload: {
           call_control_id: "outbound-call-1",
-          direction: "outgoing",
           client_state: maskedBridgeState,
+          result: "human",
         },
       },
     }));
@@ -1078,11 +1091,12 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
     );
     const pausedOutboundCall = await pausedHandler(signedWebhook(privateKey, {
       data: {
-        event_type: "call.answered",
+        id: "outbound-call-event-paused",
+        event_type: "call.machine.detection.ended",
         payload: {
           call_control_id: "outbound-call-paused",
-          direction: "outgoing",
           client_state: maskedBridgeState,
+          result: "human",
         },
       },
     }));

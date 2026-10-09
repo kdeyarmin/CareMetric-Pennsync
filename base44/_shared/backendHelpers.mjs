@@ -91,6 +91,18 @@ function esignHelperSource(name) {
   return readFileSync(new URL(`./esign/${name}.js`, import.meta.url), 'utf8').trimEnd();
 }
 
+// The reference shape Core.UploadPrivateFile returns (and CreateFileSignedUrl
+// accepts). One definition, inlined on its own as privateFileUri or as the head
+// of signatureFileAndDeadline; a function inlines one block or the other, never
+// both. src/components/voice/voicemailPlayback.js mirrors it for the browser and
+// is drift-guarded against this source.
+const PRIVATE_FILE_URI_SOURCE = `function isPrivateFileUri(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
+    && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\\/private\\/[a-f0-9]{24}\\/[^?#]+$/.test(value));
+}`;
+
 export const SHARED_HELPERS = {
 
   esignCore: esignHelperSource('core'),
@@ -398,12 +410,8 @@ function retainedSignatureAuditKey(keyring, id) {
     throw error;
   }
 }`,
-  signatureFileAndDeadline: `function isPrivateFileUri(value) {
-  return typeof value === 'string' && value.length > 0 && value.length <= 4096
-    && !/\\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
-    && (value.startsWith('private/') || value.startsWith('private://')
-      || /^mp\\/private\\/[a-f0-9]{24}\\/[^?#]+$/.test(value));
-}
+  privateFileUri: PRIVATE_FILE_URI_SOURCE,
+  signatureFileAndDeadline: `${PRIVATE_FILE_URI_SOURCE}
 
 function dueDateEnd(value) {
   if (typeof value !== 'string') return null;

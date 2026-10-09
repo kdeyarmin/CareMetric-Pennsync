@@ -80,3 +80,26 @@ const UNANSWERED_CAUSES = new Set(UNANSWERED_HANGUP_CAUSES);
 export function isUnansweredHangup(hangupCause) {
   return UNANSWERED_CAUSES.has(String(hangupCause || "").toLowerCase());
 }
+
+/**
+ * True when a still-ringing leg ended because the CALLER hung up: Telnyx
+ * cancels the leg (`originator_cancel`) and `hangup_source` names the side that
+ * ended it (call.hangup: `caller` | `callee` | `unknown`). Only the caller side
+ * is an abandonment. Anything else keeps a ringdown moving, because stopping it
+ * on a live caller strands them on a silent answered leg, while advancing on a
+ * caller who has gone only costs a transfer Telnyx refuses.
+ */
+export function isCallerAbandonedHangup(hangupCause, hangupSource) {
+  return String(hangupCause || "").toLowerCase() === "originator_cancel"
+    && String(hangupSource || "").toLowerCase() === "caller";
+}
+
+/**
+ * Whether a ringdown leg is screened with answering-machine detection. Only a
+ * nurse's personal cell is: a patient must never be left in a nurse's own
+ * voicemail. The office line is a legitimate destination even when its phone
+ * tree or office voicemail answers, so it is never screened.
+ */
+export function screensRingdownTarget(target) {
+  return !!target && (target.kind === "primary" || target.kind === "backup");
+}

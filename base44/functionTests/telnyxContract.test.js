@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile, unlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -418,6 +418,13 @@ test("startMaskedCall posts the Telnyx Call Control create-call contract", async
   assert.equal(call.body.to, "+12155550111"); // ring the nurse's cell first
   assert.equal(call.body.from, "+12155550100"); // present the work number
   assert.ok(typeof call.body.client_state === "string" && call.body.client_state.length > 0, "carries client_state for the bridge");
+  // The nurse's cell is screened, so the patient is never transferred into the
+  // nurse's voicemail; the bridge waits for the verdict (state.amd).
+  assert.equal(call.body.answering_machine_detection, "detect");
+  assert.deepEqual(call.body.answering_machine_detection_config, { total_analysis_time_millis: 5000 });
+  const state = JSON.parse(Buffer.from(call.body.client_state, "base64").toString("utf8"));
+  assert.equal(state.t, "masked_bridge");
+  assert.equal(state.amd, true);
 });
 
 // ============================ NUMBER PROVISIONING ============================
@@ -2251,191 +2258,631 @@ test("ambiguous outbound fax identity and legacy URL rows never receive a retry 
 const b64json = (o) => Buffer.from(JSON.stringify(o)).toString("base64");
 const decodeState = (b64) => JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
 
-test("handleTelnyxStatusWebhook verifies Ed25519 and bridges an answered masked call", async () => {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const pubB64 = rawEd25519PublicKeyB64(publicKey);
-
-  const clientState = Buffer.from(JSON.stringify({ t: "masked_bridge", bridge_to: "+12155550144", caller_id: "+12155550100", call_log_id: "CallLog_1" })).toString("base64");
-  const event = { data: { event_type: "call.answered", payload: { call_control_id: "cc_9", direction: "outgoing", client_state: clientState } } };
-  const rawBody = JSON.stringify(event);
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const signature = nodeSign(null, Buffer.from(`${timestamp}|${rawBody}`), privateKey).toString("base64");
-
-  const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 200, json: { data: {} } }) },
-  ]);
-  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })], CallLog: [{ id: "CallLog_1", status: "ringing" }] } }),
-    fetchImpl: impl,
-  });
-
-  const res = await handler(new Request("https://app/functions/handleTelnyxStatusWebhook", {
-    method: "POST",
-    headers: { "telnyx-signature-ed25519": signature, "telnyx-timestamp": timestamp, "content-type": "application/json" },
-    body: rawBody,
-  }));
-  assert.equal(res.status, 200, "valid signature is accepted");
-
-  const transfer = calls.find((c) => /\/v2\/calls\/cc_9\/actions\/transfer$/.test(c.url));
-  assert.ok(transfer, "issued a Call Control transfer to bridge the patient");
-  assert.equal(transfer.body.to, "+12155550144");
-  assert.equal(transfer.body.from, "+12155550100");
-});
-
-test("inbound call answers first, then bridges an on-duty nurse on call.answered", async () => {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const pubB64 = rawEd25519PublicKeyB64(publicKey);
-  const base = () => makeBase44({
-    data: {
-      IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
-      User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
-      // Disable the 5pm auto-off so this bridge assertion is time-independent.
-      AgencySettings: [{ auto_off_duty_enabled: false }], CallLog: [],
+// ---- Voice harness ----
+// Call events are claimed by their envelope id (data.id) in UserActivity before
+// they act, so the voice fake REMEMBERS what it is given and answers exact-match
+// filters, which the shared makeBase44 (a fixed answer per entity) cannot.
+function makeVoiceBase44({ data = {}, writes = [], uploads = [], failClaimReads = false, uploadHangs = false, claimBarrier = 0 } = {}) {
+  // claimBarrier holds the first N claim reads until all N have arrived, so N
+  // deliveries of one event all see "no claim yet" -- the race the
+  // earliest-claim-wins rule exists for, which an in-memory store never
+  // produces on its own.
+  const waiting = [];
+  let clock = Date.parse("2026-10-09T12:00:00.000Z");
+  let serial = 0;
+  const matches = (row, query = {}) => Object.entries(query || {}).every(([key, value]) => row?.[key] === value);
+  const sorted = (rows, sort) => {
+    if (typeof sort !== "string") return rows;
+    const direction = sort.startsWith("-") ? -1 : 1;
+    const field = sort.replace(/^-/, "");
+    return [...rows].sort((a, b) => direction * String(a?.[field] ?? "").localeCompare(String(b?.[field] ?? "")));
+  };
+  const limited = (rows, limit) => (Number.isInteger(limit) ? rows.slice(0, limit) : rows);
+  const entity = (name) => ({
+    filter: async (query = {}, sort, limit) => {
+      if (name === "UserActivity" && failClaimReads) throw new Error("store unavailable");
+      if (name === "UserActivity" && waiting.length < claimBarrier) {
+        await new Promise((release) => {
+          waiting.push(release);
+          if (waiting.length === claimBarrier) for (const go of waiting) go();
+        });
+      }
+      return limited(sorted((data[name] || []).filter((row) => matches(row, query)), sort), limit);
+    },
+    list: async (sort, limit) => limited(sorted(data[name] || [], sort), limit),
+    create: async (row) => {
+      clock += 1;
+      serial += 1;
+      const created = { id: `${name}_${serial}`, created_date: new Date(clock).toISOString(), ...row };
+      (data[name] ||= []).push(created);
+      writes.push({ entity: name, op: "create", row: created });
+      return created;
+    },
+    update: async (id, patch) => {
+      const rows = data[name] || [];
+      const index = rows.findIndex((row) => row.id === id);
+      if (index >= 0) rows[index] = { ...rows[index], ...patch };
+      writes.push({ entity: name, op: "update", id, patch });
+      return { id, ...patch };
     },
   });
+  const cache = {};
+  const entities = new Proxy({}, { get: (_t, name) => (cache[name] ||= entity(String(name))) });
+  const Core = {
+    UploadPrivateFile: async ({ file }) => {
+      if (uploadHangs) return new Promise(() => {});
+      uploads.push({ name: file.name, type: file.type, bytes: new Uint8Array(await file.arrayBuffer()) });
+      return { file_uri: `private/voicemail/${uploads.length}.mp3` };
+    },
+  };
+  return { auth: { me: async () => ({}) }, entities, asServiceRole: { entities, integrations: { Core } } };
+}
 
+let voiceEventSerial = 0;
+const voiceEvent = (eventType, payload, id = `voice-event-${++voiceEventSerial}`) => ({
+  data: { id, event_type: eventType, occurred_at: "2026-10-09T12:00:00.000Z", payload },
+});
+const isAction = (call) => /\/v2\/calls\/[^/]+\/actions\//.test(call.url);
+const actionsOf = (calls) => calls.filter(isAction);
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// Load the webhook against the voice fake. Every Call Control action answers 200
+// unless an earlier route says otherwise; `binary` answers a non-JSON download.
+async function loadVoiceWebhook({ data = {}, routes = [], binary = null, failClaimReads = false, uploadHangs = false, copyBudgetMs = null, claimBarrier = 0 } = {}) {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  data.IntegrationSecret ||= [activeTelnyxSecret({ public_key: pubB64 })];
+  const writes = [];
+  const uploads = [];
+  const client = makeVoiceBase44({ data, writes, uploads, failClaimReads, uploadHangs, claimBarrier });
+  const base = makeFetch([
+    ...routes,
+    { match: (u) => /\/actions\//.test(u), respond: () => ({ status: 200, json: { data: {} } }) },
+  ]);
+  const calls = base.calls;
+  const impl = async (url, init = {}) => {
+    const answer = binary?.(String(url), init);
+    if (answer) {
+      calls.push({ url: String(url), method: init.method || "GET", headers: init.headers || {}, body: null, init });
+      return answer;
+    }
+    return base.impl(url, init);
+  };
+  // A budget test shrinks the voicemail copy budget in a temporary copy of the
+  // entry, so a timeout is exercised in milliseconds rather than seconds.
+  let entry = "../functions/handleTelnyxStatusWebhook/entry.ts";
+  let scratch = null;
+  if (copyBudgetMs != null) {
+    const source = await readFile(new URL(entry, import.meta.url), "utf8");
+    const budget = "const VOICEMAIL_COPY_BUDGET_MS = 5000;";
+    assert.ok(source.includes(budget), "the voicemail copy budget is where this harness expects it");
+    scratch = await mkdtemp(join(tmpdir(), "voice-budget-"));
+    await mkdir(join(scratch, "handleTelnyxStatusWebhook"));
+    entry = pathToFileURL(join(scratch, "handleTelnyxStatusWebhook", "entry.ts")).href;
+    await writeFile(new URL(entry), source.replace(budget, `const VOICEMAIL_COPY_BUDGET_MS = ${copyBudgetMs};`));
+  }
+  try {
+    const handler = await loadHandler(entry, { env: {}, makeClient: () => client, fetchImpl: impl });
+    return { send: (event) => handler(signedWebhook(privateKey, event)), calls, data, writes, uploads };
+  } finally {
+    if (scratch) await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+const maskedBridgeState = (overrides = {}) => b64json({
+  t: "masked_bridge", bridge_to: "+12155550144", caller_id: "+12155550100", call_log_id: "CallLog_1", amd: true, ...overrides,
+});
+const outboundLog = (overrides = {}) => ({
+  id: "CallLog_1", direction: "outbound", status: "ringing", provider_call_id: "cc_nurse", ...overrides,
+});
+const inboundLog = (overrides = {}) => ({
+  id: "CallLog_in", direction: "inbound", status: "in_progress", provider_call_id: "cc_caller",
+  displayed_number: "+12155550100", from_number: "+13125550182", ...overrides,
+});
+const ringdownTargets = [
+  { to: "+12155550111", kind: "primary" },
+  { to: "+12155550122", kind: "backup" },
+  { to: "+17244650440", kind: "office" },
+];
+const ringdownLegState = (overrides = {}) => b64json({
+  t: "ringdown", idx: 0, callerId: "+12155550100", a_leg: "cc_caller", targets: ringdownTargets, ...overrides,
+});
+
+test("handleTelnyxStatusWebhook verifies Ed25519 and bridges a masked call a person answered", async () => {
+  const v = await loadVoiceWebhook({ data: { CallLog: [outboundLog()] } });
+  const answered = await v.send(voiceEvent("call.answered", { call_control_id: "cc_nurse", direction: "outgoing", client_state: maskedBridgeState() }));
+  assert.equal(answered.status, 200, "valid signature is accepted");
+  assert.equal(actionsOf(v.calls).length, 0, "an answer alone dials nobody: the answering leg may be the nurse's voicemail");
+  assert.equal(v.data.CallLog[0].status, "in_progress");
+
+  for (const [result, leg] of [["human", "cc_nurse"], ["not_sure", "cc_nurse_2"]]) {
+    await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: leg, client_state: maskedBridgeState(), result }));
+    const transfer = v.calls.find((c) => c.url === `https://api.telnyx.com/v2/calls/${leg}/actions/transfer`);
+    assert.ok(transfer, `a ${result} verdict bridges the patient`);
+    assert.equal(transfer.body.to, "+12155550144");
+    assert.equal(transfer.body.from, "+12155550100", "the patient sees the work number");
+    // The patient leg carries a state of its own, on whichever leg Telnyx stamps it.
+    assert.deepEqual(decodeState(transfer.body.target_leg_client_state), { t: "masked_patient_leg", call_log_id: "CallLog_1", nurse_leg: leg });
+    assert.equal(transfer.body.client_state, transfer.body.target_leg_client_state);
+    assert.match(transfer.body.command_id, UUID_SHAPE);
+  }
+});
+
+test("a machine verdict on the nurse leg hangs up and never dials the patient", async () => {
+  const v = await loadVoiceWebhook({ data: { CallLog: [outboundLog({ status: "in_progress" })] } });
+  const res = await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_nurse", client_state: maskedBridgeState(), result: "machine" }));
+  assert.equal((await res.json()).machine, true);
+  assert.deepEqual(actionsOf(v.calls).map((c) => c.url), ["https://api.telnyx.com/v2/calls/cc_nurse/actions/hangup"]);
+  assert.equal(v.data.CallLog[0].status, "failed");
+  assert.match(v.data.CallLog[0].failure_reason, /^Reached voicemail/);
+  // The nurse leg's trailing hangup cannot regress the failure to 'completed'.
+  await v.send(voiceEvent("call.hangup", { call_control_id: "cc_nurse", client_state: maskedBridgeState(), hangup_cause: "normal_clearing" }));
+  assert.equal(v.data.CallLog[0].status, "failed");
+});
+
+test("a masked call placed before detection existed still bridges on call.answered", async () => {
+  const v = await loadVoiceWebhook({ data: { CallLog: [outboundLog()] } });
+  await v.send(voiceEvent("call.answered", { call_control_id: "cc_nurse", direction: "outgoing", client_state: maskedBridgeState({ amd: undefined }) }));
+  const transfer = v.calls.find((c) => /\/cc_nurse\/actions\/transfer$/.test(c.url));
+  assert.ok(transfer, "a call in flight across the deploy is not left waiting for a verdict nobody requested");
+  // ...and a stray verdict for it is ignored rather than bridging twice.
+  await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_nurse", client_state: maskedBridgeState({ amd: undefined }), result: "human" }));
+  assert.equal(v.calls.filter((c) => /\/actions\/transfer$/.test(c.url)).length, 1);
+});
+
+test("a failed masked-bridge transfer falls back to speak+hangup and marks the call failed", async () => {
+  // Transfer returns 422 (e.g. invalid patient number) → must not strand the leg.
+  const v = await loadVoiceWebhook({
+    data: { CallLog: [outboundLog({ id: "CallLog_9", status: "in_progress" })] },
+    routes: [{ match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 422, json: { errors: [{ detail: "bad number" }] } }) }],
+  });
+  await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_f", client_state: maskedBridgeState({ call_log_id: "CallLog_9" }), result: "human" }));
+  assert.ok(v.calls.find((c) => /\/actions\/speak$/.test(c.url)), "spoke an apology to the nurse");
+  assert.ok(v.calls.find((c) => /\/actions\/hangup$/.test(c.url)), "hung up instead of stranding dead air");
+  assert.equal(v.data.CallLog[0].status, "failed");
+});
+
+test("a masked state without a caller id never presents the nurse's cell", async () => {
+  const v = await loadVoiceWebhook({ data: { CallLog: [outboundLog()] } });
+  await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_nurse", client_state: maskedBridgeState({ caller_id: null }), result: "human" }));
+  assert.ok(!v.calls.some((c) => /\/actions\/transfer$/.test(c.url)),
+    "with no from, Telnyx would default the caller id to the nurse leg's own to — the cell");
+  assert.equal(v.data.CallLog[0].status, "failed");
+});
+
+// ---- Finding: redelivered call webhooks ----
+test("a redelivered call event never repeats its Call Control commands or their fallback", async () => {
+  // Telnyx would refuse the repeat of a transfer for a leg already connecting;
+  // the old handler answered that refusal with an apology and a hangup.
+  let transfers = 0;
+  const v = await loadVoiceWebhook({
+    data: { CallLog: [outboundLog({ status: "in_progress" })] },
+    routes: [{ match: (u) => u.includes("/actions/transfer"), respond: () => (++transfers === 1
+      ? { status: 200, json: { data: {} } }
+      : { status: 422, json: { errors: [{ detail: "call is not in a state to transfer" }] } }) }],
+  });
+  const event = voiceEvent("call.machine.detection.ended", { call_control_id: "cc_nurse", client_state: maskedBridgeState(), result: "human" }, "evt-redelivered-1");
+  assert.equal((await (await v.send(event)).json()).bridged, true);
+  const repeat = await v.send(event);
+  assert.equal(repeat.status, 200, "a repeat is acknowledged, so Telnyx stops redelivering it");
+  assert.equal((await repeat.json()).deduped, true);
+  assert.equal(transfers, 1, "the transfer was sent once");
+  assert.ok(!v.calls.some((c) => /\/actions\/(?:speak|hangup)$/.test(c.url)), "no apology, no hangup of the connecting call");
+  assert.notEqual(v.data.CallLog[0].status, "failed");
+
+  // Two deliveries racing each other: exactly one acts.
+  const raced = voiceEvent("call.answered", {
+    call_control_id: "cc_caller", direction: "incoming",
+    client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: null, callerId: "+12155550100", targets: ringdownTargets }),
+  }, "evt-raced-1");
+  const race = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] }, claimBarrier: 3 });
+  await Promise.all([race.send(raced), race.send(raced), race.send(raced)]);
+  assert.equal(race.calls.filter((c) => /\/cc_caller\/actions\/transfer$/.test(c.url)).length, 1);
+  const claims = race.data.UserActivity.filter((row) => row.entity_type === "TelnyxCallEvent" && row.entity_id === "evt-raced-1");
+  assert.ok(claims.length >= 1);
+  for (const row of claims) {
+    assert.deepEqual(Object.keys(row.details).sort(), ["claim", "event_type"], "a claim records the event and nothing about the call");
+  }
+});
+
+test("an unprovable claim acts on nothing, and an event without an id sends nothing", async () => {
+  const down = await loadVoiceWebhook({ data: { CallLog: [outboundLog()] }, failClaimReads: true });
+  const res = await down.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_nurse", client_state: maskedBridgeState(), result: "human" }));
+  assert.equal(res.status, 503, "Telnyx redelivers once the store answers");
+  assert.equal(actionsOf(down.calls).length, 0);
+
+  const v = await loadVoiceWebhook({ data: { CallLog: [outboundLog()] } });
+  const anonymous = { data: { event_type: "call.machine.detection.ended", payload: { call_control_id: "cc_nurse", client_state: maskedBridgeState(), result: "human" } } };
+  assert.equal((await (await v.send(anonymous)).json()).skipped, "no event id");
+  assert.equal(actionsOf(v.calls).length, 0);
+});
+
+test("every Call Control command carries a deterministic, per-command command_id", async () => {
+  // Both targets are refused, so one event sends transfer, transfer, speak, hangup.
+  const event = voiceEvent("call.answered", {
+    call_control_id: "cc_caller", direction: "incoming",
+    client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: null, callerId: "+12155550100",
+      targets: [{ to: "+12155550111", kind: "primary" }, { to: "+17244650440", kind: "office" }] }),
+  }, "evt-command-ids-1");
+  const run = async () => {
+    const v = await loadVoiceWebhook({
+      data: { CallLog: [inboundLog()] },
+      routes: [{ match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 422, json: {} }) }],
+    });
+    await v.send(event);
+    return actionsOf(v.calls).map((c) => ({ command: c.url.split("/").pop(), id: c.body.command_id }));
+  };
+  const first = await run();
+  assert.deepEqual(first.map((c) => c.command), ["transfer", "transfer", "speak", "hangup"]);
+  for (const { id } of first) assert.match(id, UUID_SHAPE);
+  assert.equal(new Set(first.map((c) => c.id)).size, first.length, "two transfers in one event never share an id");
+  assert.deepEqual(await run(), first, "the same event always derives the same ids");
+
+  // And the event-scoped sender is the only way to reach the gated wrapper.
+  const source = await readFile(new URL("../functions/handleTelnyxStatusWebhook/entry.ts", import.meta.url), "utf8");
+  const direct = source.split("\n").filter((line) => /\bcallCommand\(/.test(line) && !/async function callCommand\(/.test(line));
+  assert.deepEqual(direct.map((line) => line.trim()), ["return callCommand(apiKey, callControlId, command, body);"]);
+});
+
+// ---- Inbound IVR ----
+test("inbound call answers first, then bridges an on-duty nurse on call.answered", async () => {
+  const data = () => ({
+    User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
+    // Disable the 5pm auto-off so this bridge assertion is time-independent.
+    AgencySettings: [{ auto_off_duty_enabled: false }], CallLog: [],
+  });
   // Step 1: call.initiated (incoming) must ANSWER first (not transfer on a
   // ringing leg), carrying the bridge decision in client_state.
-  const { impl: impl1, calls: calls1 } = makeFetch([
-    { match: (u) => u.includes("/actions/answer"), respond: () => ({ status: 200, json: { data: {} } }) },
-  ]);
-  const h1 = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 }, makeClient: base, fetchImpl: impl1,
-  });
-  await h1(signedWebhook(privateKey, { data: { event_type: "call.initiated", payload: { call_control_id: "cc_in", direction: "incoming", from: "+13125550182", to: "+12155550100" } } }));
-  const answer = calls1.find((c) => /\/actions\/answer$/.test(c.url));
+  const v1 = await loadVoiceWebhook({ data: data() });
+  await v1.send(voiceEvent("call.initiated", { call_control_id: "cc_in", direction: "incoming", from: "+13125550182", to: "+12155550100" }));
+  const answer = v1.calls.find((c) => /\/actions\/answer$/.test(c.url));
   assert.ok(answer, "answered the inbound call first");
   const carried = decodeState(answer.body.client_state);
   assert.equal(carried.action, "ringdown");
   assert.equal(carried.targets[0].to, "+12155550111", "first ringdown target = nurse cell");
 
   // Step 2: call.answered with that client_state rings the first target.
-  const { impl: impl2, calls: calls2 } = makeFetch([
-    { match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 200, json: { data: {} } }) },
-  ]);
-  const h2 = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 }, makeClient: base, fetchImpl: impl2,
-  });
-  await h2(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: { call_control_id: "cc_in", direction: "incoming", client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: carried.to, callerId: carried.callerId, targets: carried.targets }) } } }));
-  const transfer = calls2.find((c) => /\/v2\/calls\/cc_in\/actions\/transfer$/.test(c.url));
+  const v2 = await loadVoiceWebhook({ data: data() });
+  await v2.send(voiceEvent("call.answered", { call_control_id: "cc_in", direction: "incoming", client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: carried.to, callerId: carried.callerId, targets: carried.targets }) }));
+  const transfer = v2.calls.find((c) => /\/v2\/calls\/cc_in\/actions\/transfer$/.test(c.url));
   assert.ok(transfer, "rang the first target on answer");
   assert.equal(transfer.body.to, "+12155550111");
   assert.equal(transfer.body.from, "+12155550100");
-  // The transfer carries ringdown state so an unanswered hangup can advance.
-  assert.equal(decodeState(transfer.body.client_state).t, "ringdown");
+  // The ringdown state reaches the new leg (target_leg_client_state) so an
+  // unanswered hangup can advance, and a personal cell is screened.
+  const legState = decodeState(transfer.body.target_leg_client_state);
+  assert.equal(legState.t, "ringdown");
+  assert.equal(legState.a_leg, "cc_in");
+  assert.equal(transfer.body.answering_machine_detection, "detect");
+  assert.equal(transfer.body.answering_machine_detection_config.total_analysis_time_millis, 5000);
 });
 
 test("an after-hours/weekend inbound call greets and transfers to the NORMALIZED after-hours number", async () => {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const pubB64 = rawEd25519PublicKeyB64(publicKey);
-  const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/actions/answer"), respond: () => ({ status: 200, json: { data: {} } }) },
-  ]);
-  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
-    env: {},
-    makeClient: () => makeBase44({
-      data: {
-        IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
-        User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
-        // Business hours ON with no open days = closed all week (nights/weekends).
-        // The transfer number is stored FORMATTED — routing must normalize it.
-        AgencySettings: [{
-          business_hours_enabled: true, business_hours: {},
-          after_hours_call_action: "transfer",
-          after_hours_transfer_number_e164: "(724) 465-0440",
-        }],
-        CallLog: [],
-      },
-    }),
-    fetchImpl: impl,
+  const v = await loadVoiceWebhook({
+    data: {
+      User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
+      // Business hours ON with no open days = closed all week (nights/weekends).
+      // The transfer number is stored FORMATTED — routing must normalize it.
+      AgencySettings: [{
+        business_hours_enabled: true, business_hours: {},
+        after_hours_call_action: "transfer",
+        after_hours_transfer_number_e164: "(724) 465-0440",
+      }],
+      CallLog: [],
+    },
   });
-  await handler(signedWebhook(privateKey, { data: { event_type: "call.initiated", payload: { call_control_id: "cc_ah", direction: "incoming", from: "+13125550182", to: "+12155550100" } } }));
-  const answer = calls.find((c) => /\/actions\/answer$/.test(c.url));
+  await v.send(voiceEvent("call.initiated", { call_control_id: "cc_ah", direction: "incoming", from: "+13125550182", to: "+12155550100" }));
+  const answer = v.calls.find((c) => /\/actions\/answer$/.test(c.url));
   assert.ok(answer, "answered the after-hours call (to speak the greeting)");
   const carried = decodeState(answer.body.client_state);
   assert.equal(carried.action, "greet_transfer", "after-hours calls greet then transfer");
   assert.equal(carried.to, "+17244650440", "transfer target is normalized E.164, not the raw formatted string");
+
+  // The greeting ends → the transfer presents the dialed work number and is
+  // never screened (an office phone tree is a legitimate answer).
+  await v.send(voiceEvent("call.speak.ended", { call_control_id: "cc_ah", client_state: b64json({ t: "inbound_after_greet", action: carried.action, to: carried.to, callerId: carried.callerId, targets: null }) }));
+  const transfer = v.calls.find((c) => /\/cc_ah\/actions\/transfer$/.test(c.url));
+  assert.equal(transfer.body.to, "+17244650440");
+  assert.equal(transfer.body.from, "+12155550100");
+  assert.equal(transfer.body.answering_machine_detection, undefined);
 });
 
 test("a rejected ringdown transfer advances to the next target instead of stranding the caller", async () => {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const pubB64 = rawEd25519PublicKeyB64(publicKey);
   let transferCalls = 0;
-  const { impl, calls } = makeFetch([
+  const v = await loadVoiceWebhook({
     // First target is rejected outright (e.g. bad number); the next succeeds.
-    { match: (u) => u.includes("/actions/transfer"), respond: () => (++transferCalls === 1
+    routes: [{ match: (u) => u.includes("/actions/transfer"), respond: () => (++transferCalls === 1
       ? { status: 422, json: { errors: [{ detail: "invalid destination" }] } }
-      : { status: 200, json: { data: {} } }) },
-    { match: (u) => u.includes("/actions/speak"), respond: () => ({ status: 200, json: { data: {} } }) },
-    { match: (u) => u.includes("/actions/hangup"), respond: () => ({ status: 200, json: { data: {} } }) },
-  ]);
-  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
-    env: {},
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })] } }),
-    fetchImpl: impl,
+      : { status: 200, json: { data: {} } }) }],
   });
-  await handler(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: {
+  await v.send(voiceEvent("call.answered", {
     call_control_id: "cc_rd", direction: "incoming",
     client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: null, callerId: "+12155550100",
       targets: [{ to: "724-465", kind: "primary" }, { to: "+17244650440", kind: "office" }] }),
-  } } }));
-  const transfers = calls.filter((c) => /\/actions\/transfer$/.test(c.url));
+  }));
+  const transfers = v.calls.filter((c) => /\/actions\/transfer$/.test(c.url));
   assert.equal(transfers.length, 2, "retried the next target after the rejection");
   assert.equal(transfers[1].body.to, "+17244650440", "second attempt rings the next ringdown target");
-  assert.ok(!calls.some((c) => /\/actions\/hangup$/.test(c.url)), "caller was not hung up — the second target is ringing");
+  assert.ok(!v.calls.some((c) => /\/actions\/hangup$/.test(c.url)), "caller was not hung up — the second target is ringing");
 });
 
 test("find-me-follow-me rolls to the next target when a leg goes unanswered", async () => {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const pubB64 = rawEd25519PublicKeyB64(publicKey);
-  const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 200, json: { data: {} } }) },
-  ]);
-  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })] } }),
-    fetchImpl: impl,
-  });
+  const v = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
   // The dialed leg (target 0 = nurse cell) hangs up unanswered; a_leg is the caller.
-  const ringdownState = b64json({
-    t: "ringdown", idx: 0, callerId: "+12155550100", a_leg: "cc_caller",
-    targets: [{ to: "+12155550111", kind: "primary" }, { to: "+17244650440", kind: "office" }],
-  });
-  await handler(signedWebhook(privateKey, { data: { event_type: "call.hangup", payload: { call_control_id: "cc_leg0", client_state: ringdownState, hangup_cause: "no_answer" } } }));
-  // It must transfer the ORIGINAL caller leg to the next target (the office).
-  const next = calls.find((c) => /\/v2\/calls\/cc_caller\/actions\/transfer$/.test(c.url));
+  await v.send(voiceEvent("call.hangup", { call_control_id: "cc_leg0", client_state: ringdownLegState(), hangup_cause: "no_answer", hangup_source: "callee" }));
+  // It must transfer the ORIGINAL caller leg to the next target (the backup nurse).
+  const next = v.calls.find((c) => /\/v2\/calls\/cc_caller\/actions\/transfer$/.test(c.url));
   assert.ok(next, "rolled to the next target on the caller leg");
-  assert.equal(next.body.to, "+17244650440");
-  assert.equal(decodeState(next.body.client_state).idx, 1);
+  assert.equal(next.body.to, "+12155550122");
+  assert.equal(decodeState(next.body.target_leg_client_state).idx, 1);
+  // A ringing leg that times out (dial timeout) also advances.
+  await v.send(voiceEvent("call.hangup", { call_control_id: "cc_leg1", client_state: ringdownLegState({ idx: 1 }), hangup_cause: "timeout", hangup_source: "unknown" }));
+  const office = v.calls.filter((c) => /\/cc_caller\/actions\/transfer$/.test(c.url))[1];
+  assert.equal(office.body.to, "+17244650440");
+  assert.equal(office.body.answering_machine_detection, undefined, "the office line is never screened");
+  // The ringdown state on the CALLER leg (client_state is "every subsequent
+  // webhook") never advances anything: a_leg tells it apart.
+  await v.send(voiceEvent("call.hangup", { call_control_id: "cc_caller", client_state: ringdownLegState({ idx: 2 }), hangup_cause: "no_answer" }));
+  assert.equal(v.calls.filter((c) => /\/actions\/transfer$/.test(c.url)).length, 2);
 });
 
-test("a failed masked-bridge transfer falls back to speak+hangup and marks the call failed", async () => {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const pubB64 = rawEd25519PublicKeyB64(publicKey);
-  // Transfer returns 422 (e.g. invalid patient number) → must not strand the leg.
-  const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 422, json: { errors: [{ detail: "bad number" }] } }) },
-    { match: (u) => u.includes("/actions/speak"), respond: () => ({ status: 200, json: { data: {} } }) },
-    { match: (u) => u.includes("/actions/hangup"), respond: () => ({ status: 200, json: { data: {} } }) },
-  ]);
-  let updated = null;
-  const client = () => {
-    // Stable entities object so the CallLog.update spy persists (the default
-    // makeBase44 Proxy returns a fresh entity per access).
-    const callLog = { create: async (r) => ({ id: "x", ...r }), filter: async () => [], list: async () => [], update: async (id, patch) => { updated = { id, patch }; return { id, ...patch }; } };
-    const generic = { create: async (r) => ({ id: "x", ...r }), filter: async () => [], list: async () => [], update: async () => ({}) };
-    const entities = new Proxy({}, { get: (_t, n) => (n === "CallLog" ? callLog : (n === "IntegrationSecret" ? { ...generic, filter: async () => [activeTelnyxSecret({ public_key: pubB64 })] } : generic)) });
-    return { auth: { me: async () => ({}) }, entities, asServiceRole: { entities } };
-  };
-  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 }, makeClient: client, fetchImpl: impl,
+// ---- Finding: answering-machine detection on ringdown legs ----
+test("a nurse's voicemail answering a ringdown leg moves the caller on", async () => {
+  const v = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  // A person or not_sure stays connected.
+  for (const result of ["human", "not_sure"]) {
+    await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_leg0", client_state: ringdownLegState(), result }));
+  }
+  assert.equal(actionsOf(v.calls).length, 0);
+  // The primary's voicemail answered: transfer the CALLER leg to the backup.
+  await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_leg0", client_state: ringdownLegState(), result: "machine" }));
+  const moved = actionsOf(v.calls);
+  assert.deepEqual(moved.map((c) => c.url), ["https://api.telnyx.com/v2/calls/cc_caller/actions/transfer"],
+    "the voicemail leg is not hung up directly: hanging up a bridged leg would hang up the caller");
+  assert.equal(moved[0].body.to, "+12155550122");
+  assert.equal(moved[0].body.answering_machine_detection, "detect");
+  // ...and its trailing normal hangup does not advance a second time.
+  await v.send(voiceEvent("call.hangup", { call_control_id: "cc_leg0", client_state: ringdownLegState(), hangup_cause: "normal_clearing" }));
+  assert.equal(actionsOf(v.calls).length, 1);
+  // The last screened target's voicemail with nothing after it ends the call as missed.
+  const lone = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  await lone.send(voiceEvent("call.machine.detection.ended", {
+    call_control_id: "cc_only", result: "machine",
+    client_state: ringdownLegState({ targets: [{ to: "+12155550111", kind: "primary" }] }),
+  }));
+  assert.deepEqual(actionsOf(lone.calls).map((c) => c.url), ["https://api.telnyx.com/v2/calls/cc_caller/actions/hangup"]);
+  assert.equal(lone.data.CallLog[0].status, "failed");
+  // A machine verdict on the office leg is never acted on.
+  const office = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  await office.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_leg2", client_state: ringdownLegState({ idx: 2 }), result: "machine" }));
+  assert.equal(actionsOf(office.calls).length, 0);
+});
+
+test("a refused onward transfer from a voicemail leaves the caller there rather than hanging up", async () => {
+  const v = await loadVoiceWebhook({
+    data: { CallLog: [inboundLog()] },
+    routes: [{ match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 422, json: {} }) }],
   });
-  await handler(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: { call_control_id: "cc_f", direction: "outgoing", client_state: b64json({ t: "masked_bridge", bridge_to: "+12155550144", caller_id: "+12155550100", call_log_id: "CallLog_9" }) } } }));
-  assert.ok(calls.find((c) => /\/actions\/speak$/.test(c.url)), "spoke an apology to the nurse");
-  assert.ok(calls.find((c) => /\/actions\/hangup$/.test(c.url)), "hung up instead of stranding dead air");
-  assert.equal(updated?.id, "CallLog_9");
-  assert.equal(updated?.patch.status, "failed");
+  await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_leg0", client_state: ringdownLegState(), result: "machine" }));
+  assert.ok(!v.calls.some((c) => /\/actions\/(?:speak|hangup)$/.test(c.url)));
+});
+
+// ---- Finding: caller hang-up during ringdown ----
+test("a caller who hangs up during the ringdown stops it and is logged missed", async () => {
+  // The caller hung up while the primary's cell rang: Telnyx cancels that leg.
+  const v = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  const res = await v.send(voiceEvent("call.hangup", { call_control_id: "cc_leg0", client_state: ringdownLegState(), hangup_cause: "originator_cancel", hangup_source: "caller" }));
+  assert.equal((await res.json()).ringdown_abandoned, true);
+  assert.equal(actionsOf(v.calls).length, 0, "no transfer of a dead caller leg to the remaining targets");
+  assert.equal(v.data.CallLog[0].status, "failed");
+  assert.equal(v.data.CallLog[0].failure_reason, "Caller hung up before anyone answered");
+
+  // The caller leg's own hangup arrived first (generic → completed); a later
+  // unanswered dialed leg still stops and turns it into a missed call.
+  const w = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  await w.send(voiceEvent("call.hangup", { call_control_id: "cc_caller", client_state: ringdownLegState(), hangup_cause: "normal_clearing", hangup_source: "caller" }));
+  assert.equal(w.data.CallLog[0].status, "completed");
+  await w.send(voiceEvent("call.hangup", { call_control_id: "cc_leg0", client_state: ringdownLegState(), hangup_cause: "no_answer", hangup_source: "callee" }));
+  assert.equal(actionsOf(w.calls).length, 0);
+  assert.equal(w.data.CallLog[0].status, "failed");
+
+  // A cancel that does not name the caller keeps ringing a caller who is still there.
+  const x = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  await x.send(voiceEvent("call.hangup", { call_control_id: "cc_leg0", client_state: ringdownLegState(), hangup_cause: "originator_cancel", hangup_source: "unknown" }));
+  assert.equal(x.calls.filter((c) => /\/cc_caller\/actions\/transfer$/.test(c.url)).length, 1);
+});
+
+test("a caller who hangs up during the greeting is not transferred, and an apology never re-runs it", async () => {
+  const greeted = b64json({ t: "inbound_after_greet", action: "greet_transfer", to: "+17244650440", callerId: "+12155550100", targets: null });
+  const v = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  await v.send(voiceEvent("call.speak.ended", { call_control_id: "cc_caller", client_state: greeted, status: "call_hangup" }));
+  assert.equal(actionsOf(v.calls).length, 0, "no transfer of a caller who already hung up");
+  assert.equal(v.data.CallLog[0].failure_reason, "Caller hung up before anyone answered");
+
+  // A refused transfer apologizes with a state of its own, so that speak's
+  // call.speak.ended cannot be read as the greeting's and transfer again.
+  const w = await loadVoiceWebhook({
+    data: { CallLog: [inboundLog()] },
+    routes: [{ match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 422, json: {} }) }],
+  });
+  await w.send(voiceEvent("call.speak.ended", { call_control_id: "cc_caller", client_state: greeted, status: "completed" }));
+  const apology = w.calls.find((c) => /\/actions\/speak$/.test(c.url));
+  assert.deepEqual(decodeState(apology.body.client_state), { t: "call_ending" });
+  const sent = actionsOf(w.calls).length;
+  await w.send(voiceEvent("call.speak.ended", { call_control_id: "cc_caller", client_state: apology.body.client_state, status: "completed" }));
+  assert.equal(actionsOf(w.calls).length, sent);
+});
+
+// ---- Finding: caller id fallback ----
+test("an onward leg presents the dialed number, never the destination", async () => {
+  const lostState = b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: null, callerId: null, targets: ringdownTargets });
+  // The state lost its caller id: the caller leg's logged dialed number is used.
+  const v = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  await v.send(voiceEvent("call.answered", { call_control_id: "cc_caller", direction: "incoming", client_state: lostState }));
+  const transfer = v.calls.find((c) => /\/actions\/transfer$/.test(c.url));
+  assert.equal(transfer.body.from, "+12155550100");
+  assert.equal(decodeState(transfer.body.target_leg_client_state).callerId, "+12155550100", "later legs carry it");
+  // Nothing to fall back on: `from` is omitted, which TransferCallRequest defaults
+  // to the original call's `to` — the number the patient dialed.
+  const w = await loadVoiceWebhook({ data: { CallLog: [] } });
+  await w.send(voiceEvent("call.answered", { call_control_id: "cc_caller", direction: "incoming", client_state: lostState }));
+  const bare = w.calls.find((c) => /\/actions\/transfer$/.test(c.url));
+  assert.equal(Object.hasOwn(bare.body, "from"), false);
+  // Same for a greet-then-transfer.
+  const g = await loadVoiceWebhook({ data: { CallLog: [inboundLog()] } });
+  await g.send(voiceEvent("call.speak.ended", { call_control_id: "cc_caller", client_state: b64json({ t: "inbound_after_greet", action: "greet_transfer", to: "+17244650440", callerId: null, targets: null }) }));
+  const greeted = g.calls.find((c) => /\/actions\/transfer$/.test(c.url));
+  assert.equal(greeted.body.from, "+12155550100");
+  for (const call of [...v.calls, ...w.calls, ...g.calls].filter((c) => /\/actions\/transfer$/.test(c.url))) {
+    assert.notEqual(call.body.from, call.body.to, "the destination is never presented as the caller");
+  }
+});
+
+// ---- Finding: the masked call's patient leg ----
+test("patient-leg events never re-enter the bridge, and an unanswered patient ends the nurse leg", async () => {
+  const patientLeg = b64json({ t: "masked_patient_leg", call_log_id: "CallLog_1", nurse_leg: "cc_nurse" });
+  const v = await loadVoiceWebhook({ data: { CallLog: [outboundLog({ status: "in_progress" })] } });
+  for (const eventType of ["call.initiated", "call.answered", "call.bridged", "call.machine.detection.ended"]) {
+    await v.send(voiceEvent(eventType, { call_control_id: "cc_patient", direction: "outgoing", client_state: patientLeg, result: "human" }));
+  }
+  // The nurse leg itself carrying the patient-leg state is only a status update.
+  await v.send(voiceEvent("call.hangup", { call_control_id: "cc_nurse", client_state: patientLeg, hangup_cause: "no_answer" }));
+  assert.equal(actionsOf(v.calls).length, 0, "no event of either leg re-bridges or hangs anything up");
+
+  const w = await loadVoiceWebhook({ data: { CallLog: [outboundLog({ status: "in_progress" })] } });
+  await w.send(voiceEvent("call.hangup", { call_control_id: "cc_patient", client_state: patientLeg, hangup_cause: "no_answer", hangup_source: "callee" }));
+  assert.deepEqual(actionsOf(w.calls).map((c) => c.url), [
+    "https://api.telnyx.com/v2/calls/cc_nurse/actions/speak",
+    "https://api.telnyx.com/v2/calls/cc_nurse/actions/hangup",
+  ], "the nurse is told and their leg ended rather than left on dead air");
+  assert.equal(w.data.CallLog[0].status, "failed");
+  assert.equal(w.data.CallLog[0].failure_reason, "Patient did not answer (no_answer)");
+});
+
+// ---- Finding: voicemail links expire ----
+const MP3_BYTES = new Uint8Array([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xfb, 0x90, 0x64]);
+const RECORDING_URL = "https://s3.amazonaws.com/telephony-recorder-prod/rec-1.mp3?X-Amz-Signature=abc";
+const voicemailState = b64json({ t: "voicemail", a_leg: "cc_vm" });
+const voicemailLog = (overrides = {}) => inboundLog({ id: "CallLog_vm", provider_call_id: "cc_vm", nurse_email: "n@x.com", ...overrides });
+const recordingSaved = (urls, extra = {}) => voiceEvent("call.recording.saved", {
+  call_leg_id: "leg-vm", client_state: voicemailState,
+  recording_started_at: "2026-10-09T12:00:00.000Z", recording_ended_at: "2026-10-09T12:00:42.000Z",
+  channels: "single", recording_urls: urls, ...extra,
+});
+
+test("a voicemail is copied into private storage and the row keeps the private reference", async () => {
+  const v = await loadVoiceWebhook({
+    data: { CallLog: [voicemailLog()] },
+    binary: (url) => (url === RECORDING_URL ? new Response(MP3_BYTES, { status: 200, headers: { "content-type": "audio/mpeg" } }) : null),
+  });
+  // call.recording.saved carries no call_control_id: the caller leg comes from
+  // the record_start state.
+  await v.send(recordingSaved({ mp3: RECORDING_URL, wav: null }, { public_recording_urls: { mp3: "https://public.example/rec.mp3" } }));
+  const download = v.calls.find((c) => c.url === RECORDING_URL);
+  assert.ok(download, "downloaded the ten-minute link");
+  assert.equal(download.init.redirect, "error", "a redirect cannot take the download off the allowed host");
+  assert.equal(v.uploads.length, 1);
+  assert.equal(v.uploads[0].type, "audio/mpeg");
+  assert.deepEqual([...v.uploads[0].bytes], [...MP3_BYTES]);
+  const row = v.data.CallLog[0];
+  assert.equal(row.voicemail_url, "private/voicemail/1.mp3");
+  assert.equal(row.has_voicemail, true);
+  assert.equal(row.voicemail_duration_seconds, 42);
+  assert.ok(!v.calls.some((c) => c.url.includes("public.example")), "the unauthenticated permanent link is never used");
+  assert.equal(v.data.Notification.length, 1);
+  // A redelivery stores nothing twice and notifies nobody twice.
+  const again = recordingSaved({ mp3: RECORDING_URL });
+  again.data.id = "evt-vm-again";
+  await v.send(again);
+  await v.send(again);
+  assert.equal(v.uploads.length, 2, "a distinct event is a distinct recording");
+  assert.equal(v.data.Notification.length, 1);
+});
+
+test("a voicemail that cannot be copied keeps the provider link and logs only a category", async () => {
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  try {
+    const cases = [
+      ["host_refused", { mp3: "https://example.com/recording.mp3" }, null],
+      ["host_refused", { mp3: "http://s3.amazonaws.com/rec.mp3" }, null],
+      ["download_rejected", { mp3: RECORDING_URL }, () => new Response("denied", { status: 403 })],
+      ["download_too_large", { mp3: RECORDING_URL }, () => new Response(MP3_BYTES, { status: 200, headers: { "content-length": String(64 * 1024 * 1024) } })],
+      ["download_too_large", { mp3: RECORDING_URL }, () => new Response(new ReadableStream({
+        start(controller) { for (let i = 0; i < 11; i += 1) controller.enqueue(new Uint8Array(1024 * 1024).fill(0xff)); controller.close(); },
+      }), { status: 200 })],
+      ["not_audio", { mp3: RECORDING_URL }, () => new Response("<html>error</html>", { status: 200 })],
+    ];
+    for (const [reason, urls, answer] of cases) {
+      errors.length = 0;
+      const v = await loadVoiceWebhook({ data: { CallLog: [voicemailLog()] }, binary: (url) => (answer && url.startsWith("https://s3.amazonaws.com/") ? answer() : null) });
+      await v.send(recordingSaved(urls));
+      assert.equal(v.uploads.length, 0, reason);
+      assert.equal(v.data.CallLog[0].voicemail_url, urls.mp3, `${reason}: the provider link is kept as before`);
+      assert.deepEqual(errors, [`Voicemail recording kept at the provider link: ${reason}`]);
+      if (reason === "host_refused") assert.ok(!v.calls.some((c) => c.url === urls.mp3), "a refused host is never fetched");
+    }
+  } finally {
+    console.error = original;
+  }
+});
+
+test("the voicemail copy stays inside the webhook timeout and keeps the provider link past it", async () => {
+  // The Voice API app retries a webhook it has no answer to after 10 s, so the
+  // whole copy shares one budget well short of that.
+  const source = await readFile(new URL("../functions/handleTelnyxStatusWebhook/entry.ts", import.meta.url), "utf8");
+  const budget = Number(source.match(/const VOICEMAIL_COPY_BUDGET_MS = (\d+);/)?.[1]);
+  assert.ok(budget > 0 && budget <= 6000, `copy budget ${budget} ms leaves the claim and the writes inside 10 s`);
+
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  try {
+    // A download that never finishes is abandoned at the budget.
+    const slowDownload = await loadVoiceWebhook({
+      data: { CallLog: [voicemailLog()] }, copyBudgetMs: 150,
+      binary: (url, init) => (url === RECORDING_URL ? new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+      }) : null),
+    });
+    let started = Date.now();
+    assert.equal((await slowDownload.send(recordingSaved({ mp3: RECORDING_URL }))).status, 200);
+    assert.ok(Date.now() - started < 2000, "answered without waiting out the download");
+    assert.equal(slowDownload.data.CallLog[0].voicemail_url, RECORDING_URL);
+    assert.deepEqual(errors, ["Voicemail recording kept at the provider link: budget_exhausted"]);
+
+    // An upload that never answers is abandoned too.
+    errors.length = 0;
+    const slowUpload = await loadVoiceWebhook({
+      data: { CallLog: [voicemailLog()] }, copyBudgetMs: 150, uploadHangs: true,
+      binary: (url) => (url === RECORDING_URL ? new Response(MP3_BYTES, { status: 200 }) : null),
+    });
+    started = Date.now();
+    assert.equal((await slowUpload.send(recordingSaved({ mp3: RECORDING_URL }))).status, 200);
+    assert.ok(Date.now() - started < 2000, "answered without waiting out the upload");
+    assert.equal(slowUpload.data.CallLog[0].voicemail_url, RECORDING_URL);
+    assert.equal(slowUpload.data.CallLog[0].has_voicemail, true);
+    assert.deepEqual(errors, ["Voicemail recording kept at the provider link: budget_exhausted"]);
+  } finally {
+    console.error = original;
+  }
+});
+
+test("a recording offered only as a public link is never stored or fetched", async () => {
+  const v = await loadVoiceWebhook({ data: { CallLog: [voicemailLog()] } });
+  await v.send(recordingSaved(null, { public_recording_urls: { mp3: "https://s3.amazonaws.com/public/rec.mp3" } }));
+  assert.equal(v.data.CallLog[0].voicemail_url ?? null, null);
+  assert.equal(v.uploads.length, 0);
+  assert.ok(!v.calls.some((c) => c.url.includes("/public/")));
+});
+
+test("the voicemail recorder tells call.recording.saved which call it belongs to", async () => {
+  const v = await loadVoiceWebhook({ data: { CallLog: [voicemailLog()] } });
+  await v.send(voiceEvent("call.speak.ended", { call_control_id: "cc_vm", client_state: b64json({ t: "inbound_after_greet", action: "voicemail", to: null, callerId: null, targets: null }) }));
+  const record = v.calls.find((c) => /\/cc_vm\/actions\/record_start$/.test(c.url));
+  assert.deepEqual(decodeState(record.body.client_state), { t: "voicemail", a_leg: "cc_vm" });
+  assert.equal(record.body.play_beep, true);
 });
 
 test("sendSms forwards MMS media_urls and rejects non-https/oversized media", async () => {

@@ -82,10 +82,13 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
  * Telnyx Call Control API.
  *
  * Flow: ring the nurse's personal cell first (`to` = cell, caller id = work
- * number). The patient leg is bridged when the nurse answers: the answered-leg
- * `call.answered` webhook (handleTelnyxStatusWebhook) reads the encoded
- * `client_state` and issues a Call Control `transfer` to the patient presenting
- * the WORK number as caller id, so the patient never sees the cell.
+ * number), with answering-machine detection. The patient leg is bridged only
+ * once Telnyx's `call.machine.detection.ended` says a person (or not_sure)
+ * answered: handleTelnyxStatusWebhook reads the encoded `client_state` and issues
+ * a Call Control `transfer` to the patient presenting the WORK number as caller
+ * id, so the patient never sees the cell. A `machine` verdict — the nurse's own
+ * voicemail picked up — hangs up instead, so a patient is never transferred into
+ * a nurse's personal voicemail.
  *
  * Origination is NON-idempotent: a thrown network error is NOT retried (the call
  * may already be in flight). Only explicit retryable HTTP statuses are retried.
@@ -589,12 +592,13 @@ Deno.serve(async (req) => {
 
     // Bridge instructions for the answered-leg webhook: dial the patient,
     // presenting the work number as caller id. Tagged so the webhook only acts on
-    // calls it originated.
+    // calls it originated; amd tells it to wait for the detection verdict.
     const clientState = encodeClientState({
       t: 'masked_bridge',
       bridge_to: destination,
       caller_id: workNumber,
       call_log_id: callLog.id,
+      amd: true,
     });
 
     const telnyxUrl = 'https://api.telnyx.com/v2/calls';
@@ -622,6 +626,15 @@ Deno.serve(async (req) => {
             from: workNumber,
             client_state: clientState,
             timeout_secs: 30,
+            // Standard detection: one call.machine.detection.ended (human |
+            // machine | not_sure) per answer. total_analysis_time_millis bounds
+            // the analysis, so the verdict — not_sure when undecided — arrives
+            // within five seconds and the nurse is never left on an answered
+            // leg waiting for one; the bridge that follows is well inside the
+            // app's 30 s first-command timeout. Same configuration as the
+            // webhook's ringdown.
+            answering_machine_detection: 'detect',
+            answering_machine_detection_config: { total_analysis_time_millis: 5000 },
           };
           if (functionsBase) payload.webhook_url = `${functionsBase}/handleTelnyxStatusWebhook`;
           const resp = await fetch(telnyxUrl, {
