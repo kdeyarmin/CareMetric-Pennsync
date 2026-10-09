@@ -115,7 +115,7 @@ jobs:
           PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
           PENNSYNC_TEST_PG_BIN: /usr/lib/postgresql/17/bin
       - name: Retain sanitized local database restore receipt
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: pennsync-local-database-restore
           path: work/restore-rehearsal/receipt-*.json

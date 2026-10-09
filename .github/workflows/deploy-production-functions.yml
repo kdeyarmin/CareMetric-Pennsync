@@ -176,7 +176,7 @@ jobs:
 
       - name: Preserve sanitized verification result only
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: production-function-verification
           path: ${{ runner.temp }}/pennsync-function-verification.json
