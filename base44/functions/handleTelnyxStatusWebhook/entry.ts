@@ -1617,7 +1617,10 @@ async function bindingAgencyName(entities, agencyId) {
   return typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
 }
 
-async function handleInboundMessage(base44, telnyxCreds, event, payload) {
+// `consentKeyword` is set when the consent path has already recorded this text
+// as a provider-classified STOP/START: it is filed like any other inbound text
+// so the nurse sees it, and nothing is ever sent back (Telnyx answered it).
+async function handleInboundMessage(base44, telnyxCreds, event, payload, { consentKeyword = null } = {}) {
   const entities = base44.asServiceRole.entities;
   const source = payload?.from?.phone_number || payload?.from;
   const destination = Array.isArray(payload?.to) ? payload.to[0]?.phone_number : payload?.to;
@@ -1680,8 +1683,9 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
     ? sendAutoReply(apiKey, telnyxCreds?.messagingProfileId, workNum, patientNum, msg)
     : Promise.resolve(null));
   // Telnyx answers a keyword itself when it set autoresponse_type; a STOP-like
-  // text never gets a reply from us either way.
-  const providerAnswered = !!String(payload?.autoresponse_type || '').trim();
+  // text never gets a reply from us either way, and neither does a text the
+  // consent path recorded.
+  const providerAnswered = !!String(payload?.autoresponse_type || '').trim() || !!consentKeyword;
   const isHelp = HELP_WORDS.includes(keyword);
   const canReply = !optedOut && smsEnabled && !providerAnswered && !isStopLikeText(text) && !isHelp;
 
@@ -1721,8 +1725,13 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
     }).catch(() => console.error('urgent notification failed'));
   }
   if (reader) {
+    // A STOP is the one inbound text that changes what the nurse may do next,
+    // so it says so instead of reading like any other message.
+    const notice = consentKeyword === 'STOP'
+      ? { title: '🚫 Patient opted out of texts', message: `${patientNum} replied STOP. They will not receive texts until they reply START.` }
+      : { title: '💬 New text message', message: `You have a new text from ${patientNum}.` };
     await entities.Notification.create({
-      user_email: reader.email, title: '💬 New text message', message: `You have a new text from ${patientNum}.`,
+      user_email: reader.email, ...notice,
       type: 'sms_received', priority: 'medium', metadata: { related_entity: 'SmsMessage', related_entity_id: inboundRow.id }, is_read: false,
     }).catch(() => console.error('notification failed'));
   }
@@ -1738,6 +1747,24 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
   }).catch(() => {});
 
   return Response.json({ success: true, received: true, routed: basis });
+}
+
+// The consent keyword was recorded (or deduped) first; now the text itself goes
+// to the thread. If it cannot be filed yet (binding or store unavailable) the
+// 503 reaches Telnyx, the redelivery dedupes the consent write, and filing is
+// retried. The answer keeps the consent path's fields.
+async function fileConsentKeywordText(base44, telnyxCreds, event, payload, keywordResponse) {
+  const consent = await keywordResponse.json();
+  const filed = await handleInboundMessage(base44, telnyxCreds, event, payload, {
+    consentKeyword: providerConsentKeyword(payload),
+  });
+  if (!filed.ok) return filed;
+  const stored = await filed.json();
+  return Response.json({
+    ...consent,
+    message_stored: stored.received === true || stored.deduped === true,
+    ...(stored.routed ? { routed: stored.routed } : {}),
+  });
 }
 
 // ============================ FAX ============================
@@ -3355,7 +3382,14 @@ Deno.serve(async (req) => {
     // Every other inbound text is then routed by its exact binding alone.
     if (eventType === 'message.received') {
       const keywordResponse = await handleInboundConsentKeyword(base44, telnyxCreds, event, payload);
-      if (keywordResponse) return keywordResponse;
+      if (keywordResponse) {
+        // A STOP/START is also a text the patient sent. Once the ledger holds it
+        // (or the consent path failed closed, which returns as it always did),
+        // file it in the nurse's thread like any inbound text — deduped by
+        // provider id, never answered.
+        if (!keywordResponse.ok || INBOUND_PATIENT_SMS_ROUTING_PAUSED) return keywordResponse;
+        return await fileConsentKeywordText(base44, telnyxCreds, event, payload, keywordResponse);
+      }
       if (INBOUND_PATIENT_SMS_ROUTING_PAUSED) return inboundRoutingPausedResponse('SMS');
     }
     if (INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent(eventType, payload)) {

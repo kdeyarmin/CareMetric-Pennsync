@@ -416,13 +416,25 @@ test("signed provider-classified STOP/START appends scoped, replay-safe consent 
       .sort((a, b) => Date.parse(b.captured_at) - Date.parse(a.captured_at))[0];
     assert.equal(newest.consent_status, "opted_in");
 
+    // The consent row is written before anything reads a mutable profile, a
+    // chart or agency settings: those lookups only file the text afterwards.
+    const firstConsentWrite = state.entityCalls.findIndex((call) => call.name === "SmsConsent" && call.operation === "create");
     for (const entity of ["User", "Patient", "AgencySettings", "SmsMessage", "Notification"]) {
-      assert.equal(
-        state.entityCalls.filter((call) => call.name === entity).length,
-        0,
-        `keyword handling never reads or writes ${entity}`,
-      );
+      const firstUse = state.entityCalls.findIndex((call) => call.name === entity);
+      assert.ok(firstUse === -1 || firstUse > firstConsentWrite, `consent is recorded before ${entity} is touched`);
     }
+    // Each STOP/START the patient sent is in the thread, once, and no reply
+    // went out from here (Telnyx answers keywords itself).
+    assert.deepEqual(
+      state.data.SmsMessage.map((row) => [row.provider_message_id, row.body, row.direction, row.agency_id]),
+      [
+        ["message_stop_new", "STOP", "inbound", "agency_a"],
+        ["message_start_old", "START", "inbound", "agency_a"],
+        ["message_start_new", "START", "inbound", "agency_a"],
+      ],
+      "the replay and the conflicting replay file nothing new",
+    );
+    assert.equal(fetchCalls.length, 0, "a consent keyword never draws a reply");
 
     // Inbound routing is released (2026-10-08): HELP is not a consent event,
     // it is an ordinary inbound text stored in the line's agency thread, and
@@ -436,8 +448,9 @@ test("signed provider-classified STOP/START appends scoped, replay-safe consent 
     const helpResponse = await handler(signedWebhook(privateKey, help));
     assert.equal(helpResponse.status, 200);
     assert.equal(state.data.SmsConsent.length, 3, "HELP never becomes a consent event");
-    assert.equal(state.data.SmsMessage.length, 1, "HELP is stored as an inbound text");
-    assert.equal(state.data.SmsMessage[0].agency_id, "agency_a");
+    assert.equal(state.data.SmsMessage.length, 4, "HELP is stored as an inbound text");
+    assert.equal(state.data.SmsMessage[3].provider_message_id, "message_help");
+    assert.equal(state.data.SmsMessage[3].agency_id, "agency_a");
     assert.equal(fetchCalls.length, 0, "Telnyx owns the keyword autoresponse; the webhook sends no duplicate reply");
   } finally {
     globalThis.Deno = originalDeno;
@@ -763,7 +776,13 @@ test("inbound texts land in the line agency's thread, attributed only through se
     })));
     await handler(signedWebhook(privateKey, textEvent({ messageId: "in_5", text: "another question" })));
     assert.equal(fetchCalls.length, 1, "no automatic reply after the sender opted out");
-    assert.equal(state.data.SmsMessage.length, 2, "the opted-out sender's text is still stored for the nurse");
+    assert.equal(state.data.SmsMessage.length, 3, "the STOP and the opted-out sender's next text are stored for the nurse");
+    const stopRow = state.data.SmsMessage.find((row) => row.provider_message_id === "message_stop_x");
+    assert.equal(stopRow.body, "STOP");
+    assert.equal(stopRow.nurse_email, "nurse@agency-a.test", "the STOP reaches the nurse's thread");
+    const stopNotice = state.data.Notification.find((n) => n.metadata?.related_entity_id === stopRow.id);
+    assert.equal(stopNotice.title, "🚫 Patient opted out of texts");
+    assert.equal(stopNotice.user_email, "nurse@agency-a.test");
 
     // 5. A text to a number with no inbound-enabled binding is not stored.
     state = makeStatefulClient({ publicKeyB64, bindings: [makeBinding({ sms_inbound_enabled: false })] });
@@ -1106,6 +1125,47 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
       body: invalidBody,
     }));
     assert.equal(invalidResponse.status, 401, "a forged inbound event is rejected before the migration response");
+  } finally {
+    globalThis.Deno = originalDeno;
+    globalThis.fetch = originalFetch;
+    globalThis.__inboundRoutingMakeClient = originalMakeClient;
+  }
+});
+
+test("a STOP whose text cannot be filed yet is redelivered, and the redelivery files it once", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const publicKeyB64 = rawEd25519PublicKeyB64(publicKey);
+  const originalDeno = globalThis.Deno;
+  const originalFetch = globalThis.fetch;
+  const originalMakeClient = globalThis.__inboundRoutingMakeClient;
+  try {
+    const state = makeStatefulClient({ publicKeyB64 });
+    seedAgencyA(state);
+    const entities = state.client.asServiceRole.entities;
+    let storeDown = true;
+    const flaky = new Proxy({}, {
+      get: (_target, name) => (name === "SmsMessage" && storeDown
+        ? { ...entities.SmsMessage, filter: async () => { throw new Error("store down"); } }
+        : entities[name]),
+    });
+    const fetchCalls = [];
+    const handler = await loadHandler(() => ({ entities: flaky, asServiceRole: { entities: flaky } }),
+      async (...args) => { fetchCalls.push(args); return Response.json({ data: {} }); });
+    const stop = keywordEvent({ eventId: "event_stop_f", messageId: "message_stop_f", keyword: "STOP", occurredAt: new Date().toISOString() });
+    const first = await handler(signedWebhook(privateKey, stop));
+    assert.equal(first.status, 503, "Telnyx is asked to redeliver");
+    assert.equal(state.data.SmsConsent.length, 1, "the opt-out itself is already recorded");
+
+    storeDown = false;
+    const second = await handler(signedWebhook(privateKey, stop));
+    assert.equal(second.status, 200);
+    const json = await second.json();
+    assert.equal(json.consent_status, "opted_out");
+    assert.equal(json.deduped, true, "the consent write is not repeated");
+    assert.equal(json.message_stored, true);
+    assert.equal(state.data.SmsConsent.length, 1);
+    assert.equal(state.data.SmsMessage.length, 1);
+    assert.equal(fetchCalls.length, 0);
   } finally {
     globalThis.Deno = originalDeno;
     globalThis.fetch = originalFetch;
