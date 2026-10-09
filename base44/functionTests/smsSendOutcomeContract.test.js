@@ -187,3 +187,73 @@ test('sendSms answers with the status it stored, not "sent"', async () => {
   assert.equal(json.status, 'queued');
   assert.equal(json.provider_message_id, 'prov_1');
 });
+
+const cron = (name) => new Request(`https://app/functions/${name}`, {
+  method: 'POST', headers: { 'x-internal-secret': 'cron-secret' }, body: '{}',
+});
+
+function scheduledFixture(seed = {}) {
+  return fixture({
+    User: [{ id: 'u1', email: 'nurse@example.test', agency_name: 'Agency A' }],
+    ScheduledSms: [{
+      id: 'sched_1', status: 'pending', send_at: new Date(Date.now() - 60_000).toISOString(),
+      nurse_email: 'nurse@example.test', from_number: LINE, to_number: PATIENT_PHONE, body: 'Your visit is at 10',
+      thread_id: `${LINE}|${PATIENT_PHONE}`, patient_id: null, attempts: 0,
+    }],
+    ...seed,
+  });
+}
+
+test('a scheduled send is recorded with the provenance and status sendSms records', async () => {
+  const state = scheduledFixture();
+  const telnyx = telnyxAnswer(200, { data: { id: 'prov_sched', to: [{ status: 'queued' }] } });
+  const handler = await loadFunction('dispatchScheduledSms', state.client, RELEASED, telnyx.impl);
+  const response = await handler(cron('dispatchScheduledSms'));
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(telnyx.sends.length, 1);
+  const row = state.data.SmsMessage[0];
+  assert.equal(row.agency_id, 'agency_a', 'stamped with the line agency, as sendSms stamps it');
+  assert.equal(row.destination_binding_id, 'binding_1');
+  assert.equal(row.status, 'queued', 'accepted is not sent: Telnyx answered queued');
+  assert.equal(row.sent_by, row.nurse_email, 'redriveFailedSms requires sender and owner to agree');
+  assert.equal(state.data.ScheduledSms[0].status, 'sent');
+  assert.equal(state.data.ScheduledSms[0].sms_message_id, row.id);
+});
+
+test('a scheduled send Telnyx refuses records the HTTP status and Telnyx code', async () => {
+  const state = scheduledFixture();
+  const telnyx = telnyxAnswer(400, { errors: [{ code: '40310', detail: 'Invalid to number' }] });
+  const handler = await loadFunction('dispatchScheduledSms', state.client, RELEASED, telnyx.impl);
+  await handler(cron('dispatchScheduledSms'));
+  assert.equal(state.data.ScheduledSms[0].status, 'failed');
+  assert.equal(state.data.ScheduledSms[0].failure_reason, 'Telnyx API error: HTTP 400, code 40310: Invalid to number');
+});
+
+test('the scheduled monthly cap counts the line agency as sendSms does, not a profile agency_name', async () => {
+  const thisMonth = new Date().toISOString();
+  // Someone whose self-editable agency_name says "Agency A" but who holds no
+  // membership there, texting for another agency: the old cohort counted them.
+  const stranger = { id: 'u2', email: 'stranger@example.test', agency_name: 'Agency A' };
+  const strangersText = {
+    id: 'other_1', direction: 'outbound', nurse_email: 'stranger@example.test', sent_by: 'stranger@example.test',
+    agency_id: 'agency_b', created_date: thisMonth,
+  };
+  const capped = { AgencySettings: [{ tcpa_quiet_hours_enabled: false, monthly_sms_cap: 1 }] };
+  let state = scheduledFixture({
+    ...capped,
+    User: [{ id: 'u1', email: 'nurse@example.test', agency_name: 'Agency A' }, stranger],
+    SmsMessage: [strangersText],
+  });
+  let telnyx = telnyxAnswer(200, { data: { id: 'prov_sched', to: [{ status: 'queued' }] } });
+  let handler = await loadFunction('dispatchScheduledSms', state.client, RELEASED, telnyx.impl);
+  await handler(cron('dispatchScheduledSms'));
+  assert.equal(telnyx.sends.length, 1, "another agency's text does not count against this agency's cap");
+
+  // A text stamped with this agency counts, whoever sent it.
+  state = scheduledFixture({ ...capped, SmsMessage: [{ ...strangersText, agency_id: 'agency_a' }] });
+  telnyx = telnyxAnswer(200, { data: { id: 'prov_sched', to: [{ status: 'queued' }] } });
+  handler = await loadFunction('dispatchScheduledSms', state.client, RELEASED, telnyx.impl);
+  await handler(cron('dispatchScheduledSms'));
+  assert.equal(telnyx.sends.length, 0, 'cap reached for the line agency');
+  assert.equal(state.data.ScheduledSms[0].status, 'pending', 'left for a later run, not failed');
+});

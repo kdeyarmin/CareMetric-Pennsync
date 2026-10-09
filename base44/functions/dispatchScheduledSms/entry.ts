@@ -1057,21 +1057,29 @@ Deno.serve(async (req) => {
       }
       return agencyConfigCache.get(agencyName);
     };
-    // Agency email cohort for scoping the monthly SMS cap (mirrors sendSms).
-    // Cached per agency; null when the row's nurse has no agency (legacy
-    // single-tenant → count unscoped, as sendSms does for an agency-less caller).
+    // The monthly-cap cohort is sendSms's: the sending LINE's agency, counted as
+    // rows stamped with that agency_id plus rows written by its active members
+    // (AgencyMembership, service-owned). It used to be every User whose
+    // self-editable agency_name matched the nurse's, so one edited profile could
+    // move a nurse's texts into another agency's count. Null when the
+    // memberships cannot be read (the row is released, not sent uncapped).
     const agencyCohortCache = new Map();
-    const resolveAgencyCohort = async (agencyName) => {
-      const key = String(agencyName || '').trim();
-      if (!key) return null;
-      if (agencyCohortCache.has(key)) return agencyCohortCache.get(key);
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .filter({ agency_name: key }, '-created_date', 5000)
-        .catch(() => []);
-      const cohort = new Set(
-        (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
-      );
-      agencyCohortCache.set(key, cohort);
+    const resolveAgencyCohort = async (agencyId) => {
+      if (agencyCohortCache.has(agencyId)) return agencyCohortCache.get(agencyId);
+      let rows;
+      try {
+        rows = await base44.asServiceRole.entities.AgencyMembership
+          .filter({ agency_id: agencyId, status: 'active' }, undefined, 5001);
+      } catch {
+        rows = null;
+      }
+      const cohort = Array.isArray(rows) && rows.length <= 5000
+        ? new Set(rows
+          .filter((member) => member?.agency_id === agencyId && member?.status === 'active')
+          .map((member) => normalizeDispatchEmail(member?.user_email_normalized))
+          .filter(Boolean))
+        : null;
+      agencyCohortCache.set(agencyId, cohort);
       return cohort;
     };
     // A unique id for THIS cron run, used to claim rows (see the claim below).
@@ -1204,39 +1212,6 @@ Deno.serve(async (req) => {
       const destAllowed = isAllowedDestination(row.to_number, settings);
       if (!destAllowed.allowed) { await fail(`Destination blocked at send time: ${destAllowed.reason}`); continue; }
 
-      // Cost control: enforce the optional monthly outbound-SMS cap, scoped to
-      // THIS row's agency cohort (mirrors sendSms). Counting every tenant's
-      // outbound rows made one busy agency trip every other agency's cap. When
-      // the cap is already reached, leave the row pending so a later run (next
-      // month / after the cap is raised) can pick it up rather than failing a
-      // scheduled reminder outright.
-      const monthlyCap = Number(settings?.monthly_sms_cap);
-      if (Number.isFinite(monthlyCap) && monthlyCap > 0) {
-        const since = monthStartISO();
-        // nurseAgencyCache was populated by resolveRowConfig() above for this row.
-        const rowAgency = nurseAgencyCache.get(String(row.nurse_email || '')) || '';
-        const agencyNurseEmails = await resolveAgencyCohort(rowAgency);
-        const fetchLimit = agencyNurseEmails
-          ? Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000)
-          : monthlyCap;
-        const recentOutbound = await base44.asServiceRole.entities.SmsMessage
-          .filter({ direction: 'outbound' }, '-created_date', fetchLimit)
-          .catch(() => []);
-        const sentThisMonth = (Array.isArray(recentOutbound) ? recentOutbound : [])
-          .filter((m) => m.created_date && m.created_date >= since)
-          .filter((m) => !agencyNurseEmails
-            || (m.nurse_email && agencyNurseEmails.has(m.nurse_email))
-            || m.sent_by === row.nurse_email)
-          .length;
-        if (sentThisMonth >= monthlyCap) {
-          await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
-            status: 'pending', claimed_by: '', claimed_at: null,
-          }).catch(() => {});
-          result.skipped++;
-          continue;
-        }
-      }
-
       // The sending number must still be an active, outbound-enabled agency
       // line, and the nurse who scheduled the text must still belong to it.
       const lineAuthority = await resolveLineAuthority(row.from_number);
@@ -1252,6 +1227,38 @@ Deno.serve(async (req) => {
         continue;
       }
       if (!stillMember) { await fail('The scheduling user no longer has an active agency membership'); continue; }
+
+      // Cost control: enforce the optional monthly outbound-SMS cap for the
+      // LINE's agency, counted exactly as sendSms counts it (rows stamped with
+      // the agency, or written by its active members). Counting every tenant's
+      // outbound rows made one busy agency trip every other agency's cap. When
+      // the cap is already reached — or the cohort cannot be read — leave the row
+      // pending so a later run (next month / after the cap is raised) can pick
+      // it up rather than failing a scheduled reminder outright.
+      const monthlyCap = Number(settings?.monthly_sms_cap);
+      if (Number.isFinite(monthlyCap) && monthlyCap > 0) {
+        const since = monthStartISO();
+        const agencyId = lineAuthority.agencyId;
+        const cohort = await resolveAgencyCohort(agencyId);
+        const agencyNurseEmails = cohort ? new Set(cohort).add(normalizeDispatchEmail(row.nurse_email)) : null;
+        const recentOutbound = agencyNurseEmails
+          ? await base44.asServiceRole.entities.SmsMessage
+            .filter({ direction: 'outbound' }, '-created_date', Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000))
+            .catch(() => [])
+          : [];
+        const sentThisMonth = (Array.isArray(recentOutbound) ? recentOutbound : [])
+          .filter((m) => m.created_date && m.created_date >= since)
+          .filter((m) => m.agency_id === agencyId
+            || agencyNurseEmails.has(normalizeDispatchEmail(m.nurse_email)))
+          .length;
+        if (!agencyNurseEmails || sentThisMonth >= monthlyCap) {
+          await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
+            status: 'pending', claimed_by: '', claimed_at: null,
+          }).catch(() => {});
+          result.skipped++;
+          continue;
+        }
+      }
 
       // Re-check consent at send time in the bound scope. Require explicit
       // opted_in — unknown/missing is not sufficient for TCPA. A consent read
@@ -1304,7 +1311,13 @@ Deno.serve(async (req) => {
       }
 
       const providerMessageId = resp.data?.data?.id || null;
-      // Record the sent message in the nurse's thread so it shows in their inbox.
+      // Record the sent message in the nurse's thread so it shows in their inbox,
+      // with the same fields sendSms writes: the status Telnyx answered
+      // (accepted is 'queued' until the delivery receipt says more, never a
+      // blanket 'sent'), and the provenance redriveFailedSms requires and
+      // re-proves — the line's agency and the exact binding it was sent from.
+      // Without them a scheduled text was invisible to the redrive, to the
+      // agency's monthly cap and to inbound reply attribution.
       const smsRow = await base44.asServiceRole.entities.SmsMessage.create({
         direction: 'outbound',
         from_number: lineAuthority.destinationE164,
@@ -1313,17 +1326,20 @@ Deno.serve(async (req) => {
         nurse_email: row.nurse_email,
         patient_id: row.patient_id || null,
         thread_id: row.thread_id,
-        status: 'sent',
+        status: telnyxSendStatus(resp.data),
         provider_message_id: providerMessageId,
         client_message_id: clientMessageId,
         is_read: true,
         sent_by: row.nurse_email,
         consent_checked: true,
+        agency_id: lineAuthority.agencyId,
+        destination_binding_id: lineAuthority.bindingId,
       }).catch(() => { console.error('dispatchScheduledSms: inbox copy write failed'); return null; });
 
-      // The text WAS delivered, so the row is 'sent' regardless; but if we
-      // couldn't write the inbox copy, note it so the gap is visible rather than
-      // silently losing the conversation record.
+      // Telnyx ACCEPTED the text (accepted, not delivered — the receipt on the
+      // SmsMessage says that), so the scheduled row is 'sent' regardless; but if
+      // we couldn't write the inbox copy, note it so the gap is visible rather
+      // than silently losing the conversation record.
       await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
         status: 'sent',
         provider_message_id: providerMessageId,
