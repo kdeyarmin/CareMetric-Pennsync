@@ -489,8 +489,11 @@ function ElementPropertiesPanel({ element, allElements, onUpdate, onDelete, onDu
         {element.type === 'rich_text' && (
           <div>
             <Label>Rich Text Content / Instructions</Label>
+            {/* Explicitly exclude formula/video formats affected by CVE-2025-15056;
+                hiding their toolbar buttons alone does not disable those blots. */}
             <ReactQuill
               theme="snow"
+              formats={['header', 'bold', 'italic', 'underline', 'strike', 'list', 'color', 'background', 'link']}
               value={richTextValue}
               onChange={handleRichTextChange}
               modules={{

@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { openExternalUrl } from "@/components/utils/security";
+import { sanitizeTemplateRichText } from '@/components/documents/templateRichText';
 import TemplateFieldMapper from "./TemplateFieldMapper";
 import VisualPDFTemplateEditor from "./VisualPDFTemplateEditor";
 import TemplateSearchFilter from "./TemplateSearchFilter";
@@ -79,7 +80,7 @@ export default function PDFTemplateManager() {
   };
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.PDFTemplate.create(data),
+    mutationFn: (data) => base44.entities.PDFTemplate.create(sanitizeTemplateRichText(data)),
     onSuccess: () => {
       invalidatePdfTemplateCaches();
       setDialogOpen(false);
@@ -89,7 +90,7 @@ export default function PDFTemplateManager() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.PDFTemplate.update(id, data),
+    mutationFn: ({ id, data }) => base44.entities.PDFTemplate.update(id, sanitizeTemplateRichText(data)),
     onSuccess: () => {
       invalidatePdfTemplateCaches();
       setDialogOpen(false);
