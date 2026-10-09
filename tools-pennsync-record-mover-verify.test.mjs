@@ -9,6 +9,7 @@ import { buildFixture } from './tools-pennsync-record-mover-fixtures.mjs';
 // The loader is imported ONLY to put rows in the store for the verifier to look at.
 import { applyLanding } from './tools-pennsync-record-mover-load.mjs';
 import { canonical, loadTargetSpec, planFromDirectory } from './tools-pennsync-record-mover-plan.mjs';
+import { referenceTarget } from './tools-pennsync-record-mover-references.mjs';
 import { checkFiles, checkVisibility, inferLinks, sameValue, verifyRun } from './tools-pennsync-record-mover-verify.mjs';
 
 const require = createRequire(new URL('./services/authority-store/package.json', import.meta.url));
@@ -189,6 +190,23 @@ test('quarantine: the same id from another source app is not mistaken for a quar
 test('links: a prefixed reference column finds its target, and the result says the links were inferred', () => {
   const rows = [{ table: 'patient', row: { id: 'p' } }, { table: 'shared_document', row: { id: 'd', related_patient_id: 'p' } }, { table: 'note', row: { id: 'n', target_patient_id: 'p' } }];
   assert.deepEqual(inferLinks(rows).map((l) => `${l.table}.${l.column}>${l.target}`), ['note.target_patient_id>patient', 'shared_document.related_patient_id>patient']);
+});
+
+test('links: the verifier and the rollback take one reference rule, from a module that imports nothing', async () => {
+  const source = (name) => readFile(new URL(`./tools-pennsync-record-mover-${name}.mjs`, import.meta.url), 'utf8');
+  const shared = await source('references');
+  assert.ok(!/^import\b/m.test(shared), 'the shared rule must not bring the planner or the loader into the verifier');
+  for (const name of ['verify', 'rollback']) {
+    const text = await source(name);
+    assert.match(text, /import \{ referenceTarget \} from '\.\/tools-pennsync-record-mover-references\.mjs';/, name);
+    assert.ok(!/_PREFIXES\s*=/.test(text), `${name} keeps no prefix list of its own`);
+  }
+  const known = new Set(['agency', 'patient', 'task', 'parent_task']);
+  assert.equal(referenceTarget('patient_id', known), 'patient');
+  assert.equal(referenceTarget('related_patient_id', known), 'patient');
+  assert.equal(referenceTarget('parent_task_id', known), 'parent_task', 'the most specific name that is a table wins');
+  assert.equal(referenceTarget('agency_id', known), null, 'the tenant column holds the owned agency id, not a carried agency row id');
+  assert.equal(referenceTarget('vehicle_id', new Set(['fleet_vehicle'])), null, 'a name that does not name its table is not recognised');
 });
 
 test('visibility: a table with no agency column is judged through the row it links to, or listed as unclassified', async () => {
