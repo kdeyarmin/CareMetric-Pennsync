@@ -382,8 +382,10 @@ test('every released operation can actually reserve, the new one included', () =
  */
 const credential = (db, args) => rpc(db, 'credential_put', args);
 const CRED = app;
+// The public key is a synthetic raw 32-byte Ed25519 key in base64, the only
+// shape putCredential admits (this SQL path is below that check).
 const putArgs = (sealed = 'sealed-blob', last = '9911', by = 'operator@example.test') =>
-  [randomUUID(), CRED, 'telnyx', sealed, last, 'cHVibGljLWtleQ==', 'mp-1', 'vc-1', 'fc-1', by];
+  [randomUUID(), CRED, 'telnyx', sealed, last, 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=', 'mp-1', 'vc-1', 'fc-1', by];
 
 test('a credential rotation appends a version and retires the previous one', () => lab(async ({ db }) => {
   await role(db);

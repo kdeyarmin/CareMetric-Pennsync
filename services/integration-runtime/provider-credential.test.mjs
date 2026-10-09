@@ -43,8 +43,12 @@ function storeDouble() {
   };
 }
 
+// A synthetic key in the only form a Telnyx webhook verifier can import: 32 raw
+// Ed25519 bytes, base64. (This fixture used to be 'cHVibGljLWtleQ==', which is
+// the ten bytes "public-key" and would refuse every signed webhook.)
+const PUBLIC_KEY = Buffer.alloc(32, 1).toString('base64');
 const PUT = Object.freeze({
-  apiKey: KEY, updatedBy: 'operator@example.test', publicKey: 'cHVibGljLWtleQ==',
+  apiKey: KEY, updatedBy: 'operator@example.test', publicKey: PUBLIC_KEY,
   messagingProfileId: 'mp-1', voiceConnectionId: 'vc-1', faxConnectionId: 'fc-1',
 });
 
@@ -65,7 +69,7 @@ test('a sealed credential round-trips with its resource ids', async () => {
   const creds = await readCredential(CONFIG, store);
   assert.equal(creds.apiKey, KEY);
   assert.equal(creds.readError, null);
-  assert.equal(creds.publicKey, 'cHVibGljLWtleQ==');
+  assert.equal(creds.publicKey, PUBLIC_KEY);
   assert.equal(creds.messagingProfileId, 'mp-1');
   assert.equal(creds.voiceConnectionId, 'vc-1');
   assert.equal(creds.faxConnectionId, 'fc-1');
@@ -167,6 +171,38 @@ test('a bad actor, key or resource id is refused before anything is written', as
   await refuses({ faxConnectionId: 'fc 1' }, 'CREDENTIAL_RESOURCE_INVALID');
   await refuses({ provider: 'other' }, 'UNSUPPORTED_PROVIDER');
   assert.equal(store.written.length, 0);
+});
+
+test('a webhook public key is stored only as the raw 32-byte Ed25519 key, base64', async () => {
+  const pem = '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=\n-----END PUBLIC KEY-----';
+  const malformed = [
+    ['the old ten-byte fixture', 'cHVibGljLWtleQ=='],
+    ['a PEM block', pem],
+    ['the SPKI DER body without its armour', 'MCowBQYDK2VwAyEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='],
+    ['the key as hex', Buffer.alloc(32, 1).toString('hex')],
+    ['the API key in the wrong field', KEY],
+    ['no padding', PUBLIC_KEY.slice(0, 43)],
+    ['url-safe alphabet', PUBLIC_KEY.slice(0, 10) + '-_' + PUBLIC_KEY.slice(12)],
+    ['an inner space', PUBLIC_KEY.slice(0, 20) + ' ' + PUBLIC_KEY.slice(21)],
+    ['33 bytes', Buffer.alloc(33, 1).toString('base64')],
+    ['not a string', 42],
+  ];
+  for (const [label, publicKey] of malformed) {
+    const store = storeDouble();
+    await assert.rejects(
+      () => putCredential(CONFIG, store, { ...PUT, publicKey }, { randomUUID }),
+      error => error.code === 'CREDENTIAL_PUBLIC_KEY_INVALID',
+      label,
+    );
+    assert.equal(store.written.length, 0, `${label} wrote nothing`);
+  }
+  // Surrounding whitespace from a paste is trimmed, as saveTelnyxSecret does.
+  const store = storeDouble();
+  await putCredential(CONFIG, store, { ...PUT, publicKey: `  ${PUBLIC_KEY}\n` }, { randomUUID });
+  assert.equal(store.written[0].p_public_key, PUBLIC_KEY);
+  // And an absent key is still allowed: signature checking is a later switch.
+  await putCredential(CONFIG, store, { ...PUT, publicKey: null }, { randomUUID });
+  assert.equal(store.written[1].p_public_key, null);
 });
 
 test('an unconfirmed write is refused rather than reported as a version', async () => {
