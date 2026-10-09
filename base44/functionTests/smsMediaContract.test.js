@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { copyRows, createStamp, stampSmsRows, updateManyRows } from './smsStoreFake.js';
 
 /**
  * Inbound MMS, end to end against the real handlers:
@@ -68,24 +69,34 @@ function fixture(seed = {}, { uploads = [] } = {}) {
     ...seed,
   };
   let sequence = 0;
+  // SmsMessage behaves as the hosted store does (smsStoreFake.js): reads are
+  // copies, every write moves updated_date, updateMany honours its predicate.
+  const stamp = createStamp();
+  stampSmsRows(data, stamp);
+  const sms = (name) => name === 'SmsMessage';
   const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => row?.[key] === value);
   const entities = new Proxy({}, {
     get: (_target, nameValue) => {
       const name = String(nameValue);
       return {
-        filter: async (query = {}, _sort, limit = 5000) => (data[name] || []).filter((row) => matches(row, query)).slice(0, limit),
+        filter: async (query = {}, _sort, limit = 5000) => {
+          const rows = (data[name] || []).filter((row) => matches(row, query)).slice(0, limit);
+          return sms(name) ? copyRows(rows) : rows;
+        },
         list: async () => data[name] || [],
         create: async (row) => {
           sequence += 1;
           const created = { id: `${name}_${sequence}`, created_date: new Date().toISOString(), ...row };
+          if (sms(name)) created.updated_date = stamp();
           (data[name] ||= []).push(created);
           return created;
         },
         update: async (id, patch) => {
           const row = (data[name] || []).find((candidate) => candidate.id === id);
-          if (row) Object.assign(row, patch);
+          if (row) Object.assign(row, patch, sms(name) ? { updated_date: stamp() } : {});
           return { id, ...patch };
         },
+        updateMany: async (query, operations) => updateManyRows(data[name], query, operations, stamp),
       };
     },
   });
@@ -219,6 +230,64 @@ test('a row another run has claimed is not copied twice; a stale claim is taken 
   assert.equal(state.uploads.length, 1, 'a claim whose run died is taken over');
 });
 
+test('two overlapping copier runs upload one attachment once: the claim is a compare-and-set', async () => {
+  // Run B listed the row before run A claimed it, and tries to claim it while A
+  // is mid-copy. Update-then-read-back let B overwrite A's token and read back
+  // its own, after A had already read back its own: both uploaded.
+  const state = fixture({ SmsMessage: [pendingRow()] });
+  const entities = state.client.asServiceRole.entities;
+  let aFetching;
+  const aIsFetching = new Promise((resolve) => { aFetching = resolve; });
+  let releaseA;
+  const aMayFinish = new Promise((resolve) => { releaseA = resolve; });
+  let listed = null;
+  const runClient = (role) => {
+    const view = new Proxy({}, {
+      get: (_target, name) => {
+        const real = entities[name];
+        if (name !== 'SmsMessage') return real;
+        return {
+          ...real,
+          filter: async (query, sort, limit) => {
+            if (query?.media_pending !== true) return real.filter(query, sort, limit);
+            if (role === 'A') {
+              listed = await real.filter(query, sort, limit);
+              return structuredClone(listed);
+            }
+            await aIsFetching;
+            return structuredClone(listed);
+          },
+        };
+      },
+    });
+    return { auth: { me: async () => null }, entities: view, asServiceRole: { entities: view, integrations: state.client.asServiceRole.integrations } };
+  };
+  let fetches = 0;
+  const fetchImpl = async () => {
+    fetches += 1;
+    if (fetches === 1) {
+      aFetching();
+      await aMayFinish;
+    }
+    return jpegBytes();
+  };
+  const runA = await loadFunction('copyInboundSmsMedia', runClient('A'), RELEASED, fetchImpl);
+  const runB = await loadFunction('copyInboundSmsMedia', runClient('B'), RELEASED, fetchImpl);
+  const pendingA = runA(cron());
+  const answerB = await (await runB(cron())).json();
+  releaseA();
+  const answerA = await (await pendingA).json();
+
+  assert.equal(state.uploads.length, 1, 'one attachment, one upload');
+  assert.equal(fetches, 1, 'the losing run never fetched it either');
+  assert.equal(answerA.copied, 1);
+  assert.equal(answerB.copied, 0);
+  assert.equal(answerB.skipped, 1, 'the run whose claim lost skips the row');
+  const [row] = state.data.SmsMessage;
+  assert.deepEqual(row.media, [{ status: 'stored', content_type: 'image/jpeg', byte_size: 4, file_uri: 'private/agency_a/mms-sms_in_1-0.jpeg' }]);
+  assert.equal(row.media_claimed_by, null, 'the winner released its claim');
+});
+
 test('an attachment that cannot be copied is retried, then marked unavailable without its URL', async () => {
   const state = fixture({ SmsMessage: [pendingRow()] });
   const handler = await loadFunction('copyInboundSmsMedia', state.client, RELEASED, async () => new Response('busy', { status: 503 }));
@@ -299,6 +368,39 @@ test("getSmsMediaUrl mints a 60-second link for the text's own nurse in its agen
     response = await handler(mediaRequest(body));
     assert.equal(response.status, status, label);
     assert.doesNotMatch(await response.text(), /private\/agency_a/, `${label}: no file URI is disclosed`);
+  }
+});
+
+test('getSmsMediaUrl finds the membership by the caller\'s immutable user id, never by the address alone', async () => {
+  const nurse = { id: 'u_nurse', email: 'Nurse@Example.test', is_active: true };
+  const member = { id: 'm1', agency_id: 'agency_a', user_id: 'u_nurse', user_email_normalized: 'nurse@example.test', status: 'active' };
+  const ask = async (memberships) => {
+    const state = fixture({ SmsMessage: [storedRow()], AgencyMembership: memberships });
+    state.client.auth.me = async () => nurse;
+    const handler = await loadFunction('getSmsMediaUrl', state.client);
+    const response = await handler(mediaRequest({ message_id: 'sms_in_1', index: 0 }));
+    const text = await response.text();
+    assert.doesNotMatch(text, /private\/agency_a/, 'no file URI is disclosed');
+    return { status: response.status, json: JSON.parse(text) };
+  };
+
+  // Control: the one active row for this user in this agency mints the link.
+  const ok = await ask([member]);
+  assert.equal(ok.status, 200);
+  assert.match(ok.json.url, /^https:\/\/storage\.example\.test\/signed\//);
+
+  for (const [label, memberships] of [
+    // Somebody else's membership that happens to carry the caller's address
+    // (an address can be reassigned; the user id cannot).
+    ['an active row with the address under another user id', [{ ...member, user_id: 'u_other' }]],
+    ['two active rows for the caller in the agency (ambiguous)', [member, { ...member, id: 'm2' }]],
+    ['the caller\'s row whose address no longer matches', [{ ...member, user_email_normalized: 'former@example.test' }]],
+    ['the caller\'s active row in another agency', [{ ...member, agency_id: 'agency_b' }]],
+    ['the caller\'s row, no longer active', [{ ...member, status: 'suspended' }]],
+  ]) {
+    const refused = await ask(memberships);
+    assert.equal(refused.status, 404, label);
+    assert.equal(refused.json.url, undefined, `${label}: no link`);
   }
 });
 

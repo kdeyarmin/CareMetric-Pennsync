@@ -139,7 +139,8 @@ function getSchedulerAuthError(req, user) {
  * The text is re-sent from the binding's own destination, never the row's.
  *
  * Telnyx has no client idempotency key, so we can't rely on provider dedupe —
- * double-send is prevented by the claim+re-read and by redriving only a row
+ * double-send is prevented by a compare-and-set claim over the row as listed
+ * (one conditional updateMany; exactly one run can win it) and by redriving only a row
  * whose failure reason leads with a status that proves Telnyx did not process
  * it (408/425/429/503) or says the connection never opened. A TIMED-OUT send, a
  * connection that failed mid-request and a 500/502/504 are "outcome unknown"
@@ -1136,6 +1137,20 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: smsRowCas — generated, edit base44/_shared/backendHelpers.mjs>>>
+const successfulSmsCas = (value) => !!value
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && value.success === true
+  && value.updated === 1
+  && value.has_more === false;
+function observedSmsField(field, value) {
+  return value == null
+    ? { $or: [{ [field]: { $exists: false } }, { [field]: null }] }
+    : { [field]: value };
+}
+// <<<END SHARED HELPER: smsRowCas>>>
+
 function tzForNumber(raw) {
   const d = String(raw || '').replace(/[^\d]/g, '');
   const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
@@ -1310,27 +1325,44 @@ Deno.serve(async (req) => {
       // Claim with a run token WITHOUT changing status — the row stays 'failed'
       // so a crash mid-send can never strand it as a terminal 'queued' (a later
       // run re-scans it once the backoff gap passes). retry_count/last_retry_at
-      // advance here so the attempt is counted and the gap is enforced; the
-      // re-read confirms ownership against overlapping runs. Telnyx has no client
-      // idempotency key, but redrive only fires on rows whose failure proves
-      // Telnyx did not process the send (shouldRedriveSms), so re-sending cannot
-      // text the patient twice; we can't rely on provider dedupe.
+      // advance here so the attempt is counted and the gap is enforced. Telnyx
+      // has no client idempotency key, so the claim is ONE compare-and-set over
+      // the row exactly as this run listed it: it matches only while the row is
+      // still failed, with the same retry count, claim token, supersede mark and
+      // updated_date. Of two overlapping runs — or a run and a manual Resend
+      // (sendSms makes the same kind of claim on superseded_by) — exactly one
+      // write lands; the other's predicate no longer matches and it sends
+      // nothing. A row whose updated_date cannot be read is never claimed.
+      if (typeof row.updated_date !== 'string' || !row.updated_date) { result.skipped++; continue; }
       const attempts = (Number(row.retry_count) || 0) + 1;
-      try {
-        await base44.asServiceRole.entities.SmsMessage.update(row.id, {
-          retry_count: attempts, last_retry_at: new Date().toISOString(), redrive_claimed_by: runId,
-        });
-      } catch {
+      const claimedAt = new Date().toISOString();
+      const claim = await base44.asServiceRole.entities.SmsMessage.updateMany({
+        id: row.id,
+        direction: 'outbound',
+        status: 'failed',
+        updated_date: row.updated_date,
+        $and: [
+          observedSmsField('retry_count', row.retry_count),
+          observedSmsField('redrive_claimed_by', row.redrive_claimed_by),
+          observedSmsField('superseded_by', row.superseded_by),
+        ],
+      }, { $set: { retry_count: attempts, last_retry_at: claimedAt, redrive_claimed_by: runId } }).catch(() => null);
+      if (!successfulSmsCas(claim)) { result.skipped++; continue; }
+      const check = await base44.asServiceRole.entities.SmsMessage.filter({ id: row.id }, undefined, 2).catch(() => null);
+      const claimed = Array.isArray(check) && check.length === 1 && check[0]?.id === row.id ? check[0] : null;
+      if (!claimed || claimed.redrive_claimed_by !== runId || claimed.retry_count !== attempts
+        || claimed.last_retry_at !== claimedAt || claimed.status !== 'failed') {
         result.skipped++;
         continue;
       }
-      const check = await base44.asServiceRole.entities.SmsMessage.filter({ id: row.id }, '-created_date', 1).catch(() => []);
-      if (!check[0] || check[0].redrive_claimed_by !== runId) { result.skipped++; continue; }
-      // A manual Resend that superseded the row after it was listed wins; the
-      // claim is released and nothing is sent (sendSms's re-read sees the claim
-      // the other way round and refuses the resend instead).
-      if (check[0].superseded_by) {
-        await base44.asServiceRole.entities.SmsMessage.update(row.id, { redrive_claimed_by: null }).catch(() => {});
+      // Defence in depth: the predicate required no supersede mark, and a
+      // Resend's own claim requires no redrive claim, so this cannot be set
+      // now. If it somehow is, the Resend wins: release exactly this claim.
+      if (claimed.superseded_by) {
+        await base44.asServiceRole.entities.SmsMessage.updateMany(
+          { id: row.id, redrive_claimed_by: runId },
+          { $set: { redrive_claimed_by: null } },
+        ).catch(() => null);
         result.skipped++;
         continue;
       }

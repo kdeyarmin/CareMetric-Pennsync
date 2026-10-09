@@ -66,6 +66,31 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: activeAgencyMembershipAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function hasExactActiveMembershipInAgency(base44, user, agencyId) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = String(user?.email || '').trim().toLowerCase();
+  if (!userId || !userEmail || typeof agencyId !== 'string' || !agencyId || agencyId.trim() !== agencyId) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { agency_id: agencyId, user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && row.agency_id === agencyId
+    && String(row.user_id || '').trim() === userId
+    && row.status === 'active'
+    && String(row.user_email_normalized || '').trim().toLowerCase() === userEmail;
+}
+// <<<END SHARED HELPER: activeAgencyMembershipAuthz>>>
+
 // <<<BEGIN SHARED HELPER: smsMedia — generated, edit base44/_shared/backendHelpers.mjs>>>
 // Generated verbatim from src/components/messaging/smsMedia.js.
 const SMS_MEDIA_LIMIT = 10;
@@ -130,9 +155,10 @@ function smsMediaFileName(rowId, index, contentType) {
  *     and the attachment's index, nothing about who is asking);
  *   - the row is theirs: its nurse_email or sent_by is the caller's address —
  *     the same rows SmsMessage's read rule shows them;
- *   - they still hold an active membership in the agency the row was stamped
- *     with (a person who left the agency keeps no reach to its patients'
- *     pictures through an old thread);
+ *   - they still hold exactly one active membership in the agency the row was
+ *     stamped with, found by their immutable User id (the address on the
+ *     membership is only cross-checked), so a person who left the agency keeps
+ *     no reach to its patients' pictures through an old thread;
  *   - the attachment was copied ('stored', a private file URI).
  * Anything else is a 404, so a guessed id cannot probe another person's rows.
  * The built-in admin's wider SmsMessage read is deliberately NOT extended here.
@@ -169,12 +195,10 @@ Deno.serve(async (req) => {
     if (!row || (normalizeMediaEmail(row.nurse_email) !== email && normalizeMediaEmail(row.sent_by) !== email)
       || !exactId(row.agency_id)) return notFound();
 
-    const memberships = await entities.AgencyMembership.filter(
-      { agency_id: row.agency_id, user_email_normalized: email, status: 'active' }, undefined, 2,
-    );
-    const member = Array.isArray(memberships) && memberships.some((membership) => membership?.agency_id === row.agency_id
-      && normalizeMediaEmail(membership?.user_email_normalized) === email && membership?.status === 'active');
-    if (!member) return notFound();
+    // Membership is keyed on the caller's immutable User id, never on the
+    // address: exactly one active row in the row's agency, whose user_id,
+    // email and agency all agree.
+    if (!(await hasExactActiveMembershipInAgency(base44, user, row.agency_id))) return notFound();
 
     const item = Array.isArray(row.media) ? row.media[body.index] : null;
     if (!item || item.status !== 'stored' || !isPrivateSmsFileUri(item.file_uri)) return notFound();

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { copyRows, createStamp, stampSmsRows, updateManyRows } from './smsStoreFake.js';
 
 /**
  * What an SMS send records about its outcome, run against each function's real
@@ -68,7 +69,12 @@ export function optIn(overrides = {}) {
   };
 }
 
-/** A stateful fake: equality filters, `$in`, the two sorts the code uses, and recorded writes. */
+/**
+ * A stateful fake: equality filters, `$in`, the two sorts the code uses, and
+ * recorded writes. SmsMessage behaves as the hosted store does
+ * (smsStoreFake.js): reads are copies, every write moves updated_date, and
+ * updateMany applies only where its predicate still matches.
+ */
 export function fixture(seed = {}) {
   const data = {
     IntegrationSecret: [{ id: 'integration_1', provider: 'telnyx', api_key: 'KEYtest', messaging_profile_id: 'MP1', is_active: true }],
@@ -87,6 +93,9 @@ export function fixture(seed = {}) {
   };
   const writes = [];
   let sequence = 0;
+  const stamp = createStamp();
+  stampSmsRows(data, stamp);
+  const sms = (name) => name === 'SmsMessage';
   const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => (
     value && typeof value === 'object' && Array.isArray(value.$in) ? value.$in.includes(row?.[key]) : row?.[key] === value
   ));
@@ -99,20 +108,28 @@ export function fixture(seed = {}) {
     get: (_target, nameValue) => {
       const name = String(nameValue);
       return {
-        filter: async (query = {}, sort, limit = 5000) => sorted((data[name] || []).filter((row) => matches(row, query)), sort).slice(0, limit),
+        filter: async (query = {}, sort, limit = 5000) => {
+          const rows = sorted((data[name] || []).filter((row) => matches(row, query)), sort).slice(0, limit);
+          return sms(name) ? copyRows(rows) : rows;
+        },
         list: async () => data[name] || [],
         create: async (row) => {
           sequence += 1;
           const created = { id: `${name}_${sequence}`, created_date: new Date().toISOString(), ...row };
+          if (sms(name)) created.updated_date = stamp();
           (data[name] ||= []).push(created);
           writes.push({ name, op: 'create', row: created });
           return created;
         },
         update: async (id, patch) => {
           const row = (data[name] || []).find((candidate) => candidate.id === id);
-          if (row) Object.assign(row, patch);
+          if (row) Object.assign(row, patch, sms(name) ? { updated_date: stamp() } : {});
           writes.push({ name, op: 'update', id, patch });
           return { id, ...patch };
+        },
+        updateMany: async (query, operations) => {
+          writes.push({ name, op: 'updateMany', query, operations });
+          return updateManyRows(data[name], query, operations, stamp);
         },
       };
     },
@@ -323,7 +340,7 @@ test('a Resend is refused for a row the caller did not send, a changed text, or 
   }
 });
 
-test('a redrive that listed the row before a Resend superseded it releases its claim and sends nothing', async () => {
+test('a redrive that listed the row before a Resend superseded it cannot claim it and sends nothing', async () => {
   const state = fixture({ SmsMessage: [failedOriginal({ superseded_by: 'client_resend', nurse_email: 'nurse@example.test', sent_by: 'nurse@example.test' })] });
   // The cron's listing predates the Resend: it does not see superseded_by.
   const entities = state.client.asServiceRole.entities;
@@ -343,7 +360,263 @@ test('a redrive that listed the row before a Resend superseded it releases its c
   const response = await redrive(cron('redriveFailedSms'));
   assert.equal(response.status, 200);
   assert.equal(telnyx.sends.length, 0);
-  assert.equal(state.data.SmsMessage[0].redrive_claimed_by, null, 'the claim is released');
+  // The claim is a compare-and-set over the row as listed (superseded_by
+  // absent); the row now carries the Resend's mark, so the claim never lands.
+  const [row] = state.data.SmsMessage;
+  assert.equal(row.redrive_claimed_by, undefined, 'the row was never claimed');
+  assert.equal(row.retry_count, 0, 'no redrive attempt was counted');
+  assert.equal(row.superseded_by, 'client_resend', "the Resend's mark stands");
+});
+
+// ---- overlapping writers: every claim on a failed text is a compare-and-set ----
+
+/**
+ * A second client over the SAME store, for a run that overlaps another: the
+ * SmsMessage methods `override(real)` returns replace the live ones (a stale
+ * read, a failing write); every other entity is the live store.
+ */
+function runClient(state, auth, override = () => ({})) {
+  const entities = state.client.asServiceRole.entities;
+  const view = new Proxy({}, {
+    get: (_target, name) => {
+      const real = entities[name];
+      return name === 'SmsMessage' ? { ...real, ...override(real) } : real;
+    },
+  });
+  return { auth, entities: view, asServiceRole: { entities: view } };
+}
+
+/** A Telnyx whose FIRST send is held open until released, so a run can be caught mid-send. */
+function heldTelnyx(status, json) {
+  const sends = [];
+  let started;
+  const firstSendStarted = new Promise((resolve) => { started = resolve; });
+  let release;
+  const released = new Promise((resolve) => { release = resolve; });
+  const impl = async (url, init = {}) => {
+    sends.push({ url: String(url), body: init.body ? JSON.parse(init.body) : null });
+    if (sends.length === 1) {
+      started();
+      await released;
+    }
+    return Response.json(json, { status, headers: { 'retry-after': '0' } });
+  };
+  return { sends, impl, firstSendStarted, release };
+}
+
+const ownerAuth = { me: async () => owner };
+const cronAuth = { me: async () => null };
+const accepted = { data: { id: 'prov_once', to: [{ status: 'queued' }] } };
+const isRedriveListing = (query) => query?.status === 'failed' && query?.direction === 'outbound';
+const isOriginalRead = (query) => query?.id === 'sms_orig';
+
+/** The first read `matches` is served by `serve`; every later read is live. */
+function firstRead(matches, serve) {
+  let served = false;
+  return (real) => ({
+    filter: async (query, sort, limit) => {
+      if (served || !matches(query)) return real.filter(query, sort, limit);
+      served = true;
+      return serve(() => real.filter(query, sort, limit));
+    },
+  });
+}
+
+test('two overlapping redrive runs send a failed text once: the claim is a compare-and-set', async () => {
+  // Run B listed the row before run A claimed it, and claims it while A is
+  // mid-send. Update-then-read-back let B overwrite A's token after A had read
+  // back its own, and both texted the patient.
+  const state = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+  const telnyx = heldTelnyx(200, accepted);
+  let listed;
+  const clientA = runClient(state, cronAuth, firstRead(isRedriveListing, async (live) => {
+    listed = await live();
+    return structuredClone(listed);
+  }));
+  const clientB = runClient(state, cronAuth, firstRead(isRedriveListing, async () => {
+    await telnyx.firstSendStarted;
+    return structuredClone(listed);
+  }));
+  const redriveA = await loadFunction('redriveFailedSms', clientA, RELEASED, telnyx.impl);
+  const redriveB = await loadFunction('redriveFailedSms', clientB, RELEASED, telnyx.impl);
+  const pendingA = redriveA(cron('redriveFailedSms'));
+  const answerB = await (await redriveB(cron('redriveFailedSms'))).json();
+  telnyx.release();
+  const answerA = await (await pendingA).json();
+
+  assert.equal(telnyx.sends.length, 1, 'the patient is texted once');
+  assert.equal(answerA.redriven, 1);
+  assert.equal(answerB.redriven, 0);
+  assert.equal(answerB.skipped, 1, 'the run whose claim lost skips the row');
+  const [row] = state.data.SmsMessage;
+  assert.equal(row.retry_count, 1, 'one attempt is counted');
+  assert.equal(row.status, 'queued');
+  assert.equal(row.redrive_claimed_by, null, 'the winner released its claim');
+});
+
+test('two overlapping Resends of one failed text send it once', async () => {
+  // Resend B read the original before Resend A retired it, and tries to retire
+  // it while A is mid-send: the old write-then-read-back let B overwrite A's
+  // mark, read back its own, and text the patient a second time.
+  const state = fixture({ SmsMessage: [failedOriginal()] });
+  const telnyx = heldTelnyx(200, accepted);
+  let seen;
+  const clientA = runClient(state, ownerAuth, firstRead(isOriginalRead, async (live) => {
+    seen = await live();
+    return structuredClone(seen);
+  }));
+  const clientB = runClient(state, ownerAuth, firstRead(isOriginalRead, async () => {
+    await telnyx.firstSendStarted;
+    return structuredClone(seen);
+  }));
+  const sendA = await loadFunction('sendSms', clientA, RELEASED, telnyx.impl);
+  const sendB = await loadFunction('sendSms', clientB, RELEASED, telnyx.impl);
+  const resend = () => sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' });
+  const pendingA = sendA(resend());
+  const responseB = await sendB(resend());
+  telnyx.release();
+  const responseA = await pendingA;
+
+  assert.equal(responseA.status, 200, await responseA.clone().text());
+  assert.equal(responseB.status, 409, await responseB.clone().text());
+  assert.equal((await responseB.json()).reason, 'resend_already_superseded', 'B re-read the row and saw it resent');
+  assert.equal(telnyx.sends.length, 1, 'the patient is texted once');
+  assert.equal(state.data.SmsMessage.length, 2, 'one replacement row');
+  const [original, replacement] = state.data.SmsMessage;
+  assert.equal(original.superseded_by, replacement.client_message_id, "the mark names A's replacement");
+});
+
+test('a Resend and a redrive racing for one failed text: only one of them sends', async () => {
+  // The Resend read the row before the redrive claimed it, then tries to retire
+  // it while the redrive is mid-send: its compare-and-set no longer matches.
+  let state = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+  let telnyx = heldTelnyx(200, accepted);
+  const before = structuredClone(state.data.SmsMessage);
+  const resendClient = runClient(state, ownerAuth, firstRead(isOriginalRead, async () => {
+    await telnyx.firstSendStarted;
+    return structuredClone(before);
+  }));
+  const redrive = await loadFunction('redriveFailedSms', state.client, RELEASED, telnyx.impl);
+  const send = await loadFunction('sendSms', resendClient, RELEASED, telnyx.impl);
+  const pendingRedrive = redrive(cron('redriveFailedSms'));
+  const resent = await send(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' }));
+  telnyx.release();
+  assert.equal((await (await pendingRedrive).json()).redriven, 1);
+  assert.equal(resent.status, 409, await resent.clone().text());
+  assert.equal(telnyx.sends.length, 1, 'only the redrive texted the patient');
+  assert.equal(state.data.SmsMessage.length, 1, 'the refused Resend recorded nothing');
+  assert.equal(state.data.SmsMessage[0].superseded_by ?? null, null, 'the original is not retired');
+
+  // The other way round: the redrive listed the row before the Resend retired
+  // it, and tries to claim it while the Resend is mid-send.
+  state = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+  telnyx = heldTelnyx(200, accepted);
+  const listed = structuredClone(state.data.SmsMessage);
+  const redriveClient = runClient(state, cronAuth, firstRead(isRedriveListing, async () => {
+    await telnyx.firstSendStarted;
+    return structuredClone(listed);
+  }));
+  const lateRedrive = await loadFunction('redriveFailedSms', redriveClient, RELEASED, telnyx.impl);
+  const resendFirst = await loadFunction('sendSms', runClient(state, ownerAuth), RELEASED, telnyx.impl);
+  const pendingResend = resendFirst(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' }));
+  const redriveAnswer = await (await lateRedrive(cron('redriveFailedSms'))).json();
+  telnyx.release();
+  assert.equal((await pendingResend).status, 200);
+  assert.equal(redriveAnswer.redriven, 0);
+  assert.equal(telnyx.sends.length, 1, 'only the Resend texted the patient');
+  assert.equal(state.data.SmsMessage[0].redrive_claimed_by, undefined, 'the retired row was never claimed');
+});
+
+test('a Resend whose replacement row cannot be recorded restores the original, which the redrive can still send', async () => {
+  // The reservation was taken and nothing reached Telnyx. Left in place it
+  // retired the original for good, under a mark naming no row: the redrive
+  // skipped it and the thread offered no Resend.
+  for (const [label, create] of [
+    ['a create that fails', async () => { throw new Error('Storage unavailable'); }],
+    ['a create that answers without an id', async () => ({})],
+  ]) {
+    const state = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+    const telnyx = telnyxAnswer(200, accepted);
+    const send = await loadFunction('sendSms', runClient(state, ownerAuth, () => ({ create })), RELEASED, telnyx.impl);
+    const response = await send(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' }));
+    assert.equal(response.status, 503, label);
+    assert.equal((await response.json()).reason, 'sms_record_unavailable', label);
+    assert.equal(telnyx.sends.length, 0, `${label}: nothing was sent`);
+    const [original] = state.data.SmsMessage;
+    assert.equal(original.superseded_by, null, `${label}: the reservation is undone`);
+    assert.equal(original.superseded_at, null, label);
+
+    const redrive = await loadFunction('redriveFailedSms', state.client, RELEASED, telnyx.impl);
+    await redrive(cron('redriveFailedSms'));
+    assert.equal(telnyx.sends.length, 1, `${label}: the restored original is redriven`);
+  }
+});
+
+test('a reservation write whose outcome is unknown is undone, and only that reservation', async () => {
+  // updateMany landed and then the answer was lost: the Resend reports itself
+  // unavailable and clears exactly its own mark, so the original is not retired.
+  const state = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+  const telnyx = telnyxAnswer(200, accepted);
+  let lost = false;
+  const send = await loadFunction('sendSms', runClient(state, ownerAuth, (real) => ({
+    updateMany: async (query, operations) => {
+      const answer = await real.updateMany(query, operations);
+      if (!lost && operations?.$set?.superseded_by) {
+        lost = true;
+        throw new Error('Gateway timeout');
+      }
+      return answer;
+    },
+  })), RELEASED, telnyx.impl);
+  const response = await send(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).reason, 'resend_unavailable');
+  assert.equal(telnyx.sends.length, 0);
+  assert.equal(state.data.SmsMessage.length, 1, 'no replacement row');
+  assert.equal(state.data.SmsMessage[0].superseded_by, null, 'the landed reservation was released');
+
+  // A release names its own token: when it was ANOTHER Resend's reservation
+  // that landed while this one's answer was lost, that mark is never cleared.
+  const raced = fixture({ SmsMessage: [failedOriginal()] });
+  const lostRace = await loadFunction('sendSms', runClient(raced, ownerAuth, (real) => ({
+    updateMany: async (query, operations) => {
+      if (operations?.$set?.superseded_by) {
+        Object.assign(raced.data.SmsMessage[0], { superseded_by: 'client_newer', superseded_at: new Date().toISOString() });
+        throw new Error('Gateway timeout');
+      }
+      return real.updateMany(query, operations);
+    },
+  })), RELEASED, telnyx.impl);
+  const refused = await lostRace(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' }));
+  assert.equal(refused.status, 503);
+  assert.equal(raced.data.SmsMessage[0].superseded_by, 'client_newer', "the other Resend's mark stands");
+  assert.equal(telnyx.sends.length, 0);
+});
+
+test('once the replacement exists the original stays retired, even when Telnyx\'s answer is lost', async () => {
+  // A send that timed out may have been accepted: undoing the reservation here
+  // would let the redrive text the patient a second time.
+  const state = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+  state.client.auth.me = async () => owner;
+  const attempts = [];
+  const send = await loadFunction('sendSms', state.client, RELEASED, async (url) => {
+    attempts.push(String(url));
+    throw new DOMException('The operation was aborted.', 'AbortError');
+  });
+  const response = await send(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' }));
+  assert.equal(response.status, 504);
+  assert.equal(attempts.length, 1, 'a timeout is never retried');
+  const [original, replacement] = state.data.SmsMessage;
+  assert.equal(replacement.resend_of, 'sms_orig');
+  assert.match(replacement.failure_reason, /^Outcome unknown/);
+  assert.equal(original.superseded_by, replacement.client_message_id, 'the original stays retired');
+  assert.ok(original.superseded_at);
+
+  // Neither row is ever sent again automatically.
+  const redriveTelnyx = telnyxAnswer(200, accepted);
+  const redrive = await loadFunction('redriveFailedSms', state.client, RELEASED, redriveTelnyx.impl);
+  await redrive(cron('redriveFailedSms'));
+  assert.equal(redriveTelnyx.sends.length, 0);
 });
 
 // ---- Telnyx error 40300 ("Blocked due to STOP message") feeds the ledger ----

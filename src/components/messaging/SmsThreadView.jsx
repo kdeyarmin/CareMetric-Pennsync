@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import ScheduleSendDialog from "@/components/messaging/ScheduleSendDialog";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { requestAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
+import AuthorityBoundImage from "@/components/ui/AuthorityBoundImage";
 
 // sendSms refuses a body longer than this many UTF-16 code units, which is
 // also what a textarea's maxLength counts.
@@ -37,15 +38,13 @@ async function fetchSmsMediaUrl(messageId, index) {
 function SmsAttachment({ messageId, index, item }) {
   const stored = item?.status === "stored";
   const isImage = stored && /^image\//.test(item?.content_type || "");
-  const picture = useQuery({
-    queryKey: ["smsMediaUrl", messageId, index],
-    queryFn: () => fetchSmsMediaUrl(messageId, index),
-    enabled: isImage,
-    // The link lives 60 s; an image already shown keeps its pixels.
-    staleTime: 45_000,
-    gcTime: 50_000,
-    refetchOnWindowFocus: false,
-  });
+  // A picture's 60-second link is asked for under the tenant authority current
+  // when it is shown, and AuthorityBoundImage detaches it from the element the
+  // moment that authority closes; a link arriving after it closed is dropped.
+  const resolvePicture = useCallback(
+    async () => (await fetchSmsMediaUrl(messageId, index)).url,
+    [messageId, index],
+  );
   const note = (text) => (
     <span className="flex items-center gap-1 text-[12px] italic opacity-80">
       <Paperclip className="h-3 w-3" aria-hidden="true" /> {text}
@@ -55,10 +54,14 @@ function SmsAttachment({ messageId, index, item }) {
   if (item?.status === "pending") return note("Attachment arriving…");
   if (!stored) return note("Attachment could not be retrieved");
   if (isImage) {
-    if (picture.data?.url) {
-      return <img src={picture.data.url} alt="Picture from the patient" className="max-h-60 max-w-full rounded-xl" />;
-    }
-    return note(picture.isError ? "Picture unavailable" : "Loading picture…");
+    return (
+      <AuthorityBoundImage
+        resolveSrc={resolvePicture}
+        alt="Picture from the patient"
+        className="max-h-60 max-w-full rounded-xl"
+        renderStatus={(status) => note(status === "loading" ? "Loading picture…" : "Picture unavailable")}
+      />
+    );
   }
   return (
     <button

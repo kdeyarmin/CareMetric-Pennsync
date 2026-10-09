@@ -100,6 +100,20 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: smsRowCas — generated, edit base44/_shared/backendHelpers.mjs>>>
+const successfulSmsCas = (value) => !!value
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && value.success === true
+  && value.updated === 1
+  && value.has_more === false;
+function observedSmsField(field, value) {
+  return value == null
+    ? { $or: [{ [field]: { $exists: false } }, { [field]: null }] }
+    : { [field]: value };
+}
+// <<<END SHARED HELPER: smsRowCas>>>
+
 // <<<BEGIN SHARED HELPER: smsMedia — generated, edit base44/_shared/backendHelpers.mjs>>>
 // Generated verbatim from src/components/messaging/smsMedia.js.
 const SMS_MEDIA_LIMIT = 10;
@@ -163,9 +177,11 @@ function smsMediaFileName(rowId, index, contentType) {
  * delivery must not store the text twice. Telnyx's OpenAPI spec does not say
  * how long that URL lives, so this copies it within minutes. Per row:
  *   - only an inbound row flagged media_pending, carrying the agency the
- *     webhook stamped, is touched; the row is claimed with a run token and
- *     re-read, so overlapping runs never copy one attachment twice (a claim
- *     older than CLAIM_TTL_MS is taken over: its run died);
+ *     webhook stamped, is touched; the row is claimed with a run token by ONE
+ *     compare-and-set over the claim state this run read (and updated_date),
+ *     so of overlapping runs exactly one wins it and copies each attachment
+ *     (a claim older than CLAIM_TTL_MS is taken over the same way: its run
+ *     died); the result is written back only while that claim is still ours;
  *   - each pending item is fetched from its https URL (redirects followed by
  *     hand, each hop re-checked; never past SMS_MEDIA_MAX_BYTES), uploaded with
  *     UploadPrivateFile, and stored as its private file_uri — the provider URL
@@ -310,15 +326,33 @@ Deno.serve(async (req) => {
         result.skipped++;
         continue;
       }
-      try {
-        await entities.SmsMessage.update(row.id, { media_claimed_by: runId, media_claimed_at: new Date().toISOString() });
-      } catch {
+      // One compare-and-set over the claim state as listed: it lands only while
+      // nobody has claimed (or re-claimed) the row since, so two overlapping
+      // runs can never both upload the same attachment. Update-then-read-back
+      // let each run read back its own token in turn and both proceed.
+      if (typeof row.updated_date !== 'string' || !row.updated_date) {
+        result.skipped++;
+        continue;
+      }
+      const claimedAt = new Date().toISOString();
+      const claim = await entities.SmsMessage.updateMany({
+        id: row.id,
+        direction: 'inbound',
+        media_pending: true,
+        updated_date: row.updated_date,
+        $and: [
+          observedSmsField('media_claimed_by', row.media_claimed_by),
+          observedSmsField('media_claimed_at', row.media_claimed_at),
+        ],
+      }, { $set: { media_claimed_by: runId, media_claimed_at: claimedAt } }).catch(() => null);
+      if (!successfulSmsCas(claim)) {
         result.skipped++;
         continue;
       }
       const check = await entities.SmsMessage.filter({ id: row.id }, undefined, 2).catch(() => []);
       const claimed = Array.isArray(check) && check.length === 1 ? check[0] : null;
       if (!claimed || claimed.id !== row.id || claimed.media_claimed_by !== runId
+        || claimed.media_claimed_at !== claimedAt
         || claimed.media_pending !== true || !Array.isArray(claimed.media)) {
         result.skipped++;
         continue;
@@ -348,12 +382,19 @@ Deno.serve(async (req) => {
           result.still_pending++;
         }
       }
-      await entities.SmsMessage.update(claimed.id, {
-        media,
-        media_pending: media.some((item) => item?.status === 'pending'),
-        media_claimed_by: null,
-        media_claimed_at: null,
-      }).catch(() => console.error('copyInboundSmsMedia: row update failed'));
+      // Written back only while the claim is still this run's: a run slow
+      // enough for its claim to be taken over must not overwrite the newer
+      // run's result (its copies are then simply not recorded).
+      const written = await entities.SmsMessage.updateMany(
+        { id: claimed.id, media_claimed_by: runId, media_claimed_at: claimedAt },
+        { $set: {
+          media,
+          media_pending: media.some((item) => item?.status === 'pending'),
+          media_claimed_by: null,
+          media_claimed_at: null,
+        } },
+      ).catch(() => null);
+      if (!successfulSmsCas(written)) console.error('copyInboundSmsMedia: row update failed');
     }
 
     return Response.json({ success: true, ...result, checked_at: new Date(now).toISOString() });

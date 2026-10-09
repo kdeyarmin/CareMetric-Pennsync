@@ -1181,6 +1181,56 @@ async function hasExactActiveAgencyMembership(base44, user) {
     && !!row.agency_id.trim();
 }`,
 
+  // Compare-and-set over an SmsMessage row exactly as the caller OBSERVED it.
+  // Telnyx takes no idempotency key, so every worker that may text a patient or
+  // copy an attachment (redriveFailedSms, sendSms's Resend, copyInboundSmsMedia)
+  // claims a row with ONE conditional updateMany whose predicate is the prior
+  // state it read (updated_date included) and proceeds only when exactly that
+  // one row was updated. Update-then-read-back is not a claim: two overlapping
+  // writers each read back their own token in turn and both proceed. An
+  // optional field the hosted store may hold as null or omit entirely is
+  // matched by observedSmsField; a present value is matched exactly.
+  smsRowCas: `const successfulSmsCas = (value) => !!value
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && value.success === true
+  && value.updated === 1
+  && value.has_more === false;
+function observedSmsField(field, value) {
+  return value == null
+    ? { $or: [{ [field]: { $exists: false } }, { [field]: null }] }
+    : { [field]: value };
+}`,
+
+  // The same proof, scoped to ONE agency a record was stamped with (an SMS row,
+  // an attachment). AgencyMembership's identity is the immutable User id; the
+  // built-in email is only an integrity check on the row, never the key, so a
+  // membership row that merely carries the caller's address authorizes nothing.
+  // Exactly one active (agency, user) row is required; an ambiguous, malformed
+  // or unreadable result fails closed.
+  activeAgencyMembershipAuthz: `async function hasExactActiveMembershipInAgency(base44, user, agencyId) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = String(user?.email || '').trim().toLowerCase();
+  if (!userId || !userEmail || typeof agencyId !== 'string' || !agencyId || agencyId.trim() !== agencyId) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { agency_id: agencyId, user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && row.agency_id === agencyId
+    && String(row.user_id || '').trim() === userId
+    && row.status === 'active'
+    && String(row.user_email_normalized || '').trim().toLowerCase() === userEmail;
+}`,
+
   // Boundary hardening for legacy handlers that still branch on caller profile
   // claims. Base44 auth.updateMe lets every signed-in account rewrite every custom
   // User field on its own record, so account_type / agency_name / agency_id /

@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { copyRows, createStamp, stampSmsRows, updateManyRows } from './smsStoreFake.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const readEntry = (name) => readFileSync(join(here, '..', 'functions', name, 'entry.ts'), 'utf8');
@@ -197,19 +198,28 @@ function redriveFixture(rowOverrides = {}, seed = {}) {
     UserActivity: [],
     ...seed,
   };
+  // SmsMessage behaves as the hosted store does (smsStoreFake.js): reads are
+  // copies, every write moves updated_date, updateMany honours its predicate.
+  const stamp = createStamp();
+  stampSmsRows(data, stamp);
+  const sms = (name) => name === 'SmsMessage';
   const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => row?.[key] === value);
   const entities = new Proxy({}, {
     get: (_target, nameValue) => {
       const name = String(nameValue);
       return {
-        filter: async (query = {}, _sort, limit = 5000) => (data[name] || []).filter((row) => matches(row, query)).slice(0, limit),
+        filter: async (query = {}, _sort, limit = 5000) => {
+          const rows = (data[name] || []).filter((row) => matches(row, query)).slice(0, limit);
+          return sms(name) ? copyRows(rows) : rows;
+        },
         list: async () => data[name] || [],
         create: async (row) => { (data[name] ||= []).push(row); return { id: `${name}_new`, ...row }; },
         update: async (id, patch) => {
           const row = (data[name] || []).find((candidate) => candidate.id === id);
-          if (row) Object.assign(row, patch);
+          if (row) Object.assign(row, patch, sms(name) ? { updated_date: stamp() } : {});
           return { id, ...patch };
         },
+        updateMany: async (query, operations) => updateManyRows(data[name], query, operations, stamp),
       };
     },
   });

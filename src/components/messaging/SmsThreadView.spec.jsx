@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
-import { renderWithProviders } from "@/test/testUtils";
+import { act, fireEvent, screen } from "@testing-library/react";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -12,7 +11,11 @@ vi.mock("@/lib/agencySettings", () => ({
   fetchCallerAgencySettings: async () => null,
 }));
 
-import SmsThreadView from "./SmsThreadView";
+// Re-imported per test with a freshly opened tenant realm (src/test/setup.js
+// clears the storage the realm pins after every test).
+let SmsThreadView;
+let renderWithProviders;
+let closeTenantSdkRealm;
 
 const now = new Date().toISOString();
 const failedText = {
@@ -33,7 +36,14 @@ function renderThread(messages) {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  localStorage.clear();
+  vi.resetModules();
+  let openTenantSdkRealm;
+  ({ closeTenantSdkRealm, openTenantSdkRealm } = await import("@/lib/tenantSdkRealmGate"));
+  ({ renderWithProviders } = await import("@/test/testUtils"));
+  ({ default: SmsThreadView } = await import("./SmsThreadView"));
+  expect(openTenantSdkRealm("sms-thread")).toBe(true);
   // jsdom has no layout, so no scrollIntoView.
   Element.prototype.scrollIntoView = vi.fn();
   invoke.mockReset();
@@ -74,13 +84,19 @@ describe("SmsThreadView", () => {
       ],
     }]);
     const picture = await screen.findByAltText("Picture from the patient");
-    expect(picture).toHaveAttribute("src", "https://storage.example.test/signed/mms-1-0.jpeg?token=t");
+    await vi.waitFor(() => expect(picture).toHaveAttribute("src", "https://storage.example.test/signed/mms-1-0.jpeg?token=t"));
     expect(invoke).toHaveBeenCalledWith("getSmsMediaUrl", { message_id: "sms_in", index: 0 });
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Attachment arriving…")).toBeInTheDocument();
     expect(screen.getByText("Attachment could not be retrieved")).toBeInTheDocument();
     // The private file URI is never put in the page.
     expect(document.body.innerHTML).not.toContain("private/abc");
+
+    // Closing the tenant authority detaches the signed link from the picture.
+    act(() => closeTenantSdkRealm());
+    expect(picture.hasAttribute("src")).toBe(false);
+    expect(screen.getByText("Picture unavailable")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain("signed/mms-1-0.jpeg");
   });
 
   it("offers no second Resend for a text that was already resent", () => {
