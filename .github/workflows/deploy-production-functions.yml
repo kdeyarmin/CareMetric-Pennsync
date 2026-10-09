@@ -5,9 +5,17 @@ name: Deploy production backend functions
 # the app's stored source, but each backend function keeps serving the code it
 # was last deployed with until it is redeployed, and setting a secret only
 # restarts that deployed code. This workflow is the one step that makes the
-# deployed functions match `main`. It changes functions only: no site, entity,
-# auth, agent or connector push, and never `--force` (which deletes remote
-# functions that are not in the tree).
+# deployed functions match `main`. It pushes functions only: no entity, auth,
+# agent or connector push, and never `--force` (which deletes remote functions
+# that are not in the tree).
+#
+# A function deploy lands in Base44's preview (draft) deployment; production
+# keeps serving the published revision until the app is published (measured
+# 2026-10-09: all 289 deployed, every released function still answered with
+# its pre-release code until the app was published). So this workflow then
+# publishes the app. Publishing also rebuilds the site from base44/config.jsonc,
+# which leaves the central Help launcher off, so the last step dispatches the
+# site-only publication to put the exact, verified build back.
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +27,8 @@ on:
 
 permissions:
   contents: read
+  # Only to dispatch the site-only publication after the app is published.
+  actions: write
 
 concurrency:
   group: caremetric-pennsync-production-function-deployment
@@ -102,7 +112,30 @@ jobs:
             tail -n 40 "$RUNNER_TEMP/base44-functions.log" | sed -E 's/(b44k_)[A-Za-z0-9_-]+/\1REDACTED/g'
             exit 2
           fi
-          echo 'The CLI reported function deployment success. Live verification follows.'
+          echo 'The CLI reported function deployment success. Publishing follows.'
+
+      - name: Publish the app so production serves the deployed functions
+        id: publish
+        env:
+          BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          node tools-production-publish-preflight.mjs
+          # The same endpoint and api_key header the CLI uses for a workspace
+          # key. The response is not printed: it is the whole app document.
+          if ! curl --silent --show-error --fail --max-time 900 \
+            -X POST -H "api_key: ${BASE44_API_KEY}" -H 'Content-Type: application/json' \
+            --data '{}' \
+            -o "$RUNNER_TEMP/base44-publish-receipt.json" \
+            https://app.base44.com/api/apps/694ec16e72e01b60d22f7cbf/deploy \
+            2> "$RUNNER_TEMP/base44-publish.log"; then
+            echo 'BASE44_APP_PUBLISH_FAILED: the functions are deployed to preview but production is unchanged.'
+            sed -E 's/(b44k_)[A-Za-z0-9_-]+/\1REDACTED/g' "$RUNNER_TEMP/base44-publish.log" | tail -n 5
+            exit 2
+          fi
+          echo 'The app was published. Live verification follows.'
 
       - name: Verify every comparable deployed function against the tree
         env:
@@ -123,6 +156,23 @@ jobs:
           done
           echo 'Function deployment is NOT verified.' >> "$GITHUB_STEP_SUMMARY"
           exit 1
+
+      # Publishing rebuilt the site from base44/config.jsonc. Put the exact,
+      # validated build back through the site-only publication, which verifies
+      # every asset on both production origins itself. This keys on the
+      # publish, not on the verification above: a drifted or unverifiable
+      # function check still fails the job, but must not leave the rebuilt
+      # site (Help launcher off) live.
+      - name: Dispatch the site-only publication to restore the exact build
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run publish-production-frontend.yml \
+            --repo "$GITHUB_REPOSITORY" --ref main -f central_help_enabled=true
+          echo 'Dispatched "Publish production frontend (site only)" on main.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve sanitized verification result only
         if: always()

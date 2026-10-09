@@ -12,9 +12,9 @@ gates.
 **Not ready to submit.** This change fixes eight defects that would have failed
 review or broken the installed app (section 2). The remaining blockers are
 decisions or account actions only the owner can take: the live in-app
-purchases, publishing the frontend, the brand and listing mismatch, the paused
-features a reviewer will land on, AI data-sharing consent, and device testing
-(section 3). Do not upload a build, including to TestFlight, until each item in
+purchases, the brand and listing mismatch, AI data-sharing consent, and device
+testing (section 3). The frontend and functions were published on 2026-10-09
+(B2), and the paused features were turned on before that. Do not upload a build, including to TestFlight, until each item in
 section 3 has current evidence.
 
 Every live reading below is dated. These readings describe the deployment on
@@ -34,15 +34,15 @@ including OASIS center or build it".
 
 | Decision | Done in this pull request or in production | Still open |
 | --- | --- | --- |
-| Release outbound email and SMS | `OUTBOUND_DELIVERY_RELEASE=enabled-v1` set on the production app after a census of every outbound path. | Nothing in the code. |
-| Allow password reset | "Forgot password?" sends the platform reset email again (`SignInScreen.jsx`); the owned backend path stays closed. | Reaches users when the frontend is published (B2). |
-| No subscriptions, staff only | No purchase code exists in the binary or the web app. | **Owner:** mark the four in-app purchases *Removed from Sale* (B1a). Consider Apple Business Manager distribution (B8). |
-| Remove risk prediction and PDGM payment features | Done in this pull request. Predictive Analytics, the Clinical Insights dashboard, Documentation Impact, PDGM Rate Settings, the OASIS Center Revenue tab and the PDGM reimbursement report are gone, and each old path redirects; the AI patient risk scorer, Proactive Clinical Support, the revenue tiles and every payment estimate went with them. PDGM clinical grouping used for coding validation stays. | **Owner:** stop advertising "Predictive Analytics" in the App Store description (B7). |
+| Release outbound email and SMS | `OUTBOUND_DELIVERY_RELEASE=enabled-v1` set on the production app after a census of every outbound path. On 2026-10-09 the SMS and voice line +1 724-390-8359 got its `TelecomDestinationBinding`: SMS in and out, inbound voice. The fax line +1 724-441-8937 was re-activated as version 2 with inbound fax on. Both pass the deployed integrity checks against the live rows. +1 724-390-8359 was enrolled the same day in A2P campaign `4b30019c-649c-018e-de54-770cf1f5010b`, which is ACTIVE and carrier-provisioned; Telnyx answered `PENDING_ASSIGNMENT` while the carriers provision it. No `SmsConsent` row exists and none was invented. Production holds one patient, with no phone number, so there is no recipient to record consent for. | Consent is recorded as it is obtained: by staff in the app, or by a patient texting START. Check the 10DLC assignment reads `ASSIGNED` before the first patient text. |
+| Allow password reset | "Forgot password?" sends the platform reset email again (`SignInScreen.jsx`); the owned backend path stays closed. | Live since the 2026-10-09 publication (B2). |
+| No subscriptions, staff only | No purchase code exists in the binary or the web app. | **Owner:** mark the four in-app purchases *Removed from Sale* (B1a); steps in `docs/APP_STORE_CONNECT_LISTING_2026-10-09.md`. Consider Apple Business Manager distribution (B8). |
+| Remove risk prediction and PDGM payment features | Done in this pull request. Predictive Analytics, the Clinical Insights dashboard, Documentation Impact, PDGM Rate Settings, the OASIS Center Revenue tab and the PDGM reimbursement report are gone, and each old path redirects; the AI patient risk scorer, Proactive Clinical Support, the revenue tiles and every payment estimate went with them. PDGM clinical grouping used for coding validation stays. | **Owner:** stop advertising "Predictive Analytics" in the App Store description (B7). A replacement description is in `docs/APP_STORE_CONNECT_LISTING_2026-10-09.md`. |
 | Sign-offs and agreements in place | The privacy policy and the AI agreement gate now say business associate agreements cover OpenAI, Anthropic and Google (B5). | Counsel review of the policy text remains good practice. |
 | Owner as super admin | The production `User` row is the built-in admin, and `SUPER_ADMIN_EMAIL` is set on the backend and baked into the production build (`publish-production-frontend.yml`). | — |
 | A way to add staff later | Invite from **Admin User Setup**; the person registers from the email and `onUserSignup` approves them. Then grant agency access in **User Management → Agency access** (`AgencyAccessPanel.jsx`, owner only), which provisions and activates an `AgencyMembership` with a role pre-selected from the invitation. | — |
 | Invite-only | The in-app "Sign up" offer is gone; `onUserSignup` already leaves an uninvited account unapproved and alerts administrators. Social sign-in is off. The app stays *public with login* on purpose: making it private sent `/privacy` and the patient-facing public routes to the hosted login, measured live 2026-10-08. | — |
-| Turn everything on, including OASIS Center | Turned on in this pull request, each behind membership and care-team checks rather than editable profile fields: the 44 open, view and print buttons; Messages; Telehealth (schedule, join links, the dashboard widget); Care Plans (management, builder, automatic triggers); duplicate-patient detection and merge; the OASIS AI endpoints; PDF Tools; the dashboard's Time Saved card; Send Feedback; Bulk Discharge Import; the User Activity Report and Nurse Performance; Phone Center call history, callbacks, inbound call routing and scheduled SMS; the provider follow-up portal; the AI KPI, productivity, quality, system-health and compliance dashboards; the AI compliance auditor and admission documentation; the Clinical Pathway Manager; security log review and the security audit; patient education and discharge summaries; document AI analysis; the patient roster import; and reactivating an offboarded user. | Turned on in the follow-up pull request: the OASIS Center (every screen, saving, review, audit, automation and Outcome Measures); electronic signature (requests, the `/signer` portal, sealing, certificates, reminders, in-person and discharge-summary signing); calling or texting a patient from the chart, inbound texts, telehealth vitals, phone analytics and the remaining activity screens; and the AI helpers (message suggestions and summaries, urgent notifications, care plans drafted from a referral, outcome measures, data quality, the agency report and the documentation-compliance monitor). The e-signature consent text is a standard ESIGN/UETA statement set as `SIGNATURE_AGREEMENT_TEXT` on 2026-10-09; **owner:** replace it with your approved wording if it differs (set the text and its SHA-256 together). Every backend change reaches production only when its functions are redeployed (**Deploy production backend functions**) and the frontend is published (B2). |
+| Turn everything on, including OASIS Center | Turned on in this pull request, each behind membership and care-team checks rather than editable profile fields: the 44 open, view and print buttons; Messages; Telehealth (schedule, join links, the dashboard widget); Care Plans (management, builder, automatic triggers); duplicate-patient detection and merge; the OASIS AI endpoints; PDF Tools; the dashboard's Time Saved card; Send Feedback; Bulk Discharge Import; the User Activity Report and Nurse Performance; Phone Center call history, callbacks, inbound call routing and scheduled SMS; the provider follow-up portal; the AI KPI, productivity, quality, system-health and compliance dashboards; the AI compliance auditor and admission documentation; the Clinical Pathway Manager; security log review and the security audit; patient education and discharge summaries; document AI analysis; the patient roster import; and reactivating an offboarded user. | Turned on in the follow-up pull request: the OASIS Center (every screen, saving, review, audit, automation and Outcome Measures); electronic signature (requests, the `/signer` portal, sealing, certificates, reminders, in-person and discharge-summary signing); calling or texting a patient from the chart, inbound texts, telehealth vitals, phone analytics and the remaining activity screens; and the AI helpers (message suggestions and summaries, urgent notifications, care plans drafted from a referral, outcome measures, data quality, the agency report and the documentation-compliance monitor). The e-signature consent text, `SIGNATURE_AGREEMENT_TEXT`, was replaced later on 2026-10-09 with a full ESIGN/UETA consumer disclosure, before any signature existed. The disclosure covers the paper option, withdrawal, copies, contact details, and hardware and software. The owner confirmed it the same day. Its exact text and hash, and the production read-back, are in `docs/SIGNATURE_CONSENT_TEXT_2026-10-09.md`. All of it was deployed, published and verified on 2026-10-09 at `047a30b1` (B2). The same day, the seven scheduled jobs that had been off since 2026-09-16 were switched on: four fax jobs, Nightly Outcome Measures, Check Stale Follow-Ups and Dispatch Scheduled Signature Reminders. |
 
 ## 1. What was measured
 
@@ -114,16 +114,30 @@ subscribers first. That number decides how much (a) costs.
 
 ### B2. Publish the frontend, then test against it
 
-Merge this change, then dispatch **Deploy production backend functions**
-(`.github/workflows/deploy-production-functions.yml`) and **Publish production
-frontend (site only)** (`.github/workflows/publish-production-frontend.yml`),
-both manual, `main` only, `production` environment. A merge or a secret change
-does not redeploy a function: Base44 pulls `main` into the app's stored
-source, and each function keeps serving its last deployed code until it is
-deployed again (measured 2026-10-09). After both complete,
-`node tools-live-frontend-sync.mjs` should exit 0 on both origins. Every device
-test in B9 must run after that publish. Testing earlier tests the 2026-09-17
-build.
+**Done on 2026-10-09 at `047a30b1`.** All 289 functions were deployed from
+`main` with the Base44 CLI, the app was published, and the exact site build was
+uploaded. `node tools-live-frontend-sync.mjs` exited 0 with 521 of 521 assets
+matched on both origins. Every device test in B9 must run against this build or
+a later one.
+
+How a release reaches production, as measured that day:
+
+- A merge or a secret change does not redeploy a function. Base44 pulls `main`
+  into the app's stored source, and each function keeps serving its last
+  deployed code.
+- A function deploy lands in Base44's preview (draft) deployment. Production
+  keeps serving the published revision until the app is published: after all
+  289 deployed, every released function still answered with its pre-release
+  code until the publish.
+- Publishing the app rebuilds the site from `base44/config.jsonc`, which leaves
+  the central Help launcher off, so the exact build is uploaded again afterwards.
+
+**Deploy production backend functions**
+(`.github/workflows/deploy-production-functions.yml`) does all three: it deploys,
+publishes, verifies, then dispatches **Publish production frontend (site only)**.
+Both need a `BASE44_API_KEY` repository or `production` environment secret, a
+Base44 workspace key starting `b44k_`. None was set on 2026-10-09, so every
+earlier dispatch of either workflow stopped at its preflight.
 
 ### B3. Name, icon and brand (Guideline 2.3.8)
 
@@ -142,6 +156,15 @@ saying "Welcome to CareMetric AI" (Base44 dashboard, outside this repository).
 Consider replacing the icon with full-bleed artwork: no baked-in rounded
 corners or white margin.
 
+**Done on 2026-10-09, except the App Store Connect fields.**
+
+- `AppIcon-1024.png` is now full-bleed. It is the same artwork, unscaled and in
+  place, on a blue background taken from its own edge colours, with no
+  rounded corners or white margin. It is still 1024×1024 RGB with no alpha.
+- The Base44 app is renamed **PennSync**, and its logo is that icon.
+- The store name `PennSync by CareMetric AI`, the subtitle and the new
+  description are ready to paste from `docs/APP_STORE_CONNECT_LISTING_2026-10-09.md`.
+
 ### B4. Paused features a reviewer will land on (Guideline 2.1)
 
 **Status, later on 2026-10-08:** the owner chose to finish them rather than hide
@@ -149,8 +172,10 @@ them ("turn everything on"). Every row in the table below is turned on in this
 pull request except Sign Document, which is being built with the rest of
 electronic signature, and Predictive Analytics, which was removed by the
 owner's decision. The open, view and print buttons work, and Forgot password
-and Send Feedback send. What follows is the reading that prompted the work and
-is kept as a record.
+and Send Feedback send. Sign Document shipped with electronic signature in the
+follow-up pull request, and all of it has been live since the 2026-10-09
+publication (B2). What follows is the reading that prompted the work and is
+kept as a record.
 
 The production build ships these as visible navigation targets that show
 technical "paused" or "unavailable" states:

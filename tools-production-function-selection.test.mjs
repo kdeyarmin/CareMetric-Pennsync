@@ -37,7 +37,7 @@ test('the CLI entry refuses with exit 2 and prints only the decision', () => {
   assert.deepEqual(JSON.parse(lines[0]), { ok: true, mode: 'all', names: [] });
 });
 
-test('the function deployment stays manual, production-protected, functions-only and verified', () => {
+test('the function deployment stays manual, production-protected, functions-only, published and verified', () => {
   const yaml = readFileSync(new URL('./.github/workflows/deploy-production-functions.yml', import.meta.url), 'utf8');
   const source = yaml.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
   assert.match(source, /on:\n  workflow_dispatch:/);
@@ -47,8 +47,9 @@ test('the function deployment stays manual, production-protected, functions-only
   assert.match(source, /cancel-in-progress: false/);
   assert.match(source, /persist-credentials: false/);
   assert.ok(source.includes('--app-id ' + PRODUCTION_APP_ID));
-  // Functions only: never the site, entities, auth, agents or connectors, and
-  // never --force, which deletes remote functions absent from the tree.
+  // Pushes functions only: never the site, entities, auth, agents or
+  // connectors, and never --force, which deletes remote functions absent from
+  // the tree. The site is restored by the separate site-only publication.
   assert.match(source, /--json functions deploy "\$\{names\[@\]\}"/);
   assert.doesNotMatch(source, /site deploy|entities push|auth push|agents push|connectors push|\bdeploy -y\b|--force/);
   // The requested names reach the shell only through the validating selector.
@@ -67,6 +68,20 @@ test('the function deployment stays manual, production-protected, functions-only
   assert.ok(at('--json functions list') < at('--json functions deploy'));
   assert.ok(at('--json functions deploy') < at('node tools-live-function-sync.mjs'));
   assert.match(source.slice(at('--json functions list'), at('--json functions deploy')), /BASE44_PRODUCTION_ACCESS_CHECK_FAILED[\s\S]*exit 2/);
-  assert.doesNotMatch(source, /\bwhoami\b/);
+  // A deploy lands in the preview deployment, so the app is published before
+  // anything is verified, and a failed publish stops the run.
+  const publish = `/api/apps/${PRODUCTION_APP_ID}/deploy`;
+  assert.ok(at('--json functions deploy') < at(publish));
+  assert.ok(at(publish) < at('node tools-live-function-sync.mjs'));
+  assert.match(source.slice(at(publish)), /BASE44_APP_PUBLISH_FAILED[\s\S]*?exit 2/);
+  assert.doesNotMatch(source, /echo[^\n]*BASE44_API_KEY/);
+  // Publishing rebuilds the site from config, so the exact build is restored
+  // through the site-only publication after verification, and whenever the
+  // publish succeeded: a failed verification must not leave the rebuilt site.
+  assert.ok(at('node tools-live-function-sync.mjs') < at('gh workflow run publish-production-frontend.yml'));
+  assert.match(source.slice(at('Publish the app so production serves'), at(publish)), /^ {8}id: publish$/m);
+  assert.match(source.slice(at('Dispatch the site-only publication'), at('gh workflow run publish-production-frontend.yml')),
+    /^ {8}if: \$\{\{ !cancelled\(\) && steps\.publish\.outcome == 'success' \}\}$/m);
+  assert.match(source, /^ {2}actions: write$/m);
   assert.doesNotMatch(source, /path:.*base44-(?:access-check|functions-receipt|functions\.log)/);
 });

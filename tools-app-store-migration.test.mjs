@@ -39,6 +39,11 @@ const REVIEWED_NATIVE_CHANGES = Object.freeze({
   'ios/project.yml':
     'MARKETING_VERSION 1.0.0 cannot be uploaded over the live 1.0 (App Store Connect treats them as '
     + 'equal), so it becomes 1.1.0. Bundle id, deployment target and signing are untouched.',
+  'ios/PennSync/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png':
+    'The 2026-10-08 release audit (B3) found the artwork carried its own rounded corners, rim and '
+    + 'white margin, so the iOS mask showed a white frame on the home screen and in the store. On '
+    + '2026-10-09 the same artwork, unscaled and in place, was laid on a full-bleed blue taken from its '
+    + 'own edge colours: still 1024x1024 RGB with no alpha, as App Store Connect requires.',
   // The first entries here that are not `ios/`. The constant is named for the
   // native shell, but the assertion below only requires a path be in the pinned
   // baseline, and `public/` is pinned by the same `ls-tree`. A pinned file that
