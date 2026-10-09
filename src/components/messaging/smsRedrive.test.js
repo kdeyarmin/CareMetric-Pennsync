@@ -117,6 +117,11 @@ test("shouldRedriveSms never re-sends a row a manual Resend superseded", () => {
   assert.equal(shouldRedriveSms({ ...baseRow, superseded_by: "client_resend" }, NOW), false);
 });
 
+test("shouldRedriveSms never re-sends an MMS as text only", () => {
+  assert.equal(shouldRedriveSms({ ...baseRow, media: [{ status: "sent", external_url: "https://files.example.test/a.pdf" }] }, NOW), false);
+  assert.equal(shouldRedriveSms({ ...baseRow, media: [] }, NOW), true);
+});
+
 test("shouldRedriveSms will not retry a permanent failure", () => {
   assert.equal(shouldRedriveSms({ ...baseRow, failure_reason: "Recipient opted out" }, NOW), false);
 });

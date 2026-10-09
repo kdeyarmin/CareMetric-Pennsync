@@ -61,6 +61,28 @@ describe("SmsThreadView", () => {
     expect(screen.getByText("161/1600 · ~2 SMS (GSM-7)")).toBeInTheDocument();
   });
 
+  it("shows a patient's copied picture through a short-lived link from getSmsMediaUrl", async () => {
+    invoke.mockImplementation(async (name) => (name === "getSmsMediaUrl"
+      ? { data: { success: true, url: "https://storage.example.test/signed/mms-1-0.jpeg?token=t", content_type: "image/jpeg" } }
+      : { data: {} }));
+    renderThread([{
+      id: "sms_in", direction: "inbound", status: "received", body: "", created_date: now,
+      media: [
+        { status: "stored", content_type: "image/jpeg", file_uri: "private/abc/mms-1-0.jpeg" },
+        { status: "pending", content_type: "image/png" },
+        { status: "unavailable", content_type: null },
+      ],
+    }]);
+    const picture = await screen.findByAltText("Picture from the patient");
+    expect(picture).toHaveAttribute("src", "https://storage.example.test/signed/mms-1-0.jpeg?token=t");
+    expect(invoke).toHaveBeenCalledWith("getSmsMediaUrl", { message_id: "sms_in", index: 0 });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Attachment arriving…")).toBeInTheDocument();
+    expect(screen.getByText("Attachment could not be retrieved")).toBeInTheDocument();
+    // The private file URI is never put in the page.
+    expect(document.body.innerHTML).not.toContain("private/abc");
+  });
+
   it("offers no second Resend for a text that was already resent", () => {
     renderThread([{ ...failedText, superseded_by: "client_2" }]);
     expect(screen.queryByRole("button", { name: /resend/i })).not.toBeInTheDocument();

@@ -74,5 +74,9 @@ test("redriveFailedSms inlines the smsRedrive policy unchanged", async () => {
     const superseded = { ...row, superseded_by: "client_resend" };
     assert.equal(inline.shouldRedriveSms(superseded, now), false, `superseded: ${reason}`);
     assert.equal(smsRedrive.shouldRedriveSms(superseded, now), false, `superseded: ${reason}`);
+    // Nor is an MMS, which a redrive would send as text only.
+    const mms = { ...row, media: [{ status: "sent", external_url: "https://files.example.test/a.pdf" }] };
+    assert.equal(inline.shouldRedriveSms(mms, now), false, `mms: ${reason}`);
+    assert.equal(smsRedrive.shouldRedriveSms(mms, now), false, `mms: ${reason}`);
   }
 });

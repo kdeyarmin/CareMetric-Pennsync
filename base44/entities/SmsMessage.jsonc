@@ -111,6 +111,56 @@
       "type": "string",
       "format": "date-time",
       "description": "When a manual resend superseded this failed row"
+    },
+    "media": {
+      "type": "array",
+      "description": "MMS attachments, at most 10 (src/components/messaging/smsMedia.js). Inbound: the webhook records each one 'pending' with Telnyx's media URL and copyInboundSmsMedia copies it into private storage (file_uri) and removes the URL; one that cannot be copied becomes 'unavailable'. Outbound: the https URLs the sender supplied ('sent'), so redriveFailedSms can refuse to re-send an MMS as text only. Written only by backend functions.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "stored",
+              "unavailable",
+              "sent"
+            ]
+          },
+          "content_type": {
+            "type": "string",
+            "description": "Allow-listed MIME type"
+          },
+          "byte_size": {
+            "type": "number"
+          },
+          "file_uri": {
+            "type": "string",
+            "description": "Private file URI (UploadPrivateFile). Read only through getSmsMediaUrl, which mints a 60-second signed URL for the row's own nurse."
+          },
+          "external_url": {
+            "type": "string",
+            "description": "Inbound: Telnyx's media URL, kept only until the copy is made or abandoned. Outbound: the sender-supplied https URL Telnyx fetched."
+          },
+          "attempts": {
+            "type": "number",
+            "description": "Copy attempts made for a pending inbound attachment"
+          }
+        }
+      }
+    },
+    "media_pending": {
+      "type": "boolean",
+      "description": "True while an inbound attachment waits for copyInboundSmsMedia (the cron's filter)."
+    },
+    "media_claimed_by": {
+      "type": "string",
+      "description": "Per-run token claiming this row for the media copy (concurrency guard)"
+    },
+    "media_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the media copy claim was taken; a stale claim may be taken over"
     }
   },
   "required": [

@@ -366,6 +366,9 @@ function shouldRedriveSms(row, now = Date.now(), maxAttempts = 4, baseGapMs = 60
   // A nurse resent it by hand (sendSms resend_of): re-sending it too would text
   // the patient twice.
   if (row.superseded_by) return false;
+  // An MMS: the redrive re-sends text only, and the sender's media URLs may not
+  // serve the same bytes later, so an MMS is never re-sent automatically.
+  if (Array.isArray(row.media) && row.media.length > 0) return false;
   const attempts = Number(row.retry_count) || 0;
   if (attempts >= maxAttempts) return false;
   if (!isTransientFailureReason(row.failure_reason)) return false;

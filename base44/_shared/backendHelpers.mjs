@@ -24,6 +24,10 @@ import {
   TELNYX_OPT_OUT_ERROR_CODE, telnyxErrorCode, telnyxErrorsInclude, telnyxApiFailureReason,
   telnyxTransportFailureReason, telnyxDeliveryFailureReason, telnyxSendStatus,
 } from '../../src/components/messaging/smsRedrive.js';
+import {
+  SMS_MEDIA_LIMIT, SMS_MEDIA_MAX_BYTES, SMS_MEDIA_CONTENT_TYPE, SMS_MEDIA_LAYOUT_TYPE, smsMediaContentType, smsMediaFetchUrl,
+  inboundSmsMediaPlaceholders, isPrivateSmsFileUri, smsMediaFileName,
+} from '../../src/components/messaging/smsMedia.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -72,6 +76,22 @@ ${telnyxApiFailureReason.toString()}
 ${telnyxTransportFailureReason.toString()}
 ${telnyxDeliveryFailureReason.toString()}
 ${telnyxSendStatus.toString()}`;
+}
+
+// MMS attachment rules — single source of truth is src/components/messaging/smsMedia.js.
+// The webhook that records an inbound attachment, the cron that copies it and
+// the broker that serves it must agree on what is fetchable and what is private.
+function smsMediaSource() {
+  return `// Generated verbatim from src/components/messaging/smsMedia.js.
+const SMS_MEDIA_LIMIT = ${SMS_MEDIA_LIMIT};
+const SMS_MEDIA_MAX_BYTES = ${SMS_MEDIA_MAX_BYTES};
+const SMS_MEDIA_CONTENT_TYPE = ${SMS_MEDIA_CONTENT_TYPE.toString()};
+const SMS_MEDIA_LAYOUT_TYPE = ${SMS_MEDIA_LAYOUT_TYPE.toString()};
+${smsMediaContentType.toString()}
+${smsMediaFetchUrl.toString()}
+${inboundSmsMediaPlaceholders.toString()}
+${isPrivateSmsFileUri.toString()}
+${smsMediaFileName.toString()}`;
 }
 
 // OASIS audit flag — single source of truth is src/components/oasis/oasisAuditFlag.js.
@@ -833,6 +853,7 @@ function validateOasisResponseWrite(payload) {
   urgentKeywords: urgentKeywordsSource(),
   isAllowedDestination: isAllowedDestinationSource(),
   telnyxSmsOutcome: telnyxSmsOutcomeSource(),
+  smsMedia: smsMediaSource(),
 
   // SSRF guard used by every function that fetches or hands a user-supplied URL to
   // a provider integration. Keep in step with src/components/utils/security.

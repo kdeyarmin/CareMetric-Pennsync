@@ -99,6 +99,15 @@ const EXPECTED = {
     schedule: { mode: 'interval', value: 10, unit: 'minutes' },
     releaseState: 'live',
   },
+  // Added 2026-10-09 with inbound MMS. The webhook records each attachment as
+  // pending (Telnyx retries a webhook not answered in ~2 s, so it downloads
+  // nothing); this copies it into private storage under the scheduler auth
+  // helper. It sends nothing, so it has no delivery release key.
+  'Copy Inbound SMS Media.jsonc': {
+    target: 'copyInboundSmsMedia',
+    schedule: { mode: 'interval', value: 5, unit: 'minutes' },
+    releaseState: 'live',
+  },
 };
 
 function assertSchedule(config, expected, file) {

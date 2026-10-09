@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArrowUp, AlertTriangle, RotateCw, FileText } from "lucide-react";
+import { ArrowUp, AlertTriangle, RotateCw, FileText, Paperclip } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { toast } from "sonner";
 import { formatPhoneDisplay } from "@/components/voice/phoneUtils";
@@ -20,6 +20,62 @@ import ContactAvatar from "@/components/phone/ContactAvatar";
 // sendSms refuses a body longer than this many UTF-16 code units, which is
 // also what a textarea's maxLength counts.
 const SMS_MAX_LENGTH = 1600;
+
+/**
+ * A 60-second link to one copied MMS attachment. The bytes live in private
+ * storage; getSmsMediaUrl mints the link only for the text's own nurse.
+ */
+async function fetchSmsMediaUrl(messageId, index) {
+  const res = await base44.functions.invoke("getSmsMediaUrl", { message_id: messageId, index });
+  const data = res?.data ?? res;
+  if (!data?.url) throw new Error(data?.error || "Attachment unavailable");
+  return data;
+}
+
+/** One MMS attachment inside a bubble, in whatever state its copy is in. */
+function SmsAttachment({ messageId, index, item }) {
+  const stored = item?.status === "stored";
+  const isImage = stored && /^image\//.test(item?.content_type || "");
+  const picture = useQuery({
+    queryKey: ["smsMediaUrl", messageId, index],
+    queryFn: () => fetchSmsMediaUrl(messageId, index),
+    enabled: isImage,
+    // The link lives 60 s; an image already shown keeps its pixels.
+    staleTime: 45_000,
+    gcTime: 50_000,
+    refetchOnWindowFocus: false,
+  });
+  const note = (text) => (
+    <span className="flex items-center gap-1 text-[12px] italic opacity-80">
+      <Paperclip className="h-3 w-3" aria-hidden="true" /> {text}
+    </span>
+  );
+  if (item?.status === "sent") return note("Attachment sent");
+  if (item?.status === "pending") return note("Attachment arriving…");
+  if (!stored) return note("Attachment could not be retrieved");
+  if (isImage) {
+    if (picture.data?.url) {
+      return <img src={picture.data.url} alt="Picture from the patient" className="max-h-60 max-w-full rounded-xl" />;
+    }
+    return note(picture.isError ? "Picture unavailable" : "Loading picture…");
+  }
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-1 text-[12px] font-medium underline"
+      onClick={async () => {
+        try {
+          const { url } = await fetchSmsMediaUrl(messageId, index);
+          window.open(url, "_blank", "noopener,noreferrer");
+        } catch (err) {
+          toast.error(err?.message || "Attachment unavailable");
+        }
+      }}
+    >
+      <Paperclip className="h-3 w-3" aria-hidden="true" /> Open attachment
+    </button>
+  );
+}
 
 /** A faint day divider between message groups, like a real texting app. */
 function DayDivider({ date }) {
@@ -167,6 +223,13 @@ export default function SmsThreadView({
                   }`}
                 >
                   {msg.body}
+                  {Array.isArray(msg.media) && msg.media.length > 0 && (
+                    <div className={`flex flex-col gap-1.5 ${msg.body ? "mt-1.5" : ""}`}>
+                      {msg.media.map((item, index) => (
+                        <SmsAttachment key={index} messageId={msg.id} index={index} item={item} />
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className={`mt-0.5 flex items-center gap-1.5 px-1 text-[10px] text-slate-400 ${outbound ? "flex-row-reverse" : ""}`}>
                   <span>{format(date, "h:mm a")}</span>

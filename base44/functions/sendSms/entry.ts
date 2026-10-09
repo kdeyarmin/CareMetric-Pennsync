@@ -758,6 +758,9 @@ async function supersedeFailedText(base44, rowId, { callerEmail, destination, bo
   if (row.body !== body) {
     return { ok: false, status: 400, error: 'A resend must repeat the original text.', reason: 'resend_body_mismatch' };
   }
+  if (Array.isArray(row.media) && row.media.length > 0) {
+    return { ok: false, status: 400, error: 'A picture message cannot be resent as text only.', reason: 'resend_has_media' };
+  }
   if (row.superseded_by) return { ok: false, status: 409, error: 'This text was already resent.', reason: 'resend_already_superseded' };
   if (row.status !== 'failed' || row.redrive_claimed_by) return busy;
   try {
@@ -1586,6 +1589,10 @@ Deno.serve(async (req) => {
       agency_id: agencyId,
       destination_binding_id: smsAuthority.bindingId,
       ...(resend_of != null ? { resend_of } : {}),
+      // The attachments Telnyx was asked to fetch. Recorded so the thread shows
+      // them and so redriveFailedSms refuses this row: a re-send would go out
+      // text-only, and the sender's URLs may no longer serve the same bytes.
+      ...(mediaUrls ? { media: mediaUrls.map((url) => ({ status: 'sent', external_url: url })) } : {}),
     });
 
     // Send via the Telnyx Messages API. Bounded by an AbortController timeout.

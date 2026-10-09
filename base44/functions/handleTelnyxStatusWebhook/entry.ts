@@ -1341,6 +1341,58 @@ async function handleInboundConsentKeyword(base44, telnyxCreds, event, payload) 
 }
 
 // ============================ MESSAGING ============================
+// <<<BEGIN SHARED HELPER: smsMedia — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/messaging/smsMedia.js.
+const SMS_MEDIA_LIMIT = 10;
+const SMS_MEDIA_MAX_BYTES = 5242880;
+const SMS_MEDIA_CONTENT_TYPE = /^(?:image\/(?:jpeg|jpg|png|gif|webp|heic|heif|bmp)|audio\/(?:amr|mpeg|mp3|mp4|aac|ogg|wav|x-wav|3gpp)|video\/(?:mp4|3gpp|3gpp2|quicktime|mpeg|webm)|application\/pdf|text\/(?:plain|vcard|x-vcard|calendar|directory))$/;
+const SMS_MEDIA_LAYOUT_TYPE = /^application\/smil$/;
+function smsMediaContentType(value) {
+  if (typeof value !== "string") return null;
+  const type = value.split(";")[0].trim().toLowerCase();
+  return SMS_MEDIA_CONTENT_TYPE.test(type) ? type : null;
+}
+function smsMediaFetchUrl(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== "https:" || url.username || url.password || url.hash) return null;
+  if (!host.includes(".") || host.endsWith(".local") || host.endsWith(".internal") || host === "localhost"
+    || /^[\d.]+$/.test(host) || host.startsWith("[") || host.includes(":")) return null;
+  return url.toString();
+}
+function inboundSmsMediaPlaceholders(rawMedia) {
+  const items = Array.isArray(rawMedia) ? rawMedia : [];
+  const placeholders = [];
+  for (const item of items) {
+    if (placeholders.length >= SMS_MEDIA_LIMIT) break;
+    const declared = typeof item?.content_type === "string" ? item.content_type.split(";")[0].trim().toLowerCase() : "";
+    if (SMS_MEDIA_LAYOUT_TYPE.test(declared)) continue;
+    const contentType = smsMediaContentType(declared);
+    const size = Number.isSafeInteger(item?.size) && item.size >= 0 ? item.size : null;
+    const url = smsMediaFetchUrl(item?.url);
+    if (!contentType || !url || (size != null && size > SMS_MEDIA_MAX_BYTES)) {
+      placeholders.push({ status: "unavailable", content_type: contentType, byte_size: size });
+    } else {
+      placeholders.push({ status: "pending", content_type: contentType, byte_size: size, external_url: url, attempts: 0 });
+    }
+  }
+  return placeholders;
+}
+function isPrivateSmsFileUri(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 4096
+    && ![...value].some((character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127)
+    && (value.startsWith("private/") || value.startsWith("private://")
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+function smsMediaFileName(rowId, index, contentType) {
+  const subtype = String(contentType || "").split("/")[1] || "bin";
+  const extension = subtype.replace(/^x-/, "").replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const id = String(rowId || "message").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "message";
+  return `mms-${id}-${Number(index) || 0}.${extension}`;
+}
+// <<<END SHARED HELPER: smsMedia>>>
 // <<<BEGIN SHARED HELPER: telnyxSmsOutcome — generated, edit base44/_shared/backendHelpers.mjs>>>
 // Generated verbatim from src/components/messaging/smsRedrive.js and
 // src/components/voice/telnyxRetry.js.
@@ -1667,12 +1719,19 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload, { conse
   const patientId = await resolveInboundSmsPatient(entities, authority, patientNum, scopedConsent.ok ? scopedConsent.row : null);
   const { user: reader, basis } = await resolveInboundSmsReader(entities, authority, threadId);
 
+  // MMS attachments are recorded, not fetched: Telnyx retries a webhook not
+  // answered within about two seconds, so a download here could double-store
+  // the text. Each supported item is 'pending' with Telnyx's URL until the
+  // copyInboundSmsMedia cron copies it into private storage (smsMedia.js).
+  const media = inboundSmsMediaPlaceholders(payload?.media);
+
   // Always store the inbound message, in this agency's thread.
   const inboundRow = await entities.SmsMessage.create({
     direction: 'inbound', from_number: patientNum, to_number: workNum, body: text,
     nurse_email: reader ? reader.email : null, patient_id: patientId, thread_id: threadId,
     status: 'received', provider_message_id: providerMessageId, is_read: false, consent_checked: false,
     agency_id: authority.agencyId, destination_binding_id: authority.bindingId,
+    ...(media.length ? { media, media_pending: media.some((item) => item.status === 'pending') } : {}),
   });
 
   const config = await getAgencyConfig(base44, await bindingAgencyName(entities, authority.agencyId));
