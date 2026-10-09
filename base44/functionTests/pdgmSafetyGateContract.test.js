@@ -227,9 +227,10 @@ test("OASIS/clinical AI endpoints stop before auth, data, AI, or writes", async 
   const endpoints = [
     ["base44/functions/analyzeClinicalRisks/entry.ts", "CLINICAL_RISK_AI_ENABLED", "clinical_risk_ai_paused"],
     ["base44/functions/savePayerRateConfig/entry.ts", "PAYER_RATE_CONFIG_ENABLED", "payer_rate_configuration_paused"],
-    ["base44/functions/generateComprehensiveReport/entry.ts", "COMPREHENSIVE_REPORT_ENABLED", "comprehensive_report_paused"],
-    ["base44/functions/monitorComplianceRisks/entry.ts", "COMPLIANCE_RISK_MONITOR_ENABLED", "compliance_risk_monitor_paused"],
-    ["base44/functions/batchAIAnalysis/entry.ts", "BATCH_CLINICAL_AI_ENABLED", "batch_clinical_ai_paused"],
+    // generateComprehensiveReport, monitorComplianceRisks and batchAIAnalysis
+    // were released on 2026-10-08 as documentation and reporting tools (none
+    // predicts risk). reportComplianceBatchAuthorizationContract.test.js
+    // drives each real handler and pins how it is safe to serve.
   ];
 
   for (const [path, flag, reason] of endpoints) {

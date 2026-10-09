@@ -600,6 +600,7 @@
   "workflows": {
     "Auto Retry Failed Faxes.jsonc": "preserved_paused",
     "Check Stale Follow-Up Requests.jsonc": "preserved_paused",
+    "Daily Compliance Documentation Monitor.jsonc": "preserved_paused",
     "Daily Data Quality Scores.jsonc": "preserved_paused",
     "Dispatch Scheduled Signature Reminders.jsonc": "preserved_paused",
     "Dispatch Scheduled SMS.jsonc": "preserved_paused",

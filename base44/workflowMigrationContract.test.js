@@ -21,6 +21,15 @@ const EXPECTED = {
     releaseEnv: 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS',
     releaseConst: 'STALE_FOLLOW_UP_WORKFLOW_ENABLED',
   },
+  // Added 2026-10-08 when the owner released the documentation-compliance
+  // monitor. It scans each active agency separately under the scheduler auth
+  // helper (built-in admin or INTERNAL_FN_SECRET), writes deduplicated
+  // PatientAlert rows and never writes a Patient row or a risk score.
+  'Daily Compliance Documentation Monitor.jsonc': {
+    target: 'monitorComplianceRisks',
+    schedule: { mode: 'recurring', cron: '15 6 * * *' },
+    releaseState: 'live',
+  },
   // Added 2026-10-08 when the owner released data-quality scoring. It runs
   // each active agency separately under the scheduler auth helper (built-in
   // admin or INTERNAL_FN_SECRET); the legacy "Daily Data Quality Score

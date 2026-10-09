@@ -99,11 +99,107 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// This job currently performs platform-wide service-role patient/OASIS reads
-// and can write critical alerts from unverified keyword heuristics. Keep it
-// unavailable until every run is server-owned, tenant-bound, and clinically
-// validated; no browser admin or scheduler invocation may bypass this hold.
-const COMPLIANCE_RISK_MONITOR_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). This is a
+// DOCUMENTATION-compliance monitor, not risk prediction: every rule looks for
+// a documentation gap (a chronic-condition chart with no recent documented
+// visit, missing vitals, homebound wording missing from a note, a missing
+// Discharge OASIS), and it stores no risk score. It used to scan every
+// tenant's charts, decide each chart's agency from editable created_by /
+// assigned_nurses / agency_name values, and claim each Patient row with an
+// unconditional service-role write. Now each run covers ONE agency at a time
+// from service-owned Agency rows, selects charts by their own agency_id, and
+// deduplicates alerts on a deterministic key instead of writing the chart.
+const COMPLIANCE_RISK_MONITOR_ENABLED = true;
+
+// <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
+}
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
+  try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId }, undefined, 101,
+    );
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
+    }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
+  } catch {
+    // No lookup failure may be interpreted as membership approval.
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
+  if (profile.role === 'admin') return profile;
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
+}
+// <<<END SHARED HELPER: trustedCallerClaims>>>
 
 
 // Compliance-risk monitor. COMPANION-MODE AWARE: PennSync usually runs
@@ -214,45 +310,238 @@ function detectMissingDischargeOASIS(ctx, opts = {}) {
 
 // Persist a batch of candidate alerts for one patient, skipping active
 // same-type/same-title duplicates created within the last 24h.
+// One row per (patient, day, rule). A repeated or overlapping run checks the
+// deterministic key first and, if two runs passed that check together, keeps
+// the lowest id and removes the rest, so neither run needs to write the
+// Patient row (the old claim did, unconditionally, through the service role).
+function complianceAlertKey(alert, currentDate) {
+  const day = currentDate.toISOString().slice(0, 10);
+  const slug = String(alert.title || alert.alert_type || 'alert').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 80);
+  return `compliance-monitor:${alert.patient_id}:${day}:${slug}`;
+}
+
 async function persistAlerts(base44, patientAlerts, currentDate, sink) {
   if (!patientAlerts?.length) return;
-  const patientId = patientAlerts[0].patient_id;
-  // Claim before creates so overlapping crons cannot both see "no duplicate"
-  // and double-insert the same compliance alert (best-effort; docs/PLATFORM-CAS.md).
-  const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `compliance-monitor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  try {
-    await base44.asServiceRole.entities.Patient.update(patientId, {
-      compliance_monitor_claimed_by: claimToken,
-    });
-  } catch {
-    return;
-  }
-  const claimCheck = await base44.asServiceRole.entities.Patient
-    .filter({ id: patientId }, '', 1).catch(() => []);
-  if (!claimCheck[0] || claimCheck[0].compliance_monitor_claimed_by !== claimToken) {
-    return;
-  }
-
+  const entities = base44.asServiceRole.entities;
   for (const alert of patientAlerts) {
-    const existingAlerts = await base44.asServiceRole.entities.PatientAlert.filter({
-      patient_id: alert.patient_id,
-      alert_type: alert.alert_type,
-      status: 'active',
-    }, undefined, 5000);
-    const isDuplicate = existingAlerts.some((ea) =>
-      ea.title === alert.title &&
-      new Date(ea.created_date) > new Date(currentDate.getTime() - 24 * 60 * 60 * 1000));
-    if (!isDuplicate) {
-      const created = await base44.asServiceRole.entities.PatientAlert.create({
-        ...alert,
+    // The documentation alerts carry a rule priority, not a clinical risk
+    // estimate; the owner removed risk prediction, so no risk_score is stored.
+    const { risk_score: _ignoredRiskScore, ...documented } = alert;
+    const key = complianceAlertKey(alert, currentDate);
+    const query = { patient_id: alert.patient_id, triggered_by_rule_id: key };
+    let rows = await entities.PatientAlert.filter(query, undefined, 10);
+    if (!Array.isArray(rows)) rows = [];
+    if (rows.length === 0) {
+      const created = await entities.PatientAlert.create({
+        ...documented,
+        triggered_by_rule_id: key,
         status: 'active',
         flagged_urgent: alert.severity === 'critical',
       });
-      sink.push(created);
+      rows = await entities.PatientAlert.filter(query, undefined, 10);
+      if (!Array.isArray(rows) || rows.length === 0) rows = created ? [created] : [];
+      if (created && rows.some((row) => row?.id === created.id)) sink.push(created);
+    }
+    const survivor = [...rows].sort((left, right) => String(left.id).localeCompare(String(right.id)))[0];
+    for (const row of rows) {
+      if (survivor && row.id !== survivor.id) await entities.PatientAlert.delete(row.id).catch(() => {});
     }
   }
+}
+
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+const PATIENT_LIMIT = 2_000;
+const DISCHARGED_LIMIT = 1_000;
+const AGENCY_LIMIT = 200;
+
+async function readBody(req) {
+  let body = {};
+  try {
+    const raw = await req.text();
+    if (raw.length > 1_000) return { error: Response.json({ error: 'Request body is too large' }, { status: 413 }) };
+    body = raw.trim() ? JSON.parse(raw) : {};
+  } catch {
+    return { error: Response.json({ error: 'Invalid JSON body' }, { status: 400 }) };
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => key !== 'agency_id')) {
+    return { error: Response.json({ error: 'Request contains unsupported fields' }, { status: 400 }) };
+  }
+  if (body.agency_id != null && !claimIdentifier(body.agency_id)) {
+    return { error: Response.json({ error: 'agency_id is invalid' }, { status: 400 }) };
+  }
+  return { agencyId: body.agency_id ?? null };
+}
+
+async function enabledAgencies(entities, requested) {
+  const rows = [];
+  if (requested) {
+    const found = await entities.Agency.filter({ id: requested }, undefined, 2);
+    if (Array.isArray(found) && found.length === 1 && found[0]?.id === requested
+      && ['active', 'trial'].includes(found[0].status)) rows.push(found[0]);
+    return rows;
+  }
+  for (const status of ['active', 'trial']) {
+    const found = await entities.Agency.filter({ status }, undefined, AGENCY_LIMIT);
+    for (const agency of Array.isArray(found) ? found : []) {
+      if (claimIdentifier(agency?.id) && agency.status === status && !rows.some((row) => row.id === agency.id)) {
+        rows.push(agency);
+      }
+    }
+  }
+  return rows;
+}
+
+async function scanAgency(base44, agency, currentDate, alerts) {
+  const entities = base44.asServiceRole.entities;
+  const agencyId = agency.id;
+  // Companion-EMR gate: PennSync usually runs ALONGSIDE the agency's EMR, so
+  // visits, vitals and Discharge OASIS assessments may be documented only in
+  // the EMR. The absence-based rules (1, 3, 6 and the discharged sweep) run
+  // only when this agency's AgencySettings.pennsync_is_system_of_record is
+  // explicitly true; anything else keeps them off. Rule 5 is keyed to a note
+  // that EXISTS in PennSync, so it always runs.
+  // The flag is looked up by the service-owned Agency name (AgencySettings has
+  // no agency_id). A miss or an ambiguous match is false: never adopt another
+  // tenant's settings row, and never fall back to "the newest row".
+  const sorCache = new Map();
+  const agencyIsSystemOfRecord = async (agencyName) => {
+    const key = agencyName || '__none__';
+    if (sorCache.has(key)) return sorCache.get(key);
+    let rows = [];
+    if (agencyName) {
+      rows = await entities.AgencySettings.filter({ agency_code: agencyName }, '-created_date', 2).catch(() => []);
+      if (!rows?.length) {
+        rows = await entities.AgencySettings.filter({ office_name: agencyName }, '-created_date', 2).catch(() => []);
+      }
+      if (!rows?.length || rows.length > 1) {
+        sorCache.set(key, false);
+        return false;
+      }
+    }
+    const flag = !!agencyName && rows?.[0]?.pennsync_is_system_of_record === true;
+    sorCache.set(key, flag);
+    return flag;
+  };
+  const agencyName = typeof agency.agency_name === 'string' ? agency.agency_name.trim() : '';
+
+  const patients = (await entities.Patient.filter({ agency_id: agencyId, status: 'active' }, '-created_date', PATIENT_LIMIT) || [])
+    .filter((patient) => patient?.agency_id === agencyId && claimIdentifier(patient.id));
+  for (const patient of patients) {
+    const pennsyncIsSystemOfRecord = await agencyIsSystemOfRecord(agencyName);
+    const patientAlerts = [];
+    const own = (rows) => (Array.isArray(rows) ? rows : []).filter((row) => row?.patient_id === patient.id);
+    const [visitRows, oasisAssessmentRows] = await Promise.all([
+      entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
+      entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
+    ]);
+    const visits = own(visitRows);
+    const oasisAssessments = own(oasisAssessmentRows);
+    const lastVisit = visits[0];
+    const daysSinceLastVisit = lastVisit ? daysBetween(lastVisit.visit_date, currentDate) : 999;
+
+    // RULE 1: chronic-condition chart without a recent documented visit.
+    // Absence-based (assumes every visit is documented in PennSync) — gated
+    // behind pennsync_is_system_of_record; see the companion-EMR note above.
+    const chronicDiagnoses = ['CHF', 'COPD', 'Diabetes', 'Stroke', 'Cancer', 'Heart Failure'];
+    const hasChronicDx = chronicDiagnoses.some((dx) => patient.primary_diagnosis?.toUpperCase().includes(dx.toUpperCase()));
+    if (pennsyncIsSystemOfRecord && hasChronicDx && daysSinceLastVisit > 7) {
+      patientAlerts.push({
+        patient_id: patient.id,
+        alert_type: 'care_gap',
+        severity: 'high',
+        title: 'Chronic-Condition Patient Without Recent Documentation',
+        message: `No visit has been documented in ${daysSinceLastVisit} days for a patient with ${patient.primary_diagnosis}.`,
+        contributing_factors: [
+          `Primary diagnosis: ${patient.primary_diagnosis}`,
+          `Last documented visit: ${daysSinceLastVisit} days ago`,
+        ],
+        recommended_actions: [
+          'Confirm the visit schedule matches the plan of care frequency',
+          'Document any telephonic monitoring',
+          'Review the care plan for the appropriate visit frequency',
+        ],
+        data_sources: { last_visit_date: lastVisit?.visit_date, diagnosis: patient.primary_diagnosis },
+      });
+    }
+
+    // RULE 3: missing vital signs in recent visits. Absence-based (vitals may
+    // be charted in the EMR) — gated behind pennsync_is_system_of_record.
+    const recentVisitsWithoutVitals = visits.slice(0, 3).filter((v) => !v.vital_signs || Object.keys(v.vital_signs).length === 0);
+    if (pennsyncIsSystemOfRecord && recentVisitsWithoutVitals.length >= 2) {
+      patientAlerts.push({
+        patient_id: patient.id,
+        alert_type: 'documentation_risk',
+        severity: 'medium',
+        title: 'Incomplete Vital Signs Documentation',
+        message: `${recentVisitsWithoutVitals.length} of the last 3 visits are missing vital signs.`,
+        contributing_factors: [
+          'Vital signs are expected at skilled nursing visits',
+          'Missing baseline data for condition monitoring',
+        ],
+        recommended_actions: [
+          'Capture vital signs at every skilled visit',
+          'Add vital signs to previous visit notes if documented elsewhere',
+        ],
+        data_sources: { visits_missing_vitals: recentVisitsWithoutVitals.length },
+      });
+    }
+
+    // RULE 5: homebound status not documented in the most recent note. Keyed
+    // to an in-app artifact (the note EXISTS in PennSync), so it stays on in
+    // companion mode. A documentation gap, so it is high, not critical.
+    if (lastVisit) {
+      const noteMention = lastVisit.nurse_notes?.toLowerCase() || '';
+      const homeboundKeywords = ['homebound', 'taxing', 'considerable effort', 'leaving home', 'ambulation'];
+      if (!homeboundKeywords.some((kw) => noteMention.includes(kw)) && daysSinceLastVisit < 14) {
+        patientAlerts.push({
+          patient_id: patient.id,
+          alert_type: 'documentation_risk',
+          severity: 'high',
+          title: 'Missing Homebound Status Documentation',
+          message: 'The most recent visit note does not document homebound status, which Medicare eligibility requires.',
+          contributing_factors: [
+            'Homebound status is a Medicare eligibility requirement',
+            'It should be documented at every skilled visit',
+          ],
+          recommended_actions: [
+            'Add homebound justification to the next visit note',
+            'Document specific limitations and why leaving home is taxing',
+            'Use the Smart Note Assistant homebound templates',
+          ],
+          data_sources: { last_visit_date: lastVisit.visit_date },
+        });
+      }
+    }
+
+    // RULE 6: episode ended without a completed in-app Discharge OASIS.
+    // Absence-based — gated behind pennsync_is_system_of_record.
+    if (pennsyncIsSystemOfRecord) {
+      const dischargeGap = detectMissingDischargeOASIS({ patient, oasisAssessments, visits }, { asOf: currentDate });
+      if (dischargeGap) patientAlerts.push(dischargeGap);
+    }
+
+    await persistAlerts(base44, patientAlerts, currentDate, alerts);
+  }
+
+  // Discharged-patient sweep, same agency only. Resolve SoR per patient
+  // (never reuse a loop-local flag from the active sweep).
+  const dischargedPatients = (await entities.Patient.filter({ agency_id: agencyId, status: 'discharged' }, '-updated_date', DISCHARGED_LIMIT) || [])
+    .filter((patient) => patient?.agency_id === agencyId && claimIdentifier(patient.id));
+  for (const patient of dischargedPatients) {
+    const dischargedIsSoR = await agencyIsSystemOfRecord(agencyName);
+    if (!dischargedIsSoR) continue;
+    const own = (rows) => (Array.isArray(rows) ? rows : []).filter((row) => row?.patient_id === patient.id);
+    const [visitRows, oasisAssessmentRows] = await Promise.all([
+      entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
+      entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
+    ]);
+    const gap = detectMissingDischargeOASIS(
+      { patient, oasisAssessments: own(oasisAssessmentRows), visits: own(visitRows) },
+      { asOf: currentDate },
+    );
+    if (gap) await persistAlerts(base44, [gap], currentDate, alerts);
+  }
+  return { agency_id: agencyId, patients_monitored: patients.length, discharged_reviewed: dischargedPatients.length };
 }
 
 Deno.serve(async (req) => {
@@ -268,249 +557,51 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-
-    // Auth gate (mirrors checkExpiredInvitations): this cron reads every active
-    // patient's PHI and writes PatientAlerts. The no-identity cron path is
-    // allowed; an authenticated non-admin is rejected.
     const me = await base44.auth.me().catch(() => null);
-    const authError = getSchedulerAuthError(req, me);
-    if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
-
-    // Companion-EMR gate: PennSync typically runs ALONGSIDE the agency's EMR,
-    // so visits, vitals, and Discharge OASIS assessments may be documented only
-    // in the EMR. Alerting on the ABSENCE of that data in PennSync would flood
-    // the alert bell with false open items for work that was completed — just
-    // elsewhere. The absence-based rules below (RISK 1 high-risk dx not seen in
-    // 7 days, RISK 3 missing vitals, RISK 6 missing Discharge OASIS plus the
-    // discharged-patient sweep) therefore only run when the agency has
-    // explicitly set AgencySettings.pennsync_is_system_of_record to true
-    // (schema default: false). Anything short of an explicit true — false,
-    // unset, or no settings row — keeps them off, the safe companion-mode
-    // default. Rules keyed to in-app artifacts (RISK 5: homebound wording
-    // missing from a visit note that EXISTS in PennSync) always run.
-    // Per-agency SoR flag (cached). Newest-row-wins would enable absence-based
-    // alerts for every tenant when only one agency opted into system-of-record.
-    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-    const emailToAgency = new Map(
-      (allUsers || []).filter((u) => u?.email).map((u) => [u.email, u.agency_name || '']),
-    );
-    const sorCache = new Map();
-    const agencyIsSystemOfRecord = async (agencyName) => {
-      const key = agencyName || '__default__';
-      if (sorCache.has(key)) return sorCache.get(key);
-      let rows = [];
-      if (agencyName) {
-        rows = await base44.asServiceRole.entities.AgencySettings
-          .filter({ agency_code: agencyName }, '-created_date', 1).catch(() => []);
-        if (!rows?.length) {
-          rows = await base44.asServiceRole.entities.AgencySettings
-            .filter({ office_name: agencyName }, '-created_date', 1).catch(() => []);
-        }
-      }
-      if (!rows?.length) {
-        // Keyed agency miss: never adopt another tenant's sole SoR row.
-        // Legacy single-row fallback only when no agency can be determined.
-        if (agencyName) {
-          sorCache.set(key, false);
-          return false;
-        }
-        const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
-        if ((newest || []).length > 1) {
-          sorCache.set(key, false);
-          return false;
-        }
-        rows = (newest || []).slice(0, 1);
-      }
-      const flag = rows?.[0]?.pennsync_is_system_of_record === true;
-      sorCache.set(key, flag);
-      return flag;
-    };
-    const patientAgencyName = (patient) => {
-      if (patient?.created_by && emailToAgency.has(patient.created_by)) {
-        return emailToAgency.get(patient.created_by);
-      }
-      const assigned = Array.isArray(patient?.assigned_nurses) ? patient.assigned_nurses : [];
-      for (const email of assigned) {
-        if (emailToAgency.has(email)) return emailToAgency.get(email);
-      }
-      return '';
-    };
-
-    // Service role for monitoring all patients (bounded — an unbounded list would
-    // silently truncate at the SDK page default and time out at scale).
-    const patients = await base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000);
-    const alerts = [];
-    const currentDate = new Date();
-    
-    for (const patient of patients) {
-      const pennsyncIsSystemOfRecord = await agencyIsSystemOfRecord(patientAgencyName(patient));
-      const patientAlerts = [];
-      
-      // Fetch patient data
-      const [visits, oasisRecords, oasisAssessments] = await Promise.all([
-        base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
-        base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patient.id }, '-created_date', 1),
-        base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20)
-      ]);
-      
-      const lastVisit = visits[0];
-      const daysSinceLastVisit = lastVisit
-        ? daysBetween(lastVisit.visit_date, currentDate)
-        : 999;
-      
-      // RISK 1: High-risk diagnosis without recent documentation.
-      // Absence-based (assumes every visit is documented in PennSync) — gated
-      // behind pennsync_is_system_of_record; see the companion-EMR note above.
-      const highRiskDiagnoses = ['CHF', 'COPD', 'Diabetes', 'Stroke', 'Cancer', 'Heart Failure'];
-      const hasHighRiskDx = highRiskDiagnoses.some(dx =>
-        patient.primary_diagnosis?.toUpperCase().includes(dx.toUpperCase())
-      );
-
-      if (pennsyncIsSystemOfRecord && hasHighRiskDx && daysSinceLastVisit > 7) {
-        patientAlerts.push({
-          patient_id: patient.id,
-          alert_type: 'care_gap',
-          severity: 'high',
-          title: 'High-Risk Patient Without Recent Documentation',
-          message: `${patient.first_name} ${patient.last_name} has ${patient.primary_diagnosis} and hasn't been seen in ${daysSinceLastVisit} days.`,
-          contributing_factors: [
-            `High-risk diagnosis: ${patient.primary_diagnosis}`,
-            `Last visit: ${daysSinceLastVisit} days ago`,
-            'Medicare requires frequent monitoring for high-risk conditions'
-          ],
-          recommended_actions: [
-            'Schedule follow-up visit within 3 days',
-            'Contact patient to assess current status',
-            'Document any telephonic monitoring',
-            'Review care plan for appropriate visit frequency'
-          ],
-          risk_score: 85,
-          data_sources: { last_visit_date: lastVisit?.visit_date, diagnosis: patient.primary_diagnosis }
-        });
-      }
-      
-      // RISK 3: Missing vital signs in recent visits.
-      // Absence-based (vitals may be charted in the EMR even when the visit is
-      // mirrored here) — gated behind pennsync_is_system_of_record.
-      const recentVisitsWithoutVitals = visits.slice(0, 3).filter(v =>
-        !v.vital_signs || Object.keys(v.vital_signs).length === 0
-      );
-
-      if (pennsyncIsSystemOfRecord && recentVisitsWithoutVitals.length >= 2) {
-        patientAlerts.push({
-          patient_id: patient.id,
-          alert_type: 'documentation_risk',
-          severity: 'medium',
-          title: 'Incomplete Vital Signs Documentation',
-          message: `${recentVisitsWithoutVitals.length} of last 3 visits missing vital signs.`,
-          contributing_factors: [
-            'Vital signs are required for skilled nursing visits',
-            'Missing baseline data for condition monitoring',
-            'Audit risk for incomplete documentation'
-          ],
-          recommended_actions: [
-            'Ensure vital signs captured at every skilled visit',
-            'Add vital signs to previous visit notes if documented elsewhere',
-            'Train staff on documentation requirements',
-            'Enable Smart Vitals Input feature'
-          ],
-          risk_score: 65,
-          data_sources: { visits_missing_vitals: recentVisitsWithoutVitals.length }
-        });
-      }
-      
-      // RISK 4 (removed 2026-07-03): the "Potential LUPA Risk" alert counted
-      // therapy visits against the pre-PDGM "4 visits per 60-day episode" rule
-      // — under PDGM the LUPA threshold is per-HHRG (2–6 visits per 30-day
-      // period), so the rule was simply wrong — AND it was absence-based over
-      // visits that in companion mode live in the EMR. LUPA economics belong in
-      // the admin PDGM analysis views as reference information, not as alerts.
-
-      // RISK 5: Homebound status not documented in recent notes.
-      // Keyed to an in-app artifact (the visit note EXISTS in PennSync but its
-      // content lacks homebound wording), so it stays on in companion mode.
-      if (lastVisit) {
-        const noteMention = lastVisit.nurse_notes?.toLowerCase() || '';
-        const homeboundKeywords = ['homebound', 'taxing', 'considerable effort', 'leaving home', 'ambulation'];
-        const hasHomeboundDoc = homeboundKeywords.some(kw => noteMention.includes(kw));
-        
-        if (!hasHomeboundDoc && daysSinceLastVisit < 14) {
-          patientAlerts.push({
-            patient_id: patient.id,
-            alert_type: 'documentation_risk',
-            severity: 'critical',
-            title: 'Missing Homebound Status Documentation',
-            message: 'Recent visit note lacks homebound justification - critical for Medicare eligibility.',
-            contributing_factors: [
-              'Homebound status is Medicare eligibility requirement',
-              'Must be documented at every skilled visit',
-              'High audit risk if not clearly stated'
-            ],
-            recommended_actions: [
-              'Add homebound justification to next visit note immediately',
-              'Document specific limitations and why leaving home is taxing',
-              'Include distance patient can ambulate safely',
-              'Use Smart Note Assistant homebound templates'
-            ],
-            risk_score: 90,
-            data_sources: { last_visit_date: lastVisit.visit_date }
-          });
-        }
-      }
-      
-      // RISK 6: Episode ended without a completed in-app Discharge OASIS, so
-      // PennSync cannot calculate its unadjusted internal episode proxy.
-      // Absence-based (the discharge assessment most likely lives in the EMR)
-      // — gated behind pennsync_is_system_of_record; incomplete pairs surface
-      // as a coverage gap only after a tenant-authorized broker exists.
-      if (pennsyncIsSystemOfRecord) {
-        const dischargeGap = detectMissingDischargeOASIS(
-          { patient, oasisAssessments, visits },
-          { asOf: currentDate },
-        );
-        if (dischargeGap) patientAlerts.push(dischargeGap);
-      }
-
-      // Create alerts that don't already exist (skips active 24h duplicates).
-      await persistAlerts(base44, patientAlerts, currentDate, alerts);
+    // An agency_admin/manager scans their own agency; the scheduled run and the
+    // built-in administrator use the shared scheduler auth and scan each agency
+    // separately (D49's per-agency rule).
+    const claims = me && me.role !== 'admin' ? await withTrustedClaims(base44, me) : me;
+    const agencyLead = !!claims && claims.role !== 'admin' && claimIdentifier(claims.agency_id) && claims.is_manager === true;
+    if (!agencyLead) {
+      const authError = getSchedulerAuthError(req, me);
+      if (authError) return authError;
+    }
+    const input = await readBody(req);
+    if (input.error) return input.error;
+    if (agencyLead && input.agencyId && input.agencyId !== claims.agency_id) {
+      return Response.json({ error: 'Forbidden: that agency is not yours' }, { status: 403, headers: NO_STORE_HEADERS });
     }
 
-    // Discharged-patient sweep: the main loop only iterates ACTIVE patients, so
-    // separately catch recently-discharged patients whose episode closed without
-    // a completed Discharge OASIS (the highest-value, critical-severity case).
-    // Same absence-based rule as RISK 6 — resolve SoR per patient (never reuse
-    // a loop-local flag from the active sweep).
-    {
-      const dischargedPatients = await base44.asServiceRole.entities.Patient.filter(
-        { status: 'discharged' }, '-updated_date', 2000,
-      );
-      for (const patient of dischargedPatients) {
-        const dischargedIsSoR = await agencyIsSystemOfRecord(patientAgencyName(patient));
-        if (!dischargedIsSoR) continue;
-        const [visits, oasisAssessments] = await Promise.all([
-          base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
-          base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
-        ]);
-        const gap = detectMissingDischargeOASIS({ patient, oasisAssessments, visits }, { asOf: currentDate });
-        if (gap) await persistAlerts(base44, [gap], currentDate, alerts);
+    const entities = base44.asServiceRole.entities;
+    const agencies = await enabledAgencies(entities, agencyLead ? claims.agency_id : input.agencyId);
+    if (agencyLead && agencies.length !== 1) {
+      return Response.json({ error: 'Agency is unavailable' }, { status: 403, headers: NO_STORE_HEADERS });
+    }
+    const currentDate = new Date();
+    const alerts = [];
+    const scanned = [];
+    let failed = 0;
+    for (const agency of agencies) {
+      try {
+        scanned.push(await scanAgency(base44, agency, currentDate, alerts));
+      } catch {
+        failed += 1;
       }
     }
 
     return Response.json({
-      success: true,
+      success: failed === 0,
       alerts_generated: alerts.length,
-      patients_monitored: patients.length,
-      // Per-patient SoR; response reports whether any agency still uses companion mode.
+      agencies_scanned: scanned.length,
+      agencies_failed: failed,
+      patients_monitored: scanned.reduce((sum, row) => sum + row.patients_monitored, 0),
       absence_based_rules_per_agency: true,
-      timestamp: currentDate.toISOString()
-    });
-    
-  } catch (error) {
-    console.error('Error monitoring compliance risks:', error);
-    return Response.json({ 
-      success: false,
-      error: 'Internal server error' 
-    }, { status: 500 });
+      timestamp: currentDate.toISOString(),
+    }, { headers: NO_STORE_HEADERS });
+  } catch {
+    console.error('monitorComplianceRisks failed');
+    return Response.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 });
