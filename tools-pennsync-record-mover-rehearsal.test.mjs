@@ -94,7 +94,7 @@ test('the whole rehearsal, in order', async () => {
   const added = { ...patients[2], id: 'rehearsal-added-patient', row: { ...patients[2].row, id: 'rehearsal-added-patient' } };
   const next = rebind([...landing.map((r) => (r === moved || r === edited ? { ...r, row: { ...r.row, last_name: 'Moved in source' } } : r)), added]);
   const delta = planDelta({ landing: next.landing, receipt: second });
-  assert.deepEqual(delta.counts, { added: 1, changed: 2, unchanged: landing.length - 2, removed_from_source: 0 });
+  assert.deepEqual(delta.counts, { added: 1, changed: 2, unchanged: landing.length - 2, conflicted: 0, removed_from_source: 0 });
   await db.query('update pennsync_records.patient set last_name = $1 where id = $2', ['Edited on the new side', edited.id]);
   const catchUp = await applyLanding({ db, landing: next.landing, waves, tables, report: next.report, previous: previousFrom(second) });
   const outcome = (id) => catchUp.entries.find((e) => e.id === id).outcome;
