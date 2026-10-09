@@ -115,6 +115,14 @@ async function resolveAgencySettings(base44, agencyName) {
  * The Telnyx number must already be purchased in your Telnyx account with its
  * SMS/Voice webhooks pointed at this app's functions. This call records the
  * mapping in PennSync.
+ *
+ * Before a pool number is newly handed to a nurse it is checked, read-only,
+ * against Telnyx (verifyTelnyxWorkLine): a number that is not active, or is on
+ * a different voice connection or messaging profile than the saved
+ * credentials, would leave the nurse with a line that silently drops calls or
+ * texts, so the assignment is refused with the reasons. A check that could
+ * not be made (Telnyx unreachable, no credentials) never blocks; it comes back
+ * as a warning.
  */
 
 function normalizeE164(raw) {
@@ -161,6 +169,188 @@ async function assignUserFromClaimedNumber(base44, poolId, targetId, targetEmail
 }
 // <<<END SHARED HELPER: assignUserFromClaimedNumber>>>
 
+// <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveTelnyxCreds(base44) {
+  const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
+  let record = null;
+  let readError = null;
+  try {
+    const rows = await base44.asServiceRole.entities.IntegrationSecret
+      .filter({ provider: 'telnyx' }, '-updated_date', 5000);
+    const list = Array.isArray(rows) ? rows : [];
+    // Deterministic row selection. This read used to be unsorted with no is_active
+    // filter and took rows[0], and saveTelnyxSecret picks from the same unordered
+    // query — so with two telnyx rows the admin could be writing one row while the
+    // senders read the other, and re-entering the key could never fix it.
+    record = list.find((r) => r && r.is_active === true && pick(r.api_key))
+      || list.find((r) => r && pick(r.api_key))
+      || list[0]
+      || null;
+  } catch {
+    // Do NOT collapse this into "not configured". A failed read (this invocation
+    // path carries no service token, entity 404, 401/403, rate limit, platform
+    // blip) is a completely different problem from an unconfigured integration,
+    // and reporting them identically is what sent operators chasing a credential
+    // they had already entered correctly.
+    readError = 'credential_store_unavailable';
+    // The catch used to be bare, so an unreadable credential row left no
+    // server-side breadcrumb at all — the only signal was a misleading
+    // "not configured" reply. Log it; unattended runs have nowhere else to say so.
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
+  }
+  const rec = record || {};
+  return {
+    apiKey: pick(rec.api_key),
+    publicKey: pick(rec.public_key),
+    messagingProfileId: pick(rec.messaging_profile_id),
+    voiceConnectionId: pick(rec.voice_connection_id),
+    faxConnectionId: pick(rec.fax_connection_id),
+    record,
+    readError,
+  };
+}
+
+// Build the caller-facing message for a missing Telnyx credential. Distinguishing
+// "could not read" from "not stored" is the whole point: the first is not fixed by
+// entering a key, and telling an admin to enter one is what caused two reverted
+// env-fallback regressions.
+function telnyxCredsMessage(creds, what) {
+  const label = what || 'credentials';
+  if (creds && creds.readError) {
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
+  }
+  return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
+}
+// <<<END SHARED HELPER: resolveTelnyxCreds>>>
+
+// <<<BEGIN SHARED HELPER: telnyxWorkLine — generated, edit base44/_shared/backendHelpers.mjs>>>
+const TELNYX_NUMBER_LOOKUP_TIMEOUT_MS = 8000;
+async function lookupTelnyxNumber(apiKey, e164) {
+  const target = String(e164 || '');
+  const digits = target.slice(1);
+  if (!apiKey || target[0] !== '+' || !/^[0-9]{8,15}$/.test(digits)) return { ok: false, reason: 'invalid_request', status: 0 };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=' + digits, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    const body = await resp.json().catch(() => null);
+    if (!resp.ok) return { ok: false, reason: 'http_' + resp.status, status: resp.status, body };
+    if (!body || !Array.isArray(body.data)) return { ok: false, reason: 'malformed_response', status: resp.status };
+    const matches = body.data.filter((row) => row && row.phone_number === target);
+    if (matches.length > 1) return { ok: false, reason: 'ambiguous_response', status: resp.status };
+    return { ok: true, status: resp.status, number: matches[0] || null };
+  } catch {
+    return { ok: false, reason: 'unreachable', status: 0 };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Decide whether a looked-up number is a working nurse line for these
+// credentials. A PROBLEM is a line that would not carry the nurse's calls or
+// texts, so it must not be handed out silently; a WARNING is something that
+// could not be checked, which never blocks an assignment.
+function assessTelnyxWorkLine(lookup, creds, e164) {
+  const problems = [];
+  const warnings = [];
+  const result = (checked, number) => ({
+    checked, problems, warnings,
+    telnyxNumberId: number && typeof number.id === 'string' && number.id ? number.id : null,
+    telnyxStatus: number && typeof number.status === 'string' ? number.status : null,
+  });
+  if (!lookup || lookup.ok !== true) {
+    warnings.push(e164 + ' could not be checked with Telnyx (' + ((lookup && lookup.reason) || 'no response')
+      + '), so its voice connection and messaging profile were not confirmed.');
+    return result(false, null);
+  }
+  const number = lookup.number;
+  if (!number) {
+    problems.push(e164 + ' is not in your Telnyx account yet (or its number order has not completed).');
+    return result(true, null);
+  }
+  const status = typeof number.status === 'string' ? number.status : 'unknown';
+  if (status !== 'active') {
+    problems.push(e164 + ' is "' + status + '" in Telnyx, not active, so it cannot carry calls or texts yet.');
+  }
+  const voice = creds && creds.voiceConnectionId;
+  if (!voice) {
+    warnings.push('No Voice connection id is saved in Telnyx Credentials, so ' + e164 + "'s call routing was not checked.");
+  } else if (String(number.connection_id || '') !== voice) {
+    problems.push(e164 + ' is on Telnyx connection "' + String(number.connection_id || 'none')
+      + '", not the configured Voice connection "' + voice + '", so its calls will not reach PennSync.');
+  }
+  const profile = creds && creds.messagingProfileId;
+  if (!profile) {
+    warnings.push('No Messaging Profile id is saved in Telnyx Credentials, so ' + e164 + "'s texting was not checked.");
+  } else if (number.messaging_profile_id === 'UNAVAILABLE') {
+    warnings.push('Telnyx could not report ' + e164 + "'s messaging profile right now, so its texting was not checked.");
+  } else if (String(number.messaging_profile_id || '') !== profile) {
+    problems.push(e164 + ' is on messaging profile "' + String(number.messaging_profile_id || 'none')
+      + '", not the configured Messaging Profile "' + profile + '", so its texts will not reach PennSync.');
+  }
+  return result(true, number);
+}
+
+// Is this US number on a 10DLC campaign (GET /v2/10dlc/phone_number_campaigns/
+// {phoneNumber}; the spec answers a bare PhoneNumberCampaign with campaignId,
+// tcrCampaignId, telnyxCampaignId and assignmentStatus)? Only ever WARNINGS:
+// an unregistered number still carries calls, its texts are just likely to be
+// carrier-filtered. Read-only; enrolment stays an explicit admin action.
+async function telnyx10dlcWarnings(apiKey, e164, savedCampaignId) {
+  const saved = String(savedCampaignId || '').trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/10dlc/phone_number_campaigns/' + encodeURIComponent(e164), {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    if (resp.status === 404) {
+      return [e164 + ' is not on any A2P 10DLC campaign' + (saved ? ' (the saved campaign is ' + saved + ')' : '')
+        + ', so US carriers may filter its texts. Enroll it in the Telnyx portal.'];
+    }
+    const body = await resp.json().catch(() => null);
+    const row = body && typeof body === 'object' && body.data && typeof body.data === 'object' ? body.data : body;
+    if (!resp.ok || !row || typeof row !== 'object' || typeof row.campaignId !== 'string') {
+      return [e164 + "'s A2P 10DLC campaign could not be checked (HTTP " + resp.status + ').'];
+    }
+    const ids = [row.campaignId, row.tcrCampaignId, row.telnyxCampaignId].filter((id) => typeof id === 'string' && id);
+    if (saved && !ids.includes(saved)) {
+      return [e164 + ' is on A2P 10DLC campaign ' + (row.tcrCampaignId || row.campaignId) + ', not the saved campaign '
+        + saved + ', so its texts may be filtered under the wrong registration.'];
+    }
+    if (row.assignmentStatus && row.assignmentStatus !== 'ASSIGNED') {
+      return [e164 + "'s A2P 10DLC campaign assignment is " + row.assignmentStatus + ', so US carriers may filter its texts until it is ASSIGNED.'];
+    }
+    return [];
+  } catch {
+    return [e164 + "'s A2P 10DLC campaign could not be checked (Telnyx did not answer)."];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// options.campaignId is the agency's saved A2P campaign (AgencySettings.a2p_campaign_id).
+async function verifyTelnyxWorkLine(creds, e164, options = {}) {
+  if (!creds || !creds.apiKey) {
+    const why = creds && creds.readError ? 'the Telnyx credential store could not be read' : 'no Telnyx API key is configured';
+    return { checked: false, problems: [], telnyxNumberId: null, telnyxStatus: null,
+      warnings: [e164 + ' was not checked with Telnyx because ' + why + '.'] };
+  }
+  const result = assessTelnyxWorkLine(await lookupTelnyxNumber(creds.apiKey, e164), creds, e164);
+  // 10DLC is a US registration: only a +1 line that is otherwise good is worth the extra read.
+  if (result.checked && result.problems.length === 0 && e164.slice(0, 2) === '+1') {
+    result.warnings.push(...await telnyx10dlcWarnings(creds.apiKey, e164, options && options.campaignId));
+  }
+  return result;
+}
+// <<<END SHARED HELPER: telnyxWorkLine>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
@@ -193,6 +383,7 @@ Deno.serve(async (req) => {
     }
 
     // Work numbers must be unique across nurses.
+    let agencySettings = null;
     if (workNum) {
       const existing = await base44.asServiceRole.entities.User.filter({ work_phone_number: workNum }, undefined, 5000);
       const conflict = existing.find((u) => u.email !== target_user_email);
@@ -202,7 +393,7 @@ Deno.serve(async (req) => {
       // The office fax, outbound fax, and main office lines are reserved:
       // handing one to a nurse would break fax transmission/masking or office
       // call routing.
-      const agencySettings = await resolveAgencySettings(base44, target?.agency_name || user?.agency_name);
+      agencySettings = await resolveAgencySettings(base44, target?.agency_name || user?.agency_name);
       const reserved = [
         normalizeE164(agencySettings?.office_fax_number_e164),
         normalizeE164(agencySettings?.outbound_fax_number_e164),
@@ -229,6 +420,25 @@ Deno.serve(async (req) => {
     if (poolMatches.some((row) => row.status === 'reserved')) {
       return Response.json({ error: 'This number is reserved for office/fax use.' }, { status: 409 });
     }
+    // Check a number with Telnyx before it is newly handed out, and before the
+    // inventory claim so a refusal leaves the pool row untouched. Re-provisioning
+    // a nurse's own current number (e.g. only changing the bridge cell) is not a
+    // new assignment and is not blocked.
+    const warnings = [];
+    let lineCheck = null;
+    if (workNum && poolRow?.status === 'available') {
+      lineCheck = await verifyTelnyxWorkLine(await resolveTelnyxCreds(base44), workNum,
+        { campaignId: agencySettings?.a2p_campaign_id });
+      if (lineCheck.problems.length > 0) {
+        return Response.json({
+          error: `${workNum} is not ready to be a nurse line: ${lineCheck.problems.join(' ')}`,
+          code: 'work_line_not_ready',
+          problems: lineCheck.problems,
+          warnings: lineCheck.warnings,
+        }, { status: 409 });
+      }
+      warnings.push(...lineCheck.warnings);
+    }
     if (poolRow?.status === 'available') {
       const claim = await base44.asServiceRole.entities.PhoneNumber.updateMany({
         id: poolRow.id, e164: poolRow.e164, status: 'available',
@@ -243,7 +453,10 @@ Deno.serve(async (req) => {
     const update = {};
     if (workNum) update.work_phone_number = workNum;
     if (cellNum) update.personal_cell_e164 = cellNum;
+    // Prefer the phone-number resource id Telnyx just reported: an older pool
+    // row can hold a number-ORDER id, or nothing if it was bought while pending.
     if (twilio_phone_number_sid !== undefined) update.twilio_phone_number_sid = twilio_phone_number_sid;
+    else if (lineCheck?.telnyxNumberId && workNum) update.twilio_phone_number_sid = lineCheck.telnyxNumberId;
     else if (poolRow?.twilio_phone_number_sid && workNum) update.twilio_phone_number_sid = poolRow.twilio_phone_number_sid;
     // Default new nurses to off duty so they aren't bridged before they're ready.
     if (target.duty_status === undefined || target.duty_status === null) update.duty_status = 'off_duty';
@@ -279,7 +492,13 @@ Deno.serve(async (req) => {
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));
 
-    return Response.json({ success: true, target_user_email, work_phone_number: workNum || target.work_phone_number || null });
+    return Response.json({
+      success: true,
+      target_user_email,
+      work_phone_number: workNum || target.work_phone_number || null,
+      line_verified: lineCheck?.checked === true,
+      warnings,
+    });
   } catch (error) {
     console.error('provisionNurseWorkNumber error:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

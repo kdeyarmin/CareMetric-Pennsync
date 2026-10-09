@@ -58,3 +58,20 @@ export function assignPayload({ id, email, cell }) {
     ...(entered ? { personal_cell_e164: entered } : {}),
   };
 }
+
+/**
+ * The one-line description of a Telnyx number-search result in the "Find & buy"
+ * dialog: where the number is and what it costs, from the fields
+ * searchPurchaseTelnyxNumbers returns (Telnyx's region_information and
+ * cost_information). Empty when the search returned neither, so the panel
+ * shows the number alone, as it did before these fields existed.
+ */
+export function searchResultDetail(result) {
+  const place = [result?.locality || result?.rate_center, result?.region].filter(Boolean).join(", ");
+  const symbol = result?.currency === "USD" ? "$" : "";
+  const suffix = symbol || !result?.currency ? "" : ` ${result.currency}`;
+  const costs = [];
+  if (result?.monthly_cost) costs.push(`${symbol}${result.monthly_cost}${suffix}/mo`);
+  if (result?.upfront_cost && Number(result.upfront_cost) > 0) costs.push(`${symbol}${result.upfront_cost}${suffix} upfront`);
+  return [place, costs.join(" + ")].filter(Boolean).join(" · ");
+}

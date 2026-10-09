@@ -16,7 +16,7 @@ import {
 import { Hash, Plus, Loader2, Trash2, UserPlus, UserMinus, CheckCircle2, Search, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { formatPhoneDisplay, normalizeE164 } from "@/components/voice/phoneUtils";
-import { assignPayload, cellOnFile, cellTail } from "@/components/admin/numberPoolAssign";
+import { assignPayload, cellOnFile, cellTail, searchResultDetail } from "@/components/admin/numberPoolAssign";
 import { isAdminLike } from "@/lib/superAdmin";
 
 /**
@@ -65,6 +65,9 @@ export default function NumberPoolPanel() {
     queryClient.invalidateQueries({ queryKey: ["phone-users"] });
   };
   const call = (payload) => base44.functions.invoke("managePhoneNumberPool", payload);
+  // The backend explains a refusal in `error` (e.g. a line Telnyx reports as
+  // inactive or wired to another connection); the SDK's own message is generic.
+  const reason = (err, fallback) => err?.response?.data?.error || err?.data?.error || err?.message || fallback;
 
   const add = useMutation({
     mutationFn: () => call({ action: "add", e164: newNumber, label: newLabel }),
@@ -76,12 +79,14 @@ export default function NumberPoolPanel() {
     // immediately, and OMITTED when left blank, which keeps the nurse's existing
     // cell. `numberPoolAssign.js` carries why, and its tests pin it.
     mutationFn: (vars) => call(assignPayload(vars)),
-    onSuccess: (_res, vars) => {
+    onSuccess: (res, vars) => {
       invalidate();
       setPickedCell((p) => ({ ...p, [vars.id]: "" }));
       toast.success("Number assigned");
+      // What the Telnyx line check could not confirm (it never blocks).
+      ((res?.data || res)?.warnings || []).forEach((w) => toast.warning(w));
     },
-    onError: (err) => toast.error(err?.message || "Failed to assign number"),
+    onError: (err) => toast.error(reason(err, "Failed to assign number")),
   });
   const release = useMutation({
     mutationFn: (id) => call({ action: "release", id }),
@@ -129,20 +134,28 @@ export default function NumberPoolPanel() {
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
       setFound((prev) => prev.filter((n) => n.e164 !== e164));
-      toast.success(
-        buyPurpose === "fax"
-          ? "Fax number purchased — wired to your fax connection and set as the outbound fax line"
-          : "Number purchased and added to the pool",
-      );
+      const result = res?.data || res;
+      // A Telnyx number order is asynchronous: a pending one is bought and in
+      // the pool, but not yet usable (the warnings below say what is waiting).
+      if (result?.order_status === "pending") {
+        toast.success("Number ordered and added to the pool — Telnyx is still activating it");
+      } else {
+        toast.success(
+          buyPurpose === "fax"
+            ? (result?.outbound_fax_set
+              ? "Fax number purchased — wired to your fax connection and set as the outbound fax line"
+              : "Fax number purchased — wired to your fax connection")
+            : "Number purchased and added to the pool",
+        );
+      }
       // Surface any "bought but not yet routable" warnings from the backend so
       // the admin knows to finish wiring (missing Messaging Profile / Voice id).
-      const result = res?.data || res;
       (result?.warnings || []).forEach((w) => toast.warning(w));
       if (result?.campaign_assigned) {
         toast.success("Registered on your approved A2P 10DLC campaign — texts won't be carrier-filtered.");
       }
     },
-    onError: (err) => toast.error(err?.message || "Purchase failed"),
+    onError: (err) => toast.error(reason(err, "Purchase failed")),
   });
 
   if (!isAdmin) return null;
@@ -239,8 +252,16 @@ export default function NumberPoolPanel() {
                   </p>
                 ) : (
                   found.map((n) => (
-                    <div key={n.e164} className="flex items-center justify-between py-2">
-                      <span className="text-sm font-medium text-slate-800">{formatPhoneDisplay(n.e164)}</span>
+                    <div key={n.e164} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800">{formatPhoneDisplay(n.e164)}</p>
+                        {searchResultDetail(n) && (
+                          <p className="text-xs text-slate-500">{searchResultDetail(n)}</p>
+                        )}
+                        {n.best_effort && (
+                          <p className="text-xs text-amber-700">Near match — not an exact match for your search</p>
+                        )}
+                      </div>
                       <Button
                         size="sm" variant="outline"
                         disabled={purchase.isPending}
