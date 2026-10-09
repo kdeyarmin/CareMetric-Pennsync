@@ -26,13 +26,16 @@ const rowKey = (r) => `${r.table}|${r.source_app_id}|${r.id}`;
 
 /** Compare a new plan's rows with the rows of the last receipt. Hashes and ids only. */
 export function planDelta({ landing, receipt }) {
-  const last = new Map(receipt.entries.filter((e) => e.outcome !== 'conflict').map((e) => [rowKey(e), e]));
+  // Every entry is compared, conflicts included: a conflicted row is still the previous
+  // plan's row, and the next load meets the row that conflicted rather than inserting it.
+  const last = new Map(receipt.entries.map((e) => [rowKey(e), e]));
   const now = new Set(landing.map(rowKey));
-  const delta = { added: [], changed: [], unchanged: [], removed_from_source: [] };
+  const delta = { added: [], changed: [], unchanged: [], conflicted: [], removed_from_source: [] };
   for (const r of landing) {
     const before = last.get(rowKey(r));
     const entry = { table: r.table, source_app_id: r.source_app_id, id: r.id };
     if (!before) delta.added.push(entry);
+    else if (before.outcome === 'conflict') delta.conflicted.push({ ...entry, plan_changed: before.plan_hash !== r.hash });
     else if (before.plan_hash === r.hash) delta.unchanged.push(entry);
     else delta.changed.push(entry);
   }
@@ -45,50 +48,74 @@ export function planDelta({ landing, receipt }) {
  * `tableWaves` is a Map of table to wave (from the plan's `loads`); `tables` is the
  * allowed table set. With `dryRun` nothing is deleted and the outcomes are what a
  * real rollback would have done.
+ *
+ * The whole rollback is one transaction. The record store has no foreign keys, so a
+ * row that is kept (edited since the run) must also keep every row it points at, or
+ * the kept row is left dangling: a parent is reported `kept_for_dependent` and not
+ * deleted, and that holds transitively. A dependency is any `<table>_id` column that
+ * names another table in the receipt.
  */
 export async function rollbackRun({ db, receipt, tableWaves, tables, dryRun = false }) {
   if (receipt?.format !== 'pennsync-record-mover-receipt' || !Array.isArray(receipt.entries) || !(tables instanceof Set) || !(tableWaves instanceof Map)) {
     throw new RollbackError('rollback_configuration_invalid');
   }
+  // A loader dry run records rows as inserted that were never written, with the hashes they would have had.
+  if (receipt.dry_run === true) throw new RollbackError('receipt_is_dry_run');
   for (const e of receipt.entries) {
     if (!IDENT.test(e.table) || !tables.has(e.table)) throw new RollbackError('table_not_allowed', { table: String(e.table).slice(0, 63).replace(/[^a-z0-9_]/g, '?') });
     if (!tableWaves.has(e.table)) throw new RollbackError('table_without_wave', { table: e.table });
   }
-  const byWave = new Map();
-  for (const e of receipt.entries) {
-    const w = tableWaves.get(e.table);
-    if (!byWave.has(w)) byWave.set(w, []);
-    byWave.get(w).push(e);
-  }
-  const outcomes = []; const done = [];
-  for (const w of [...byWave.keys()].sort((a, b) => b - a)) {
-    const batch = [];
-    await db.query('begin');
-    try {
-      for (const e of byWave.get(w).sort((a, b) => (rowKey(a) < rowKey(b) ? -1 : 1))) {
-        const base = { table: e.table, source_app_id: e.source_app_id, id: e.id };
-        if (e.outcome === 'updated') { batch.push({ ...base, outcome: 'not_restorable' }); continue; }
-        if (e.outcome !== 'inserted') { batch.push({ ...base, outcome: 'left_alone' }); continue; }
-        const T = `${q(SCHEMA)}.${q(e.table)}`;
-        const held = await db.query(`select ${HASH_SQL} h from ${T} r where r.source_app_id = $1 and r.id = $2 for update`, [e.source_app_id, e.id]);
-        if (!held.rows.length) batch.push({ ...base, outcome: 'already_absent' });
-        else if (held.rows[0].h !== e.db_hash) batch.push({ ...base, outcome: 'edited_since' });
-        else {
-          await db.query(`delete from ${T} where source_app_id = $1 and id = $2`, [e.source_app_id, e.id]);
-          batch.push({ ...base, outcome: 'deleted' });
+  const inReceipt = new Set(receipt.entries.map((e) => e.table));
+  const ordered = [...receipt.entries].sort((a, b) => tableWaves.get(b.table) - tableWaves.get(a.table) || (rowKey(a) < rowKey(b) ? -1 : 1));
+  const outcomes = new Map();
+  await db.query('begin');
+  try {
+    // Phase 1: classify every entry, locking the rows it may delete.
+    const stored = new Map();
+    for (const e of ordered) {
+      const T = `${q(SCHEMA)}.${q(e.table)}`;
+      const held = await db.query(`select ${HASH_SQL} h, to_jsonb(r) j from ${T} r where r.source_app_id = $1 and r.id = $2 for update`, [e.source_app_id, e.id]);
+      stored.set(rowKey(e), held.rows[0] ? (typeof held.rows[0].j === 'string' ? JSON.parse(held.rows[0].j) : held.rows[0].j) : null);
+      let outcome;
+      if (e.outcome === 'updated') outcome = 'not_restorable';
+      else if (e.outcome !== 'inserted') outcome = 'left_alone';
+      else if (!held.rows.length) outcome = 'already_absent';
+      else outcome = held.rows[0].h === e.db_hash ? 'deleted' : 'edited_since';
+      outcomes.set(rowKey(e), outcome);
+    }
+    // Phase 2: whatever stays keeps what it points at, all the way up.
+    const byKey = new Map(ordered.map((e) => [rowKey(e), e]));
+    const queue = ordered.filter((e) => ['edited_since', 'not_restorable', 'left_alone'].includes(outcomes.get(rowKey(e))) && stored.get(rowKey(e)));
+    while (queue.length) {
+      const e = queue.pop();
+      const row = stored.get(rowKey(e));
+      for (const [column, value] of Object.entries(row)) {
+        const m = /^([a-z][a-z0-9_]*)_id$/.exec(column);
+        if (!m || !inReceipt.has(m[1]) || typeof value !== 'string' || value === '') continue;
+        const parent = byKey.get(`${m[1]}|${e.source_app_id}|${value}`);
+        if (parent && outcomes.get(rowKey(parent)) === 'deleted') {
+          outcomes.set(rowKey(parent), 'kept_for_dependent');
+          queue.push(parent);
         }
       }
-      await db.query(dryRun ? 'rollback' : 'commit');
-    } catch {
-      try { await db.query('rollback'); } catch { /* already closed out */ }
-      throw new RollbackError('rollback_wave_refused', { wave: w, rolled_back_waves: done.slice() });
     }
-    outcomes.push(...batch); done.push(w);
+    // Phase 3: delete what is still marked, children first.
+    for (const e of ordered) {
+      if (outcomes.get(rowKey(e)) === 'deleted') {
+        await db.query(`delete from ${q(SCHEMA)}.${q(e.table)} where source_app_id = $1 and id = $2`, [e.source_app_id, e.id]);
+      }
+    }
+    await db.query(dryRun ? 'rollback' : 'commit');
+  } catch (e) {
+    try { await db.query('rollback'); } catch { /* already closed out */ }
+    if (e instanceof RollbackError) throw e;
+    throw new RollbackError('rollback_refused');
   }
+  const entries = ordered.map((e) => ({ table: e.table, source_app_id: e.source_app_id, id: e.id, outcome: outcomes.get(rowKey(e)) }));
   const counts = {};
-  for (const o of outcomes) {
+  for (const o of entries) {
     const t = (counts[o.table] ??= {});
     t[o.outcome] = (t[o.outcome] ?? 0) + 1;
   }
-  return { format: 'pennsync-record-mover-rollback', version: 1, plan_digest: receipt.plan_digest, dry_run: dryRun, counts, entries: outcomes };
+  return { format: 'pennsync-record-mover-rollback', version: 1, plan_digest: receipt.plan_digest, dry_run: dryRun, counts, entries };
 }

@@ -114,7 +114,42 @@ test('the delta names added, changed, unchanged and removed rows by id only', as
   const edited = rest.map((r, i) => (i === 0 ? { ...r, hash: 'x'.repeat(64) } : r));
   const extra = { ...landing[0], id: 'brand-new', hash: 'y'.repeat(64) };
   const d = planDelta({ landing: [...edited, extra], receipt });
-  assert.deepEqual(d.counts, { added: 1, changed: 1, unchanged: rest.length - 1, removed_from_source: 1 });
+  assert.deepEqual(d.counts, { added: 1, changed: 1, unchanged: rest.length - 1, conflicted: 0, removed_from_source: 1 });
   assert.equal(d.removed_from_source[0].id, gone.id);
   assert.ok(!JSON.stringify(d).includes('Fixture'));
+});
+
+test('a kept child keeps the parent it points at, so nothing is left dangling', async () => {
+  await wipe();
+  const receipt = await load();
+  const visit = landing.find((r) => r.entity === 'Visit');
+  await db.query('update pennsync_records.visit set status = $1 where id = $2', ['cancelled', visit.id]);
+  const out = await rollbackRun({ db, receipt, tableWaves, tables });
+  const by = (id) => out.entries.find((e) => e.id === id).outcome;
+  assert.equal(by(visit.id), 'edited_since');
+  assert.equal(by(visit.row.patient_id), 'kept_for_dependent');
+  const kept = (await db.query('select id from pennsync_records.patient')).rows.map((r) => r.id);
+  assert.deepEqual(kept, [visit.row.patient_id]);
+  const unrelated = landing.find((r) => r.entity === 'Visit' && r.id !== visit.id && r.row.patient_id !== visit.row.patient_id);
+  assert.equal(by(unrelated.id), 'deleted');
+});
+
+test('a receipt from a dry run is refused, so planned hashes can never match rows another run wrote', async () => {
+  await wipe();
+  const dry = await load({ dryRun: true });
+  await load();
+  await assert.rejects(rollbackRun({ db, receipt: dry, tableWaves, tables }), (e) => e.code === 'receipt_is_dry_run');
+  assert.equal(await total(), landing.length);
+});
+
+test('a conflicted row is still in the comparison, not reported as new', async () => {
+  await wipe();
+  const first = await load();
+  const p = landing.find((r) => r.entity === 'Patient');
+  const conflicted = { ...first, entries: first.entries.map((e) => (e.id === p.id ? { ...e, outcome: 'conflict' } : e)) };
+  let d = planDelta({ landing, receipt: conflicted });
+  assert.deepEqual(d.conflicted.map((x) => [x.id, x.plan_changed]), [[p.id, false]]);
+  assert.equal(d.counts.added, 0);
+  d = planDelta({ landing: landing.filter((r) => r !== p), receipt: conflicted });
+  assert.deepEqual(d.removed_from_source.map((x) => x.id), [p.id]);
 });
