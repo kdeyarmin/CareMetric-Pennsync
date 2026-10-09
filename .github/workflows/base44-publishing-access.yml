@@ -75,6 +75,9 @@ jobs:
               operation: 'credential_shape_and_read_only_probe',
               target_app_id: APP,
               api_key_secret_present: Boolean(key),
+              // The workflows trim the secret before use, so padding is
+              // tolerated; it is reported so a stray newline is visible.
+              api_key_padded: Boolean(key) && raw !== key,
               api_key_kind: kind,
               api_key_prefix: prefix,
               workspace_key_configured: kind === 'workspace_api_key',
@@ -86,15 +89,22 @@ jobs:
               deployment_attempted: false,
               production_deployed: false,
             };
-            report.deployment_workflows_can_use_api_key = kind === 'workspace_api_key' || kind === 'personal_access_token';
+            // Usable means Base44 accepted the credential under the header the
+            // workflows send for its kind (api_key for a workspace key, Bearer
+            // for a token), not under either header.
+            const workflowStatus = kind === 'workspace_api_key' ? report.probe_get_app_with_api_key_header
+              : kind === 'personal_access_token' ? report.probe_get_app_with_bearer_header
+                : null;
+            report.deployment_workflows_can_use_api_key = workflowStatus === 200;
             console.log(JSON.stringify(report, null, 2));
             const accepted = [report.probe_get_app_with_api_key_header, report.probe_get_app_with_bearer_header]
               .some((status) => status === 200);
             const label = kind.replaceAll('_', ' ');
-            const state = report.deployment_workflows_can_use_api_key && accepted
+            const header = kind === 'workspace_api_key' ? 'api_key' : 'Authorization: Bearer';
+            const state = report.deployment_workflows_can_use_api_key
               ? `A ${label} is configured and Base44 accepted it for a read of the production app. The deployment workflows can use it.`
-              : report.deployment_workflows_can_use_api_key
-                ? `A ${label} is configured, but Base44 did not accept it for a read of the production app.`
+              : workflowStatus !== null
+                ? `A ${label} is configured, but Base44 did not accept it as ${header}, the header the deployment workflows send for it (HTTP ${workflowStatus}).`
                 : `BLOCKED for the deployment workflows: BASE44_API_KEY is ${kind}${prefix ? ` (prefix ${prefix}_)` : ''}; they accept a workspace API key (b44k_) or a personal access token (b44u_).`
                   + (accepted ? ' Base44 did accept it for a read, so it is a valid credential of another kind.' : '');
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,

@@ -128,13 +128,17 @@ jobs:
           set -euo pipefail
           umask 077
           node tools-production-publish-preflight.mjs
+          # Trimmed as the preflight, the CLI helper and the CLI trim it, so a
+          # padded secret cannot pass the preflight and fail only here, after
+          # the functions are already deployed to preview.
+          key="$(node -e 'process.stdout.write(String(process.env.BASE44_API_KEY || "").trim())')"
           # A workspace key goes in the api_key header, as the CLI sends it; a
           # personal access token must be a Bearer token (Base44 rejects it in
           # api_key: measured 2026-10-09). The response is not printed: it is
           # the whole app document.
-          case "${BASE44_API_KEY}" in
-            b44k_*) auth_header="api_key: ${BASE44_API_KEY}" ;;
-            *) auth_header="Authorization: Bearer ${BASE44_API_KEY}" ;;
+          case "$key" in
+            b44k_*) auth_header="api_key: ${key}" ;;
+            *) auth_header="Authorization: Bearer ${key}" ;;
           esac
           if ! curl --silent --show-error --fail --max-time 900 \
             -X POST -H "$auth_header" -H 'Content-Type: application/json' \
