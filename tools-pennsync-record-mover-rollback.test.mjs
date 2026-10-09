@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -6,7 +7,7 @@ import { join } from 'node:path';
 import test, { after, before } from 'node:test';
 import { buildFixture } from './tools-pennsync-record-mover-fixtures.mjs';
 import { applyLanding, previousFrom } from './tools-pennsync-record-mover-load.mjs';
-import { loadTargetSpec, planFromDirectory } from './tools-pennsync-record-mover-plan.mjs';
+import { canonical, loadTargetSpec, planFromDirectory } from './tools-pennsync-record-mover-plan.mjs';
 import { RollbackError, planDelta, rollbackRun } from './tools-pennsync-record-mover-rollback.mjs';
 
 const require = createRequire(new URL('./services/authority-store/package.json', import.meta.url));
@@ -20,6 +21,16 @@ const count = async (t) => Number((await db.query(`select count(*)::int n from p
 const wipe = async () => { for (const t of tables) await db.exec(`delete from pennsync_records."${t}"`); };
 const load = (over = {}) => applyLanding({ db, landing, waves, tables, report, ...over });
 const total = async () => { let n = 0; for (const t of tables) n += await count(t); return n; };
+const sha = (v) => createHash('sha256').update(v).digest('hex');
+/** The fixture plan with its rows replaced, hashed and digested the way the planner does it. */
+const replan = (rows) => {
+  const next = rows.map((r) => ({ ...r, hash: sha(canonical({ table: r.table, row: r.row })) }));
+  const { digest: _d, ...body } = report;
+  body.rows_digest = sha(next.map((r) => `${r.table}|${r.source_app_id}|${r.id}|${r.hash}`).sort().join('\n'));
+  return { landing: next, report: { ...body, digest: sha(canonical(body)) } };
+};
+/** What a rollback did not delete, in its own order. */
+const notDeleted = (out) => out.entries.filter((e) => e.outcome !== 'deleted').map((e) => [e.table, e.id, e.outcome]);
 
 before(async () => {
   root = await mkdtemp(join(tmpdir(), 'pennsync-mover-rollback-'));
@@ -73,15 +84,8 @@ test('rows a run only updated are reported, not guessed back, and unchanged rows
   await wipe();
   const first = await load();
   const p = landing.find((r) => r.entity === 'Patient');
-  const changed = landing.map((r) => (r === p ? { ...r, row: { ...r.row, last_name: 'Moved in source' } } : r));
-  const { canonical } = await import('./tools-pennsync-record-mover-plan.mjs');
-  const { createHash } = await import('node:crypto');
-  const sha = (v) => createHash('sha256').update(v).digest('hex');
-  const next = changed.map((r) => ({ ...r, hash: sha(canonical({ table: r.table, row: r.row })) }));
-  const { digest: _d, ...body } = report;
-  body.rows_digest = sha(next.map((r) => `${r.table}|${r.source_app_id}|${r.id}|${r.hash}`).sort().join('\n'));
-  const rep2 = { ...body, digest: sha(canonical(body)) };
-  const second = await applyLanding({ db, landing: next, waves, tables, report: rep2, previous: previousFrom(first) });
+  const next = replan(landing.map((r) => (r === p ? { ...r, row: { ...r.row, last_name: 'Moved in source' } } : r)));
+  const second = await applyLanding({ db, ...next, waves, tables, previous: previousFrom(first) });
   assert.equal(second.entries.find((e) => e.id === p.id).outcome, 'updated');
   const out = await rollbackRun({ db, receipt: second, tableWaves, tables });
   assert.equal(out.entries.find((e) => e.id === p.id).outcome, 'not_restorable');
@@ -134,21 +138,42 @@ test('a kept child keeps the parent it points at, so nothing is left dangling', 
   assert.equal(by(unrelated.id), 'deleted');
 });
 
-test('a row created since the run keeps the parent it points at, including through a prefixed reference column', async () => {
+test('a visit added to the store after the load keeps its patient, and the visit itself is never touched', async () => {
   await wipe();
   const receipt = await load();
   const visit = landing.find((r) => r.entity === 'Visit');
-  await db.query(`insert into pennsync_records.visit select (jsonb_populate_record(null::pennsync_records.visit, to_jsonb(v) || '{"id":"added-after-the-run"}'::jsonb)).* from pennsync_records.visit v where v.id = $1`, [visit.id]);
-  const other = landing.find((r) => r.entity === 'Patient' && r.id !== visit.row.patient_id);
-  await db.query(`insert into pennsync_records.patient_education_material (id, source_app_id, agency_id, target_patient_id) select 'material-after-the-run', source_app_id, agency_id, id from pennsync_records.patient where id = $1`, [other.id]);
+  // Written straight into the store, as staff would, so no receipt names it.
+  await db.query(`insert into pennsync_records.visit select (jsonb_populate_record(null::pennsync_records.visit, to_jsonb(v) || '{"id":"visit-after-the-run"}'::jsonb)).* from pennsync_records.visit v where v.id = $1`, [visit.id]);
   const out = await rollbackRun({ db, receipt, tableWaves, tables });
-  const by = (id) => out.entries.find((e) => e.id === id).outcome;
-  assert.equal(by(visit.row.patient_id), 'kept_for_dependent');
-  assert.equal(by(other.id), 'kept_for_dependent');
-  const kept = (await db.query('select id from pennsync_records.patient order by id')).rows.map((r) => r.id).sort();
-  assert.deepEqual(kept, [visit.row.patient_id, other.id].sort());
-  assert.equal((await db.query(`select id from pennsync_records.visit where id = 'added-after-the-run'`)).rows.length, 1);
-  assert.equal((await db.query(`select id from pennsync_records.patient_education_material where id = 'material-after-the-run'`)).rows.length, 1);
+  assert.deepEqual(notDeleted(out), [['patient', visit.row.patient_id, 'kept_for_dependent']]);
+  assert.deepEqual((await db.query('select id from pennsync_records.patient')).rows.map((r) => r.id), [visit.row.patient_id]);
+  assert.deepEqual((await db.query('select id, patient_id from pennsync_records.visit')).rows, [{ id: 'visit-after-the-run', patient_id: visit.row.patient_id }]);
+  assert.equal(await total(), 2, 'everything else the run inserted is gone');
+});
+
+test('a kept row that points at its patient through `target_patient_id` keeps that patient', async () => {
+  await wipe();
+  const patient = landing.find((r) => r.entity === 'Patient');
+  const id = 'material-loaded-by-the-run';
+  const material = { entity: 'PatientEducationMaterial', table: 'patient_education_material', source_app_id: patient.source_app_id, id, row: { id, source_app_id: patient.source_app_id, agency_id: patient.row.agency_id, title: 'Fixture handout', target_patient_id: patient.id } };
+  const receipt = await applyLanding({ db, ...replan([...landing, material]), waves: new Map([...waves, [material.entity, 3]]), tables });
+  assert.equal(receipt.entries.find((e) => e.id === id).outcome, 'inserted');
+  await db.query('update pennsync_records.patient_education_material set title = $1 where id = $2', ['Edited later', id]);
+  const out = await rollbackRun({ db, receipt, tableWaves: new Map([...tableWaves, [material.table, 3]]), tables });
+  assert.deepEqual(notDeleted(out), [[material.table, id, 'edited_since'], ['patient', patient.id, 'kept_for_dependent']]);
+  assert.deepEqual((await db.query('select id from pennsync_records.patient')).rows.map((r) => r.id), [patient.id]);
+});
+
+test('a row added after the load that points at a loaded visit keeps the visit and, through it, the patient', async () => {
+  await wipe();
+  const receipt = await load();
+  const task = landing.find((r) => r.entity === 'Task');
+  const visit = landing.find((r) => r.entity === 'Visit');
+  // A follow-up task naming the visit through `related_visit_id`, and no patient of its own.
+  await db.query(`insert into pennsync_records.task select (jsonb_populate_record(null::pennsync_records.task, to_jsonb(t) || jsonb_build_object('id', 'task-after-the-run', 'patient_id', null, 'related_visit_id', $2::text))).* from pennsync_records.task t where t.id = $1`, [task.id, visit.id]);
+  const out = await rollbackRun({ db, receipt, tableWaves, tables });
+  assert.deepEqual(notDeleted(out), [['visit', visit.id, 'kept_for_dependent'], ['patient', visit.row.patient_id, 'kept_for_dependent']]);
+  assert.deepEqual((await db.query('select id from pennsync_records.task')).rows.map((r) => r.id), ['task-after-the-run']);
 });
 
 test('a receipt from a dry run is refused, so planned hashes can never match rows another run wrote', async () => {
