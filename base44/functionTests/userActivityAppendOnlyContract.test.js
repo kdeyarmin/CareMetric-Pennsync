@@ -430,10 +430,29 @@ test('browser telemetry appends only the caller\'s own minimized events; meaning
   assert.equal((activity.match(/entities\./g) || []).length, 1);
   assert.match(activity, /export const logError = async \(_errorMessage, _errorDetails = \{\}\) => undefined;/);
   assert.doesNotMatch(audit, /@\/api\/base44Client|base44\.|entities\./);
+  // Login tracking is back (owner decision, 2026-10-08), as a server-stamped
+  // record of the caller's own sign-in. The shell asks once per tab session
+  // through loginTelemetry.js, the only browser caller; trackUserLogin names
+  // the person from the session and stores no user agent or address.
   assert.doesNotMatch(layout, /trackUserLogin/);
+  assert.match(layout, /recordLoginOnce\(\{ id: loginTelemetryUserId \}\)/);
   assert.doesNotMatch(layout, /entities\.UserActivity\.create/);
-  assert.match(trackLogin, /status:\s*503/);
-  assert.doesNotMatch(trackLogin, /createClientFromRequest|auth\.me|UserActivity|user-agent/i);
+  const loginTelemetry = await readFile(new URL('../../src/lib/loginTelemetry.js', import.meta.url), 'utf8');
+  assert.match(loginTelemetry, /invoke\('trackUserLogin', device \? \{ device_type: device \} : \{\}\)/);
+  for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
+    if (url.pathname.endsWith('/src/lib/loginTelemetry.js')) continue;
+    assert.doesNotMatch(await readFile(url, 'utf8'), /['"]trackUserLogin['"]/, `${url.pathname} must not invoke trackUserLogin`);
+  }
+  const loginHandler = trackLogin.slice(trackLogin.indexOf('Deno.serve('));
+  assert.match(loginHandler, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.match(loginHandler, /if \(isDeactivatedUser\(user\)\) return DEACTIVATED_USER_RESPONSE\(\);/);
+  assert.match(loginHandler, /user_email: email,/);
+  assert.match(loginHandler, /login_time: loginTime,/);
+  assert.doesNotMatch(trackLogin, /user-agent|user_agent|ip_address|x-forwarded-for/i);
+  assert.ok(
+    loginHandler.indexOf('base44.auth.me()') < loginHandler.indexOf('req.json()'),
+    'trackUserLogin identifies the caller before it reads the body',
+  );
   assert.match(agreement, /acceptAiContentAgreement\(\{[\s\S]*accepted:\s*true/);
   assert.doesNotMatch(agreement, /base44|entities\.UserActivity|auth\.updateMe/);
 });
@@ -694,5 +713,123 @@ test('AI agreement broker requires exact audit, authority, and actor readbacks',
     }));
     assert.equal(response.status, scenario.expectedStatus, scenario.name);
     assert.equal(authorityWrites, scenario.expectedAuthorityWrites, scenario.name);
+  }
+});
+
+async function loadLoginTracker(client) {
+  let source = await readFile(new URL('../functions/trackUserLogin/entry.ts', import.meta.url), 'utf8');
+  source = source.replace(
+    /import\s+\{[^}]*\}\s+from\s+'npm:@base44\/sdk@[^']*';?/,
+    'const createClientFromRequest = globalThis.__loginTrackerClient;',
+  );
+  const file = join(tmpdir(), `login_tracker_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(source).outputText);
+  let handler;
+  const previousDeno = globalThis.Deno;
+  globalThis.__loginTrackerClient = () => client;
+  globalThis.Deno = { serve: (candidate) => { handler = candidate; }, env: { get: () => undefined } };
+  try {
+    await import(pathToFileURL(file).href);
+  } finally {
+    await unlink(file).catch(() => {});
+    delete globalThis.__loginTrackerClient;
+    if (previousDeno === undefined) delete globalThis.Deno;
+    else globalThis.Deno = previousDeno;
+  }
+  return handler;
+}
+
+function loginClient({ me, priorLogins = [], readFails = false } = {}) {
+  const calls = [];
+  const writes = [];
+  const client = {
+    auth: { me: async () => { calls.push('auth.me'); return me; } },
+    asServiceRole: { entities: { UserActivity: {
+      filter: async (query) => {
+        calls.push(['filter', query]);
+        if (readFails) throw new Error('store unavailable');
+        return priorLogins;
+      },
+      create: async (row) => { calls.push('create'); writes.push(row); return { id: 'activity-1', ...row }; },
+    } } },
+  };
+  return { client, calls, writes };
+}
+
+const loginRequest = (body, method = 'POST') => new Request('http://local/track-user-login', {
+  method,
+  headers: {
+    'content-type': 'application/json',
+    'user-agent': 'Mozilla/5.0 (fingerprint)',
+    'x-forwarded-for': '203.0.113.9',
+  },
+  ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
+});
+
+test('trackUserLogin records only the caller\'s own sign-in, server-stamped, without a fingerprint', async () => {
+  const nurse = { id: 'u1', email: 'Nurse@Example.test', full_name: 'Nurse One', role: 'user', is_active: true };
+
+  const recorded = loginClient({ me: nurse });
+  const response = await (await loadLoginTracker(recorded.client))(loginRequest({ device_type: 'mobile' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { success: true, recorded: true, activity_id: 'activity-1' });
+  assert.equal(recorded.writes.length, 1);
+  const [row] = recorded.writes;
+  assert.equal(row.user_email, 'nurse@example.test', 'the person comes from the session, normalized');
+  assert.equal(row.action, 'login');
+  assert.equal(row.device_type, 'mobile');
+  assert.match(row.details.login_time, /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(Math.abs(Date.parse(row.details.login_time) - Date.now()) < 60_000, 'the time is the server clock');
+  assert.equal(row.details.user_role, 'user');
+  for (const forbidden of ['user_agent', 'ip_address']) {
+    assert.equal(Object.hasOwn(row, forbidden), false, `${forbidden} is never stored`);
+  }
+  assert.doesNotMatch(JSON.stringify(row), /Mozilla|fingerprint|203\.0\.113/);
+
+  // A body naming someone else (or carrying any other key) is refused before
+  // any read or write.
+  for (const body of [
+    { user_email: 'victim@example.test' },
+    { device_type: 'desktop', login_time: '2020-01-01T00:00:00.000Z' },
+    { device_type: 'Mozilla/5.0' },
+  ]) {
+    const refused = loginClient({ me: nurse });
+    const result = await (await loadLoginTracker(refused.client))(loginRequest(body));
+    assert.equal(result.status, 400, JSON.stringify(body));
+    assert.equal(refused.writes.length, 0);
+    assert.equal(refused.calls.some((call) => Array.isArray(call)), false, 'no history read for a refused body');
+  }
+
+  // Replay inside the half hour records nothing.
+  const recent = loginClient({ me: nurse, priorLogins: [{ id: 'old', created_date: new Date(Date.now() - 60_000).toISOString() }] });
+  const replay = await (await loadLoginTracker(recent.client))(loginRequest({}));
+  assert.equal(replay.status, 200);
+  assert.deepEqual(await replay.json(), { success: true, recorded: false });
+  assert.equal(recent.writes.length, 0);
+  assert.deepEqual(recent.calls[1], ['filter', { user_email: 'nurse@example.test', action: 'login' }]);
+
+  // An older sign-in does not suppress a new one.
+  const stale = loginClient({ me: nurse, priorLogins: [{ id: 'old', created_date: new Date(Date.now() - 2 * 60 * 60_000).toISOString() }] });
+  assert.equal((await (await loadLoginTracker(stale.client))(loginRequest({}))).status, 200);
+  assert.equal(stale.writes.length, 1);
+
+  // History that cannot be read writes nothing rather than flooding the trail.
+  const unreadable = loginClient({ me: nurse, readFails: true });
+  assert.equal((await (await loadLoginTracker(unreadable.client))(loginRequest({}))).status, 503);
+  assert.equal(unreadable.writes.length, 0);
+
+  // No session, a deactivated account, a service identity and a GET all stop
+  // before any service-role access.
+  for (const [me, status, method] of [
+    [null, 401, 'POST'],
+    [{ ...nurse, is_active: false }, 403, 'POST'],
+    [{ ...nurse, is_service: true }, 403, 'POST'],
+    [nurse, 405, 'GET'],
+  ]) {
+    const denied = loginClient({ me });
+    const result = await (await loadLoginTracker(denied.client))(loginRequest({}, method));
+    assert.equal(result.status, status);
+    assert.equal(denied.writes.length, 0);
+    assert.equal(denied.calls.some((call) => Array.isArray(call)), false);
   }
 });

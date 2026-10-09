@@ -28,6 +28,7 @@ import { calculateNurseStats } from "@/components/utils/statsCalculator";
 
 // Non-critical below-the-fold — lazy loaded
 const PendingReferralsWidget    = lazy(() => import("@/components/referral/PendingReferralsWidget"));
+const OverdueFollowUpsWidget    = lazy(() => import("@/components/dashboard/OverdueFollowUpsWidget"));
 const RealTimePatientAlerts     = lazy(() => import("@/components/dashboard/RealTimePatientAlerts"));
 const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTemplatesWidget"));
 
@@ -371,6 +372,9 @@ export default function Dashboard() {
       <Suspense fallback={<LoadingState className="py-12" />}>
         {/* Pending Referrals */}
         <PendingReferralsWidget />
+
+        {/* Provider follow-up requests needing attention (agency_admin or manager only) */}
+        <OverdueFollowUpsWidget />
 
         {/* Real-time Patient Alerts */}
         <div>

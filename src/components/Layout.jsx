@@ -10,6 +10,7 @@ import { resolveKnownHelpRoute } from "@/lib/centralHelp";
 import { getRoleView } from "@/lib/roles";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 import { useAuth } from "@/lib/AuthContext";
+import { recordLoginOnce } from "@/lib/loginTelemetry";
 
 import PageLoader from "@/components/ui/PageLoader";
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
@@ -138,6 +139,13 @@ export default function Layout() {
   // deactivated account is locked out regardless of role/approval; the test
   // agent is exempt (its account is never approved and must stay usable).
   const isDeactivated = currentUser?.is_active === false && !isTestAgent;
+  // One sign-in row per tab session; the server names the caller, stamps the
+  // time and refuses repeats inside half an hour (see loginTelemetry.js).
+  const loginTelemetryUserId = !isUserPending && !isDeactivated ? currentUser?.id : null;
+  useEffect(() => {
+    // Keyed on the id alone, so a profile refresh never re-sends.
+    if (loginTelemetryUserId) void recordLoginOnce({ id: loginTelemetryUserId });
+  }, [loginTelemetryUserId]);
   // Automatic message/notification/approval badges are intentionally absent.
   // The available entity readers are not bound to the exact selected tenant,
   // so even fetching full rows merely to count them would cross the authority

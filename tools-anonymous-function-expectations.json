@@ -395,12 +395,6 @@
       "code": "secure_message_tenant_broker_required"
     }
   },
-  "trackUserLogin": {
-    "status": 503,
-    "body": {
-      "error": "Login telemetry is unavailable pending provider-auth event integration"
-    }
-  },
   "validateSignerToken": {
     "status": 503,
     "body": {

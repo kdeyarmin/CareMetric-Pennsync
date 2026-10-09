@@ -444,6 +444,60 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Calculate skill gaps
+    const skillGaps = [];
+    
+    // Low compliance = documentation training needed. Only a nurse who has
+    // been audited can score low: with no audits the average is a placeholder
+    // zero, not a finding.
+    if (metrics.total_audits > 0 && metrics.avg_compliance_score < 85) {
+      skillGaps.push({
+        skill: 'Medicare Documentation Compliance',
+        current_level: 'needs_improvement',
+        gap_severity: 'high',
+        recommendation: 'Complete Medicare documentation training modules'
+      });
+    }
+
+    // Low suggestion acceptance = may not understand best practices
+    if (metrics.suggestion_acceptance_rate < 50 && recommendations.length > 10) {
+      skillGaps.push({
+        skill: 'AI-Assisted Documentation',
+        current_level: 'needs_improvement',
+        gap_severity: 'medium',
+        recommendation: 'Review AI suggestions more carefully and leverage tools'
+      });
+    }
+
+    // Low template usage = efficiency opportunity
+    if (metrics.template_usage < metrics.completed_visits * 0.3 && metrics.completed_visits > 5) {
+      skillGaps.push({
+        skill: 'Documentation Efficiency',
+        current_level: 'needs_improvement',
+        gap_severity: 'medium',
+        recommendation: 'Use smart templates to improve efficiency'
+      });
+    }
+
+    // High documentation time = efficiency issue
+    if (metrics.avg_documentation_time > 30) {
+      skillGaps.push({
+        skill: 'Time Management',
+        current_level: 'needs_improvement',
+        gap_severity: 'medium',
+        recommendation: 'Use voice dictation and AI scribe to reduce documentation time'
+      });
+    }
+
+    // The Training Hub asks for skill gaps alone (owner decision, 2026-10-08:
+    // skill-gap training is back; nothing predicts burnout or clinical risk).
+    // These are the deterministic rules above, so no model call is made, and
+    // the answer is about the target the authority checks above settled on
+    // (the caller themselves unless an administrator named an in-scope member).
+    if (body?.action === 'skill_gaps') {
+      return Response.json({ success: true, nurse_email: targetEmail, skill_gaps: skillGaps });
+    }
+
     // AI-generated insights and recommendations
     const analysisPrompt = `You are a nursing performance analyst. Analyze the following performance data for one nurse and provide:
 
@@ -482,49 +536,6 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     const insights = parseLLMJson(await base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: analysisPrompt
     })) || {};
-
-    // Calculate skill gaps
-    const skillGaps = [];
-    
-    // Low compliance = documentation training needed
-    if (metrics.avg_compliance_score < 85) {
-      skillGaps.push({
-        skill: 'Medicare Documentation Compliance',
-        current_level: 'needs_improvement',
-        gap_severity: 'high',
-        recommendation: 'Complete Medicare documentation training modules'
-      });
-    }
-
-    // Low suggestion acceptance = may not understand best practices
-    if (metrics.suggestion_acceptance_rate < 50 && recommendations.length > 10) {
-      skillGaps.push({
-        skill: 'AI-Assisted Documentation',
-        current_level: 'needs_improvement',
-        gap_severity: 'medium',
-        recommendation: 'Review AI suggestions more carefully and leverage tools'
-      });
-    }
-
-    // Low template usage = efficiency opportunity
-    if (metrics.template_usage < metrics.completed_visits * 0.3 && metrics.completed_visits > 5) {
-      skillGaps.push({
-        skill: 'Documentation Efficiency',
-        current_level: 'needs_improvement',
-        gap_severity: 'medium',
-        recommendation: 'Use smart templates to improve efficiency'
-      });
-    }
-
-    // High documentation time = efficiency issue
-    if (metrics.avg_documentation_time > 30) {
-      skillGaps.push({
-        skill: 'Time Management',
-        current_level: 'needs_improvement',
-        gap_severity: 'medium',
-        recommendation: 'Use voice dictation and AI scribe to reduce documentation time'
-      });
-    }
 
     // Calculate documentation quality metrics
     const docQualityMetrics = {
