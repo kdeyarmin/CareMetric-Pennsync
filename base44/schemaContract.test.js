@@ -658,8 +658,8 @@ test('interim-locked content entities keep a reviewed direct-consumer inventory'
       'src/pages/ReferralFollowUp.jsx :: user-scope :: list',
     ],
     TrainingModule: [
-      'base44/functions/duplicateInService/entry.ts :: service-role :: create,filter',
-      'base44/functions/generateCourseQuiz/entry.ts :: service-role :: filter',
+      'base44/functions/duplicateInService/entry.ts :: user-scope :: create,filter',
+      'base44/functions/generateCourseQuiz/entry.ts :: user-scope :: filter',
       'base44/functions/generatePersonalizedLearningPath/entry.ts :: service-role :: filter',
       'base44/functions/generateTrainingCourse/entry.ts :: service-role :: create,filter,update',
       'base44/functions/manageTrainingVideos/entry.ts :: service-role :: filter,update',

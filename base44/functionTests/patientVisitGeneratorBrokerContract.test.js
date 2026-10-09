@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { transpileFunctionEntry } from '../../tools-transpile-ts.mjs';
 
 const ROOT = process.cwd();
 const read = (relative) => readFileSync(path.join(ROOT, relative), 'utf8');
@@ -106,6 +106,16 @@ async function loadGenerator(relative, {
   });
   globalThis.__generatorMakeClient = (req) => {
     calls.requests.push(req);
+    // Since 2026-10-09 the model call runs as the service role, after the
+    // caller has been authorized; both clients share one integration.
+    const integrations = {
+      Core: {
+        InvokeLLM: async (args) => {
+          calls.llmCalls += 1;
+          return llm(args);
+        },
+      },
+    };
     return {
       auth: { me: async () => (caller ? { ...caller } : null) },
       entities: {
@@ -123,22 +133,16 @@ async function loadGenerator(relative, {
           PatientEducationDelivery: table([]),
           DischargeSummary: table([]),
         },
+        integrations,
       },
-      integrations: {
-        Core: {
-          InvokeLLM: async (args) => {
-            calls.llmCalls += 1;
-            return llm(args);
-          },
-        },
-      },
+      integrations,
     };
   };
   const modulePath = path.join(
     tmpdir(),
     `generator_${path.basename(path.dirname(relative))}_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
   );
-  await writeFile(modulePath, transpileTs(source).outputText);
+  await writeFile(modulePath, (await transpileFunctionEntry(source)).outputText);
   const previousDeno = globalThis.Deno;
   let handler = null;
   globalThis.Deno = {
