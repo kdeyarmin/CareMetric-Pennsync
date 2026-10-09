@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { acceptAiContentAgreement } from "@/functions/acceptAiContentAgreement";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Sparkles, ShieldCheck, LogOut, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { BRAND_LOGO_URL } from "@/lib/brand";
@@ -37,6 +37,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
     AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.map(() => false),
   );
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const allChecked = useMemo(() => checked.every(Boolean), [checked]);
 
@@ -45,6 +46,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
 
   const accept = async () => {
     if (!allChecked || saving) return;
+    setError("");
     setSaving(true);
     try {
       // The purpose-specific broker derives the actor, appends the canonical
@@ -63,7 +65,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
       setSaving(false);
     } catch (err) {
       console.error("Failed to record AI content agreement:", err);
-      toast.error("We couldn't record your acknowledgment. Please try again.");
+      setError("We couldn't complete your acknowledgment or verify it. Please try again; access remains closed until verification succeeds.");
       setSaving(false);
     }
     // In the app, a successful protected recheck unmounts this gate. A failed
@@ -115,7 +117,17 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               </p>
             </section>
 
-            <ScrollArea className="max-h-[40vh] rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <p id="ai-ack-guidance" className="mb-3 text-sm text-muted-foreground" role="status">
+              Select all {AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.length} acknowledgments below to enable I Agree &amp; Continue. Scroll within the list to review each one.
+              {" "}{checked.filter(Boolean).length} of {checked.length} selected.
+            </p>
+            <div
+              role="region"
+              aria-label="Required AI responsibility acknowledgments"
+              aria-describedby="ai-ack-guidance"
+              tabIndex={0}
+              className="max-h-[40dvh] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-1"
+            >
               <ul className="space-y-3 p-3">
                 {AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.map((text, index) => {
                   const id = `ai-ack-${index}`;
@@ -128,6 +140,8 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
                         <input
                           id={id}
                           type="checkbox"
+                          required
+                          disabled={saving}
                           checked={checked[index]}
                           onChange={(event) => setAcknowledgment(index, event.target.checked)}
                           className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-navy-600"
@@ -138,7 +152,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
                   );
                 })}
               </ul>
-            </ScrollArea>
+            </div>
 
             <div className="mt-4 flex items-start gap-2 rounded-xl border border-navy-100 bg-navy-50/60 p-3 text-xs text-slate-600">
               <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-navy-600" />
@@ -149,6 +163,8 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
                 date, and this agreement version are recorded for compliance.
               </span>
             </div>
+
+            {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Button

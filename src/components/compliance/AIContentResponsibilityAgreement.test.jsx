@@ -47,6 +47,25 @@ describe('AIContentResponsibilityAgreement', () => {
     expect(screen.getByText(/sent to the providers named above/i)).toBeInTheDocument();
   });
 
+  it('keeps every acknowledgment inside a natively scrollable, keyboard-accessible region', () => {
+    render(<AIContentResponsibilityAgreement />);
+    const region = screen.getByRole('region', { name: /required ai responsibility acknowledgments/i });
+    expect(region).toHaveClass('overflow-y-auto');
+    expect(region).toHaveAttribute('tabindex', '0');
+    expect(region.querySelectorAll('input[type="checkbox"]')).toHaveLength(AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.length);
+    expect(screen.getByRole('status')).toHaveTextContent('0 of 3 selected');
+  });
+
+  it('shows a persistent error and allows retry when recording fails', async () => {
+    acceptAgreement.mockRejectedValueOnce(new Error('audit down'));
+    render(<AIContentResponsibilityAgreement />);
+    screen.getAllByRole('checkbox').forEach((b) => fireEvent.click(b));
+    const agree = screen.getByRole('button', { name: /i agree & continue/i });
+    fireEvent.click(agree);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/access remains closed/i);
+    expect(agree).toBeEnabled();
+  });
+
   it('keeps "I Agree & Continue" disabled until every acknowledgment is checked', () => {
     render(<AIContentResponsibilityAgreement />);
     const agree = screen.getByRole('button', { name: /i agree & continue/i });
