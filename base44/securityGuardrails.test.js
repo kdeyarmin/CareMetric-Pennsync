@@ -458,86 +458,123 @@ test('patient merges go through the authorized server broker, never a browser wr
   assert.ok(execute.indexOf('moveDuplicateRecords(') < execute.indexOf('archiveDuplicate('));
 });
 
-// 12-14. Residual document-signing capabilities remain static early 503s.
-// Five rebuilt brokers retain dormant implementations behind fail-closed source
-// gates and have a separate contract below.
-const HARD_PAUSED_CAPABILITY_FUNCTIONS = [
-  'submitDocumentSignatures',
-  'notifySignerOfPackage',
-  'sendSignatureReminder',
-  'sendAutomatedSignatureReminders',
-  'checkPendingSignatureRequests',
-  'sendDocumentReminderEmails',
+// 12-14. Document signing was released on 2026-10-08 (owner decision). These
+// locks pin WHY each released capability is safe instead of pinning a pause:
+// staff brokers authenticate the caller, then decide agency membership and
+// chart access from AgencyMembership + PatientCareTeamAssignment (never from a
+// self-editable profile field) before any record the body names is read;
+// alternate send paths are thin calls into the one reviewed issuer or
+// dispatcher; and no signing path stores a public URL or a raw signature.
+const ESIGN_STAFF_BROKERS = [
   'archiveSignedDocument',
   'bulkCreateDocumentPackages',
+  'embedAnnotationsToPDF',
   'generateDocumentPackageFromTemplate',
   'generateSignatureCertificate',
-  'signatureIntegrity',
-  'stampSignatureOnPDF',
-  'embedAnnotationsToPDF',
+  'manageSignatureRequests',
   'notifyAdminOfSignedDocument',
   'onDocumentSigned',
+  'signatureIntegrity',
+  'stampSignatureOnPDF',
+  'submitDocumentSignatures',
 ];
 
-for (const functionName of HARD_PAUSED_CAPABILITY_FUNCTIONS) {
-  test(`${functionName} is a no-store early 503 with no privileged continuation`, () => {
+function esignHandler(src) {
+  return src.slice(src.indexOf('Deno.serve('));
+}
+
+for (const functionName of ESIGN_STAFF_BROKERS) {
+  test(`${functionName} authenticates and decides membership before reading the body or any record`, () => {
     const src = read(`base44/functions/${functionName}/entry.ts`);
-    assert.match(src, /Deno\.serve\(\(\)\s*=>\s*Response\.json/);
-    assert.match(src, /status:\s*503/);
-    assert.match(src, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
-    assert.match(src, /Pragma:\s*['"]no-cache['"]/);
-    assert.doesNotMatch(
-      src,
-      /createClient(?:FromRequest)?|\breq\.(?:json|text|arrayBuffer|formData)\(|auth\.me\(|asServiceRole|entities\.|integrations\.|functions\.invoke|UploadFile|SendEmail|pdf_url|portalLink/,
-      `${functionName} must fail before SDK construction, body parsing, data access, upload, or link release.`,
-    );
+    const handler = esignHandler(src);
+    assert.match(src, /BEGIN SHARED HELPER: esignCore/);
+    assert.match(handler, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+    const caller = handler.indexOf('await esignLoadCaller(base44)');
+    const body = handler.search(/esignReadJson\(|parseForm\(/);
+    const authority = handler.indexOf('esignStaffAuthority(');
+    assert.ok(caller > 0 && caller < body, `${functionName} must authenticate before reading the body`);
+    assert.ok(authority > body, `${functionName} must decide authority from the named agency`);
+    const firstRecord = handler.search(/esignLoadAuthorizedSignature\(|esignLoadChartSource\(|\.entities\.[A-Z]|esignExactOne\(|loadVisibleRequests\(|signInPerson\(|signDischargeSummary\(/);
+    assert.ok(firstRecord === -1 || authority < firstRecord,
+      `${functionName} must decide membership and chart access before any record read`);
+    assert.doesNotMatch(src, /\.UploadFile\(|signed_pdf_url\s*:|document_url\s*:|signature_data\s*:/,
+      `${functionName} must never store a public URL or an inline signature image`);
   });
 }
 
-const DORMANT_SIGNATURE_BROKERS = {
-  validateSignerToken: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
-  submitSignerSignature: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
-  generateSignerToken: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
-  scheduleSignatureReminders: {
-    releaseMarker: 'SIGNATURE_REMINDER_RELEASE_ENABLED',
-    proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
-  },
-  dispatchScheduledSignatureReminders: {
-    releaseMarker: 'SIGNATURE_REMINDER_DISPATCH_ENABLED',
-    proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
-  },
-};
+test('e-signature chart access is decided from membership and care-team rows, never from profile fields', () => {
+  const core = read('base44/_shared/esign/core.js');
+  const start = core.indexOf('async function esignLoadCaller');
+  const authority = core.slice(start, core.indexOf('// Chart-safe PDF file names'));
+  assert.match(authority, /entities\.AgencyMembership\.filter\(\s*\{ agency_id: agencyId, user_id: caller\.userId \}/);
+  assert.match(authority, /row\.membership_key !== agencyId \+ ':' \+ caller\.userId/);
+  assert.match(authority, /entities\.PatientCareTeamAssignment\.filter\(/);
+  assert.match(authority, /if \(!access\) throw new EsignError\(404, 'Patient unavailable'\)/);
+  assert.doesNotMatch(authority,
+    /user\??\.(?:agency_id|agency_name|account_type|is_manager|assigned_nurses)|\.assigned_nurses|withTrustedClaims/,
+    'a self-editable profile field must never decide signing authority');
+});
 
-for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORMANT_SIGNATURE_BROKERS)) {
-  test(`${functionName} retains a dormant implementation behind its early release gate`, () => {
+for (const [functionName, target, rotate] of [
+  ['notifySignerOfPackage', 'generateSignerToken', 'false'],
+  ['sendSignatureReminder', 'generateSignerToken', 'true'],
+]) {
+  test(`${functionName} is a thin call into the one reviewed issuer with the caller's own credential`, () => {
     const src = read(`base44/functions/${functionName}/entry.ts`);
-    assert.match(src, new RegExp(`const ${releaseMarker} = false;`));
-    if (proofMarker) assert.match(src, new RegExp(`const ${proofMarker} = (?:false|true);`));
+    const handler = esignHandler(src);
+    assert.ok(handler.indexOf('await base44.auth.me()') < handler.indexOf('await req.text()'));
+    assert.match(handler, new RegExp(`base44\\.functions\\.invoke\\('${target}', \\{[\\s\\S]*?rotate: ${rotate},`));
+    assert.doesNotMatch(src, /asServiceRole|\.entities\.|SendEmail|UploadPrivateFile|DocumentPackageToken/);
+  });
+}
+
+for (const functionName of ['sendAutomatedSignatureReminders', 'sendDocumentReminderEmails']) {
+  test(`${functionName} runs only the reviewed dispatcher after scheduler authorization`, () => {
+    const src = read(`base44/functions/${functionName}/entry.ts`);
+    const handler = esignHandler(src);
+    const auth = handler.indexOf('getSchedulerAuthError(req, user)');
+    const invoke = handler.indexOf("functions.invoke('dispatchScheduledSignatureReminders'");
+    assert.ok(auth > 0 && auth < invoke);
+    assert.doesNotMatch(src, /\.entities\.|SendEmail|UploadPrivateFile/);
+  });
+}
+
+test('checkPendingSignatureRequests requires scheduler authority before any service-role read', () => {
+  const handler = esignHandler(read('base44/functions/checkPendingSignatureRequests/entry.ts'));
+  const auth = handler.indexOf('getSchedulerAuthError(req, user)');
+  assert.ok(auth > 0 && auth < handler.indexOf('base44.asServiceRole.entities'));
+});
+
+const RELEASED_SIGNER_BROKERS = [
+  'generateSignerToken',
+  'validateSignerToken',
+  'submitSignerSignature',
+  'scheduleSignatureReminders',
+  'dispatchScheduledSignatureReminders',
+];
+
+for (const functionName of RELEASED_SIGNER_BROKERS) {
+  test(`${functionName} is released without a source pause and keeps its pinned SDK`, () => {
+    const src = read(`base44/functions/${functionName}/entry.ts`);
+    assert.doesNotMatch(src,
+      /const (?:PUBLIC_SIGNATURE_RELEASE_ENABLED|SIGNATURE_REMINDER_RELEASE_ENABLED|SIGNATURE_REMINDER_DISPATCH_ENABLED) = false;/);
     assert.match(src, /npm:\@base44\/sdk\@0\.8\.46/);
-    const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
-    const guardIndex = src.indexOf(`if (!${releaseMarker}`, handlerIndex);
-    const clientIndex = src.indexOf('createClientFromRequest(', handlerIndex);
-    assert.notEqual(handlerIndex, -1);
-    assert.notEqual(guardIndex, -1);
-    assert.notEqual(clientIndex, -1);
-    assert.ok(guardIndex < clientIndex, `${functionName} must gate before SDK construction`);
-    if (proofMarker) {
-      const proofDeclarationIndex = src.search(new RegExp(`const ${proofMarker} = (?:false|true);`));
-      const proofGuardIndex = src.indexOf(`!${proofMarker}`, guardIndex);
-      assert.ok(proofDeclarationIndex < handlerIndex, `${functionName} must declare its atomic proof gate before the handler`);
-      assert.ok(proofGuardIndex > guardIndex && proofGuardIndex < clientIndex,
-        `${functionName} must require atomic uniqueness proof before SDK construction`);
-    }
-    for (const bodyCall of ['req.text()', 'req.formData()', 'req.json()', 'req.arrayBuffer()']) {
-      const bodyIndex = src.indexOf(bodyCall, handlerIndex);
-      if (bodyIndex !== -1) assert.ok(guardIndex < bodyIndex, `${functionName} must gate before ${bodyCall}`);
-    }
-    const guardedPrefix = src.slice(guardIndex, clientIndex);
-    assert.match(guardedPrefix, /status:\s*503/);
-    assert.match(guardedPrefix, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
-    assert.match(guardedPrefix, /Pragma:\s*['"]no-cache['"]/);
+    assert.match(src, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
   });
 }
+
+test('the public signer brokers find a link only by its SHA-256 and never echo the plaintext', () => {
+  const validator = read('base44/functions/validateSignerToken/entry.ts');
+  const submit = read('base44/functions/submitSignerSignature/entry.ts');
+  for (const src of [validator, submit]) {
+    const handler = esignHandler(src);
+    assert.ok(handler.search(/parseToken\(req\)|parseRequest\(req\)/) < handler.indexOf('.entities'),
+      'the bearer format is checked before any lookup');
+    assert.doesNotMatch(src, /DocumentPackageToken\.filter\(\s*\{\s*token:\s*(?:token|input\.token)\b/);
+  }
+  assert.match(validator, /\{ token: tokenDigest, token_hashed: true \}/);
+  assert.match(submit, /\{ token: tokenDigest, token_hashed: true \}/);
+});
 
 // Codex P1/P2 regression locks (PR review on deep-app-review).
 test('Codex review: SoR and automatic fax retry stay in scope across loops', () => {

@@ -12,6 +12,7 @@
  * in another). One canonical source + a parity check makes a fix land everywhere.
  */
 
+import { readFileSync } from 'node:fs';
 import { AREA_CODE_TIMEZONE } from '../../src/components/voice/quietHours.js';
 import { DEFAULT_URGENT_KEYWORDS } from '../../src/components/voice/urgentKeywords.js';
 import { isAllowedDestination, PREMIUM_AREA_CODES } from '../../src/components/voice/costControls.js';
@@ -46,7 +47,27 @@ const PREMIUM_AREA_CODES = new Set([${codes}]);
 ${isAllowedDestination.toString()}`;
 }
 
+// The e-signature helpers are long enough that a template literal would hide
+// escaping mistakes, so each lives as plain source under ./esign/ and is
+// inlined verbatim. Dependencies (consumers inline them together):
+//   esignCore        — staff authority, chart access, exact reads, audit
+//   esignChartFiling — needs esignCore, faxQueueCreationReservation, signatureFileAndDeadline
+//   esignRequestCreation — needs esignCore, esignChartFiling's reservation helpers
+//   esignPdfRender   — needs `import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1'`
+//   esignSignedRecord — read side (verify + render); needs esignCore, esignPdfRender, signatureFileAndDeadline
+//   esignFinalization — sealing + completion notice; needs esignSignedRecord, esignChartFiling, outboundDeliveryGate
+function esignHelperSource(name) {
+  return readFileSync(new URL(`./esign/${name}.js`, import.meta.url), 'utf8').trimEnd();
+}
+
 export const SHARED_HELPERS = {
+
+  esignCore: esignHelperSource('core'),
+  esignChartFiling: esignHelperSource('chartFiling'),
+  esignRequestCreation: esignHelperSource('requestCreation'),
+  esignPdfRender: esignHelperSource('pdfRender'),
+  esignSignedRecord: esignHelperSource('signedRecord'),
+  esignFinalization: esignHelperSource('finalization'),
 
   // The production app id, the single value a production function pins its SDK
   // client to. Its own block so a site inlines it only when it uses it (see

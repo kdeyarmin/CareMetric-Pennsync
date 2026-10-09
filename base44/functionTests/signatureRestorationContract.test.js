@@ -5,53 +5,77 @@ import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 const ROOT = new URL('../', import.meta.url);
-const DORMANT = {
-  generateSignerToken: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
-  validateSignerToken: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
-  submitSignerSignature: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
-  scheduleSignatureReminders: 'SIGNATURE_REMINDER_RELEASE_ENABLED',
-  dispatchScheduledSignatureReminders: 'SIGNATURE_REMINDER_DISPATCH_ENABLED',
-};
+const RELEASED = [
+  'generateSignerToken',
+  'validateSignerToken',
+  'submitSignerSignature',
+  'scheduleSignatureReminders',
+  'dispatchScheduledSignatureReminders',
+];
 
 async function source(name) {
   return readFile(new URL(`functions/${name}/entry.ts`, ROOT), 'utf8');
 }
 
-test('all rebuilt signature brokers execute an early no-store 503 without parsing or SDK access', async () => {
-  for (const [name, marker] of Object.entries(DORMANT)) {
+// Released 2026-10-08 (owner decision). The release markers are gone; what is
+// pinned now is that every broker refuses an unauthenticated or malformed
+// caller before it reads, writes, mints, uploads or sends anything. The staff
+// brokers get a WELL-FORMED body, so the refusal has to come from the
+// authentication decision itself rather than from input validation; the two
+// public brokers get a malformed bearer, which is all an outsider can send.
+const SEND_AT = new Date(Date.now() + 3_600_000).toISOString();
+const ANONYMOUS_BODIES = {
+  generateSignerToken: { agency_id: 'agency-1', package_id: 'package-1', signer_id: 'signer-1', request_id: 'request-1' },
+  validateSignerToken: { token: 'not-a-signing-link' },
+  submitSignerSignature: { token: 'not-a-signing-link' },
+  scheduleSignatureReminders: {
+    agency_id: 'agency-1', package_id: 'package-1', signer_id: 'signer-1', document_id: 'document-1',
+    send_at: SEND_AT, client_request_id: 'request-1',
+  },
+  dispatchScheduledSignatureReminders: {},
+};
+
+test('released signature brokers refuse anonymous callers before any record or provider access', async () => {
+  for (const name of RELEASED) {
     let input = await source(name);
-    assert.match(input, new RegExp(`const ${marker} = false;`));
+    assert.doesNotMatch(input, /const (?:PUBLIC_SIGNATURE_RELEASE_ENABLED|SIGNATURE_REMINDER_RELEASE_ENABLED|SIGNATURE_REMINDER_DISPATCH_ENABLED) = false;/, name);
     assert.match(input, /npm:\@base44\/sdk\@0\.8\.46/);
-    input = input.replace(
-      /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';?/,
-      'const createClientFromRequest = globalThis.__signatureCreateClient;',
-    );
+    input = input
+      .replace(/import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';?/,
+        'const createClientFromRequest = globalThis.__signatureCreateClient; const fetch = () => { throw new Error("network"); };')
+      .replace(/import \{ PDFDocument, StandardFonts, rgb \} from 'npm:pdf-lib@[^']+';/,
+        'const PDFDocument = null; const StandardFonts = {}; const rgb = () => null;');
     let handler;
-    let clientCalls = 0;
-    globalThis.__signatureCreateClient = () => { clientCalls += 1; throw new Error('SDK must not run'); };
+    const touched = [];
+    const trap = new Proxy({}, { get: (_, entity) => new Proxy({}, {
+      get: (_, operation) => () => { touched.push(`${String(entity)}.${String(operation)}`); throw new Error('record access'); },
+    }) });
+    const integrations = new Proxy({}, { get: () => new Proxy({}, {
+      get: (_, operation) => () => { touched.push(`integration.${String(operation)}`); throw new Error('provider access'); },
+    }) });
+    globalThis.__signatureCreateClient = () => ({
+      auth: { me: async () => null },
+      entities: trap,
+      asServiceRole: { entities: trap, integrations },
+    });
     globalThis.Deno = {
       serve: (candidate) => { handler = candidate; },
-      env: { get: () => { throw new Error('environment must not be read'); } },
+      env: { get: (key) => (key === 'INTERNAL_FN_SECRET' ? 'synthetic-secret' : undefined) },
     };
     const compiled = transpileTs(input, { fileName: `${name}/entry.ts` }).outputText;
     await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${name}`);
     assert.equal(typeof handler, 'function');
-    const hostileRequest = {
-      method: 'POST', headers: new Headers(),
-      text: () => { throw new Error('body parsed'); },
-      formData: () => { throw new Error('body parsed'); },
-      json: () => { throw new Error('body parsed'); },
-      arrayBuffer: () => { throw new Error('body parsed'); },
-    };
-    const response = await handler(hostileRequest);
-    assert.equal(response.status, 503, name);
+    const response = await handler(new Request(`https://example.test/${name}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ANONYMOUS_BODIES[name]),
+    }));
+    assert.ok(response.status >= 400 && response.status < 500, `${name} answered ${response.status}`);
+    assert.deepEqual(touched, [], `${name} touched ${touched.join(', ')}`);
     assert.equal(response.headers.get('cache-control'), 'no-store', name);
-    assert.equal(response.headers.get('pragma'), 'no-cache', name);
-    assert.equal(clientCalls, 0, name);
   }
   delete globalThis.__signatureCreateClient;
   delete globalThis.Deno;
 });
+
 test('token, review, signature, and delivery code retains fail-closed security invariants', async () => {
   const issuer = await source('generateSignerToken');
   assert.match(issuer, /token:\s*tokenDigest,\s*token_hashed:\s*true/);
@@ -59,6 +83,13 @@ test('token, review, signature, and delivery code retains fail-closed security i
   assert.match(issuer, /integrations\.Core\.SendEmail/);
   assert.match(issuer, /token_issue_claimed_by/);
   assert.doesNotMatch(issuer, /success:\s*true,\s*token:\s*plaintext/);
+  // Chart access and the delivery release are decided before any token write.
+  const chartCheck = issuer.indexOf('await assertIssuerChartAccess(');
+  const deliveryGate = issuer.indexOf('if (!outboundDeliveryReleased())');
+  const firstTokenWrite = issuer.indexOf('DocumentPackageToken.create(');
+  assert.ok(chartCheck > 0 && chartCheck < deliveryGate && deliveryGate < firstTokenWrite);
+  // The recipient comes from the stored package, never from the request body.
+  assert.match(issuer, /to: finalPackage\.package\.signer_email/);
 
   const validator = await source('validateSignerToken');
   assert.match(validator, /\{ token:\s*tokenDigest, token_hashed:\s*true \}/);
@@ -82,9 +113,11 @@ test('token, review, signature, and delivery code retains fail-closed security i
 
 test('signature reminder scheduling requires exact requester membership and audit-before-dispatch', async () => {
   const scheduler = await source('scheduleSignatureReminders');
-  assert.match(scheduler, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;/);
-  assert.match(scheduler, /!SIGNATURE_REMINDER_RELEASE_ENABLED \|\| !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN/);
   assert.match(scheduler, /Platform ownership is not tenant membership/);
+  // Chart access to the package's patient is re-proved before a reminder row
+  // exists (and again by the dispatcher at send time).
+  const chartIndex = scheduler.indexOf('await assertRequesterChartAccess(');
+  assert.ok(chartIndex > 0 && chartIndex < scheduler.indexOf('await createReminderOnce('));
   assert.match(scheduler, /\{ agency_id: agencyId, user_id: userId \}/);
   assert.doesNotMatch(scheduler, /authority\.membership\?\.id\s*\?\?/);
   assert.doesNotMatch(scheduler, /authority\.membership\?\.version\s*\?\?/);
@@ -112,8 +145,9 @@ test('signature reminder scheduling requires exact requester membership and audi
 
 test('stale sending reminders become indeterminate and can never be auto-resent', async () => {
   const dispatcher = await source('dispatchScheduledSignatureReminders');
-  assert.match(dispatcher, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;/);
-  assert.match(dispatcher, /!SIGNATURE_REMINDER_DISPATCH_ENABLED \|\| !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN/);
+  assert.match(dispatcher, /if \(!await schedulerAuthorized\(req, user\)\)/);
+  assert.match(dispatcher, /requesterRetainsChartAccess\(entities, reminder\.agencyId, patientId, requesterMembership\)/);
+  assert.ok(dispatcher.indexOf('if (!outboundDeliveryReleased())') < dispatcher.indexOf('integrations.Core.SendEmail'));
   assert.match(dispatcher, /quarantineStaleReminderClaims/);
   assert.match(dispatcher, /\{ status: 'sending', delivery_state: 'pending' \}/);
   assert.match(dispatcher, /status:\s*'indeterminate'/);

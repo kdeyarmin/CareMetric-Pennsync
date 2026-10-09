@@ -148,8 +148,13 @@
     "patient_id",
     "document_signatures"
   ],
-  // Package creation and signing are quarantined. Service-role maintenance can
-  // still preserve or retire historical rows, but direct access is denied.
+  // Server-owned: packages are created by the signature-request broker
+  // (bulkCreateDocumentPackages / generateDocumentPackageFromTemplate) and read
+  // through manageSignatureRequests, both of which decide chart access from the
+  // caller's AgencyMembership and care-team assignment. No browser principal
+  // reads or writes the row directly. A request's packages are the rows sharing
+  // (agency_id, created_by_user_id, client_request_id); cancellation and expiry
+  // live on the member DocumentSignature rows, which every link re-checks.
   "rls": {
     "read": false,
     "create": false,

@@ -56,9 +56,8 @@ function fixture(options = {}) {
   }]));
   const client = { auth: { me: async () => ({ id: 'creator-1', role: 'user', email: 'creator@example.test' }) }, asServiceRole: { entities } };
   let handler;
-  const code = source.replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/, 'const createClientFromRequest = () => client;')
-    .replace('const SIGNATURE_REMINDER_RELEASE_ENABLED = false;', 'const SIGNATURE_REMINDER_RELEASE_ENABLED = true;')
-    .replace('const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;', 'const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;');
+  // The scheduler is released (2026-10-08); only the SDK and Deno are replaced.
+  const code = source.replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/, 'const createClientFromRequest = () => client;');
   runInNewContext(transpileTs(code).outputText, { client, crypto, Date, TextEncoder, Response, Request, Headers,
     Deno: { serve: candidate => { handler = candidate; }, env: { get: () => undefined } } });
   const request = { agency_id: 'agency-1', package_id: 'package-1', document_id: 'signature-1', signer_id: 'signer-1',

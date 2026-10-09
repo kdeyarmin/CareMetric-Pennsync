@@ -85,9 +85,11 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
   const result = await inventoryNotificationProducers(FUNCTIONS_ROOT);
   assert.deepEqual(result.summary, {
     files_scanned: result.summary.files_scanned,
-    producer_files: 30,
-    call_sites: 40,
-    authority_v1: 6,
+    // +6 on 2026-10-08: the six e-signature functions that can seal a document
+    // each mint one authority-v1 completion notice (shared esignFinalization).
+    producer_files: 36,
+    call_sites: 46,
+    authority_v1: 12,
     legacy_unmigrated: 34,
     explicitly_quarantined: 0,
     workflow_schedule_quarantined: 12,

@@ -50,8 +50,9 @@ test('no committed disposition contradicts the source it describes', () => {
   // The check must be looking at a real population, not an empty one. The
   // floor guards against a discovery that finds nothing; it is not a count to
   // hold. The owner's 2026-10-08 releases took the population below the 25 it
-  // used to name, because each released endpoint does work again.
-  assert.ok(report.inert_functions > 15, `only ${report.inert_functions} inert functions found`);
+  // used to name, because each released endpoint does work again; the
+  // e-signature release alone retired fifteen static 503 stubs.
+  assert.ok(report.inert_functions > 5, `only ${report.inert_functions} inert functions found`);
 });
 
 test('every retirement says where its existing rows go', () => {
