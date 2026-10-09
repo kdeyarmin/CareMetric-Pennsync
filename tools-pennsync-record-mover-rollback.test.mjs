@@ -206,7 +206,9 @@ test('a refused dependent scan names the referencing table it was scanning', asy
   // The store refuses the scan of visit rows pointing at rows about to go, with a
   // message that quotes a value. PGlite runs as a superuser, so the refusal is injected
   // at the connection rather than raised by a policy.
-  const scanned = /^select to_jsonb\(r\) j from "pennsync_records"\."visit" r where r\.source_app_id = \$1 and r\."[a-z_]+"::text = any/;
+  // Matched on the scan's FROM and WHERE alone, so the classify read (`r.id = $2`) and
+  // the delete (no alias) never match, whatever the scan selects.
+  const scanned = /from "pennsync_records"\."visit" r where r\.source_app_id = \$1 and r\."[a-z_]+"::text = any/;
   let refused = 0;
   const refusing = {
     query: (sql, params) => {
