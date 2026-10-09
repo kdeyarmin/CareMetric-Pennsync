@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -63,4 +63,17 @@ test('any other app, or no app id at all, stays fail-closed', () => {
   assert.equal(run({ env: { VITE_BASE44_APP_ID: 'some-other-app' } }), undefined);
   assert.equal(run({ dotenv: 'VITE_BASE44_APP_ID=some-other-app\n' }), undefined);
   assert.equal(run({}), undefined);
+});
+
+test('every launcher that sets the owner email explicitly sets this same one', () => {
+  // The explicit values win over this fallback, so if one copy changed alone,
+  // different build paths would show the super-admin UI to different people.
+  const launchers = {
+    'base44/config.jsonc': /VITE_SUPER_ADMIN_EMAIL=([^\s'"]+)/g,
+    '.github/workflows/publish-production-frontend.yml': /VITE_SUPER_ADMIN_EMAIL:\s*['"]?([^\s'"]+)/g,
+  };
+  for (const [file, pattern] of Object.entries(launchers)) {
+    const values = [...readFileSync(new URL(file, import.meta.url), 'utf8').matchAll(pattern)].map((m) => m[1]);
+    assert.deepEqual(values, [OWNER_SUPER_ADMIN_EMAIL], `${file} must set exactly the owner email in the fallback module`);
+  }
 });
