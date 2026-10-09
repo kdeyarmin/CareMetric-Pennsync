@@ -60,6 +60,17 @@ jobs:
       - name: Install locked application dependencies
         run: pnpm install --frozen-lockfile
 
+      # `pnpm test` runs suites that resolve packages from their own service
+      # directories, which ci.yml installs as separate steps. Without these,
+      # every authority store suite dies at load with ERR_MODULE_NOT_FOUND
+      # before an assertion runs (measured 2026-10-09, the first run that got
+      # past the credential preflight). Keep them identical to ci.yml's.
+      - name: Install isolated authority test dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+
+      - name: Install ported API service dependencies
+        run: pnpm --dir services/pennsync-api install --frozen-lockfile
+
       - name: Validate the candidate before publication
         run: |
           pnpm run lint:actions

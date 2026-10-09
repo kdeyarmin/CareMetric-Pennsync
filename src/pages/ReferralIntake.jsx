@@ -54,7 +54,6 @@ import {
   Sparkles,
   ClipboardCheck,
   ClipboardList,
-  Target,
   Trash2,
   UserCheck,
   Loader2,
