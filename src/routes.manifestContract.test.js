@@ -27,6 +27,8 @@ const PUBLIC_NON_MANIFEST_PAGES = new Set([
 // or redirect note in src/routes.jsx so stale screens are never accidental.
 const INTENTIONAL_UNROUTED_LEGACY_PAGES = new Set([
   'AnalyticsDashboard',
+  // Care Plans were retired on 2026-10-09: routes.jsx redirects all three to
+  // /Patients and excludes them from the page glob, so they are never bundled.
   'AutomaticCarePlans',
   'CarePlanBuilder',
   'CarePlanManagement',

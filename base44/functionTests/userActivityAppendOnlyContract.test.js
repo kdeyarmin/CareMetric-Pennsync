@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { loadFunctionEntry } from './functionEntryLoader.js';
 import {
   AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS,
   AI_CONTENT_AGREEMENT_VERSION,
@@ -219,32 +220,10 @@ async function sourceFiles(directory) {
 }
 
 async function loadAgreementBroker(client) {
-  let source = await readFile(
+  return loadFunctionEntry(
     new URL('../functions/acceptAiContentAgreement/entry.ts', import.meta.url),
-    'utf8',
+    { client },
   );
-  source = source.replace(
-    /import\s+\{[^}]*\}\s+from\s+'npm:@base44\/sdk@[^']*';?/,
-    'const createClientFromRequest = globalThis.__agreementBrokerClient;',
-  );
-  const file = join(
-    tmpdir(),
-    `agreement_broker_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
-  );
-  await writeFile(file, transpileTs(source).outputText);
-  let handler;
-  const previousDeno = globalThis.Deno;
-  globalThis.__agreementBrokerClient = () => client;
-  globalThis.Deno = { serve: (candidate) => { handler = candidate; } };
-  try {
-    await import(pathToFileURL(file).href);
-  } finally {
-    await unlink(file).catch(() => {});
-    delete globalThis.__agreementBrokerClient;
-    if (previousDeno === undefined) delete globalThis.Deno;
-    else globalThis.Deno = previousDeno;
-  }
-  return handler;
 }
 
 const agreementRequest = (body, method = 'POST') => new Request('http://local/accept-ai-content-agreement', {

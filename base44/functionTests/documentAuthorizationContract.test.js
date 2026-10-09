@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { transpileFunctionEntry } from '../../tools-transpile-ts.mjs';
 
 const NOW = '2026-09-03T12:00:00.000Z';
 
@@ -166,6 +166,9 @@ function makeDocumentClient({
       },
     },
   };
+  // Since 2026-10-09 the model call runs as the service role, after the
+  // caller has been authorized. The same object, so per-test overrides apply.
+  client.asServiceRole.integrations = client.integrations;
   return { client, state };
 }
 
@@ -184,7 +187,7 @@ async function loadHandler(functionName, client, {
     tmpdir(),
     `document_auth_${functionName}_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
   );
-  await writeFile(temporaryModule, transpileTs(source).outputText);
+  await writeFile(temporaryModule, (await transpileFunctionEntry(source)).outputText);
 
   let handler;
   globalThis.__documentAuthClient = client;

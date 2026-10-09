@@ -148,15 +148,6 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
   }
 });
 
-test('the platform consent policy has no implicit owned-store successor', () => {
-  const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
-  // D14/D22 removed the platform-owner tier. This global, signed bypass
-  // policy is Base44-hosted; assigning a tenant administrator its power would
-  // widen authority, not port it. No successor is chosen in this repair.
-  assert.equal(declared.entities.AIResponsibilityPolicy, 'preserved_paused');
-  assert.equal(declared.functions.manageAiResponsibilityPolicy, 'preserved_paused');
-});
-
 test('a handler that refuses from its first statement is paused, whatever gates it', () => {
   // The second pause shape, and the reason it needed finding: the flag check
   // looks for `const FLAG = false`, and nine modules here pause with no flag

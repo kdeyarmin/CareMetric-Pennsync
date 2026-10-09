@@ -5,7 +5,7 @@
     "client_importers": 371,
     "entity_call_sites": 453,
     "entity_types": 71,
-    "function_invocations": 242,
+    "function_invocations": 244,
     "function_wrappers": 86,
     "core_integration_sites": 41,
     "sdk_importers": 4

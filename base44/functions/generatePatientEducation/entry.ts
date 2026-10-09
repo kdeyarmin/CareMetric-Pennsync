@@ -228,7 +228,7 @@ function topicsFrom(result) {
     }));
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   if (req.method !== 'POST') {
     return json({ success: false, error: 'Method not allowed' }, 405, { Allow: 'POST' });
   }
@@ -272,7 +272,7 @@ ${typeof visit?.nurse_notes === 'string' && visit.nurse_notes ? `\nLatest Visit 
 
 Return JSON: { "topics": [{ "title": "string", "reason": "brief explanation why this education is needed", "key_points": ["point1", "point2", "point3"] }] }`;
 
-    const topicsResult = await base44.integrations.Core.InvokeLLM({
+    const topicsResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: 'automatic',
       prompt: educationPrompt,
       response_json_schema: {
@@ -299,7 +299,7 @@ Return JSON: { "topics": [{ "title": "string", "reason": "brief explanation why 
 
     const materials = [];
     for (const topic of topics) {
-      const contentResult = await base44.integrations.Core.InvokeLLM({
+      const contentResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: 'automatic',
         prompt: `Create patient-friendly educational material on "${topic.title}" for a patient with ${patient.primary_diagnosis || 'a chronic health condition'}.
 
@@ -342,4 +342,4 @@ Do NOT use medical jargon. Make it conversational and supportive.`,
     console.error('Education generation error:', error?.message || error);
     return json({ error: 'Internal server error' }, 500);
   }
-});
+}

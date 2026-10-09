@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -23,10 +23,6 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)));
  * the cost of a ratchet that cannot go quiet.
  */
 const COMPARABLE = Object.freeze([
-  // acceptAiContentAgreement now awaits withTimeout and verifies the response,
-  // so the expression-only pass-through reader cannot compare it. Its wrapper
-  // spec proves unchanged payload forwarding; the agreement component tests
-  // assert the submitted agreement fields.
   'analyzeVisitForSupplyUsage -> analyzeVisitForSupplyUsage',
   'cancelTimeOffRequest -> cancelTimeOffRequest',
   'distributePolicyAcknowledgment -> distributePolicyAcknowledgment',
@@ -147,6 +143,26 @@ test('the comparable population is the declared set, in both directions', () => 
     + '  a wrapper that started shaping its payload, or a handler that gained a\n'
     + '  second allowlist, is out of this check\'s reach and something else must\n'
     + '  cover it.');
+});
+
+/**
+ * A comparison that LEFT the declared set, and what covers it now.
+ *
+ * `acceptAiContentAgreement`'s wrapper stopped being a one-line pass-through on
+ * 2026-10-09: it gained a 30-second timeout and a check of the answer, so the
+ * reader no longer recognises it. It still forwards the payload untouched
+ * (`aiContentAgreementRequests.spec.js` asserts the exact object reaches
+ * `invoke`), so the screen's keys still meet the handler's allowlist, and this
+ * makes that one comparison directly instead of letting it go quiet.
+ */
+test('the AI agreement screen sends only keys its handler admits', () => {
+  const source = readFileSync(resolve(repository, 'src/components/compliance/AIContentResponsibilityAgreement.jsx'), 'utf8');
+  const calls = [...withoutComments(source).matchAll(/acceptAiContentAgreement\((\{[^}]*\})\)/g)];
+  assert.equal(calls.length, 1, 'expected exactly one acceptAiContentAgreement call on the agreement screen');
+  const keys = payloadKeys(calls[0][1]);
+  const admits = handlerAllowlists(repository).admits.get('acceptAiContentAgreement');
+  assert.ok(admits, 'the ported handler no longer has a single readable allowlist');
+  assert.deepEqual([...keys].sort(), [...admits].sort());
 });
 
 test('every call site is accounted for, as compared or as unreadable', () => {

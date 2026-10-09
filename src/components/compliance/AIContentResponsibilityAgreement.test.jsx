@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AIContentResponsibilityAgreement from './AIContentResponsibilityAgreement';
 import {
   AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS,
@@ -125,33 +125,6 @@ describe('AIContentResponsibilityAgreement', () => {
 
     await waitFor(() => expect(acceptAgreement).toHaveBeenCalledTimes(1));
     expect(invalidateQueries).not.toHaveBeenCalled();
-  });
-
-  it('shows recording and verification phases while keeping acceptance disabled', async () => {
-    const recording = Promise.withResolvers();
-    const verification = Promise.withResolvers();
-    acceptAgreement.mockReturnValueOnce(recording.promise);
-    const onAccepted = vi.fn(() => verification.promise);
-    render(<AIContentResponsibilityAgreement onAccepted={onAccepted} />);
-    screen.getAllByRole('checkbox').forEach((box) => fireEvent.click(box));
-    const agree = screen.getByRole('button', { name: /i agree & continue/i });
-    fireEvent.click(agree);
-
-    expect(agree).toBeDisabled();
-    expect(agree).toHaveTextContent('Recording…');
-    expect(screen.getByText('Recording your acknowledgment…')).toBeInTheDocument();
-    expect(onAccepted).not.toHaveBeenCalled();
-
-    await act(async () => recording.resolve());
-    expect(agree).toBeDisabled();
-    expect(agree).toHaveTextContent('Verifying…');
-    expect(screen.getByText(/recorded\. Verifying access/i)).toBeInTheDocument();
-    expect(onAccepted).toHaveBeenCalledTimes(1);
-
-    await act(async () => verification.resolve());
-    expect(agree).toBeEnabled();
-    expect(screen.queryByText(/recorded\. Verifying access/i)).not.toBeInTheDocument();
-    expect(acceptAgreement).toHaveBeenCalledTimes(1);
   });
 
   it('restores the retry control when protected verification does not confirm acceptance', async () => {

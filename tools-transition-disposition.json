@@ -3,6 +3,10 @@
   "version": 3,
   "review_state": "accepted",
   "retention": {
+    "AIResponsibilityPolicy": {
+      "basis": "archive",
+      "years": 6
+    },
     "AnomalyAlert": {
       "basis": "archive",
       "years": 6
@@ -211,7 +215,7 @@
     "listPolicyLibrary": "port",
     "listTenantTrainingIntegrityRecords": "hub",
     "manageAgencyMembership": "port",
-    "manageAiResponsibilityPolicy": "preserved_paused",
+    "manageAiResponsibilityPolicy": "retire",
     "manageAuthorizedReferral": "port",
     "manageMyNotifications": "port",
     "manageOASISRecords": "preserved_paused",
@@ -351,11 +355,11 @@
     "AIContentAgreementAttestation": "port",
     "AIFeedback": "port",
     "AIInsightFeedback": "port",
+    "AIResponsibilityPolicy": "retire",
     "AIKnowledgeBase": "port",
     "AILearningPattern": "port",
     "AIModelConfiguration": "port",
     "AIModelTestResult": "port",
-    "AIResponsibilityPolicy": "preserved_paused",
     "AdrAuditCase": "port",
     "Agency": "port",
     "AgencyComplianceRule": "port",

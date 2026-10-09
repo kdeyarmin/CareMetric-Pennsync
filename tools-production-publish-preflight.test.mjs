@@ -102,6 +102,26 @@ test('workflow stays manual, production-protected, site-only and sequential', ()
   assert.doesNotMatch(source, /path:.*base44-(?:whoami|access-check|site-receipt|site\.log)/);
 });
 
+test('both production workflows install every service ci.yml installs before running pnpm test', () => {
+  const uncommented = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
+    .split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
+  // ci.yml is the list of record: the per-service installs its verify job runs
+  // before the suites. A production workflow missing one fails every suite
+  // that imports that service's packages, before an assertion runs.
+  const installs = uncommented('./.github/workflows/ci.yml').match(/pnpm --dir services\/[^\n]+ install[^\n]*/g);
+  assert.ok(installs && installs.length >= 2, 'ci.yml installs no service dependencies');
+  for (const workflow of ['deploy-production-functions.yml', 'publish-production-frontend.yml']) {
+    const source = uncommented(`./.github/workflows/${workflow}`);
+    const test = source.indexOf('pnpm test');
+    assert.ok(test > 0, workflow);
+    for (const install of installs) {
+      const at = source.indexOf(install);
+      assert.ok(at > 0, `${workflow} does not run: ${install}`);
+      assert.ok(at < test, `${workflow} runs pnpm test before: ${install}`);
+    }
+  }
+});
+
 test('workspace-key acknowledgement is not mistaken for authenticated production access', () => {
   const yaml = readFileSync(new URL('./.github/workflows/publish-production-frontend.yml', import.meta.url), 'utf8');
   const source = yaml.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
