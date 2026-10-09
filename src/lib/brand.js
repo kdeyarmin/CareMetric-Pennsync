@@ -3,10 +3,11 @@
  *
  * PennSync is the product name; CareMetric is the software platform it runs on,
  * so the brand lockup reads "PennSync by CareMetric". Keep the logo URL in one
- * place so every surface (chrome, loaders, error states) stays in sync.
+ * place so every surface (chrome, loaders, error states) stays in sync. The
+ * file is served from this app's own `public/brand/`, so it moves with the app's
+ * host rather than depending on a separate storage bucket.
  */
-export const BRAND_LOGO_URL =
-  "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png";
+export const BRAND_LOGO_URL = "/brand/pennsync-logo.png";
 
 /** Product name shown in prose and titles. */
 export const APP_NAME = "PennSync";

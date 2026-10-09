@@ -8,18 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, FileDown, FileSpreadsheet, Loader2, CheckCircle2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
-import {
-  PDGM_REIMBURSEMENT_ACTION,
-  PDGM_REIMBURSEMENT_BLOCKER,
-} from "@/components/pdgm/pdgmAvailability";
 
-export default function OASISExportManager({ 
-  analysisResults, 
-  _pdgmData, 
-  _revenueData,
-  _navigationData,
+export default function OASISExportManager({
+  analysisResults,
   qualityScore,
-  patientName 
+  patientName
 }) {
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState(null);
@@ -50,15 +43,6 @@ export default function OASISExportManager({
         csvData.push(['Documentation Grade', qualityScore.overall_grade]);
         csvData.push(['Audit Risk Level', qualityScore.audit_risk_level]);
       }
-      csvData.push([]);
-
-      // PDGM Navigator grouping and financial output is intentionally excluded.
-      // The prior navigator used LLM-derived functional points, grouping, and
-      // payments that are not a verified CMS HHGS 432-group result.
-      csvData.push(['PDGM GROUPING AND REIMBURSEMENT']);
-      csvData.push(['Status', 'Unavailable — not $0']);
-      csvData.push(['Reason', PDGM_REIMBURSEMENT_BLOCKER]);
-      csvData.push(['Required Action', PDGM_REIMBURSEMENT_ACTION]);
       csvData.push([]);
 
       // Accuracy Issues
@@ -184,7 +168,7 @@ export default function OASISExportManager({
       <CardContent className="pt-4">
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            Download OASIS analysis, quality scores, and recommendations. Unverified PDGM grouping and payment are excluded.
+            Download OASIS analysis, quality scores, and recommendations.
           </p>
 
           <div className="grid grid-cols-2 gap-3">
@@ -221,7 +205,6 @@ export default function OASISExportManager({
             <p className="font-medium mb-1">Export includes:</p>
             <ul className="space-y-0.5">
               <li>✓ Overall analysis scores</li>
-              <li>✓ Explicit PDGM grouping/payment unavailable notice</li>
               <li>✓ Documentation quality assessment</li>
               <li>✓ Compliance concerns and recommendations</li>
               <li>✓ Discrepancies and resolution workflows</li>

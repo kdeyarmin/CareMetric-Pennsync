@@ -18,13 +18,24 @@ function productionSourceFiles(directory = srcRoot) {
 const deliveryPrimitiveReference = /\b(?:resetPasswordRequest|resendOtp|inviteUser)\b/;
 const rawAuthDeliveryRoute = /\/auth\/[a-z0-9_/-]*(?:resend|reset|invite|otp)[a-z0-9_/-]*/i;
 
+// Released by the owner on 2026-10-08 ("password reset - allow"): the platform's
+// own reset email to the address the person typed, which names nobody and
+// carries no patient data. Exactly this route, exactly in the sign-in screen —
+// OTP resend and invitation delivery stay banned everywhere, and so does the SDK
+// helper (`resetPasswordRequest`), which the tenant membrane denies anyway.
+const RELEASED_RESET_REQUEST = '`/apps/${appParams.appId}/auth/reset-password-request`';
+
 function hasUncontainedAuthDelivery(source, relativeFile) {
   // Only native code redemption at the immutable staging endpoint is allowed.
   // It cannot send mail. Keep every other raw OTP/reset/invitation route banned,
   // including additional routes in the same helper and verification elsewhere.
-  const inspected = relativeFile === 'lib/stagingEmailVerification.js'
-    ? source.replace("'https://base44.app/api/apps/6a9881683dc68a0bd54f1ef7/auth/verify-otp'", "'staging-redemption-only'")
-    : source;
+  let inspected = source;
+  if (relativeFile === 'lib/stagingEmailVerification.js') {
+    inspected = inspected.replace("'https://base44.app/api/apps/6a9881683dc68a0bd54f1ef7/auth/verify-otp'", "'staging-redemption-only'");
+  }
+  if (relativeFile === 'components/auth/SignInScreen.jsx') {
+    inspected = inspected.replace(RELEASED_RESET_REQUEST, "'owner-released-reset-request'");
+  }
   return deliveryPrimitiveReference.test(inspected) || rawAuthDeliveryRoute.test(inspected);
 }
 
@@ -52,7 +63,18 @@ describe('browser outbound-auth primitive containment', () => {
     expect(hasUncontainedAuthDelivery(allowed.replace('6a9881683dc68a0bd54f1ef7', '694ec16e72e01b60d22f7cbf'), file)).toBe(true);
   });
 
-  it('keeps the in-app reset screen hard-paused with no browser release flag', () => {
+  it('confines the released reset request to one route in the sign-in screen', () => {
+    const file = 'components/auth/SignInScreen.jsx';
+    expect(hasUncontainedAuthDelivery(RELEASED_RESET_REQUEST, file)).toBe(false);
+    // Anywhere else, the same route is still an offender.
+    expect(hasUncontainedAuthDelivery(RELEASED_RESET_REQUEST, 'pages/UserSettings.jsx')).toBe(true);
+    // The release covers that one request and nothing that rides along with it.
+    for (const addition of ['/auth/resend-otp', '/auth/reset-password', 'resetPasswordRequest(email)', 'inviteUser(email)', '/auth/invite']) {
+      expect(hasUncontainedAuthDelivery(`${RELEASED_RESET_REQUEST}; ${addition}`, file)).toBe(true);
+    }
+  });
+
+  it('releases the in-app reset for the platform build only, with no browser release flag', () => {
     const signIn = readFileSync(
       path.join(srcRoot, 'components/auth/SignInScreen.jsx'),
       'utf8',
@@ -62,9 +84,9 @@ describe('browser outbound-auth primitive containment', () => {
       'utf8',
     );
 
-    expect(signIn).toContain("from '@/lib/outboundDeliveryContainment'");
-    expect(signIn).toContain('setError(OUTBOUND_DELIVERY_PAUSED_MESSAGE)');
-    expect(signIn).not.toMatch(/reset-sent|password-reset link is on its way/i);
+    expect(signIn).toContain(RELEASED_RESET_REQUEST);
+    // The owned (independent) backend's recovery path is not this release.
+    expect(signIn).toMatch(/if \(ownedBackendAuth\) \{\s*setError\(OUTBOUND_DELIVERY_PAUSED_MESSAGE\);\s*return;/);
     expect(containment).not.toMatch(/import\.meta\.env|process\.env|VITE_[A-Z0-9_]+/);
   });
 });

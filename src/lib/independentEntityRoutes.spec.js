@@ -579,16 +579,12 @@ describe('the declared entity routes', () => {
         .toEqual([{ id: 'm-2', is_published: false }]);
       expect(fixture.apiCalls.at(-1).body.params)
         .toEqual({ published_only: false, limit: LIBRARY_MAXIMUM });
-
-      // The same shape on the pathway read, whose flag is `is_active`.
-      fixture.apiResponse = libraryAnswer([]);
-      await adapter.raw.entities.ClinicalPathway.filter({ is_active: true });
-      expect(fixture.apiCalls.at(-1).body.params)
-        .toEqual({ active_only: true, limit: LIBRARY_MAXIMUM });
       // A key outside the contract's parameters refuses rather than being
       // dropped, because a narrowing a screen asked for and did not get is
-      // invisible on the screen.
-      await expect(adapter.raw.entities.ClinicalPathway.filter({ condition: 'CHF' }))
+      // invisible on the screen. (The pathway read's `is_active` filter, the
+      // same shape, was withdrawn with its two OASIS callers, which read the
+      // active library through the OASIS record broker.)
+      await expect(adapter.raw.entities.EducationMaterial.filter({ category: 'falls' }))
         .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
     });
 
@@ -1886,13 +1882,19 @@ describe("what batch E's routes take on trust", () => {
     // (`payload` on the rota, `data` on template management). Same three
     // screens, same three contracts, different answer per call site -- which is
     // why the disposition is per ROUTE and not per capability.
+    // Turning the OASIS Center back on moved two: `PatientRecommendation.create`
+    // left with its only caller (its route was withdrawn), and
+    // `ComplianceAudit.create` became unproved when the never-mounted
+    // `AIProactiveOASISAssistant.jsx` — its one call site that passed a literal
+    // payload — was deleted; every remaining site passes a variable, and the
+    // compliance family's refusals below are what check it.
     expect([...report.unproved_routes].sort()).toEqual([
       'AIConfiguration.create', 'AIConfiguration.update',
       'AdrAuditCase.create',
       'AgencySettings.create', 'AgencySettings.update',
       'ClinicalLibraryFolder.create', 'ClinicalLibraryTemplate.create',
       'ClinicalPathway.create', 'ClinicalPathway.update',
-      'ComplianceAudit.update',
+      'ComplianceAudit.create', 'ComplianceAudit.update',
       'CustomValidationRule.create', 'CustomValidationRule.update',
       'DocumentTemplate.create', 'DocumentTemplate.update',
       'EducationMaterial.create',
@@ -1901,7 +1903,6 @@ describe("what batch E's routes take on trust", () => {
       'NotificationPreference.create', 'NotificationPreference.update',
       'OnCallShift.create', 'OnCallShift.update',
       'PatientEducationAssignment.update',
-      'PatientRecommendation.create',
       'Physician.create',
     ]);
     for (const key of report.unproved_routes) {
@@ -2114,8 +2115,14 @@ describe("what batch E's routes take on trust", () => {
     // the point: the loop below reaches each new route by construction, so a
     // route cannot land without its argument count being checked. The number is
     // re-measured on each rebase rather than added to, because a figure arrived
-    // at by arithmetic over two branches is not a reading of either.
-    expect(paged.length).toBe(50);
+    // at by arithmetic over two branches is not a reading of either. It SHRANK
+    // once, by one, when `PatientRecommendation.filter` was withdrawn with its
+    // only caller (the AI outcomes analyser, removed with the clinical
+    // risk-prediction features) — a route without a call site fails the gate.
+    // It shrank by one again when `ClinicalPathway.filter` was withdrawn with
+    // its two OASIS callers, which read the active pathway library through the
+    // OASIS record broker since the OASIS Center was turned back on.
+    expect(paged.length).toBe(48);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;

@@ -1,5 +1,6 @@
 import { createClient } from '@base44/sdk';
 import { appParams } from '@/lib/app-params';
+import { resolvePlatformAuthBaseUrl } from '@/lib/platformAuthBaseUrl';
 import { lockBase44FunctionRevision } from '@/lib/functionRevisionPolicy';
 import { runPublicCapabilityOperation } from '@/lib/publicCapabilityRealmGate';
 import {
@@ -18,12 +19,12 @@ const { appId, serverUrl, token, functionsVersion } = appParams;
 const rawBase44 = independentAdapter?.raw ?? lockBase44FunctionRevision(createClient({
   appId,
   serverUrl,
-  // Platform auth pages (/login sign-up/OTP/captcha) and the logout endpoint are
-  // served by the backend origin, not by this SPA's static hosting. Without
-  // appBaseUrl the SDK builds those URLs origin-relative ("" + "/login"), which
-  // the SPA fallback serves back as the SPA — hosted sign-up becomes unreachable
-  // and logout never hits the server-side session.
-  appBaseUrl: serverUrl,
+  // Platform auth pages (/login sign-up/OTP/captcha) and the logout endpoint
+  // are served on the APP's host, which is not the shared backend host this
+  // build talks to (`https://base44.app`): there a bare `/login` is a 404 and
+  // logout lands on the platform's marketing site. See platformAuthBaseUrl.js
+  // for the measurement.
+  appBaseUrl: resolvePlatformAuthBaseUrl(typeof window === 'undefined' ? undefined : window.location, serverUrl),
   token,
   functionsVersion,
   requiresAuth: false,
@@ -57,5 +58,39 @@ export const publicCapabilityClient = Object.freeze({
   submitFollowUpResponse: (lease, payload) => runPublicCapabilityOperation(
     lease,
     () => rawBase44.functions.invoke('submitFollowUpResponse', payload),
+  ),
+  // The patient's /join page: the session's join token is the only authority,
+  // and createTelehealthToken checks it against the stored hash.
+  createTelehealthToken: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('createTelehealthToken', payload),
+  ),
+  // The outside signer's /signer page (released 2026-10-08). The emailed link's
+  // bearer is the only authority: validateSignerToken looks it up by SHA-256
+  // and discloses only that signer's own package; submitSignerSignature also
+  // needs the per-document review nonce the validation issued.
+  validateSignerToken: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('validateSignerToken', payload),
+  ),
+  submitSignerSignature: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('submitSignerSignature', payload),
+  ),
+  // The 60-second signed review URL the validation returned: fetched without
+  // credentials under the same lease, so a revoked lease aborts the read.
+  fetchSignerReviewDocument: (lease, reviewUrl) => runPublicCapabilityOperation(
+    lease,
+    async ({ signal }) => {
+      const url = new URL(reviewUrl);
+      if (url.protocol !== 'https:' || url.username || url.password) {
+        throw new Error('The review link is not a secure link');
+      }
+      const response = await fetch(url.toString(), {
+        method: 'GET', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal,
+      });
+      if (!response.ok) throw new Error('The document could not be opened');
+      return new Uint8Array(await response.arrayBuffer());
+    },
   ),
 });

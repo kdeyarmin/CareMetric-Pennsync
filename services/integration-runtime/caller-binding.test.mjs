@@ -291,3 +291,46 @@ test('the same SendEmail request still serves on the legacy server route', async
   assert.equal(response.status, 200);
   assert.equal(h.counts().calls, 1);
 });
+
+/*
+ * The same exclusion for the two telecom operations.
+ *
+ * Written here rather than beside the adapter because the adapter's own suite
+ * can only assert LIST MEMBERSHIP, and a control nothing drives has not been
+ * shown to work. These drive the real handler.
+ */
+const faxParams = {
+  to: '+17244650441', from: '+17244650444',
+  media_url: 'https://xsqobvvreaovwibxwyvv.supabase.co/storage/v1/object/sign/cm-private/a/b/c?token=x',
+};
+
+test('a browser fax or text cannot be configured at all, whatever the service list says', () => {
+  for (const operation of ['SendFax', 'SendSms']) {
+    // On the service list, so the subset ceiling admits it: any refusal here is
+    // the forbidden rule and nothing else.
+    assert.throws(() => loadConfig(forbiddenEnv({
+      INTEGRATIONS_ALLOWED_OPERATIONS: `InvokeLLM,${operation}`,
+      INTEGRATIONS_BROWSER_OPERATIONS: `InvokeLLM,${operation}`,
+    })), error => error.message === 'BROWSER_FORBIDDEN_OPERATION', `${operation} was configurable`);
+  }
+});
+
+test('a browser fax is refused at dispatch before any provider or store is touched', async () => {
+  // A hand-built config is the only way to reach the request-level check, which
+  // is what makes the refusal a property of the REQUEST rather than of the
+  // environment. The recipient of a fax is a doctor's office, and a browser
+  // send would reach the provider with nothing but the caller's typing deciding
+  // the number — none of the agency's outbound line, its blocked area codes or
+  // the premium prefixes.
+  const h = harness({ live: { ...member(), tenant_role: 'agency_admin' },
+    config: cfg({ operations: ['InvokeLLM', 'SendFax'], browserOperations: ['InvokeLLM', 'SendFax'],
+      telecomReleased: true }) });
+  const response = await h.handler(req({ ...input({ ...member(), tenant_role: 'agency_admin' }),
+    operation: 'SendFax', params: faxParams }));
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, 'BROWSER_FORBIDDEN_OPERATION');
+  // `telecomReleased: true` above is deliberate: the refusal must not be the
+  // release gate standing in for the browser rule, which would pass this test
+  // for a reason that disappears the day the release opens.
+  assert.deepEqual(h.counts(), { reads: 0, calls: 0, reservations: 0 });
+});

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import process from 'node:process';
 
 /**
@@ -125,6 +126,42 @@ function splitArgs(text) {
   return out;
 }
 
+/**
+ * The row ceiling a page-options object literal supplies, or null for none.
+ *
+ * Read through `splitArgs` rather than by matching `limit\s*:` in the argument
+ * text. That match is satisfied by three things that supply no ceiling at all
+ * — an explicit `undefined`, a `limit` nested inside another property, and the
+ * characters `limit:` inside a string — so a collection read could pass this
+ * guard and still be truncated at the server default, which is the exact
+ * failure the guard exists to catch. All three are negative controls below.
+ *
+ * `splitArgs` tracks quotes and nesting, so splitting the braces' contents
+ * with it yields the TOP-LEVEL properties and nothing else.
+ */
+function pageOptionsLimit(options) {
+  const text = options?.trim();
+  if (!text?.startsWith('{') || !text.endsWith('}')) return null;
+  for (const property of splitArgs(text.slice(1, -1))) {
+    const colon = property.indexOf(':');
+    // `{ limit }` shorthand is `limit: limit` — a real ceiling, held in a
+    // variable. No entity call uses it today; accepting it costs one branch
+    // and keeps the guard from reporting a future one as unlimited.
+    if (colon === -1) {
+      if (property.trim() === 'limit') return 'limit';
+      continue;
+    }
+    const key = property.slice(0, colon).trim().replace(/^['"`]|['"`]$/g, '');
+    if (key !== 'limit') continue;
+    const value = property.slice(colon + 1).trim();
+    // Mirrors the positional branch's rule, so the two forms agree on what
+    // counts: anything but absent or an explicit `undefined`. A variable or
+    // an expression is a ceiling; this guard is about whether one was passed.
+    return value && value !== 'undefined' ? value : null;
+  }
+  return null;
+}
+
 /** A query pinned to a unique record id returns at most one row. */
 function isSingleRecordQuery(query) {
   if (!query) return false;
@@ -180,6 +217,16 @@ function findUnlimitedReads(files, { allowSingleRecordQueries = true, exempt } =
       const limitIndex = m[2] === 'list' ? 1 : 2;
       const limit = args[limitIndex]?.trim();
       if (limit && limit !== 'undefined') continue;
+      // The SDK takes the ceiling two ways, and reading only the positional
+      // slot reported an explicit one as absent. `list(sort, limit, …)` and
+      // `filter(query, sort, limit, …)` return an array; an OBJECT in that
+      // same sort slot — `list(options)`, `filter(query, options)` — is page
+      // options and returns one cursor page, which is where `limit` then
+      // lives (SDK `isPageOptions`: any object there selects that overload).
+      // So read the property out of that slot too. The slot is never the
+      // filter query, which sits at args[0], so a field of a query that
+      // happens to be called `limit` cannot satisfy this.
+      if (pageOptionsLimit(args[limitIndex - 1])) continue;
       if (allowSingleRecordQueries && m[2] === 'filter' && isSingleRecordQuery(args[0])) continue;
       if (exempt.has(rel)) continue;
       const line = src.slice(0, m.index).split('\n').length;
@@ -257,6 +304,83 @@ test('the exemption map is the caller\'s, proved by handing one to a scan that g
   // And a caller that states nothing gets nothing, rather than the last list
   // that happened to be in scope.
   assert.throws(() => findUnlimitedReads(files, options), /needs an `exempt` Map/);
+});
+
+test('a page-options limit counts, and an options object without one still does not', () => {
+  // The widening, proved to bite before it is believed. `findUnlimitedReads`
+  // reads files, so the two shapes are planted as files rather than passed as
+  // strings: that keeps the control on the real code path (the paren walk and
+  // splitArgs) instead of a reimplementation of it.
+  const dir = mkdtempSync(join(tmpdir(), 'entity-read-limits-'));
+  const plant = (name, body) => {
+    const path = join(dir, name);
+    writeFileSync(path, body);
+    return path;
+  };
+  const limited = plant('limited.ts',
+    "const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n"
+    + "  { host_email: 'a@b.c' },\n"
+    + "  { sort: 'scheduled_at', limit: 5, fields: ['status'] },\n);\n");
+  const unlimited = plant('unlimited.ts',
+    "const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n"
+    + "  { host_email: 'a@b.c' },\n"
+    + "  { sort: 'scheduled_at', fields: ['status'] },\n);\n");
+  const options = { allowSingleRecordQueries: false, exempt: NO_EXEMPTIONS };
+
+  try {
+    // A ceiling inside the page-options object is a ceiling.
+    assert.deepEqual(findUnlimitedReads([limited], options), []);
+    // Dropping it is still reported, so the clause reads the property rather
+    // than waving every object-shaped second argument past.
+    //
+    // Asserted on the finding's SHAPE, never on its path. `findUnlimitedReads`
+    // derives its label as `file.slice(process.cwd().length + 1)`, which is
+    // meaningful only for a file UNDER the working directory — and these are
+    // planted in a temp directory, so the label is whatever that arithmetic
+    // leaves. It came out as the basename on one machine and as the empty
+    // string in CI, where the working directory is the longer of the two: a
+    // control that passed locally for a reason that had nothing to do with
+    // what it was checking.
+    const found = findUnlimitedReads([unlimited], options);
+    assert.equal(found.length, 1);
+    assert.match(found[0], /TelehealthSession\.filter\(\) has no row limit$/);
+
+    // The three shapes that satisfy a `limit\s*:` match and supply no ceiling.
+    // The first version of this clause matched the argument TEXT and accepted
+    // all three, so a read could pass the guard and still be truncated at the
+    // server default — the guard's own subject. Each is planted as a file and
+    // must still be reported.
+    const noCeiling = {
+      'undefined-limit.ts': "{ sort: 'scheduled_at', limit: undefined }",
+      'nested-limit.ts': "{ sort: 'scheduled_at', fields: [{ limit: 5 }] }",
+      'string-limit.ts': "{ sort: 'scheduled_at', note: 'text, limit: 5' }",
+    };
+    for (const [name, optionsText] of Object.entries(noCeiling)) {
+      const file = plant(name,
+        'const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n'
+        + "  { host_email: 'a@b.c' },\n"
+        + `  ${optionsText},\n);\n`);
+      const reported = findUnlimitedReads([file], options);
+      assert.equal(reported.length, 1, `${name} supplies no ceiling and must be reported`);
+      assert.match(reported[0], /TelehealthSession\.filter\(\) has no row limit$/, name);
+    }
+
+    // And the forms that DO supply one still pass, so the narrowing did not
+    // trade the blind spot for a guard that reports every page read.
+    for (const [name, optionsText] of Object.entries({
+      'quoted-key.ts': "{ 'limit': 25 }",
+      'variable-limit.ts': '{ limit: ROSTER_MAXIMUM }',
+      'shorthand-limit.ts': '{ limit }',
+    })) {
+      const file = plant(name,
+        'const page = await base44.asServiceRole.entities.TelehealthSession.filter(\n'
+        + "  { host_email: 'a@b.c' },\n"
+        + `  ${optionsText},\n);\n`);
+      assert.deepEqual(findUnlimitedReads([file], options), [], name);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('an apostrophe inside a comment does not blind the argument scanner', () => {

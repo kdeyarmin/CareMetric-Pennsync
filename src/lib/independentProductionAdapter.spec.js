@@ -4,7 +4,8 @@ import {
 } from './independentProductionAdapter';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import {
-  productionApiUrl, productionEmail, productionEnv, productionFixture, productionPassword, productionUserId,
+  productionApiUrl, productionDevice, productionEmail, productionEnv, productionFixture, productionPassword,
+  productionUserId,
 } from '@/test/independentProductionFixture';
 import { stagingEnv } from '@/test/independentStagingFixture';
 
@@ -173,5 +174,152 @@ describe('the production backend mode', () => {
       .rejects.toMatchObject({ code: 'STALE_AUTHORITY_SESSION', status: 401 });
     expect(adapter.auth.hasSession()).toBe(false);
     expect(fixture.live.size).toBe(0);
+  });
+  it('a link sets a password and leaves this adapter signed out', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture);
+    const identity = await adapter.auth.setPasswordFromLink(
+      productionEmail, 'invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+    expect(identity.email).toBe(productionEmail);
+    expect(fixture.passwords).toEqual(['a-new-long-password']);
+    // A LINK NEVER BECOMES A SESSION. The client revokes the grant the link
+    // bought and this adapter deliberately does not bind it, so nothing is live
+    // and no authority call can be made until somebody signs in.
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(fixture.live.size).toBe(0);
+    await expect(adapter.authority.me()).rejects.toMatchObject({ code: 'AUTHENTICATION_REQUIRED' });
+    // And the password that was set is the one that now signs in.
+    await adapter.auth.signIn(productionEmail, 'a-new-long-password');
+    expect(adapter.auth.hasSession()).toBe(true);
+  });
+
+  it('a spent link cannot be replayed, and a failed one leaves nothing live', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture);
+    await adapter.auth.setPasswordFromLink(productionEmail, 'recovery', 'recoverytoken-bbbbbb', 'another-long-password');
+    // The fixture consumes the token as the real exchange does, so this is the
+    // replay case rather than a simulated one.
+    await expect(adapter.auth.setPasswordFromLink(
+      productionEmail, 'recovery', 'recoverytoken-bbbbbb', 'a-third-long-password'))
+      .rejects.toMatchObject({ code: 'AUTHENTICATION_FAILED' });
+    expect(fixture.passwords).toEqual(['another-long-password']);
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(fixture.live.size).toBe(0);
+  });
+
+  it('a link kind this app does not exchange never leaves the browser', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture);
+    for (const type of ['magiclink', 'signup', 'email_change']) {
+      await expect(adapter.auth.setPasswordFromLink(productionEmail, type, 'invitetoken-aaaaaa', 'a-new-long-password'))
+        .rejects.toMatchObject({ code: 'INVALID_PRODUCTION_LINK' });
+    }
+    expect(fixture.requests).toEqual([]);
+  });
+});
+
+describe('a session this device already holds', () => {
+  it('is taken up without a password, and signing out leaves nothing to take up', async () => {
+    const fixture = productionFixture();
+    const device = productionDevice();
+    const first = adapterFor(fixture, productionEnv, { device });
+    await first.auth.signIn(productionEmail, productionPassword);
+    expect(device.state.email).toBe(productionEmail);
+    expect(typeof device.state.token).toBe('string');
+
+    // A reload: a NEW adapter over the same device, with nothing in memory.
+    const reloaded = adapterFor(fixture, productionEnv, { device });
+    expect(reloaded.auth.hasSession()).toBe(false);
+    expect(await reloaded.auth.resume()).toBe(true);
+    expect(reloaded.auth.hasSession()).toBe(true);
+    expect(fixture.refreshed).toBe(1);
+    // And the resumed session answers for the person, through the ordinary path.
+    expect(await reloaded.authority.me()).toEqual({ id: productionUserId, email: productionEmail });
+
+    await reloaded.auth.signOut();
+    expect(device.state.token).toBeNull();
+    expect(device.state.clears).toBeGreaterThan(0);
+    const third = adapterFor(fixture, productionEnv, { device });
+    expect(await third.auth.resume()).toBe(false);
+  });
+
+  it('closing the realm leaves the device able to resume; only signing out forgets', async () => {
+    const fixture = productionFixture();
+    const device = productionDevice();
+    const adapter = adapterFor(fixture, productionEnv, { device });
+    await adapter.auth.signIn(productionEmail, productionPassword);
+    const kept = device.state.token;
+    await adapter.auth.signOut({ forget: false });
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(device.state.token).toBe(kept);
+    expect(await adapterFor(fixture, productionEnv, { device }).auth.resume()).toBe(true);
+  });
+
+  it('two overlapping boots leave the record alone, because the loser refused nothing', async () => {
+    // StrictMode double-invokes an effect, so two boots in one document is
+    // ordinary rather than exotic. The second fences the first's lease, and the
+    // first throws STALE_AUTHORITY_SESSION before it has constructed a client —
+    // so nothing reached the provider and nothing refused the record.
+    //
+    // A reviewer measured the earlier shape: the loser removed the record with no
+    // exchange and no logout, which also contradicted the client's own KEEP_ON,
+    // where that code is listed as a keep. Only a stored address the CLIENT will
+    // not accept justifies forgetting, and that case is the test below.
+    const fixture = productionFixture();
+    const device = productionDevice();
+    await (await signedIn(fixture, { device })).auth.signOut({ forget: false });
+    const kept = device.state.token;
+    expect(typeof kept).toBe('string');
+
+    const booting = adapterFor(fixture, productionEnv, { device });
+    const [loser, winner] = await Promise.all([booting.auth.resume(), booting.auth.resume()]);
+    expect(loser).toBe(false);
+    expect(winner).toBe(true);
+    // The record is the one thing a boot must not destroy. It has ROTATED, because
+    // the winner exchanged it, so what is asserted is that one is there and that
+    // nothing cleared.
+    expect(device.state.clears).toBe(0);
+    expect(typeof device.state.token).toBe('string');
+    expect(device.state.email).toBe(productionEmail);
+    // And a third boot over that record still works, which is the consequence the
+    // person would have noticed: a password prompt on every reload.
+    expect(await adapterFor(fixture, productionEnv, { device }).auth.resume()).toBe(true);
+  });
+
+  it('a boot whose exchange is refused forgets only the token it spent, so a winning tab keeps its record', async () => {
+    // The loser of a two-tab race read the OLD token, and the winner has since
+    // rotated the record. The loser's exchange is refused, and its cleanup must
+    // go through `clearSpent`: an unconditional `clear` here would delete the
+    // record the provider still honours.
+    const fixture = productionFixture();
+    const device = productionDevice();
+    await (await signedIn(fixture, { device })).auth.signOut({ forget: false });
+    const winnersToken = device.state.token;
+    const staleDevice = {
+      ...device,
+      port: address => ({ ...device.port(address), read: () => 'refresh-already-spent-by-winner' }),
+    };
+    const loser = adapterFor(fixture, productionEnv, { device: staleDevice });
+    expect(await loser.auth.resume()).toBe(false);
+    expect(device.state.token).toBe(winnersToken);
+    expect(device.state.email).toBe(productionEmail);
+    expect(device.state.clears).toBe(0);
+  });
+
+  it('answers false, and reaches no project, when this device holds nothing', async () => {
+    const fixture = productionFixture();
+    const adapter = adapterFor(fixture, productionEnv, { device: productionDevice() });
+    expect(await adapter.auth.resume()).toBe(false);
+    expect(fixture.requests).toEqual([]);
+    expect(adapter.auth.hasSession()).toBe(false);
+  });
+
+  it('a record naming somebody the project refuses leaves no session and is forgotten', async () => {
+    const fixture = productionFixture();
+    const device = productionDevice('someone.else@agency.example', 'refresh-nobody-minted');
+    const adapter = adapterFor(fixture, productionEnv, { device });
+    expect(await adapter.auth.resume()).toBe(false);
+    expect(adapter.auth.hasSession()).toBe(false);
+    expect(device.state.token).toBeNull();
   });
 });

@@ -1,28 +1,26 @@
-// ADMIN-ONLY: documentation-gap patterns joined to closed-episode revenue.
+// ADMIN-ONLY: documentation-gap patterns across CLOSED episodes.
 //
 // WHY THIS IS A SEPARATE MODULE FROM THE ENGINE
-// `documentationGaps.js` has no concept of money and is what clinicians see.
-// This module is where payment enters, and it is deliberately reachable only
-// from an administrator surface (`canViewFinancials`) and only for CLOSED
-// episodes.
+// `documentationGaps.js` is what clinicians see, one assessment at a time. This
+// module aggregates the same findings across finished episodes for an
+// administrator surface, and it accepts CLOSED episodes only.
 //
 // The closed-episode rule is the substantive constraint, not a technicality.
 // "Across last quarter, ambulation was our most common note-versus-code
-// mismatch, and those episodes grouped below cohort" is management information:
-// it tells an administrator where documentation training is worth buying. "This
-// open assessment would pay $340 more if M1860 were a 3" is a target attached
-// to a specific patient and a specific nurse who is about to attest to it, and
-// this module cannot produce that sentence because it will not accept an open
-// episode.
+// mismatch" is management information: it tells an administrator where
+// documentation training is worth investing in. A per-assessment target aimed
+// at a nurse who is about to attest to an open assessment is not, and this
+// module cannot produce one because it will not accept an open episode.
 //
-// So there is no per-assessment uplift figure here, by construction. The output
-// is counts, rates and cohort aggregates.
+// It carries no payment, case-mix or reimbursement dimension at all (the
+// former cohort revenue comparison was removed with the PDGM payment
+// features). The output is counts, rates and cohort aggregates.
 //
 // Pure functions. No React, no SDK.
 
 import { findDocumentationGaps, GAP_RULES, GAP_DIRECTIONS } from "./documentationGaps.js";
 
-/** Statuses that mean the episode is finished and safe to analyse for revenue. */
+/** Statuses that mean the episode is finished and safe to analyse. */
 const CLOSED_STATUSES = Object.freeze(["completed", "submitted", "discharged", "closed"]);
 
 /** Minimum cohort size before a rate is reported at all. */
@@ -49,7 +47,7 @@ export function isClosedEpisode(episode) {
 /**
  * Aggregate documentation gaps across CLOSED episodes.
  *
- * @param {Array<{status?: string, episode_end?: string, documentation?: string, oasis?: object, clinician?: string, estimated_payment?: number, case_mix_weight?: number}>} episodes
+ * @param {Array<{status?: string, episode_end?: string, documentation?: string, oasis?: object, clinician?: string}>} episodes
  * @returns {object} counts by item and direction, plus what was refused and why
  */
 export function aggregateDocumentationGaps(episodes = []) {
@@ -78,8 +76,8 @@ export function aggregateDocumentationGaps(episodes = []) {
       if (!row) continue;
       row[g.direction] += 1;
       row.total += 1;
-      // Cohort, not individual: a per-nurse league table built from a revenue
-      // view is how "documentation training" turns into pressure to code high.
+      // Cohort, not individual: a per-nurse league table is how
+      // "documentation training" turns into pressure to code high.
       const cohort = ep.clinician_cohort || ep.discipline || "unattributed";
       const c = byClinician.get(cohort) || { cohort, suggests_more_dependence: 0, suggests_less_dependence: 0, total: 0 };
       c[g.direction] += 1;
@@ -98,7 +96,7 @@ export function aggregateDocumentationGaps(episodes = []) {
     episodes_analysed: analysed,
     episodes_excluded_open: excludedOpen,
     excluded_reason: excludedOpen
-      ? `${excludedOpen} episode(s) excluded: revenue analysis runs on closed episodes only.`
+      ? `${excludedOpen} episode(s) excluded: gap-pattern analysis runs on closed episodes only.`
       : "",
     items,
     by_cohort: [...byClinician.values()].sort((a, b) => b.total - a.total),
@@ -110,52 +108,6 @@ export function aggregateDocumentationGaps(episodes = []) {
       ? Math.round((totals.suggests_more_dependence / totals.suggests_less_dependence) * 100) / 100
       : null,
     cohort_too_small: analysed < MIN_COHORT_FOR_RATE,
-  };
-}
-
-/**
- * Case-mix and payment for the same CLOSED cohort, split by whether the episode
- * had an unresolved documentation gap.
- *
- * This is the honest form of "what do documentation gaps cost us": a cohort
- * comparison an administrator can act on by buying training. It deliberately
- * does NOT return a per-episode uplift, and it declines to report at all on a
- * cohort too small to mean anything.
- *
- * @param {Array} episodes closed episodes carrying `estimated_payment` / `case_mix_weight`
- */
-export function compareCohortRevenue(episodes = []) {
-  const withGaps = [];
-  const withoutGaps = [];
-  let excludedOpen = 0;
-
-  for (const ep of Array.isArray(episodes) ? episodes : []) {
-    if (!isClosedEpisode(ep)) { excludedOpen += 1; continue; }
-    const gaps = findDocumentationGaps({ documentation: ep.documentation, oasis: ep.oasis });
-    (gaps.length > 0 ? withGaps : withoutGaps).push(ep);
-  }
-
-  const mean = (rows, key) => {
-    const vals = rows.map((r) => r[key]).filter((v) => typeof v === "number" && Number.isFinite(v));
-    if (!vals.length) return null;
-    return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100;
-  };
-
-  const reportable = withGaps.length >= MIN_COHORT_FOR_RATE && withoutGaps.length >= MIN_COHORT_FOR_RATE;
-  return {
-    episodes_excluded_open: excludedOpen,
-    with_gaps: { count: withGaps.length, mean_payment: mean(withGaps, "estimated_payment"), mean_case_mix: mean(withGaps, "case_mix_weight") },
-    without_gaps: { count: withoutGaps.length, mean_payment: mean(withoutGaps, "estimated_payment"), mean_case_mix: mean(withoutGaps, "case_mix_weight") },
-    reportable,
-    // Stated rather than implied. A difference between two self-selected
-    // cohorts is not proof that closing the gaps would move the payment.
-    caveat:
-      "Cohort comparison on closed episodes. Episodes with documentation gaps differ from "
-      + "those without in ways beyond the gap itself, so this shows where documentation is "
-      + "weakest — not what recoding would earn. Nothing here is shown to clinical staff.",
-    not_reportable_reason: reportable
-      ? ""
-      : `Cohort too small to report (need ${MIN_COHORT_FOR_RATE} closed episodes on each side).`,
   };
 }
 
@@ -188,14 +140,5 @@ export function uploadsToClosedEpisodes(uploads = []) {
       documentation: u.analysis_results?.summary || u.notes || "",
       oasis: u.extracted_data || u.pdgm_data || null,
       clinician_cohort: u.discipline || "unattributed",
-      estimated_payment: u.estimated_payment,
-      case_mix_weight: u.pdgm_data?.case_mix_weight,
     }));
 }
-
-/** Header shown above every admin revenue surface built from this module. */
-export const ADMIN_REVENUE_NOTICE =
-  "Administrator view. These figures are aggregate and retrospective, computed from closed "
-  + "episodes. They are not shown to clinical staff, and no part of them reaches the "
-  + "documentation-gap prompts clinicians see — those are triggered by the record, never by "
-  + "payment.";

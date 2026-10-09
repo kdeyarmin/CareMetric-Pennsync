@@ -18,24 +18,18 @@ import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch'
 import { installAuthorityBoundClipboard } from '@/lib/authorityBoundClipboard'
 import { closePublicCapabilityRealm } from '@/lib/publicCapabilityRealmGate'
 import { renderSecureBootstrapNotice } from '@/lib/secureBootstrapUi'
+import { isTrustedEditorPreviewFrame } from '@/lib/editorPreviewFrame'
 
 const authorityGuardCleanups = []
 // Non-sensitive stage codes distinguish a blocked frame from a failed native
 // guard installation without logging tokens, page content, or user data.
 let bootstrapFailureCode = 'FRAME_NOT_ALLOWED'
 
-function scrubRetiredPublicTokenBeforeAppImport() {
-  const segment = String(window.location.pathname || '').toLowerCase().split('/')[1] || ''
-  if (segment !== 'signer' && segment !== 'followup') return
-  const url = new URL(window.location.href)
-  if (!url.searchParams.has('token')) return
-  url.searchParams.delete('token')
-  // Replace the whole entry state before React Router can retain either the
-  // retired bearer or a stale clinical state object from session history.
-  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`)
-}
-
-scrubRetiredPublicTokenBeforeAppImport()
+// No public bearer is scrubbed here any more. The signer portal (/signer) and
+// the provider follow-up portal (/followup) were both released on 2026-10-08
+// (owner decision): each page reads its token once through its capability
+// lease and scrubs it from the URL itself (scrubPublicCapabilityParameter) in
+// a layout effect, before anything renders, so the token must reach the app.
 
 function terminallyCloseDocumentAuthority() {
   try { poisonTenantSdkRealm() } catch { /* continue closing every realm */ }
@@ -47,12 +41,29 @@ function currentFrameMayBootstrap() {
   try {
     if (window.top === window.self) return true
   } catch {
-    return false
+    // A cross-origin parent makes `window.top` unreadable. That is strictly
+    // less information than a readable mismatch, so it cannot be the more
+    // permissive answer: it gets exactly the same check as a readable
+    // mismatch below, which admits the Base44 editor preview panel the owner
+    // allowed on 2026-10-08 and no other parent.
+    return isTrustedEditorPreviewFrame(window.location, document.referrer)
   }
   // There is no authenticated production editor handshake in this source
   // checkpoint. Do not expose a clinical DOM to an arbitrary parent frame.
   // Native WKWebView main frames have top === self and remain supported.
-  return false
+  //
+  // An embedded preview is not left without a path: the embedded branch of
+  // `renderSecureBootstrapNotice` draws "Open a secure preview" with a link
+  // that opens the app in a clean, isolated tab — no opener, no forwarded
+  // token — which is the designed accommodation for a preview panel. Loading
+  // the app in the frame instead hands the parent a live clinical DOM and
+  // lets the frame make API calls, both of which `e2e/secure-preview.spec.js`
+  // asserts must not happen.
+  //
+  // Owner decision (2026-10-08): allow loading inside the Base44 editor preview
+  // panel. That is permission for that parent only, so every ancestor must be
+  // a Base44 editor origin; any other parent still gets the notice above.
+  return isTrustedEditorPreviewFrame(window.location, document.referrer)
 }
 
 function renderSecureBootstrapBlocked() {
@@ -157,26 +168,26 @@ const safeStorage = (storage) => ({
   },
 });
 
-let localStorageRef = null;
 let sessionStorageRef = null;
-// Merely TOUCHING window.localStorage throws in some privacy modes and in
+// Merely TOUCHING window.sessionStorage throws in some privacy modes and in
 // sandboxed iframes. Leaving the ref null is the intended outcome — safeStorage
-// below falls back to an in-memory shim — so both catches are deliberate no-ops.
-try { localStorageRef = window.localStorage; } catch { /* storage unavailable */ }
+// below falls back to an in-memory shim — so the catch is a deliberate no-op.
+// (localStorage was read here only for the retired `theme` preference.)
 try { sessionStorageRef = window.sessionStorage; } catch { /* storage unavailable */ }
 
-const safeLocalStorage = safeStorage(localStorageRef);
 const safeSessionStorage = safeStorage(sessionStorageRef);
 
-const savedTheme = safeLocalStorage.getItem('theme')
-const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-  document.documentElement.classList.add('dark')
-  document.documentElement.style.colorScheme = 'dark'
-} else {
-  document.documentElement.classList.remove('dark')
-  document.documentElement.style.colorScheme = 'light'
-}
+// PennSync ships ONE light theme — see the dark-class effect in Layout.jsx for
+// why. Following the OS preference here contradicted that for every screen that
+// renders before Layout mounts: measured 2026-10-08 on the live sign-in page
+// with a dark-mode device, the "Welcome to PennSync" heading is near-white on a
+// light gradient and the footer links all but vanish, because the `.dark`
+// shims in index.css flip only some slate/white utilities. Layout then removed
+// the class but left `color-scheme: dark`, so native form controls rendered
+// dark inside the light UI. Nothing writes a `theme` preference any more, so a
+// stored value is not consulted either.
+document.documentElement.classList.remove('dark')
+document.documentElement.style.colorScheme = 'light'
 
 // ── Stale-chunk auto-recovery ───────────────────────────────────────────────
 // When the Vite dev server restarts, the browser's in-memory module graph holds
@@ -258,6 +269,7 @@ async function bootstrapApp() {
     import('@/App.jsx'),
   ])
   bootstrapFailureCode = 'APP_MOUNT'
+  safeSessionStorage.removeItem('pennsync_app_import_retry')
   const root = document.getElementById('root')
   if (!root) throw new Error('PennSync root element is unavailable')
   ReactDomModule.createRoot(root).render(
@@ -271,7 +283,20 @@ async function bootstrapApp() {
 
 if (documentAuthorityReady) {
   void bootstrapApp().catch((error) => {
+    console.error('[bootstrap]', bootstrapFailureCode, error)
     if (handleStaleChunk(error, error?.message || '')) return
+    // Any app-file load failure (not just the recognized stale-chunk messages)
+    // gets one automatic cache-busting reload before the blocked screen shows.
+    const importRetryKey = 'pennsync_app_import_retry'
+    if (bootstrapFailureCode === 'APP_IMPORT' && navigator.onLine !== false
+      && !safeSessionStorage.getItem(importRetryKey)) {
+      safeSessionStorage.setItem(importRetryKey, '1')
+      const url = new URL(window.location.href)
+      url.searchParams.set('_r', String(Date.now()))
+      window.location.href = url.toString()
+      return
+    }
+    safeSessionStorage.removeItem(importRetryKey)
     terminallyCloseDocumentAuthority()
     renderSecureBootstrapBlocked()
   })

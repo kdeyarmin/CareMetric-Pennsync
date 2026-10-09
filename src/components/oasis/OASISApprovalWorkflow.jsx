@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { logOASISAction, AuditActions } from "../utils/auditLogger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,46 +20,25 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
   const [selectedItem, setSelectedItem] = useState(null);
   const [approvalNotes, setApprovalNotes] = useState("");
 
+  // Sign-off is written by the OASIS record broker, which admits only an agency
+  // lead (agency_admin or manager membership, or the platform owner) for an
+  // upload in their own agency, stamps the reviewer from the session, and
+  // signs every reviewed item in one conditional write.
   const approveMutation = useMutation({
     mutationFn: async ({ oasisId, patientId, action, notes }) => {
-      const oasis = await base44.entities.OASISUpload.filter({ id: oasisId });
-      if (!oasis[0]) throw new Error("OASIS record not found");
-      
-      const updatedData = { ...oasis[0].extracted_data };
-      const currentUser = await base44.auth.me();
-      
-      // Update all reviewed items with supervisor approval
-      const reviewedItems = [];
-      Object.keys(updatedData).forEach(key => {
-        if (updatedData[key]?.reviewed && !updatedData[key]?.supervisor_approved) {
-          updatedData[key] = {
-            ...updatedData[key],
-            supervisor_approved: action === 'approve',
-            supervisor_rejected: action === 'reject',
-            approved_by: currentUser.email,
-            approval_date: new Date().toISOString(),
-            approval_notes: notes
-          };
-          reviewedItems.push(key);
-        }
+      const result = await manageOASISRecords('supervisor_decision', {
+        upload_id: oasisId,
+        decision: action,
+        notes,
       });
-
-      // Log supervisor action
       await logOASISAction({
         action: action === 'approve' ? AuditActions.OASIS_SUPERVISOR_APPROVED : AuditActions.OASIS_SUPERVISOR_REJECTED,
         patientId,
         oasisId,
-        itemNumber: reviewedItems.join(', '),
+        itemNumber: (result?.items_signed || []).join(', '),
         notes,
-        reviewedBy: currentUser.email,
       });
-
-      return base44.entities.OASISUpload.update(oasisId, {
-        extracted_data: updatedData,
-        supervisor_review_status: action === 'approve' ? 'approved' : 'rejected',
-        supervisor_reviewed_by: currentUser.email,
-        supervisor_reviewed_at: new Date().toISOString()
-      });
+      return result;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['oasisRecords'] });

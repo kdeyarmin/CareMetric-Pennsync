@@ -10,6 +10,7 @@ import { resolveKnownHelpRoute } from "@/lib/centralHelp";
 import { getRoleView } from "@/lib/roles";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 import { useAuth } from "@/lib/AuthContext";
+import { recordLoginOnce } from "@/lib/loginTelemetry";
 
 import PageLoader from "@/components/ui/PageLoader";
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
@@ -21,6 +22,7 @@ import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
 import CommandPalette from "@/components/navigation/CommandPalette";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
+import AccountDeletionRequestLink from "@/components/auth/AccountDeletionRequestLink";
 
 const SIDEBAR_COLLAPSED_KEY = "caremetric_sidebar_collapsed";
 
@@ -137,6 +139,13 @@ export default function Layout() {
   // deactivated account is locked out regardless of role/approval; the test
   // agent is exempt (its account is never approved and must stay usable).
   const isDeactivated = currentUser?.is_active === false && !isTestAgent;
+  // One sign-in row per tab session; the server names the caller, stamps the
+  // time and refuses repeats inside half an hour (see loginTelemetry.js).
+  const loginTelemetryUserId = !isUserPending && !isDeactivated ? currentUser?.id : null;
+  useEffect(() => {
+    // Keyed on the id alone, so a profile refresh never re-sends.
+    if (loginTelemetryUserId) void recordLoginOnce({ id: loginTelemetryUserId });
+  }, [loginTelemetryUserId]);
   // Automatic message/notification/approval badges are intentionally absent.
   // The available entity readers are not bound to the exact selected tenant,
   // so even fetching full rows merely to count them would cross the authority
@@ -209,6 +218,7 @@ export default function Layout() {
               <Button onClick={handleLogout} variant="outline" className="w-full">
                 <LogOut className="w-4 h-4 mr-2" /> Sign Out
               </Button>
+              <AccountDeletionRequestLink email={currentUser.email} className="mt-4" />
             </CardContent>
           </Card>
           <p className="mt-6 text-center text-xs text-slate-400">

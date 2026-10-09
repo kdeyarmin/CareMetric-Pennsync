@@ -76,10 +76,13 @@ export function summarizePhoneActivity({ smsMessages = [], callLogs = [], consen
     autoTransferRate: pct(officeTransfers, inboundCalls.length),
   };
 
-  // --- Consent (latest status per phone; ledger assumed newest-first) ---
+  // --- Consent (latest status per consent key; ledger assumed newest-first) ---
+  // Consent is scoped (sending line + agency + phone), so the server's report
+  // sends an opaque `consent_key` per scope and no number; a bare ledger row
+  // falls back to its phone number.
   const latestByPhone = {};
   for (const c of consents) {
-    const k = last10(c.phone_e164);
+    const k = c.consent_key ? `key:${c.consent_key}` : last10(c.phone_e164);
     if (k && !(k in latestByPhone)) latestByPhone[k] = c.consent_status;
   }
   const statuses = Object.values(latestByPhone);
@@ -98,7 +101,11 @@ export function summarizePhoneActivity({ smsMessages = [], callLogs = [], consen
   };
 
   // --- Provisioning coverage ---
-  const withWork = users.filter((u) => u.work_phone_number);
+  // The server report answers `has_work_number` (a boolean) and sends no
+  // number; a raw profile row still answers from its column.
+  const withWork = users.filter((u) => (typeof u?.has_work_number === "boolean"
+    ? u.has_work_number
+    : !!u?.work_phone_number));
   // See `rosterTelecom.js`: the owned roster answers `has_personal_cell` and
   // sends no raw column, so this count reads 0 for every agency if it tests
   // `personal_cell_e164` directly.

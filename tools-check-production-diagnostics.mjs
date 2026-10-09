@@ -86,7 +86,7 @@ export function parseDiagnosticArguments(args) {
     if (argument === '--mode' || argument.startsWith('--mode=')) {
       if (productionModeSeen) return null;
       const mode = argument === '--mode' ? args[++index] : argument.slice('--mode='.length);
-      if (mode !== 'production') return null;
+      if (mode !== 'production' && mode !== 'development') return null;
       productionModeSeen = true;
     } else {
       if (argument.startsWith('-') || directory !== undefined) return null;
@@ -97,9 +97,18 @@ export function parseDiagnosticArguments(args) {
 }
 
 export function main(args = process.argv.slice(2), { log = console.log } = {}) {
-  // Base44 runs npm run build -- --mode production. npm appends that flag to
-  // this final command in the build script. Accept only the production-mode
-  // compatibility flag; it NEVER changes, skips, or weakens artifact inspection.
+  // Base44 runs `npm run build -- --mode <mode>`. npm appends that flag to this
+  // final command in the build script, so the flag is a pass-through this tool
+  // has to tolerate rather than an instruction to it. `production` and
+  // `development` are both accepted (dd7c162 added the second to unblock a
+  // development-mode build); every other value is refused, so the flag still
+  // cannot carry an arbitrary payload.
+  //
+  // What matters is that the mode is VALIDATED AND DISCARDED:
+  // parseDiagnosticArguments returns only { directory }, so there is no path by
+  // which a mode reaches the scan. It NEVER changes, skips, or weakens artifact
+  // inspection, and a test asserts the findings are identical under both modes
+  // so that this stays true rather than being re-argued from the comment.
   // Vite has already built in its default production mode before this command.
   const parsed = parseDiagnosticArguments(args);
   if (!parsed) {

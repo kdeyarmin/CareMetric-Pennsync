@@ -155,9 +155,40 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// Fail closed until note evidence can be brokered through the protected OASIS
-// response schema without model-selected responses or cross-tenant reads.
-const NOTE_TO_OASIS_MAPPING_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on", option 1). The
+// deployment serves one agency and chart access is checked against membership
+// and the care-team assignment table. Suggestions are prefill a clinician reviews.
+const NOTE_TO_OASIS_MAPPING_ENABLED = true;
+
+// Chart access for an OASIS AI request comes from the same authority the chart
+// brokers use: the built-in admin role, the caller's one active membership (from
+// withTrustedClaims), and the care-team table. The shared block below is the one
+// definition every OASIS function uses.
+// <<<BEGIN SHARED HELPER: oasisChartAccess — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function assertOasisChartAccess(base44, user, patient) {
+  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  if (user.role === 'admin') return null;
+  const agencyId = typeof user.agency_id === 'string' ? user.agency_id : '';
+  if (!agencyId || patient.agency_id !== agencyId) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (user.account_type === 'agency_admin' || user.is_manager === true) return null;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (email && String(patient.created_by_user_email_normalized || '') === email
+    && patient.created_by_user_id === user.id) return null;
+  const assignments = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+    { agency_id: agencyId, patient_id: patient.id, user_id: user.id }, '-updated_date', 5,
+  ).catch(() => []);
+  const active = (Array.isArray(assignments) ? assignments : []).some((row) => (
+    row?.status === 'active'
+    && row.agency_id === agencyId
+    && row.patient_id === patient.id
+    && row.user_id === user.id
+  ));
+  return active ? null : Response.json({ error: 'Forbidden' }, { status: 403 });
+}
+// <<<END SHARED HELPER: oasisChartAccess>>>
+
 
 Deno.serve(async (req) => {
   if (!NOTE_TO_OASIS_MAPPING_ENABLED) {
@@ -191,30 +222,8 @@ Deno.serve(async (req) => {
       // Authorize against the patient before reading their OASIS PHI into the
       // prompt/response (assigned nurse or admin). RLS-independent code check.
       const [oasisPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1);
-      if (!oasisPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-      const isSuperAdmin = user.account_type === 'super_admin';
-      const isAgencyScopedAdmin =
-        user.account_type === 'agency_admin'
-        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-      const isAssigned = oasisPatient.created_by === user.email
-        || (Array.isArray(oasisPatient.assigned_nurses) && oasisPatient.assigned_nurses.includes(user.email));
-      if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      if (isAgencyScopedAdmin) {
-        if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
-        const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-        const agencyEmails = new Set(
-          (agencyUsers || [])
-            .filter((u) => u.agency_name === user.agency_name && u.email)
-            .map((u) => u.email),
-        );
-        const inAgency = (oasisPatient.created_by && agencyEmails.has(oasisPatient.created_by))
-          || (Array.isArray(oasisPatient.assigned_nurses)
-            && oasisPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
-        if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
+      const denied = await assertOasisChartAccess(base44, user, oasisPatient);
+      if (denied) return denied;
       const oasisRecords = await base44.asServiceRole.entities.OASISUpload.filter(
         { patient_id: patientId },
         '-created_date',
@@ -450,7 +459,7 @@ DISCREPANCY SEVERITY RULES:
 
 Return JSON with detailed mapping results:`;
 
-    const result = await base44.integrations.Core.InvokeLLM({
+    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt,
       response_json_schema: {

@@ -1,5 +1,5 @@
-import SigningUnavailable from '@/components/signature/SigningUnavailable';
+import BulkDocumentPackageCreator from '@/components/documents/BulkDocumentPackageCreator';
 
 export default function BulkSignatureRequests() {
-  return <SigningUnavailable title="Bulk signature requests unavailable" />;
+  return <BulkDocumentPackageCreator />;
 }

@@ -288,7 +288,7 @@ Generate a clear, professional clinical note that:
 
 Expanded documentation:`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: "automatic",
         prompt,
         add_context_from_internet: false
@@ -357,7 +357,7 @@ Generate a complete, personalized clinical note that:
 
 Expanded documentation:`;
 
-    const expandedText = await base44.integrations.Core.InvokeLLM({
+    const expandedText = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt,
       add_context_from_internet: false

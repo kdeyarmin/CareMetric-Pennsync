@@ -21,12 +21,17 @@ import {
   AlertCircle,
   BarChart3
 } from "lucide-react";
-import { calculateStats, calculateNurseStats, formatCurrency } from "../components/utils/statsCalculator";
+import { calculateStats, calculateNurseStats } from "../components/utils/statsCalculator";
 import { toast } from "sonner";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+import { useAgencyAnalyticsAuxiliary } from '@/components/analytics/useAgencyAnalyticsAuxiliary';
+import { buildAgencyAnalyticsCsv, trainingCompletionStats } from '@/components/analytics/agencyAnalyticsExport';
+import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
+import { toLocalISODate } from '@/lib/dateLocal';
+import { CheckCircle2, Shield } from "lucide-react";
 
 const EMPTY_ROWS = Object.freeze([]);
 const FRESH_QUERY_OPTIONS = Object.freeze({
@@ -58,8 +63,8 @@ function tenantScopeKey(scope) {
 }
 
 export default function AgencyAnalytics() {
-  // Admin-only page: agency-wide performance rankings and revenue/cost figures
-  // must not render for clinical staff (server-side RLS remains the primary
+  // Admin-only page: agency-wide performance rankings must not render for
+  // clinical staff (server-side RLS remains the primary
   // control; this is the same defense-in-depth gate as AnalyticsDashboard).
   const currentUserQuery = useQuery({
     queryKey: ['currentUser'],
@@ -114,26 +119,44 @@ export default function AgencyAnalytics() {
   const users = usersAvailable ? usersQuery.data : EMPTY_ROWS;
   const analyticsAvailable = primaryAuthorized && usersAvailable;
 
-  // NoteConversion, ComplianceAudit, and TrainingAssignment administrator reads
-  // are platform-wide and lack immutable agency provenance. They are not loaded
-  // here. Only metrics based on the authorized P/V snapshot and fresh scoped
-  // roster remain available.
+  // 2026-10-08 owner decision: the note-conversion, compliance-audit, incident
+  // and training sources are loaded again, but only once the Patient/Visit
+  // authority and the staff roster agree, and each is bounded to this agency
+  // by the person its rows are attributed to. A section whose source has not
+  // settled freshly is reported as unavailable rather than computed from [].
+  const auxiliary = useAgencyAnalyticsAuxiliary({
+    authorityKey: analyticsAuthorityKey,
+    enabled: analyticsAvailable,
+    currentUser,
+  });
+  const noteConversions = auxiliary.noteConversions.rows;
+  const complianceAudits = auxiliary.complianceAudits.rows;
+  const incidents = auxiliary.incidents.rows;
+  const trainingAssignments = auxiliary.trainingAssignments.rows;
+
   const overallStats = useMemo(() => {
     return calculateStats({
       visits,
       users,
       patients: allPatients,
+      noteConversions: noteConversions || EMPTY_ROWS,
+      incidents: incidents || EMPTY_ROWS,
+      complianceAudits: complianceAudits || EMPTY_ROWS,
     });
-  }, [visits, users, allPatients]);
+  }, [visits, users, allPatients, noteConversions, incidents, complianceAudits]);
+  const trainingStats = useMemo(
+    () => (trainingAssignments ? trainingCompletionStats(trainingAssignments) : null),
+    [trainingAssignments],
+  );
 
   // Calculate nurse performance stats
   const nurseStats = useMemo(() => {
     const nurses = users.filter(u => u.role === 'user');
     return nurses.map(nurse => ({
       ...nurse,
-      stats: calculateNurseStats(nurse.email, { visits })
+      stats: calculateNurseStats(nurse.email, { visits, noteConversions: noteConversions || EMPTY_ROWS })
     }));
-  }, [users, visits]);
+  }, [users, visits, noteConversions]);
 
   // Top performers
   const topPerformers = useMemo(() => {
@@ -144,9 +167,26 @@ export default function AgencyAnalytics() {
   }, [nurseStats]);
 
   const handleExport = () => {
-    toast.error(
-      'Agency analytics export is unavailable until NoteConversion, ComplianceAudit, and TrainingAssignment have tenant-bound reporting projections.',
-    );
+    if (!analyticsAvailable) {
+      toast.error('Agency analytics must finish verifying before it can be exported.');
+      return;
+    }
+    try {
+      const csv = buildAgencyAnalyticsCsv({
+        overallStats,
+        topPerformers,
+        trainingStats,
+        available: {
+          compliance: Boolean(complianceAudits),
+          incidents: Boolean(incidents),
+        },
+        generatedAt: new Date().toISOString(),
+      });
+      downloadAuthorityBoundBlob(new Blob([csv], { type: 'text/csv' }), `agency_analytics_${toLocalISODate()}.csv`);
+    } catch (error) {
+      console.error('Agency analytics export error:', error);
+      toast.error(`Failed to export report: ${error.message}`);
+    }
   };
 
   if (!currentUserAvailable && !currentUserQuery.isError) {
@@ -216,8 +256,7 @@ export default function AgencyAnalytics() {
             variant="outline"
             className="gap-2"
             onClick={handleExport}
-            disabled
-            title="Tenant-bound reporting projections are not available"
+            disabled={!analyticsAvailable}
           >
             <Download className="w-4 h-4" />
             Export Report
@@ -226,12 +265,11 @@ export default function AgencyAnalytics() {
       />
 
       <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="training">Training</TabsTrigger>
-            <TabsTrigger value="financial">Financial</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -246,13 +284,38 @@ export default function AgencyAnalytics() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Alert className="border-amber-300 bg-amber-50" role="status">
-                    <AlertCircle className="h-4 w-4 text-amber-700" />
-                    <AlertDescription className="text-amber-950">
-                      Documentation-efficiency and compliance metrics are unavailable until
-                      NoteConversion and ComplianceAudit have tenant-bound reporting projections.
-                    </AlertDescription>
-                  </Alert>
+                  {noteConversions && complianceAudits ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between mb-2">
+                          <span className="text-sm text-slate-600">AI Enhancement Rate</span>
+                          <span className="text-sm font-semibold">{overallStats.visits.total > 0 ? Math.min(100, Math.round((overallStats.noteEnhancements.total / overallStats.visits.total) * 100)) : 0}%</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2">
+                          <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${overallStats.visits.total > 0 ? Math.min(100, Math.round((overallStats.noteEnhancements.total / overallStats.visits.total) * 100)) : 0}%` }}></div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                        <div>
+                          <p className="text-2xl font-bold text-slate-900">{overallStats.compliance.auditsInRange > 0 ? overallStats.compliance.avgScore : '—'}</p>
+                          <p className="text-sm text-slate-600">Avg Quality Score</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-slate-900">{overallStats.noteEnhancements.total}</p>
+                          <p className="text-sm text-slate-600">Notes Enhanced</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <Alert className="border-amber-300 bg-amber-50" role="status">
+                      <AlertCircle className="h-4 w-4 text-amber-700" />
+                      <AlertDescription className="text-amber-950">
+                        {auxiliary.noteConversions.isError || auxiliary.complianceAudits.isError
+                          ? 'Documentation-efficiency metrics are unavailable because the note-enhancement or compliance-audit records could not be loaded.'
+                          : 'Loading note-enhancement and compliance-audit records…'}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </CardContent>
               </Card>
 
@@ -316,14 +379,55 @@ export default function AgencyAnalytics() {
 
           {/* Compliance Tab */}
           <TabsContent value="compliance" className="space-y-6">
-            <Alert className="border-amber-300 bg-amber-50" role="status">
-              <AlertCircle className="h-4 w-4 text-amber-700" />
-              <AlertDescription className="text-amber-950">
-                Compliance analytics are unavailable until ComplianceAudit has a
-                tenant-bound reporting projection. A platform-wide administrator list
-                is not treated as agency evidence.
-              </AlertDescription>
-            </Alert>
+            {complianceAudits ? (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <StatCard
+                    title="Avg Compliance Score"
+                    value={overallStats.compliance.auditsInRange > 0 ? `${overallStats.compliance.avgScore}%` : '—'}
+                    icon={Shield}
+                    color="green"
+                  />
+                  <StatCard
+                    title="Total Audits"
+                    value={overallStats.compliance.auditsInRange}
+                    subtitle={`${overallStats.compliance.passedAudits} passed`}
+                    icon={CheckCircle2}
+                    color="indigo"
+                  />
+                  <StatCard
+                    title="Quality Score"
+                    value={overallStats.compliance.auditsInRange > 0 ? `${overallStats.compliance.qualityScore}%` : '—'}
+                    subtitle="Share of audits passed"
+                    icon={AlertCircle}
+                    color="indigo"
+                  />
+                </div>
+                {incidents && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Incidents</CardTitle>
+                      <CardDescription>Reported by this agency&apos;s staff</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                      <div><p className="text-2xl font-bold">{overallStats.incidents.total}</p><p className="text-sm text-slate-600">Total</p></div>
+                      <div><p className="text-2xl font-bold">{overallStats.incidents.falls}</p><p className="text-sm text-slate-600">Falls</p></div>
+                      <div><p className="text-2xl font-bold">{overallStats.incidents.hospitalizations}</p><p className="text-sm text-slate-600">Hospitalizations</p></div>
+                      <div><p className="text-2xl font-bold">{overallStats.incidents.medicationErrors}</p><p className="text-sm text-slate-600">Medication errors</p></div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <Alert className="border-amber-300 bg-amber-50" role="status">
+                <AlertCircle className="h-4 w-4 text-amber-700" />
+                <AlertDescription className="text-amber-950">
+                  {auxiliary.complianceAudits.isError
+                    ? 'Compliance analytics are unavailable because the compliance-audit records could not be loaded.'
+                    : 'Loading compliance-audit records…'}
+                </AlertDescription>
+              </Alert>
+            )}
           </TabsContent>
 
           {/* Performance Tab */}
@@ -359,7 +463,9 @@ export default function AgencyAnalytics() {
                             {nurse.stats.completionRate}%
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-amber-700">Unavailable</TableCell>
+                        <TableCell className={noteConversions ? 'text-slate-600' : 'text-amber-700'}>
+                          {noteConversions ? `${nurse.stats.timeSavedHours}h` : 'Unavailable'}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -370,33 +476,46 @@ export default function AgencyAnalytics() {
 
           {/* Training Tab */}
           <TabsContent value="training" className="space-y-6">
-            <Alert className="border-amber-300 bg-amber-50" role="status">
-              <AlertCircle className="h-4 w-4 text-amber-700" />
-              <AlertDescription className="text-amber-950">
-                Training analytics are unavailable until TrainingAssignment has a
-                tenant-bound reporting projection. Counts and completion rates are withheld.
-              </AlertDescription>
-            </Alert>
-          </TabsContent>
-
-          {/* Financial Tab */}
-          <TabsContent value="financial" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <StatCard
-                title="Est. Revenue"
-                value={formatCurrency(overallStats.financial.estimatedRevenue)}
-                subtitle="From completed visits"
-                icon={Clock}
-                color="purple"
-              />
+            {trainingStats ? (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <StatCard title="Total Trainings" value={trainingStats.total} icon={FileText} color="indigo" />
+                  <StatCard
+                    title="Completed"
+                    value={trainingStats.completed}
+                    subtitle={trainingStats.rate === null ? 'No assignments' : `${trainingStats.rate}% rate`}
+                    icon={CheckCircle2}
+                    color="green"
+                  />
+                  <StatCard title="In Progress" value={trainingStats.total - trainingStats.completed} icon={Clock} color="amber" />
+                </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Training Completion Status</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between mb-2">
+                        <span className="text-sm text-slate-600">Overall Completion Rate</span>
+                        <span className="text-sm font-semibold">{trainingStats.rate === null ? '—' : `${trainingStats.rate}%`}</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-3">
+                        <div className="bg-indigo-600 h-3 rounded-full transition-all" style={{ width: `${trainingStats.rate || 0}%` }}></div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
               <Alert className="border-amber-300 bg-amber-50" role="status">
                 <AlertCircle className="h-4 w-4 text-amber-700" />
                 <AlertDescription className="text-amber-950">
-                  Time-saved and cost-savings estimates are unavailable until
-                  NoteConversion has a tenant-bound reporting projection.
+                  {auxiliary.trainingAssignments.isError
+                    ? 'Training analytics are unavailable because the training assignments could not be loaded.'
+                    : 'Loading training assignments…'}
                 </AlertDescription>
               </Alert>
-            </div>
+            )}
           </TabsContent>
         </Tabs>
     </PageContainer>

@@ -43,16 +43,16 @@ test('reviewed privileged functions never authorize from mutable account_type cl
 });
 
 test('provider and platform-administration handlers gate on the protected owner before parsing a request payload', () => {
+  // sendSms and startMaskedCall left this list on 2026-10-08 (owner decision):
+  // any active agency member may text or call a chart open to them, pinned in
+  // 'patient texting and calling authorize from protected sources' below.
   const protectedOwnerOnly = [
-    'deduplicatePatients',
     'managePhoneNumberPool',
     'manageSmsConsent',
     'provisionNurseWorkNumber',
     'searchPurchaseTelnyxNumbers',
     'sendFax',
-    'sendSms',
     'sendTestSms',
-    'startMaskedCall',
   ];
 
   for (const name of protectedOwnerOnly) {
@@ -75,30 +75,57 @@ test('provider and platform-administration handlers gate on the protected owner 
   }
 });
 
-test('provenance-derived security audit is unavailable before SDK or request work', () => {
-  const source = readEntry('runSecurityAudit');
-
-  assert.match(source, /code:\s*'SECURITY_AUDIT_PAUSED'/);
-  assert.match(source, /status:\s*503/);
-  assert.match(source, /'Cache-Control':\s*'no-store'/);
-  assert.doesNotMatch(
-    source,
-    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
-  );
+test('the patient merge broker admits the platform tier or a membership-backed agency manager before parsing', () => {
+  // deduplicatePatients is no longer owner-only: an active agency_admin or
+  // manager may merge their own agency's charts. That authority comes from the
+  // service-owned membership (withTrustedClaims), never the mutable profile,
+  // and is decided before the request payload is read.
+  const source = readEntry('deduplicatePatients');
+  assert.match(source, /<<<BEGIN SHARED HELPER: protectedUserAuthz/);
+  assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/);
+  const handler = source.slice(source.indexOf('Deno.serve'));
+  const claims = handler.indexOf('withTrustedClaims(base44, await base44.auth.me()');
+  const gate = handler.indexOf('mergeAuthority(user)');
+  const bodyParse = handler.indexOf('await req.json');
+  assert.ok(claims !== -1 && gate !== -1 && bodyParse !== -1);
+  assert.ok(claims < gate && gate < bodyParse, 'authorize before consuming the merge payload');
+  const authority = source.slice(source.indexOf('function mergeAuthority'), source.indexOf('function patientAgency'));
+  assert.match(authority, /isProtectedAdmin\(user\)/);
+  assert.match(authority, /user\.is_manager === true && claimIdentifier\(user\.agency_id\)/);
+  assert.doesNotMatch(authority, /account_type|agency_name|is_approved/);
 });
 
-test('unused clinical data analysis is unavailable before SDK, request, data, or AI work', () => {
-  // Its patient gate trusted the self-editable account_type claim as platform
-  // admin authority, and nothing in the app calls it (2026-09-10 security scan).
-  const source = readEntry('analyzeClinicalData');
+test('security audit authorizes from protected role or service-owned membership, never profile claims', () => {
+  // 2026-10-08 owner decision: the audit runs again. Its agency authority is
+  // the withTrustedClaims result (a service-owned agency_admin membership),
+  // read off the rebuilt claims object rather than the caller's own profile.
+  const source = readEntry('runSecurityAudit');
+  const authority = source.slice(source.indexOf('async function auditAuthority'), source.indexOf('async function loadCohort'));
 
-  assert.match(source, /code:\s*'CLINICAL_DATA_ANALYSIS_PAUSED'/);
-  assert.match(source, /status:\s*503/);
-  assert.match(source, /'Cache-Control':\s*'no-store'/);
-  assert.doesNotMatch(
-    source,
-    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|InvokeLLM|account_type|agency_name/,
-  );
+  assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/);
+  assert.match(authority, /if \(user\.role === 'admin'\) return \{ scope: 'platform', agencyId: null \}/);
+  assert.match(authority, /const claims = await withTrustedClaims\(base44, user\)/);
+  assert.doesNotMatch(authority, /user\.(?:account_type|agency_name|agency_id)/);
+  assert.doesNotMatch(source, /SECURITY_AUDIT_PAUSED/);
+});
+
+test('clinical data analysis decides chart access from trusted rows and predicts no risk', () => {
+  // Released by the owner on 2026-10-08. Its old gate trusted the self-editable
+  // account_type claim; now chart access is callerMayAccessPatient (membership
+  // and the care-team table) before any record or model call, and the owner's
+  // removal of risk prediction holds: no readmission or deterioration scores.
+  const source = readEntry('analyzeClinicalData');
+  const own = source.slice(source.lastIndexOf('// <<<END SHARED HELPER'))
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const handler = own.slice(own.indexOf('Deno.serve('));
+  assert.match(source, /<<<BEGIN SHARED HELPER: patientCareTeamAccess/);
+  assert.ok(handler.indexOf('await loadAccessiblePatient(') > 0);
+  assert.ok(handler.indexOf('await loadAccessiblePatient(') < handler.indexOf('extractEvents('));
+  assert.doesNotMatch(own, /account_type|agency_name|assigned_nurses/);
+  assert.doesNotMatch(own, /readmission|predictive_analytics|deterioration_risk|risk_score/i);
+  assert.doesNotMatch(own, /\.create\(|\.update\(|updateMany/);
+  assert.match(own, /'Cache-Control':\s*'no-store'/);
 });
 
 test('patient-bearing clinical helpers retain exact creator and assigned-nurse checks', () => {
@@ -124,20 +151,41 @@ test('patient-bearing clinical helpers retain exact creator and assigned-nurse c
     );
   }
 
-  for (const name of ['scheduleSms', 'sendSms']) {
-    const source = readEntry(name);
-    assert.match(source, /const\s+isAssigned\s*=\s*Array\.isArray\(claimed\.assigned_nurses\)[\s\S]{0,160}claimed\.assigned_nurses\.includes\(user\.email\)/);
-    assert.match(
-      source,
-      /return\s+isProtectedSuperAdmin\(user\)\s*\|\|\s*claimed\.created_by\s*===\s*user\.email\s*\|\|\s*isAssigned\s*;/,
-      `${name} must authorize a chart only by protected owner, immutable creator, or assigned nurse`,
-    );
+  // scheduleSms, sendSms and startMaskedCall left this list on 2026-10-08:
+  // they authorize a chart by agency, agency-wide role, chart creator id, or an
+  // active care-team assignment (pinned in the release tests below).
+  for (const name of ['scheduleSms', 'sendSms', 'startMaskedCall']) {
+    const code = readEntry(name).replace(/^\s*(?:\/\/|\*).*$/gm, '');
+    assert.doesNotMatch(code, /assigned_nurses|created_by\s*===\s*user\.email/, `${name} uses no retired chart rule`);
   }
+});
 
+test('patient texting and calling authorize from protected sources, never from mutable profile fields', () => {
+  for (const name of ['sendSms', 'startMaskedCall']) {
+    const source = readEntry(name);
+    const handler = source.slice(source.indexOf('Deno.serve'));
+    assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/, name);
+    assert.match(source, /<<<BEGIN SHARED HELPER: patientCareTeamAccess/, name);
+    // Caller: the protected owner or one active service-owned membership,
+    // decided before the body is read.
+    assert.match(handler, /const user = await withTrustedClaims\(base44, caller\);/, name);
+    assert.match(handler, /user\.role === 'user' && claimIdentifier\(user\.agency_id\)/, name);
+    const gate = handler.indexOf("code: 'agency_membership_required'");
+    assert.ok(gate > 0 && gate < handler.indexOf('await req.json()'), `${name}: membership before the body`);
+    // The line is a service-owned binding in the caller's agency.
+    assert.match(handler, /\.agencyId !== memberAgencyId|line\.agency_id !== memberAgencyId/, name);
+    // Charts: same agency, then the generated care-team rule.
+    assert.match(handler, /callerMayAccessPatient\(base44, caller, (?:claimed|p)\)/, name);
+    assert.doesNotMatch(handler, /agency_name|account_type|is_manager/, `${name} never reads a self-editable tenant label`);
+  }
+  const sms = readEntry('sendSms');
+  const smsHandler = sms.slice(sms.indexOf('Deno.serve'));
+  assert.match(smsHandler, /resolveActiveTelnyxSmsBinding\(base44, \{[\s\S]*?requireOutbound: true/);
+  assert.match(smsHandler, /loadLatestScopedSmsConsent\(base44, smsAuthority, destination\)/);
+  assert.match(smsHandler, /agency_id: agencyId,\s*destination_binding_id: smsAuthority\.bindingId,/);
   const call = readEntry('startMaskedCall');
-  assert.match(call, /if\s*\(isProtectedSuperAdmin\(user\)\)\s*return true/);
-  assert.match(call, /if\s*\(p\.created_by\s*===\s*user\.email\)\s*return true/);
-  assert.match(call, /return\s+Array\.isArray\(p\.assigned_nurses\)\s*&&\s*p\.assigned_nurses\.includes\(user\.email\)/);
+  assert.match(call, /async function resolveCallerLineBinding\(base44, telnyxCreds, workNumber\)/);
+  assert.match(call, /row\.binding_key !== `telnyx:\$\{secretId\}:\$\{workNumber\}`/);
 });
 
 test('legacy creator and assignee paths require one immutable active AgencyMembership', () => {
@@ -225,45 +273,64 @@ test('record-owner exceptions remain exact and escalation requires the protected
   );
 });
 
-test('SmsConsent and ScheduledSms browser access remains fully disabled', () => {
-  for (const entity of ['SmsConsent', 'ScheduledSms']) {
-    const schema = JSON5.parse(read(`base44/entities/${entity}.jsonc`));
-    assert.equal(schema.name, entity);
-    for (const operation of ['create', 'read', 'update', 'delete']) {
-      assert.equal(
-        schema.rls?.[operation],
-        false,
-        `${entity}.${operation} must stay behind a backend workflow`,
-      );
-    }
+test('SmsConsent stays service-only; ScheduledSms is readable only by the nurse who scheduled it', () => {
+  const consent = JSON5.parse(read('base44/entities/SmsConsent.jsonc'));
+  for (const operation of ['create', 'read', 'update', 'delete']) {
+    assert.equal(consent.rls?.[operation], false, `SmsConsent.${operation} must stay behind a backend workflow`);
   }
+  // Scheduled texting was released 2026-10-08. The browser may read its own
+  // queue; creating goes through scheduleSms and canceling through
+  // cancelScheduledSms, so no browser write rule exists.
+  const scheduled = JSON5.parse(read('base44/entities/ScheduledSms.jsonc'));
+  assert.deepEqual(scheduled.rls, {
+    read: {
+      $or: [
+        { 'data.nurse_email': '{{user.email}}' },
+        { created_by: '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
+    create: false,
+    update: false,
+    delete: false,
+  });
 });
 
-test('scheduled SMS creation and dispatch pause before constructing a Base44 client', () => {
-  const pausedHandlers = new Map([
-    ['scheduleSms', 'SCHEDULED_SMS_CREATION_PAUSED'],
-    ['dispatchScheduledSms', 'SCHEDULED_SMS_DISPATCH_PAUSED'],
-  ]);
+test('scheduleSms authorizes from protected sources, never from mutable profile fields', () => {
+  const source = readEntry('scheduleSms');
+  const handler = source.slice(source.indexOf('Deno.serve'));
+  assert.doesNotMatch(source, /SCHEDULED_SMS_CREATION_PAUSED/);
+  // Caller: the protected owner or one active service-owned membership.
+  assert.match(handler, /await withTrustedClaims\(base44, await base44\.auth\.me\(\)\)/);
+  assert.match(handler, /user\.role === 'user' && claimIdentifier\(user\.agency_id\)/);
+  assert.ok(handler.indexOf("code: 'agency_membership_required'") < handler.indexOf('await req.json()'),
+    'membership is required before the body is read');
+  // Sending line: a service-owned outbound binding in the caller's agency.
+  assert.match(handler, /resolveActiveTelnyxSmsBinding\(base44, \{[\s\S]*?requireOutbound: true/);
+  assert.match(handler, /smsAuthority\.agencyId !== memberAgencyId/);
+  assert.match(handler, /const fromNumber = smsAuthority\.destinationE164;/);
+  // Consent: the scoped ledger, never a phone-only row.
+  assert.match(handler, /loadLatestScopedSmsConsent\(base44, smsAuthority, destination\)/);
+  assert.doesNotMatch(handler, /SmsConsent\s*\.filter\(\{ phone_e164/);
+  // Patient: same agency, then agency-wide role, chart creator or an active
+  // care-team assignment. The retired nurse-list and creator-email checks are gone.
+  assert.match(handler, /claimed\.agency_id !== agencyId/);
+  assert.match(source, /PatientCareTeamAssignment\.filter\(\{[\s\S]*?status: 'active'/);
+  assert.doesNotMatch(source, /assigned_nurses|claimed\.created_by ===/);
+});
 
-  for (const [name, flag] of pausedHandlers) {
-    const source = readEntry(name);
-    assert.match(source, new RegExp(`const ${flag} = true;`), `${name} pause must be literal and fail-closed`);
-
-    const handler = source.slice(source.indexOf('Deno.serve'));
-    const pauseGate = handler.indexOf(`if (${flag})`);
-    const clientCreation = handler.indexOf('createClientFromRequest(');
-    assert.notEqual(pauseGate, -1, `${name} must check ${flag} in its handler`);
-    assert.notEqual(clientCreation, -1, `${name} must retain its dormant implementation`);
-    assert.ok(
-      pauseGate < clientCreation,
-      `${name} must return from its pause gate before SDK construction or any hosted read/write`,
-    );
-    assert.match(
-      handler.slice(pauseGate, clientCreation),
-      /status:\s*503/,
-      `${name} pause response must report service unavailable`,
-    );
-  }
+test('dispatchScheduledSms re-proves the line, the membership and scoped consent at send time', () => {
+  const source = readEntry('dispatchScheduledSms');
+  const handler = source.slice(source.indexOf('Deno.serve'));
+  assert.doesNotMatch(source, /SCHEDULED_SMS_DISPATCH_PAUSED/);
+  assert.match(handler, /getSchedulerAuthError\(req, me\)/);
+  assert.match(handler, /resolveActiveTelnyxSmsBinding\(base44, \{[\s\S]*?requireOutbound: true/);
+  assert.match(handler, /AgencyMembership[\s\S]*?status: 'active'/);
+  assert.match(handler, /loadLatestScopedSmsConsent\(base44, lineAuthority, row\.to_number\)/);
+  assert.doesNotMatch(handler, /SmsConsent\s*\.filter\(\{ phone_e164/);
+  const consent = handler.indexOf('loadLatestScopedSmsConsent(base44, lineAuthority');
+  const send = handler.indexOf('await sendTelnyx(');
+  assert.ok(consent > 0 && consent < send, 'consent is checked before every provider send');
 });
 
 test('analyzeAndGenerateClinicalTasks authorizes the patient before PHI reads and returns suggestions without Task writes', () => {
@@ -272,7 +339,7 @@ test('analyzeAndGenerateClinicalTasks authorizes the patient before PHI reads an
   const patientRead = handler.indexOf('entities.Patient');
   const accessGate = handler.indexOf('assertPatientAccess(base44, user, patient)');
   const relatedPhiReads = handler.indexOf('entities.Visit');
-  const modelCall = handler.indexOf('base44.integrations.Core.InvokeLLM');
+  const modelCall = handler.indexOf('base44.asServiceRole.integrations.Core.InvokeLLM');
 
   assert.notEqual(patientRead, -1);
   assert.notEqual(accessGate, -1);

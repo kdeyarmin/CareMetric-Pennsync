@@ -8,6 +8,9 @@ import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
 import { isTenantSdkRealmLeaseCurrent } from '@/lib/tenantSdkRealmGate';
+import {
+  audioFileExtension, audioRecorderOptions, pickAudioRecorderMimeType, recordedAudioType,
+} from '@/lib/audioRecordingFormat';
 
 /**
  * Real-time audio transcription component using OpenAI Whisper
@@ -83,9 +86,8 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
       streamRef.current = stream;
       recordingLeaseRef.current = realmLease;
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm',
-      });
+      // iOS before 18.4 has no webm recorder and throws on a forced type.
+      const mediaRecorder = new MediaRecorder(stream, audioRecorderOptions(pickAudioRecorderMimeType()));
 
       mediaRecorder.ondataavailable = (event) => {
         if (
@@ -182,9 +184,10 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
       // Combine audio chunks into a single File. The SDK detects the File and
       // uploads it as multipart/form-data (with auth) to the backend function,
       // which reads the `file` field via req.formData() and returns { text }.
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-      const audioFile = new File([audioBlob], `whisper-recording-${Date.now()}.webm`, {
-        type: 'audio/webm',
+      const audioType = recordedAudioType(mediaRecorderRef.current);
+      const audioBlob = new Blob(audioChunksRef.current, { type: audioType });
+      const audioFile = new File([audioBlob], `whisper-recording-${Date.now()}.${audioFileExtension(audioType)}`, {
+        type: audioType,
       });
 
       // functions.invoke does not unwrap the response (interceptResponses:

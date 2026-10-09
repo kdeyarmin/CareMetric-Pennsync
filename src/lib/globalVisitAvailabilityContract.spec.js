@@ -4,7 +4,6 @@ import process from 'node:process';
 import { describe, expect, it } from 'vitest';
 
 const read = (relativePath) => readFileSync(path.join(process.cwd(), relativePath), 'utf8');
-const risk = read('src/components/dashboard/HospitalizationRiskWidget.jsx');
 const dataQuality = read('src/components/admin/DataQualityDashboard.jsx');
 const reports = read('src/components/hub-tabs/AdminReportsCenter.jsx');
 const quality = read('src/components/admin/QualityMetricsDashboard.jsx');
@@ -14,12 +13,12 @@ const patientData = read('src/pages/PatientDataManagement.jsx');
 const dedupe = read('src/pages/DuplicatePatients.jsx');
 const agency = read('src/pages/AgencyAnalytics.jsx');
 
-const globalViews = [risk, dataQuality, reports, quality, kpi, tagger, patientData, dedupe, agency];
-const combinedViews = [risk, dataQuality, reports, quality, kpi, patientData, dedupe, agency];
+const globalViews = [dataQuality, reports, quality, kpi, tagger, patientData, dedupe, agency];
+const combinedViews = [dataQuality, reports, quality, kpi, patientData, dedupe, agency];
 
 describe('global Visit unavailable-state containment', () => {
   it('never treats a hook default as authorized Visit data', () => {
-    expect(globalViews).toHaveLength(9);
+    expect(globalViews).toHaveLength(8);
     expect(globalViews.every((text) => text.includes('useAuthorizedVisits'))).toBe(true);
     expect(globalViews.every((text) => text.includes('.isSuccess'))).toBe(true);
     expect(globalViews.every((text) => /unavailable|withheld/i.test(text))).toBe(true);
@@ -27,11 +26,9 @@ describe('global Visit unavailable-state containment', () => {
   });
 
   it('requires exact immutable Patient/Visit authority in every combined view', () => {
-    expect(combinedViews).toHaveLength(8);
+    expect(combinedViews).toHaveLength(7);
     expect(combinedViews.every((text) => text.includes('sameAuthorizedTenantScope'))).toBe(true);
     expect(combinedViews.every((text) => text.includes('tenantScopesMismatch'))).toBe(true);
-    expect(risk).toContain('patientTenantScope: patientQuery.tenantScope');
-    expect(risk).toContain('visitTenantScope: visitQuery.tenantScope');
     expect(reports).toContain('authorityKey: reportAuthorityKey');
     expect(reports).toContain('patientQuery.tenantScope');
     expect(reports).toContain('visitQuery.tenantScope');
@@ -40,15 +37,13 @@ describe('global Visit unavailable-state containment', () => {
   });
 
   it('gates expensive or disclosing actions and rejects late derived results', () => {
-    expect(risk).toContain('disabled={analyzing || !analysisSnapshot');
-    expect(risk).toContain('analysisSnapshotRef.current === authorizedSnapshot');
-    expect(kpi).toContain('disabled={ai.loading || !analysisSnapshot || !KPI_REPORTS_ENABLED}');
+    expect(kpi).toContain('disabled={ai.loading || !analysisSnapshot}');
     expect(kpi).toContain('analysisSnapshotRef.current !== authorizedSnapshot');
     expect(tagger).toContain('disabled={isTagging || !visitSnapshot}');
     expect(tagger).toContain('visitSnapshotRef.current !== authorizedSnapshot');
     expect(quality).toContain('disabled={!analyticsSnapshot}');
     expect(agency).toMatch(/onClick=\{handleExport\}[\s\S]{0,160}\bdisabled\b/);
-    expect(agency).toContain('Tenant-bound reporting projections are not available');
+    expect(agency).toContain('disabled={!analyticsAvailable}');
     expect(dedupe).toContain('disabled={isScanning || !scanSnapshot');
   });
 
@@ -56,24 +51,35 @@ describe('global Visit unavailable-state containment', () => {
     expect(quality).toContain('freshQuerySuccess(incidentQuery)');
     expect(quality).toContain('freshQuerySuccess(userQuery)');
     expect(quality).toContain('sameAuthorizedTenantScope(auxiliaryTenantScope, patientQuery.tenantScope)');
-    expect(quality).not.toContain('NoteConversion.list');
-    expect(quality).toContain('tenant-authorized NoteConversion');
+    // 2026-10-08 owner decision: quality score (compliance audits) and AI time
+    // saved (note enhancements) are measured again, from fresh nurse-attributed
+    // agency reads that gate the snapshot like every other source.
+    expect(quality).toMatch(/const noteConversionQuery = useAgencyScopedQuery\(\{[\s\S]{0,300}NoteConversion\.list\(/);
+    expect(quality).toMatch(/const complianceAuditQuery = useAgencyScopedQuery\(\{[\s\S]{0,300}ComplianceAudit\.list\(/);
+    expect(quality).toContain('freshQuerySuccess(noteConversionQuery)');
+    expect(quality).toContain('freshQuerySuccess(complianceAuditQuery)');
+    expect(quality).toMatch(/&& complianceAuditFresh\s*&& noteConversionFresh/);
+    expect(quality).toContain('avgQualityScore: averageAuditScore(allComplianceAudits)');
+    expect(quality).not.toContain('SecurityLog');
     expect(kpi).toContain('freshQuerySuccess(incidentQuery)');
-    expect(kpi).not.toContain('ComplianceAudit.list');
-    expect(kpi).toContain('const KPI_REPORTS_ENABLED = false');
-    expect(kpi.match(/enabled: KPI_REPORTS_ENABLED/g)).toHaveLength(3);
-    expect(kpi).toMatch(/const visitQuery = useAuthorizedVisits\(\{[\s\S]{0,240}enabled: KPI_REPORTS_ENABLED/);
-    expect(kpi).toMatch(/const patientQuery = useScopedPatients\(\{[\s\S]{0,240}enabled: KPI_REPORTS_ENABLED/);
-    expect(kpi).toMatch(/const incidentQuery = useAgencyScopedQuery\(\{[\s\S]{0,300}enabled: KPI_REPORTS_ENABLED/);
-    expect(kpi).toContain('{KPI_REPORTS_ENABLED && !analysisSnapshot && (');
+    // 2026-10-08 owner decision: KPI reports are on. The compliance-audit
+    // source is loaded again, but only a FRESH post-mount answer may feed the
+    // prompt, and a failed source withholds the report instead of reading as 0.
+    expect(kpi).not.toContain('KPI_REPORTS_ENABLED');
+    expect(kpi).toMatch(/const complianceAuditQuery = useAgencyScopedQuery\(\{[\s\S]{0,300}ComplianceAudit\.list\('-audit_date'/);
+    expect(kpi).toContain('freshQuerySuccess(complianceAuditQuery)');
+    expect(kpi).toMatch(/tenantSnapshot\s*&& incidentFresh\s*&& complianceAuditFresh/);
+    expect(kpi).toContain('complianceAuditQuery.isError');
+    expect(kpi).not.toContain('Unavailable pending a tenant-authorized aggregate source');
+    expect(kpi).toContain('Compliance Audits: ${auditSummary.total}');
+    expect(kpi).toContain('{!analysisSnapshot && (');
+    expect(kpi).toContain('normalizeKpiReport(result');
     expect(tagger).toContain('freshQuerySuccess(currentUserQuery)');
     expect(tagger).toContain('freshQuerySuccess(incidentQuery)');
     expect(tagger).toContain('sameAuthorizedTenantScope(incidentTenantScope, visitQuery.tenantScope)');
   });
 
-  it('keeps risk alert persistence quarantined and avoids duplicate report scans', () => {
-    expect(risk).not.toMatch(/PatientAlert\.(?:filter|create|update)/);
-    expect(risk).toContain('display-only');
+  it('avoids duplicate report scans', () => {
     expect(reports).toContain("activeTab === 'reports'");
     expect(reports).toContain('reportsSnapshot ?');
   });

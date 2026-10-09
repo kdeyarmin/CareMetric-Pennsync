@@ -562,7 +562,7 @@ Comprehensive guide covering all features of the PennSync Healthcare platform:
     // Generate guide content using AI — the default model is sufficient for
     // formatting a structured user guide and avoids the 120s timeout that
     // claude_sonnet_4_6 hits on the large all_features prompt.
-    const guideContent = await base44.integrations.Core.InvokeLLM({
+    const guideContent = await base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: `Generate a comprehensive, step-by-step user guide for healthcare staff.
 
 MANDATORY PRODUCT STATUS: Include this notice verbatim near the beginning of the guide:

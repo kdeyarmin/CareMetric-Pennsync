@@ -45,6 +45,7 @@ import {
   isPublicTokenPath,
 } from '@/lib/publicRoutes';
 import { PublicCapabilityBoundary } from '@/lib/PublicCapabilityContext';
+import AccountDeletionRequestLink from '@/components/auth/AccountDeletionRequestLink';
 
 // Public (no-login) patient telehealth join page. Stale-chunk auto-recovery
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
@@ -228,9 +229,24 @@ const RoutePageLoader = () => (
   </div>
 );
 
-const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOut }) => {
+const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOut, accountEmail }) => {
   const selectionRequired = memberships.length > 0;
   const requiresReload = error?.type === 'browser_authority_change_requires_restart';
+  // A routine session refresh (idle timeout, tab in background) needs only a
+  // fresh page load; do it automatically instead of stranding the user.
+  useLayoutEffect(() => {
+    if (!requiresReload || ownedBackendAuth) return undefined;
+    const reloadWhenVisible = () => {
+      if (document.visibilityState === 'visible') window.location.reload();
+    };
+    reloadWhenVisible();
+    document.addEventListener('visibilitychange', reloadWhenVisible);
+    window.addEventListener('focus', reloadWhenVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', reloadWhenVisible);
+      window.removeEventListener('focus', reloadWhenVisible);
+    };
+  }, [requiresReload]);
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-lg rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
@@ -273,7 +289,7 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
               onClick={requiresReload
                 ? ownedBackendAuth ? onSignOut : () => window.location.reload()
                 : onRetry}
-              className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
+              className="app-primary-button rounded-lg px-4 py-2 text-sm font-semibold"
             >
               {requiresReload ? 'Reload app' : 'Retry verification'}
             </button>
@@ -286,6 +302,9 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
             Sign out
           </button>
         </div>
+        {!selectionRequired && !ownedBackendAuth && (
+          <AccountDeletionRequestLink email={accountEmail} className="mt-5" />
+        )}
       </div>
     </div>
   );
@@ -562,6 +581,7 @@ const AuthenticatedApp = () => {
         onSelect={selectFromNeutralRoute}
         onRetry={() => { void retryTenantAuthority(); }}
         onSignOut={() => { void logout(); }}
+        accountEmail={user?.email}
       />
     );
   } else if (
@@ -576,6 +596,7 @@ const AuthenticatedApp = () => {
         onSelect={selectFromNeutralRoute}
         onRetry={() => { void retryTenantAuthority(); }}
         onSignOut={() => { void logout(); }}
+        accountEmail={user?.email}
       />
     );
   }

@@ -1,7 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
-import { isAdminView } from "@/lib/roles";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,48 +14,15 @@ import { collectComorbidityCapture } from "./comorbidityCapture.js";
  * Every code shown was found verbatim in the uploaded referral's extracted
  * data — this component performs NO AI call and never invents a code.
  * Diagnoses documented without a code go to the "needs coder" queue instead.
- * Sequencing (M1021 principal first, then M1023 secondaries) follows the
- * app's canonical PDGM model: the agency's saved PDGMRateConfig tables
- * (ICD-10 → clinical group + case-mix weights) merged over the built-in
- * defaults, exactly as the live calculatePDGM backend merges them.
+ * Sequencing (M1021 principal first, then M1023 secondaries) preserves the
+ * documented clinical order: an acceptable documented primary stays primary,
+ * and nothing is re-sequenced or ranked by payment weight. No payment, rate
+ * or case-mix table is read or shown.
  */
 export default function DiagnosisCodeGenerator({ referralData }) {
-  const [rateConfig, setRateConfig] = useState(null);
-
-  // Case-mix weights are payment mechanics: by agency policy they render only
-  // for admin-level users. The clinical sequencing itself is role-neutral.
-  const { data: currentUser } = useQuery({
-    queryKey: ["currentUser"],
-    queryFn: () => base44.auth.me(),
-  });
-  const adminView = isAdminView(currentUser);
-
-  useEffect(() => {
-    let cancelled = false;
-    // Prefer the caller's agency rate row — never newest-row across tenants.
-    (async () => {
-      try {
-        const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
-        const row = await fetchCallerPdgmRateConfig(currentUser?.agency_name);
-        if (!cancelled && row) setRateConfig(row);
-      } catch {
-        /* fall back to built-in defaults */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser?.agency_name]);
-
   const result = useMemo(
-    () =>
-      referralData
-        ? generateDiagnosisCodes(referralData, {
-            rates: rateConfig?.rates,
-            icdGroups: rateConfig?.icd10_clinical_groups,
-          })
-        : null,
-    [referralData, rateConfig]
+    () => (referralData ? generateDiagnosisCodes(referralData) : null),
+    [referralData]
   );
 
   // Documented-but-uncoded condition signals (meds/prose/wounds) — coder/
@@ -103,8 +67,7 @@ export default function DiagnosisCodeGenerator({ referralData }) {
         </div>
         <p className="text-xs text-slate-500 mt-1">
           Only codes documented in this referral are listed — codes are never generated or inferred.
-          Sequenced for the {result.scenario.admissionSource} / early 30-day period
-          {rateConfig ? " using this agency's saved PDGM rate tables." : " using the built-in default PDGM tables."}
+          Sequenced in documented clinical order for the {result.scenario.admissionSource} / early 30-day period.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -129,9 +92,6 @@ export default function DiagnosisCodeGenerator({ referralData }) {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{dx.clinicalGroup}</Badge>
-                {adminView && dx.caseMixWeight !== null && (
-                  <Badge className="bg-blue-100 text-blue-800">weight {dx.caseMixWeight.toFixed(4)}</Badge>
-                )}
               </div>
             </div>
             {dx.rtpReason && (

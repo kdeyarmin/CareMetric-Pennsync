@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,7 +37,7 @@ export default function OASISAuditReportGenerator({ audit, isOpen, onClose, curr
     summary: true,
     scores: true,
     issues: true,
-    rescoreOpps: true,
+    gaps: true,
     recommendations: true,
     corrections: true
   });
@@ -45,7 +45,9 @@ export default function OASISAuditReportGenerator({ audit, isOpen, onClose, curr
   const queryClient = useQueryClient();
 
   const updateAuditMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.OASISAudit.update(id, data),
+    // The audit queue is an agency lead's: the broker re-checks that, and that
+    // this audit belongs to the lead's agency, before writing.
+    mutationFn: ({ id, data }) => manageOASISRecords('update_audit', { audit_id: id, patch: data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisAudits'] });
     }
@@ -92,11 +94,9 @@ export default function OASISAuditReportGenerator({ audit, isOpen, onClose, curr
           overall: audit.overall_score,
           accuracy: audit.accuracy_score,
           compliance: audit.compliance_score,
-          revenue: audit.revenue_score
         },
-        estimated_revenue_impact: audit.estimated_revenue_impact,
         key_issues: audit.key_issues,
-        rescore_opportunities: audit.rescore_opportunities,
+        documentation_gaps: audit.documentation_gaps,
         auditor_findings: audit.auditor_findings,
         additional_findings: additionalFindings,
         recommendations: recommendations.filter(r => r.trim()),
@@ -114,7 +114,7 @@ Create a formal, professional audit report with the following sections (include 
 - Summary: ${includeSections.summary}
 - Scores Analysis: ${includeSections.scores}
 - Issues Identified: ${includeSections.issues}
-- Rescore Opportunities: ${includeSections.rescoreOpps}
+- Documentation Gaps: ${includeSections.gaps}
 - Recommendations: ${includeSections.recommendations}
 - Corrections Made: ${includeSections.corrections}
 
@@ -122,9 +122,10 @@ Format as a professional clinical audit report. Include:
 1. Header with patient name, date, auditor name
 2. Executive summary
 3. Detailed findings with severity levels
-4. Revenue impact analysis
-5. Action items and recommendations
-6. Signature line for auditor
+4. Action items and recommendations
+5. Signature line for auditor
+
+Do not estimate payment, reimbursement, revenue, or case-mix impact, and never state or suggest an OASIS response, score or code.
 
 Use proper markdown formatting with headers, bullet points, and tables where appropriate.`,
         response_json_schema: {
@@ -184,9 +185,6 @@ Use proper markdown formatting with headers, bullet points, and tables where app
 | Accuracy | ${data.scores.accuracy}% | ${data.scores.accuracy >= 75 ? '✓ Pass' : '✗ Needs Review'} |
 | Compliance | ${data.scores.compliance}% | ${data.scores.compliance >= 80 ? '✓ Pass' : '✗ Needs Review'} |
 
-## Estimated Revenue Impact
-**$${data.estimated_revenue_impact?.toLocaleString() || 0}** potential recovery
-
 ## Key Issues Identified
 ${data.key_issues?.map(issue => `
 ### ${issue.item || issue.category}
@@ -236,7 +234,7 @@ ${data.corrections?.map(c => `
         ) : (
           <div className="space-y-6">
             {/* AI Audit Report Assistant */}
-            <AIAuditReportAssistant 
+            <AIAuditReportAssistant
               audit={audit}
               onUpdateFindings={(findings) => setAdditionalFindings(findings)}
               onAddRecommendations={(recs) => setRecommendations(recs)}
@@ -250,7 +248,7 @@ ${data.corrections?.map(c => `
                   <div key={key} className="flex items-center gap-2">
                     <Checkbox
                       checked={value}
-                      onCheckedChange={(checked) => 
+                      onCheckedChange={(checked) =>
                         setIncludeSections(prev => ({ ...prev, [key]: checked }))
                       }
                     />
@@ -348,17 +346,16 @@ ${data.corrections?.map(c => `
             {/* Summary Preview */}
             <Alert className="bg-blue-50 border-blue-200">
               <AlertDescription className="text-blue-800 text-sm">
-                <strong>Report Preview:</strong> {audit.patient_name} | 
-                Overall: {audit.overall_score}% | 
-                {audit.key_issues?.length || 0} issues | 
-                ${audit.estimated_revenue_impact?.toLocaleString() || 0} revenue impact
+                <strong>Report Preview:</strong> {audit.patient_name} |
+                Overall: {audit.overall_score}% |
+                {audit.key_issues?.length || 0} issues
               </AlertDescription>
             </Alert>
 
             <DialogFooter>
               <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button 
-                onClick={generateReport} 
+              <Button
+                onClick={generateReport}
                 disabled={ai.loading}
                 className="bg-blue-600 hover:bg-blue-700"
               >

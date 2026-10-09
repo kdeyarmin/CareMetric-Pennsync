@@ -1,67 +1,91 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/testUtils';
 
-const { patientList, patientUpdate, visitList, visitFilter } = vi.hoisted(() => ({
-  patientList: vi.fn(),
-  patientUpdate: vi.fn(),
-  visitList: vi.fn(),
-  visitFilter: vi.fn(),
+const { invoke, entityAccess, scopes } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  entityAccess: vi.fn(),
+  scopes: { current: null },
 }));
 
-vi.mock('@/api/base44Client', () => {
-  const patient = {
-    list: patientList,
-    // Kept for page-level roster/query compatibility; paused merge controls
-    // must never reach this mutation-oriented lookup path.
-    filter: vi.fn(async (query) => {
-      const rows = await patientList();
-      if (query && 'id' in query) return (rows || []).filter((r) => r.id === query.id);
-      return [];
-    }),
-    update: patientUpdate,
-  };
-  const visit = { list: visitList, filter: visitFilter, update: vi.fn(async () => ({})) };
-  const generic = { list: vi.fn(async () => []), filter: vi.fn(async () => []), update: vi.fn(async () => ({})) };
-  const entities = new Proxy(
-    {},
-    {
-      get: (_t, name) => {
-        if (name === 'Patient') return patient;
-        if (name === 'Visit') return visit;
-        return generic;
-      },
-    }
-  );
-  return {
-    base44: { entities, auth: { me: async () => ({ email: 'admin@x.com', role: 'admin' }) } },
-  };
-});
+vi.mock('@/api/base44Client', () => ({
+  base44: {
+    functions: { invoke },
+    entities: new Proxy({}, { get: (_t, name) => entityAccess(name) }),
+    auth: { me: async () => ({ id: 'admin-1', email: 'admin@agency.test', role: 'user' }) },
+  },
+}));
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+const DUPLICATES = Object.freeze([
+  { id: 'p1', first_name: 'John', last_name: 'Smith', medical_record_number: 'M1', date_of_birth: '1950-01-01', status: 'active' },
+  { id: 'p2', first_name: 'John', last_name: 'Smith', medical_record_number: 'M1', date_of_birth: '1950-01-01', status: 'active' },
+]);
+const EMPTY = Object.freeze([]);
+
+// The hooks are the authorized broker boundary; the page receives their
+// settled results. Stable objects, because the page keys its scan off them.
+vi.mock('@/hooks/useScopedPatients', () => ({
+  useScopedPatients: () => scopes.current.patients,
+  excludeArchived: (rows) => rows.filter((row) => !row.is_archived),
+}));
+vi.mock('@/hooks/useAuthorizedVisits', () => ({
+  useAuthorizedVisits: () => scopes.current.visits,
+}));
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
 
 import DuplicatePatients from './DuplicatePatients';
 
-const DUPLICATES = [
-  { id: 'p1', first_name: 'John', last_name: 'Smith', medical_record_number: 'M1', date_of_birth: '1950-01-01', status: 'active', is_archived: false },
-  { id: 'p2', first_name: 'John', last_name: 'Smith', medical_record_number: 'M1', date_of_birth: '1950-01-01', status: 'active', is_archived: false },
-];
+function scopeFor(tenantRole) {
+  const tenantScope = Object.freeze({
+    user_id: 'admin-1', agency_id: 'agency-a', membership_id: 'm-1', membership_version: 1, tenant_role: tenantRole,
+  });
+  return {
+    patients: { isSuccess: true, isPending: false, isError: false, data: DUPLICATES, tenantScope },
+    visits: { isSuccess: true, isPending: false, isError: false, data: EMPTY, tenantScope },
+  };
+}
 
 describe('DuplicatePatients page', () => {
   beforeEach(() => {
-    patientList.mockReset().mockResolvedValue(DUPLICATES);
-    patientUpdate.mockReset().mockResolvedValue({});
-    visitList.mockReset().mockResolvedValue([]);
-    visitFilter.mockReset().mockResolvedValue([{ id: 'v1', patient_id: 'p2' }]);
+    invoke.mockReset();
+    entityAccess.mockReset();
   });
 
-  it('renders a pause notice without loading patient or visit data', () => {
+  it('finds the duplicate group and merges it through the broker for an agency administrator', async () => {
+    scopes.current = scopeFor('agency_admin');
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true, complete: true, keep_id: 'p1', merged_ids: ['p2'], incomplete: [],
+        reassigned: { 'Visit.patient_id': 2 },
+      },
+    });
     renderWithProviders(<DuplicatePatients />);
-    expect(screen.getByText(/No patient or visit data is loaded/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument();
-    expect(patientList).not.toHaveBeenCalled();
-    expect(visitList).not.toHaveBeenCalled();
-    expect(visitFilter).not.toHaveBeenCalled();
-    expect(patientUpdate).not.toHaveBeenCalled();
+
+    await screen.findByText(/Duplicate Group 1/);
+    const keepButtons = screen.getAllByRole('button', { name: /Keep & merge others/i });
+    expect(keepButtons[0]).toBeEnabled();
+    fireEvent.click(keepButtons[0]);
+    fireEvent.click(await screen.findByRole('button', { name: /^Merge$/ }));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    expect(invoke).toHaveBeenCalledWith('deduplicatePatients', {
+      action: 'merge', keep_id: 'p1', duplicate_ids: ['p2'], agency_id: 'agency-a',
+    });
+    await waitFor(() => expect(screen.queryByText(/Duplicate Group 1/)).not.toBeInTheDocument());
+    expect(entityAccess).not.toHaveBeenCalled();
+  });
+
+  it('lets other roles review duplicates but not merge them', async () => {
+    scopes.current = scopeFor('clinician');
+    renderWithProviders(<DuplicatePatients />);
+
+    await screen.findByText(/Duplicate Group 1/);
+    for (const button of screen.getAllByRole('button', { name: /Keep & merge others/i })) {
+      expect(button).toBeDisabled();
+    }
+    expect(screen.getByRole('button', { name: /Merge all duplicates/i })).toBeDisabled();
+    expect(screen.getByText(/Only agency administrators and managers can merge/i)).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

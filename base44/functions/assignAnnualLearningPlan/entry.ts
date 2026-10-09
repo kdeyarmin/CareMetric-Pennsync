@@ -195,7 +195,9 @@ Deno.serve(async (req) => {
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     let candidates = allUsers.filter((candidate) => candidate.email && candidate.role !== 'admin');
 
-    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
+    // Every non-super-admin caller is confined to their verified agency, so
+    // caller-supplied userEmails can never reach staff in another agency.
+    if (user.account_type !== 'super_admin') {
       if (!user.agency_name) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }

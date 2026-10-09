@@ -149,12 +149,17 @@ test('a configured logo is drawn, and nothing is fetched to draw it', async () =
 
 test('the email action is refused with the original s paused answer, before any render', async () => {
   const handler = serve();
-  let response = await handler(post(clientDownload({ action: 'email', patientEmail: 'patient@example.invalid' })));
+  // No address is asked for: the original derives the recipient from the
+  // authenticated caller, so the paused send is the whole answer.
+  let response = await handler(post(clientDownload({ action: 'email' })));
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { success: false, error: 'OUTBOUND_DELIVERY_RELEASE_PAUSED', retryable: false });
-  response = await handler(post(clientDownload({ action: 'email' })));
+  // And a caller that supplies one is refused rather than quietly ignored —
+  // the narrowing recorded on HANDOUT_FIELDS. This fires BEFORE the pause,
+  // because `exactObject` runs first, so it is the unknown-key answer.
+  response = await handler(post(clientDownload({ action: 'email', patientEmail: 'patient@example.invalid' })));
   assert.equal(response.status, 400);
-  assert.equal((await response.json()).error, 'PATIENT_EMAIL_REQUIRED');
+  assert.equal((await response.json()).error, 'INVALID_PARAMS');
 });
 
 test('what the original could not render is refused by name', async () => {

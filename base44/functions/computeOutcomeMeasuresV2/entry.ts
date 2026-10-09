@@ -57,11 +57,13 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-// Source deployment remains fail-closed until an environment is explicitly
-// approved for outcome validation. The scheduler automation is attached only
-// to the tenant-aware dispatcher and remains inactive by default.
+// Released by the owner on 2026-10-08 ("turn everything on"). The worker runs
+// by default; an operator can stop the whole outcome pipeline without a deploy
+// by setting OUTCOME_PIPELINE_RELEASE=paused. Authority is unchanged: only the
+// server-held secret or a short-lived capability signed by it reaches the
+// service-role work below, and every run names exactly one agency.
 const OUTCOME_COMPUTATION_ENABLED = () =>
-  String(Deno.env.get('OUTCOME_PIPELINE_RELEASE') || '').trim() === 'enabled-v1';
+  String(Deno.env.get('OUTCOME_PIPELINE_RELEASE') || '').trim() !== 'paused';
 
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
@@ -1049,7 +1051,7 @@ async function releaseOutcomeWindowClaim(entities, ownership) {
 Deno.serve(async (req) => {
   if (!OUTCOME_COMPUTATION_ENABLED()) {
     return Response.json(
-      { error: 'Outcome computation is paused until the pipeline release is enabled' },
+      { error: 'Outcome computation is paused by the operator (OUTCOME_PIPELINE_RELEASE=paused)' },
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
     );
   }

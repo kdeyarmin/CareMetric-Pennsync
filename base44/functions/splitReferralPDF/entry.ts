@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     }
 
     // Use AI to analyze the PDF and detect if it contains multiple referrals
-    const analysisResult = await base44.integrations.Core.InvokeLLM({
+    const analysisResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `Analyze this PDF document to determine if it contains multiple separate referral documents/packets.
 

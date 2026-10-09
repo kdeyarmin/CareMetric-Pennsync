@@ -22,7 +22,12 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
   // history rather than suppressing the automatic run for the life of the mount.
   const { data: historicalOASIS = [], isFetched: historicalOASISLoaded } = useQuery({
     queryKey: ['historicalOASIS', patientId],
-    queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 50),
+    // Through listOASISUploads: the caller's own uploads plus, for a chart they
+    // may open (or their whole agency, for a lead), the care team's — decided
+    // server-side from trusted membership, never from the profile.
+    queryFn: async () => (await base44.functions.invoke('listOASISUploads', {
+      patientId, sort: '-created_date', limit: 50,
+    }))?.data?.uploads || [],
     enabled: !!analysisResults && !!patientId
   });
 
@@ -114,8 +119,13 @@ COMPLIANCE ANALYSIS REQUIREMENTS:
 3. TAILORED REMEDIATION:
    - Provide patient-specific recommendations based on diagnosis, functional status, and clinical context
    - Suggest exact documentation language that satisfies regulatory requirements
-   - Prioritize fixes by audit risk level and revenue impact
+   - Prioritize fixes by audit risk level and patient-safety impact
    - Include preventive measures to avoid similar issues in future assessments
+
+HARD RULES — these override anything else in this prompt:
+- NEVER state, suggest, recommend or imply an OASIS response, score or code, and never propose "rescoring" an item. The clinician selects every response from the wording in their EMR.
+- NEVER consider payment, reimbursement, revenue, PDGM or case-mix impact.
+- Risks here are DOCUMENTATION and COMPLIANCE risks only — never a prediction about the patient's clinical course.
 
 DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
         response_json_schema: {
@@ -205,7 +215,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                 improvement_areas: { type: "array", items: { type: "string" } },
                 deterioration_areas: { type: "array", items: { type: "string" } },
                 stability_indicators: { type: "array", items: { type: "string" } },
-                predicted_future_risks: { type: "array", items: { type: "string" } }
+                predicted_future_risks: { type: "array", items: { type: "string" }, description: "Documentation or compliance gaps likely to recur if not addressed — never a clinical prediction" }
               }
             },
             action_plan: {
@@ -645,7 +655,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
 
                 {complianceReport.trend_analysis.predicted_future_risks?.length > 0 && (
                   <div className="bg-orange-50 p-3 rounded border border-orange-200 mt-4">
-                    <p className="text-sm font-semibold text-orange-900 mb-2">🔮 Predicted Future Risks:</p>
+                    <p className="text-sm font-semibold text-orange-900 mb-2">Compliance Risks to Watch:</p>
                     <ul className="space-y-1">
                       {complianceReport.trend_analysis.predicted_future_risks.map((risk, idx) => (
                         <li key={idx} className="text-sm text-orange-800">• {risk}</li>

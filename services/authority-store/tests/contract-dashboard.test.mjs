@@ -15,8 +15,13 @@ import { applyRecordMigrations } from './record-migrations.mjs';
  * decision, not a transcription", and the test below is what unparked it: the
  * projection is re-derived from the dashboard's OWN consumers, so it cannot go
  * stale silently. It also records what that derivation found — four fields
- * those widgets read that exist in neither store, one of which makes a
- * priority that can never fire and one of which makes another over-report.
+ * those widgets read that exist in neither store, one of which made a priority
+ * that could never fire and one of which made another over-report.
+ *
+ * The first of those two has since been removed from the product rather than
+ * repaired: the high-risk-patients tile and the two dashboard risk widgets it
+ * shared a read with are gone. That changes no column here, because their read
+ * never came through this payload.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const MIGRATIONS = 'services/authority-store/supabase/record-migrations/';
@@ -161,10 +166,11 @@ test('the projection is what the dashboard\'s own widgets read', async () => {
     [...shapes.visits].sort(), 'completed visits are visits');
 });
 
-test('the four absent fields, and the two defects that are now fixed', async () => {
+test('the four absent fields, and the two defects — one fixed, one removed', async () => {
   // This test recorded four fields the widgets read that exist in neither
-  // store. Two of them were defects and both are now fixed; the columns are
-  // still absent, which is why the fixes do not reach for them.
+  // store. Two of them were defects: one is fixed and one has had its whole
+  // tile deleted from the product. The columns are still absent either way,
+  // which is why neither outcome reaches for them.
   const priorities = readFileSync(resolve(repository,
     'src/components/dashboard/todayPriorities.js'), 'utf8');
   const store = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
@@ -176,12 +182,20 @@ test('the four absent fields, and the two defects that are now fixed', async () 
 
   // D73's rule: a check that reads a file for an ABSENT name has to say
   // whether it means absent from the code or from the page. These mean the
-  // code, and the module's own comments name all three dead spellings while
+  // code, and the module's own comments name the dead spellings while
   // explaining why they went — so strip the comments first, and prove the
   // stripper bit by asserting the prose still carries what the code does not.
+  //
+  // The anchor is `note_id` and not `risk_level`. It used to be the latter,
+  // which worked while the high-risk priority was merely FIXED and its comment
+  // still named all three dead spellings. That priority has since been removed
+  // from the product outright, along with the two dashboard risk widgets it
+  // shared a read with, so its comment went too and `risk_level` no longer
+  // appears in this module at all. `note_id` is DEFECT TWO's, whose priority is
+  // still here and still carries its explanation.
   const code = priorities.replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-  assert.ok(priorities.includes('risk_level'), 'the prose explains the removal');
+  assert.ok(priorities.includes('note_id'), 'the prose explains the removal');
   assert.ok(code.length > 0.5 * priorities.length, 'the stripper kept the code');
 
   // STILL ABSENT, all four. Nothing below invents a column.
@@ -196,17 +210,26 @@ test('the four absent fields, and the two defects that are now fixed', async () 
   assert.equal(answer.patients.some(row => Object.hasOwn(row, 'risk_level')), false);
   assert.equal(answer.visits.some(row => Object.hasOwn(row, 'note_id')), false);
 
-  // DEFECT ONE, fixed. "N high-risk patients to review" read three spellings
-  // of a column that does not exist, so it could never fire. It now reads
-  // PatientAlert, which is what the product writes and what
-  // HighRiskPatientsWidget on this same dashboard already reads. The
-  // contract is not the answer here and projects nothing new: the alerts
-  // come through `getScopedPatientAlerts`, not through this payload.
+  // DEFECT ONE, REMOVED rather than fixed, and the distinction matters for
+  // what this contract owes. "N high-risk patients to review" read three
+  // spellings of a column that does not exist, so it could never fire. It was
+  // repointed at PatientAlert for a while; the tile has since been deleted
+  // from the product together with the two dashboard risk widgets
+  // (HospitalizationRiskWidget, HighRiskPatientsWidget) that shared its read.
+  //
+  // Either way this contract was never the answer and still projects nothing
+  // for it: the alerts came through `getScopedPatientAlerts`, not through this
+  // payload, which is why a deletion in the frontend changes no column here.
+  // The three dead spellings are still absent from the module and still absent
+  // from the store, which is what the columns check above pins.
   for (const dead of ['risk_level', 'riskLevel', 'hospitalization_risk']) {
     assert.equal(code.includes(dead), false,
       `the priority no longer reads patient.${dead}`);
   }
-  assert.match(priorities, /highRiskPatientIds\(patientAlerts\)/);
+  assert.equal(/high-risk-patients/.test(priorities), false,
+    'the high-risk tile was removed from the priority builder');
+  assert.equal(/patientAlerts/.test(priorities), false,
+    'and the builder no longer takes the alert input it read');
 
   // DEFECT TWO, fixed. `!visit.note_id` was always true, so the tile counted
   // every completed visit. It now asks `nurse_notes` on the Base44 path and

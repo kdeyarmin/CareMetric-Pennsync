@@ -11,13 +11,12 @@ import {
   Stethoscope,
   Shield,
   BarChart3,
-  TrendingUp,
   Eye,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
-import { isAdminView } from "@/lib/roles";
+import { isOasisLeadView } from "@/lib/oasisRoles";
 import LoadingState from "@/components/ui/LoadingState";
 import OasisScopeNotice from "@/components/oasis/OasisScopeNotice";
 
@@ -27,7 +26,6 @@ const OASISReview = lazy(() => import("@/components/hub-tabs/OASISReview"));
 const OASISClinicalReview = lazy(() => import("@/components/hub-tabs/OASISClinicalReview"));
 const OASISComplianceReview = lazy(() => import("@/components/hub-tabs/OASISComplianceReview"));
 const OASISDocumentationReview = lazy(() => import("@/components/hub-tabs/OASISDocumentationReview"));
-const OASISRevenueAnalysis = lazy(() => import("@/components/hub-tabs/OASISRevenueAnalysis"));
 const OASISAnalyticsDashboard = lazy(() => import("@/components/hub-tabs/OASISAnalyticsDashboard"));
 const OASISAuditDashboard = lazy(() => import("@/components/hub-tabs/OASISAuditDashboard"));
 const OutcomeMeasuresSection = lazy(() => import("@/components/oasis/OutcomeMeasuresSection"));
@@ -36,14 +34,17 @@ const OutcomeMeasuresSection = lazy(() => import("@/components/oasis/OutcomeMeas
 // ?tab= deep-link so the retired standalone pages (Assessment, Analyzer, Review,
 // Clinical, Compliance, Documentation, Analytics, Audit) redirect to the
 // right tab. "assessment" (completing an OASIS) is the default landing tab.
-// "audit" is admin-only and intentionally part of the set so admins can deep-link
-// to it; non-admins who request it fall through to the default tab below.
-const TAB_KEYS = ["assessment", "analyze", "review", "clinical", "quality", "revenue", "analytics", "audit"];
-// Tabs whose source pages were admin-only — gated to admins (defense in depth;
-// server RLS remains the real boundary). Non-admins requesting these via ?tab=
-// fall through to the default tab. Revenue (AI OASIS revenue-uplift review) is
-// admin-only and intentionally hidden from nurses.
-const ADMIN_TABS = ["revenue", "analytics", "audit"];
+// "analytics" and "audit" are agency-lead tabs and intentionally part of the set
+// so leads can deep-link to them; anyone else who requests one falls through to
+// the default tab below.
+const TAB_KEYS = ["assessment", "analyze", "review", "clinical", "quality", "analytics", "audit"];
+// Agency-lead tabs: the platform owner, or an active agency_admin or manager
+// membership from the validated tenant context (never a profile field). This
+// is a visibility control; the OASIS record broker and the outcome reader
+// refuse a non-lead on their own authority. (The former Revenue tab — an AI
+// OASIS revenue-uplift review — was removed with the PDGM payment features; a
+// stale ?tab=revenue now resolves to the default tab like any unknown key.)
+const LEAD_TABS = ["analytics", "audit"];
 
 const tabLoader = <LoadingState className="py-12" />;
 
@@ -57,19 +58,19 @@ export default function OASISCenter() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = isAdminView(currentUser);
+  const isLead = isOasisLeadView(currentUser);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   // Resolve the active tab, defaulting to "assessment". The audit tab is
-  // admin-only, so a non-admin requesting ?tab=audit resolves to the default tab.
+  // lead-only, so anyone else requesting ?tab=audit resolves to the default tab.
   let activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "assessment";
-  // Wait for auth before canonicalizing an admin tab away: on first render
-  // currentUser is undefined (isAdmin false), so an admin deep-linking to e.g.
-  // ?tab=revenue must keep that tab until the user query resolves — otherwise the
-  // effect below would strip the param and drop them on Assessment. The admin-only
+  // Wait for auth before canonicalizing a lead tab away: on first render
+  // currentUser is undefined (isLead false), so a lead deep-linking to e.g.
+  // ?tab=audit must keep that tab until the user query resolves — otherwise the
+  // effect below would strip the param and drop them on Assessment. The lead-only
   // tab *content* stays gated regardless.
-  if (!isUserLoading && ADMIN_TABS.includes(activeTab) && !isAdmin) {
+  if (!isUserLoading && LEAD_TABS.includes(activeTab) && !isLead) {
     activeTab = "assessment";
   }
 
@@ -81,7 +82,7 @@ export default function OASISCenter() {
   };
 
   // Converge on the canonical URL: strip a redundant or unknown ?tab= (e.g. a
-  // bookmarked ?tab=assessment, a stale tab key, or ?tab=audit for a non-admin) so
+  // bookmarked ?tab=assessment, a stale tab key, or ?tab=audit for a non-lead) so
   // the default tab is plain /OASISCenter. Only fires when the param resolved to
   // the default tab, so a valid deep-link like ?tab=review is left untouched.
   useEffect(() => {
@@ -131,15 +132,11 @@ export default function OASISCenter() {
               <Shield className="h-4 w-4 mr-2" />
               Compliance &amp; Documentation
             </TabsTrigger>
-            {isAdmin && (
+            {isLead && (
               <>
                 <TabsTrigger value="analytics" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
                   <BarChart3 className="h-4 w-4 mr-2" />
                   Analytics
-                </TabsTrigger>
-                <TabsTrigger value="revenue" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  Revenue
                 </TabsTrigger>
                 <TabsTrigger value="audit" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
                   <Eye className="h-4 w-4 mr-2" />
@@ -177,18 +174,19 @@ export default function OASISCenter() {
         <TabsContent value="quality">
           <Suspense fallback={tabLoader}>
             <div className="space-y-6">
-              {isAdmin && (
-                <>
-                  <section className="space-y-4">
-                    <h2 className="text-lg font-semibold text-slate-900">Outcome Measures</h2>
-                    <OutcomeMeasuresSection />
-                  </section>
-                  <section className="space-y-4">
-                    <h2 className="text-lg font-semibold text-slate-900">Compliance Review</h2>
-                    <OASISComplianceReview analysisHandoff={analysisHandoff} />
-                  </section>
-                </>
+              {isLead && (
+                <section className="space-y-4">
+                  <h2 className="text-lg font-semibold text-slate-900">Outcome Measures</h2>
+                  <OutcomeMeasuresSection />
+                </section>
               )}
+              {/* Compliance review reads only the analysis handed off from the
+                  Analyze tab and that chart's prior uploads through the scoped
+                  listOASISUploads, so every clinician can use it. */}
+              <section className="space-y-4">
+                <h2 className="text-lg font-semibold text-slate-900">Compliance Review</h2>
+                <OASISComplianceReview analysisHandoff={analysisHandoff} />
+              </section>
               <section className="space-y-4">
                 <h2 className="text-lg font-semibold text-slate-900">Documentation Review</h2>
                 <OASISDocumentationReview analysisHandoff={analysisHandoff} />
@@ -197,7 +195,7 @@ export default function OASISCenter() {
           </Suspense>
         </TabsContent>
 
-        {isAdmin && (
+        {isLead && (
           <>
             <TabsContent value="analytics">
               <Suspense fallback={tabLoader}>
@@ -208,12 +206,6 @@ export default function OASISCenter() {
             <TabsContent value="audit">
               <Suspense fallback={tabLoader}>
                 <OASISAuditDashboard />
-              </Suspense>
-            </TabsContent>
-
-            <TabsContent value="revenue">
-              <Suspense fallback={tabLoader}>
-                <OASISRevenueAnalysis />
               </Suspense>
             </TabsContent>
           </>

@@ -1,7 +1,7 @@
--- The record store: 164 tables, 2580 columns,
+-- The record store: 170 tables, 2715 columns,
 -- under an owner that row level security actually binds.
 --
--- 156 are carried entities. 8 are PAUSED entities
+-- 156 are carried entities. 14 are PAUSED entities
 -- carrying their schema under D7's "their schemas and data still migrate" clause
 -- (`SCHEMA_ONLY` in the generator). A table here is not an access path: those
 -- entities are served by no capability and by no generic family, so the only way
@@ -969,6 +969,42 @@ alter table "pennsync_records"."billing" enable row level security;
 alter table "pennsync_records"."billing" force row level security;
 revoke all on "pennsync_records"."billing" from public;
 
+create table "pennsync_records"."call_log" (
+  "source_app_id" text not null,
+  "id" text not null,
+  "created_date" timestamptz,
+  "updated_date" timestamptz,
+  "created_by" text,
+  "direction" text,
+  "from_number" text,
+  "to_number" text,
+  "displayed_number" text,
+  "nurse_email" text,
+  "patient_id" text,
+  "call_mode" text,
+  "status" text,
+  "provider_call_id" text,
+  "duration_seconds" double precision,
+  "failure_reason" text,
+  "has_voicemail" boolean default false,
+  "voicemail_url" text,
+  "voicemail_transcription" text,
+  "voicemail_duration_seconds" double precision,
+  "voicemail_notified" boolean default false,
+  "sent_by" text,
+  "note" text,
+  "disposition" text,
+  "agency_id" text not null,
+  constraint "call_log_pkey" primary key ("source_app_id", "id"),
+  constraint "call_log_direction_allowed" check ("direction" is null or "direction" in ('inbound', 'outbound')),
+  constraint "call_log_call_mode_allowed" check ("call_mode" is null or "call_mode" in ('masked_bridge', 'office_transfer', 'after_hours_transfer', 'off_duty_transfer', 'voicemail', 'unresolved', 'outbound_clicktocall')),
+  constraint "call_log_status_allowed" check ("status" is null or "status" in ('initiated', 'ringing', 'in_progress', 'completed', 'failed')),
+  constraint "call_log_disposition_allowed" check ("disposition" is null or "disposition" in ('resolved', 'follow_up_needed', 'callback_requested', 'left_voicemail', 'no_action'))
+);
+alter table "pennsync_records"."call_log" enable row level security;
+alter table "pennsync_records"."call_log" force row level security;
+revoke all on "pennsync_records"."call_log" from public;
+
 create table "pennsync_records"."care_coordination_alert" (
   "source_app_id" text not null,
   "id" text not null,
@@ -1858,6 +1894,170 @@ create table "pennsync_records"."facility_documentation_rule" (
 alter table "pennsync_records"."facility_documentation_rule" enable row level security;
 alter table "pennsync_records"."facility_documentation_rule" force row level security;
 revoke all on "pennsync_records"."facility_documentation_rule" from public;
+
+create table "pennsync_records"."fax_contact" (
+  "source_app_id" text not null,
+  "id" text not null,
+  "created_date" timestamptz,
+  "updated_date" timestamptz,
+  "created_by" text,
+  "name" text,
+  "fax_number" text,
+  "company" text,
+  "organization" text,
+  "department" text,
+  "notes" text,
+  "user_email" text,
+  "agency_id" text,
+  "is_shared" boolean default false,
+  "is_favorite" boolean default false,
+  constraint "fax_contact_pkey" primary key ("source_app_id", "id")
+);
+alter table "pennsync_records"."fax_contact" enable row level security;
+alter table "pennsync_records"."fax_contact" force row level security;
+revoke all on "pennsync_records"."fax_contact" from public;
+
+create table "pennsync_records"."fax_log" (
+  "source_app_id" text not null,
+  "id" text not null,
+  "created_date" timestamptz,
+  "updated_date" timestamptz,
+  "created_by" text,
+  "agency_id" text,
+  "referral_id" text,
+  "document_id" text,
+  "document_binding_id" text,
+  "document_binding_version" bigint,
+  "document_content_sha256" text,
+  "sent_by_user_id" text,
+  "sent_by_membership_id" text,
+  "sent_by_membership_version" bigint,
+  "from_number" text,
+  "to_number" text,
+  "to_name" text,
+  "document_url" text,
+  "document_name" text,
+  "status" text default 'queued',
+  "provider_submission_state" text,
+  "provider_submission_attempt_id" text,
+  "provider_accepted_at" timestamptz,
+  "provider_terminal_status" text,
+  "provider_terminal_at" timestamptz,
+  "provider" text,
+  "integration_secret_id" text,
+  "integration_secret_updated_at" timestamptz,
+  "fax_connection_id" text,
+  "sender_telecom_binding_id" text,
+  "sender_telecom_binding_version" bigint,
+  "sender_provider_number_id" text,
+  "sender_settings_id" text,
+  "sender_settings_updated_at" timestamptz,
+  "telnyx_fax_id" text,
+  "pages" double precision,
+  "cover_page_details" jsonb,
+  "failure_reason" text,
+  "patient_id" text,
+  "sent_by" text,
+  "priority" text default 'normal',
+  "retry_count" double precision default 0,
+  "retry_of_fax_log_id" text,
+  "scheduled_fax_id" text,
+  "batch_request_key" text,
+  "batch_recipient_key" text,
+  "retry_generation" bigint default 0,
+  "next_retry_at" timestamptz,
+  "automatic_retry_queue_attempts" bigint default 0,
+  "automatic_retry_last_error_code" text,
+  "automatic_retry_quarantined_at" timestamptz,
+  "status_poll_last_attempt_at" timestamptz,
+  "status_poll_next_attempt_at" timestamptz,
+  "status_poll_attempt_count" bigint default 0,
+  "status_poll_last_error_code" text,
+  "status_poll_quarantined_at" timestamptz,
+  "retry_recovery_quarantined_at" timestamptz,
+  "retry_recovery_last_error_code" text,
+  "retry_recovery_last_attempt_at" timestamptz,
+  "retry_recovery_next_attempt_at" timestamptz,
+  "notification_recovery_quarantined_at" timestamptz,
+  "notification_recovery_last_error_code" text,
+  "notification_recovery_last_attempt_at" timestamptz,
+  "notification_recovery_next_attempt_at" timestamptz,
+  "final_failure_notified" boolean default false,
+  "estimated_cost" double precision,
+  "delivery_confirmation_sent" boolean default false,
+  "delivery_notify_claimed_by" text,
+  "delivery_notify_claimed_at" timestamptz,
+  "delivery_notify_publication_state" text,
+  "failure_notify_claimed_by" text,
+  "failure_notify_claimed_at" timestamptz,
+  "failure_notify_publication_state" text,
+  "ocr_text" text,
+  "ocr_processed" boolean default false,
+  "ocr_confidence" double precision,
+  "ocr_failure_reason" text,
+  "retry_claimed_by" text,
+  "retry_claimed_at" timestamptz,
+  "retry_claimed_by_user_id" text,
+  "retry_submission_state" text,
+  constraint "fax_log_pkey" primary key ("source_app_id", "id"),
+  constraint "fax_log_status_allowed" check ("status" is null or "status" in ('queued', 'sending', 'sent', 'delivered', 'failed', 'submission_unknown', 'retrying', 'retried')),
+  constraint "fax_log_provider_submission_state_allowed" check ("provider_submission_state" is null or "provider_submission_state" in ('pending', 'accepted', 'rejected', 'indeterminate')),
+  constraint "fax_log_provider_terminal_status_allowed" check ("provider_terminal_status" is null or "provider_terminal_status" in ('delivered', 'failed')),
+  constraint "fax_log_provider_allowed" check ("provider" is null or "provider" in ('telnyx')),
+  constraint "fax_log_priority_allowed" check ("priority" is null or "priority" in ('urgent', 'normal', 'low')),
+  constraint "fax_log_delivery_notify_publication_state_allowed" check ("delivery_notify_publication_state" is null or "delivery_notify_publication_state" in ('ready', 'started')),
+  constraint "fax_log_failure_notify_publication_state_allowed" check ("failure_notify_publication_state" is null or "failure_notify_publication_state" in ('ready', 'started')),
+  constraint "fax_log_retry_submission_state_allowed" check ("retry_submission_state" is null or "retry_submission_state" in ('ready', 'started'))
+);
+alter table "pennsync_records"."fax_log" enable row level security;
+alter table "pennsync_records"."fax_log" force row level security;
+revoke all on "pennsync_records"."fax_log" from public;
+
+create table "pennsync_records"."fax_retry_config" (
+  "source_app_id" text not null,
+  "id" text not null,
+  "created_date" timestamptz,
+  "updated_date" timestamptz,
+  "created_by" text,
+  "agency_id" text,
+  "max_retries" bigint default 3,
+  "retry_delay_minutes" double precision default 15,
+  "auto_retry_enabled" boolean default true,
+  "priority_multiplier" jsonb,
+  "notify_on_final_failure" boolean default true,
+  "is_active" boolean default true,
+  "agency_name" text,
+  constraint "fax_retry_config_pkey" primary key ("source_app_id", "id")
+);
+alter table "pennsync_records"."fax_retry_config" enable row level security;
+alter table "pennsync_records"."fax_retry_config" force row level security;
+revoke all on "pennsync_records"."fax_retry_config" from public;
+create unique index "fax_retry_config_active_agency_unique" on "pennsync_records"."fax_retry_config" ("source_app_id", "agency_id") where "agency_id" is not null and "agency_id" <> '' and "is_active" is not false;
+
+create table "pennsync_records"."fax_template" (
+  "source_app_id" text not null,
+  "id" text not null,
+  "created_date" timestamptz,
+  "updated_date" timestamptz,
+  "created_by" text,
+  "name" text,
+  "description" text,
+  "cover_page_data" jsonb,
+  "recipient_name" text,
+  "recipient_fax_number" text,
+  "recipient_organization" text,
+  "document_url" text,
+  "document_name" text,
+  "subject" text,
+  "notes" text,
+  "is_default" boolean default false,
+  "use_count" double precision default 0,
+  "agency_id" text not null,
+  constraint "fax_template_pkey" primary key ("source_app_id", "id")
+);
+alter table "pennsync_records"."fax_template" enable row level security;
+alter table "pennsync_records"."fax_template" force row level security;
+revoke all on "pennsync_records"."fax_template" from public;
 
 create table "pennsync_records"."feature_package" (
   "source_app_id" text not null,
@@ -3795,6 +3995,27 @@ alter table "pennsync_records"."personnel_credential" enable row level security;
 alter table "pennsync_records"."personnel_credential" force row level security;
 revoke all on "pennsync_records"."personnel_credential" from public;
 
+create table "pennsync_records"."phone_number" (
+  "source_app_id" text not null,
+  "id" text not null,
+  "created_date" timestamptz,
+  "updated_date" timestamptz,
+  "created_by" text,
+  "e164" text,
+  "label" text,
+  "status" text default 'available',
+  "assigned_to_email" text,
+  "twilio_phone_number_sid" text,
+  "notes" text,
+  "creation_claim_token" text,
+  "agency_id" text not null,
+  constraint "phone_number_pkey" primary key ("source_app_id", "id"),
+  constraint "phone_number_status_allowed" check ("status" is null or "status" in ('available', 'assigned', 'reserved'))
+);
+alter table "pennsync_records"."phone_number" enable row level security;
+alter table "pennsync_records"."phone_number" force row level security;
+revoke all on "pennsync_records"."phone_number" from public;
+
 create table "pennsync_records"."physician" (
   "source_app_id" text not null,
   "id" text not null,
@@ -5265,6 +5486,14 @@ create policy "billing_update" on "pennsync_records"."billing" for update using 
 
 create policy "billing_delete" on "pennsync_records"."billing" for delete using ("billing"."source_app_id" = "pennsync_records".deployment_app() and exists (select 1 from "pennsync_records"."patient" t1 where t1."source_app_id" = "billing"."source_app_id" and t1."id" = "billing"."patient_id" and t1."agency_id" in (select "pennsync_records".caller_agencies()) and ("pennsync_records".caller_opens_every_chart(t1."agency_id") or t1."id" in (select "pennsync_records".caller_assigned_patients(t1."agency_id")))));
 
+create policy "call_log_read" on "pennsync_records"."call_log" for select using ("call_log"."source_app_id" = "pennsync_records".deployment_app() and "call_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("call_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("call_log"."agency_id") or "call_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("call_log"."agency_id"))));
+
+create policy "call_log_insert" on "pennsync_records"."call_log" for insert with check ("call_log"."source_app_id" = "pennsync_records".deployment_app() and "call_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("call_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("call_log"."agency_id") or "call_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("call_log"."agency_id"))));
+
+create policy "call_log_update" on "pennsync_records"."call_log" for update using ("call_log"."source_app_id" = "pennsync_records".deployment_app() and "call_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("call_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("call_log"."agency_id") or "call_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("call_log"."agency_id")))) with check ("call_log"."source_app_id" = "pennsync_records".deployment_app() and "call_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("call_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("call_log"."agency_id") or "call_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("call_log"."agency_id"))));
+
+create policy "call_log_delete" on "pennsync_records"."call_log" for delete using ("call_log"."source_app_id" = "pennsync_records".deployment_app() and "call_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("call_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("call_log"."agency_id") or "call_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("call_log"."agency_id"))));
+
 create policy "care_coordination_alert_read" on "pennsync_records"."care_coordination_alert" for select using ("care_coordination_alert"."source_app_id" = "pennsync_records".deployment_app() and exists (select 1 from "pennsync_records"."patient" t1 where t1."source_app_id" = "care_coordination_alert"."source_app_id" and t1."id" = "care_coordination_alert"."patient_id" and t1."agency_id" in (select "pennsync_records".caller_agencies()) and ("pennsync_records".caller_opens_every_chart(t1."agency_id") or t1."id" in (select "pennsync_records".caller_assigned_patients(t1."agency_id")))));
 
 create policy "care_coordination_alert_insert" on "pennsync_records"."care_coordination_alert" for insert with check ("care_coordination_alert"."source_app_id" = "pennsync_records".deployment_app() and exists (select 1 from "pennsync_records"."patient" t1 where t1."source_app_id" = "care_coordination_alert"."source_app_id" and t1."id" = "care_coordination_alert"."patient_id" and t1."agency_id" in (select "pennsync_records".caller_agencies()) and ("pennsync_records".caller_opens_every_chart(t1."agency_id") or t1."id" in (select "pennsync_records".caller_assigned_patients(t1."agency_id")))));
@@ -5488,6 +5717,38 @@ create policy "facility_documentation_rule_insert" on "pennsync_records"."facili
 create policy "facility_documentation_rule_update" on "pennsync_records"."facility_documentation_rule" for update using ("facility_documentation_rule"."source_app_id" = "pennsync_records".deployment_app() and "facility_documentation_rule"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("facility_documentation_rule"."source_app_id" = "pennsync_records".deployment_app() and "facility_documentation_rule"."agency_id" in (select "pennsync_records".caller_agencies()));
 
 create policy "facility_documentation_rule_delete" on "pennsync_records"."facility_documentation_rule" for delete using ("facility_documentation_rule"."source_app_id" = "pennsync_records".deployment_app() and "facility_documentation_rule"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_contact_read" on "pennsync_records"."fax_contact" for select using ("fax_contact"."source_app_id" = "pennsync_records".deployment_app() and "fax_contact"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_contact_insert" on "pennsync_records"."fax_contact" for insert with check ("fax_contact"."source_app_id" = "pennsync_records".deployment_app() and "fax_contact"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_contact_update" on "pennsync_records"."fax_contact" for update using ("fax_contact"."source_app_id" = "pennsync_records".deployment_app() and "fax_contact"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("fax_contact"."source_app_id" = "pennsync_records".deployment_app() and "fax_contact"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_contact_delete" on "pennsync_records"."fax_contact" for delete using ("fax_contact"."source_app_id" = "pennsync_records".deployment_app() and "fax_contact"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_log_read" on "pennsync_records"."fax_log" for select using ("fax_log"."source_app_id" = "pennsync_records".deployment_app() and "fax_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("fax_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("fax_log"."agency_id") or "fax_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("fax_log"."agency_id"))));
+
+create policy "fax_log_insert" on "pennsync_records"."fax_log" for insert with check ("fax_log"."source_app_id" = "pennsync_records".deployment_app() and "fax_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("fax_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("fax_log"."agency_id") or "fax_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("fax_log"."agency_id"))));
+
+create policy "fax_log_update" on "pennsync_records"."fax_log" for update using ("fax_log"."source_app_id" = "pennsync_records".deployment_app() and "fax_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("fax_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("fax_log"."agency_id") or "fax_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("fax_log"."agency_id")))) with check ("fax_log"."source_app_id" = "pennsync_records".deployment_app() and "fax_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("fax_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("fax_log"."agency_id") or "fax_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("fax_log"."agency_id"))));
+
+create policy "fax_log_delete" on "pennsync_records"."fax_log" for delete using ("fax_log"."source_app_id" = "pennsync_records".deployment_app() and "fax_log"."agency_id" in (select "pennsync_records".caller_agencies()) and ("fax_log"."patient_id" is null or "pennsync_records".caller_opens_every_chart("fax_log"."agency_id") or "fax_log"."patient_id" in (select "pennsync_records".caller_assigned_patients("fax_log"."agency_id"))));
+
+create policy "fax_retry_config_read" on "pennsync_records"."fax_retry_config" for select using ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_retry_config_insert" on "pennsync_records"."fax_retry_config" for insert with check ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_retry_config_update" on "pennsync_records"."fax_retry_config" for update using ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_retry_config_delete" on "pennsync_records"."fax_retry_config" for delete using ("fax_retry_config"."source_app_id" = "pennsync_records".deployment_app() and "fax_retry_config"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_template_read" on "pennsync_records"."fax_template" for select using ("fax_template"."source_app_id" = "pennsync_records".deployment_app() and "fax_template"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_template_insert" on "pennsync_records"."fax_template" for insert with check ("fax_template"."source_app_id" = "pennsync_records".deployment_app() and "fax_template"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_template_update" on "pennsync_records"."fax_template" for update using ("fax_template"."source_app_id" = "pennsync_records".deployment_app() and "fax_template"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("fax_template"."source_app_id" = "pennsync_records".deployment_app() and "fax_template"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "fax_template_delete" on "pennsync_records"."fax_template" for delete using ("fax_template"."source_app_id" = "pennsync_records".deployment_app() and "fax_template"."agency_id" in (select "pennsync_records".caller_agencies()));
 
 create policy "feature_package_read" on "pennsync_records"."feature_package" for select using ("feature_package"."source_app_id" = "pennsync_records".deployment_app() and "feature_package"."agency_id" in (select "pennsync_records".caller_agencies()));
 
@@ -5986,6 +6247,14 @@ create policy "personnel_credential_insert" on "pennsync_records"."personnel_cre
 create policy "personnel_credential_update" on "pennsync_records"."personnel_credential" for update using ("personnel_credential"."source_app_id" = "pennsync_records".deployment_app() and "personnel_credential"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("personnel_credential"."source_app_id" = "pennsync_records".deployment_app() and "personnel_credential"."agency_id" in (select "pennsync_records".caller_agencies()));
 
 create policy "personnel_credential_delete" on "pennsync_records"."personnel_credential" for delete using ("personnel_credential"."source_app_id" = "pennsync_records".deployment_app() and "personnel_credential"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "phone_number_read" on "pennsync_records"."phone_number" for select using ("phone_number"."source_app_id" = "pennsync_records".deployment_app() and "phone_number"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "phone_number_insert" on "pennsync_records"."phone_number" for insert with check ("phone_number"."source_app_id" = "pennsync_records".deployment_app() and "phone_number"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "phone_number_update" on "pennsync_records"."phone_number" for update using ("phone_number"."source_app_id" = "pennsync_records".deployment_app() and "phone_number"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("phone_number"."source_app_id" = "pennsync_records".deployment_app() and "phone_number"."agency_id" in (select "pennsync_records".caller_agencies()));
+
+create policy "phone_number_delete" on "pennsync_records"."phone_number" for delete using ("phone_number"."source_app_id" = "pennsync_records".deployment_app() and "phone_number"."agency_id" in (select "pennsync_records".caller_agencies()));
 
 create policy "physician_read" on "pennsync_records"."physician" for select using ("physician"."source_app_id" = "pennsync_records".deployment_app() and "physician"."agency_id" in (select "pennsync_records".caller_agencies()));
 

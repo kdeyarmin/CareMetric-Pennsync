@@ -33,15 +33,31 @@ describe('dashboard alert data contract', () => {
     expect(dashboard).toMatch(/visits=\{alertVisits\}/);
   });
 
-  it('a failed alert read reaches the priority builder as an error', () => {
-    // getScopedPatientAlerts and getDashboardData are two reads. If only the
-    // first fails, an empty alert list is indistinguishable from no high-risk
-    // patients once it reaches buildTodayPriorities, so the tile would report
-    // all clear rather than saying it could not tell. The builder's error input
-    // therefore has to carry both.
-    expect(dashboard).toMatch(/error:\s*patientAlertsError/);
-    expect(dashboard).toMatch(/hasDataError\s*=\s*visitsError\s*\|\|\s*patientsError\s*\|\|\s*patientAlertsError/);
+  it('a failed read reaches the priority builder as an error', () => {
+    // A failed read is indistinguishable from an empty payload once it reaches
+    // buildTodayPriorities, so every tile would report all clear rather than
+    // saying it could not tell. The builder's error input therefore has to
+    // carry the dashboard read's failure.
+    //
+    // This used to require a SECOND term, patientAlertsError, because
+    // getScopedPatientAlerts was a separate read feeding the high-risk-patients
+    // tile. That tile and the two risk widgets that shared the read were
+    // removed, so getDashboardData is the page's only read and the only error
+    // there is to carry. The assertion below is anchored on hasDataError's own
+    // definition rather than on a term count, so a read added later that is not
+    // folded into it still fails here.
+    expect(dashboard).not.toMatch(/patientAlertsError/);
+    expect(dashboard).toMatch(/hasDataError\s*=\s*visitsError\s*\|\|\s*patientsError\s*;/);
     expect(dashboard).toMatch(/dashboardError=\{hasDataError\}/);
+  });
+
+  it('the removed risk widgets are not mounted and their read is gone', () => {
+    expect(dashboard).not.toMatch(/HospitalizationRiskWidget/);
+    expect(dashboard).not.toMatch(/HighRiskPatientsWidget/);
+    expect(dashboard).not.toMatch(/useHighRiskPatientAlerts/);
+    // RealTimePatientAlerts is a different widget and still mounts; the
+    // deletion must not have taken it with them.
+    expect(dashboard).toMatch(/<RealTimePatientAlerts/);
   });
 
   it('Incidents list uses a high limit before agency post-filter', () => {

@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
         const { extractedData, analysisResults } = await req.json();
 
         // Analyze referral and determine priority using AI
-        const priorityAnalysis = await base44.integrations.Core.InvokeLLM({
+        const priorityAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
             model: "automatic",
             prompt: `You are a clinical triage AI specializing in home health referral prioritization with advanced Natural Language Processing (NLP) capabilities to extract crucial details from unstructured clinical notes.
 

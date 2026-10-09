@@ -2,6 +2,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, LogOut } from "lucide-react";
 import { BRAND_LOGO_URL } from "@/lib/brand";
+import AccountDeletionRequestLink from "@/components/auth/AccountDeletionRequestLink";
 import {
   CENTRAL_SUPPORT_EMAIL,
   CENTRAL_SUPPORT_EMAIL_HREF,
@@ -58,6 +59,7 @@ const UserNotRegisteredError = () => {
             <Button onClick={() => { void logout(); }} variant="outline" className="w-full">
               <LogOut className="mr-2 h-4 w-4" /> Sign out
             </Button>
+            <AccountDeletionRequestLink className="mt-4" />
           </div>
         </div>
 

@@ -65,6 +65,14 @@ export function loadConfig(env = process.env) {
     origins, supabaseUrl, encryptionKey, hashKey, configured,
     authorityMode, authorityUrl, authorityKey, authorityConfigured,
     released: env.INTEGRATIONS_RELEASE === 'enabled-v1', dailyLimit: 100,
+    // Fax and SMS have their OWN release, independent of the service's. A
+    // telecom send goes to a doctor's office or a patient's phone, which is
+    // one of the owner's four holds, so it cannot ride a variable that also
+    // releases the AI and file operations. Unset means every telecom send
+    // refuses before a credential is read, and `BROWSER_FORBIDDEN_OPERATIONS`
+    // keeps both operations off the browser list whatever this says.
+    telecomReleased: env.INTEGRATIONS_TELECOM_RELEASE === 'enabled-v1',
+
     supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '', anthropicKey: env.ANTHROPIC_API_KEY || '',
     model: env.INTEGRATIONS_AI_MODEL || 'claude-sonnet-4-6', sendgridKey: env.SENDGRID_API_KEY || '',
     fromEmail: env.NOTIFICATION_FROM_EMAIL || '',
@@ -155,6 +163,13 @@ export function createStore(config, fetcher = fetch) {
     fileGet: body => rpc('cm_integration_file_get', body), fileRecord: body => rpc('cm_integration_file_record', body),
     fileGetAuthorized: body => rpc('cm_integration_file_get_authorized', body),
     fileRecordOwned: body => rpc('cm_integration_file_record_owned', body),
+    // The provider credential's three RPCs (007). `credentialActive` carries
+    // the sealed key and `credentialStatus` does not: two entries rather than
+    // one with a flag, because the projection is the control and a caller of
+    // the status path must not be able to ask for the key.
+    credentialActive: body => rpc('cm_integration_credential_active', body),
+    credentialStatus: body => rpc('cm_integration_credential_status', body),
+    credentialPut: body => rpc('cm_integration_credential_put', body),
   };
 }
 function usableResult(operation, result) {

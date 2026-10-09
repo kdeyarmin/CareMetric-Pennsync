@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
     }
 
     // Use OpenAI to analyze and structure the referral
-    const rawAnalysis = await base44.integrations.Core.InvokeLLM({
+    const rawAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `You are an expert home health triage nurse. Analyze the following unstructured referral data and provide a structured assessment.
 

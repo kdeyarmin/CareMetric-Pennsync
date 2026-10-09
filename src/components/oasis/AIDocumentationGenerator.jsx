@@ -23,7 +23,7 @@ import {
   ChevronDown
 } from "lucide-react";
 
-export default function AIDocumentationGenerator({ analysisResults, pdgmData, navigationData }) {
+export default function AIDocumentationGenerator({ analysisResults, pdgmData }) {
   const ai = useAICall();
   const [suggestions, setSuggestions] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null);
@@ -31,7 +31,7 @@ export default function AIDocumentationGenerator({ analysisResults, pdgmData, na
   const [copiedIndices, setCopiedIndices] = useState(new Set());
 
   const generateDocumentation = async () => {
-    if (!analysisResults && !navigationData) return;
+    if (!analysisResults) return;
 
     try {
       const result = await ai.run({
@@ -42,19 +42,15 @@ ANALYSIS RESULTS:
 ${JSON.stringify({
   accuracy_issues: analysisResults?.accuracy_issues?.slice(0, 5),
   compliance_concerns: analysisResults?.compliance_concerns?.slice(0, 5),
-  specific_rescore_opportunities: analysisResults?.specific_rescore_opportunities?.slice(0, 5),
   missing_high_value_documentation: analysisResults?.missing_high_value_documentation?.slice(0, 5)
 }, null, 2)}
 
-PDGM DATA:
+EXTRACTED OASIS DATA:
 ${JSON.stringify({
   primary_diagnosis: pdgmData?.primary_diagnosis,
   functional_scores: pdgmData?.functional_scores,
   comorbidities: pdgmData?.comorbidities
 }, null, 2)}
-
-NAVIGATION DISCREPANCIES:
-${JSON.stringify(navigationData?.discrepancies?.slice(0, 5) || [], null, 2)}
 
 Generate documentation snippets that:
 1. Are clinically accurate and specific
@@ -62,7 +58,12 @@ Generate documentation snippets that:
 3. Use proper medical terminology
 4. Follow Medicare documentation guidelines
 5. Are ready to copy/paste into clinical notes
-6. Include measurements, timeframes, and patient responses where appropriate
+6. Leave a bracketed placeholder such as [measured distance] or [patient's own words] wherever a measurement, timeframe or patient response is needed — never invent one
+
+HARD RULES — these override anything else in this prompt:
+- NEVER state, suggest or imply an OASIS response, score or code, or a change to one. The clinician selects every response from the wording in their EMR.
+- NEVER consider payment, reimbursement, revenue, PDGM or case-mix impact.
+- NEVER invent an observation, measurement or patient statement: the clinician documents what they observed.
 
 For each suggestion, provide:
 - The specific M-item or area being addressed

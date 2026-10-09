@@ -114,13 +114,86 @@ function validAiSourceResult(result, visitId) {
         && Number.isFinite(Date.parse(processing.processed_at))));
 }
 
-// Source-level containment remains in place while the completed-visit flow is
-// proven in hosted two-agency tests. Both Visit mutations now cross the
-// immutable AgencyMembership/Patient authority checks in updateAuthorizedVisit;
-// this release gate must still remain before client creation, authentication,
-// or any entity/integration access until nested-auth, claim-race, and provider
-// failure evidence has been accepted.
-const PROCESS_COMPLETED_VISIT_PAUSED = true;
+// Released by the owner on 2026-10-08 ("turn everything on"). It was held
+// until the nested authority, the claim race and provider failures were
+// accepted; all three run through updateAuthorizedVisit, which re-derives the
+// caller's exact active clinician membership and chart access from
+// service-owned rows on EVERY nested call (read, claim, publish) and also
+// requires the server-held INTERNAL_FN_SECRET header, so a browser can never
+// reach those three actions directly. The claim is a compare-and-swap on the
+// Visit keyed to the source hash, so two concurrent runs publish once; a
+// provider failure leaves the claim unpublished and the raw note untouched.
+// The gate stays as the operator's static off switch.
+const PROCESS_COMPLETED_VISIT_PAUSED = false;
+const NOTIFICATION_ROW_LIMIT = 10;
+const MEMBERSHIP_ROW_LIMIT = 10;
+
+// The caller's own exact active membership in the visit's agency, read from
+// service-owned rows, so the completion notice carries the recipient authority
+// envelope the notification broker requires (an envelope-less row is shown to
+// nobody). Any doubt means no notice, never a guessed one.
+async function callerMembership(base44, agencyId, user) {
+  const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+    { agency_id: agencyId, user_id: user.id }, undefined, MEMBERSHIP_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const row = rows[0];
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!row || row.agency_id !== agencyId || row.user_id !== user.id || row.status !== 'active'
+    || row.user_email_normalized !== email || !exactIdentifier(row.id)
+    || !Number.isSafeInteger(row.version) || row.version < 1) return null;
+  return row;
+}
+
+async function notifyCaller(base44, agencyId, user, visitId, patientId, tasksCreated) {
+  const membership = await callerMembership(base44, agencyId, user);
+  if (!membership) return false;
+  const entities = base44.asServiceRole.entities;
+  const dedupeKey = `visit-ai-processed:${visitId}`;
+  const existing = await entities.Notification.filter(
+    { agency_id: agencyId, dedupe_key: dedupeKey }, undefined, NOTIFICATION_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(existing) || existing.length > 0) return false;
+  await entities.Notification.create({
+    agency_id: agencyId,
+    dedupe_key: dedupeKey,
+    recipient_user_id: user.id,
+    recipient_membership_id: membership.id,
+    recipient_membership_version: membership.version,
+    authority_version: 1,
+    authority_state: 'active',
+    version: 1,
+    user_email: membership.user_email_normalized,
+    title: 'Visit documentation enhanced',
+    // No patient name: the notification surface is not a chart.
+    message: `A Medicare-compliant narrative was generated for your completed visit. ${tasksCreated} follow-up task${tasksCreated !== 1 ? 's' : ''} created. Review the note before EMR handoff.`,
+    type: 'info',
+    priority: 'medium',
+    is_read: false,
+    dismissed: false,
+    action_url: `/PatientDetails?id=${encodeURIComponent(patientId)}`,
+    action_label: 'View patient chart',
+    metadata: {
+      agency_id: agencyId,
+      related_entity: 'Visit',
+      related_entity_id: visitId,
+      workflow: 'completed_visit_ai_processing',
+      tasks_created: tasksCreated,
+    },
+  });
+  return true;
+}
+
+// A refusal from the Visit broker keeps its status and its (PHI-free) reason
+// so a caller who is not this chart's clinician hears 403, not a 500.
+class BrokerRefusal extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = 'BrokerRefusal';
+    this.status = status;
+  }
+}
+const FORWARDED_REFUSALS = new Set([400, 401, 403, 404, 409]);
 
 async function invokeAuthorizedVisitAction(base44, payload) {
   const internalSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
@@ -136,6 +209,12 @@ async function invokeAuthorizedVisitAction(base44, payload) {
     body: JSON.stringify(payload),
   });
   const result = await response.json().catch(() => null);
+  if (!response.ok && FORWARDED_REFUSALS.has(response.status)) {
+    throw new BrokerRefusal(
+      response.status,
+      typeof result?.error === 'string' && result.error ? result.error.slice(0, 300) : 'Visit is unavailable',
+    );
+  }
   if (!response.ok || result?.action !== payload.action) {
     throw new Error('Authorized Visit action failed');
   }
@@ -173,7 +252,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     
     // Authenticate user
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -305,7 +384,7 @@ Use proper medical terminology and follow Medicare documentation requirements. B
     // Kick off the narrative call now; it runs concurrently with the follow-up
     // tasks call below (both use the same inputs and are independent), roughly
     // halving the clinician's wait on visit completion.
-    const narrativePromise = base44.integrations.Core.InvokeLLM({
+    const narrativePromise = base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: narrativePrompt,
       model: 'automatic'
     });
@@ -343,7 +422,7 @@ Consider:
 
 Only suggest tasks that are clinically necessary. If no follow-up is needed, return empty array.`;
 
-    const tasksPromise = base44.integrations.Core.InvokeLLM({
+    const tasksPromise = base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: tasksPrompt,
       response_json_schema: {
         type: 'object',
@@ -445,31 +524,26 @@ Only suggest tasks that are clinically necessary. If no follow-up is needed, ret
       }
     }
 
-    // Create notification for user
-    await base44.entities.Notification.create({
-      user_email: user.email,
-      title: 'Visit Documentation Enhanced',
-      message: `Medicare-compliant narrative generated for ${patient.first_name} ${patient.last_name}. ${createdTasks.length} follow-up task${createdTasks.length !== 1 ? 's' : ''} created.`,
-      type: 'info',
-      priority: 'medium',
-      action_url: `/PatientDetails?id=${visit.patient_id}`,
-      action_label: 'View Patient Chart',
-      metadata: {
-        patient_id: visit.patient_id,
-        visit_id: visit_id,
-        tasks_created: createdTasks.length
-      }
-    });
+    // Tell the caller, and only the caller, through the recipient authority
+    // envelope. The documentation is already published, so a notice that
+    // cannot be minted is reported rather than failing the request.
+    const notified = await notifyCaller(
+      base44, initialSource.source.agency_id, user, visit_id, visit.patient_id, createdTasks.length,
+    ).catch(() => false);
 
     return Response.json({
       success: true,
       visit: updatedVisit,
       tasks_created: createdTasks.length,
       tasks: createdTasks,
-      narrative_length: narrativeText.length
+      narrative_length: narrativeText.length,
+      notified,
     });
 
-  } catch {
+  } catch (failure) {
+    if (failure instanceof BrokerRefusal) {
+      return Response.json({ error: failure.message }, { status: failure.status });
+    }
     // Provider and SDK error objects can retain the PHI-bearing prompts and
     // clinical payloads processed above. Keep the operational breadcrumb fixed.
     console.error('processCompletedVisit failed');

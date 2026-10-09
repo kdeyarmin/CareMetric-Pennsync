@@ -1,154 +1,97 @@
-// Shared patient-merge boundary. Patient merges are intentionally paused until
-// a protected server broker can move every linked clinical record atomically.
-// A browser must not archive a duplicate while service-only OASIS/outcome rows
-// still point to it.
+// Shared patient-merge boundary. Every surface that merges duplicates (the
+// Duplicate Patients page, the scanner, the merge dialog) goes through the
+// deduplicatePatients server broker, which authorizes the caller, re-points
+// every record that references a duplicate (including the service-only
+// care-team, note-history, document-binding and OASIS rows a browser cannot
+// write), fills the survivor's empty fields, and archives each duplicate LAST.
+// The browser never reads or writes a Patient or a linked record itself.
+import { base44 } from "@/api/base44Client";
 
-// A future broker must move every entity that references a patient via
-// `patient_id`; otherwise records stay attached to an archived duplicate and
-// disappear from the survivor's chart. Keep the two lists pinned against entity
-// schemas so the broker's required scope stays explicit while browser execution
-// remains disabled.
-/**
- * Entities whose writes are service-role-only and therefore cannot be
- * reassigned with a direct browser entity update.
- */
-export const SERVER_MERGE_REQUIRED_ENTITIES = [
-  "DocumentTenantBinding",
-  "OASISAssessment",
-  "PatientCareTeamAssignment",
-  "PatientNoteHistoryEntry",
-  "PatientOutcomeMetric",
-];
-
-export const PATIENT_MERGES_PAUSED = true;
+export const PATIENT_MERGES_PAUSED = false;
 export const PATIENT_MERGE_PAUSED_MESSAGE =
-  "Patient duplicate scanning and merging are temporarily unavailable pending an authorized, atomic server broker.";
+  "Patient duplicate scanning and merging are temporarily unavailable.";
 
-export const PATIENT_RELATED_ENTITIES = [
-  "AdrAuditCase", "AppliedDataLog", "AppointmentForm", "Billing", "CallLog",
-  "CareCoordinationAlert", "CarePlan", "CarePlanProposal", "ClinicalEvent",
-  "ClinicalLibraryTemplate", "ComplianceAudit", "DigitalSignature",
-  "DischargeSummary", "Document", "DocumentAnalysisHistory", "DocumentPackage",
-  "DocumentRecord", "DocumentSignature", "FaceToFaceEncounter", "FaxDraft",
-  "FaxHistory", "FaxLog", "GeneratedDocument", "HealthRecord", "Immunization",
-  "Incident", "InterventionLog", "Invoice", "MaterialInteraction", "MedicalCode",
-  "Medication", "MedicationReconciliation", "Message", "NoteConversion",
-  "NoteFeedback", "OASISAudit", "OASISFeedback",
-  "OASISScenario", "OASISUpload", "OASISWorkflowExecution", "PDFIndex",
-  "PDGMCaseMix", "PatientAlert", "PatientBillingInfo", "PatientDocument",
-  "PatientEducationAssignment", "PatientEducationDelivery",
-  "PatientEducationDraft", "PatientEducationEngagement", "PatientMessage",
-  "PatientOutcome", "PatientPathwayAssignment",
-  "PatientRecommendation", "PatientRiskAssessment", "Payment", "PaymentRecord",
-  "PendingPatientUpdate", "ProviderPatientAssignment", "Referral", "RiskAlert",
-  "RiskAnalysis", "ScheduledFax", "ScheduledSms", "SentEducationMaterial",
-  "SmsConsent", "SmsMessage", "SuggestedIntervention", "SupplyPrediction",
-  "SupplyUsageLog", "Task", "TeamMessage", "TeamNote", "TelehealthSession",
-  "TimeSavings", "TrainingRecommendation", "Visit",
-];
+const MAX_MERGE_DUPLICATES = 25;
+
+/** Error raised when the broker moved some records but could not finish. */
+export class PatientMergeIncompleteError extends Error {
+  constructor(result) {
+    super(
+      "The merge did not finish. Some linked records could not be moved yet, so the " +
+        "duplicate was left active. Run the merge again to finish it.",
+    );
+    this.name = "PatientMergeIncompleteError";
+    this.result = result;
+  }
+}
+
+async function invokeDeduplicatePatients(payload) {
+  const response = await base44.functions.invoke("deduplicatePatients", payload);
+  return response?.data ?? response;
+}
 
 /**
- * Fail-closed browser boundary for merging one duplicate patient.
+ * Server dry-run scan for high-confidence duplicates (nothing is changed).
+ * @returns {Promise<object>} the broker's preview report
+ */
+export async function scanDuplicatePatients() {
+  return invokeDeduplicatePatients({ action: "scan" });
+}
+
+/**
+ * Merge several duplicates into one surviving record through the server
+ * broker. Resolves only when every duplicate was archived; a partial merge
+ * rejects with PatientMergeIncompleteError (retrying the same call resumes it).
  *
- * DocumentTenantBinding, OASISAssessment, PatientCareTeamAssignment,
- * PatientNoteHistoryEntry, and PatientOutcomeMetric are service-write-only.
- * The browser cannot prove that a duplicate has no such rows and cannot
- * reassign them in the same transaction as all other chart data. Archiving
- * anyway would strand clinical history and break later tenant-scoped episode
- * computations. Keep this operation unavailable until a server-owned
- * tenant/patient authorization source and transactional merge broker exist.
+ * @param {string} keepId          surviving patient id
+ * @param {string[]} duplicateIds  ids to merge into the survivor
+ * @param {{ agencyId?: string|null, fieldPatch?: object|null }} [opts]
+ * @returns {Promise<{ patientsMerged: number, reassigned: Record<string, number>, fieldsMerged: string[], result: object }>}
+ */
+export async function mergePatientGroup(keepId, duplicateIds = [], { agencyId = null, fieldPatch = null } = {}) {
+  if (!keepId) throw new Error("mergePatientGroup requires a survivor id");
+  const ids = [...new Set((duplicateIds || []).filter((id) => id && id !== keepId))];
+  if (ids.length === 0) return { patientsMerged: 0, reassigned: {}, fieldsMerged: [], result: null };
+  if (ids.length > MAX_MERGE_DUPLICATES) {
+    throw new Error(`A merge may include at most ${MAX_MERGE_DUPLICATES} duplicates at a time`);
+  }
+
+  const result = await invokeDeduplicatePatients({
+    action: "merge",
+    keep_id: keepId,
+    duplicate_ids: ids,
+    ...(agencyId ? { agency_id: agencyId } : {}),
+    ...(fieldPatch && Object.keys(fieldPatch).length > 0 ? { field_patch: fieldPatch } : {}),
+  });
+  if (!result || result.complete !== true) throw new PatientMergeIncompleteError(result);
+  const reassigned = {};
+  for (const [field, count] of Object.entries(result.reassigned || {})) {
+    const entity = field.split(".")[0];
+    reassigned[entity] = (reassigned[entity] || 0) + count;
+  }
+  return {
+    patientsMerged: Array.isArray(result.merged_ids) ? result.merged_ids.length : 0,
+    reassigned,
+    fieldsMerged: Array.isArray(result.fields_merged) ? result.fields_merged : [],
+    result,
+  };
+}
+
+/**
+ * Merge one duplicate patient into a surviving (primary) record.
  *
  * @param {string} primaryId    surviving patient id
- * @param {string} duplicateId  patient id that would be merged
- * @returns {Promise<never>}
+ * @param {string} duplicateId  patient id to merge in and archive
+ * @param {{ agencyId?: string|null, fieldPatch?: object|null }} [opts]
  */
-export async function mergePatientInto(primaryId, duplicateId) {
+export async function mergePatientInto(primaryId, duplicateId, opts = {}) {
   if (!primaryId || !duplicateId) {
     throw new Error("mergePatientInto requires a primary and a duplicate id");
   }
   if (primaryId === duplicateId) {
     throw new Error("Cannot merge a patient into itself");
   }
-  throw new Error(PATIENT_MERGE_PAUSED_MESSAGE);
+  return mergePatientGroup(primaryId, [duplicateId], opts);
 }
 
-// Scalar chart fields the survivor inherits when ITS OWN value is empty. The
-// winner's populated values are never overwritten.
-const FILL_EMPTY_FIELDS = [
-  "date_of_birth", "medical_record_number", "phone", "email", "address",
-  "primary_diagnosis", "allergies", "physician_name", "physician_phone",
-  "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
-  "insurance_primary", "insurance_secondary", "care_type", "admission_date",
-  "advance_directives", "baseline_vitals", "functional_status",
-];
-// Array fields that are UNIONED (dedupe by JSON identity).
-const UNION_ARRAY_FIELDS = ["secondary_diagnoses", "current_medications", "past_medical_history", "wounds"];
-
-const isEmpty = (v) =>
-  v === undefined || v === null || (typeof v === "string" && v.trim() === "") ||
-  (Array.isArray(v) && v.length === 0) ||
-  (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
-
-/**
- * Pure: compute the patch of loser fields the winner should inherit.
- * Exported for unit tests.
- */
-export function buildFieldMergePatch(winner, loser) {
-  const patch = {};
-  if (!winner || !loser) return patch;
-  for (const field of FILL_EMPTY_FIELDS) {
-    if (isEmpty(winner[field]) && !isEmpty(loser[field])) patch[field] = loser[field];
-  }
-  for (const field of UNION_ARRAY_FIELDS) {
-    const w = Array.isArray(winner[field]) ? winner[field] : [];
-    const l = Array.isArray(loser[field]) ? loser[field] : [];
-    if (!l.length) continue;
-    const seen = new Set(w.map((x) => JSON.stringify(x)));
-    const merged = [...w];
-    for (const item of l) {
-      const key = JSON.stringify(item);
-      if (!seen.has(key)) {
-        seen.add(key);
-        merged.push(item);
-      }
-    }
-    if (merged.length > w.length) patch[field] = merged;
-  }
-  // Notes history: concatenate, deduped by entry_id, ordered oldest→newest.
-  const wHist = Array.isArray(winner.enhanced_notes_history) ? winner.enhanced_notes_history : [];
-  const lHist = Array.isArray(loser.enhanced_notes_history) ? loser.enhanced_notes_history : [];
-  if (lHist.length) {
-    const seenIds = new Set(wHist.map((e) => e?.entry_id).filter(Boolean));
-    const additions = lHist.filter((e) => !e?.entry_id || !seenIds.has(e.entry_id));
-    if (additions.length) {
-      patch.enhanced_notes_history = [...wHist, ...additions].sort((a, b) =>
-        String(a?.timestamp || a?.date || "").localeCompare(String(b?.timestamp || b?.date || "")),
-      );
-    }
-  }
-  return patch;
-}
-
-/**
- * Fail-closed group boundary. The first real duplicate reaches
- * mergePatientInto and is rejected before any client data access or mutation.
- *
- * @param {string} keepId          surviving patient id
- * @param {string[]} duplicateIds  ids to merge into the survivor
- * @returns {Promise<{ patientsMerged: number, reassigned: Record<string, number> }>}
- */
-export async function mergePatientGroup(keepId, duplicateIds = []) {
-  if (!keepId) throw new Error("mergePatientGroup requires a survivor id");
-
-  let patientsMerged = 0;
-  const reassigned = {};
-  for (const dupId of duplicateIds) {
-    if (!dupId || dupId === keepId) continue;
-    const { reassigned: moved } = await mergePatientInto(keepId, dupId);
-    patientsMerged += 1;
-    for (const [entity, count] of Object.entries(moved)) {
-      reassigned[entity] = (reassigned[entity] || 0) + count;
-    }
-  }
-  return { patientsMerged, reassigned };
-}
+export { buildFieldMergePatch, MERGE_PATCH_FIELDS } from "./patientMergePlan";

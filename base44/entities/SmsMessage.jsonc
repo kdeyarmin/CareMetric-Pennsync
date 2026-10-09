@@ -90,6 +90,14 @@
     "redrive_claimed_by": {
       "type": "string",
       "description": "Per-run token claiming this row for redrive (concurrency guard)"
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Service-stamped Agency id of the TelecomDestinationBinding the message was sent from or received on. Written only by backend functions; never a client claim."
+    },
+    "destination_binding_id": {
+      "type": "string",
+      "description": "Service-stamped id of the active TelecomDestinationBinding of the agency line (from_number for outbound, to_number for inbound). redriveFailedSms re-sends only rows carrying it and re-proves the binding at send time."
     }
   },
   "required": [
@@ -97,8 +105,26 @@
     "from_number",
     "to_number"
   ],
+  // 2026-10-08 (owner decision): a nurse reads texts addressed to them or sent
+  // by them. Every write is a backend function's: marking inbound texts read
+  // goes through markSmsRead, so no row field can be edited from a browser
+  // (redriveFailedSms re-sends rows, so it must be able to trust them).
   "rls": {
-    "read": false,
+    "read": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "data.sent_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "create": false,
     "update": false,
     "delete": false

@@ -163,17 +163,57 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 const SEVERITIES = new Set(['critical', 'high', 'medium']);
 
+// The fields a reader needs to apply an agency's rule configuration, and no
+// more: who saved it and the row's bookkeeping stay server-side.
+function projectRuleConfig(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    disabled_rules: Array.isArray(row.disabled_rules) ? row.disabled_rules : [],
+    severity_overrides: row.severity_overrides && typeof row.severity_overrides === 'object'
+      ? row.severity_overrides
+      : {},
+    custom_items: Array.isArray(row.custom_items) ? row.custom_items : [],
+    agency_name: typeof row.agency_name === 'string' ? row.agency_name : '',
+  };
+}
+
+/**
+ * Read the caller's agency rule configuration (owner decision, 2026-10-08).
+ * The agency comes from the caller's service-owned membership through
+ * withTrustedClaims, never from a request field, so every active staff member
+ * applies their own agency's rules. A built-in admin with no agency may read
+ * only the single unscoped legacy row, under the same rule the save path uses.
+ */
+async function readRuleConfig(base44, user) {
+  const agencyName = String(user.agency_name || '').trim();
+  if (agencyName) {
+    const rows = await base44.asServiceRole.entities.FollowUpRuleConfig
+      .filter({ agency_name: agencyName }, '-created_date', 1);
+    return Response.json({ config: projectRuleConfig(Array.isArray(rows) ? rows[0] : null) });
+  }
+  if (user.role === 'admin') {
+    const newest = await base44.asServiceRole.entities.FollowUpRuleConfig.list('-created_date', 5);
+    const legacy = (Array.isArray(newest) ? newest : [])
+      .filter((row) => !String(row?.agency_name || '').trim());
+    return Response.json({ config: legacy.length === 1 ? projectRuleConfig(legacy[0]) : null });
+  }
+  return Response.json({ config: null });
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await withTrustedClaims(base44, await base44.auth.me().catch(() => null));
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    const body = await req.json().catch(() => ({}));
+    if (body && body.action === 'get') {
+      if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      return await readRuleConfig(base44, user);
+    }
     const isAdmin = user?.role === 'admin';
     if (!user || !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
-
-    const body = await req.json().catch(() => ({}));
 
     // Guard against empty payloads: an accidental invocation with no body
     // would wipe the agency's existing config with empty defaults.

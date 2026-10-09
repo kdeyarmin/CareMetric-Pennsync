@@ -122,7 +122,7 @@ export default function UserGuides() {
         'Using Smart Note Assistant',
         'SOAP documentation format',
         'AI quality review',
-        'OASIS/PDGM feature status (paused)',
+        'OASIS feature status (paused)',
         'Medicare compliance checklist'
       ]
     },
@@ -144,12 +144,12 @@ export default function UserGuides() {
     {
       type: 'oasis_assessment',
       title: 'OASIS Assessment Guide',
-      description: 'Automated OASIS response guidance and PDGM optimization are paused pending verified CMS clinical content, tenant-scoped authorization, and required human review',
+      description: 'Automated OASIS response guidance is paused pending verified CMS clinical content, tenant-scoped authorization, and required human review',
       icon: FileText,
       color: 'green',
       audience: 'Clinical Nurses',
       topics: [
-        'OASIS/PDGM feature status',
+        'OASIS feature status',
         'Verified CMS clinical content',
         'Tenant-scoped authorization',
         'Required human review',
@@ -224,7 +224,7 @@ export default function UserGuides() {
     {
       type: 'patient_alerts',
       title: 'Patient Alerts & Monitoring Guide',
-      description: 'Monitor and respond to patient risk alerts and clinical deterioration',
+      description: 'Review, assign, and resolve recorded patient alerts',
       icon: FileText,
       color: 'green',
       audience: 'Clinical Nurses',
@@ -233,7 +233,6 @@ export default function UserGuides() {
         'Alert types',
         'Severity levels',
         'Action plans',
-        'Predictive analytics',
         'Alert resolution'
       ]
     },

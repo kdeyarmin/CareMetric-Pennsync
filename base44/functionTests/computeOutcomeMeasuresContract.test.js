@@ -199,8 +199,10 @@ async function loadHandler({
     env: {
       get: (key) => {
         if (key === "INTERNAL_FN_SECRET") return internalSecret;
+        // Released 2026-10-08: the worker runs with the variable unset, and
+        // only an explicit operator pause stops it.
         if (key === "OUTCOME_PIPELINE_RELEASE") {
-          return outcomeComputationEnabled ? "enabled-v1" : undefined;
+          return outcomeComputationEnabled ? undefined : "paused";
         }
         return undefined;
       },
@@ -477,7 +479,7 @@ test("hosted null defaults publish and replay with exact terminal preimages", as
   assert.deepEqual(fixture.stored.agencyRows[0].outcome_window_claims, {});
 });
 
-test("outcome computation is hard-paused before SDK access for every request shape", async () => {
+test("an operator pause (OUTCOME_PIPELINE_RELEASE=paused) stops computation before SDK access for every request shape", async () => {
   const fixture = await loadHandler({ outcomeComputationEnabled: false });
   const requests = [
     new Request("http://local/computeOutcomeMeasures", { method: "POST" }),
@@ -506,7 +508,7 @@ test("outcome computation is hard-paused before SDK access for every request sha
     const response = await fixture.handler(request);
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), {
-      error: "Outcome computation is paused until the pipeline release is enabled",
+      error: "Outcome computation is paused by the operator (OUTCOME_PIPELINE_RELEASE=paused)",
     });
   }
   assert.deepEqual(fixture.queries, []);

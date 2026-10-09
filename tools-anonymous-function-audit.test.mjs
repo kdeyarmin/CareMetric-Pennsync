@@ -66,11 +66,13 @@ test('arbitrary internal errors and exceptions never count as authenticated deni
   }
 });
 test('only a reviewed exact 503 body is identified as expected unavailable', async () => {
-  const source = "Deno.serve(() => Response.json({error:'This outcome worker is retired'}, {status:503}));";
-  const result = await auditAnonymousSource(source, 'computeOutcomeMeasures');
+  // deletePatientsMissingFirstName is destructive one-off maintenance and stays
+  // paused, so its reviewed body is a stable fixture for this check.
+  const source = "Deno.serve(() => Response.json({error:'Legacy Patient service-role writer is temporarily unavailable',code:'legacy_patient_service_writer_paused',reason:'immutable_tenant_authorization_and_atomic_write_broker_required',endpoint:'deletePatientsMissingFirstName'}, {status:503}));";
+  const result = await auditAnonymousSource(source, 'deletePatientsMissingFirstName');
   assert.equal(result.outcome, 'expected_unavailable'); assert.equal(result.safeNegativeResult, true);
-  for (const altered of [source.replace('retired', 'failed'), source.replace('503', '500'), source.replace("error:'This", "extra:'not allowed',error:'This")]) {
-    assert.equal((await auditAnonymousSource(altered, 'computeOutcomeMeasures')).safeNegativeResult, false);
+  for (const altered of [source.replace('temporarily', 'permanently'), source.replace('503', '500'), source.replace("error:'Legacy", "extra:'not allowed',error:'Legacy")]) {
+    assert.equal((await auditAnonymousSource(altered, 'deletePatientsMissingFirstName')).safeNegativeResult, false);
   }
 });
 test('retirement exception requires exact success=true and no extra fields', async () => {
