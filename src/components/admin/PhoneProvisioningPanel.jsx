@@ -184,26 +184,35 @@ export default function PhoneProvisioningPanel() {
     onError: (err) => toast.error(err?.message || "Failed to provision fax capacity"),
   });
 
+  // A refusal's reason is in the backend's `error` (e.g. a line Telnyx reports
+  // as inactive or wired to another connection); the SDK's message is generic.
+  const backendReason = (err, fallback) => err?.response?.data?.error || err?.data?.error || err?.message || fallback;
+
   const provision = useMutation({
     mutationFn: (payload) => base44.functions.invoke("provisionNurseWorkNumber", payload),
-    onSuccess: (_, vars) => {
+    onSuccess: (res, vars) => {
       queryClient.invalidateQueries({ queryKey: ["phone-users"] });
       setInputs((prev) => ({ ...prev, [vars.target_user_email]: { work: "", cell: "" } }));
       toast.success("Work number provisioned");
+      // What the Telnyx line check could not confirm (it never blocks).
+      ((res?.data || res)?.warnings || []).forEach((w) => toast.warning(w));
     },
-    onError: (err) => toast.error(err?.message || "Failed to provision number"),
+    onError: (err) => toast.error(backendReason(err, "Failed to provision number")),
   });
 
   // One-click: hand every user without a work number the next available pool
   // number. Fax is shared (the office number), so there's nothing per-user there.
+  // Numbers Telnyx reports as not ready are skipped and listed, not handed out.
   const autoAssign = useMutation({
     mutationFn: () => base44.functions.invoke("autoAssignWorkNumbers", {}),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["phone-users"] });
       const d = res?.data || res;
       toast.success(d?.message || `Assigned ${d?.assigned_count ?? 0} work number(s)`);
+      (d?.skipped_numbers || []).forEach((s) => toast.warning(`${s.e164} skipped: ${(s.problems || []).join(" ")}`));
+      (d?.warnings || []).forEach((w) => toast.warning(w));
     },
-    onError: (err) => toast.error(err?.message || "Auto-assign failed"),
+    onError: (err) => toast.error(backendReason(err, "Auto-assign failed")),
   });
 
   // Live Telnyx connection test (backend probe of secrets + SMS API + provisioning).

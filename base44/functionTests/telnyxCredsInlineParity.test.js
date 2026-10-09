@@ -127,6 +127,11 @@ const FILES = {
   "../functions/scheduleSms/entry.ts": ALL,
   "../functions/redriveFailedSms/entry.ts": ALL,
   "../functions/discoverTelnyxResources/entry.ts": ALL,
+  // The three nurse-assignment paths read the key, voice connection and
+  // messaging profile to check a line with Telnyx before handing it out.
+  "../functions/managePhoneNumberPool/entry.ts": ALL,
+  "../functions/provisionNurseWorkNumber/entry.ts": ALL,
+  "../functions/autoAssignWorkNumbers/entry.ts": ALL,
   "../functions/createTelehealthToken/entry.ts": ["apiKey"],
 };
 
@@ -451,4 +456,29 @@ test("saveTelnyxSecret accepts only the raw base64 Ed25519 public key the webhoo
   // And the accepted form is exactly what WebCrypto's raw import takes.
   const key = await crypto.subtle.importKey("raw", Buffer.from(rawB64, "base64"), { name: "Ed25519" }, false, ["verify"]);
   assert.equal(key.type, "public");
+});
+
+// The integration runtime stores the same public key in its own table, through
+// putCredential. Two copies of one rule: this pins that the runtime refuses
+// exactly what saveTelnyxSecret refuses. (The runtime's own suite cannot read
+// this repository's base44/ tree — its Docker build runs it in isolation.)
+test("the integration runtime and saveTelnyxSecret agree on the public-key shape", async () => {
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { publicKey } = generateKeyPairSync("ed25519");
+  const spki = publicKey.export({ format: "der", type: "spki" });
+  const raw = spki.subarray(spki.length - 32);
+  const rawB64 = raw.toString("base64");
+  const { isTelnyxPublicKey: base44Check } = await loadInline("../functions/saveTelnyxSecret/entry.ts", ["isTelnyxPublicKey"]);
+  const { isTelnyxPublicKey: runtimeCheck } = await import("../../services/integration-runtime/provider-credential.mjs");
+  const corpus = [
+    rawB64, ` ${rawB64}\n`, Buffer.alloc(32, 1).toString("base64"), "cHVibGljLWtleQ==",
+    spki.toString("base64"), publicKey.export({ format: "pem", type: "spki" }), raw.toString("hex"),
+    raw.toString("base64url"), rawB64.slice(0, 43), `${rawB64}=`, Buffer.alloc(33, 1).toString("base64"),
+    Buffer.alloc(31, 1).toString("base64"), "", "KEY0123456789abcdef",
+  ];
+  for (const value of corpus) {
+    // putCredential trims before it checks, as saveTelnyxSecret's check does.
+    assert.equal(runtimeCheck(value.trim()), base44Check(value), JSON.stringify(value));
+  }
+  assert.equal(runtimeCheck(rawB64), true);
 });

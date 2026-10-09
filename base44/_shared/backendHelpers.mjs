@@ -460,6 +460,164 @@ function dueDateEnd(value) {
     throw new Error('Work-number assignment was not confirmed');
   }
 }`,
+  // Read-only Telnyx checks for a number the app is about to record or hand to
+  // a nurse. Grounded in the Telnyx v2 OpenAPI spec (read 2026-10-09):
+  //   - GET /v2/phone_numbers?filter[phone_number]= is the account's own number
+  //     resource — its id is the one PATCH /v2/phone_numbers/{id} takes, and is
+  //     NOT the number-ORDER line id POST /v2/number_orders returns.
+  //   - filter[phone_number] "Requires at least three digits. Non-numerical
+  //     characters will result in no values being returned", so the E.164 '+'
+  //     is stripped rather than URL-encoded (an encoded '+' answers "no rows",
+  //     which reads as "not in your account").
+  //   - status is one of purchase-pending, provision-pending, active, ... and
+  //     only 'active' carries traffic; messaging_profile_id is the literal
+  //     'UNAVAILABLE' when Telnyx could not load it, which is unknown, not a
+  //     mismatch.
+  // A read that could not be made is { ok: false } and never "not found": a
+  // nurse line must not be refused because Telnyx was slow, and an unrelated
+  // number must not be reported missing because the request was malformed.
+  telnyxWorkLine: `const TELNYX_NUMBER_LOOKUP_TIMEOUT_MS = 8000;
+async function lookupTelnyxNumber(apiKey, e164) {
+  const target = String(e164 || '');
+  const digits = target.slice(1);
+  if (!apiKey || target[0] !== '+' || !/^[0-9]{8,15}$/.test(digits)) return { ok: false, reason: 'invalid_request', status: 0 };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=' + digits, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    const body = await resp.json().catch(() => null);
+    if (!resp.ok) return { ok: false, reason: 'http_' + resp.status, status: resp.status, body };
+    if (!body || !Array.isArray(body.data)) return { ok: false, reason: 'malformed_response', status: resp.status };
+    const matches = body.data.filter((row) => row && row.phone_number === target);
+    if (matches.length > 1) return { ok: false, reason: 'ambiguous_response', status: resp.status };
+    return { ok: true, status: resp.status, number: matches[0] || null };
+  } catch {
+    return { ok: false, reason: 'unreachable', status: 0 };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Decide whether a looked-up number is a working nurse line for these
+// credentials. A PROBLEM is a line that would not carry the nurse's calls or
+// texts, so it must not be handed out silently; a WARNING is something that
+// could not be checked, which never blocks an assignment.
+function assessTelnyxWorkLine(lookup, creds, e164) {
+  const problems = [];
+  const warnings = [];
+  const result = (checked, number) => ({
+    checked, problems, warnings,
+    telnyxNumberId: number && typeof number.id === 'string' && number.id ? number.id : null,
+    telnyxStatus: number && typeof number.status === 'string' ? number.status : null,
+  });
+  if (!lookup || lookup.ok !== true) {
+    warnings.push(e164 + ' could not be checked with Telnyx (' + ((lookup && lookup.reason) || 'no response')
+      + '), so its voice connection and messaging profile were not confirmed.');
+    return result(false, null);
+  }
+  const number = lookup.number;
+  if (!number) {
+    problems.push(e164 + ' is not in your Telnyx account yet (or its number order has not completed).');
+    return result(true, null);
+  }
+  const status = typeof number.status === 'string' ? number.status : 'unknown';
+  if (status !== 'active') {
+    problems.push(e164 + ' is "' + status + '" in Telnyx, not active, so it cannot carry calls or texts yet.');
+  }
+  const voice = creds && creds.voiceConnectionId;
+  if (!voice) {
+    warnings.push('No Voice connection id is saved in Telnyx Credentials, so ' + e164 + "'s call routing was not checked.");
+  } else if (String(number.connection_id || '') !== voice) {
+    problems.push(e164 + ' is on Telnyx connection "' + String(number.connection_id || 'none')
+      + '", not the configured Voice connection "' + voice + '", so its calls will not reach PennSync.');
+  }
+  const profile = creds && creds.messagingProfileId;
+  // A number on NO messaging profile cannot send a text at all: Telnyx refuses
+  // the send as "not on a messaging profile". Said in those words, because
+  // "profile none, not X" reads like a mismatch the admin can ignore.
+  const noProfile = !number.messaging_profile_id;
+  if (noProfile && profile) {
+    problems.push(e164 + " is not on any messaging profile, so every text from it fails (Telnyx: 'not on a messaging profile')."
+      + ' Add it to the configured Messaging Profile "' + profile + '" in Telnyx first.');
+  } else if (noProfile) {
+    warnings.push(e164 + " is not on any messaging profile, so every text from it will fail (Telnyx: 'not on a messaging profile'),"
+      + ' and no Messaging Profile id is saved in Telnyx Credentials.');
+  } else if (!profile) {
+    warnings.push('No Messaging Profile id is saved in Telnyx Credentials, so ' + e164 + "'s texting was not checked.");
+  } else if (number.messaging_profile_id === 'UNAVAILABLE') {
+    warnings.push('Telnyx could not report ' + e164 + "'s messaging profile right now, so its texting was not checked.");
+  } else if (String(number.messaging_profile_id || '') !== profile) {
+    problems.push(e164 + ' is on messaging profile "' + String(number.messaging_profile_id || 'none')
+      + '", not the configured Messaging Profile "' + profile + '", so its texts will not reach PennSync.');
+  }
+  return result(true, number);
+}
+
+// Is this US number on a 10DLC campaign (GET /v2/10dlc/phone_number_campaigns/
+// {phoneNumber}; the spec answers a bare PhoneNumberCampaign with campaignId,
+// tcrCampaignId, telnyxCampaignId and assignmentStatus)? Only ever WARNINGS:
+// an unregistered number still carries calls, its texts are just likely to be
+// carrier-filtered. Read-only; enrolment stays an explicit admin action.
+async function telnyx10dlcWarnings(apiKey, e164, savedCampaignId) {
+  const saved = String(savedCampaignId || '').trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/10dlc/phone_number_campaigns/' + encodeURIComponent(e164), {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    if (resp.status === 404) {
+      return [e164 + ' is not on any A2P 10DLC campaign' + (saved ? ' (the saved campaign is ' + saved + ')' : '')
+        + ', so US carriers may filter its texts. Enroll it in the Telnyx portal.'];
+    }
+    const body = await resp.json().catch(() => null);
+    const row = body && typeof body === 'object' && body.data && typeof body.data === 'object' ? body.data : body;
+    if (!resp.ok || !row || typeof row !== 'object' || typeof row.campaignId !== 'string') {
+      return [e164 + "'s A2P 10DLC campaign could not be checked (HTTP " + resp.status + ').'];
+    }
+    const ids = [row.campaignId, row.tcrCampaignId, row.telnyxCampaignId].filter((id) => typeof id === 'string' && id);
+    if (saved && !ids.includes(saved)) {
+      return [e164 + ' is on A2P 10DLC campaign ' + (row.tcrCampaignId || row.campaignId) + ', not the saved campaign '
+        + saved + ', so its texts may be filtered under the wrong registration.'];
+    }
+    if (row.assignmentStatus && row.assignmentStatus !== 'ASSIGNED') {
+      // PENDING_ASSIGNMENT is normal for a few days after enrolment: a warning, never a refusal.
+      return [e164 + "'s A2P 10DLC assignment to campaign " + (row.tcrCampaignId || row.campaignId) + ' is '
+        + row.assignmentStatus + ', so US carriers may filter its texts until it is ASSIGNED.'];
+    }
+    return [];
+  } catch {
+    return [e164 + "'s A2P 10DLC campaign could not be checked (Telnyx did not answer)."];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// options.campaignId is the agency's saved A2P campaign (AgencySettings.a2p_campaign_id).
+async function verifyTelnyxWorkLine(creds, e164, options = {}) {
+  if (!creds || !creds.apiKey) {
+    const why = creds && creds.readError ? 'the Telnyx credential store could not be read' : 'no Telnyx API key is configured';
+    return { checked: false, problems: [], telnyxNumberId: null, telnyxStatus: null,
+      warnings: [e164 + ' was not checked with Telnyx because ' + why + '.'] };
+  }
+  const lookup = await lookupTelnyxNumber(creds.apiKey, e164);
+  const result = assessTelnyxWorkLine(lookup, creds, e164);
+  // 10DLC registers US local long codes: only a +1, non-toll-free line that is
+  // otherwise good is worth the extra read (toll-free has its own verification).
+  const type = lookup.ok && lookup.number ? String(lookup.number.phone_number_type || '') : '';
+  const tollFree = type === 'toll_free' || type === 'tollfree'
+    || ['800', '833', '844', '855', '866', '877', '888'].includes(e164.slice(2, 5));
+  if (result.checked && result.problems.length === 0 && e164.slice(0, 2) === '+1' && !tollFree) {
+    result.warnings.push(...await telnyx10dlcWarnings(creds.apiKey, e164, options && options.campaignId));
+  }
+  return result;
+}`,
   // Application-wide human-delivery release gate. This is intentionally
   // fail-closed: deploying code or copying an environment's existing secrets
   // cannot release email, SMS, fax, or voice traffic. A future release requires

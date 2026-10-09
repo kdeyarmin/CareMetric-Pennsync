@@ -80,8 +80,12 @@ function isProtectedSuperAdmin(user) {
  *    may mint a grant.
  *
  * The Telnyx room is found-or-created by its unique_name (= session.room_name),
- * then a client token is generated for that room. Returns { token, room_id,
- * identity, room_name }.
+ * then a client token is generated for that room. Returns { token,
+ * token_expires_at, token_ttl_secs, room_id, identity, room_name, host_name }.
+ *
+ * Body: { room_name, join_token?, action?: 'join' | 'refresh' }. 'refresh' is
+ * the in-visit renewal VideoRoom makes before token_expires_at (handed to
+ * room.updateClientToken): identical authorization, an existing room only.
  */
 
 // A guest invite link (capability URL) is otherwise valid for as long as the
@@ -200,16 +204,50 @@ const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
 // identities the host recorded); a guest needs the session's join token.
 const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;
 
-/** Find a Telnyx room by unique_name, creating it if it doesn't exist yet. */
-async function findOrCreateRoom(apiKey, uniqueName) {
+// Client tokens live an hour (Telnyx's maximum token_ttl_secs is 3600). A visit
+// that runs longer keeps its connection by calling this function again with
+// action 'refresh' before the token expires: the SAME guest/staff
+// authorization runs again (so a visit that has ended, or a guest link past its
+// window, stops renewing), and a fresh token is minted for the existing room.
+//
+// The refresh does NOT use Telnyx's refresh_token. POST
+// /v2/rooms/{id}/actions/refresh_client_token is declared `security: []`, so a
+// refresh token is a bearer grant that renews access without this function's
+// checks, and it returns no new refresh token, so a chain of refreshes ends
+// when the first refresh token expires. Minting through this function keeps
+// every renewal behind the authorization and has no such ceiling. The refresh
+// token Telnyx always issues is therefore requested at its minimum lifetime
+// (refresh_token_ttl_secs 60) and is never returned to the browser.
+const CLIENT_TOKEN_TTL_SECS = 3600;
+const REFRESH_TOKEN_TTL_SECS = 60;
+
+/** Find a Telnyx room by unique_name; null when it does not exist. */
+async function findRoom(apiKey, uniqueName) {
   const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
   const findUrl = `${TELNYX_API_BASE}/rooms?filter[unique_name]=${encodeURIComponent(uniqueName)}`;
   const findResp = await fetch(findUrl, { method: 'GET', headers });
-  if (findResp.ok) {
-    const found = await findResp.json().catch(() => ({}));
-    const existing = Array.isArray(found?.data) ? found.data.find((r) => r.unique_name === uniqueName) : null;
-    if (existing?.id) return existing.id;
-  }
+  if (!findResp.ok) return { ok: false, id: null };
+  const found = await findResp.json().catch(() => ({}));
+  const existing = Array.isArray(found?.data) ? found.data.find((r) => r.unique_name === uniqueName) : null;
+  return { ok: true, id: existing?.id || null };
+}
+
+/**
+ * Find a Telnyx room by unique_name, creating it if it doesn't exist yet.
+ *
+ * max_participants is left at Telnyx's default (10; the API allows 2–50). A
+ * visit's real participant count is not bounded lower than that anywhere in
+ * the product: the guest link is a bearer capability a patient can open on
+ * more than one device or share with family, manageTelehealthSession admits up
+ * to 20 participant_list entries, and a participant who reconnects can briefly
+ * hold a second slot until the stale one times out. A tighter cap would turn
+ * any of those into a refused join mid-visit; a looser one buys nothing the
+ * visit needs.
+ */
+async function findOrCreateRoom(apiKey, uniqueName) {
+  const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+  const first = await findRoom(apiKey, uniqueName);
+  if (first.id) return first.id;
   const createResp = await fetch(`${TELNYX_API_BASE}/rooms`, {
     method: 'POST',
     headers,
@@ -219,12 +257,8 @@ async function findOrCreateRoom(apiKey, uniqueName) {
   if (createResp.ok && created?.data?.id) return created.data.id;
   // A concurrent create can 422 on the unique_name — re-fetch before giving up.
   if (createResp.status === 422) {
-    const retry = await fetch(findUrl, { method: 'GET', headers });
-    if (retry.ok) {
-      const found = await retry.json().catch(() => ({}));
-      const existing = Array.isArray(found?.data) ? found.data.find((r) => r.unique_name === uniqueName) : null;
-      if (existing?.id) return existing.id;
-    }
+    const retry = await findRoom(apiKey, uniqueName);
+    if (retry.id) return retry.id;
   }
   const firstErr = Array.isArray(created?.errors) ? created.errors[0] : null;
   throw new Error(firstErr?.detail || firstErr?.title || `Could not provision Telnyx room (HTTP ${createResp.status})`);
@@ -245,7 +279,11 @@ Deno.serve(async (req) => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return Response.json({ error: 'Invalid request body' }, { status: 400 });
     }
-    const { room_name, join_token } = body;
+    const { room_name, join_token, action } = body;
+    if (action !== undefined && action !== 'join' && action !== 'refresh') {
+      return Response.json({ error: 'Invalid action' }, { status: 400 });
+    }
+    const refreshing = action === 'refresh';
     if (typeof room_name !== 'string' || !room_name.trim() || room_name.trim().length > 200) {
       return Response.json({ error: 'Invalid room_name' }, { status: 400 });
     }
@@ -328,15 +366,27 @@ Deno.serve(async (req) => {
     const { apiKey } = telnyxCreds;
     if (!apiKey) return Response.json({ error: telnyxCredsMessage(telnyxCreds, "credentials") }, { status: 500 });
 
-    const roomId = await findOrCreateRoom(apiKey, scopedRoomName);
+    // A refresh renews access to the room the caller is already in; it never
+    // creates one. A room that has gone is a visit that has ended.
+    let roomId;
+    if (refreshing) {
+      const found = await findRoom(apiKey, scopedRoomName);
+      if (!found.ok) return Response.json({ error: 'Could not renew the video token' }, { status: 502 });
+      if (!found.id) {
+        return Response.json({ error: 'This visit\'s video room no longer exists', code: 'telehealth_room_gone' }, { status: 409 });
+      }
+      roomId = found.id;
+    } else {
+      roomId = await findOrCreateRoom(apiKey, scopedRoomName);
+    }
 
     // Mint a per-session client token for this room. The token authorizes the
-    // bearer to join this room only, and expires after an hour — long enough for
-    // a full visit, short enough that a captured token is not a standing grant.
+    // bearer to join this room only, and expires after an hour; a longer visit
+    // renews it through action 'refresh', which re-runs the authorization above.
     const tokenResp = await fetch(`${TELNYX_API_BASE}/rooms/${roomId}/actions/generate_join_client_token`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token_ttl_secs: 3600, refresh_token_ttl_secs: 3600 }),
+      body: JSON.stringify({ token_ttl_secs: CLIENT_TOKEN_TTL_SECS, refresh_token_ttl_secs: REFRESH_TOKEN_TTL_SECS }),
     });
     const tokenData = await tokenResp.json().catch(() => ({}));
     if (!tokenResp.ok || !tokenData?.data?.token) {
@@ -344,10 +394,13 @@ Deno.serve(async (req) => {
       console.error('Telnyx video token error', { status: tokenResp.status, code: firstErr?.code });
       return Response.json({ error: 'Could not mint a Telnyx video token' }, { status: 502 });
     }
+    const expiresAt = typeof tokenData.data.token_expires_at === 'string'
+      && Number.isFinite(Date.parse(tokenData.data.token_expires_at)) ? tokenData.data.token_expires_at : null;
 
     return Response.json({
       token: tokenData.data.token,
-      refresh_token: tokenData.data.refresh_token || null,
+      token_expires_at: expiresAt,
+      token_ttl_secs: CLIENT_TOKEN_TTL_SECS,
       room_id: roomId,
       room_name: scopedRoomName,
       identity: participantIdentity,

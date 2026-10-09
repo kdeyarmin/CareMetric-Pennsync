@@ -421,22 +421,50 @@ test("startMaskedCall posts the Telnyx Call Control create-call contract", async
 });
 
 // ============================ NUMBER PROVISIONING ============================
+// A settled order as Telnyx's POST /v2/number_orders documents it: the order and
+// each line carry status (pending|success|failure) and requirements_met, and the
+// line id (phone_numbers[].id) is a number-ORDER line, not a phone number.
+const numberOrder = (e164, overrides = {}, line = {}) => ({
+  id: "ord_1", record_type: "number_order", status: "success", requirements_met: true,
+  phone_numbers: [{ id: "order_line_1", record_type: "number_order_phone_number", phone_number: e164, status: "success", requirements_met: true, ...line }],
+  ...overrides,
+});
+// The account's /v2/phone_numbers resource for a number (what PATCH takes).
+const ownedNumber = (e164, overrides = {}) => ({
+  id: "pn_resource_1", record_type: "phone_number", phone_number: e164, status: "active",
+  connection_id: "VC1", messaging_profile_id: "MP1", ...overrides,
+});
+
 test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async () => {
   const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_1", phone_numbers: [{ id: "np_1", phone_number: "+12155550177" }] } } }) },
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: numberOrder("+12155550177") } }) },
+    { match: (u) => u.includes("/v2/phone_numbers?"), respond: () => ({ status: 200, json: { data: [ownedNumber("+12155550177")] } }) },
   ]);
+  const writes = [];
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", SUPER_ADMIN_EMAIL: "a@x.com" },
-    makeClient: () => makeSpyBase44({ user: { email: "a@x.com", role: "admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
+    makeClient: () => makeSpyBase44({ writes, user: { email: "a@x.com", role: "admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
     fetchImpl: impl,
   });
-  await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
     method: "POST", body: JSON.stringify({ action: "purchase", e164: "2155550177" }),
   }));
   const call = calls.find((c) => c.url === "https://api.telnyx.com/v2/number_orders");
   assert.ok(call, "posted to the Telnyx number_orders endpoint");
   assert.match(BEARER(call.headers), /^Bearer KEYtest$/);
   assert.deepEqual(call.body.phone_numbers, [{ phone_number: "+12155550177" }]);
+  // The stored id is the /v2/phone_numbers RESOURCE id, resolved by a lookup
+  // whose filter carries digits only (Telnyx: non-numerical characters return
+  // no rows) — never the order-line id or the order id.
+  const lookup = calls.find((c) => c.url.includes("/v2/phone_numbers?"));
+  assert.equal(lookup?.url, "https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=12155550177");
+  const data = await res.json();
+  assert.equal(data.telnyx_number_id, "pn_resource_1");
+  assert.equal(data.telnyx_order_id, "ord_1");
+  assert.equal(data.order_status, "complete");
+  const created = writes.find((w) => w.entity === "PhoneNumber" && w.op === "create")?.row;
+  assert.equal(created?.twilio_phone_number_sid, "pn_resource_1");
+  assert.equal(created?.status, "available");
 });
 
 test("a self-asserted super_admin account_type cannot purchase a Telnyx number", async () => {
@@ -460,7 +488,8 @@ test("a self-asserted super_admin account_type cannot purchase a Telnyx number",
 
 test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", async () => {
   const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_3", phone_numbers: [{ id: "np_2", phone_number: "+12155550188" }] } } }) },
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: numberOrder("+12155550188", { id: "ord_3" }) } }) },
+    { match: (u) => u.includes("/v2/phone_numbers?"), respond: () => ({ status: 200, json: { data: [ownedNumber("+12155550188")] } }) },
     { match: (u) => u.includes("/v2/10dlc/phone_number_campaigns"), respond: () => ({ status: 200, json: { phoneNumber: "+12155550188", campaignId: "CAMP1" } }) },
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
@@ -489,7 +518,8 @@ test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", 
 
 test("a nurse-line purchase with NO saved campaign warns instead of enrolling", async () => {
   const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_4", phone_numbers: [{ id: "np_3", phone_number: "+12155550190" }] } } }) },
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: numberOrder("+12155550190", { id: "ord_4" }) } }) },
+    { match: (u) => u.includes("/v2/phone_numbers?"), respond: () => ({ status: 200, json: { data: [ownedNumber("+12155550190")] } }) },
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: { SUPER_ADMIN_EMAIL: "a@x.com" },
@@ -632,7 +662,8 @@ test("a fax-purpose search filters fax-capable numbers (not sms/voice)", async (
 
 test("a fax-purpose purchase attaches the FAX connection and sets the blind outbound line", async () => {
   const { impl, calls } = makeFetch([
-    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_2", phone_numbers: [{ id: "np_9", phone_number: "+12155550199" }] } } }) },
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: numberOrder("+12155550199", { id: "ord_2" }) } }) },
+    { match: (u) => u.includes("/v2/phone_numbers?"), respond: () => ({ status: 200, json: { data: [ownedNumber("+12155550199", { connection_id: "FC1", messaging_profile_id: null })] } }) },
   ]);
   const writes = [];
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
@@ -682,12 +713,367 @@ test("provision_fax re-points an owned number at the fax connection", async () =
     method: "POST", body: JSON.stringify({ action: "provision_fax", e164: "(215) 555-0188" }),
   }));
   assert.equal(res.status, 200);
+  // filter[phone_number] takes digits: an encoded '+' answers "no rows", which
+  // used to read as "this number isn't in your Telnyx account".
+  const lookup = calls.find((c) => c.url.includes("/v2/phone_numbers?"));
+  assert.equal(lookup?.url, "https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=12155550188");
   const patch = calls.find((c) => /\/v2\/phone_numbers\/np_7$/.test(c.url) && c.method === "PATCH");
   assert.ok(patch, "PATCHed the owned Telnyx number");
   assert.equal(patch.body.connection_id, "FC1", "re-pointed at the Programmable Fax connection");
   const outboundWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
   assert.equal(outboundWrite?.patch.outbound_fax_number_e164, "+12155550188", "stored normalized as the blind outbound fax line");
   assert.equal(writes.find((w) => w.entity === 'PhoneNumber' && w.op === 'create')?.row.status, 'reserved');
+});
+
+// ---- number orders are asynchronous ----
+// POST /v2/number_orders answers with status pending|success|failure and
+// requirements_met; completion is a later event. A purchase must not treat a
+// pending order as a working line.
+async function purchaseWith({ e164 = "+12155550177", purpose = "voice_sms", post, reread, owned = [], agency = [{ id: "AS1", a2p_campaign_id: "CAMP1" }], secret = {} }) {
+  const writes = [];
+  const data = {
+    IntegrationSecret: [activeTelnyxSecret({ voice_connection_id: "VC1", messaging_profile_id: "MP1", fax_connection_id: "FC1", ...secret })],
+    PhoneNumber: [],
+    AgencySettings: agency,
+  };
+  let rereads = 0;
+  const { impl, calls } = makeFetch([
+    { match: (u) => u === "https://api.telnyx.com/v2/number_orders", respond: () => ({ status: 200, json: { data: post } }) },
+    { match: (u) => u.startsWith("https://api.telnyx.com/v2/number_orders/"), respond: () => {
+      rereads += 1;
+      return { status: 200, json: { data: typeof reread === "function" ? reread(rereads) : reread } };
+    } },
+    { match: (u) => u.includes("/v2/phone_numbers?"), respond: () => ({ status: 200, json: { data: owned } }) },
+    { match: (u) => u.includes("/v2/10dlc/phone_number_campaigns"), respond: () => ({ status: 200, json: { phoneNumber: e164, campaignId: "CAMP1" } }) },
+  ]);
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
+    makeClient: () => makeSpyBase44({ writes, data }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "purchase", e164, purpose }),
+  }));
+  return { res, json: await res.json(), writes, data, calls, rereads: () => rereads };
+}
+
+test("a pending number order is recorded but not enrolled, and is not called active", async () => {
+  const pending = numberOrder("+12155550177", { status: "pending" }, { status: "pending" });
+  const out = await purchaseWith({ post: pending, reread: pending, owned: [] });
+  assert.equal(out.res.status, 200);
+  assert.equal(out.json.order_status, "pending");
+  assert.equal(out.rereads(), 2, "a pending order is re-read a bounded number of times");
+  assert.equal(out.json.telnyx_number_id, null, "no phone-number resource exists yet, and the order-line id is not stored in its place");
+  const row = out.data.PhoneNumber[0];
+  assert.equal(row.status, "available");
+  assert.equal(row.twilio_phone_number_sid, "");
+  assert.match(row.notes, /Not active at purchase \(Telnyx order ord_1: pending\)/);
+  assert.equal(out.calls.some((c) => c.url.includes("/v2/10dlc/")), false, "a pending number is not enrolled in a campaign");
+  assert.equal(out.json.campaign_assigned, false);
+  assert.ok(out.json.warnings.some((w) => /still activating \+12155550177/.test(w)), out.json.warnings.join(" | "));
+  assert.ok(out.json.warnings.some((w) => /NOT enrolled in A2P campaign CAMP1/.test(w)), out.json.warnings.join(" | "));
+});
+
+test("an order that settles on a re-read is enrolled and recorded with its phone-number id", async () => {
+  const out = await purchaseWith({
+    post: numberOrder("+12155550177", { status: "pending" }, { status: "pending" }),
+    reread: numberOrder("+12155550177"),
+    owned: [ownedNumber("+12155550177")],
+  });
+  assert.equal(out.rereads(), 1);
+  assert.equal(out.json.order_status, "complete");
+  assert.equal(out.json.telnyx_number_id, "pn_resource_1");
+  assert.equal(out.json.campaign_assigned, true);
+  assert.deepEqual(out.json.warnings, []);
+  assert.equal(out.data.PhoneNumber[0].notes, "Purchased in-app via Telnyx numbers API");
+});
+
+test("a completed order whose number Telnyx still reports pending is not treated as active", async () => {
+  const out = await purchaseWith({
+    post: numberOrder("+12155550177"),
+    owned: [ownedNumber("+12155550177", { status: "provision-pending" })],
+  });
+  assert.equal(out.json.order_status, "pending");
+  assert.equal(out.json.telnyx_number_status, "provision-pending");
+  assert.equal(out.json.telnyx_number_id, "pn_resource_1");
+  assert.equal(out.calls.some((c) => c.url.includes("/v2/10dlc/")), false);
+});
+
+test("unmet number requirements are reported, not polled", async () => {
+  const blocked = numberOrder("+12155550177", { status: "pending", requirements_met: false }, { status: "pending", requirements_met: false });
+  const out = await purchaseWith({ post: blocked, reread: blocked });
+  assert.equal(out.rereads(), 0, "documents, not time, settle unmet requirements");
+  assert.equal(out.json.order_status, "pending");
+  assert.match(out.data.PhoneNumber[0].notes, /requirements not met/);
+  assert.ok(out.json.warnings.some((w) => /regulatory requirements/.test(w)), out.json.warnings.join(" | "));
+});
+
+test("a failed number order records nothing and releases the inventory reservation", async () => {
+  const failed = numberOrder("+12155550177", { status: "failure" }, { status: "failure" });
+  const out = await purchaseWith({ post: failed });
+  assert.equal(out.res.status, 502);
+  assert.match(out.json.error, /nothing was purchased/);
+  assert.equal(out.data.PhoneNumber.length, 0);
+  assert.deepEqual(out.data.IntegrationSecret[0].phone_inventory_creation_claims, {});
+  assert.equal(out.calls.some((c) => c.url.includes("/v2/10dlc/")), false);
+});
+
+test("a pending fax-line purchase keeps the current outbound fax line", async () => {
+  const pending = numberOrder("+12155550199", { status: "pending" }, { status: "pending" });
+  const out = await purchaseWith({
+    e164: "+12155550199", purpose: "fax", post: pending, reread: pending,
+    agency: [{ id: "AS1", outbound_fax_number_e164: "+12155550100" }],
+  });
+  assert.equal(out.res.status, 200);
+  assert.equal(out.json.outbound_fax_set, false);
+  assert.equal(out.data.AgencySettings[0].outbound_fax_number_e164, "+12155550100", "a working outbound line is not replaced by one that cannot send");
+  assert.equal(out.writes.some((w) => w.entity === "AgencySettings"), false);
+  assert.equal(out.data.PhoneNumber[0].status, "reserved");
+  assert.ok(out.json.warnings.some((w) => /NOT made the outbound fax line/.test(w)), out.json.warnings.join(" | "));
+});
+
+test("a number search returns cost, region and features, and flags best-effort results", async () => {
+  const available = [
+    {
+      record_type: "available_phone_number", phone_number: "+12155550101", best_effort: false, quickship: true, reservable: true,
+      region_information: [
+        { region_type: "country_code", region_name: "US" }, { region_type: "rate_center", region_name: "PHILADELPHIA" },
+        { region_type: "state", region_name: "PA" }, { region_type: "location", region_name: "Philadelphia" },
+      ],
+      cost_information: { upfront_cost: "1.00", monthly_cost: "1.00", currency: "USD" },
+      features: [{ name: "sms" }, { name: "voice" }, { name: "sms" }],
+    },
+    {
+      phone_number: "+12675550102", best_effort: true,
+      region_information: [{ region_type: "state", region_name: "PA" }],
+      cost_information: { monthly_cost: "<b>free</b>", currency: "usd" },
+      features: "voice",
+    },
+    { phone_number: "not-a-number" },
+  ];
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/available_phone_numbers"), respond: () => ({ status: 200, json: { data: available, metadata: { total_results: 2, best_effort_results: 1 } } }) },
+  ]);
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
+    makeClient: () => makeSpyBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "search", area_code: "215" }),
+  }));
+  const data = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(data.numbers, [
+    {
+      e164: "+12155550101", locality: "Philadelphia", rate_center: "PHILADELPHIA", region: "PA",
+      monthly_cost: "1.00", upfront_cost: "1.00", currency: "USD", features: ["sms", "voice"], best_effort: false,
+    },
+    {
+      e164: "+12675550102", locality: null, rate_center: null, region: "PA",
+      monthly_cost: null, upfront_cost: null, currency: null, features: [], best_effort: true,
+    },
+  ]);
+  const url = new URL(calls.find((c) => c.url.includes("/v2/available_phone_numbers")).url);
+  // deepObject `filter` with an array member: repeated `filter[features][]`,
+  // the form the spec documents for its explicit array filters.
+  assert.deepEqual(url.searchParams.getAll("filter[features][]"), ["sms", "voice"]);
+  assert.equal(url.searchParams.get("filter[national_destination_code]"), "215");
+  assert.equal(url.searchParams.has("filter[best_effort]"), false);
+});
+
+// ---- nurse assignment checks the line with Telnyx first ----
+const assignmentData = (secret = {}) => ({
+  User: [{ id: "u1", email: "n@x.com" }],
+  AgencySettings: [],
+  PhoneNumber: [{ id: "p1", e164: "+12155550188", status: "available", twilio_phone_number_sid: "order_line_old" }],
+  IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1", ...secret }],
+});
+const lookupRoute = (respond) => ({ match: (u) => u.includes("/v2/phone_numbers?"), respond });
+
+async function assignWith(name, data, routes) {
+  const writes = [];
+  const { impl, calls } = makeFetch(routes);
+  const handler = await loadHandler(`../functions/${name}/entry.ts`, {
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data, writes }), fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/test", { method: "POST", body: JSON.stringify({
+    action: "assign", id: "p1", target_user_email: "n@x.com", work_phone_number: "+12155550188",
+  }) }));
+  return { res, json: await res.json(), writes, calls };
+}
+
+test("manual nurse assignment refuses a number Telnyx reports as not ready, before any claim", async () => {
+  const cases = [
+    ["not in the account", [], /not in your Telnyx account yet/],
+    ["purchase pending", [ownedNumber("+12155550188", { status: "purchase-pending" })], /"purchase-pending" in Telnyx, not active/],
+    ["another voice connection", [ownedNumber("+12155550188", { connection_id: "OTHER" })], /connection "OTHER", not the configured Voice connection "VC1"/],
+    ["another messaging profile", [ownedNumber("+12155550188", { messaging_profile_id: "MP-OTHER" })], /messaging profile "MP-OTHER", not the configured Messaging Profile "MP1"/],
+    // Telnyx refuses every send from such a number ("not on a messaging profile").
+    ["no messaging profile", [ownedNumber("+12155550188", { messaging_profile_id: null, messaging_profile_name: null })],
+      /not on any messaging profile, so every text from it fails \(Telnyx: 'not on a messaging profile'\)\. Add it to the configured Messaging Profile "MP1"/],
+  ];
+  for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
+    for (const [label, owned, problem] of cases) {
+      const data = assignmentData();
+      const out = await assignWith(name, data, [lookupRoute(() => ({ json: { data: owned } }))]);
+      assert.equal(out.res.status, 409, `${name}/${label}`);
+      assert.equal(out.json.code, "work_line_not_ready", `${name}/${label}`);
+      assert.ok(out.json.problems.some((p) => problem.test(p)), `${name}/${label}: ${out.json.problems.join(" | ")}`);
+      assert.equal(data.PhoneNumber[0].status, "available", `${name}/${label} leaves the pool row unclaimed`);
+      assert.equal(out.writes.some((w) => w.entity === "User" || (w.entity === "PhoneNumber" && w.op === "updateMany")), false, `${name}/${label}`);
+      assert.equal(out.calls.filter((c) => c.method !== "GET").length, 0, "the check is read-only");
+    }
+  }
+});
+
+// GET /v2/10dlc/phone_number_campaigns/{phoneNumber} answers a bare
+// PhoneNumberCampaign (no `data` wrapper) per the spec.
+const campaignRoute = (respond) => ({ match: (u) => u.includes("/v2/10dlc/phone_number_campaigns/"), respond });
+const onCampaign = (overrides = {}) => campaignRoute(() => ({ json: {
+  phoneNumber: "+12155550188", campaignId: "CAMP1", tcrCampaignId: "C0ZURTX", telnyxCampaignId: "CAMP1",
+  assignmentStatus: "ASSIGNED", createdAt: "2026-01-01T00:00:00", updatedAt: "2026-01-01T00:00:00", ...overrides,
+} }));
+
+test("a verified nurse line is assigned with its phone-number resource id", async () => {
+  for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
+    const data = assignmentData();
+    const out = await assignWith(name, data, [lookupRoute(() => ({ json: { data: [ownedNumber("+12155550188")] } })), onCampaign()]);
+    assert.equal(out.res.status, 200, name);
+    assert.equal(out.json.line_verified, true, name);
+    assert.deepEqual(out.json.warnings, [], name);
+    assert.equal(data.PhoneNumber[0].status, "assigned", name);
+    assert.equal(data.User[0].twilio_phone_number_sid, "pn_resource_1", `${name} replaces a stored order-line id with the resource id`);
+    assert.equal(out.calls[0]?.url, "https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=12155550188");
+    assert.equal(out.calls[1]?.url, "https://api.telnyx.com/v2/10dlc/phone_number_campaigns/%2B12155550188");
+  }
+});
+
+test("a nurse line that is not on the saved 10DLC campaign is assigned with a warning, never enrolled", async () => {
+  const cases = [
+    ["no campaign at all", campaignRoute(() => ({ status: 404, json: { errors: [{ code: 10005, title: "Resource not found" }] } })),
+      /not on any A2P 10DLC campaign \(the saved campaign is CAMP1\)/],
+    ["another campaign", onCampaign({ campaignId: "OTHER", tcrCampaignId: "C0OTHER", telnyxCampaignId: "OTHER" }),
+      /on A2P 10DLC campaign C0OTHER, not the saved campaign CAMP1/],
+    ["assignment still pending", onCampaign({ assignmentStatus: "PENDING_ASSIGNMENT" }), /assignment to campaign C0ZURTX is PENDING_ASSIGNMENT/],
+    ["campaign unreadable", campaignRoute(() => ({ status: 500, json: {} })), /campaign could not be checked \(HTTP 500\)/],
+  ];
+  for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
+    for (const [label, route, warning] of cases) {
+      const data = assignmentData();
+      data.AgencySettings = [{ id: "AS1", a2p_campaign_id: "CAMP1" }];
+      const out = await assignWith(name, data, [lookupRoute(() => ({ json: { data: [ownedNumber("+12155550188")] } })), route]);
+      assert.equal(out.res.status, 200, `${name}/${label}: a texting registration does not block a voice line`);
+      assert.equal(data.PhoneNumber[0].status, "assigned", `${name}/${label}`);
+      assert.ok(out.json.warnings.some((w) => warning.test(w)), `${name}/${label}: ${out.json.warnings.join(" | ")}`);
+      assert.equal(out.calls.filter((c) => c.method !== "GET").length, 0, `${name}/${label}: the check never enrolls`);
+    }
+    // The owner's saved id may be the TCR id (C0ZURTX) or Telnyx's: either matches.
+    const data = assignmentData();
+    data.AgencySettings = [{ id: "AS1", a2p_campaign_id: "C0ZURTX" }];
+    const out = await assignWith(name, data, [lookupRoute(() => ({ json: { data: [ownedNumber("+12155550188")] } })),
+      onCampaign({ campaignId: "3008dd9f-66d7-40e0-bf23-bf2d8d1a96ba", telnyxCampaignId: "3008dd9f-66d7-40e0-bf23-bf2d8d1a96ba" })]);
+    assert.deepEqual(out.json.warnings, [], `${name}: a TCR campaign id matches`);
+  }
+});
+
+test("a toll-free line is not checked against 10DLC, and a profile-less line warns when no profile is saved", async () => {
+  for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
+    // Toll-free numbers are not 10DLC long codes; a 404 there would be a false alarm.
+    const tollFree = assignmentData();
+    tollFree.PhoneNumber[0].e164 = "+18555140223";
+    tollFree.AgencySettings = [{ id: "AS1", a2p_campaign_id: "C0ZURTX" }];
+    const routes = [lookupRoute(() => ({ json: { data: [ownedNumber("+18555140223", { phone_number_type: "toll_free" })] } })),
+      campaignRoute(() => { throw new Error("toll-free must not be checked against 10DLC"); })];
+    const { impl, calls } = makeFetch(routes);
+    const handler = await loadHandler(`../functions/${name}/entry.ts`, {
+      env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data: tollFree }), fetchImpl: impl,
+    });
+    const res = await handler(new Request("https://app/functions/test", { method: "POST", body: JSON.stringify({
+      action: "assign", id: "p1", target_user_email: "n@x.com", work_phone_number: "+18555140223",
+    }) }));
+    assert.equal(res.status, 200, name);
+    assert.deepEqual((await res.json()).warnings, [], name);
+    assert.equal(calls.some((c) => c.url.includes("/10dlc/")), false, name);
+
+    // With no Messaging Profile saved there is nothing to compare against, but
+    // a number on no profile still cannot text, and the admin is told so.
+    const noSaved = assignmentData({ messaging_profile_id: "" });
+    const out = await assignWith(name, noSaved, [lookupRoute(() => ({ json: { data: [ownedNumber("+12155550188", { messaging_profile_id: null })] } })), onCampaign()]);
+    assert.equal(out.res.status, 200, name);
+    assert.ok(out.json.warnings.some((w) => /not on any messaging profile, so every text from it will fail/.test(w)), out.json.warnings.join(" | "));
+  }
+});
+
+test("a Telnyx line check that cannot be made warns but does not block a manual assignment", async () => {
+  const unreadable = [
+    ["Telnyx 503", () => ({ status: 503, json: { errors: [{ code: "10011" }] } })],
+    ["messaging profile UNAVAILABLE", () => ({ json: { data: [ownedNumber("+12155550188", { messaging_profile_id: "UNAVAILABLE" })] } })],
+  ];
+  for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
+    for (const [label, respond] of unreadable) {
+      const data = assignmentData();
+      const out = await assignWith(name, data, [lookupRoute(respond)]);
+      assert.equal(out.res.status, 200, `${name}/${label}`);
+      assert.equal(data.PhoneNumber[0].status, "assigned", `${name}/${label}`);
+      assert.ok(out.json.warnings.length > 0, `${name}/${label} says what was not checked`);
+    }
+    const noCreds = assignmentData();
+    noCreds.IntegrationSecret = [];
+    const out = await assignWith(name, noCreds, [lookupRoute(() => { throw new Error("no lookup without a key"); })]);
+    assert.equal(out.res.status, 200, `${name}/no credentials`);
+    assert.equal(out.json.line_verified, false);
+    assert.ok(out.json.warnings.some((w) => /no Telnyx API key is configured/.test(w)), out.json.warnings.join(" | "));
+    assert.equal(out.calls.length, 0);
+  }
+});
+
+test("bulk assignment skips numbers Telnyx reports as not ready and hands out the next good one", async () => {
+  const data = {
+    User: [{ id: "u1", email: "n@x.com" }],
+    AgencySettings: [],
+    PhoneNumber: [
+      { id: "p1", e164: "+12155550101", status: "available", created_date: "2026-01-01T00:00:01.000Z" },
+      { id: "p2", e164: "+12155550102", status: "available", created_date: "2026-01-01T00:00:02.000Z" },
+    ],
+    IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }],
+  };
+  const { impl, calls } = makeFetch([lookupRoute((u) => ({ json: { data: u.endsWith("=12155550101")
+    ? [ownedNumber("+12155550101", { connection_id: "OTHER" })]
+    : [ownedNumber("+12155550102", { id: "pn_resource_2" })] } }))]);
+  const handler = await loadHandler("../functions/autoAssignWorkNumbers/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data }), fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/autoAssignWorkNumbers", { method: "POST", body: "{}" }));
+  const out = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(out.assigned, [{ email: "n@x.com", e164: "+12155550102" }]);
+  assert.equal(out.skipped_numbers.length, 1);
+  assert.equal(out.skipped_numbers[0].e164, "+12155550101");
+  assert.match(out.message, /Skipped 1 pool number/);
+  assert.equal(data.PhoneNumber[0].status, "available", "the broken line stays in the pool, unassigned");
+  assert.equal(data.User[0].twilio_phone_number_sid, "pn_resource_2");
+  assert.equal(calls.filter((c) => c.method !== "GET").length, 0);
+});
+
+test("bulk assignment stops checking after the first check that cannot be made, and warns once", async () => {
+  const data = {
+    User: [{ id: "u1", email: "a1@x.com" }, { id: "u2", email: "a2@x.com" }],
+    AgencySettings: [],
+    PhoneNumber: [
+      { id: "p1", e164: "+12155550101", status: "available", created_date: "2026-01-01T00:00:01.000Z" },
+      { id: "p2", e164: "+12155550102", status: "available", created_date: "2026-01-01T00:00:02.000Z" },
+    ],
+    IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }],
+  };
+  const { impl, calls } = makeFetch([lookupRoute(() => ({ status: 500, json: {} }))]);
+  const handler = await loadHandler("../functions/autoAssignWorkNumbers/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data }), fetchImpl: impl,
+  });
+  const out = await (await handler(new Request("https://app/functions/autoAssignWorkNumbers", { method: "POST", body: "{}" }))).json();
+  assert.equal(out.assigned_count, 2, "an unreachable Telnyx does not block assignment");
+  assert.equal(calls.length, 1, "one failed check, not one timeout per number");
+  assert.ok(out.warnings.some((w) => /without a Telnyx check/.test(w)), out.warnings.join(" | "));
 });
 
 test('concurrent fax provisioning, purchases and manual pool adds share one creation reservation', async () => {
@@ -709,7 +1095,7 @@ test('concurrent fax provisioning, purchases and manual pool adds share one crea
     };
     const { impl, calls } = makeFetch([
       { match: url => url.includes('/phone_numbers?'), respond: () => ({ json: { data: [{ id: 'np_7', phone_number: '+12155550188' }] } }) },
-      { match: url => url.endsWith('/number_orders'), respond: () => ({ json: { data: { id: 'order_1' } } }) },
+      { match: url => url.endsWith('/number_orders'), respond: () => ({ json: { data: numberOrder('+12155550188', { id: 'order_1' }) } }) },
       { match: url => url.endsWith('/phone_numbers/np_7'), respond: () => ({ json: { data: { id: 'np_7' } } }) },
     ]);
     const handlers = [];
@@ -1341,6 +1727,86 @@ test("createTelehealthToken still honors legacy plaintext invite_link sessions (
     method: "POST", body: JSON.stringify({ room_name: "visit-legacy", join_token: "legacy-token-123" }),
   }));
   assert.equal(res.status, 200, "pre-hash sessions keep working via the invite_link token");
+});
+
+// ---- in-visit token renewal ----
+// Client tokens live at most 3600 s (Telnyx's token_ttl_secs maximum), so a
+// visit past an hour renews through action 'refresh': the same authorization,
+// an existing room only, and no Telnyx refresh_token in the browser (Telnyx's
+// refresh endpoint is `security: []`, so that token would renew access with no
+// check of ours).
+const GUEST_TOKEN = "c".repeat(48);
+const guestSession = (overrides = {}) => ({
+  room_name: "visit-r", host_email: "host@x.com", host_user_id: "host_1", status: "active",
+  scheduled_at: new Date().toISOString(), participant_list: ["family@x.com"],
+  join_token_hash: createHash("sha256").update(GUEST_TOKEN).digest("hex"),
+  ...overrides,
+});
+async function telehealthTokenWith({ session = guestSession(), user = null, rooms = [{ id: "room_r", unique_name: "visit-r" }], roomsStatus = 200, body }) {
+  const { impl, calls } = makeFetch([
+    { match: (u) => /\/v2\/rooms\?/.test(u), respond: () => ({ status: roomsStatus, json: { data: rooms } }) },
+    { match: (u, init) => u.endsWith("/v2/rooms") && init.method === "POST", respond: () => ({ status: 201, json: { data: { id: "room_new" } } }) },
+    { match: (u) => u.includes("/actions/generate_join_client_token"), respond: () => ({
+      status: 201, json: { data: { token: "JOIN-R", token_expires_at: "2026-10-09T21:00:00Z", refresh_token: "REFRESH-SECRET", refresh_token_expires_at: "2026-10-09T20:01:00Z" } },
+    }) },
+  ]);
+  const handler = await loadHandler("../functions/createTelehealthToken/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "owner@x.com" },
+    makeClient: () => makeBase44({ user, data: { IntegrationSecret: [{ api_key: "KEYtest" }], TelehealthSession: [session] } }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/createTelehealthToken", { method: "POST", body: JSON.stringify(body) }));
+  return { res, json: await res.json(), calls };
+}
+
+test("createTelehealthToken returns the token expiry and never hands the browser a Telnyx refresh token", async () => {
+  const out = await telehealthTokenWith({ body: { room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(out.res.status, 200);
+  assert.equal(out.json.token, "JOIN-R");
+  assert.equal(out.json.token_expires_at, "2026-10-09T21:00:00Z");
+  assert.equal(out.json.token_ttl_secs, 3600);
+  assert.equal(Object.hasOwn(out.json, "refresh_token"), false);
+  assert.equal(JSON.stringify(out.json).includes("REFRESH-SECRET"), false);
+  const mint = out.calls.find((c) => c.url.includes("/actions/generate_join_client_token"));
+  assert.deepEqual(mint.body, { token_ttl_secs: 3600, refresh_token_ttl_secs: 60 }, "within the spec's 10–3600 and 60–86400 bounds");
+});
+
+test("a token refresh re-runs the guest and staff authorization and reuses the existing room", async () => {
+  const guest = await telehealthTokenWith({ body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(guest.res.status, 200);
+  assert.equal(guest.json.token, "JOIN-R");
+  assert.equal(guest.calls.some((c) => c.method === "POST" && c.url.endsWith("/v2/rooms")), false, "a refresh never creates a room");
+  assert.ok(guest.calls.some((c) => c.url.includes("/v2/rooms/room_r/actions/generate_join_client_token")));
+
+  const host = await telehealthTokenWith({ user: { id: "host_1", email: "host@x.com", role: "user" }, body: { action: "refresh", room_name: "visit-r" } });
+  assert.equal(host.res.status, 200, "the host renews through the staff path");
+
+  const refusals = [
+    ["a wrong guest token", { body: { action: "refresh", room_name: "visit-r", join_token: "d".repeat(48) } }],
+    ["a visit that has ended", { session: guestSession({ status: "completed" }), body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } }],
+    ["a guest link past its window", { session: guestSession({ scheduled_at: new Date(Date.now() - 13 * 3600 * 1000).toISOString() }), body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } }],
+    ["a signed-in non-participant", { user: { id: "u9", email: "other@x.com", role: "user" }, body: { action: "refresh", room_name: "visit-r" } }],
+  ];
+  for (const [label, input] of refusals) {
+    const out = await telehealthTokenWith(input);
+    assert.equal(out.res.status, 403, label);
+    assert.equal(out.calls.length, 0, `${label}: refused before any Telnyx call`);
+  }
+});
+
+test("a token refresh for a room that no longer exists is refused, not re-provisioned", async () => {
+  const gone = await telehealthTokenWith({ rooms: [], body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(gone.res.status, 409);
+  assert.equal(gone.json.code, "telehealth_room_gone");
+  assert.equal(gone.calls.some((c) => c.method === "POST"), false);
+
+  const unreadable = await telehealthTokenWith({ roomsStatus: 503, body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(unreadable.res.status, 502);
+  assert.equal(unreadable.calls.some((c) => c.method === "POST"), false);
+
+  const bad = await telehealthTokenWith({ body: { action: "renew", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(bad.res.status, 400);
+  assert.equal(bad.calls.length, 0);
 });
 
 test("rotateTelehealthJoinToken mints a fresh token and stores only its hash", async () => {

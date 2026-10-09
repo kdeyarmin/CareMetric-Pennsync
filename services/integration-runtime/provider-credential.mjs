@@ -38,7 +38,7 @@
 //    `IntegrationSecret` row, because on this side it does not. The sentence
 //    that matters — that a read failure is not fixed by re-entering a key — is
 //    unchanged.
-import { fail, ID, IntegrationError, text } from './contracts.mjs';
+import { fail, ID, IntegrationError } from './contracts.mjs';
 import { seal, unseal } from './safety.mjs';
 
 /** The providers this module will carry a credential for. One, as the original's enum has one. */
@@ -193,6 +193,22 @@ export async function credentialStatus(config, store, provider = 'telnyx') {
 const RESOURCE_FIELDS = Object.freeze(['publicKey', 'messagingProfileId', 'voiceConnectionId', 'faxConnectionId']);
 
 /**
+ * Telnyx's webhook-signing public key, in the one form a verifier can use: the
+ * raw 32-byte Ed25519 key, base64 (44 characters ending in '='), as Mission
+ * Control › Keys & Credentials shows it. The webhook verifier imports exactly
+ * that (`importKey('raw', …, { name: 'Ed25519' })`), so a PEM block, a hex
+ * string or the API key pasted into the wrong field would store without
+ * complaint and then refuse every signed webhook. Unlike the API key, whose
+ * shape is the provider's business, this one has a shape the verifier depends
+ * on. The same check as `isTelnyxPublicKey` in
+ * `base44/functions/saveTelnyxSecret/entry.ts`.
+ */
+export function isTelnyxPublicKey(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]{43}=$/.test(value)) return false;
+  return Buffer.from(value, 'base64').length === 32;
+}
+
+/**
  * Record a new credential version, retiring the active one.
  *
  * The key is sealed here and the plaintext never leaves this function. The
@@ -215,7 +231,11 @@ export async function putCredential(config, store, input, { randomUUID }) {
     const value = input?.[field];
     if (value == null || value === '') { resources[field] = null; continue; }
     if (field === 'publicKey') {
-      resources[field] = text(value, 1024);
+      // The pattern admits 44 base64 characters and nothing else, so it also
+      // bounds the length and refuses control characters, which `text` did.
+      const key = typeof value === 'string' ? value.trim() : '';
+      if (!isTelnyxPublicKey(key)) fail(400, 'CREDENTIAL_PUBLIC_KEY_INVALID');
+      resources[field] = key;
     } else {
       if (typeof value !== 'string' || !ID.test(value) || value.length > 200) fail(400, 'CREDENTIAL_RESOURCE_INVALID');
       resources[field] = value;
