@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
@@ -7,17 +6,16 @@ import { createPageUrl } from "@/utils";
 import ReferralPDFSummarizer from "@/components/referral/ReferralPDFSummarizer";
 import ReferralAnalyzer from "@/components/referral/ReferralAnalyzer";
 import AdmissionBriefEmailCard from "@/components/referral/AdmissionBriefEmailCard";
-import ClinicalManagerBriefCard from "@/components/referral/ClinicalManagerBriefCard";
 import ProviderFaxRequestCard from "@/components/referral/ProviderFaxRequestCard";
-import FinancialGate from "@/components/ui/FinancialGate";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
 import { referralPatientReadiness } from "@/components/referral/referralPatientReadiness";
 import AIAdmissionDocumentationAssistant from "@/components/clinical/AIAdmissionDocumentationAssistant";
+import { appendBriefingSection } from "@/components/referral/briefingSections";
 import AIGeneratedOASISAssessment from "@/components/oasis/AIGeneratedOASISAssessment";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, UserPlus, ArrowRight, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { FileText, UserPlus, ArrowRight, CheckCircle2 } from "lucide-react";
 import { toast } from 'sonner';
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 
@@ -44,18 +42,13 @@ export default function ReferralProcessor() {
     try {
       // Deterministic PDGM-sequenced coding from the referral (codes only
       // ever harvested from the referral, never generated) — the default
-      // diagnosis set when the user hasn't hand-picked one above.
+      // diagnosis set when the user hasn't hand-picked one above. Sequencing
+      // follows the documented clinical order; no payment table is consulted.
       let coding = null;
       try {
-        const me = await base44.auth.me().catch(() => null);
-        const { fetchCallerPdgmRateConfig } = await import('@/lib/agencySettings');
-        const rateRow = await fetchCallerPdgmRateConfig(me?.agency_name);
-        coding = generateDiagnosisCodes(extractedData, {
-          rates: rateRow?.rates,
-          icdGroups: rateRow?.icd10_clinical_groups,
-        });
-      } catch {
         coding = generateDiagnosisCodes(extractedData);
+      } catch {
+        coding = null;
       }
 
       // Same readiness gate as triage/intake — never mint "Doe," / "Unknown" charts.
@@ -154,24 +147,10 @@ export default function ReferralProcessor() {
         />
 
         {extractedData && (
-          <>
-            <ReferralAnalyzer
-              referralData={extractedData}
-              onAnalysisComplete={(analysis) => setReferralAnalysis(analysis)}
-            />
-
-            <Card className="border-2 border-amber-300 bg-amber-50">
-              <CardContent className="p-3 sm:p-4 md:p-6">
-                <div role="alert" className="flex items-start gap-3 text-sm text-amber-950">
-                  <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" aria-hidden="true" />
-                  <div>
-                    <p className="font-semibold">PDGM diagnosis ranking is unavailable.</p>
-                    <p className="mt-1">Diagnoses are not ranked or selected by reimbursement. Use documented clinical evidence and official coding review to choose the primary diagnosis.</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </>
+          <ReferralAnalyzer
+            referralData={extractedData}
+            onAnalysisComplete={(analysis) => setReferralAnalysis(analysis)}
+          />
         )}
 
         {extractedData && (
@@ -181,11 +160,17 @@ export default function ReferralProcessor() {
               visitType="Start of Care"
             />
 
+            {/* An accepted draft section joins the admission narrative that the
+                nurse briefing email below carries; it is not written to a chart. */}
             <AIAdmissionDocumentationAssistant
               referralData={extractedData}
               oasisSuggestions={null}
               patientData={null}
-              onSaveSection={() => {
+              saveLabel="Add to Nurse Briefing"
+              onSaveSection={(title, content) => {
+                if (typeof content !== 'string' || !content.trim()) return;
+                setAdmissionNote((current) => appendBriefingSection(current, title, content));
+                toast.success(`${title || 'Section'} added to the nurse briefing.`);
               }}
             />
 
@@ -201,18 +186,6 @@ export default function ReferralProcessor() {
               sourceFileUrl={sourceFile?.url || ""}
               packetUrl={packetUrl || ""}
             />
-
-            {/* Revenue brief PDF for the clinical manager — financial data, so
-                admin-gated (the card also fails closed internally and the PDGM
-                dollars are stripped server-side for non-admin callers). */}
-            <FinancialGate>
-              <ClinicalManagerBriefCard
-                referralData={extractedData}
-                analysis={referralAnalysis}
-                sourceFileUrl={sourceFile?.url || ""}
-                packetUrl={packetUrl || ""}
-              />
-            </FinancialGate>
 
             <Card className="border-2 border-green-300 bg-green-50">
               <CardContent className="p-3 sm:p-4 md:p-6">

@@ -15,22 +15,88 @@ async function freshRealm() {
 }
 
 describe('authority-bound auxiliary-window containment', () => {
+  // Interceptors installed by a test are removed even when it fails, so a
+  // failure cannot leave window.open patched for the tests after it.
+  const cleanups = [];
+
   beforeEach(() => {
     document.body.replaceChildren();
   });
 
   afterEach(() => {
+    for (const cleanup of cleanups.splice(0).reverse()) cleanup();
     vi.restoreAllMocks();
     document.body.replaceChildren();
   });
 
-  it('pauses URL and blank print windows even while tenant authority is current', async () => {
+  it('opens nothing until the document interceptor has captured the native opener', async () => {
     const { windows } = await freshRealm();
     const nativeOpen = vi.fn();
     vi.spyOn(window, 'open').mockImplementation(nativeOpen);
 
     expect(windows.openAuthorityBoundWindow('https://safe.example/file')).toBeNull();
     expect(windows.openAuthorityBoundWindow()).toBeNull();
+    expect(windows.requestAuthorityBoundWindow('https://safe.example/file').opened).toBe(false);
+    expect(nativeOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens an external URL severed, with no handle back to the app', async () => {
+    const { windows } = await freshRealm();
+    const nativeOpen = vi.fn(() => null);
+    window.open = nativeOpen;
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    const result = windows.requestAuthorityBoundWindow('https://www.cms.gov/oasis');
+    expect(result).toEqual({ opened: true, window: null });
+    expect(nativeOpen).toHaveBeenCalledWith('https://www.cms.gov/oasis', '_blank', 'noopener,noreferrer');
+    expect(windows.openAuthorityBoundWindow('https://www.cms.gov/oasis')).toBeNull();
+  });
+
+  it('gives a blank print window a handle and closes it when the tenant lease ends', async () => {
+    const { gate, windows } = await freshRealm();
+    const child = { close: vi.fn(), document: {} };
+    const nativeOpen = vi.fn(() => child);
+    window.open = nativeOpen;
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    expect(windows.openAuthorityBoundWindow()).toBe(child);
+    expect(nativeOpen).toHaveBeenCalledWith('', '_blank');
+    expect(child.close).not.toHaveBeenCalled();
+
+    gate.closeTenantSdkRealm();
+    expect(child.close).toHaveBeenCalledTimes(1);
+    expect(windows.openAuthorityBoundWindow()).toBeNull();
+  });
+
+  it('closes every open child on explicit teardown', async () => {
+    const { windows } = await freshRealm();
+    const first = { close: vi.fn() };
+    const second = { close: vi.fn() };
+    window.open = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    windows.openAuthorityBoundWindow();
+    windows.openAuthorityBoundWindow('/manuals/nurse.pdf');
+    windows.closeAuthorityBoundWindows();
+    expect(first.close).toHaveBeenCalledTimes(1);
+    expect(second.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses script, data, credentialed and untracked object URLs', async () => {
+    const { windows } = await freshRealm();
+    const nativeOpen = vi.fn(() => ({ close: vi.fn() }));
+    window.open = nativeOpen;
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+
+    for (const url of [
+      'javascript:alert(1)',
+      'data:text/html,<p>x</p>',
+      'https://user:secret@files.example/doc.pdf',
+      `blob:${window.location.origin}/not-created-here`,
+      'ftp://files.example/doc.pdf',
+    ]) {
+      expect(windows.requestAuthorityBoundWindow(url)).toEqual({ opened: false, window: null });
+    }
     expect(nativeOpen).not.toHaveBeenCalled();
   });
 
@@ -618,16 +684,20 @@ describe('authority-bound auxiliary-window containment', () => {
     expect(main).not.toMatch(/postMessage\([^\n]*,\s*['"]\*['"]\)/);
   });
 
-  it('scrubs retired public bearers before App and React Router import', () => {
+  it('leaves each released public bearer to the page that consumes and scrubs it', () => {
     const main = readFileSync(join(process.cwd(), 'src/main.jsx'), 'utf8');
-    const scrubCall = main.indexOf('scrubRetiredPublicTokenBeforeAppImport()');
-    const appImport = main.indexOf("import('@/App.jsx')");
-
-    expect(scrubCall).toBeGreaterThan(-1);
-    expect(scrubCall).toBeLessThan(appImport);
-    expect(main).toMatch(/segment !== 'signer' && segment !== 'followup'/);
-    expect(main).toMatch(/url\.searchParams\.delete\('token'\)/);
-    expect(main).toMatch(/window\.history\.replaceState\(\{\}/);
+    // Both the signer portal and the provider follow-up portal were released
+    // (2026-10-08). Neither bearer is stripped before the app loads: each page
+    // reads its token once through its capability lease and scrubs it from the
+    // address bar in a layout effect, before anything renders.
+    expect(main).not.toMatch(/scrubRetiredPublicTokenBeforeAppImport/);
+    expect(main).not.toMatch(/segment !== 'signer'|segment !== 'followup'/);
+    for (const page of ['src/pages/SignerPortal.jsx', 'src/pages/ProviderFollowUpPortal.jsx']) {
+      const source = readFileSync(join(process.cwd(), page), 'utf8');
+      expect(source, page).toMatch(/useLayoutEffect\(\(\) => \{\s*scrubPublicCapabilityParameter\('token'\);/);
+      expect(source, page).toMatch(/usePublicCapabilityLease\(\)/);
+      expect(source, page).toMatch(/const \[token\] = useState\(initialToken\)/);
+    }
   });
 
   it('limits descendant frames to privacy-enhanced YouTube education and keeps auxiliary links same-tab', () => {
@@ -643,8 +713,15 @@ describe('authority-bound auxiliary-window containment', () => {
     const sameTabLinks = [
       ['src/components/learning/CourseCatalogDetail.jsx', '<a'],
       ['src/components/training/TrainingVideoStudio.jsx', '<a'],
-      ['src/pages/AgencySettings.jsx', '<a'],
     ];
+    // AgencySettings' one auxiliary link was the CMS wage-index link inside the
+    // PDGM location card, which went with the PDGM payment features. The page
+    // has no anchor left, so it is held to the stricter form: nothing on it may
+    // open an auxiliary window at all, by either route.
+    const agencySettings = readFileSync(join(process.cwd(), 'src/pages/AgencySettings.jsx'), 'utf8');
+    expect(agencySettings).not.toContain('openAuthorityBoundWindow');
+    expect(agencySettings).not.toMatch(/target=["']_blank["']/);
+    expect(agencySettings).not.toMatch(/window\.open\(/);
 
     expect(html).toMatch(
       /Content-Security-Policy[^>]+object-src 'none'; base-uri 'none'; frame-src https:\/\/www\.youtube-nocookie\.com; form-action 'self'/,

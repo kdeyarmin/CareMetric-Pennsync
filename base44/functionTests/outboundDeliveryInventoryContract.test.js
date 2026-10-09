@@ -9,9 +9,11 @@ const FUNCTIONS_ROOT = new URL('../functions/', import.meta.url);
 
 const EMAIL_SENDERS = [
   'adminResetPassword',
+  'archiveSignedDocument',
   'autoApproveInvitedUser',
   'cancelTimeOffRequest',
   'checkExpiredInvitations',
+  'checkPendingSignatureRequests',
   'createNotification',
   'createUserWithTempPassword',
   'createUserWithTempPasswordV2',
@@ -19,6 +21,8 @@ const EMAIL_SENDERS = [
   'generateAIReport',
   'generatePatientHandout',
   'generateSignerToken',
+  'notifyAdminOfSignedDocument',
+  'onDocumentSigned',
   'onUserSignup',
   'resetUserPassword',
   'reviewPersonnelCredential',
@@ -30,7 +34,10 @@ const EMAIL_SENDERS = [
   'sendPersonnelExpirationNotifications',
   'sendTrainingCertificateEmail',
   'sendWelcomeEmail',
+  'submitAppFeedback',
+  'submitDocumentSignatures',
   'submitPersonnelCredential',
+  'submitSignerSignature',
   'submitStateReportableIncident',
   'submitTimeOffRequest',
   'submitTimesheet',
@@ -76,11 +83,16 @@ const VOICE_SENDERS = [
 // Telnyx helper above the handler but gate every reachable invocation. Protected
 // manual invitations are explicitly released independently of the general gate;
 // mixed invitation handlers retain that gate on their other delivery actions.
+// The e-signature sealing pipeline (esignFinalization) emails the requester a
+// PHI-free completion notice behind the shared gate; each function that can
+// seal therefore carries the primitive (released 2026-10-08).
 const BACKEND_DELIVERY_CLASSIFICATION = {
   adminResetPassword: 'platform-boundary',
+  archiveSignedDocument: 'mixed-state-transition',
   autoApproveInvitedUser: 'mixed-state-transition',
   cancelTimeOffRequest: 'mixed-state-transition',
   checkExpiredInvitations: 'scheduled-maintenance',
+  checkPendingSignatureRequests: 'scheduled-maintenance',
   createNotification: 'mixed-state-transition',
   createUserWithTempPassword: 'manual-invitation',
   createUserWithTempPasswordV2: 'manual-invitation',
@@ -91,6 +103,8 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   generateSignerToken: 'direct',
   handleTelnyxStatusWebhook: 'mixed-channel',
   manageUserVerification: 'platform-boundary',
+  notifyAdminOfSignedDocument: 'direct',
+  onDocumentSigned: 'mixed-state-transition',
   onUserSignup: 'mixed-platform-boundary',
   redriveFailedSms: 'provider-wrapper',
   resendInvitation: 'manual-invitation',
@@ -110,6 +124,9 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   sendTestSms: 'direct',
   sendTrainingCertificateEmail: 'direct',
   sendWelcomeEmail: 'direct',
+  submitAppFeedback: 'direct',
+  submitDocumentSignatures: 'mixed-state-transition',
+  submitSignerSignature: 'mixed-state-transition',
   startMaskedCall: 'direct',
   submitPersonnelCredential: 'mixed-state-transition',
   submitStateReportableIncident: 'mixed-state-transition',

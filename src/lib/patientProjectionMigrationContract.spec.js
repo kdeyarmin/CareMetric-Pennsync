@@ -13,15 +13,6 @@ describe('purpose-bound Patient projection migration', () => {
     expect(page).toMatch(/purpose:\s*'roster'/);
   });
 
-  it('loads alert-analysis Patient fields through the exact broker hook', () => {
-    const analyzer = read('src/components/alerts/PatientAlertAnalyzer.jsx');
-
-    expect(analyzer).toMatch(/useAuthorizedPatient\(\{/);
-    expect(analyzer).toMatch(/purpose:\s*'alert_analysis'/);
-    expect(analyzer).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
-    expect(analyzer).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
-  });
-
   it('loads visit-summary Patient fields through the exact broker hook', () => {
     const summary = read('src/components/smartNote/VisitSummaryGenerator.jsx');
 
@@ -49,10 +40,14 @@ describe('purpose-bound Patient projection migration', () => {
     expect(report).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
   });
 
-  it('keeps discharge static-quarantined and loads audio through the selector projection', () => {
+  it('loads the discharge workflow and audio through the selector projection', () => {
+    // 2026-10-08 owner decision: discharge summaries are restored; the
+    // workflow's patient header comes from the reviewed selector projection.
     const discharge = read('src/components/discharge/DischargeSummaryWorkflow.jsx');
-    expect(discharge).toMatch(/Discharge summaries are temporarily unavailable/);
-    expect(discharge).not.toMatch(/useAuthorizedPatient\(\{|entities\.Patient\.(?:get|filter|list)/);
+    expect(discharge).toMatch(/useAuthorizedPatient\(\{/);
+    expect(discharge).toMatch(/purpose:\s*'selector'/);
+    expect(discharge).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
+    expect(discharge).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
 
     const audio = read('src/components/visit/AudioVisitCapture.jsx');
     expect(audio).toMatch(/useAuthorizedPatient\(\{/);
@@ -79,9 +74,10 @@ describe('purpose-bound Patient projection migration', () => {
   });
 
   it('loads OASIS analysis Patient fields through its reviewed projection', () => {
+    // AIProactiveOASISAssistant.jsx, the other reader of this projection, was
+    // never mounted and was deleted when the OASIS Center was turned back on.
     for (const relativePath of [
-      'src/components/oasis/PredictiveOutcomesAnalyzer.jsx',
-      'src/components/oasis/AIProactiveOASISAssistant.jsx',
+      'src/components/compliance/AIComplianceAuditor.jsx',
     ]) {
       const source = read(relativePath);
       expect(source).toMatch(/purpose:\s*'oasis_analysis_context'/);
@@ -90,12 +86,24 @@ describe('purpose-bound Patient projection migration', () => {
     }
   });
 
-  it('keeps unverified call history and callbacks outside the routed bundle', () => {
+  it('mounts call history and callbacks on the caller-scoped call log and contact projection', () => {
+    // Restored 2026-10-08 (owner decision). Both tabs and the Callbacks badge
+    // read ONE query, the caller's own CallLog rows (CallLog RLS admits a
+    // non-admin only to rows naming them), and resolve patients through the
+    // authorized `contact` projection, never a direct Patient read.
     const phoneCenter = read('src/pages/PhoneCenter.jsx');
+    const hook = read('src/components/voice/useNurseCallLogs.js');
 
-    expect(phoneCenter).toMatch(/TelecomUnavailable/);
-    expect(phoneCenter).not.toMatch(/CallHistoryList/);
-    expect(phoneCenter).not.toMatch(/CallbackQueue/);
-    expect(phoneCenter).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
+    expect(phoneCenter).toMatch(/\{activeTab === "calls" && <CallHistoryList \/>\}/);
+    expect(phoneCenter).toMatch(/\{activeTab === "callbacks" && <CallbackQueue \/>\}/);
+    expect(phoneCenter).toMatch(/useNurseCallLogs\(user\)/);
+    expect(phoneCenter).not.toMatch(/entities\.(?:Patient|CallLog)\./);
+    expect(hook).toMatch(/entities\.CallLog\.filter\(\{ nurse_email: user\.email \}/);
+    for (const file of ['src/components/voice/CallHistoryList.jsx', 'src/components/voice/CallbackQueue.jsx']) {
+      const source = read(file);
+      expect(source, file).toMatch(/useNurseCallLogs\(user\)/);
+      expect(source, file).toMatch(/useScopedPatients\(\{[\s\S]*?purpose: 'contact'/);
+      expect(source, file).not.toMatch(/entities\.Patient\.(?:get|filter|list)|entities\.CallLog\.(?:filter|list)/);
+    }
   });
 });

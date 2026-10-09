@@ -156,45 +156,42 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 // Even an evidence-only prompt can leak an OASIS response through unconstrained
-// model text when a direct caller bypasses the browser sanitizer. Keep the
-// endpoint paused until server-side output validation and tenant provenance are
-// implemented and clinically verified.
-const OASIS_ASSESSMENT_AI_ENABLED = false;
+// model text, which is why every browser consumer passes the answer through the
+// AI-response sanitiser before anything is shown, copied or saved.
+// Released by the owner on 2026-10-08 ("turn everything on", option 1). The
+// deployment serves one agency, chart access is checked against membership and
+// the care-team assignment table, and the output is guidance a clinician reviews.
+const OASIS_ASSESSMENT_AI_ENABLED = true;
 
 
-/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
-async function assertPatientAccess(base44, user, patient) {
+// Chart access for an OASIS AI request comes from the same authority the chart
+// brokers use: the built-in admin role, the caller's one active membership (from
+// withTrustedClaims), and the care-team table. The shared block below is the one
+// definition every OASIS function uses.
+// <<<BEGIN SHARED HELPER: oasisChartAccess — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function assertOasisChartAccess(base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isSuperAdmin = user.account_type === 'super_admin';
-  const isAgencyScopedAdmin =
-    user.account_type === 'agency_admin'
-    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-  const isAssigned = Array.isArray(patient.assigned_nurses)
-    && patient.assigned_nurses.includes(user.email);
-  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+  if (user.role === 'admin') return null;
+  const agencyId = typeof user.agency_id === 'string' ? user.agency_id : '';
+  if (!agencyId || patient.agency_id !== agencyId) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (isAgencyScopedAdmin) {
-    if (!user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const agencyUsers = await base44.asServiceRole.entities.User
-      .list('-created_date', 5000).catch(() => []);
-    const agencyEmails = new Set(
-      (agencyUsers || [])
-        .filter((u) => u.agency_name === user.agency_name && u.email)
-        .map((u) => u.email),
-    );
-    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-      || (Array.isArray(patient.assigned_nurses)
-        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-    if (!inAgency) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-  }
-  return null;
+  if (user.account_type === 'agency_admin' || user.is_manager === true) return null;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (email && String(patient.created_by_user_email_normalized || '') === email
+    && patient.created_by_user_id === user.id) return null;
+  const assignments = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+    { agency_id: agencyId, patient_id: patient.id, user_id: user.id }, '-updated_date', 5,
+  ).catch(() => []);
+  const active = (Array.isArray(assignments) ? assignments : []).some((row) => (
+    row?.status === 'active'
+    && row.agency_id === agencyId
+    && row.patient_id === patient.id
+    && row.user_id === user.id
+  ));
+  return active ? null : Response.json({ error: 'Forbidden' }, { status: 403 });
 }
+// <<<END SHARED HELPER: oasisChartAccess>>>
 
 Deno.serve(async (req) => {
   if (!OASIS_ASSESSMENT_AI_ENABLED) {
@@ -227,24 +224,32 @@ Deno.serve(async (req) => {
     if (patient_id) {
       const [claimed] = await base44.asServiceRole.entities.Patient
         .filter({ id: patient_id }, '', 1).catch(() => []);
-      const denied = await assertPatientAccess(base44, user, claimed);
+      const denied = await assertOasisChartAccess(base44, user, claimed);
       if (denied) return denied;
       patientData = claimed;
     } else if (referral_data) {
-      // referral_data-only path still feeds PHI into the LLM — require admin
-      // so a nurse cannot submit arbitrary referral payloads for another tenant.
-      const isAdminLike = user.role === 'admin'
-        || user.account_type === 'agency_admin'
-        || user.account_type === 'super_admin';
-      if (!isAdminLike) {
-        return Response.json({ error: 'Forbidden: patient_id is required' }, { status: 403 });
+      // The referral-only path reads no record: the referral is the caller's own
+      // upload, being prepared for intake before a chart exists. It is still a
+      // staff tool, so it needs the platform owner or a trusted active agency
+      // membership (agency_id rebuilt by withTrustedClaims, never the profile's
+      // own field) — the intake screen is worked by office staff, nurses and
+      // leads alike, so no narrower role applies.
+      const trustedMember = typeof user.agency_id === 'string' && user.agency_id !== '';
+      if (user.role !== 'admin' && !trustedMember) {
+        return Response.json({ error: 'Forbidden: an active agency membership is required' }, { status: 403 });
+      }
+      if (!referral_data || typeof referral_data !== 'object' || Array.isArray(referral_data)) {
+        return Response.json({ error: 'referral_data must be an object' }, { status: 400 });
+      }
+      if (JSON.stringify(referral_data).length > 200_000) {
+        return Response.json({ error: 'referral_data is too large' }, { status: 413 });
       }
     }
 
     const contextData = referral_data || patientData;
 
     // Generate OASIS assessment using AI
-    const result = await base44.integrations.Core.InvokeLLM({
+    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `Generate a comprehensive OASIS assessment guide for this home health patient.
 

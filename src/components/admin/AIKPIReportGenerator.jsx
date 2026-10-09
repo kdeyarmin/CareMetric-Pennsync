@@ -28,6 +28,7 @@ import {
   Lightbulb
 } from "lucide-react";
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+import { normalizeKpiReport, summarizeComplianceAudits } from '@/components/admin/kpiReportModel';
 
 function freshQuerySuccess(query) {
   return query.isSuccess
@@ -37,10 +38,10 @@ function freshQuerySuccess(query) {
     && !query.isFetching;
 }
 
-// ComplianceAudit has an admin-global read arm and no immutable tenant
-// provenance. Keep the combined KPI/LLM capability paused until a reviewed
-// tenant-authorized aggregate broker can supply that source atomically.
-const KPI_REPORTS_ENABLED = false;
+// The owner re-enabled KPI reports for the single-agency deployment. Every
+// source must still settle freshly after mount before a prompt is built, and a
+// source that fails is reported as unavailable rather than counted as zero.
+const COMPLIANCE_AUDIT_ROWS = 200;
 
 export default function AIKPIReportGenerator() {
 
@@ -55,14 +56,12 @@ export default function AIKPIReportGenerator() {
     purpose: 'reporting',
     sort: '-created_date',
     limit: 500,
-    enabled: KPI_REPORTS_ENABLED,
   });
 
   const patientQuery = useScopedPatients({
     purpose: 'roster',
     sort: '-updated_date',
     limit: 2000,
-    enabled: KPI_REPORTS_ENABLED,
   });
   const tenantScopesMismatch = patientQuery.isSuccess
     && visitQuery.isSuccess
@@ -92,19 +91,32 @@ export default function AIKPIReportGenerator() {
     queryKey: ['incidentsForKPI'],
     fetch: () => base44.entities.Incident.list('-created_date', 200),
     initialData: [],
-    enabled: KPI_REPORTS_ENABLED,
   });
   const incidentFresh = freshQuerySuccess(incidentQuery);
+
+  // ComplianceAudit's own read rule admits the nurse who was audited and the
+  // administrator. Rows are attributed to the audited nurse, so the agency
+  // filter keys on nurse_email rather than on whoever wrote the row.
+  const complianceAuditQuery = useAgencyScopedQuery({
+    queryKey: ['complianceAuditsForKPI', COMPLIANCE_AUDIT_ROWS],
+    fetch: () => base44.entities.ComplianceAudit.list('-audit_date', COMPLIANCE_AUDIT_ROWS),
+    authorOf: (audit) => audit?.nurse_email,
+  });
+  const complianceAuditFresh = freshQuerySuccess(complianceAuditQuery);
 
   const analysisSnapshot = useMemo(() => (
     tenantSnapshot
       && incidentFresh
+      && complianceAuditFresh
       ? {
         ...tenantSnapshot,
         incidents: incidentQuery.data,
+        complianceAudits: complianceAuditQuery.data,
       }
       : null
   ), [
+    complianceAuditFresh,
+    complianceAuditQuery.data,
     incidentQuery.data,
     incidentFresh,
     tenantSnapshot,
@@ -122,10 +134,6 @@ export default function AIKPIReportGenerator() {
   }, [analysisSnapshot, timeframe]);
 
   const generateReport = async () => {
-    if (!KPI_REPORTS_ENABLED) {
-      toast.error('KPI report generation is paused pending a tenant-authorized compliance aggregate.');
-      return;
-    }
     const authorizedSnapshot = analysisSnapshotRef.current;
     if (!authorizedSnapshot) {
       toast.error('Patient and Visit access must be verified before generating a KPI report.');
@@ -138,6 +146,10 @@ export default function AIKPIReportGenerator() {
     
     const recentVisits = authorizedSnapshot.visits.filter(v => new Date(v.created_date) >= cutoffDate);
     const recentIncidents = authorizedSnapshot.incidents.filter(i => new Date(i.created_date) >= cutoffDate);
+    const recentAudits = authorizedSnapshot.complianceAudits.filter(
+      (audit) => new Date(audit.audit_date || audit.created_date) >= cutoffDate,
+    );
+    const auditSummary = summarizeComplianceAudits(recentAudits);
 
     try {
       const prompt = `Generate a comprehensive KPI report for healthcare agency administration based on the following data.
@@ -153,7 +165,11 @@ DATA SUMMARY:
 - Active Patients: ${authorizedSnapshot.patients.filter(p => p.status === 'active').length}
 - Total Patients: ${authorizedSnapshot.patients.length}
 
-- Compliance Audits: Unavailable pending a tenant-authorized aggregate source. Do not infer compliance rates, pass counts, or flags.
+- Compliance Audits: ${auditSummary.total}
+  - Average Score: ${auditSummary.averageScore === null ? 'No scored audits in this timeframe' : `${auditSummary.averageScore}%`}
+  - Passed: ${auditSummary.passed}
+  - Flagged: ${auditSummary.flagged}
+  - Critical: ${auditSummary.critical}
 
 - Incidents: ${recentIncidents.length}
   - High Severity: ${recentIncidents.filter(i => i.severity === 'high').length}
@@ -299,8 +315,13 @@ Return as JSON:
         || timeframeRef.current !== authorizedTimeframe
         || reportSequenceRef.current !== reportSequence
       ) return;
+      const normalized = normalizeKpiReport(result, parseInt(authorizedTimeframe, 10));
+      if (!normalized) {
+        toast.error("The AI response could not be read as a KPI report. Please try again.");
+        return;
+      }
       setReportBasis({ snapshot: authorizedSnapshot, timeframe: authorizedTimeframe });
-      setReport(result);
+      setReport(normalized);
     } catch (error) {
       console.error("Error generating KPI report:", error);
       if (
@@ -348,15 +369,7 @@ Return as JSON:
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-            <span>
-              KPI report generation is unavailable until ComplianceAudit metrics have a reviewed tenant-authorized aggregate broker. Missing compliance data is not treated as zero.
-            </span>
-          </div>
-        </div>
-        {KPI_REPORTS_ENABLED && !analysisSnapshot && (
+        {!analysisSnapshot && (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
@@ -365,6 +378,7 @@ Return as JSON:
                   || patientQuery.isError
                   || tenantScopesMismatch
                   || incidentQuery.isError
+                  || complianceAuditQuery.isError
                   ? 'KPI report generation is unavailable because one or more authorized data sources could not be verified. Platform owners remain blocked until a reviewed agency selector is available.'
                   : 'Reverifying matching tenant access and every report source before KPI report generation…'}
               </span>
@@ -386,7 +400,7 @@ Return as JSON:
 
           <Button
             onClick={generateReport}
-            disabled={ai.loading || !analysisSnapshot || !KPI_REPORTS_ENABLED}
+            disabled={ai.loading || !analysisSnapshot}
             className="flex-1 bg-blue-600 hover:bg-blue-700"
           >
             {ai.loading ? (
@@ -424,7 +438,7 @@ Return as JSON:
                     <p className="font-semibold">Overall Compliance Rate</p>
                     <div className="flex items-center gap-2">
                       <span className={`text-2xl font-bold ${getScoreColor(report.documentation_compliance?.overall_rate)}`}>
-                        {report.documentation_compliance?.overall_rate}%
+                        {report.documentation_compliance?.overall_rate ?? '—'}%
                       </span>
                       {getTrendIcon(report.documentation_compliance?.trend)}
                     </div>
@@ -499,7 +513,9 @@ Return as JSON:
                   </div>
                   <div className="bg-white rounded-lg p-4 border border-slate-200 text-center">
                     <p className="text-2xl font-bold text-navy-600">
-                      {report.operational_metrics?.avg_visits_per_patient?.toFixed(1)}
+                      {report.operational_metrics?.avg_visits_per_patient === null
+                        ? '—'
+                        : report.operational_metrics?.avg_visits_per_patient?.toFixed(1)}
                     </p>
                     <p className="text-xs text-slate-600 mt-1">Avg Visits/Patient</p>
                   </div>

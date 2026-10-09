@@ -194,11 +194,15 @@ test('communications and phone activities retain correlation/outcomes without PH
 });
 
 test('patient merge audit keeps only opaque recovery ids, never MRNs or demographics', () => {
-  const [payload] = userActivityPayloads(readEntry('deduplicatePatients'));
+  const payloads = userActivityPayloads(readEntry('deduplicatePatients'));
+  assert.equal(payloads.length, 1, 'scan-confirm and explicit merges share one audit writer');
+  const [payload] = payloads;
   assert.match(payload, /action:\s*'patients_deduplicated'/);
   assert.match(payload, /kept_id:\s*d\.kept\.id/);
   assert.match(payload, /removed_ids:\s*d\.removed\.map\(\(r\)\s*=>\s*r\.id\)/);
-  assert.doesNotMatch(payload, /\bmrn\b|match_score|patient_name|date_of_birth/i);
+  assert.match(payload, /incomplete_ids:\s*d\.incomplete\.map\(\(r\)\s*=>\s*r\.id\)/);
+  assert.doesNotMatch(payload, /\bmrn\b|match_score|patient_name|date_of_birth|first_name|last_name/i);
+  assertNoForbiddenDetails(payload, 'patient merge activity');
 });
 
 test('PDF and ADR activities never copy PHI, search text, or storage capabilities', () => {

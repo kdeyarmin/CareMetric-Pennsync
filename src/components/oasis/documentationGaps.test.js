@@ -5,9 +5,9 @@ import {
   GAP_RULES, GAP_DIRECTIONS, findDocumentationGaps, toClinicianView,
   answersWithSchema, CLINICIAN_GAP_NOTICE,
 } from "./documentationGaps.js";
-import {
-  aggregateDocumentationGaps, compareCohortRevenue, isClosedEpisode, MIN_COHORT_FOR_RATE,
-} from "./documentationGapAnalytics.js";
+import * as gapAnalytics from "./documentationGapAnalytics.js";
+
+const { aggregateDocumentationGaps, isClosedEpisode } = gapAnalytics;
 
 const V2 = "pennsync-oasis-response-v2-cms-e2";
 const V1 = "pennsync-oasis-response-v1-legacy";
@@ -194,7 +194,7 @@ test("the clinician panel reaches neither the revenue module nor a financial gat
 
 // ─────────────── the admin side: closed episodes only ──────────────────────
 
-test("an open episode is never analysed for revenue", () => {
+test("an open episode is never analysed for gap patterns", () => {
   for (const ep of [
     { status: "in_progress", episode_end: "2026-07-01" },
     { status: "draft", episode_end: "2026-07-01" },
@@ -220,43 +220,44 @@ test("aggregate analytics refuses open episodes and says how many it dropped", (
   assert.match(r.excluded_reason, /closed episodes only/i);
 });
 
-test("cohort revenue declines to report on a cohort too small to mean anything", () => {
-  const ep = (doc, code) => ({
-    status: "completed", episode_end: "2026-07-01",
-    documentation: doc, oasis: oasis(v2Item("M1860", code)), estimated_payment: 3000, case_mix_weight: 1.1,
-  });
-  const small = compareCohortRevenue([ep("Patient is chairfast.", "1"), ep("Routine visit.", "1")]);
-  assert.equal(small.reportable, false);
-  assert.match(small.not_reportable_reason, new RegExp(String(MIN_COHORT_FOR_RATE)));
-
-  const big = compareCohortRevenue([
-    ...Array.from({ length: MIN_COHORT_FOR_RATE }, () => ep("Patient is chairfast.", "1")),
-    ...Array.from({ length: MIN_COHORT_FOR_RATE }, () => ep("Routine visit, vitals stable.", "1")),
-  ]);
-  assert.equal(big.reportable, true);
-  assert.equal(big.with_gaps.count, MIN_COHORT_FOR_RATE);
-  assert.equal(big.without_gaps.count, MIN_COHORT_FOR_RATE);
-  assert.match(big.caveat, /not what recoding would earn/i);
-});
-
 test("no per-episode uplift figure is produced anywhere", () => {
   const ep = (doc) => ({
     status: "completed", episode_end: "2026-07-01", documentation: doc,
     oasis: oasis(v2Item("M1860", "1")), estimated_payment: 3000, case_mix_weight: 1.1,
   });
-  const rows = Array.from({ length: MIN_COHORT_FOR_RATE * 2 }, (_, i) =>
+  const rows = Array.from({ length: gapAnalytics.MIN_COHORT_FOR_RATE * 2 }, (_, i) =>
     ep(i % 2 ? "Patient is chairfast." : "Routine visit."));
-  for (const out of [aggregateDocumentationGaps(rows), compareCohortRevenue(rows)]) {
-    const json = JSON.stringify(out);
-    assert.ok(!/uplift/i.test(json), "an uplift figure would be a per-assessment coding target");
-    assert.ok(!/patient_id|assessment_id/i.test(json), "aggregates must not name an individual record");
+  const json = JSON.stringify(aggregateDocumentationGaps(rows));
+  assert.ok(!/uplift/i.test(json), "an uplift figure would be a per-assessment coding target");
+  assert.ok(!/patient_id|assessment_id/i.test(json), "aggregates must not name an individual record");
+  // Payment fields on the input are never echoed into the aggregate.
+  assertNoFinancialKey(aggregateDocumentationGaps(rows));
+});
+
+test("the admin analytics module carries no payment or case-mix dimension", () => {
+  // The cohort revenue comparison and its admin revenue notice were removed with
+  // the PDGM payment features; nothing may bring a money figure back here.
+  assert.equal(gapAnalytics.compareCohortRevenue, undefined);
+  assert.equal(gapAnalytics.ADMIN_REVENUE_NOTICE, undefined);
+  const code = executableSource(new URL("./documentationGapAnalytics.js", import.meta.url));
+  for (const word of ["revenue", "reimburs", "estimated_payment", "case_mix", "uplift", "toLocaleString"]) {
+    assert.ok(!code.includes(word), `"${word}" appears in the admin gap-analytics module`);
   }
+  const [row] = gapAnalytics.uploadsToClosedEpisodes([{
+    status: "reviewed", assessment_date: "2026-07-01", estimated_payment: 3000,
+    pdgm_data: { case_mix_weight: 1.2 },
+  }]);
+  assert.equal(row.estimated_payment, undefined);
+  assert.equal(row.case_mix_weight, undefined);
 });
 
 test("the admin panel is gated and the clinician panel is not", () => {
   const admin = readFileSync(new URL("./DocumentationGapAdminPanel.jsx", import.meta.url), "utf8");
-  assert.ok(admin.includes("FinancialGate"), "the admin panel must be gated");
-  assert.ok(admin.includes("documentationGapAnalytics"), "the admin panel is where revenue lives");
+  assert.ok(admin.includes("FinancialGate"), "the admin panel must stay behind the fail-closed admin gate");
+  assert.ok(admin.includes("documentationGapAnalytics"), "the admin panel is where the aggregate analytics live");
+  const code = executableSource(new URL("./DocumentationGapAdminPanel.jsx", import.meta.url));
+  assert.ok(!/payment|case-mix|reimburs|revenue/i.test(code), "the admin panel must not render a payment notice or figure");
+  assert.ok(!/\$\s*\d/.test(code), "a dollar amount appears in the admin panel");
 });
 
 // ─────────────── OASISUpload is not an episode ─────────────────────────────

@@ -411,6 +411,9 @@ test('DocumentTenantBinding and Document are broker-only and the private uploade
     wired.map((path) => path.slice(fileURLToPath(sourceRootUrl).length).replaceAll('\\', '/')).sort(),
     [
       'components/documents/DocumentUploader.jsx',
+      // Files a document to the chart before sending it for signature
+      // (released 2026-10-08); the same broker authorizes the upload.
+      'components/signer/SignatureRequestCreator.jsx',
       'pages/ReferralFollowUp.jsx',
     ],
     `unexpected create broker consumers: ${wired.join(', ')}`,

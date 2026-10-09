@@ -269,12 +269,12 @@ function followUpClient({
           },
         },
       },
-    },
-    integrations: {
-      Core: {
-        InvokeLLM: async (args) => {
-          calls.llm.push(args);
-          return llmResult;
+      integrations: {
+        Core: {
+          InvokeLLM: async (args) => {
+            calls.llm.push(args);
+            return llmResult;
+          },
         },
       },
     },

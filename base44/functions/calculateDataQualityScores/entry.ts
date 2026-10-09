@@ -159,104 +159,264 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
+// <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && user.role === 'admin';
+}
+// Constant-time string compare for the shared-secret check (mirrors
+// createTelehealthToken's timingSafeEqual). A plain === short-circuits on the
+// first differing character, so response timing could leak how much of the
+// secret matched. Dependency-free char-code XOR so the identical source runs
+// under Deno (consumers) and Node (tests).
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (timingSafeEqualStr(providedSecret, expectedSecret)) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}
+// <<<END SHARED HELPER: schedulerAuth>>>
+// <<<BEGIN SHARED HELPER: dataQualityScoring — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PATIENT_CRITICAL_FIELDS = [
+  'first_name', 'last_name', 'date_of_birth', 'phone', 'address',
+  'emergency_contact_name', 'emergency_contact_phone', 'physician_name', 'primary_diagnosis',
+];
+const USER_CRITICAL_FIELDS = ['phone', 'care_scope', 'credential_type', 'license_number'];
+const VISIT_DOCUMENTATION_FIELDS = [
+  'nurse_notes', 'homebound_justification', 'vital_signs', 'skilled_intervention_documented',
+];
+function qualityFieldMissing(row, field) {
+  const value = row ? row[field] : undefined;
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return value === false;
+}
+function missingQualityFields(row, fields) {
+  return fields.filter((field) => qualityFieldMissing(row, field));
+}
+function completenessScore(fields, missing) {
+  return Math.round(((fields.length - missing.length) / fields.length) * 100);
+}
+function visitDocumentationGaps(visit) {
+  const missing = VISIT_DOCUMENTATION_FIELDS.filter((field) => (field === 'nurse_notes'
+    ? typeof visit?.nurse_notes !== 'string' || visit.nurse_notes.trim().length < 100
+    : qualityFieldMissing(visit, field)));
+  return { missing, score: completenessScore(VISIT_DOCUMENTATION_FIELDS, missing) };
+}
+function sameQualityList(left, right) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+async function writePatientQuality(entities, patient, agencyId) {
+  const missing = missingQualityFields(patient, PATIENT_CRITICAL_FIELDS);
+  const score = completenessScore(PATIENT_CRITICAL_FIELDS, missing);
+  if (patient.data_completeness_score === score && sameQualityList(patient.missing_critical_fields, missing)) {
+    return { outcome: 'unchanged', score, missing };
+  }
+  if (patient.agency_id !== agencyId || typeof patient.updated_date !== 'string' || !patient.updated_date) {
+    return { outcome: 'skipped', score, missing };
+  }
+  const result = await entities.Patient.updateMany(
+    { id: patient.id, agency_id: agencyId, updated_date: patient.updated_date },
+    { $set: { data_completeness_score: score, missing_critical_fields: missing } },
+  );
+  const updated = !!result && result.success === true && result.updated === 1;
+  return { outcome: updated ? 'updated' : 'conflict', score, missing };
+}
+// <<<END SHARED HELPER: dataQualityScoring>>>
+
+/**
+ * calculateDataQualityScores — recompute data-completeness scores, ONE agency
+ * at a time.
+ *
+ * Released by the owner on 2026-10-08 ("turn everything on"). It was one of
+ * the legacy Patient service-role writers: it scanned every tenant's charts,
+ * scoped them from editable agency_name / created_by / assigned_nurses
+ * fields, and wrote each row unconditionally. Now:
+ *   - an agency_admin or manager (exact active membership rebuilt by
+ *     withTrustedClaims, never a profile field) recomputes THEIR agency only;
+ *   - the scheduled run ("Daily Data Quality Scores") and the built-in
+ *     administrator authenticate with getSchedulerAuthError (built-in admin or
+ *     the shared INTERNAL_FN_SECRET header) and run each active agency
+ *     separately from service-owned Agency rows: every read is filtered by
+ *     that agency_id and every row is re-checked against it, so no request
+ *     ever mixes tenants (D49's per-agency rule);
+ *   - a Patient's data_completeness_score / missing_critical_fields are
+ *     written with a compare-and-swap on the row's own agency_id and
+ *     updated_date and only when they changed; a Visit's compliance_score is
+ *     the clinician's SmartNote result and is reported, never overwritten; a
+ *     member's profile_completeness_score is written only for users holding
+ *     an active membership in that agency.
+ *
+ * Body: {} or { agency_id } (agency_id only for the scheduler/built-in admin)
+ */
+const DATA_QUALITY_SCORES_ENABLED = true;
+const MAX_BODY_BYTES = 1_000;
+const PATIENT_LIMIT = 2_000;
+const VISIT_LIMIT = 2_000;
+const MEMBER_LIMIT = 500;
+const AGENCY_LIMIT = 200;
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+
+const json = (body, status = 200, headers = {}) => Response.json(body, {
+  status,
+  headers: { ...NO_STORE_HEADERS, ...headers },
+});
+
+function rows(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+async function readBody(req) {
+  const declared = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return { error: json({ error: 'Request body is too large' }, 413) };
+  let body;
+  try {
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+      return { error: json({ error: 'Request body is too large' }, 413) };
+    }
+    body = raw.trim() ? JSON.parse(raw) : {};
+  } catch {
+    return { error: json({ error: 'Invalid JSON body' }, 400) };
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: json({ error: 'Request body must be an object' }, 400) };
+  if (Object.keys(body).some((key) => key !== 'agency_id')) return { error: json({ error: 'Request contains unsupported fields' }, 400) };
+  if (body.agency_id != null && !claimIdentifier(body.agency_id)) return { error: json({ error: 'agency_id is invalid' }, 400) };
+  return { agencyId: body.agency_id ?? null };
+}
+
+async function enabledAgencyIds(entities, requested) {
+  if (requested) {
+    const found = rows(await entities.Agency.filter({ id: requested }, undefined, 2));
+    return found.length === 1 && found[0]?.id === requested && ['active', 'trial'].includes(found[0].status)
+      ? [requested]
+      : [];
+  }
+  const ids = [];
+  for (const status of ['active', 'trial']) {
+    for (const agency of rows(await entities.Agency.filter({ status }, undefined, AGENCY_LIMIT))) {
+      if (claimIdentifier(agency?.id) && agency.status === status && !ids.includes(agency.id)) ids.push(agency.id);
+    }
+  }
+  return ids;
+}
+
+async function scoreAgency(entities, agencyId) {
+  const summary = {
+    agency_id: agencyId,
+    patients_scored: 0,
+    patients_updated: 0,
+    patient_conflicts: 0,
+    members_scored: 0,
+    members_updated: 0,
+    visits_reviewed: 0,
+    visits_with_documentation_gaps: 0,
+  };
+
+  const patients = rows(await entities.Patient.filter(
+    { agency_id: agencyId, status: 'active' }, '-updated_date', PATIENT_LIMIT,
+  )).filter((patient) => patient?.agency_id === agencyId && claimIdentifier(patient.id));
+  for (const patient of patients) {
+    const result = await writePatientQuality(entities, patient, agencyId);
+    summary.patients_scored += 1;
+    if (result.outcome === 'updated') summary.patients_updated += 1;
+    if (result.outcome === 'conflict') summary.patient_conflicts += 1;
+  }
+
+  const members = rows(await entities.AgencyMembership.filter(
+    { agency_id: agencyId, status: 'active' }, undefined, MEMBER_LIMIT,
+  )).filter((row) => row?.agency_id === agencyId && row.status === 'active' && claimIdentifier(row.user_id));
+  const memberIds = [...new Set(members.map((row) => row.user_id))];
+  const users = memberIds.length === 0 ? [] : rows(await entities.User.filter(
+    { id: { $in: memberIds } }, undefined, MEMBER_LIMIT,
+  )).filter((user) => memberIds.includes(user?.id));
+  for (const user of users) {
+    const missing = missingQualityFields(user, USER_CRITICAL_FIELDS);
+    const score = completenessScore(USER_CRITICAL_FIELDS, missing);
+    summary.members_scored += 1;
+    if (user.profile_completeness_score !== score) {
+      await entities.User.update(user.id, { profile_completeness_score: score });
+      summary.members_updated += 1;
+    }
+  }
+
+  const visits = rows(await entities.Visit.filter(
+    { agency_id: agencyId, status: 'completed' }, '-visit_date', VISIT_LIMIT,
+  )).filter((visit) => visit?.agency_id === agencyId);
+  for (const visit of visits) {
+    summary.visits_reviewed += 1;
+    if (visitDocumentationGaps(visit).missing.length > 0) summary.visits_with_documentation_gaps += 1;
+  }
+  return summary;
+}
 
 Deno.serve(async (req) => {
-  // SECURITY CONTAINMENT: keep the legacy bulk Patient writer unreachable
-  // until an immutable tenant-authorized, atomic replacement is available.
-  return Response.json({
-    error: 'Legacy Patient service-role writer is temporarily unavailable',
-    code: 'legacy_patient_service_writer_paused',
-    reason: 'immutable_tenant_authorization_and_atomic_write_broker_required',
-    endpoint: 'calculateDataQualityScores',
-  }, { status: 503 });
-
+  if (!DATA_QUALITY_SCORES_ENABLED) {
+    return json({ error: 'Data quality scoring is unavailable', code: 'data_quality_scores_paused' }, 503);
+  }
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, { Allow: 'POST' });
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await withTrustedClaims(base44, await base44.auth.me());
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-
-    if (!isAdminLike(user)) {
-      return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+    const profile = await base44.auth.me().catch(() => null);
+    if (isDeactivatedUser(profile)) return DEACTIVATED_USER_RESPONSE();
+    const claims = profile && profile.role !== 'admin' ? await withTrustedClaims(base44, profile) : profile;
+    const agencyLead = !!claims && claims.role !== 'admin'
+      && claimIdentifier(claims.agency_id) && claims.is_manager === true;
+    if (!agencyLead) {
+      // The scheduled run and the built-in administrator.
+      const authError = getSchedulerAuthError(req, profile);
+      if (authError) return authError;
     }
 
-    // Recalculate quality scores. Scope to the caller's agency so an
-    // agency_admin cannot rewrite completeness fields on every tenant.
-    let [patients, users, visits] = await Promise.all([
-      base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000),
-      base44.asServiceRole.entities.User.list('-created_date', 5000),
-      base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-visit_date', 5000),
-    ]);
-
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-    }
-    if (user.account_type !== 'super_admin' && user.agency_name) {
-      users = (Array.isArray(users) ? users : []).filter((u) =>
-        u.account_type === 'super_admin' || u.agency_name === user.agency_name
-      );
-      const agencyEmails = new Set(users.map((u) => u?.email).filter(Boolean));
-      patients = (Array.isArray(patients) ? patients : []).filter((p) =>
-        (p.created_by && agencyEmails.has(p.created_by))
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
-      );
-      const patientIds = new Set(patients.map((p) => p.id));
-      visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
+    const input = await readBody(req);
+    if (input.error) return input.error;
+    if (agencyLead && input.agencyId && input.agencyId !== claims.agency_id) {
+      return json({ error: 'Forbidden: that agency is not yours' }, 403);
     }
 
-    let updated = 0;
+    const entities = base44.asServiceRole.entities;
+    const agencyIds = agencyLead
+      ? await enabledAgencyIds(entities, claims.agency_id)
+      : await enabledAgencyIds(entities, input.agencyId);
+    if (agencyLead && agencyIds.length !== 1) return json({ error: 'Agency is unavailable' }, 403);
 
-    // Update patient completeness scores
-    for (const patient of patients) {
-      const criticalFields = ['emergency_contact_name', 'emergency_contact_phone', 'physician_name', 'phone', 'date_of_birth', 'address'];
-      const missing = criticalFields.filter(f => !patient[f] || patient[f] === '');
-      const score = ((criticalFields.length - missing.length) / criticalFields.length * 100).toFixed(0);
-
-      await base44.asServiceRole.entities.Patient.update(patient.id, {
-        data_completeness_score: parseInt(score),
-        missing_critical_fields: missing
-      });
-      updated++;
+    const agencies = [];
+    let failed = 0;
+    for (const agencyId of agencyIds) {
+      try {
+        agencies.push(await scoreAgency(entities, agencyId));
+      } catch {
+        failed += 1;
+      }
     }
-
-    // Update user profile scores
-    for (const userRecord of users) {
-      const criticalFields = ['phone', 'care_scope', 'credential_type'];
-      const missing = criticalFields.filter(f => !userRecord[f] || userRecord[f] === '');
-      const score = ((criticalFields.length - missing.length) / criticalFields.length * 100).toFixed(0);
-
-      await base44.asServiceRole.entities.User.update(userRecord.id, {
-        profile_completeness_score: parseInt(score)
-      });
-      updated++;
-    }
-
-    // Update visit compliance scores
-    for (const visit of visits) {
-      const issues = [];
-      if (!visit.homebound_justification) issues.push('Missing homebound justification');
-      if (!visit.skilled_intervention_documented) issues.push('Skilled intervention not documented');
-      if (!visit.nurse_notes || visit.nurse_notes.length < 100) issues.push('Insufficient documentation');
-      
-      const score = ((3 - issues.length) / 3 * 100).toFixed(0);
-
-      await base44.asServiceRole.entities.Visit.update(visit.id, {
-        compliance_score: parseInt(score),
-        compliance_issues: issues
-      });
-      updated++;
-    }
-
-    return Response.json({
-      success: true,
-      records_updated: updated,
-      patients_processed: patients.length,
-      users_processed: users.length,
-      visits_processed: visits.length,
-      timestamp: new Date().toISOString()
+    return json({
+      success: failed === 0,
+      agencies_processed: agencies.length,
+      agencies_failed: failed,
+      agencies,
+      timestamp: new Date().toISOString(),
     });
-
-  } catch (error) {
-    console.error('Quality score calculation error:', error);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+  } catch {
+    console.error('calculateDataQualityScores failed');
+    return json({ error: 'Internal server error' }, 500);
   }
 });

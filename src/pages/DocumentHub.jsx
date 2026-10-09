@@ -13,8 +13,9 @@ import EmbeddedPage from "@/components/ui/embeddedPage";
 import TemplateLibrary from "@/components/documents/TemplateLibrary";
 import PDFTemplateBuilder from "@/components/documents/PDFTemplateBuilder";
 import DocumentAnalytics from "@/components/documents/DocumentAnalytics";
-import { isAdminView } from "@/lib/roles";
+import { getTrustedTenantContext, isAdminView } from "@/lib/roles";
 import { isAdminLike } from "@/lib/superAdmin";
+import { SIGNATURE_MANAGER_ROLES } from "@/hooks/useSignatureRequests";
 
 const DocumentSignatures = lazy(() => import("@/components/hub-tabs/DocumentSignatures"));
 const CreateSignatureRequest = lazy(() => import("@/components/hub-tabs/CreateSignatureRequest"));
@@ -45,9 +46,11 @@ export default function DocumentHub() {
   });
 
   const adminView = isAdminView(currentUser);
-  // Keep the audit tab limited to protected administrators even while the
-  // signing audit surface itself is deliberately unavailable.
-  const canReadDocumentAudit = isAdminLike(currentUser);
+  // The e-signature audit trail is for protected administrators and for an
+  // agency_admin or manager of the bound (server-validated) tenant context —
+  // never a profile field. manageSignatureRequests re-checks the same rule.
+  const canReadDocumentAudit = isAdminLike(currentUser)
+    || SIGNATURE_MANAGER_ROLES.includes(getTrustedTenantContext(currentUser)?.tenant_role);
 
   const validTabKeys = canReadDocumentAudit ? [...TAB_KEYS, "audit"] : TAB_KEYS;
 

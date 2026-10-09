@@ -13,11 +13,13 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Loader2, MailCheck, ShieldAlert } from 'lucide-react';
 import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
 import { OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
 import { isStagingEmailVerificationAvailable } from '@/lib/stagingEmailVerification';
 import StagingEmailVerification from './StagingEmailVerification';
+import SetPasswordScreen from './SetPasswordScreen';
+import { pendingLink } from '@/lib/ownedBackendLinkParams';
 import {
   CENTRAL_SUPPORT_EMAIL,
   CENTRAL_SUPPORT_EMAIL_HREF,
@@ -34,10 +36,12 @@ import {
  * the URL never changes, so after sign-in the user lands exactly where they
  * were headed.
  *
- * Flows handled here: email/password sign-in and a fail-closed password-reset
- * notice while outbound delivery is paused, plus staging-only email code
- * redemption. Everything else (sign-up for invited users, production OTP, captcha
- * challenges) falls back to the platform-hosted page via navigateToLogin().
+ * Flows handled here: email/password sign-in, the password-reset request
+ * (released by the owner on 2026-10-08; still paused on an owned backend), and
+ * staging-only email code redemption. The app is invite-only, so no sign-up is
+ * offered here: an invited person arrives through their invitation link.
+ * Production OTP and captcha challenges fall back to the platform-hosted page
+ * via navigateToLogin().
  *
  * Also handles a pending `?access_token=` handoff that arrived without a
  * trusted referrer or planted auth_state (email-style magic links). Those are
@@ -51,13 +55,18 @@ const reloadApp = () => window.location.reload();
 
 const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const { navigateToLogin, checkAppState } = useAuth();
-  const [mode, setMode] = useState('signin'); // 'signin' | 'reset' | 'verify'
+  const [mode, setMode] = useState('signin'); // 'signin' | 'reset' | 'reset-sent' | 'verify'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pendingToken, setPendingToken] = useState(() => ownedBackendAuth ? null : peekPendingAccessToken());
+  // An invitation or recovery link the page was opened with. Only an owned
+  // backend can act on one: the Base44 path has its own flow on the hosted page,
+  // and nothing here could serve it. The parameters are scrubbed from the URL at
+  // import either way, because a token in the address bar is a token in history.
+  const [pendingLinkState, setPendingLinkState] = useState(() => (ownedBackendAuth ? pendingLink : null));
   const mountedRef = useRef(true);
   const authOperationRef = useRef(0);
   const loginAbortRef = useRef(null);
@@ -71,6 +80,26 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
       loginAbortRef.current = null;
     };
   }, []);
+
+  // Before the sign-in form, and in place of it: somebody arriving on a link has
+  // no password yet, or has forgotten it, so offering them one to type would be
+  // the wrong question. The URL does not change, so a deep link survives.
+  if (pendingLinkState) {
+    return (
+      <SetPasswordScreen
+        link={pendingLinkState}
+        onPasswordSet={(address) => {
+          // Straight to the sign-in form with the address filled in. Never a
+          // session: the client revokes the grant the link bought, and this
+          // screen is where that property would be undone if it were undone.
+          setPendingLinkState(null);
+          setMode('signin');
+          setEmail(address);
+          setError('');
+        }}
+      />
+    );
+  }
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
@@ -188,10 +217,46 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
     }
   };
 
-  const handleResetRequest = (e) => {
+  // Password reset is the PLATFORM's own email to the address the person typed:
+  // Base44 mails a link to `/reset-password` on the app's host, which Base44
+  // serves itself (measured 2026-10-08: it answers with the platform's auth
+  // bundle, not this SPA). Released by the owner on 2026-10-08 after #143 had
+  // paused it with the rest of outbound delivery; the message names nobody and
+  // carries no patient data. The owned (independent) backend stays fail-closed —
+  // its recovery path is Supabase Auth's and is not this release.
+  //
+  // Called directly rather than through the SDK's reset helper, for the reason
+  // the sign-in call above is: the tenant SDK membrane denies every auth method
+  // it does not name, and a pre-sign-in request has no tenant.
+  const handleResetRequest = async (e) => {
     e.preventDefault();
     if (busy) return;
-    setError(OUTBOUND_DELIVERY_PAUSED_MESSAGE);
+    if (ownedBackendAuth) {
+      setError(OUTBOUND_DELIVERY_PAUSED_MESSAGE);
+      return;
+    }
+    setError('');
+    setBusy(true);
+    const operation = ++authOperationRef.current;
+    try {
+      const authClient = createAxiosClient({
+        baseURL: `${appParams.serverUrl}/api`,
+        headers: { 'X-App-Id': appParams.appId },
+        interceptResponses: true,
+      });
+      await authClient.post(
+        `/apps/${appParams.appId}/auth/reset-password-request`,
+        { email: email.trim() },
+      );
+      if (mountedRef.current && operation === authOperationRef.current) setMode('reset-sent');
+    } catch (err) {
+      if (!mountedRef.current || operation !== authOperationRef.current) return;
+      setError(err?.status === 429
+        ? 'Too many reset requests. Please wait a moment and try again.'
+        : 'Couldn’t send the reset email. Please try again, or contact support below.');
+    } finally {
+      if (mountedRef.current && operation === authOperationRef.current) setBusy(false);
+    }
   };
 
   return (
@@ -318,16 +383,12 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                     Enter email verification code
                   </Button>
                 )}
-                {!ownedBackendAuth && <p className="text-center text-sm text-slate-500">
-                  Need an account?{' '}
-                  <button
-                    type="button"
-                    onClick={() => navigateToLogin()}
-                    className="font-semibold text-navy-700 hover:text-navy-900"
-                  >
-                    Sign up
-                  </button>
-                </p>}
+                {/* Invite-only (owner decision, 2026-10-08): there is no open
+                    sign-up to offer. An invited person follows the link in their
+                    invitation email; onUserSignup leaves anyone else unapproved. */}
+                <p className="text-center text-sm text-slate-500">
+                  Access is by invitation only. Use the link in your invitation email, or ask your agency administrator.
+                </p>
               </form>
             )}
 
@@ -340,7 +401,9 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Reset your password</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    {OUTBOUND_DELIVERY_PAUSED_MESSAGE}
+                    {ownedBackendAuth
+                      ? OUTBOUND_DELIVERY_PAUSED_MESSAGE
+                      : 'Enter your email and we’ll send you a link to reset it.'}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -372,6 +435,22 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                   <ArrowLeft className="h-4 w-4" /> Back to sign in
                 </button>
               </form>
+            )}
+
+            {!pendingToken && mode === 'reset-sent' && (
+              <div className="text-center" role="status">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-50 ring-1 ring-inset ring-navy-200/60">
+                  <MailCheck className="h-7 w-7 text-navy-600" aria-hidden />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-900">Check your email</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  If an account exists for <span className="font-medium text-slate-800">{email}</span>,
+                  a password-reset link is on its way. Open it, choose a new password, then sign in here.
+                </p>
+                <Button variant="outline" onClick={() => switchMode('signin')} className="mt-6 w-full">
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back to sign in
+                </Button>
+              </div>
             )}
 
           </div>

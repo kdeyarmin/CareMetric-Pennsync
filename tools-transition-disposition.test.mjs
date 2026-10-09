@@ -47,8 +47,14 @@ test('no committed disposition contradicts the source it describes', () => {
   const report = checkCoverage(discoverCapabilities(repository), parseManifest(raw), discoverEvidence(repository));
   assert.deepEqual(report.contradicted_disposition, []);
   assert.equal(report.evidence_consistent, true);
-  // The check must be looking at a real population, not an empty one.
-  assert.ok(report.inert_functions > 25, `only ${report.inert_functions} inert functions found`);
+  // The check must be looking at a real population, not an empty one. The
+  // floor guards against a discovery that finds nothing; it is not a count to
+  // hold. The owner's 2026-10-08 releases took the population below the 25 it
+  // used to name, because each released endpoint does work again; the
+  // e-signature release alone retired fifteen static 503 stubs. What remains
+  // inert is deliberate (the PDGM payment trio, one retired endpoint and one
+  // maintenance cleanup), so the floor asks only that discovery found any.
+  assert.ok(report.inert_functions > 0, `only ${report.inert_functions} inert functions found`);
 });
 
 test('every retirement says where its existing rows go', () => {
@@ -110,15 +116,36 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
   // send a reviewer to port an endpoint that has no behavior left to port.
   const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
   const inert = discoverInertFunctions(repository);
-  for (const name of ['analyzeClinicalData', 'analyzeDocument', 'analyzeNursePerformance',
-    'autoAssignNurseToPatient', 'generateDischargeSummary', 'generatePatientEducation',
-    'getPatientContext', 'runSecurityAudit', 'getUserActivityLog']) {
+  // runSecurityAudit, generateDischargeSummary, generatePatientEducation,
+  // analyzeDocument, analyzeNursePerformance and getUserActivityLog left this
+  // list on 2026-10-08 (owner decision): they do work again and keep their
+  // preserved_paused disposition.
+  for (const name of ['getPatientContext']) {
     assert.ok(inert.includes(name), `${name} should be detected as inert`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but performs no work`);
   }
   // The retired endpoint is retired, not merely paused.
   assert.equal(declared.getPatientContext, 'retire');
+  // Restored by the owner on 2026-10-08 and doing work again; they keep
+  // `preserved_paused` (Base44-hosted, not new port work), so the port queue
+  // does not move. analyzeClinicalData, autoAssignNurseToPatient and
+  // computeOutcomeMeasures joined them the same day ("turn everything on").
+  for (const name of [
+    'analyzeNursePerformance', 'getUserActivityLog',
+    'analyzeClinicalData', 'autoAssignNurseToPatient', 'computeOutcomeMeasures',
+  ]) {
+    assert.equal(inert.includes(name), false, `${name} performs work again`);
+    assert.equal(declared[name], 'preserved_paused');
+  }
+  // trackUserLogin was a constant 503 and records the caller's own sign-in
+  // again (owner decision, 2026-10-08); markSmsRead is the new SmsMessage
+  // read-marker. Both keep or take `preserved_paused`, so the port queue does
+  // not move.
+  for (const name of ['trackUserLogin', 'markSmsRead']) {
+    assert.equal(inert.includes(name), false, `${name} performs work`);
+    assert.equal(declared[name], 'preserved_paused');
+  }
 });
 
 test('a handler that refuses from its first statement is paused, whatever gates it', () => {
@@ -149,13 +176,25 @@ test('a handler that refuses from its first statement is paused, whatever gates 
   const declared = parseManifest(readFileSync(
     resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
   const paused_names = discoverPausedFunctions(repository);
-  for (const name of ['calculateDataQualityScores', 'enforceDataCompleteness',
-    'monitorClinicalDataForCarePlanUpdates', 'predictPatientRisks',
-    'predictiveRiskAnalysis', 'processDischargeReport']) {
+  for (const name of ['predictPatientRisks', 'predictiveRiskAnalysis']) {
     assert.ok(paused_names.includes(name), `${name} should be detected as paused`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but refuses every caller`);
   }
+  // Released by the owner on 2026-10-08 ("turn everything on"): no longer
+  // refusing from the first statement, and kept `preserved_paused` (Base44-
+  // hosted, not new port work) so the port queue does not move.
+  for (const name of ['calculateDataQualityScores', 'enforceDataCompleteness',
+    'monitorClinicalDataForCarePlanUpdates']) {
+    assert.equal(paused_names.includes(name), false, `${name} serves callers again`);
+    assert.equal(declared[name], 'preserved_paused');
+  }
+  // The sixth, processDischargeReport, was released by the owner on
+  // 2026-10-08 (admin-only, one agency). Its handler no longer refuses from
+  // its first statement, and it keeps `preserved_paused` rather than moving
+  // to `port`: it runs on Base44 and is not migration work this change adds.
+  assert.equal(paused_names.includes('processDischargeReport'), false);
+  assert.equal(declared.processDischargeReport, 'preserved_paused');
 });
 
 test('a module whose only entity is the retired trail is re-classified by what else it needs', () => {
@@ -660,7 +699,13 @@ test('what the record store permits per entity is read from the policies it emit
   // not the same as their being servable — permitting a write says what the
   // store would allow a definer contract to do, never that a capability exists
   // to do it, and `tools-frontend-destination` keeps those two apart.
-  assert.equal(Object.keys(permits).length, 164, 'every entity with a table is accounted for');
+  //
+  // 170, not 164: D7's six fax and phone tables, read the same way and with
+  // the same caveat. All six are servable by nothing at all today — the
+  // generic broker family serves `broker` alone and D16's ceiling refuses
+  // every one of them on its own account — so this figure moving is exactly
+  // the distinction above arriving a second time.
+  assert.equal(Object.keys(permits).length, 170, 'every entity with a table is accounted for');
   assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
   const readOnly = Object.keys(permits).filter(entity => permits[entity].read && !permits[entity].write).sort();
   // The eight platform reference tables. `User` left this list with D82: the
@@ -1788,9 +1833,10 @@ test('nothing in the queue is startable and unwritten', async () => {
   // Batch A's seven reference reads (D101), batch C's fourteen clinical
   // library, patient education and configuration capabilities, batch E's
   // ten screen records, batch D's fourteen over the operational tables and
-  // the five compliance domains' read half, and the provider directory's three
-  // writes, are the same kind of thing for
-  // the same reason, and
+  // the five compliance domains' read half, the provider directory's three
+  // writes, and the telecom family's fifteen over the fax address book,
+  // templates, retry policy, work numbers and transmission log, are the same
+  // kind of thing for the same reason, and
   // they are why this list needs stating rather than deriving. The SPA called
   // `base44.entities.Physician.list(...)` and the rest straight through the
   // platform SDK, so there is no Base44 function to be the port of — what was
@@ -1809,35 +1855,34 @@ test('nothing in the queue is startable and unwritten', async () => {
       `${name} has a Base44 function, so it is a port and belongs in the queue`);
   }
   assert.deepEqual(facilities, [
-    'createAdrAuditCase', 'createAgencyTask', 'createComplianceAudit',
+    'bulkCreateFaxContacts', 'createAdrAuditCase', 'createAgencyTask',
+    'createComplianceAudit', 'createFaxContact', 'createFaxTemplate',
     'createNoteConversion', 'createPhysician', 'deleteAdrAuditCase',
-    'deleteDocumentTemplate', 'deleteLibraryDocument', 'deleteOnCallShift',
-    'deletePdfTemplate', 'deletePhysician', 'getAgencyRosterMember',
-    'getAgencySettings', 'getMyNotificationPreferences',
-    'listAdrAuditCases', 'listAgencyIncidents', 'listAgencyRoster',
-    'listAgencyTasks', 'listBrokeredRecords', 'listCarePlans',
-    'listChartClinicalEvents', 'listChartRecommendations',
-    'listClinicalLibraryFolders', 'listClinicalLibraryTemplates',
-    'listClinicalPathways', 'listComplianceAudits',
-    'listCustomValidationRules', 'listDocumentTemplates',
-    'listEducationMaterials', 'listFaceToFaceEncounters',
-    'listLibraryDocuments', 'listMedicareComplianceRules',
-    'listMedicareGuidelines', 'listNoteConversions', 'listOcrCorrections',
-    'listOcrTrainingRuns', 'listOnCallShifts', 'listPatientDocumentRecords',
-    'listPatientEducationAssignments', 'listPdfTemplates',
-    'listPersonnelCredentials', 'listPhysicians',
-    'listPolicyAcknowledgments', 'listSentEducationMaterials',
-    'listVisitPointConfigs', 'lookupComplianceRule',
-    'manageClinicalLibraryFolder', 'manageClinicalLibraryTemplate',
-    'manageClinicalPathway', 'manageCustomValidationRule',
-    'manageEducationMaterial', 'managePatientEducationAssignment',
-    'readAiConfiguration', 'recordChartRecommendation',
-    'recordSentEducationMaterial', 'saveAgencySettings',
+    'deleteDocumentTemplate', 'deleteFaxContact', 'deleteFaxTemplate',
+    'deleteLibraryDocument', 'deleteOnCallShift', 'deletePdfTemplate', 'deletePhysician',
+    'getAgencyRosterMember', 'getAgencySettings', 'getFaxRetryConfig',
+    'getMyNotificationPreferences', 'listAdrAuditCases', 'listAgencyIncidents',
+    'listAgencyPhoneNumbers', 'listAgencyRoster', 'listAgencyTasks',
+    'listBrokeredRecords', 'listCarePlans', 'listChartClinicalEvents',
+    'listChartRecommendations', 'listClinicalLibraryFolders',
+    'listClinicalLibraryTemplates', 'listClinicalPathways', 'listComplianceAudits',
+    'listCustomValidationRules', 'listDocumentTemplates', 'listEducationMaterials',
+    'listFaceToFaceEncounters', 'listFaxContacts', 'listFaxLogs', 'listFaxTemplates',
+    'listLibraryDocuments', 'listMedicareComplianceRules', 'listMedicareGuidelines',
+    'listNoteConversions', 'listOcrCorrections', 'listOcrTrainingRuns',
+    'listOnCallShifts', 'listPatientDocumentRecords', 'listPatientEducationAssignments',
+    'listPdfTemplates', 'listPersonnelCredentials', 'listPhysicians',
+    'listPolicyAcknowledgments', 'listSentEducationMaterials', 'listVisitPointConfigs',
+    'lookupComplianceRule', 'manageClinicalLibraryFolder',
+    'manageClinicalLibraryTemplate', 'manageClinicalPathway',
+    'manageCustomValidationRule', 'manageEducationMaterial',
+    'managePatientEducationAssignment', 'readAiConfiguration',
+    'recordChartRecommendation', 'recordSentEducationMaterial', 'saveAgencySettings',
     'saveAiConfiguration', 'saveCarePlan', 'saveDocumentTemplate',
-    'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
-    'saveOnCallShift', 'savePdfTemplate',
-    'updateAdrAuditCase', 'updateComplianceAudit', 'updateLibraryDocument',
-    'updatePhysician',
+    'saveFaceToFaceEncounter', 'saveFaxRetryConfig', 'saveMyNotificationPreferences',
+    'saveOnCallShift', 'savePdfTemplate', 'searchFaxLogs', 'updateAdrAuditCase',
+    'updateComplianceAudit', 'updateFaxContact', 'updateFaxTemplate',
+    'updateLibraryDocument', 'updatePhysician', 'useFaxTemplate',
   ]);
 });
 
@@ -1999,7 +2044,11 @@ Deno.serve(async (req) => {
 test('every capability paused at source is carried paused rather than queued', () => {
   const pausedNames = discoverPausedFunctions(repository);
   const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
-  assert.ok(pausedNames.length >= 18, `expected the paused set to be substantial, saw ${pausedNames.length}`);
+  // The owner released most paused capabilities on 2026-10-08 ("turn
+  // everything on"). What stays paused is what the owner removed (risk
+  // prediction, PDGM payment) and destructive one-off maintenance, so the
+  // floor is the size of that set rather than of the old backlog.
+  assert.ok(pausedNames.length >= 5, `expected the removed and maintenance set to stay paused, saw ${pausedNames.length}`);
   const carried = pausedNames.filter(name => ACTIVE_DISPOSITIONS.includes(declared[name]));
   assert.deepEqual(carried, [],
     'a paused handler declared port, broker or hub claims work that cannot be written');
@@ -2031,8 +2080,24 @@ test('a capability whose only entities are the claims helper is not waiting on t
     assert.deepEqual(bare.names, [], `${name} touches none outside the helper`);
     assert.equal(bare.dynamic, false, `${name} indexes no namespace`);
   }
-  // The two the measurement finds, and what each one is.
-  assert.deepEqual([...claims].sort(), ['autoImportPatients', 'sendAccountReadyEmail']);
+  // The one the measurement finds. `sendAccountReadyEmail` was the second and
+  // LEFT the set rather than being removed from it: it now reads `User` to
+  // prove the recipient is a registered user in the caller's own agency, which
+  // is the open-relay fix its sibling `sendWelcomeEmail` carries too, so its
+  // entity reach is no longer the claims fence alone. D74's refinement is
+  // unchanged and the assertions below still pin what it answers for that
+  // capability — only its membership here moved, because the capability did.
+  // `submitAppFeedback` (2026-10-08) joined it: its whole reach is the claims
+  // fence plus one gated `Core.SendEmail` to the configured owner, and it is
+  // carried `preserved_paused`, so it adds nothing to the port queue.
+  // `generateCarePlanFromReferral` and `generateAdmissionNoteFromReferral`
+  // (released 2026-10-08) joined too: they read no record at all, only the
+  // claims fence that decides the caller holds an active membership, and both
+  // are carried `preserved_paused`, so neither adds to the port queue.
+  assert.deepEqual([...claims].sort(), [
+    'autoImportPatients', 'generateAdmissionNoteFromReferral',
+    'generateCarePlanFromReferral', 'submitAppFeedback',
+  ]);
 
   const report = checkCoverage(
     discoverCapabilities(repository),
@@ -2097,24 +2162,65 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
   assert.equal(isPausedFunction('const RELEASED = true;\nif (!RELEASED) { return refusal(); }\n'),
     false, 'a true RELEASED with a negated guard is the live branch');
 
-  // Thirteen modules in the tree use the flipped polarity, and the check saw
+  // Thirteen modules in the tree used the flipped polarity, and the check saw
   // none of them. Twelve already carried `preserved_paused` because somebody
-  // had read them; the thirteenth carried `port`.
+  // had read them; the thirteenth carried `port`. `deduplicatePatients` has
+  // since been switched back ON at source by an owner decision (its flag now
+  // reads `false`), so it is no longer detected as paused; it keeps
+  // `preserved_paused` because that disposition answers the migration question,
+  // not whether the Base44 handler serves, and a live handler under it
+  // contradicts nothing.
   const paused = new Set(discoverPausedFunctions(repository));
   const manifest = parseManifest(
     readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
-  const flipped = ['createTelehealthToken', 'deduplicatePatients', 'dispatchScheduledSms',
+  assert.equal(paused.has('deduplicatePatients'), false, 'the merge broker is live at source');
+  assert.equal(manifest.functions.deduplicatePatients, 'preserved_paused');
+  const flipped = ['createTelehealthToken',
     'generateMessageSuggestions', 'markMessageRead', 'messagingAssistant',
-    'notifyUrgentMessage', 'processCompletedVisit', 'redriveFailedSms',
-    'saveOasisResponses', 'scheduleSms', 'sendMessage', 'summarizeMessageThread'];
+    'notifyUrgentMessage', 'processCompletedVisit',
+    'saveOasisResponses', 'sendMessage', 'summarizeMessageThread'];
+  // scheduleSms and dispatchScheduledSms were released by the owner on
+  // 2026-10-08 and no longer pause; they keep the `preserved_paused`
+  // disposition (Base44-hosted, no port-queue movement).
+  // redriveFailedSms followed on the same day, once SmsMessage rows became
+  // server-only and carry the provenance it re-proves; its flag is removed.
+  for (const name of ['scheduleSms', 'dispatchScheduledSms', 'redriveFailedSms']) {
+    assert.equal(paused.has(name), false, `${name} is released`);
+    assert.equal(manifest.functions[name], 'preserved_paused');
+  }
+  // Released by the owner on 2026-10-08 ("approve everything"). A released
+  // module keeps its flag, now pinned false, and must no longer read as paused;
+  // its disposition stays `preserved_paused`, which the one-directional gate
+  // permits for a live module.
+  // saveOasisResponses joined them on the same date with the OASIS Center: its
+  // writes are authorized by membership and the care-team table, and its
+  // contract suite pins that rather than the pause. The two message AI
+  // brokers, the assistant router, the urgent notifier and post-visit
+  // processing followed on 2026-10-08 ("turn everything on").
+  const releasedByOwner = new Set([
+    'createTelehealthToken', 'markMessageRead', 'saveOasisResponses', 'sendMessage',
+    'generateMessageSuggestions', 'messagingAssistant', 'notifyUrgentMessage',
+    'processCompletedVisit', 'summarizeMessageThread',
+  ]);
   for (const name of flipped) {
     const source = readFileSync(
       resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
-    assert.match(source, /^const\s+[A-Z][A-Z0-9_]*\s*=\s*true\s*;/m, `${name} pins a flag`);
-    assert.ok(paused.has(name), `${name} is detected as paused`);
     assert.equal(manifest.functions[name], 'preserved_paused',
       `${name} carries the disposition its source already had`);
+    if (releasedByOwner.has(name)) {
+      assert.match(source, /^const\s+[A-Z][A-Z0-9_]*_PAUSED\s*=\s*false\s*;/m, `${name} keeps its released flag`);
+      assert.ok(!paused.has(name), `${name} is released and not detected as paused`);
+      continue;
+    }
+    assert.match(source, /^const\s+[A-Z][A-Z0-9_]*\s*=\s*true\s*;/m, `${name} pins a flag`);
+    assert.ok(paused.has(name), `${name} is detected as paused`);
   }
+  // Every real module that paused with this polarity was released by the
+  // owner on 2026-10-08, so none is left to exercise it, and the `suspended`
+  // fixture at the top of this test is now what proves the shape is still
+  // recognised. If a module ever pauses this way again it belongs in `flipped`.
+  assert.equal(flipped.filter((name) => !releasedByOwner.has(name)).length, 0,
+    'a module in `flipped` is paused again: it should be asserted paused above, not released');
   // D47's rule: switching a capability off means changing its disposition in
   // the same change. `processCompletedVisit` was switched off long ago and the
   // disposition never caught up, so the gate contradicted it until it did.

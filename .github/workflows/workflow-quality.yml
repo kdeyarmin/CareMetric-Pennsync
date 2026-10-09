@@ -80,34 +80,55 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `if: ${{ !cancelled() }}` from here on, the same pattern and for the same
+      # reason as the test block in ci.yml: one failing step must not hide its
+      # siblings. This job is where that mattered. A lockfile desync failed the
+      # install above and every step below it was SKIPPED, so a red `quality`
+      # meant "install broke" and said nothing about the fourteen checks that
+      # never ran - sixteen defects reached main under that red, measured by
+      # nothing. The guard cannot make the install succeed, and it is not meant
+      # to: it makes each check report its own verdict, so a run that did not
+      # measure something is legible as such instead of being silent.
+      #
+      # The first step of the block stays unguarded on purpose - it has no
+      # sibling above it to be hidden by.
       - name: Lint workflow target files
         run: pnpm run lint:workflow-targets
 
       - name: Typecheck utility modules
+        if: ${{ !cancelled() }}
         run: pnpm run typecheck:utils
 
       - name: Run utility unit tests
+        if: ${{ !cancelled() }}
         run: pnpm run test:utils
 
       - name: Run schema-contract tests
+        if: ${{ !cancelled() }}
         run: pnpm run test:contracts
 
       - name: Run security guardrail tests
+        if: ${{ !cancelled() }}
         run: pnpm run test:security
 
       - name: Check Base44 functions transpile (syntax)
+        if: ${{ !cancelled() }}
         run: pnpm run check:backend-transpile
 
       - name: Check OASIS review worksheet is current
+        if: ${{ !cancelled() }}
         run: pnpm run check:oasis-worksheet
 
       - name: Check inlined shared helpers are in sync
+        if: ${{ !cancelled() }}
         run: pnpm run check:shared-helpers
 
       - name: Run component tests
+        if: ${{ !cancelled() }}
         run: pnpm run test:components
 
       - name: High-signal typecheck
+        if: ${{ !cancelled() }}
         run: pnpm run typecheck:signal
 
       - name: Typecheck (informational baseline)
@@ -115,6 +136,7 @@ jobs:
         continue-on-error: true
 
       - name: Build app
+        if: ${{ !cancelled() }}
         run: pnpm run build
 
       - name: Production audit (informational baseline)
@@ -131,4 +153,5 @@ jobs:
       # all been read. It fails closed: an audit that cannot run is reported as
       # unmeasured rather than as nothing found.
       - name: Dependency advisory baseline
+        if: ${{ !cancelled() }}
         run: pnpm run check:audit-advisories

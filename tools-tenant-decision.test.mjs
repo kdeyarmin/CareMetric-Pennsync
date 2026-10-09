@@ -35,10 +35,21 @@ test('every entity without a derivable tenant path has a decision, and none has 
   // entry for it was written, refused by this gate as a spare, and removed. A
   // decision for an entity whose path already resolves is not a harmless extra:
   // it would stamp a second tenant column onto a row that already has an owner.
-  assert.equal(report.blocking, 104);
-  assert.deepEqual(report.counts, { agency: 83, self: 10, shared: 2, global: 8, roster: 1 });
+  //
+  // 107, not 104: three of D7's six schema-only fax and phone entities need a
+  // decision, and here too the SPLIT is what to read. `FaxContact`, `FaxLog`
+  // and `FaxRetryConfig` declare `agency_id` themselves and are not in the
+  // blocking set at all; `CallLog`, `FaxTemplate` and `PhoneNumber` are, and
+  // all three are decided `agency`. `PhoneNumber` is the one worth reading
+  // twice: it is keyed by `assigned_to_email`, and `global` is refused by what
+  // the kind MEANS — a reference table read by every agency and written by
+  // migration (D83) — rather than by any re-check this gate performs. A first
+  // draft of that entry claimed the gate refused it as an actor column, and
+  // measurement said otherwise.
+  assert.equal(report.blocking, 107);
+  assert.deepEqual(report.counts, { agency: 86, self: 10, shared: 2, global: 8, roster: 1 });
   // agency and shared both carry a tenant key, so both are stamped before load.
-  assert.equal(report.stamped.length, 85);
+  assert.equal(report.stamped.length, 88);
 });
 
 test('a self-editable profile claim can only be decided roster, and nothing else can be', () => {

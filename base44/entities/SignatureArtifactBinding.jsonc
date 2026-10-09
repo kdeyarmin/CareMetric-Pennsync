@@ -3,6 +3,19 @@
   "type": "object",
   "description": "Immutable server-only binding for one external signer's private signature image. Public URLs and raw signature bytes are never persisted in signing rows.",
   "properties": {
+    "capture_method": {
+      "type": "string",
+      "enum": ["emailed_link", "in_person"],
+      "description": "How the signature was captured: the signer's own emailed single-purpose link, or in person on an authenticated staff device. Missing historical values are emailed_link."
+    },
+    "collected_by_user_id": {
+      "type": "string",
+      "description": "Built-in User id of the staff member who collected an in-person signature (server-derived)."
+    },
+    "collected_by_membership_id": {
+      "type": "string",
+      "description": "AgencyMembership id that authorized the in-person collection."
+    },
     "artifact_key": {
       "type": "string",
       "description": "SHA-256 idempotency key scoped to token, document, signer, and request."

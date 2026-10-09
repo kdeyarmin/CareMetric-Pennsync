@@ -359,6 +359,14 @@ export function readExpectations(root) {
  * one — the same arguments, from code the old file now imports — and the
  * totals are unchanged. A real arrival raises `absent` by the number it adds;
  * a move leaves it where it was, which is the figure to read before `--write`.
+ *
+ * **Both files in that example have since been deleted**, with the dashboard's
+ * hospitalization risk monitor and high-risk patients widget, so do not go
+ * looking for them — the measurement stands as a dated reading and the lesson
+ * is the reusable part. That deletion is itself the third case, and the
+ * simplest: a REMOVAL takes a site out and adds nothing, so it appears only in
+ * `fixed` and lowers `absent`. It is told apart from a move by the move's
+ * matching pair in `added`, and from a regression by having no `added` at all.
  */
 export function checkCallSites(root) {
   const census = censusCallSites(root);

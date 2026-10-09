@@ -6,8 +6,9 @@
  * visible with the logo rendered whole (object-contain, never a cropping
  * mask), credentials sign the user in via the direct auth endpoint (NOT the
  * SDK helper whose 401 path forces a logout redirect), a wrong password shows
- * an inline error instead of navigating away, and password-reset delivery is
- * visibly fail-closed while outbound traffic is paused.
+ * an inline error instead of navigating away, and a password reset is the
+ * platform's own reset-request call (released by the owner on 2026-10-08) that
+ * reports success only when the request was accepted.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, waitFor } from '@testing-library/react';
@@ -210,32 +211,55 @@ describe('SignInScreen', () => {
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
 
-  it('keeps password-reset delivery visibly paused without reporting success', async () => {
+  it('requests a password reset from the platform and confirms only on success', async () => {
+    mocks.post.mockResolvedValueOnce({});
     const user = userEvent.setup();
     render(<SignInScreen onAuthenticated={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: /forgot password/i }));
     expect(screen.getByRole('heading', { name: /reset your password/i })).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/email/i), 'nurse@agency.com');
+    await user.type(screen.getByLabelText(/email/i), ' nurse@agency.com ');
     await user.click(screen.getByRole('button', { name: /send reset link/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Outbound delivery is paused in this environment.',
+    expect(await screen.findByText(/check your email/i)).toBeInTheDocument();
+    expect(mocks.post).toHaveBeenCalledWith(
+      '/apps/app-1/auth/reset-password-request',
+      { email: 'nurse@agency.com' },
     );
-    expect(screen.queryByText(/check your email/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /back to sign in/i }));
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
   });
 
-  it('falls back to the platform-hosted page for sign-up and trouble signing in', async () => {
+  it('reports a failed reset request instead of claiming an email is on its way', async () => {
+    mocks.post.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
     const user = userEvent.setup();
     render(<SignInScreen onAuthenticated={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: /sign up/i }));
+    await user.click(screen.getByRole('button', { name: /forgot password/i }));
+    await user.type(screen.getByLabelText(/email/i), 'nurse@agency.com');
+    await user.click(screen.getByRole('button', { name: /send reset link/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn.t send the reset email/i);
+    expect(screen.queryByText(/check your email/i)).not.toBeInTheDocument();
+  });
+
+  it('offers no sign-up, because access is by invitation only', () => {
+    render(<SignInScreen onAuthenticated={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /sign up/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/need an account/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/access is by invitation only/i)).toBeInTheDocument();
+  });
+
+  it('falls back to the platform-hosted page for trouble signing in', async () => {
+    const user = userEvent.setup();
+    render(<SignInScreen onAuthenticated={vi.fn()} />);
+
     await user.click(screen.getByRole('button', { name: /standard sign-in page/i }));
-    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(2);
+    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(1);
   });
 
   it('requires confirm before accepting a pending magic-link token', async () => {

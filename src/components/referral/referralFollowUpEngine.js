@@ -124,8 +124,8 @@ function item(fields) {
  *
  * @param {object} extractedData referral extraction (referralExtraction.js shape)
  * @param {object} [opts]
- * @param {object} [opts.rates]      saved PDGMRateConfig.rates
- * @param {object} [opts.icdGroups]  saved PDGMRateConfig.icd10_clinical_groups
+ * @param {object} [opts.rates]      legacy; ignored (sequencing reads no payment table)
+ * @param {object} [opts.icdGroups]  legacy; ignored (sequencing reads no payment table)
  * @param {string} [opts.socDate]    anticipated SOC date (improves F2F window check)
  * @param {object} [opts.ruleConfig] saved FollowUpRuleConfig (disabled_rules,
  *                                   severity_overrides, custom_items)
@@ -135,6 +135,7 @@ function item(fields) {
  *   counts: {critical:number, high:number, medium:number,
  *            compliance:number, reimbursement:number, total:number},
  *   coding: object, f2f: object|null,
+ *   internal_notes: string[],
  * }}
  */
 export function buildFollowUpPlan(extractedData, opts = {}) {
@@ -313,8 +314,8 @@ export function buildFollowUpPlan(extractedData, opts = {}) {
     }));
   } else if (!coding.primary && !coding.sequenced.some((d) => d.acceptablePrimary)) {
     // Only a PROVIDER problem when no RTP-acceptable candidate exists at all.
-    // An acceptable-but-unmapped/unweighted candidate is an AGENCY table gap
-    // (PDGM Rate Settings), reported via internal_notes below instead.
+    // An acceptable candidate that is not the documented principal is an
+    // AGENCY coding decision, reported via internal_notes below instead.
     const rtpCodes = coding.sequenced.filter((d) => !d.acceptablePrimary);
     items.push(item({
       rule: "no_acceptable_primary",
@@ -431,15 +432,15 @@ export function buildFollowUpPlan(extractedData, opts = {}) {
   }
 
   // Agency-side notes: real gaps, but NOT provider requests — they never go on
-  // the provider form. Currently: an RTP-acceptable principal candidate that
-  // the sequencer couldn't weight because the agency's ICD→clinical-group map
-  // or weight table doesn't cover it.
+  // the provider form. Currently: an RTP-acceptable principal candidate exists
+  // but is not the referral's documented principal diagnosis, so a qualified
+  // coder has to confirm the principal (the sequencer never promotes one).
   const internalNotes = [];
   if (!coding.primary) {
     const unweightedAcceptable = coding.sequenced.filter((d) => d.acceptablePrimary);
     if (unweightedAcceptable.length > 0) {
       internalNotes.push(
-        `Acceptable principal candidate(s) ${unweightedAcceptable.map((d) => d.displayCode).join(", ")} could not be weighted — missing from the agency's ICD-10 → clinical-group map or weight table. Fix on the PDGM Rate Settings page; no provider action needed.`
+        `Acceptable principal candidate(s) ${unweightedAcceptable.map((d) => d.displayCode).join(", ")} are documented, but none is the referral's acceptable documented principal diagnosis. A qualified coder must confirm the principal; no provider action needed.`
       );
     }
   }

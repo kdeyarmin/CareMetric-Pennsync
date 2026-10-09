@@ -74,12 +74,17 @@ describe('Layout tenant-authority containment', () => {
     expect(desktopSidebar).not.toContain('sidebar-favorite-patients');
     expect(dashboard).not.toContain('entities.Message');
     expect(dashboard).not.toContain('unreadMessages');
-    expect(dashboard).not.toContain('entities.NoteConversion');
-    expect(dashboard).not.toContain('myNoteConversions');
-    expect(messages).toContain('TENANT_MESSAGES_UNAVAILABLE_MESSAGE');
-    expect(messages).not.toContain('base44.entities.Message');
-    expect(messages).not.toContain('useQuery');
-    expect(messages).not.toContain('useMutation');
+    // The Time Saved card reads only the caller's own conversions: the filter
+    // names the signed-in nurse, and NoteConversion RLS admits nothing wider
+    // to a non-admin.
+    expect(dashboard).toMatch(/entities\.NoteConversion\.filter\(\{ nurse_email: currentUser\.email \}/);
+    expect(dashboard.match(/entities\.NoteConversion\./g)).toHaveLength(1);
+    expect(dashboard).toContain('timeSavedDisplayInRange');
+    // Released 2026-10-08: the page reads through the inbox broker only, scoped
+    // to the selected agency, and never touches Message rows itself.
+    expect(messages).toContain('functions.invoke("listMyMessages", { agency_id: agencyId })');
+    expect(messages).toContain('queryKey: ["myMessages", agencyId]');
+    expect(messages).not.toContain('entities.Message');
     expect(careTeamMessages).toContain('CARE_TEAM_MESSAGES_UNAVAILABLE_MESSAGE');
     expect(careTeamMessages).not.toContain('base44.entities.Message');
     expect(careTeamMessages).not.toContain('useQuery');

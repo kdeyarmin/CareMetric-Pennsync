@@ -160,10 +160,13 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// The dormant implementation performs platform-wide service-role reads before
-// deriving tenant scope from mutable user fields. Keep it unavailable until a
-// server-owned tenant broker and provenance-bound report projection exist.
-const COMPREHENSIVE_REPORT_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). It used to read
+// every tenant's rows and then scope them from editable agency_name /
+// created_by / assigned_nurses fields. Now the caller is the built-in
+// administrator (who names agency_id) or an agency_admin/manager whose exact
+// active membership withTrustedClaims rebuilds; every population is read by,
+// or re-checked against, that one agency before a line of the PDF is drawn.
+const COMPREHENSIVE_REPORT_ENABLED = true;
 
 Deno.serve(async (req) => {
   if (!COMPREHENSIVE_REPORT_ENABLED) {
@@ -177,17 +180,40 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await withTrustedClaims(base44, await base44.auth.me());
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-
-    if (!isAdminLike(user)) {
-      return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+    const profile = await base44.auth.me().catch(() => null);
+    if (!profile) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(profile)) return DEACTIVATED_USER_RESPONSE();
+    if (profile.disabled === true || profile.is_service === true) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const user = await withTrustedClaims(base44, profile);
+    const builtInAdmin = isAdminLike(user);
+    if (!builtInAdmin && !(claimIdentifier(user.agency_id) && user.is_manager === true)) {
+      return Response.json({ error: 'Agency administrator or manager access required' }, { status: 403 });
     }
 
-    const { reportType, dateRange, includeCharts = false } = await req.json();
-
-    if (!reportType || typeof reportType !== 'string') {
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Request body must be an object' }, { status: 400 });
+    }
+    const { reportType, dateRange } = body;
+    if (!reportType || typeof reportType !== 'string' || reportType.length > 64 || !/^[a-z0-9_]+$/i.test(reportType)) {
       return Response.json({ error: 'reportType is required' }, { status: 400 });
+    }
+    // The agency is the caller's own membership; only the built-in
+    // administrator names one, and a named agency must exist and be enabled.
+    const agencyId = builtInAdmin ? body.agency_id : user.agency_id;
+    if (!claimIdentifier(agencyId)) {
+      return Response.json({ error: 'agency_id is required' }, { status: 400 });
+    }
+    if (!builtInAdmin && body.agency_id != null && body.agency_id !== user.agency_id) {
+      return Response.json({ error: 'Forbidden: that agency is not yours' }, { status: 403 });
+    }
+    const entities = base44.asServiceRole.entities;
+    const agencyRows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+    if (!Array.isArray(agencyRows) || agencyRows.length !== 1 || agencyRows[0]?.id !== agencyId
+      || !['active', 'trial'].includes(agencyRows[0].status)) {
+      return Response.json({ error: 'Agency is unavailable' }, { status: 403 });
     }
 
     const today = new Date();
@@ -200,51 +226,38 @@ Deno.serve(async (req) => {
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = today.toISOString().split('T')[0];
 
-    // Fetch comprehensive data, then agency-scope for non-super_admin callers
-    // so an agency_admin cannot pull every tenant's PHI into a PDF.
-    let [visits, patients, incidents, users, complianceAudits, trainingCompletions, noteConversions, oasisUploads, alerts] = await Promise.all([
-      base44.asServiceRole.entities.Visit.list('-visit_date', 1000),
-      base44.asServiceRole.entities.Patient.list('-created_date', 5000),
-      base44.asServiceRole.entities.Incident.list('-incident_date', 500),
-      base44.asServiceRole.entities.User.list('-created_date', 5000),
-      base44.asServiceRole.entities.ComplianceAudit.list('-audit_date', 500),
-      base44.asServiceRole.entities.TrainingAssignment.list('-created_date', 5000),
-      base44.asServiceRole.entities.NoteConversion.list('-created_date', 5000),
-      base44.asServiceRole.entities.OASISUpload.list('-created_date', 200),
-      base44.asServiceRole.entities.PatientAlert.list('-created_date', 5000)
+    // Every population is the named agency's: charts, visits and OASIS uploads
+    // by their own agency_id; staff by active membership; and the rows that
+    // carry only a patient_id (incidents, audits, note conversions, alerts) by
+    // membership in that agency's chart set. A row that names no chart is
+    // excluded rather than counted for every tenant.
+    const own = (rows) => (Array.isArray(rows) ? rows : []);
+    const patients = own(await entities.Patient.filter({ agency_id: agencyId }, '-created_date', 5000))
+      .filter((p) => p?.agency_id === agencyId);
+    const patientIds = new Set(patients.map((p) => p.id));
+    const memberships = own(await entities.AgencyMembership.filter({ agency_id: agencyId, status: 'active' }, undefined, 500))
+      .filter((m) => m?.agency_id === agencyId && m.status === 'active' && claimIdentifier(m.user_id));
+    const memberIds = [...new Set(memberships.map((m) => m.user_id))];
+    const memberEmails = new Set(memberships.map((m) => m.user_email_normalized).filter(Boolean));
+    const [visitRows, incidentRows, userRows, auditRows, trainingRows, conversionRows, oasisRows, alertRows] = await Promise.all([
+      entities.Visit.filter({ agency_id: agencyId }, '-visit_date', 2000),
+      entities.Incident.list('-incident_date', 2000),
+      memberIds.length ? entities.User.filter({ id: { $in: memberIds } }, undefined, 500) : [],
+      entities.ComplianceAudit.list('-audit_date', 2000),
+      memberIds.length ? entities.TrainingAssignment.filter({ assigned_to_user_id: { $in: memberIds } }, '-created_date', 5000) : [],
+      entities.NoteConversion.list('-created_date', 5000),
+      entities.OASISUpload.filter({ agency_id: agencyId }, '-created_date', 500),
+      entities.PatientAlert.list('-created_date', 5000),
     ]);
-
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-    }
-    if (user.account_type !== 'super_admin' && user.agency_name) {
-      users = (Array.isArray(users) ? users : []).filter((u) =>
-        u.account_type === 'super_admin' || u.agency_name === user.agency_name
-      );
-      const agencyEmails = new Set(users.map((u) => u?.email).filter(Boolean));
-      patients = (Array.isArray(patients) ? patients : []).filter((p) =>
-        (p.created_by && agencyEmails.has(p.created_by))
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
-      );
-      const patientIds = new Set(patients.map((p) => p.id));
-      visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
-      incidents = (Array.isArray(incidents) ? incidents : []).filter((i) => patientIds.has(i.patient_id));
-      complianceAudits = (Array.isArray(complianceAudits) ? complianceAudits : []).filter((a) =>
-        !a.patient_id || patientIds.has(a.patient_id)
-      );
-      trainingCompletions = (Array.isArray(trainingCompletions) ? trainingCompletions : []).filter((t) =>
-        !t.assigned_to_user_id || agencyEmails.has(t.assigned_to_user_id)
-      );
-      noteConversions = (Array.isArray(noteConversions) ? noteConversions : []).filter((n) =>
-        !n.patient_id || patientIds.has(n.patient_id)
-      );
-      oasisUploads = (Array.isArray(oasisUploads) ? oasisUploads : []).filter((o) =>
-        !o.patient_id || patientIds.has(o.patient_id)
-      );
-      alerts = (Array.isArray(alerts) ? alerts : []).filter((a) =>
-        !a.patient_id || patientIds.has(a.patient_id)
-      );
-    }
+    const visits = own(visitRows).filter((v) => v?.agency_id === agencyId);
+    const incidents = own(incidentRows).filter((i) => patientIds.has(i?.patient_id));
+    const users = own(userRows).filter((u) => memberIds.includes(u?.id));
+    const complianceAudits = own(auditRows).filter((a) => patientIds.has(a?.patient_id));
+    const trainingCompletions = own(trainingRows).filter((t) => memberIds.includes(t?.assigned_to_user_id));
+    const noteConversions = own(conversionRows).filter((n) => patientIds.has(n?.patient_id)
+      || (!n?.patient_id && memberEmails.has(String(n?.nurse_email || '').trim().toLowerCase())));
+    const oasisUploads = own(oasisRows).filter((o) => o?.agency_id === agencyId);
+    const alerts = own(alertRows).filter((a) => patientIds.has(a?.patient_id));
 
     // Filter by date range
     const filteredVisits = visits.filter(v => v.visit_date >= startDateStr && v.visit_date <= endDateStr);
@@ -415,8 +428,10 @@ Deno.serve(async (req) => {
 
     addText(`AI-Enhanced Notes: ${filteredNoteConversions.length}`, 10);
     addText(`Average Quality Score: ${avgQualityScore}/100`, 10);
-    addText(`Total Time Saved: ${totalTimeSavedHours} hours`, 10);
-    addText(`Estimated Cost Savings: $${costSavings.toLocaleString()}`, 10);
+    // Modeled, not measured: 95 minutes per completed visit at $40/hour. The
+    // labels say so, so the figure is never read as an observed saving.
+    addText(`Estimated Time Saved (modeled, 95 min per completed visit): ${totalTimeSavedHours} hours`, 10);
+    addText(`Estimated Cost Savings (modeled at $40/hour): $${costSavings.toLocaleString()}`, 10);
 
     // OASIS ANALYSIS
     addSection('OASIS DOCUMENTATION');

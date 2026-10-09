@@ -122,6 +122,9 @@ const FILES = {
   "../functions/recordSmsConsent/entry.ts": ALL,
   "../functions/manageSmsConsent/entry.ts": ALL,
   "../functions/dispatchScheduledSms/entry.ts": ALL,
+  // Resolves the bound integration and its messaging profile to authorize the
+  // scheduling caller's line before a row is written (2026-10-08 release).
+  "../functions/scheduleSms/entry.ts": ALL,
   "../functions/redriveFailedSms/entry.ts": ALL,
   "../functions/discoverTelnyxResources/entry.ts": ALL,
   "../functions/createTelehealthToken/entry.ts": ["apiKey"],

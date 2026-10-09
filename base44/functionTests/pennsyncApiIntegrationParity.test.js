@@ -34,7 +34,7 @@ async function loadOriginal(name) {
   source = source.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     `const createClientFromRequest = () => ({
        auth: { me: async () => ({ id: 'synthetic-user', is_active: true }) },
-       integrations: { Core: { InvokeLLM: async (argument) => { globalThis.__calls.push(argument); return globalThis.__answer; } } },
+       asServiceRole: { integrations: { Core: { InvokeLLM: async (argument) => { globalThis.__calls.push(argument); return globalThis.__answer; } } } },
      });`);
   assert.match(source, /Deno\.serve\(/, `${name} should still be a Deno.serve module`);
   const js = transpileTs(source).outputText;

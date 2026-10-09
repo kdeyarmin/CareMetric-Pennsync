@@ -135,6 +135,119 @@ function isProtectedSuperAdmin(user) {
 }
 // <<<END SHARED HELPER: protectedUserAuthz>>>
 
+// <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
+}
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
+  try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId }, undefined, 101,
+    );
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
+    }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
+  } catch {
+    // No lookup failure may be interpreted as membership approval.
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
+  if (profile.role === 'admin') return profile;
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
+}
+// <<<END SHARED HELPER: trustedCallerClaims>>>
+
+// <<<BEGIN SHARED HELPER: patientCareTeamAccess — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function callerMayAccessPatient(base44, user, patient) {
+  if (!user || !patient || typeof patient !== 'object') return false;
+  if (user.role === 'admin') return true;
+  const claims = await withTrustedClaims(base44, user);
+  const agencyId = claims && claimIdentifier(claims.agency_id) ? claims.agency_id : null;
+  if (!agencyId || patient.agency_id !== agencyId || !claimIdentifier(patient.id)) return false;
+  if (claims.account_type === 'agency_admin' || claims.is_manager === true) return true;
+  if (claimIdentifier(patient.created_by_user_id) && patient.created_by_user_id === user.id) return true;
+  try {
+    const rows = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+      { agency_id: agencyId, patient_id: patient.id, user_id: user.id, status: 'active' },
+      undefined,
+      2,
+    );
+    return Array.isArray(rows) && rows.some((row) => row && row.agency_id === agencyId
+      && row.patient_id === patient.id && row.user_id === user.id && row.status === 'active');
+  } catch {
+    return false;
+  }
+}
+// <<<END SHARED HELPER: patientCareTeamAccess>>>
+
 // <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
 // Cost-control destination gate. Single source of truth is the frontend
 // src/components/voice/costControls.js — this copy is generated from it verbatim.
@@ -299,71 +412,95 @@ function encodeClientState(obj) {
   return btoa(bin);
 }
 
+/**
+ * The presented caller id must be an active, service-owned
+ * TelecomDestinationBinding of the current Telnyx credential. The caller's
+ * work number only names which one; the binding says which agency owns it.
+ */
+async function resolveCallerLineBinding(base44, telnyxCreds, workNumber) {
+  const secretId = telnyxCreds?.record?.id;
+  if (typeof secretId !== 'string' || !secretId || telnyxCreds?.record?.provider !== 'telnyx'
+    || telnyxCreds?.record?.is_active !== true || !workNumber) return null;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.TelecomDestinationBinding.filter({
+      provider: 'telnyx',
+      integration_secret_id: secretId,
+      destination_e164: workNumber,
+      status: 'active',
+    }, undefined, 2);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const row = rows[0];
+  if (row?.provider !== 'telnyx' || row.integration_secret_id !== secretId
+    || row.destination_e164 !== workNumber || row.status !== 'active'
+    || row.binding_key !== `telnyx:${secretId}:${workNumber}`
+    || row.revoked_at != null || !claimIdentifier(row.agency_id)) return null;
+  return row;
+}
+
+async function bindingAgencyName(base44, agencyId) {
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+  } catch {
+    rows = [];
+  }
+  const agency = Array.isArray(rows) && rows.length === 1 && rows[0]?.id === agencyId ? rows[0] : null;
+  return typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+}
+
+/*
+ * Released to every agency member 2026-10-08 (owner decision). Authority, from
+ * protected sources only:
+ *   - the caller is the protected platform owner, or a role-'user' account with
+ *     one active service-owned AgencyMembership (withTrustedClaims), decided
+ *     before the body is read;
+ *   - the caller id presented to the patient is the caller's work number only
+ *     when it is an active TelecomDestinationBinding in the caller's agency;
+ *   - a chart (named or resolved from the number) must be in that agency and
+ *     open to the caller under callerMayAccessPatient (built-in admin,
+ *     agency_admin/manager, chart creator, or an active care-team assignment);
+ *   - both legs (the caller's own cell and the patient) pass the agency's
+ *     destination cost controls, with settings from the binding's agency.
+ */
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405 });
+    }
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await base44.auth.me();
+    const caller = await base44.auth.me();
+    const user = await withTrustedClaims(base44, caller);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    // work_phone_number and personal_cell_e164 are presently custom User fields.
-    // Do not trust them for provider routing until a service-owned binding is
-    // deployed and proven.
-    if (user.disabled === true || user.is_service === true || user.is_verified === false
-      || !isProtectedSuperAdmin(user)) {
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const owner = isProtectedSuperAdmin(user);
+    const memberAgencyId = user.role === 'user' && claimIdentifier(user.agency_id) ? user.agency_id : null;
+    if (!owner && !memberAgencyId) {
       return Response.json({
-        error: 'Masked calling is restricted to the protected platform owner pending telecom-binding migration',
-        code: 'telecom_authority_migration_pending',
-      }, { status: 503 });
+        error: 'An active agency membership is required to place calls.',
+        code: 'agency_membership_required',
+      }, { status: 403 });
     }
 
-    const { patient_id, to_number } = await req.json();
+    const requestBody = await req.json().catch(() => null);
+    if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const { patient_id, to_number } = requestBody;
+    if (patient_id != null && (typeof patient_id !== 'string' || !claimIdentifier(patient_id))) {
+      return Response.json({ error: 'patient_id is invalid' }, { status: 400 });
+    }
 
-    const workNumber = user.work_phone_number;
-    const nurseCell = user.personal_cell_e164;
+    const workNumber = normalizeE164(user.work_phone_number);
+    const nurseCell = normalizeE164(user.personal_cell_e164);
     if (!workNumber || !nurseCell) {
       return Response.json({ error: 'Your account needs both a work number and a personal cell on file. Ask an admin to provision them.' }, { status: 400 });
-    }
-
-    let destination = normalizeE164(to_number);
-    let resolvedPatientId = patient_id || null;
-    let resolvedPatient = null;
-    const canAccessPatient = async (p) => {
-      if (!p) return false;
-      if (isProtectedSuperAdmin(user)) return true;
-      if (p.created_by === user.email) return true;
-      return Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email);
-    };
-
-    if (!destination && patient_id) {
-      const p = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000).catch(() => []);
-      resolvedPatient = p[0] || null;
-      if (!(await canAccessPatient(resolvedPatient))) {
-        return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
-      }
-      destination = normalizeE164(resolvedPatient?.phone);
-      resolvedPatientId = resolvedPatient?.id || null;
-    }
-    if (!destination) {
-      return Response.json({ error: 'Could not determine a valid patient phone number' }, { status: 400 });
-    }
-    if (!resolvedPatientId) {
-      for (const v of phoneVariants(destination)) {
-        const m = await base44.asServiceRole.entities.Patient.filter({ phone: v }, undefined, 5000).catch(() => []);
-        if (m.length > 0) {
-          if (!(await canAccessPatient(m[0]))) {
-            return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
-          }
-          resolvedPatientId = m[0].id;
-          resolvedPatient = m[0];
-          break;
-        }
-      }
-    } else if (!resolvedPatient) {
-      // Client passed patient_id + to_number — still verify access to the named patient.
-      const p = await base44.asServiceRole.entities.Patient.filter({ id: resolvedPatientId }, undefined, 1).catch(() => []);
-      if (!(await canAccessPatient(p[0]))) {
-        return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
-      }
     }
 
     const telnyxCreds = await resolveTelnyxCreds(base44);
@@ -372,12 +509,68 @@ Deno.serve(async (req) => {
     if (!apiKey || !voiceConnectionId) {
       return Response.json({ error: telnyxCredsMessage(telnyxCreds, "Voice credentials") }, { status: 500 });
     }
+    const line = await resolveCallerLineBinding(base44, telnyxCreds, workNumber);
+    if (!line) {
+      return Response.json({
+        error: 'Calling is unavailable until your work number is an active agency line.',
+        code: 'telecom_authority_migration_pending',
+      }, { status: 503 });
+    }
+    if (memberAgencyId && line.agency_id !== memberAgencyId) {
+      return Response.json({ error: 'Your work number belongs to a different agency.' }, { status: 403 });
+    }
+    const agencyId = line.agency_id;
 
-    // Cost control: block premium/blocked/international destinations by default.
-    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+    let destination = normalizeE164(to_number);
+    let resolvedPatientId = patient_id || null;
+    let resolvedPatient = null;
+    // The chart must be in the line's agency and open to the caller; the
+    // retired creator-email / assigned_nurses checks are gone.
+    const canAccessPatient = async (p) => {
+      if (!p?.id || p.agency_id !== agencyId) return false;
+      return callerMayAccessPatient(base44, caller, p);
+    };
+
+    if (patient_id) {
+      const p = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 2).catch(() => []);
+      resolvedPatient = Array.isArray(p) && p.length === 1 && p[0]?.id === patient_id ? p[0] : null;
+      if (!(await canAccessPatient(resolvedPatient))) {
+        return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
+      }
+      if (!destination) destination = normalizeE164(resolvedPatient?.phone);
+      resolvedPatientId = resolvedPatient.id;
+    }
+    if (!destination) {
+      return Response.json({ error: 'Could not determine a valid patient phone number' }, { status: 400 });
+    }
+    if (!resolvedPatientId) {
+      // A number that belongs to a chart in this agency may be called only by
+      // someone that chart is open to.
+      for (const v of phoneVariants(destination)) {
+        const m = await base44.asServiceRole.entities.Patient
+          .filter({ phone: v, agency_id: agencyId }, undefined, 10).catch(() => []);
+        const inAgency = (Array.isArray(m) ? m : []).filter((row) => row?.agency_id === agencyId);
+        if (inAgency.length > 0) {
+          if (!(await canAccessPatient(inAgency[0]))) {
+            return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
+          }
+          resolvedPatientId = inAgency[0].id;
+          resolvedPatient = inAgency[0];
+          break;
+        }
+      }
+    }
+
+    // Cost control: block premium/blocked/international destinations by default,
+    // for the patient leg and for the caller's own cell leg alike.
+    const agencySettings = await resolveAgencySettings(base44, await bindingAgencyName(base44, agencyId));
     const destAllowed = isAllowedDestination(destination, agencySettings || {});
     if (!destAllowed.allowed) {
       return Response.json({ error: blockedReasonMessage(destAllowed.reason), reason: destAllowed.reason }, { status: 403 });
+    }
+    const cellAllowed = isAllowedDestination(nurseCell, agencySettings || {});
+    if (!cellAllowed.allowed) {
+      return Response.json({ error: `Your personal cell cannot be dialed: ${blockedReasonMessage(cellAllowed.reason)}`, reason: cellAllowed.reason }, { status: 403 });
     }
 
     if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('voice');

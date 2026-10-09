@@ -6,6 +6,36 @@
       "type": "string",
       "description": "Immutable tenant id stamped by the server-side signature-request broker. Signing functions reject legacy rows without this value."
     },
+    "request_key": {
+      "type": "string",
+      "description": "Server-built SHA-256 identity shared by every package and document row of one signature request."
+    },
+    "creation_reservation_token": {
+      "type": "string",
+      "description": "Agency creation reservation that wrote this row; lets a retry resume its own partial request."
+    },
+    "finalize_claimed_by": {
+      "type": "string",
+      "description": "Server-generated owner of the short sealing lease (stamping, certificate, archive)."
+    },
+    "finalize_claimed_at": { "type": "string", "format": "date-time" },
+    "finalized_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the sealed signed PDF was produced, hashed, and filed to the chart."
+    },
+    "signed_document_id": {
+      "type": "string",
+      "description": "Chart Document id of the sealed signed PDF (private storage, DocumentTenantBinding v2)."
+    },
+    "signed_document_binding_id": {
+      "type": "string",
+      "description": "DocumentTenantBinding id of the sealed signed PDF."
+    },
+    "signed_file_size": { "type": "number" },
+    "cancelled_at": { "type": "string", "format": "date-time" },
+    "cancelled_by_user_id": { "type": "string" },
+    "cancel_reason": { "type": "string" },
     "signature_request_key": {
       "type": "string",
       "description": "Server-built SHA-256 idempotency key scoped to agency, creator, source Document, and client request id."
@@ -89,6 +119,10 @@
           },
           "label": { "type": "string" },
           "required": { "type": "boolean" },
+          "page": {
+            "type": "number",
+            "description": "1-based page the box is drawn on. Position and size are percentages of that page."
+          },
           "position": {
             "type": "object",
             "properties": {
@@ -167,6 +201,14 @@
           },
           "device_info": {
             "type": "string"
+          },
+          "capture_method": {
+            "type": "string",
+            "enum": ["emailed_link", "in_person"]
+          },
+          "collected_by_user_id": {
+            "type": "string",
+            "description": "Staff member who collected an in-person signature (server-derived)."
           },
           "verification_method": {
             "type": "string",
@@ -368,9 +410,10 @@
     "document_type",
     "patient_id"
   ],
-  // The e-signature feature is quarantined. Existing records remain available
-  // only to reviewed service-role maintenance paths; no browser/API principal
-  // may read or mutate signing data while the workflow is unavailable.
+  // Server-owned: every read and write goes through the e-signature brokers,
+  // which decide chart access from AgencyMembership and care-team assignment
+  // (never from self-editable profile fields). No browser principal touches
+  // the row directly.
   "rls": {
     "read": false,
     "create": false,

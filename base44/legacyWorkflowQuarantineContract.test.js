@@ -34,6 +34,22 @@ test('all PennSync2 legacy workflows remain explicitly reviewed and undeployed',
     }
 
     const source = await readFile(entry, 'utf8');
+    if (workflow.state === 'released_caller_invoked' || workflow.state === 'replaced_by_reviewed_workflow') {
+      // Released by the owner on 2026-10-08. The legacy automation itself is
+      // still never imported (checked above by name); the target is a live,
+      // authenticated endpoint that no longer carries its old pause.
+      assert.match(source, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/,
+        `${workflow.target} must authenticate its caller`);
+      assert.doesNotMatch(source, /legacy_patient_service_writer_paused|automatic patient assignment disabled|const SECURE_MESSAGE_DOMAIN_PAUSED = true;|const PROCESS_COMPLETED_VISIT_PAUSED = true;/,
+        `${workflow.target} must not still carry its legacy pause`);
+      if (workflow.state === 'replaced_by_reviewed_workflow') {
+        assert.ok(deployed.has(workflow.replacement), `${workflow.name} replacement must be deployed`);
+        const replacement = JSON5.parse(await readFile(new URL(`workflows/${workflow.replacement}.jsonc`, ROOT), 'utf8'));
+        assert.equal(replacement.definition?.do?.[0]?.run_function?.with?.function_name, workflow.target);
+        assert.notEqual(workflow.replacement, workflow.name);
+      }
+      continue;
+    }
     if (workflow.state === 'source_disabled') {
       assert.match(source, /temporarily unavailable|Legacy Patient service-role writer is temporarily unavailable/);
       if (workflow.target === 'notifyUrgentMessage') {

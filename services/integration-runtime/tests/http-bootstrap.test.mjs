@@ -63,8 +63,14 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     // the HTTP suites run the real providers against, so a filter that stopped at
     // the original five would leave `http-storage` proving a denial the fixture
     // raised rather than one the runtime did. That is how 006 first failed here.
+    // The count is a ratchet and moves with every migration added to the
+    // directory. It is spelled out rather than derived because deriving it from
+    // the same readdir would assert nothing; the cost is that a change adding a
+    // forward file has to touch this line, and this suite is not in `pnpm test`
+    // -- it needs the local stack -- so the reminder is CI's. That is how 007
+    // reached a red "Verify independent Auth and API" with every local script green.
     const files = (await readdir(directory)).filter(file => /^\d{3}_.+\.sql$/.test(file)).sort();
-    assert.equal(files.length, 6);
+    assert.equal(files.length, 8);
     for (const file of files) {
       phase = `apply ${file} to actual platform`;
       if (file === '002_storage_isolation.sql') {
@@ -92,7 +98,7 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     }
     const bucket = (await db.query("select public,file_size_limit::integer as max_bytes,allowed_mime_types from storage.buckets where id='pennsync-external-integrations'")).rows[0];
     assert.equal(bucket.public, false); assert.equal(bucket.max_bytes, 8388608); assert.equal(bucket.allowed_mime_types.length, 6);
-    for (const table of ['cm_integration_jobs', 'cm_integration_files', 'cm_integration_daily_budget']) {
+    for (const table of ['cm_integration_jobs', 'cm_integration_files', 'cm_integration_daily_budget', 'cm_integration_credential']) {
       const permissions = (await db.query(`select has_table_privilege('anon',$1,'SELECT,INSERT,UPDATE,DELETE') as anon,
         has_table_privilege('authenticated',$1,'SELECT,INSERT,UPDATE,DELETE') as authenticated,
         has_table_privilege('service_role',$1,'SELECT,INSERT,UPDATE,DELETE') as server`, [`public.${table}`])).rows[0];
@@ -109,11 +115,29 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
       p.prosecdef and (r.rolsuper or r.rolbypassrls) as trusted_definer
       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       join pg_roles r on r.oid=p.proowner
-      where n.nspname='public' and p.proname like 'cm_integration_%' order by p.proname`)).rows;
+      where n.nspname='public' and p.proname like 'cm_integration_%'
+        and p.prorettype <> 'pg_catalog.trigger'::regtype order by p.proname`)).rows;
     assert.deepEqual(rpcPermissions, runtimeRpcSignatures.toSorted((a, b) => a.name.localeCompare(b.name)).map(signature => ({
       name: signature.name, argument_names: signature.args.map(arg => arg.name), argument_types: signature.args.map(arg => arg.type).join(', '),
       anon: false, authenticated: false, server: true, trusted_definer: true,
     })));
+    // A trigger function cannot be in the list above: `runtimeRpcSignatures`
+    // drives the PostgREST readiness probe, PostgREST exposes no trigger
+    // function, and a probe for one waits for a cache entry that never
+    // arrives. So the pattern that used to catch EVERY `cm_integration_%`
+    // function is split in two rather than narrowed -- an unpinned trigger
+    // function still fails here, by name, with nothing granted to anybody.
+    // 007's guard arrived with PostgreSQL's default EXECUTE to PUBLIC and that
+    // is how it was found.
+    const triggerFunctions = (await db.query(`select p.proname as name,
+      has_function_privilege('anon',p.oid,'EXECUTE') as anon,
+      has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated,
+      has_function_privilege('service_role',p.oid,'EXECUTE') as server
+      from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname like 'cm_integration_%'
+        and p.prorettype = 'pg_catalog.trigger'::regtype order by p.proname`)).rows;
+    assert.deepEqual(triggerFunctions, [{ name: 'cm_integration_credential_guard',
+      anon: false, authenticated: false, server: false }]);
     await db.query("notify pgrst, 'reload schema'");
     phase = 'complete runtime schema cache readiness';
     await waitForRuntimeSchema({ api: API, publishableKey: status.PUBLISHABLE_KEY });

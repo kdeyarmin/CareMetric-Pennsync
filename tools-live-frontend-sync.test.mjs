@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createBuildInventory, htmlReferences, main, PRODUCTION_ORIGINS, validateOrigin, verifyOrigin } from './tools-live-frontend-sync.mjs';
+import { createBuildInventory, entryRevision, environmentOrigin, htmlReferences, main, PRODUCTION_ORIGINS, validateOrigin, VERIFY_ORIGIN_VARIABLE, verifyOrigin } from './tools-live-frontend-sync.mjs';
 
 const ORIGIN = PRODUCTION_ORIGINS[0];
 const HTML = '<html><head><script src="./assets/index-good.js" crossorigin type="module"></script>'
@@ -196,4 +196,197 @@ test('invalid arguments or missing build return 2 without network access or expo
     assert.equal(result, 2);
     assert.equal(output.join('').includes('PRIVATE_TEST_VALUE'), false);
   }
+});
+
+// The owned static host has no production hostname until the domain moves, so
+// these cover the one env-supplied origin and the marker that keeps its green
+// from being read as a statement about production.
+test('an owned deployment origin is accepted only under the two owned suffixes', () => {
+  for (const origin of ['https://pennsync-site-production.up.railway.app',
+    'https://site.caremetricai.com', 'https://caremetricai.com']) {
+    assert.equal(environmentOrigin({ [VERIFY_ORIGIN_VARIABLE]: origin }), origin);
+  }
+  for (const value of [
+    // A suffix match that is not a dot boundary is the whole point of the check.
+    'https://evilcaremetricai.com', 'https://notup.railway.app.example',
+    'http://site.caremetricai.com', 'https://site.caremetricai.com:8443',
+    'https://site.caremetricai.com/preview', 'https://site.caremetricai.com/?token=TEST',
+    'https://user:password@site.caremetricai.com', 'https://base44.app', 'nonsense',
+  ]) {
+    assert.throws(() => environmentOrigin({ [VERIFY_ORIGIN_VARIABLE]: value }),
+      (error) => error.code === 'INVALID_VERIFY_ORIGIN', value);
+  }
+  assert.equal(environmentOrigin({}), null);
+  assert.equal(environmentOrigin({ [VERIFY_ORIGIN_VARIABLE]: '' }), null);
+});
+
+test('a green against an owned deployment is marked as not being about production', async (t) => {
+  const { dir } = build(t);
+  const origin = 'https://pennsync-site-production.up.railway.app';
+  const remote = serving(dir);
+  const output = [];
+  const code = await main(['--dist', dir, '--json'],
+    { ...remote, log: (s) => output.push(JSON.parse(s)), env: { [VERIFY_ORIGIN_VARIABLE]: origin } });
+  assert.equal(code, 0);
+  assert.equal(output[0].origin_allowlist, 'environment');
+  assert.deepEqual(output[0].reports.map((r) => r.origin), [origin]);
+  // Neither production address was contacted, so nothing here claims anything
+  // about what production serves.
+  assert.equal(remote.calls.some((call) => PRODUCTION_ORIGINS.includes(call.url.origin)), false);
+});
+
+test('the default run still checks both production addresses and says so', async (t) => {
+  const { dir } = build(t);
+  const remote = serving(dir);
+  const output = [];
+  assert.equal(await main(['--dist', dir, '--json'], { ...remote, log: (s) => output.push(JSON.parse(s)), env: {} }), 0);
+  assert.equal(output[0].origin_allowlist, 'production');
+  assert.deepEqual(output[0].reports.map((r) => r.origin), [...PRODUCTION_ORIGINS]);
+});
+
+test('a bad or doubled origin refuses instead of silently checking production', async () => {
+  const output = [];
+  const noNetwork = { fetchImpl() { assert.fail('network must not run'); }, log: (s) => output.push(JSON.parse(s)) };
+  assert.equal(await main([], { ...noNetwork, env: { [VERIFY_ORIGIN_VARIABLE]: 'https://other.example' } }), 2);
+  assert.equal(output[0].error, 'INVALID_VERIFY_ORIGIN');
+  assert.equal(output[0].origin_allowlist, 'production');
+  assert.equal(await main([PRODUCTION_ORIGINS[0]],
+    { ...noNetwork, env: { [VERIFY_ORIGIN_VARIABLE]: 'https://site.caremetricai.com' } }), 2);
+  assert.equal(output[1].error, 'INVALID_ARGUMENTS');
+});
+
+// --- `--published-revision`: the build-independent staleness reading --------
+//
+// Each case asserts the property that made this mode necessary rather than the
+// shape of its output: it must read the revision WITHOUT a local build, and it
+// must refuse rather than answer when an origin cannot be read.
+
+const entryOf = (revision) => `<html><head><script src="./assets/index-Cq2uld1D-${revision}.js" `
+  + 'crossorigin type="module"></script></head><body></body></html>';
+
+test('the published revision is read off the entry name, for both revision shapes', () => {
+  // A published build stamps PENNSYNC_ASSET_REVISION (a full sha); a local one
+  // falls back to the short HEAD, plus `-dirty-<t>` for a dirty tree. Both are
+  // legible, which is the whole point of reading the filename.
+  assert.equal(entryRevision('/assets/index-Cq2uld1D-8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c.js'),
+    '8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c');
+  assert.equal(entryRevision('/assets/index-WwVTi7Pz-a615d9a8c78f-dirty-muzlom2s.js'),
+    'a615d9a8c78f-dirty-muzlom2s');
+  // Not an entry, or no revision segment at all: null, never a guess.
+  assert.equal(entryRevision('/assets/index-good.js'), null);
+  assert.equal(entryRevision('/assets/site.css'), null);
+  assert.equal(entryRevision(undefined), null);
+});
+
+test('--published-revision reads every origin and needs no local build', async () => {
+  const output = [];
+  const fetchImpl = async (url) => {
+    assert.ok(String(url).endsWith('/'), 'only the index is fetched; no asset is downloaded');
+    return new Response(entryOf('8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c'), { status: 200 });
+  };
+  // `--dist` points at a directory that does not exist: the byte comparison
+  // would die on it, and this mode must not reach the inventory at all.
+  const code = await main(['--published-revision', '--dist', join(tmpdir(), 'pennsync-absent-dist-dir')],
+    { fetchImpl, log: (line) => output.push(JSON.parse(line)), env: {} });
+  assert.equal(code, 0);
+  const report = output.at(-1);
+  assert.equal(report.scope, 'published_revision_only');
+  assert.deepEqual(report.reports.map((r) => r.origin), [...PRODUCTION_ORIGINS]);
+  for (const entry of report.reports) {
+    assert.equal(entry.read, true);
+    assert.equal(entry.revision, '8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c');
+  }
+});
+
+test('an origin that cannot be read exits 2 rather than reporting a clean reading', async () => {
+  const output = [];
+  const code = await main(['--published-revision'], {
+    fetchImpl: async () => { throw new Error('PRIVATE_TEST_VALUE'); },
+    log: (line) => output.push(JSON.parse(line)),
+    env: {},
+  });
+  assert.equal(code, 2, 'a question that was not answered must not read as a clean one');
+  const report = output.at(-1);
+  for (const entry of report.reports) {
+    assert.equal(entry.read, false);
+    assert.ok(entry.code, 'the reason is reported, never a silent absence');
+    assert.ok(!JSON.stringify(entry).includes('PRIVATE_TEST_VALUE'),
+      'a transport error message is not surfaced verbatim');
+  }
+});
+
+test('an entry whose name carries no revision is read but reported without one, and exits 2', async () => {
+  // A deployment built before the revision stamp, or by another pipeline, is a
+  // legitimate read with nothing to compare. It must not pass as answered.
+  const output = [];
+  const code = await main(['--published-revision'], {
+    fetchImpl: async () => new Response(
+      '<html><head><script src="./assets/index-good.js" crossorigin type="module"></script></head><body></body></html>',
+      { status: 200 }),
+    log: (line) => output.push(JSON.parse(line)),
+    env: {},
+  });
+  assert.equal(code, 2);
+  for (const entry of output.at(-1).reports) {
+    assert.equal(entry.read, true);
+    assert.equal(entry.revision, null);
+  }
+});
+
+// --- the scheduled drift report's own hazard --------------------------------
+//
+// `workflow_dispatch` names no branch, so a manual run selects its own ref and
+// `actions/checkout` takes it. `pennsync-authority.yml` records that mechanism
+// at length for its credential steps, where the consequence is a leak. Here it
+// is a FALSE READING instead: the distance measured from a feature branch's
+// HEAD, printed under a label saying `main`. A branch whose HEAD happened to
+// match would be reported as "current" while production sat weeks behind, and
+// the distance to an unmerged branch answers a question nobody asked.
+//
+// These assert the two halves that stop it — the ref is PINNED, and the label
+// is DERIVED from that pin rather than restated beside it.
+
+const DRIFT_WORKFLOW = new URL('./.github/workflows/deployment-drift-report.yml', import.meta.url);
+
+function driftFrontendJob() {
+  const workflow = readFileSync(DRIFT_WORKFLOW, 'utf8');
+  const at = workflow.indexOf('\n  frontend:');
+  assert.ok(at > 0, 'the drift report no longer has a frontend job');
+  const next = workflow.indexOf('\n  dependencies:', at + 1);
+  const job = next === -1 ? workflow.slice(at) : workflow.slice(at, next);
+  // Comments describe this hazard in detail, so a check that read them would
+  // pass on the prose explaining the very bug it is looking for.
+  return job.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+}
+
+test('the drift report measures against a pinned ref, not the dispatched one', () => {
+  const code = driftFrontendJob();
+  const pinned = code.match(/^\s*ref:\s*(\S+)\s*$/m);
+  assert.ok(pinned,
+    'the checkout does not pin a ref, so a manual dispatch measures whatever ref it was run from');
+  assert.equal(pinned[1], 'main',
+    'drift is only meaningful against the branch that actually gets published');
+  assert.match(code, /fetch-depth:\s*0/,
+    'a shallow clone cannot resolve a weeks-old published revision, so the distance would be unknown');
+});
+
+test('the ref the drift report names is the ref it checked out, stated once', () => {
+  const code = driftFrontendJob();
+  // The label was the literal "`main` here is …" sitting beside the checkout:
+  // two representations of one fact, which is the shape this repository is
+  // repeatedly bitten by. The branch name may appear ONCE, in the line that
+  // decides it. If a second mention is ever legitimate, derive it from the
+  // first rather than retyping it.
+  assert.equal([...code.matchAll(/\bmain\b/g)].length, 1,
+    'the branch name appears more than once, so a restated copy can disagree with the checkout');
+  assert.match(code, /ref:\s*main/);
+  // ...and the name in the summary must come from git, not from a constant.
+  assert.match(code, /head_ref="\$\(git rev-parse --abbrev-ref HEAD\)"/,
+    'the step no longer resolves the ref it is reporting about');
+  assert.match(code, /' "\$head_sha" "\$head_ref"/,
+    'the resolved ref is not passed into the script that writes the summary');
+  assert.match(code, /const ref = process\.argv\[2\];/,
+    'the summary script does not read the resolved ref');
+  assert.match(code, /\$\{ref\}/,
+    'the summary label does not interpolate the resolved ref, so it is a constant again');
 });

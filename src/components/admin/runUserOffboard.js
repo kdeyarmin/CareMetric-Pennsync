@@ -14,9 +14,14 @@ import { canOffboardUser } from './userOffboarding.js';
 export function buildOffboardInvokeArgs({ targetUser, currentUser, enabling, reason } = {}) {
   if (!targetUser?.id) throw new Error('targetUser is required');
   if (enabling) {
-    throw new Error(
-      'User reactivation is temporarily unavailable pending retirement of legacy PHI grants',
-    );
+    // Reactivation restores the User identity only; the server decides who may
+    // do it (the owner, or an agency administrator for a former member of
+    // their own agency) and refuses a self-reactivation.
+    if (currentUser?.email && targetUser.email
+      && String(currentUser.email).trim().toLowerCase() === String(targetUser.email).trim().toLowerCase()) {
+      throw new Error('You cannot reactivate your own account');
+    }
+    return { action: 'reactivate', user_id: targetUser.id };
   }
   if (!canOffboardUser({
     currentUserEmail: currentUser?.email,

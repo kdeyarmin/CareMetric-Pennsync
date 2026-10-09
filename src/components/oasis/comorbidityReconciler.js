@@ -123,7 +123,7 @@ export function reconcileComorbidities({ documentedConditions = [], codedSeconda
     else gaps.push(entry);
   }
 
-  // Gaps that map to a PDGM comorbidity subgroup are the revenue opportunities.
+  // Gaps that map to a PDGM comorbidity subgroup are the coding opportunities.
   const opportunities = gaps.filter((g) => g.subgroup);
 
   return {

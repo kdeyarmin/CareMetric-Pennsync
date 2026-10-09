@@ -88,10 +88,9 @@ export default function ComprehensiveOASISReviewer({
   analysisId = null,
   patientName = "",
   onActionItemsCreated,
-  // Fail-closed: the only place these records can be read, assigned or
-  // rejected is OASISActionWorkflow, which renders revenue impact and so is
-  // admin-gated. Offering creation to a user who cannot open that workflow
-  // would file records they can never see or correct.
+  // Fail-closed: action items may only be created by a caller who can also
+  // read, assign and reject them. Offering creation to a user who cannot open
+  // that workflow would file records they can never see or correct.
   canManageActionItems = false
 }) {
   const ai = useAICall();
@@ -229,7 +228,7 @@ Identify contradictions and logical errors:
 For EACH inconsistency, provide:
 - Description of the contradiction
 - Data points involved (specific M-items)
-- Why it matters (revenue/audit/quality impact)
+- Why it matters (audit/quality impact)
 - Plain-language explanation
 - Which data point is likely incorrect
 - How to reconcile the inconsistency
@@ -261,8 +260,7 @@ Return detailed JSON with all findings.`;
                   compliant_example: { type: "string" },
                   timeline_to_fix: { type: "string", enum: ["immediate", "within_24hrs", "within_week", "within_month"] },
                   affected_m_items: { type: "array", items: { type: "string" } },
-                  audit_impact: { type: "string" },
-                  revenue_impact: { type: "string" }
+                  audit_impact: { type: "string" }
                 }
               }
             },
@@ -301,7 +299,6 @@ Return detailed JSON with all findings.`;
                   cms_guidance: { type: "string" },
                   cms_guidance_link: { type: "string" },
                   severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
-                  impact_on_revenue: { type: "string" },
                   impact_on_quality: { type: "string" },
                   impact_on_audit: { type: "string" }
                 }
@@ -717,12 +714,6 @@ Return detailed JSON with all findings.`;
                                   <p className="text-xs text-orange-800">{risk.audit_impact}</p>
                                 </div>
                               )}
-                              {risk.revenue_impact && (
-                                <div className="bg-green-50 p-2 rounded border border-green-200">
-                                  <p className="text-xs text-green-700 font-semibold mb-1">💰 Revenue Impact</p>
-                                  <p className="text-xs text-green-800">{risk.revenue_impact}</p>
-                                </div>
-                              )}
                             </div>
 
                             {/* Corrective Action */}
@@ -923,12 +914,6 @@ Return detailed JSON with all findings.`;
 
                             {/* Impact Analysis */}
                             <div className="grid grid-cols-3 gap-2 mb-3">
-                              {inconsistency.impact_on_revenue && (
-                                <div className="bg-green-50 p-2 rounded border border-green-200">
-                                  <p className="text-xs text-green-700 font-semibold mb-1">💰 Revenue</p>
-                                  <p className="text-xs text-green-800">{inconsistency.impact_on_revenue}</p>
-                                </div>
-                              )}
                               {inconsistency.impact_on_quality && (
                                 <div className="bg-navy-50 p-2 rounded border border-navy-200">
                                   <p className="text-xs text-navy-700 font-semibold mb-1">⭐ Quality</p>

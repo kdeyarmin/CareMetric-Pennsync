@@ -2,33 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/testUtils";
 
-const { uploadFile, invoke } = vi.hoisted(() => ({
-  uploadFile: vi.fn(),
+const { uploadPrivateFile, invoke } = vi.hoisted(() => ({
+  uploadPrivateFile: vi.fn(),
   invoke: vi.fn(),
 }));
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
-    integrations: { Core: { UploadFile: (...args) => uploadFile(...args) } },
+    integrations: { Core: { UploadPrivateFile: (...args) => uploadPrivateFile(...args) } },
     functions: { invoke: (...args) => invoke(...args) },
   },
 }));
 
+vi.mock("@/lib/AuthContext", () => ({
+  useAuth: () => ({ tenantContext: { agency_id: "agency-1" } }),
+}));
+
 import BulkDischargeImportPage from "@/pages/BulkDischargeImport";
 
-describe("BulkDischargeImportPage paused state", () => {
-  it("truthfully presents the security hold without an upload control", () => {
+describe("BulkDischargeImportPage", () => {
+  it("presents the discharge report upload without processing anything on render", () => {
     const { container } = renderWithProviders(<BulkDischargeImportPage />);
 
     expect(screen.getByRole("heading", { name: "Bulk Discharge Import" }))
       .toBeInTheDocument();
-    expect(screen.getByText(/File upload and automated bulk discharge processing are temporarily unavailable/i))
+    expect(screen.getByText(/Upload a discharge report to batch-match/i))
       .toBeInTheDocument();
-    expect(screen.getByText(/approved patient discharge workflow/i))
-      .toBeInTheDocument();
-    expect(container.querySelector('input[type="file"]')).toBeNull();
-    expect(screen.queryByText(/Click to upload discharge report/i)).toBeNull();
-    expect(uploadFile).not.toHaveBeenCalled();
+    expect(container.querySelector('input[type="file"]')).not.toBeNull();
+    expect(screen.getByText(/Click to upload discharge report/i)).toBeInTheDocument();
+    expect(uploadPrivateFile).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
   });
 });

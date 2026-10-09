@@ -929,14 +929,23 @@ function decodeClientState(b64) {
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { return null; }
 }
 
-// Inbound patient communications cannot be routed safely until dialed Telnyx
-// numbers, tenant ownership, and destinations are resolved from a service-owned
-// binding instead of mutable User profile fields. SMS and voice remain behind
-// literal release gates. Inbound fax now crosses only a dedicated, exact
-// service-owned destination binding; it never uses mutable User fields or a
-// newest/single-row AgencySettings fallback as tenant authority.
-const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;
-const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;
+// Inbound patient SMS is released (owner decision, 2026-10-08): the dialed
+// number, the tenant and the reader all resolve from service-owned records —
+// the receiving TelecomDestinationBinding, a chart in its agency, and an active
+// member of that agency named by the line's PhoneNumber assignment or the
+// thread's server-written outbound row (see handleInboundMessage). Mutable
+// User profile fields are no longer read for SMS. Inbound fax crosses only a
+// dedicated, exact service-owned destination binding.
+//
+// Inbound patient CALLS are released (owner decision, 2026-10-08: single
+// agency, staff-only, BAAs in place, outbound delivery released). Routing still
+// reads the dialed work number's User row to find the nurse, which is the
+// mutable-profile dependency the pause existed for; the owner accepted that
+// for a single-agency deployment. Every Call Control action remains behind the
+// outbound delivery gate in callCommand, and the CallLog rows this writes are
+// what fill the Phone Center's Recents and Callbacks tabs.
+const INBOUND_PATIENT_SMS_ROUTING_PAUSED = false;
+const INBOUND_PATIENT_CALL_ROUTING_PAUSED = false;
 const INBOUND_PATIENT_CALL_STATES = new Set([
   'inbound_ivr',
   'inbound_after_greet',
@@ -1078,8 +1087,10 @@ async function resolveAgencySettingsByNumber(base44, e164) {
   return null;
 }
 
+// Text alone never changes consent (only a provider-classified STOP/START
+// does, through handleInboundConsentKeyword). These lists only decide which
+// texts get no automatic reply (STOP-like) and which get the CTIA HELP answer.
 const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
-const START_WORDS = ['START', 'UNSTOP', 'YES'];
 const HELP_WORDS = ['HELP', 'INFO'];
 
 function providerConsentKeyword(payload) {
@@ -1247,143 +1258,259 @@ async function handleOutboundMessageStatus(base44, payload) {
   return Response.json({ success: true, status: mapped });
 }
 
-async function handleInboundMessage(base44, apiKey, messagingProfileId, payload) {
+// ---- Inbound patient SMS routing (released 2026-10-08, owner decision) ----
+// An inbound text is attributed ONLY through service-owned records:
+//   - the receiving number must be one exact, active, inbound-enabled
+//     TelecomDestinationBinding of the signed messaging profile; its agency is
+//     the message's agency and nothing else can move it to another one;
+//   - the patient link is a chart in THAT agency whose phone is the sender's
+//     (exactly one), or the chart the sender's scoped consent row names;
+//   - the reader is a staff member who holds an active membership in THAT
+//     agency, found from the line's service-written PhoneNumber assignment or,
+//     for a shared line, from the server-written outbound row of the same
+//     thread. Self-editable User fields (work_phone_number, agency_name) are
+//     never consulted. With no such person the text is stored for the agency
+//     (agency_id stamped) and shown to no staff member, rather than guessed.
+// SmsMessage is readable only by its nurse_email / sent_by and the built-in
+// admin, so a text attributed this way is never shown to another agency.
+const INBOUND_SMS_PATIENT_SCAN_LIMIT = 10;
+const INBOUND_SMS_THREAD_SCAN_LIMIT = 20;
+const normalizeRoutingEmail = (value) => String(value || '').trim().toLowerCase();
+
+function inboundSmsUnavailable(code) {
+  return Response.json({
+    error: 'Inbound text could not be attributed to an agency line right now',
+    code,
+    retryable: true,
+  }, { status: 503, headers: { 'Retry-After': '300' } });
+}
+
+/** The active member of `agencyId` with this address, as their User row. */
+async function activeAgencyMember(entities, agencyId, email) {
+  const normalized = normalizeRoutingEmail(email);
+  if (!normalized) return null;
+  let memberships;
+  try {
+    memberships = await entities.AgencyMembership.filter(
+      { agency_id: agencyId, user_email_normalized: normalized, status: 'active' }, undefined, 2,
+    );
+  } catch {
+    return null;
+  }
+  const membership = Array.isArray(memberships) && memberships.length === 1 ? memberships[0] : null;
+  if (!membership || membership.agency_id !== agencyId || membership.status !== 'active'
+    || normalizeRoutingEmail(membership.user_email_normalized) !== normalized
+    || !boundedTelnyxAuthorityId(membership.user_id)) return null;
+  let users;
+  try {
+    users = await entities.User.filter({ id: membership.user_id }, undefined, 2);
+  } catch {
+    return null;
+  }
+  const user = Array.isArray(users) && users.length === 1 ? users[0] : null;
+  if (!user || user.id !== membership.user_id || normalizeRoutingEmail(user.email) !== normalized
+    || user.is_active === false || user.disabled === true || user.is_service === true) return null;
+  return user;
+}
+
+/** Who reads an inbound text on this line, from service-owned records only. */
+async function resolveInboundSmsReader(entities, authority, threadId) {
+  // 1. The person the line is assigned to (PhoneNumber is written only by the
+  //    admin-gated provisioning functions).
+  let numbers = [];
+  try {
+    numbers = await entities.PhoneNumber.filter({ e164: authority.destinationE164 }, undefined, 3);
+  } catch {
+    numbers = [];
+  }
+  const assigned = (Array.isArray(numbers) ? numbers : []).filter((row) => row?.e164 === authority.destinationE164
+    && row.status === 'assigned' && normalizeRoutingEmail(row.assigned_to_email));
+  if (assigned.length === 1) {
+    const user = await activeAgencyMember(entities, authority.agencyId, assigned[0].assigned_to_email);
+    if (user) return { user, basis: 'line_assignment' };
+  }
+  // 2. A shared line: whoever last texted this person from this line.
+  let outbound = [];
+  try {
+    outbound = await entities.SmsMessage.filter(
+      { thread_id: threadId, direction: 'outbound' }, '-created_date', INBOUND_SMS_THREAD_SCAN_LIMIT,
+    );
+  } catch {
+    outbound = [];
+  }
+  for (const row of Array.isArray(outbound) ? outbound : []) {
+    if (row?.thread_id !== threadId || row.direction !== 'outbound'
+      || normalizeTelnyxSmsE164(row.from_number) !== authority.destinationE164
+      || (row.agency_id != null && row.agency_id !== authority.agencyId)) continue;
+    const user = await activeAgencyMember(entities, authority.agencyId, row.sent_by || row.nurse_email);
+    if (user) return { user, basis: 'thread' };
+  }
+  return { user: null, basis: 'unattributed' };
+}
+
+/** The sender's chart in the line's agency: one phone match, or the consent row's chart. */
+async function resolveInboundSmsPatient(entities, authority, senderE164, consentRow) {
+  const ids = new Set();
+  for (const variant of phoneVariants(senderE164)) {
+    let rows;
+    try {
+      rows = await entities.Patient.filter(
+        { phone: variant, agency_id: authority.agencyId }, undefined, INBOUND_SMS_PATIENT_SCAN_LIMIT,
+      );
+    } catch {
+      rows = [];
+    }
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (row?.agency_id === authority.agencyId && boundedTelnyxAuthorityId(row.id)
+        && normalizeTelnyxSmsE164(row.phone) === senderE164) ids.add(row.id);
+    }
+  }
+  if (ids.size === 1) return [...ids][0];
+  if (ids.size > 1) return null;
+  const consentPatientId = boundedTelnyxAuthorityId(consentRow?.patient_id);
+  if (!consentPatientId) return null;
+  let rows;
+  try {
+    rows = await entities.Patient.filter({ id: consentPatientId, agency_id: authority.agencyId }, undefined, 2);
+  } catch {
+    return null;
+  }
+  const patient = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  return patient?.id === consentPatientId && patient.agency_id === authority.agencyId ? patient.id : null;
+}
+
+async function bindingAgencyName(entities, agencyId) {
+  let rows;
+  try {
+    rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  } catch {
+    return '';
+  }
+  const agency = Array.isArray(rows) && rows.length === 1 && rows[0]?.id === agencyId ? rows[0] : null;
+  return typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+}
+
+async function handleInboundMessage(base44, telnyxCreds, event, payload) {
+  const entities = base44.asServiceRole.entities;
   const source = payload?.from?.phone_number || payload?.from;
   const destination = Array.isArray(payload?.to) ? payload.to[0]?.phone_number : payload?.to;
   const text = String(payload?.text || '');
-  const providerMessageId = payload?.id || null;
-  if (!source || !destination) return Response.json({ success: true, skipped: 'missing parties' });
-
-  const patientNum = normalizeE164(source) || source;
-  const workNum = normalizeE164(destination) || destination;
-
-  // Resolve the nurse who owns this work number — then load THAT agency's
-  // settings (newest-row-wins would apply another tenant's auto-reply/SMS gates).
-  let nurse = null;
-  for (const variant of phoneVariants(workNum)) {
-    const matches = await base44.asServiceRole.entities.User.filter({ work_phone_number: variant }, undefined, 5000).catch(() => []);
-    if (matches.length > 0) { nurse = matches[0]; break; }
+  const providerMessageId = boundedTelnyxAuthorityId(payload?.id) || boundedTelnyxAuthorityId(event?.resourceId);
+  if (!source || !destination || !providerMessageId) {
+    return Response.json({ success: true, skipped: 'missing parties' });
   }
-  if (!nurse) {
-    await base44.asServiceRole.entities.UserActivity.create({
-      user_email: 'system', action: 'sms_received_unresolved',
-      details: { direction: 'inbound' }, status: 'failure',
-    }).catch(() => {});
-    return Response.json({ success: true, skipped: 'unresolved work number' });
-  }
-  const config = await getAgencyConfig(base44, nurse.agency_name);
+
+  // The receiving line decides the agency. An unbound, inbound-disabled or
+  // ambiguous line stores nothing and asks Telnyx to retry, so binding the
+  // number later still delivers the text.
+  const authority = await resolveActiveTelnyxSmsBinding(base44, {
+    integrationSecretId: telnyxCreds?.record?.id,
+    integrationProvider: telnyxCreds?.record?.provider,
+    integrationIsActive: telnyxCreds?.record?.is_active === true,
+    messagingProfileId: telnyxCreds?.messagingProfileId,
+    claimedMessagingProfileId: payload?.messaging_profile_id,
+    requireClaimedProfile: true,
+    requireInbound: true,
+    destinationE164: destination,
+  });
+  if (!authority.ok) return inboundSmsUnavailable('INBOUND_SMS_BINDING_UNAVAILABLE');
+
+  const patientNum = normalizeTelnyxSmsE164(source);
+  if (!patientNum) return Response.json({ success: true, skipped: 'unsupported sender' });
+  const workNum = authority.destinationE164;
+  const threadId = getThreadId(patientNum, workNum);
 
   // Idempotency: Telnyx may re-deliver. If we already stored this id, ack.
-  if (providerMessageId) {
-    const dup = await base44.asServiceRole.entities.SmsMessage
-      .filter({ provider_message_id: providerMessageId }, '-created_date', 1).catch(() => []);
-    if (dup.length > 0) return Response.json({ success: true, deduped: true });
+  let dup;
+  try {
+    dup = await entities.SmsMessage.filter({ provider_message_id: providerMessageId }, '-created_date', 1);
+  } catch {
+    return inboundSmsUnavailable('INBOUND_SMS_STORE_UNAVAILABLE');
   }
+  if (Array.isArray(dup) && dup.length > 0) return Response.json({ success: true, deduped: true });
 
-  // Resolve patient (best effort).
-  let patientId = null;
-  for (const variant of phoneVariants(patientNum)) {
-    const m = await base44.asServiceRole.entities.Patient.filter({ phone: variant }, undefined, 5000).catch(() => []);
-    if (m.length > 0) { patientId = m[0].id; break; }
-  }
+  // Consent in the binding's scope (a provider STOP wins). Unreadable consent
+  // is treated as opted out for every reply below.
+  const scopedConsent = await loadLatestScopedSmsConsent(base44, authority, patientNum);
+  const optedOut = !scopedConsent.ok || scopedConsent.effectiveStatus === 'opted_out';
 
-  const keyword = text.trim().toUpperCase();
-  const sendReply = (msg) =>
-    apiKey ? sendAutoReply(apiKey, messagingProfileId, workNum, patientNum, msg) : Promise.resolve(null);
-  const recordConsent = (status, sourceTag) =>
-    base44.asServiceRole.entities.SmsConsent.create({
-      patient_id: patientId, phone_e164: patientNum, consent_status: status,
-      consent_source: sourceTag, captured_by: null, captured_at: new Date().toISOString(),
-      notes: `Inbound keyword "${keyword}" to ${nurse.email}`,
-    }).catch((err) => console.error('consent write failed:', err));
+  const patientId = await resolveInboundSmsPatient(entities, authority, patientNum, scopedConsent.ok ? scopedConsent.row : null);
+  const { user: reader, basis } = await resolveInboundSmsReader(entities, authority, threadId);
 
-  // Always store the inbound message.
-  const inboundRow = await base44.asServiceRole.entities.SmsMessage.create({
+  // Always store the inbound message, in this agency's thread.
+  const inboundRow = await entities.SmsMessage.create({
     direction: 'inbound', from_number: patientNum, to_number: workNum, body: text,
-    nurse_email: nurse.email, patient_id: patientId, thread_id: getThreadId(patientNum, workNum),
+    nurse_email: reader ? reader.email : null, patient_id: patientId, thread_id: threadId,
     status: 'received', provider_message_id: providerMessageId, is_read: false, consent_checked: false,
+    agency_id: authority.agencyId, destination_binding_id: authority.bindingId,
   });
 
-  // Opt-out status — FAIL-CLOSED: if the ledger can't be read, assume opted-out.
-  let priorOptedOut = true;
-  try {
-    const consents = await base44.asServiceRole.entities.SmsConsent.filter({ phone_e164: patientNum }, '-captured_at', 1);
-    priorOptedOut = consents[0]?.consent_status === 'opted_out';
-  } catch {
-    priorOptedOut = true;
-  }
+  const config = await getAgencyConfig(base44, await bindingAgencyName(entities, authority.agencyId));
   const smsEnabled = config.smsEnabled !== false;
+  const keyword = text.trim().toUpperCase();
+  const apiKey = telnyxCreds?.apiKey;
+  const sendReply = (msg) => (apiKey
+    ? sendAutoReply(apiKey, telnyxCreds?.messagingProfileId, workNum, patientNum, msg)
+    : Promise.resolve(null));
+  // Telnyx answers a keyword itself when it set autoresponse_type; a STOP-like
+  // text never gets a reply from us either way.
+  const providerAnswered = !!String(payload?.autoresponse_type || '').trim();
+  const isHelp = HELP_WORDS.includes(keyword);
+  const canReply = !optedOut && smsEnabled && !providerAnswered && !STOP_WORDS.includes(keyword) && !isHelp;
 
-  // --- Keyword handling FIRST (TCPA, legally required) ---
-  if (STOP_WORDS.includes(keyword)) {
-    await recordConsent('opted_out', 'keyword_stop');
-    await sendReply('You have been unsubscribed and will no longer receive texts from your care team. Reply START to opt back in.');
-    await base44.asServiceRole.entities.UserActivity.create({
-      user_email: 'system', action: 'sms_opt_out', entity_type: 'SmsMessage', entity_id: inboundRow.id,
-      details: { consent_status: 'opted_out', source: 'keyword' }, status: 'success',
-    }).catch(() => {});
-    return Response.json({ success: true, opted_out: true });
-  }
-  if (START_WORDS.includes(keyword)) {
-    await recordConsent('opted_in', 'keyword_start');
-    await sendReply('You are now subscribed to texts from your care team. Reply STOP to opt out, HELP for help.');
-    // The sender just re-subscribed — the rest of this handler (after-hours /
-    // off-duty auto-replies) must treat them as opted in, not the stale
-    // pre-keyword ledger state.
-    priorOptedOut = false;
-  } else if (HELP_WORDS.includes(keyword)) {
-    // CTIA requires a HELP response regardless of opt-out state — it's an
-    // informational carrier keyword, not marketing, and contains no PHI.
-    if (smsEnabled) {
-      const office = config.mainOfficeDisplay ? ` or call our office at ${config.mainOfficeDisplay}` : '';
-      await sendReply(`This is your home-health care team. Reply STOP to unsubscribe${office}.`);
-    }
+  if (isHelp && smsEnabled && !providerAnswered) {
+    // CTIA requires a HELP response regardless of opt-out state; it is
+    // informational and carries no PHI.
+    const office = config.mainOfficeDisplay ? ` or call our office at ${config.mainOfficeDisplay}` : '';
+    await sendReply(`This is your home-health care team. Reply STOP to unsubscribe${office}.`);
   }
 
   // --- Automatic after-hours / off-duty reply (only ever one) ---
-  // Off duty = toggled off, after the 5pm auto-off, or a scheduled window.
-  const offDuty = isOffDutyNow(nurse, new Date(), config.settings);
+  const offDuty = reader ? isOffDutyNow(reader, new Date(), config.settings) : false;
   const agencyClosed = !isAgencyOpen(config.settings);
-  if (agencyClosed && config.afterHoursReplyEnabled && !priorOptedOut && smsEnabled) {
-    const office = config.mainOfficeDisplay || 'the main office';
-    const msg = (config.afterHoursReply || config.defaultOffDuty ||
-      `Thanks for your message. Our office is currently closed. For anything urgent, please call ${office}. We'll reply during business hours.`)
-      .replace(/\{office\}/gi, office);
-    await sendReply(msg);
-  } else if (offDuty && !priorOptedOut && smsEnabled) {
-    const office = config.mainOfficeDisplay || '724-465-0440';
-    const msg = (nurse.off_duty_message || config.defaultOffDuty ||
-      `Thank you for your text, but I am currently not working. Please contact the office at ${office}.`)
-      .replace(/\{office\}/gi, office);
-    await sendReply(msg);
+  if (canReply) {
+    if (agencyClosed && config.afterHoursReplyEnabled) {
+      const office = config.mainOfficeDisplay || 'the main office';
+      const msg = (config.afterHoursReply || config.defaultOffDuty ||
+        `Thanks for your message. Our office is currently closed. For anything urgent, please call ${office}. We'll reply during business hours.`)
+        .replace(/\{office\}/gi, office);
+      await sendReply(msg);
+    } else if (offDuty) {
+      const office = config.mainOfficeDisplay || 'the office';
+      const msg = (reader.off_duty_message || config.defaultOffDuty ||
+        `Thank you for your text, but I am currently not working. Please contact the office at ${office}.`)
+        .replace(/\{office\}/gi, office);
+      await sendReply(msg);
+    }
   }
 
-  // --- Urgent-keyword escalation ---
+  // --- Urgent-keyword escalation and in-app notice, to the reader only ---
   const urgency = config.urgentEscalationEnabled ? detectUrgency(text, config.urgentKeywords) : { urgent: false, matches: [] };
-  if (urgency.urgent) {
-    await base44.asServiceRole.entities.Notification.create({
-      user_email: nurse.email, title: '🚨 Possibly urgent patient text',
+  if (reader && urgency.urgent) {
+    await entities.Notification.create({
+      user_email: reader.email, title: '🚨 Possibly urgent patient text',
       message: `A text from ${patientNum} may need immediate attention (flagged: ${urgency.matches.slice(0, 3).join(', ')}). Review now.`,
       type: 'sms_urgent', priority: 'critical', metadata: { related_entity: 'SmsMessage', related_entity_id: inboundRow.id }, is_read: false,
-    }).catch((err) => console.error('urgent notification failed:', err));
+    }).catch(() => console.error('urgent notification failed'));
   }
-
-  // --- Notify the nurse in-app ---
-  await base44.asServiceRole.entities.Notification.create({
-    user_email: nurse.email, title: '💬 New text message', message: `You have a new text from ${patientNum}.`,
-    type: 'sms_received', priority: 'medium', metadata: { related_entity: 'SmsMessage', related_entity_id: inboundRow.id }, is_read: false,
-  }).catch((err) => console.error('notification failed:', err));
+  if (reader) {
+    await entities.Notification.create({
+      user_email: reader.email, title: '💬 New text message', message: `You have a new text from ${patientNum}.`,
+      type: 'sms_received', priority: 'medium', metadata: { related_entity: 'SmsMessage', related_entity_id: inboundRow.id }, is_read: false,
+    }).catch(() => console.error('notification failed'));
+  }
 
   // SmsMessage holds endpoints, patient linkage, thread, and content metadata.
   // Keep the broad activity stream limited to routing outcome categories.
   await base44.asServiceRole.entities.UserActivity.create({
-    user_email: 'system', action: 'sms_received', entity_type: 'SmsMessage', entity_id: inboundRow.id,
+    user_email: 'system', action: reader ? 'sms_received' : 'sms_received_unresolved',
+    entity_type: 'SmsMessage', entity_id: inboundRow.id,
     details: {
-      direction: 'inbound', off_duty: offDuty, agency_closed: agencyClosed, urgent: urgency.urgent,
-    }, status: 'success',
+      direction: 'inbound', routing: basis, off_duty: offDuty, agency_closed: agencyClosed, urgent: urgency.urgent,
+    }, status: reader ? 'success' : 'warning',
   }).catch(() => {});
 
-  return Response.json({ success: true, received: true });
+  return Response.json({ success: true, received: true, routed: basis });
 }
 
 // ============================ FAX ============================
@@ -2943,7 +3070,7 @@ Deno.serve(async (req) => {
         { status: 503, headers: { 'Retry-After': '300' } },
       );
     }
-    const { apiKey, publicKey, messagingProfileId } = telnyxCreds;
+    const { apiKey, publicKey } = telnyxCreds;
 
     // Read the raw body ONCE — signature is over the exact bytes.
     const rawBody = await req.text();
@@ -2967,18 +3094,21 @@ Deno.serve(async (req) => {
 
     // These checks intentionally run only after signature verification and
     // before any inbound handler can perform a mutable User/AgencySettings
-    // lookup. Only Telnyx-classified STOP/START may cross the SMS pause, and
-    // then only through an exact service-owned destination/profile binding.
-    if (eventType === 'message.received' && INBOUND_PATIENT_SMS_ROUTING_PAUSED) {
+    // lookup. Telnyx-classified STOP/START is recorded in the scoped consent
+    // ledger (through an exact service-owned destination/profile binding)
+    // FIRST, before any routing: the keyword path used to live only inside the
+    // paused branch, so releasing SMS routing would have skipped it (28d3f369).
+    // Every other inbound text is then routed by its exact binding alone.
+    if (eventType === 'message.received') {
       const keywordResponse = await handleInboundConsentKeyword(base44, telnyxCreds, event, payload);
       if (keywordResponse) return keywordResponse;
-      return inboundRoutingPausedResponse('SMS');
+      if (INBOUND_PATIENT_SMS_ROUTING_PAUSED) return inboundRoutingPausedResponse('SMS');
     }
     if (INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent(eventType, payload)) {
       return inboundRoutingPausedResponse('call');
     }
 
-    if (eventType === 'message.received') return await handleInboundMessage(base44, apiKey, messagingProfileId, payload);
+    if (eventType === 'message.received') return await handleInboundMessage(base44, telnyxCreds, event, payload);
     if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, payload);
     if (eventType === 'fax.received') return await handleInboundFax(base44, telnyxCreds, payload);
     if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, telnyxCreds, payload);

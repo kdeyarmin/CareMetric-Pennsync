@@ -116,18 +116,14 @@ export function aggregateFunctionalScores(uploads = [], limit = 20) {
   };
 }
 
-/** PDGM payment trends (most recent `limit` with a payment). @param {any[]} uploads */
-export function aggregatePaymentTrends(_uploads = [], _limit = 15) {
-  // Historical estimated_payment values came from the legacy factorized
-  // estimator, not the official CMS 432-group grouper. Exclude them entirely.
-  return [];
-}
-
-/** Headline summary statistics. @param {any[]} uploads */
+/**
+ * Headline summary statistics. Documentation counts and quality only — the
+ * former payment and revenue figures were removed with the PDGM payment
+ * features (legacy estimated_payment values are ignored).
+ * @param {any[]} uploads
+ */
 export function computeSummaryStats(uploads = []) {
   const totalAssessments = uploads.length;
   const avgScore = uploads.reduce((sum, u) => sum + (u.scores?.overall || 0), 0) / totalAssessments || 0;
-  const avgPayment = null;
-  const totalRevenue = null;
-  return { totalAssessments, avgScore, avgPayment, totalRevenue };
+  return { totalAssessments, avgScore };
 }

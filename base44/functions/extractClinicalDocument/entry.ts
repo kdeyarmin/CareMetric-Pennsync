@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid or disallowed file_url' }, { status: 400 });
     }
 
-    const extractedData = await base44.integrations.Core.InvokeLLM({
+    const extractedData = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `Extract clinical information from this medical document. Return structured JSON with the following fields (use empty string if not found):
 

@@ -223,10 +223,10 @@ export function computeFunctionalLevel(points, thresholds) {
  *  group { [group]: { low, high } }. Returns null when no set applies, so the
  *  period is reported incomplete rather than scored against absent thresholds.
  *
- *  NOTE: this is NOT the same shape as DEFAULT_PDGM_RATES.functionalThresholds in
- *  pdgmRates.js, which is timing-bucket-keyed for a separate backend-mirrored
- *  revenue estimator. Do not pass DEFAULT_PDGM_RATES here: these thresholds
- *  must be keyed by the CMS clinical group, not by timing bucket. */
+ *  NOTE: these thresholds must be keyed by the CMS clinical group (or be one
+ *  flat set), never by timing bucket. The removed frontend payment estimator
+ *  kept a timing-bucket-keyed table under a similar name; that shape does not
+ *  apply here. */
 function resolveThresholds(functionalThresholds, clinicalGroup) {
   if (!functionalThresholds) return null;
   if (typeof functionalThresholds.low === "number" || typeof functionalThresholds.high === "number") {

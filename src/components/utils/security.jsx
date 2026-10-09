@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import { logError } from './activityLogger';
-import { openAuthorityBoundWindow } from '@/lib/authorityBoundWindows';
+import { requestAuthorityBoundWindow } from '@/lib/authorityBoundWindows';
 
 /**
  * Security utility functions for Penn Sync
@@ -91,8 +91,10 @@ export function isSafeExternalUrl(url) {
 
 /**
  * Open an (untrusted) URL in a new tab only if it uses a safe scheme. Returns
- * true if it opened, false if the URL was rejected. The child context is
- * opener-severed and registered for synchronous tenant-transition teardown.
+ * true if the request was handed to the browser, false if the URL was rejected.
+ * An external URL opens severed (`noopener,noreferrer`, Safari in the iOS
+ * shell); a same-origin one is registered for tenant-transition teardown. See
+ * requestAuthorityBoundWindow.
  * @param {string} url
  * @returns {boolean}
  */
@@ -101,7 +103,7 @@ export function openExternalUrl(url) {
     console.error('Blocked attempt to open unsafe URL');
     return false;
   }
-  return openAuthorityBoundWindow(url, '_blank') !== null;
+  return requestAuthorityBoundWindow(url).opened;
 }
 
 /**

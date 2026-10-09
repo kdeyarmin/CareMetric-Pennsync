@@ -69,9 +69,18 @@ function finding(id, severity, title, detail, extra = {}) {
  *   adrCases?: object[],
  *   incidents?: object[],
  *   patient?: object|null,
+ *   handoffTrackingSince?: string|number|Date|null,
  *   now?: Date,
  * }} input
- * @returns {{ status: object, findings: object[], counts: object, checked: string[], disclaimer: string }}
+ * @returns {{
+ *   status: object,
+ *   findings: object[],
+ *   counts: object,
+ *   checked: string[],
+ *   notChecked: string[],
+ *   complete: boolean,
+ *   disclaimer: string,
+ * }}
  */
 export function assessDocumentationReadiness({
   visits,

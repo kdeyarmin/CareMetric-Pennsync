@@ -20,13 +20,18 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 
-const AI_ADMISSION_DOCUMENTATION_ENABLED = false;
-
-function EnabledAIAdmissionDocumentationAssistant({
-  referralData, 
-  oasisSuggestions, 
+/**
+ * Drafts admission documentation from a processed referral. Every section is a
+ * DRAFT for the admitting clinician: it is shown, edited and copied here, and
+ * `onSaveSection` hands an accepted section to the host, which decides where it
+ * goes. Nothing is written to a chart from this component.
+ */
+export default function AIAdmissionDocumentationAssistant({
+  referralData,
+  oasisSuggestions,
   patientData,
-  onSaveSection 
+  onSaveSection,
+  saveLabel = "Save to Chart",
 }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [documentationSections, setDocumentationSections] = useState(null);
@@ -156,13 +161,40 @@ For each section, provide:
         }
       });
 
-      setDocumentationSections(response);
-      setShowInputPrompts(response.subjective_prompts?.length > 0);
+      // The answer is rendered section by section; refuse one whose shape
+      // would crash the render or show sections with no text.
+      const sections = Array.isArray(response?.sections)
+        ? response.sections
+          .filter((section) => section && typeof section === 'object' && typeof section.content === 'string' && section.content.trim())
+          .map((section) => ({
+            ...section,
+            title: typeof section.title === 'string' && section.title.trim() ? section.title : 'Untitled section',
+            data_sources: Array.isArray(section.data_sources) ? section.data_sources.filter((item) => typeof item === 'string') : [],
+            missing_info: Array.isArray(section.missing_info) ? section.missing_info.filter((item) => typeof item === 'string') : [],
+          }))
+        : [];
+      if (sections.length === 0) {
+        toast.error("The AI response contained no usable documentation sections. Please try again.");
+        return;
+      }
+      const subjectivePrompts = Array.isArray(response.subjective_prompts)
+        ? response.subjective_prompts.filter((prompt) => prompt && typeof prompt.prompt === 'string' && prompt.prompt.trim())
+        : [];
+      setDocumentationSections({
+        ...response,
+        sections,
+        subjective_prompts: subjectivePrompts,
+        critical_gaps: Array.isArray(response.critical_gaps)
+          ? response.critical_gaps.filter((gap) => typeof gap === 'string')
+          : [],
+      });
+      setShowInputPrompts(subjectivePrompts.length > 0);
     } catch (error) {
       console.error("Error generating documentation:", error);
       toast.error("Failed to generate documentation. Please try again.");
+    } finally {
+      setIsGenerating(false);
     }
-    setIsGenerating(false);
   };
 
   const toggleSection = (index) => {
@@ -234,6 +266,9 @@ ${relevantInputs.map(input => `Q: ${input.prompt}\nA: ${input.response}`).join('
 Return ONLY the enhanced documentation text.`
           });
 
+          // A text answer replaces the section; anything else leaves the
+          // nurse's current draft in place rather than rendering an object.
+          if (typeof enhancedContent !== 'string' || !enhancedContent.trim()) return section;
           return {
             ...section,
             content: enhancedContent,
@@ -293,8 +328,8 @@ Return ONLY the enhanced documentation text.`
         <CardContent>
           <Alert className="bg-blue-100 border-blue-300 mb-4">
             <AlertDescription className="text-blue-900 text-sm">
-              <strong>Intelligent Documentation Drafting:</strong> This AI assistant analyzes referral data, OASIS suggestions, 
-              and patient records to draft comprehensive admission documentation. It will identify areas requiring your subjective 
+              <strong>Intelligent Documentation Drafting:</strong> This AI assistant analyzes referral data, OASIS suggestions,
+              and patient records to draft comprehensive admission documentation. It will identify areas requiring your subjective
               nursing assessment and prompt you for that critical information.
             </AlertDescription>
           </Alert>
@@ -408,7 +443,7 @@ Return ONLY the enhanced documentation text.`
               <CardContent className="space-y-4">
                 <Alert className="bg-orange-100 border-orange-400">
                   <AlertDescription className="text-orange-900 text-sm">
-                    The following areas require your professional nursing observations and subjective assessment. 
+                    The following areas require your professional nursing observations and subjective assessment.
                     Please provide detailed responses to complete the documentation.
                   </AlertDescription>
                 </Alert>
@@ -539,7 +574,7 @@ Return ONLY the enhanced documentation text.`
                               size="sm"
                             >
                               <FileText className="w-4 h-4 mr-2" />
-                              Save to Chart
+                              {saveLabel}
                             </Button>
                           )}
                         </div>
@@ -568,21 +603,4 @@ Return ONLY the enhanced documentation text.`
       )}
     </div>
   );
-}
-
-export default function AIAdmissionDocumentationAssistant(props) {
-  if (!AI_ADMISSION_DOCUMENTATION_ENABLED) {
-    return (
-      <Card className="border-amber-200 bg-amber-50">
-        <CardContent className="p-6">
-          <p className="font-semibold text-amber-900">AI Admission Documentation Paused</p>
-          <p className="mt-2 text-sm text-amber-800">
-            Automated clinical narrative drafting is unavailable pending source-grounding,
-            tenant-scoped authorization, and clinician review. Document only observed and verified facts.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-  return <EnabledAIAdmissionDocumentationAssistant {...props} />;
 }

@@ -66,7 +66,9 @@ describe('protected SDK browser-realm contract', () => {
 
     expect(consumers('tenantAuthorityClient')).toEqual(allowedTenantAuthorityConsumers);
     expect(consumers('publicCapabilityClient')).toEqual([
+      'src/pages/JoinTelehealth.jsx',
       'src/pages/ProviderFollowUpPortal.jsx',
+      'src/pages/SignerPortal.jsx',
     ]);
 
     const client = read('src/api/base44Client.js');
@@ -79,7 +81,16 @@ describe('protected SDK browser-realm contract', () => {
     expect(client).toMatch(/export const publicCapabilityClient = Object\.freeze\(\{/);
     expect(client).toMatch(/validateFollowUpToken: \(lease, payload\) => runPublicCapabilityOperation\(/);
     expect(client).toMatch(/submitFollowUpResponse: \(lease, payload\) => runPublicCapabilityOperation\(/);
-    expect(client).not.toMatch(/submitSignerSignature|validateSignerToken|uploadSignerArtifact|UploadFile/);
+    // The patient's /join page, released 2026-10-08: lease-fenced like the others.
+    expect(client).toMatch(/createTelehealthToken: \(lease, payload\) => runPublicCapabilityOperation\(/);
+    // The outside signer's page (released 2026-10-08) gets exactly the
+    // validate/submit pair and a credential-free read of the 60-second review
+    // URL, each fenced by the capability lease; never an upload or entity.
+    expect(client).toMatch(/validateSignerToken: \(lease, payload\) => runPublicCapabilityOperation\(/);
+    expect(client).toMatch(/submitSignerSignature: \(lease, payload\) => runPublicCapabilityOperation\(/);
+    expect(client).toMatch(/fetchSignerReviewDocument: \(lease, reviewUrl\) => runPublicCapabilityOperation\(/);
+    expect(client).toMatch(/credentials: 'omit'/);
+    expect(client).not.toMatch(/uploadSignerArtifact|UploadFile/);
     expect(client).not.toMatch(/tenantAuthorityClient[\s\S]{0,500}\binvoke\s*:/);
     expect(client).not.toMatch(/publicCapabilityClient[\s\S]{0,1200}\binvoke\s*:/);
   });
@@ -134,14 +145,46 @@ describe('protected SDK browser-realm contract', () => {
       .map(relativeSourcePath)
       .filter((file) => file !== 'src/lib/authorityBoundWindows.js');
     expect(publicWindowConsumers).toEqual([]);
-    expect(read('src/components/signer/SignerDocumentSigner.jsx'))
-      .toMatch(/Secure document review and signing are unavailable/);
+    // The signer sees the reviewed bytes in-page; nothing opens a window.
+    expect(read('src/components/signer/SignerDocumentSigner.jsx')).toMatch(/<DocumentBytesViewer bytes=\{review\.bytes\}/);
   });
 
-  it('keeps signing surfaces static and gives follow-up only its exact capability seam', () => {
-    const staticSurfaces = [
-      'src/pages/SignDocument.jsx',
+  it('gives each public portal only its exact capability seam and staff signing only its brokers', () => {
+    // Released 2026-10-08. The public signer page and its two components
+    // receive no SDK, entity, integration, upload, raw HTML or frame: their
+    // only data seam is the lease-fenced validate/submit/review-read trio.
+    const publicSigning = [
       'src/pages/SignerPortal.jsx',
+      'src/components/signer/SignerPackageViewer.jsx',
+      'src/components/signer/SignerDocumentSigner.jsx',
+      'src/components/signature/DocumentBytesViewer.jsx',
+    ];
+    for (const file of publicSigning) {
+      expect(read(file), file).not.toMatch(
+        /\bbase44\b(?!Client)|\.entities\b|\.integrations\b|UploadFile|dangerouslySetInnerHTML|<iframe|window\.open|useQuery|useMutation|esignClient/,
+      );
+    }
+    const signer = read('src/pages/SignerPortal.jsx');
+    expect(signer).toMatch(/usePublicCapabilityLease\(\)/);
+    expect(signer).toMatch(/scrubPublicCapabilityParameter\('token'\)/);
+    expect(signer).toMatch(/publicCapabilityClient\.validateSignerToken\(lease/);
+    expect(signer).toMatch(/publicCapabilityClient\.submitSignerSignature\(lease/);
+    expect(signer).toMatch(/publicCapabilityClient\.fetchSignerReviewDocument\(lease/);
+    for (const file of publicSigning.slice(1)) {
+      expect(read(file), file).not.toMatch(/publicCapabilityClient|usePublicCapabilityLease/);
+    }
+
+    const followUp = read('src/pages/ProviderFollowUpPortal.jsx');
+    expect(followUp).toMatch(/usePublicCapabilityLease\(\)/);
+    expect(followUp).toMatch(/scrubPublicCapabilityParameter\('token'\)/);
+    expect(followUp).toMatch(/publicCapabilityClient\.validateFollowUpToken\(lease/);
+    expect(followUp).toMatch(/publicCapabilityClient\.submitFollowUpResponse\(lease/);
+    expect(followUp).not.toMatch(/\bbase44\b|\.entities\b|\.integrations\b|UploadFile|dangerouslySetInnerHTML|<iframe/);
+
+    // Staff signing surfaces reach records only through the signing brokers
+    // in src/lib/esignClient.js; none reads a signing entity directly.
+    const staffSigning = [
+      'src/pages/SignDocument.jsx',
       'src/components/hub-tabs/DocumentSignatures.jsx',
       'src/components/hub-tabs/CreateSignatureRequest.jsx',
       'src/components/hub-tabs/BulkSignatureRequests.jsx',
@@ -149,22 +192,15 @@ describe('protected SDK browser-realm contract', () => {
       'src/components/documents/DocumentAuditLogViewer.jsx',
       'src/components/documents/BulkDocumentPackageCreator.jsx',
       'src/components/signer/SignatureRequestCreator.jsx',
-      'src/components/signer/SignerPackageViewer.jsx',
-      'src/components/signer/SignerDocumentSigner.jsx',
+      'src/components/signature/SignatureRequestDetail.jsx',
+      'src/hooks/useSignatureRequests.js',
+      'src/lib/esignClient.js',
     ];
-    const forbiddenCapability = /\bbase44\b|publicCapabilityClient|useQuery|useMutation|SignatureCanvas|dangerouslySetInnerHTML|<iframe|<input|<textarea|pdf_url|document_url|UploadFile/;
-
-    for (const file of staticSurfaces) {
-      expect(read(file), file).not.toMatch(forbiddenCapability);
+    for (const file of staffSigning) {
+      expect(read(file), file).not.toMatch(
+        /entities\.(?:DocumentSignature|DocumentPackage|DocumentPackageToken|SignatureArtifactBinding|SignatureAuditEvent|SignerReviewGrant|ScheduledSignatureReminder)\b|dangerouslySetInnerHTML|<iframe|window\.open|UploadFile\(/,
+      );
     }
-    expect(read('src/pages/SignDocument.jsx')).toMatch(/Document review and signing unavailable/);
-    expect(read('src/pages/SignerPortal.jsx')).toMatch(/No token was submitted/);
-    const followUp = read('src/pages/ProviderFollowUpPortal.jsx');
-    expect(followUp).toMatch(/usePublicCapabilityLease\(\)/);
-    expect(followUp).toMatch(/scrubPublicCapabilityParameter\('token'\)/);
-    expect(followUp).toMatch(/publicCapabilityClient\.validateFollowUpToken\(lease/);
-    expect(followUp).toMatch(/publicCapabilityClient\.submitFollowUpResponse\(lease/);
-    expect(followUp).not.toMatch(/\bbase44\b|\.entities\b|\.integrations\b|UploadFile|dangerouslySetInnerHTML|<iframe/);
 
     const directSignatureConsumers = productionSourceFiles()
       .filter((file) => /\b(?:base44\.)?entities\.DocumentSignature\b/.test(readFileSync(file, 'utf8')))

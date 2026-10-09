@@ -28,7 +28,6 @@ const PUBLIC_NON_MANIFEST_PAGES = new Set([
 const INTENTIONAL_UNROUTED_LEGACY_PAGES = new Set([
   'AnalyticsDashboard',
   'ClinicalChart',
-  'ClinicalInsightsDashboard',
   'MyLearning',
   'NurseEducationVideos',
 ]);
