@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { isPlatformOwner } from '../../shared/securityAccess.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -246,7 +247,7 @@ const resolvePlanForUser = (u, plans) => {
   return pool.find((p) => /nurse/i.test(p.name || '') === wantNurses) || pool[0];
 };
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
 
@@ -257,7 +258,15 @@ Deno.serve(async (req) => {
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
+    const platformOwner = me ? isPlatformOwner(me) : false;
+    const tenant = me && !platformOwner ? await loadTrustedTenantClaim(base44, me.id, normalizeClaimEmail(me.email)) : null;
+    if (me && !platformOwner && (!tenant || tenant.tenantRole !== 'agency_admin')) {
+      return Response.json({ error: 'Verified agency administrator membership required' }, { status: 403 });
+    }
     const body = await req.json().catch(() => ({}));
+    if (body.scope != null && !['auto', 'all'].includes(body.scope)) {
+      return Response.json({ error: 'Invalid scope' }, { status: 400 });
+    }
     const scope = body.scope === 'all' ? 'all' : 'auto';
 
     // Hub cutover guard: once learning is released to the Support Hub, the
@@ -279,7 +288,7 @@ Deno.serve(async (req) => {
 
     // Candidate plans: active annual plans for the current cycle year. In 'auto'
     // mode only those the admin opted in (auto_enroll=true).
-    let plans = await svc.LearningPlan.filter({ plan_type: 'annual', year, active: true }, '-created_date', 200);
+    let plans = await svc.LearningPlan.filter({ plan_type: 'annual', year, active: true, ...(tenant ? { created_by_id: me.id } : {}) }, '-created_date', 200);
     if (scope === 'auto') plans = plans.filter((p) => p.auto_enroll === true);
     if (!plans.length) {
       return Response.json({ success: true, scope, plans_considered: 0, enrolled_users: 0, assignments_created: 0, note: 'No matching annual plans for the current year.' });
@@ -291,15 +300,16 @@ Deno.serve(async (req) => {
       itemsByPlan[plan.id] = await svc.LearningPlanCourse.filter({ plan_id: plan.id }, 'order_index', 300);
     }
 
-    const allUsers = await svc.User.list('-created_date', 5000);
-    let candidates = allUsers.filter((u) => u.email && u.role !== 'admin' && u.is_approved !== false);
-    // Agency admins only enroll their own agency's staff.
-    if (me && me.account_type !== 'super_admin' && me.agency_name && (me.account_type === 'agency_admin' || me.role === 'admin')) {
-      if (!me.agency_name) {
-        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+    let userQuery = {};
+    if (tenant) {
+      const members = await svc.AgencyMembership.filter({ agency_id: tenant.agencyId, status: 'active' }, undefined, 1001);
+      if (members.length > 1000 || members.some(m => !canonicalClaimMembership(m, m.user_id, m.user_email_normalized))) {
+        return Response.json({ error: 'Agency membership set is unavailable' }, { status: 403 });
       }
-      candidates = candidates.filter((u) => u.agency_name === me.agency_name);
+      userQuery = { id: { $in: members.map(m => m.user_id) } };
     }
+    const allUsers = await svc.User.filter(userQuery, '-created_date', 5000);
+    let candidates = allUsers.filter((u) => u.email && u.role !== 'admin' && u.is_active !== false && u.disabled !== true && u.is_service !== true);
 
     // Prefetch existing enrollments + assignments for the candidate plans once,
     // so the per-user/per-course existence checks below are in-memory Set lookups
@@ -430,4 +440,4 @@ Deno.serve(async (req) => {
     console.error('autoEnrollAnnualPlans failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-});
+}

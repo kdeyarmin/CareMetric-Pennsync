@@ -64,8 +64,11 @@ export default function AdrSubmissionPanel({ adrCase, onUpdated }) {
     }
     setIsFaxing(true);
     try {
+      const download = await base44.functions.invoke('generateAdrPacket', { case_id: adrCase.id, action: 'download' });
+      const fileUrl = download?.data?.final_packet_url;
+      if (!fileUrl) throw new Error('No secure packet link returned');
       const response = await base44.functions.invoke("sendFax", {
-        file_url: adrCase.final_packet_url,
+        file_url: fileUrl,
         to_number: number,
         to_name: faxName.trim() || adrCase.contractor_name || "Review contractor",
         document_name: "ADR Response Packet",

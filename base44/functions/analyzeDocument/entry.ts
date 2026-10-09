@@ -278,7 +278,7 @@ function storedAnalysis(document: Record<string, any>) {
   return { ...normalized, analyzed_date: typeof stored.analyzed_date === 'string' ? stored.analyzed_date : null };
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405, { Allow: 'POST' });
   }
@@ -316,7 +316,7 @@ Current category: ${boundedText(row.category, 50) || 'other'}
 
 Return a JSON object with summary, extracted_data, suggested_category, critical_flags, and confidence_score.`;
 
-    const aiResponse = await base44.integrations.Core.InvokeLLM({
+    const aiResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: 'automatic',
       prompt: analysisPrompt,
       file_urls: [authorized.downloadUrl],
@@ -359,4 +359,4 @@ Return a JSON object with summary, extracted_data, suggested_category, critical_
     console.error('Document analysis error:', (error as any)?.message);
     return json({ error: 'Internal server error' }, 500);
   }
-});
+}
