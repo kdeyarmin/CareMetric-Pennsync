@@ -38,6 +38,7 @@ import UserActivityUnavailable from "@/components/security/UserActivityUnavailab
 import InteractiveTrainingModule from "@/components/training/InteractiveTrainingModule";
 import PersonalizedTrainingRecommender from "@/components/training/PersonalizedTrainingRecommender";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import DepartmentTrainingSummary from '@/components/training/DepartmentTrainingSummary';
 
 // Lazy spoke — the former Nurse Training (documentation skills) page is now a tab.
 const NurseTraining = lazy(() => import("@/components/hub-tabs/NurseTraining"));
@@ -229,6 +230,8 @@ export default function NurseTrainingHub() {
           tone="red"
         />
       </div>
+
+      <DepartmentTrainingSummary />
 
       <EmbeddedPage>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">

@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { staffPlanProgress } from '../../shared/staffPlanProgress.ts';
+import { departmentTrainingProgress } from '../../shared/departmentTrainingProgress.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -227,8 +228,11 @@ export default async function(req) {
 
     const input = req.method === 'POST' ? await req.json() : {};
     const planProgressOnly = input?.planProgressOnly === true;
+    const departmentProgressOnly = input?.departmentProgressOnly === true;
+    const summaryOnly = planProgressOnly || departmentProgressOnly;
+    const loadSummary = departmentProgressOnly ? departmentTrainingProgress : staffPlanProgress;
     const offset = input?.offset ?? 0;
-    if (planProgressOnly && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000)) {
+    if (summaryOnly && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000)) {
       return Response.json({ error: 'Invalid page.' }, { status: 400 });
     }
     const svc = base44.asServiceRole.entities;
@@ -248,13 +252,13 @@ export default async function(req) {
     let scopedAssignments = [];
     let courses = [];
     if (isPlatformAdmin) {
-      if (planProgressOnly) {
+      if (summaryOnly) {
         const staff = await svc.User.list('-created_date', 2001);
         if (!Array.isArray(staff) || staff.length > 2000) {
           return Response.json({ error: 'Staff roster exceeds the reporting limit.' }, { status: 409 });
         }
         const emails = [...new Set(staff.filter(row => row.is_active !== false && row.disabled !== true && row.is_service !== true).flatMap(row => [row.email, normalizeClaimEmail(row.email)]).filter(Boolean))];
-        return Response.json(await staffPlanProgress(svc, emails, offset), { headers: { 'Cache-Control': 'no-store' } });
+        return Response.json(await loadSummary(svc, emails, offset), { headers: { 'Cache-Control': 'no-store' } });
       }
       // Platform-wide reporting keeps an explicit completeness bound. A tenant
       // report below must never inherit another agency's record-count limit.
@@ -304,8 +308,8 @@ export default async function(req) {
           }
         }
       }
-      if (planProgressOnly) {
-        return Response.json(await staffPlanProgress(svc, [...queryEmails], offset), { headers: { 'Cache-Control': 'no-store' } });
+      if (summaryOnly) {
+        return Response.json(await loadSummary(svc, [...queryEmails], offset), { headers: { 'Cache-Control': 'no-store' } });
       }
       const seenAssignments = new Set();
       const emails = [...queryEmails];
