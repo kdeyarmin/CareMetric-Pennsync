@@ -311,7 +311,8 @@ test('the care-plan monitor proposes once per finding and day, never writes a Pa
   assert.deepEqual(patientReads[0].query, { agency_id: AGENCY.id, status: 'active' });
   const proposal = fn.state.tables.CarePlanProposal[0];
   const day = new Date().toISOString().slice(0, 10);
-  assert.equal(proposal.monitor_key, `${patient.id}:${day}:vital_threshold_met`);
+  assert.equal(proposal.trigger_data.monitor_key, `${patient.id}:${day}:vital_threshold_met`);
+  assert.equal('monitor_key' in proposal, false, 'the key lives inside trigger_data; no column is added');
   assert.equal(proposal.status, 'pending_review');
   assert.equal(proposal.assigned_nurse, nurse.email);
   const notice = fn.state.tables.Notification[0];

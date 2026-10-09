@@ -192,7 +192,8 @@ function parseLLMJson(raw) {
  *   - charts are selected by their own agency_id, and a named patient must
  *     belong to that agency;
  *   - it writes NO Patient row. Idempotency lives on the proposal itself: a
- *     deterministic monitor_key (<patient>:<UTC day>:<finding>) is checked
+ *     deterministic trigger_data.monitor_key (<patient>:<UTC day>:<finding>),
+ *     kept inside the existing object field so no column is added, is checked
  *     before creation and concurrent runs converge on the lowest id, so a
  *     repeated or overlapping scan never duplicates a proposal, notification
  *     or alert;
@@ -277,12 +278,19 @@ async function memberByEmail(entities, agencyId, email) {
 
 // One row per key. A duplicate only exists when two runs passed the existence
 // check together; both keep the lowest id and remove the rest.
-async function ensureOne(entity, query, create) {
-  let existing = rows(await entity.filter(query, undefined, 10));
+// A key that lives inside a row's object field cannot be queried directly, so
+// the caller narrows by top-level fields and passes `matches` to pick the rows
+// that carry the key; `sort` keeps the newest rows (today's) in the window.
+async function ensureOne(entity, query, create, { matches = null, sort = undefined, limit = 10 } = {}) {
+  const read = async () => {
+    const found = rows(await entity.filter(query, sort, limit));
+    return matches ? found.filter(matches) : found;
+  };
+  let existing = await read();
   let created = null;
   if (existing.length === 0) {
     created = await create();
-    existing = rows(await entity.filter(query, undefined, 10));
+    existing = await read();
   }
   if (existing.length === 0) return { row: created, created: !!created };
   const survivor = [...existing].sort((left, right) => String(left.id).localeCompare(String(right.id)))[0];
@@ -435,19 +443,20 @@ Identify documented findings that warrant a care plan review: vital sign thresho
         if (!findingType || !severity || severity === 'low' || seenTypes.has(findingType)) continue;
         seenTypes.add(findingType);
         const monitorKey = `${pt.id}:${day}:${findingType}`;
+        const triggerSource = findingType === 'vital_threshold_met' ? 'vital_signs' : 'clinical_notes';
         const expiresAt = new Date();
         expiresAt.setUTCDate(expiresAt.getUTCDate() + (severity === 'critical' ? 1 : severity === 'high' ? 3 : 7));
 
         const { row: proposal, created } = await ensureOne(
           entities.CarePlanProposal,
-          { patient_id: pt.id, monitor_key: monitorKey },
+          { patient_id: pt.id, trigger_source: triggerSource },
           () => entities.CarePlanProposal.create({
-            monitor_key: monitorKey,
             patient_id: pt.id,
             care_plan_id: own(carePlans)[0]?.id || null,
             proposal_type: findingType === 'care_gap' ? 'new_intervention' : 'update_existing',
-            trigger_source: findingType === 'vital_threshold_met' ? 'vital_signs' : 'clinical_notes',
+            trigger_source: triggerSource,
             trigger_data: {
+              monitor_key: monitorKey,
               vitals: vitalsTrend.slice(0, 3),
               note_excerpts: clinicalNotes.slice(0, 2).map((n) => n.note.substring(0, 200)),
               finding_type: findingType,
@@ -475,6 +484,11 @@ Identify documented findings that warrant a care plan review: vital sign thresho
             assigned_nurse: nurseMembership ? nurseMembership.user_email_normalized : null,
             expires_at: expiresAt.toISOString(),
           }),
+          {
+            matches: (row) => row?.patient_id === pt.id && row?.trigger_data?.monitor_key === monitorKey,
+            sort: '-created_date',
+            limit: 200,
+          },
         );
         if (!proposal) continue;
         proposals.push({
