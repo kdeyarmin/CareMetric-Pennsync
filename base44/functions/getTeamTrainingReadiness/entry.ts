@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { staffPlanProgress } from '../../shared/staffPlanProgress.ts';
 import { departmentTrainingProgress } from '../../shared/departmentTrainingProgress.ts';
+import { departmentTrainingHeatmap } from '../../shared/departmentTrainingHeatmap.ts';
 import { staffTrainingLeaderboard } from '../../shared/staffTrainingLeaderboard.ts';
 import { filteredTrainingAssignments, validTrainingAssignmentFilters } from '../../shared/filteredTrainingAssignments.ts';
 
@@ -238,8 +239,9 @@ export default async function(req) {
     const planProgressOnly = input?.planProgressOnly === true;
     const departmentProgressOnly = input?.departmentProgressOnly === true;
     const leaderboardOnly = input?.leaderboardOnly === true;
-    const summaryOnly = planProgressOnly || departmentProgressOnly || leaderboardOnly || assignmentsOnly;
-    const loadSummary = assignmentsOnly ? filteredTrainingAssignments : leaderboardOnly ? staffTrainingLeaderboard : departmentProgressOnly ? departmentTrainingProgress : staffPlanProgress;
+    const heatmapOnly = input?.departmentHeatmapOnly === true;
+    const summaryOnly = planProgressOnly || departmentProgressOnly || leaderboardOnly || assignmentsOnly || heatmapOnly;
+    const loadSummary = heatmapOnly ? departmentTrainingHeatmap : assignmentsOnly ? filteredTrainingAssignments : leaderboardOnly ? staffTrainingLeaderboard : departmentProgressOnly ? departmentTrainingProgress : staffPlanProgress;
     const offset = input?.offset ?? 0;
     if (summaryOnly && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000)) {
       return Response.json({ error: 'Invalid page.' }, { status: 400 });

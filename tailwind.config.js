@@ -85,7 +85,13 @@ module.exports = {
   				'900': '#5d3c19',
   				'950': '#361f0a'
   			},
-  			background: 'hsl(var(--background))',
+  			'training-heat': {
+				low: 'hsl(var(--training-heat-low))',
+				watch: 'hsl(var(--training-heat-watch))',
+				moderate: 'hsl(var(--training-heat-moderate))',
+				high: 'hsl(var(--training-heat-high))'
+			},
+			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
   				DEFAULT: 'hsl(var(--card))',

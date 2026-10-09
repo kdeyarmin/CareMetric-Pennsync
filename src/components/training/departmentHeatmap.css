@@ -1,0 +1,12 @@
+:root {
+  --training-heat-low: 0 72% 87%;
+  --training-heat-watch: 28 90% 85%;
+  --training-heat-moderate: 48 85% 86%;
+  --training-heat-high: 152 54% 84%;
+}
+.dark {
+  --training-heat-low: 0 50% 25%;
+  --training-heat-watch: 28 65% 23%;
+  --training-heat-moderate: 48 55% 20%;
+  --training-heat-high: 152 45% 20%;
+}
