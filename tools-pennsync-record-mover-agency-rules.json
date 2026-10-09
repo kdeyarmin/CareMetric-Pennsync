@@ -87,6 +87,12 @@
       "column": "patient_id",
       "parent": "Patient"
     },
+    "CallLog": {
+      "rule": "parent",
+      "column": "patient_id",
+      "parent": "Patient",
+      "fallback": "constant"
+    },
     "CareCoordinationAlert": {
       "rule": "parent",
       "column": "patient_id",
@@ -205,6 +211,18 @@
       "fallback": "constant"
     },
     "FacilityDocumentationRule": {
+      "rule": "constant"
+    },
+    "FaxContact": {
+      "rule": "declared"
+    },
+    "FaxLog": {
+      "rule": "declared"
+    },
+    "FaxRetryConfig": {
+      "rule": "declared"
+    },
+    "FaxTemplate": {
       "rule": "constant"
     },
     "FeaturePackage": {
@@ -374,7 +392,10 @@
       "parent": "OASISUpload"
     },
     "OCRFeedback": {
-      "rule": "constant"
+      "rule": "parent",
+      "column": "fax_log_id",
+      "parent": "FaxLog",
+      "fallback": "constant"
     },
     "OCRTrainingSession": {
       "rule": "constant"
@@ -472,6 +493,9 @@
       "parent": "Patient"
     },
     "PersonnelCredential": {
+      "rule": "constant"
+    },
+    "PhoneNumber": {
       "rule": "constant"
     },
     "Physician": {
