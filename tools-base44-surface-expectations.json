@@ -2,10 +2,10 @@
   "format": "pennsync-base44-surface",
   "version": 1,
   "maximum": {
-    "client_importers": 370,
+    "client_importers": 373,
     "entity_call_sites": 488,
     "entity_types": 77,
-    "function_invocations": 200,
+    "function_invocations": 223,
     "function_wrappers": 82,
     "core_integration_sites": 41,
     "sdk_importers": 4

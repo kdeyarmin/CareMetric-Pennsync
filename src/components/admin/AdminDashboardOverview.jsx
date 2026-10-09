@@ -8,7 +8,7 @@ import StatCard from "@/components/ui/stat-card";
 import { Users, FileText, PenTool, Settings, ArrowRight } from "lucide-react";
 import SystemHealthMonitor from "./SystemHealthMonitor";
 import QuickHealthOverview from "./QuickHealthOverview";
-import SigningUnavailable from '@/components/signature/SigningUnavailable';
+import { useSignatureSummary } from '@/hooks/useSignatureRequests';
 
 export default function AdminDashboardOverview() {
   const { data: currentUser } = useQuery({
@@ -28,6 +28,9 @@ export default function AdminDashboardOverview() {
     enabled: !!currentUser,
     initialData: [],
   });
+
+  const signatureSummary = useSignatureSummary();
+  const signatures = signatureSummary.summary;
 
   const totalUsers = users.length;
   const this30Days = users.filter(u => {
@@ -61,9 +64,9 @@ export default function AdminDashboardOverview() {
     },
     {
       title: "E-Signatures",
-      description: "Unavailable until tenant-scoped brokers are verified",
+      description: "Send, track and seal signature requests",
       icon: PenTool,
-      page: "DocumentSignatures",
+      page: "DocumentHub",
       color: "orange"
     }
   ];
@@ -98,7 +101,14 @@ export default function AdminDashboardOverview() {
           value={totalUsers}
           trend={`${this30Days} new this month`}
         />
-        <SigningUnavailable title="Signature dashboard data unavailable" />
+        <StatCard
+          icon={PenTool}
+          label="Open signature requests"
+          value={signatures ? signatures.open : '—'}
+          trend={signatures
+            ? `${signatures.completed_last_30_days} completed this month`
+            : signatureSummary.isError ? 'Signature activity unavailable' : 'Loading…'}
+        />
       </div>
 
       {/* Quick Actions */}

@@ -134,7 +134,7 @@ describe("routed pages mount without crashing", () => {
     // act() settle — that would hang the suite, not catch more real bugs.)
     // The app renders every leased public page inside a PublicCapabilityBoundary
     // (App.jsx); the smoke test mounts them the same way.
-    const leasedPublicPages = { ProviderFollowUpPortal: "followup", JoinTelehealth: "join" };
+    const leasedPublicPages = { ProviderFollowUpPortal: "followup", JoinTelehealth: "join", SignerPortal: "signer" };
     const pageContent = leasedPublicPages[page] ? (
       <PublicCapabilityBoundary capabilitySnapshot={`${leasedPublicPages[page]}|route-smoke-test`}>
         <Page />
