@@ -57,8 +57,17 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-/** Read-only, dormant secure-message v2 patient-context suggestion broker. */
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+/**
+ * Read-only secure-message v2 patient-context suggestion broker.
+ *
+ * Released by the owner on 2026-10-08 ("turn everything on"). The caller must
+ * hold exactly one active clinical membership in the named agency and chart
+ * access to the patient (manager/agency_admin, the chart's creator, or an
+ * active care-team assignment). When a thread is named, the caller must be a
+ * bound participant of it and the thread must be about that patient. All of
+ * that is decided before the model is called, and nothing is written.
+ */
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
 const MAX_BODY_BYTES = 8_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;

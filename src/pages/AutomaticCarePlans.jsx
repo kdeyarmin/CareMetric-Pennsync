@@ -53,6 +53,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { isAdminLike } from "@/lib/superAdmin";
+import CarePlanMonitorCard from "@/components/carePlan/CarePlanMonitorCard";
 
 export default function AutomaticCarePlans() {
 
@@ -271,6 +272,8 @@ export default function AutomaticCarePlans() {
           </ul>
         </AlertDescription>
       </Alert>
+
+      <CarePlanMonitorCard />
 
       <Card className="mb-4 sm:mb-6">
         <CardHeader className="p-3 sm:p-4 md:p-6">

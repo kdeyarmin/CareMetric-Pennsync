@@ -1,201 +1,207 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, Info, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { getPublishedOutcomeMeasures } from "@/functions/getPublishedOutcomeMeasures";
-import { manageOASISRecords } from "@/functions/manageOASISRecords";
+import { computeOutcomeMeasures } from "@/functions/computeOutcomeMeasures";
 
 /**
- * Published OASIS outcome measures for one agency and one day.
+ * Internal outcome proxies for the caller's agency.
  *
- * Released by the owner on 2026-10-08 ("turn everything on"). The section READS
- * ONLY: every value comes from getPublishedOutcomeMeasures, which admits the
- * protected platform owner or an active agency_admin/manager membership in the
- * requested agency (never a self-editable profile field), and returns a run
- * only once the nightly pipeline has published it with every row's content
- * hash verified. Nothing here computes, recomputes or writes an outcome: the
- * computation job is internal-secret-only and is never reachable from a
- * browser session.
+ * Reads only through getPublishedOutcomeMeasures, which re-derives the
+ * caller's agency_admin/manager membership for the named agency and returns
+ * one complete published run for one exact window. "Compute now" goes through
+ * computeOutcomeMeasures, which checks the same membership before it signs a
+ * one-agency, one-window request to the outcome worker. The browser never
+ * reads AgencyKPI or PatientOutcomeMetric rows itself and never reaches the
+ * worker directly.
  *
- * The rates are the app's internal improvement proxies over verified CMS-aligned
- * responses — unadjusted, and not official CMS results.
+ * Episode rows stay on the patient they were computed for: a merged duplicate
+ * keeps its historical metrics (their content hash covers patient_id), so this
+ * section reports counts, not a per-patient list that would look re-attributed.
  */
 
-const STATUS_STYLES = {
-  on_target: "bg-emerald-100 text-emerald-800",
-  warning: "bg-amber-100 text-amber-800",
-  critical: "bg-red-100 text-red-800",
-};
-const STATUS_LABELS = {
-  on_target: "At or above benchmark",
-  warning: "Near benchmark / no benchmark",
-  critical: "Below benchmark",
-};
+const WINDOWS = Object.freeze([
+  { value: "30", label: "Last 30 days", days: 30 },
+  { value: "90", label: "Last 90 days", days: 90 },
+  { value: "365", label: "Last 12 months", days: 365 },
+]);
 
-/** Yesterday's calendar date in UTC — the window the nightly dispatcher publishes. */
-export function previousUtcDate(now = new Date()) {
-  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+function isoDay(date) {
   return date.toISOString().slice(0, 10);
 }
 
-function errorStatus(error) {
-  return error?.response?.status ?? error?.status ?? null;
+// Whole UTC days ending yesterday, the last day the nightly job has closed.
+export function outcomeWindow(days, now = new Date()) {
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  const start = new Date(end.getTime() - (days - 1) * 86_400_000);
+  return { period_type: "custom", period_start: isoDay(start), period_end: isoDay(end) };
 }
 
-function errorMessage(error) {
-  return error?.response?.data?.error || error?.message || "Outcome measures could not be loaded.";
+function brokerError(error) {
+  const message = error?.response?.data?.error || error?.data?.error;
+  return typeof message === "string" && message ? message : null;
+}
+
+function brokerStatus(error) {
+  return Number(error?.response?.status || error?.status || 0);
 }
 
 export default function OutcomeMeasuresSection() {
-  const { user, tenantContext } = useAuth();
-  const ownAgencyId = tenantContext?.agency_id || "";
-  const [chosenAgencyId, setChosenAgencyId] = useState("");
-  const [day, setDay] = useState(() => previousUtcDate());
+  const { tenantContext } = useAuth();
+  const agencyId = tenantContext?.agency_id || null;
+  const queryClient = useQueryClient();
+  const [windowValue, setWindowValue] = useState("90");
+  const [computing, setComputing] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const selected = WINDOWS.find((option) => option.value === windowValue) || WINDOWS[1];
+  const range = useMemo(() => outcomeWindow(selected.days), [selected.days]);
+  const queryKey = ["published-outcomes", agencyId, range.period_type, range.period_start, range.period_end];
 
-  // The platform owner has no agency of their own and picks one; everyone
-  // else reports on the agency their membership binds.
-  const agencies = useQuery({
-    queryKey: ["oasisOutcomeAgencies", user?.id, ownAgencyId],
-    queryFn: async () => (await manageOASISRecords("list_agencies"))?.agencies || [],
-    enabled: !!user?.id && !ownAgencyId,
-    retry: false,
-  });
-  const agencyId = ownAgencyId || chosenAgencyId
-    || (agencies.data?.length === 1 ? agencies.data[0].id : "");
-
-  const validDay = /^\d{4}-\d{2}-\d{2}$/.test(day);
-  const outcomes = useQuery({
-    queryKey: ["publishedOutcomeMeasures", agencyId, day],
-    queryFn: async () => (await getPublishedOutcomeMeasures({
-      agency_id: agencyId,
-      period_type: "daily",
-      period_start: day,
-      period_end: day,
-    }))?.data,
-    enabled: !!agencyId && validDay,
+  const published = useQuery({
+    queryKey,
+    queryFn: async () => {
+      try {
+        const { data } = await getPublishedOutcomeMeasures({ agency_id: agencyId, ...range });
+        return data;
+      } catch (error) {
+        // No publication yet for this exact window is an answer, not a failure.
+        if (brokerStatus(error) === 404) return null;
+        throw error;
+      }
+    },
+    enabled: !!agencyId,
     retry: false,
   });
 
-  const notPublished = outcomes.isError && errorStatus(outcomes.error) === 404;
-  const kpis = outcomes.data?.agency_kpis || [];
-  const episodes = outcomes.data?.patient_outcome_metrics || [];
-  const publication = outcomes.data?.publication;
+  const compute = async () => {
+    setComputing(true);
+    setNotice(null);
+    try {
+      const { data } = await computeOutcomeMeasures({ agency_id: agencyId, ...range });
+      setNotice({
+        tone: "success",
+        text: data?.idempotent_replay
+          ? "These numbers were already computed today for this window."
+          : "Outcome measures computed and published.",
+      });
+      await queryClient.invalidateQueries({ queryKey });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: brokerError(error) || "Outcome measures could not be computed. Please try again.",
+      });
+    } finally {
+      setComputing(false);
+    }
+  };
+
+  const kpis = Array.isArray(published.data?.agency_kpis) ? published.data.agency_kpis : [];
+  const episodes = Array.isArray(published.data?.patient_outcome_metrics)
+    ? published.data.patient_outcome_metrics.length
+    : 0;
+  const publishedAt = published.data?.publication?.published_at;
+
+  let body;
+  if (!agencyId) {
+    body = <p className="text-sm text-slate-600">Outcome measures open inside an agency workspace.</p>;
+  } else if (published.isLoading) {
+    body = <p className="text-sm text-slate-500"><Loader2 className="inline h-4 w-4 mr-1 animate-spin" />Loading published outcomes...</p>;
+  } else if (published.error) {
+    body = (
+      <p role="alert" className="text-sm text-red-700">
+        {brokerError(published.error) || "Published outcomes could not be loaded."}
+      </p>
+    );
+  } else if (!published.data) {
+    body = (
+      <p className="text-sm text-slate-600">
+        No outcome measures have been published for this window yet. Choose Compute now to calculate them
+        from completed Start of Care / Resumption of Care and Discharge OASIS pairs.
+      </p>
+    );
+  } else {
+    body = (
+      <div className="space-y-3">
+        <p className="text-sm text-slate-600">
+          {episodes} episode{episodes === 1 ? "" : "s"} scored
+          {publishedAt ? ` · published ${new Date(publishedAt).toLocaleString()}` : ""}
+        </p>
+        {kpis.length === 0 ? (
+          <p className="text-sm text-slate-600">The published run contains no measures for this window.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <caption className="sr-only">Published outcome measures</caption>
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th scope="col" className="py-1 pr-3 font-medium">Measure</th>
+                  <th scope="col" className="py-1 pr-3 font-medium">Improvement</th>
+                  <th scope="col" className="py-1 pr-3 font-medium">Benchmark</th>
+                  <th scope="col" className="py-1 pr-3 font-medium">Excluded</th>
+                  <th scope="col" className="py-1 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kpis.map((kpi) => (
+                  <tr key={kpi.id} className="border-t">
+                    <td className="py-1 pr-3">{kpi.metric_name}</td>
+                    <td className="py-1 pr-3">{Number(kpi.metric_value).toFixed(1)}%</td>
+                    <td className="py-1 pr-3">{kpi.benchmark_value == null ? "—" : `${Number(kpi.benchmark_value).toFixed(1)}%`}</td>
+                    <td className="py-1 pr-3">{kpi.excluded_episode_count}</td>
+                    <td className="py-1"><Badge variant="outline">{String(kpi.status).replaceAll("_", " ")}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-slate-600" />
+          <ShieldCheck className="w-5 h-5 text-slate-600" aria-hidden="true" />
           Outcome Measures
         </CardTitle>
-        <Badge variant="outline" className="text-slate-700">Internal proxies — not CMS results</Badge>
+        <Badge variant="outline">Internal proxy</Badge>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-end gap-4">
-          {!ownAgencyId && (agencies.data?.length || 0) > 1 && (
-            <div className="space-y-1">
-              <Label htmlFor="outcome-agency">Agency</Label>
-              <select
-                id="outcome-agency"
-                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
-                value={agencyId}
-                onChange={(event) => setChosenAgencyId(event.target.value)}
-              >
-                <option value="">Choose an agency</option>
-                {agencies.data.map((agency) => (
-                  <option key={agency.id} value={agency.id}>{agency.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+        <p className="text-xs text-slate-500">
+          Unadjusted internal improvement proxies from paired in-app OASIS assessments. They are not
+          official CMS rates, star ratings or HHVBP results.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
-            <Label htmlFor="outcome-day">Reporting day (UTC)</Label>
-            <Input
-              id="outcome-day"
-              type="date"
-              value={day}
-              max={previousUtcDate()}
-              onChange={(event) => setDay(event.target.value)}
-              className="w-44"
-            />
+            <Label htmlFor="outcome-window">Window</Label>
+            <select
+              id="outcome-window"
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              value={windowValue}
+              onChange={(e) => { setWindowValue(e.target.value); setNotice(null); }}
+            >
+              {WINDOWS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
           </div>
+          <Button type="button" onClick={compute} disabled={!agencyId || computing}>
+            {computing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+            Compute now
+          </Button>
+          <span className="text-xs text-slate-500">{range.period_start} to {range.period_end}</span>
         </div>
-
-        {!agencyId && !agencies.isLoading && (
-          <p className="text-sm text-slate-600">
-            {agencies.isError ? errorMessage(agencies.error) : "Choose an agency to see its published outcome measures."}
+        {notice && (
+          <p role={notice.tone === "error" ? "alert" : "status"} className={`text-sm ${notice.tone === "error" ? "text-red-700" : "text-emerald-700"}`}>
+            {notice.text}
           </p>
         )}
-
-        {outcomes.isLoading && agencyId && (
-          <p className="text-sm text-slate-600">Loading published outcome measures…</p>
-        )}
-
-        {notPublished && (
-          <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <Info className="w-5 h-5 text-slate-600 mt-0.5 shrink-0" />
-            <div className="space-y-1 text-sm text-slate-700">
-              <p className="font-medium text-slate-900">No published outcome run for {day}.</p>
-              <p>
-                Outcome measures are computed overnight for the previous day and appear here once the
-                run is published. Choose another day, or check back after tonight&apos;s run.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {outcomes.isError && !notPublished && (
-          <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
-            <AlertTriangle className="w-5 h-5 text-red-700 mt-0.5 shrink-0" />
-            <p className="text-sm text-red-900">{errorMessage(outcomes.error)}</p>
-          </div>
-        )}
-
-        {outcomes.isSuccess && (
-          <div className="space-y-4">
-            <p className="text-xs text-slate-500">
-              {episodes.length} discharge episode{episodes.length === 1 ? "" : "s"} paired with their start or
-              resumption of care
-              {publication?.published_at ? ` · published ${new Date(publication.published_at).toLocaleString()}` : ""}
-              {publication?.calculation_version ? ` · ${publication.calculation_version}` : ""}
-            </p>
-            {kpis.length === 0 ? (
-              <p className="text-sm text-slate-600">
-                The run for this day published no measure with an eligible episode.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {kpis.map((kpi) => (
-                  <div key={kpi.id} className="rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-slate-900">{kpi.metric_name}</p>
-                      <Badge className={STATUS_STYLES[kpi.status] || "bg-slate-100 text-slate-800"}>
-                        {STATUS_LABELS[kpi.status] || kpi.status}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-2xl font-bold text-slate-900">{kpi.metric_value}{kpi.unit}</p>
-                    {kpi.benchmark_value != null && (
-                      <p className="text-xs text-slate-600">Benchmark {kpi.benchmark_value}{kpi.unit}</p>
-                    )}
-                    {(kpi.contributing_factors || []).length > 0 && (
-                      <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-slate-600">
-                        {kpi.contributing_factors.map((factor) => <li key={factor}>{factor}</li>)}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            <p className="text-xs text-slate-500">
-              Unadjusted improvement proxies over verified CMS-aligned responses. They do not apply CMS
-              risk adjustment or the complete published specifications, and are not official CMS results.
-            </p>
-          </div>
-        )}
+        {body}
       </CardContent>
     </Card>
   );

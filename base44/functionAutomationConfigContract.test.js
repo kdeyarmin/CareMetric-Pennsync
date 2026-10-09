@@ -9,6 +9,8 @@ const FUNCTIONS_URL = new URL('./functions/', import.meta.url);
 const EXPECTED_TARGETS = {
   'Auto Retry Failed Faxes.jsonc': 'autoRetryFailedFaxes',
   'Check Stale Follow-Up Requests.jsonc': 'checkStaleFollowUpRequests',
+  'Daily Compliance Documentation Monitor.jsonc': 'monitorComplianceRisks',
+  'Daily Data Quality Scores.jsonc': 'calculateDataQualityScores',
   'Dispatch Scheduled Signature Reminders.jsonc': 'dispatchScheduledSignatureReminders',
   'Dispatch Scheduled SMS.jsonc': 'dispatchScheduledSms',
   'Nightly Outcome Measure Computation.jsonc': 'dispatchNightlyOutcomeMeasures',
@@ -53,10 +55,26 @@ test('the per-agency outcome worker explicitly clears its obsolete scheduler', a
   );
 });
 
-test('the retired outcome endpoint cannot access the SDK or regain an unscoped schedule', async () => {
+test('the on-demand outcome door authorizes one agency before it signs, and regains no schedule', async () => {
+  // Released by the owner on 2026-10-08. The legacy name no longer computes:
+  // it checks the caller's agency_admin/manager membership for the named
+  // agency, then signs a one-agency capability for the worker.
   const legacy = await readFile(new URL('computeOutcomeMeasures/entry.ts', FUNCTIONS_URL), 'utf8');
-  assert.doesNotMatch(legacy, /createClientFromRequest|\.entities\.|\.functions\.invoke/);
-  assert.match(legacy, /status: 503/);
+  const handler = legacy.slice(legacy.indexOf('Deno.serve('));
+  const auth = handler.indexOf('await base44.auth.me()');
+  const body = handler.indexOf('await parseRequest(req)');
+  const membership = handler.indexOf('await authorizeAgency(');
+  const sign = handler.indexOf('await createOutcomeDispatchProof(');
+  const invoke = handler.indexOf("functions.invoke(\n        'computeOutcomeMeasuresV2'");
+  assert.ok(auth > 0 && auth < body && body < membership && membership < sign && sign < invoke,
+    'authentication, body, membership, signature, then the worker');
+  assert.match(legacy, /OUTCOME_COMPUTE_ROLES = new Set\(\['agency_admin', 'manager'\]\)/);
+  const ownCode = legacy.slice(legacy.lastIndexOf('// <<<END SHARED HELPER'))
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(ownCode, /account_type|agency_name|is_manager|withTrustedClaims|PatientOutcomeMetric|AgencyKPI/);
+  const legacyConfig = JSON5.parse(await readFile(new URL('computeOutcomeMeasures/function.jsonc', FUNCTIONS_URL), 'utf8'));
+  assert.deepEqual(legacyConfig.automations, []);
   const config = JSON5.parse(await readFile(new URL('computeOutcomeMeasuresV2/function.jsonc', FUNCTIONS_URL), 'utf8'));
   assert.equal(config.name, 'computeOutcomeMeasuresV2');
   assert.deepEqual(config.automations, []);

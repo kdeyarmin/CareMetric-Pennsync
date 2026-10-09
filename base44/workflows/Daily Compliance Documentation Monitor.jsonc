@@ -1,13 +1,13 @@
 {
-  "name": "Nightly Outcome Measure Computation",
-  "description": "Dispatches one tenant-bound, idempotent daily outcome computation per active agency",
+  "name": "Daily Compliance Documentation Monitor",
+  "description": "Looks for documentation gaps once a day, one active agency at a time (homebound wording, and the absence-based vitals, visit and Discharge OASIS rules only where that agency is the system of record); writes deduplicated PatientAlert rows and never writes a chart or a risk score",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "0 6 * * *",
+      "cron_expression": "15 6 * * *",
       "one_time_date": null,
       "timezone": "UTC",
       "interval_value": null,
@@ -21,7 +21,7 @@
   "definition": {
     "document": {
       "dsl": "1.0.0",
-      "name": "nightly_outcome_measure_computation",
+      "name": "daily_compliance_documentation_monitor",
       "version": "1.0",
       "namespace": "base44"
     },
@@ -30,7 +30,7 @@
         "run_function": {
           "call": "invoke_backend_function",
           "with": {
-            "function_name": "dispatchNightlyOutcomeMeasures",
+            "function_name": "monitorComplianceRisks",
             "args": {}
           },
           "then": "end"
@@ -39,8 +39,6 @@
     ]
   },
   "x-base44-migrated-from-automation": {
-    "legacy_payload_function": "computeOutcomeMeasures",
-    "replacement_dispatch_function": "dispatchNightlyOutcomeMeasures",
-    "release_state": "live_operator_pausable"
+    "legacy_payload_function": "monitorComplianceRisks"
   }
 }

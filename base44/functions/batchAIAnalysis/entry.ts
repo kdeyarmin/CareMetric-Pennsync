@@ -173,11 +173,43 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// The mixed analysis endpoint reads patient and OASIS rows before its dormant
-// access checks and can expose AI-derived OASIS/compliance guidance. Pause the
-// whole endpoint until patient authorization is immutable and every analysis
-// type has a provenance-bound, clinically reviewed output contract.
-const BATCH_CLINICAL_AI_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). This is a
+// documentation tool, not risk prediction: it scores a note's Medicare
+// documentation compliance, points to OASIS evidence in the note (never a
+// response or score), and suggests follow-up documentation and tasks; the
+// PDGM type still answers with the unavailable payload because payment
+// features were removed. It used to read the chart, its visits and its OASIS
+// upload BEFORE an access check built from editable account_type /
+// agency_name / assigned_nurses fields. Now the chart alone is read, access is
+// decided by callerMayAccessPatient (membership and the care-team table), and
+// only then are its visits and OASIS upload read or the model called. Without
+// a patient, the caller must hold exactly one active membership.
+const BATCH_CLINICAL_AI_ENABLED = true;
+const ANALYSIS_TYPES = new Set(['compliance', 'oasis', 'pdgm', 'proactive']);
+const MAX_NOTE_LENGTH = 40_000;
+
+// <<<BEGIN SHARED HELPER: patientCareTeamAccess — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function callerMayAccessPatient(base44, user, patient) {
+  if (!user || !patient || typeof patient !== 'object') return false;
+  if (user.role === 'admin') return true;
+  const claims = await withTrustedClaims(base44, user);
+  const agencyId = claims && claimIdentifier(claims.agency_id) ? claims.agency_id : null;
+  if (!agencyId || patient.agency_id !== agencyId || !claimIdentifier(patient.id)) return false;
+  if (claims.account_type === 'agency_admin' || claims.is_manager === true) return true;
+  if (claimIdentifier(patient.created_by_user_id) && patient.created_by_user_id === user.id) return true;
+  try {
+    const rows = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+      { agency_id: agencyId, patient_id: patient.id, user_id: user.id, status: 'active' },
+      undefined,
+      2,
+    );
+    return Array.isArray(rows) && rows.some((row) => row && row.agency_id === agencyId
+      && row.patient_id === patient.id && row.user_id === user.id && row.status === 'active');
+  } catch {
+    return false;
+  }
+}
+// <<<END SHARED HELPER: patientCareTeamAccess>>>
 
 // <<<BEGIN SHARED HELPER: pdgmReimbursementGate — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PDGM_REIMBURSEMENT_ENABLED = false;
@@ -247,27 +279,46 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await withTrustedClaims(base44, await base44.auth.me());
+    const user = await base44.auth.me().catch(() => null);
 
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.disabled === true || user.is_service === true) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const claims = await withTrustedClaims(base44, user);
+    if (claims.role !== 'admin' && !claimIdentifier(claims.agency_id)) {
+      return Response.json({ error: 'An active agency membership is required' }, { status: 403 });
+    }
 
-    const { 
-      roughNote, 
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Request body must be an object' }, { status: 400 });
+    }
+    const {
+      roughNote,
       enhancedNote,
-      visitType, 
+      visitType,
       diagnosis,
       vitalSigns,
       patientId,
-      analysisTypes // ['compliance', 'oasis', 'pdgm', 'proactive']
-    } = await req.json();
+      analysisTypes, // ['compliance', 'oasis', 'pdgm', 'proactive']
+    } = body;
 
-    if (!analysisTypes || !Array.isArray(analysisTypes)) {
+    if (!analysisTypes || !Array.isArray(analysisTypes) || analysisTypes.length === 0
+      || analysisTypes.some((type) => !ANALYSIS_TYPES.has(type))) {
       return Response.json({ error: 'analysisTypes array required' }, { status: 400 });
     }
-
+    for (const note of [roughNote, enhancedNote]) {
+      if (note != null && (typeof note !== 'string' || note.length > MAX_NOTE_LENGTH)) {
+        return Response.json({ error: 'Note text is invalid or too long' }, { status: 400 });
+      }
+    }
+    if (patientId != null && !claimIdentifier(patientId)) {
+      return Response.json({ error: 'patientId is invalid' }, { status: 400 });
+    }
     if (analysisTypes.length === 1 && analysisTypes[0] === 'pdgm') {
       return Response.json({
         success: true,
@@ -281,49 +332,28 @@ Deno.serve(async (req) => {
     let oasisData = null;
 
     if (patientId) {
-      const [patient, visits, oasis] = await Promise.all([
-        base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1),
-        base44.asServiceRole.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3),
-        base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 1)
-      ]);
-      
-      patientData = patient[0] || null;
-      // Authorize against the patient before its PHI drives the analyses
-      // (assigned nurse or admin). RLS-independent code check.
-      if (patientData) {
-        const isSuperAdmin = user.account_type === 'super_admin';
-        const isAgencyScopedAdmin =
-          user.account_type === 'agency_admin'
-          || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-        const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-        const isAssigned = patientData.created_by === user.email
-          || (Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email));
-        if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
-          return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
-        if (isAgencyScopedAdmin) {
-          if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
-          const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-          const agencyEmails = new Set(
-            (agencyUsers || [])
-              .filter((u) => u.agency_name === user.agency_name && u.email)
-              .map((u) => u.email),
-          );
-          const inAgency = (patientData.created_by && agencyEmails.has(patientData.created_by))
-            || (Array.isArray(patientData.assigned_nurses)
-              && patientData.assigned_nurses.some((e) => agencyEmails.has(e)));
-          if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
+      // The chart alone is read to decide access; its visits and OASIS upload
+      // are read only after callerMayAccessPatient admits the caller.
+      const patientRows = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, undefined, 2);
+      const patient = Array.isArray(patientRows) && patientRows.length === 1 && patientRows[0]?.id === patientId
+        ? patientRows[0]
+        : null;
+      if (!patient || !(await callerMayAccessPatient(base44, user, patient))) {
+        return Response.json({ error: 'Patient not found or access denied' }, { status: 403 });
       }
-      recentVisits = visits || [];
-      oasisData = oasis[0] || null;
+      patientData = patient;
+      const [visits, oasis] = await Promise.all([
+        base44.asServiceRole.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3),
+        base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 1),
+      ]);
+      recentVisits = (Array.isArray(visits) ? visits : []).filter((visit) => visit?.patient_id === patientId);
+      oasisData = (Array.isArray(oasis) ? oasis : []).find((row) => row?.patient_id === patientId) || null;
     }
 
     // Build shared context for all analyses
     const sharedContext = `
 PATIENT DATA:
-${patientData ? `- Name: ${patientData.first_name} ${patientData.last_name}
-- Primary Diagnosis: ${patientData.primary_diagnosis || diagnosis}
+${patientData ? `- Primary Diagnosis: ${patientData.primary_diagnosis || diagnosis}
 - Age: ${formatAge(patientData.date_of_birth)}
 - Allergies: ${patientData.allergies || 'None documented'}` : ''}
 

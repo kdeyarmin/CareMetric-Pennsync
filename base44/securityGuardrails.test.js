@@ -279,7 +279,7 @@ test('computeOutcomeMeasures accepts only internal or signed dispatcher authorit
   assert.ok(/valid period_start and period_end/.test(handler));
 });
 
-test('the outcome worker and native-workflow dispatcher remain runtime-gated by default', () => {
+test('the outcome worker and native-workflow dispatcher run by default and keep an operator pause', () => {
   const src = read('base44/functions/computeOutcomeMeasuresV2/entry.ts');
   const workerConfig = JSON5.parse(read('base44/functions/computeOutcomeMeasuresV2/function.jsonc'));
   const dispatcher = read('base44/functions/dispatchNightlyOutcomeMeasures/entry.ts');
@@ -289,14 +289,16 @@ test('the outcome worker and native-workflow dispatcher remain runtime-gated by 
   const dispatchGate = dispatcher.indexOf('if (!OUTCOME_DISPATCH_ENABLED())');
   const dispatchClient = dispatcher.indexOf('createClientFromRequest(');
 
+  // Released by the owner on 2026-10-08: unset runs, and only an explicit
+  // OUTCOME_PIPELINE_RELEASE=paused stops it — still before any SDK access.
   assert.match(src, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
-  assert.match(src, /=== 'enabled-v1'/);
-  assert.ok(gate > 0 && gate < client, 'hard pause must return before SDK client creation');
+  assert.match(src, /!== 'paused'/);
+  assert.ok(gate > 0 && gate < client, 'operator pause must return before SDK client creation');
   assert.equal(workerConfig.name, 'computeOutcomeMeasuresV2');
   assert.equal(workerConfig.entry, 'entry.ts');
   assert.deepEqual(workerConfig.automations, [], 'the one-agency worker must explicitly remove its unsafe empty-payload schedule');
   assert.match(dispatcher, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
-  assert.match(dispatcher, /=== 'enabled-v1'/);
+  assert.match(dispatcher, /!== 'paused'/);
   assert.ok(dispatchGate > 0 && dispatchGate < dispatchClient,
     'dispatcher pause must return before SDK client creation');
   assert.equal(workflow.name, 'Nightly Outcome Measure Computation');
@@ -332,10 +334,16 @@ test('computed outcome and PDGM rows use hosted operation-specific service-role-
 });
 
 test('browser outcome surfaces do not read outcome entities or invoke the secret-only job', () => {
+  // computeOutcomeMeasures is the membership-checked on-demand door released
+  // on 2026-10-08; the secret-only worker behind it never gets a browser
+  // wrapper and the browser never names it.
+  const wrapper = read('src/functions/computeOutcomeMeasures.js');
+  assert.match(wrapper, /functions\.invoke\('computeOutcomeMeasures',/);
+  assert.doesNotMatch(wrapper, /computeOutcomeMeasuresV2|dispatchNightlyOutcomeMeasures|entities\./);
   assert.equal(
-    existsSync(join(REPO, 'src/functions/computeOutcomeMeasures.js')),
+    existsSync(join(REPO, 'src/functions/computeOutcomeMeasuresV2.js')),
     false,
-    'the dormant browser invoker must stay removed; the outcome job is internal-secret-only.',
+    'the outcome worker is internal-secret-only and must never get a browser wrapper.',
   );
   assert.equal(
     existsSync(join(REPO, 'src/functions/dispatchNightlyOutcomeMeasures.js')),
@@ -352,7 +360,7 @@ test('browser outcome surfaces do not read outcome entities or invoke the secret
       `${file} must not directly read outcome entities before hosted tenant-bound read RLS is proved.`,
     );
     assert.ok(
-      !/computeOutcomeMeasures|functions\.invoke\([^)]*computeOutcome/.test(src),
+      !/computeOutcomeMeasuresV2|dispatchNightlyOutcomeMeasures|functions\.invoke\([^)]*computeOutcome/.test(src),
       `${file} must not expose the INTERNAL_FN_SECRET-only outcome job to a browser session.`,
     );
   }
@@ -950,14 +958,18 @@ for (const [file, sink] of [
 
 // The two purpose-bound message AI brokers use their v2 tenant authority and
 // exact PatientCareTeamAssignment provenance rather than the older helper
-// signature. The dynamic message broker contract exercises these dormant paths.
+// signature. Released by the owner on 2026-10-08; the dynamic message broker
+// contract exercises both live paths and their refusals.
 for (const file of [
   'base44/functions/generateMessageSuggestions/entry.ts',
   'base44/functions/summarizeMessageThread/entry.ts',
 ]) {
   test(`${file} gates patient PHI with exact secure-message assignment authority`, () => {
     const src = read(file);
-    assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/);
+    assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = false;/);
+    const handler = src.slice(src.indexOf('Deno.serve('));
+    assert.ok(handler.indexOf('await loadAuthority(') < handler.indexOf('InvokeLLM'),
+      `${file} must decide authority before the model call`);
     assert.match(src, /async function requirePatientAccess\(/);
     assert.match(src, /entities\.PatientCareTeamAssignment\.filter\(/);
     assert.match(src, /await requirePatientAccess\(entities,\s*patient,\s*authority\);/);
@@ -966,24 +978,32 @@ for (const file of [
   });
 }
 
-test('messagingAssistant remains a static purpose-bound retirement boundary', () => {
+// Released 2026-10-08 as a router that owns no authority: it authenticates,
+// then forwards one of two actions, with only that broker's own fields, to the
+// purpose-bound broker that decides everything.
+test('messagingAssistant routes only to the purpose-bound brokers and reads no record', () => {
   const src = read('base44/functions/messagingAssistant/entry.ts');
-  assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/);
+  assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = false;/);
   assert.match(src, /if \(SECURE_MESSAGE_DOMAIN_PAUSED\) return secureMessageUnavailable\(\);/);
-  assert.match(src, /code:\s*'secure_message_purpose_broker_required'/);
-  assert.doesNotMatch(src, /createClientFromRequest\s*\(/);
-  assert.doesNotMatch(src, /\b_req\.(?:json|text|arrayBuffer|formData)\(/);
+  assert.match(src, /summarize_thread:\s*\{\s*target: 'summarizeMessageThread'/);
+  assert.match(src, /suggest_content:\s*\{\s*target: 'generateMessageSuggestions'/);
+  assert.match(src, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  const handler = src.slice(src.indexOf('Deno.serve('));
+  assert.ok(handler.indexOf('auth.me()') < handler.indexOf('await parseRequest(req)'));
+  assert.doesNotMatch(src, /\.entities\.|asServiceRole|InvokeLLM|Deno\.env/);
 });
 
 test('processCompletedVisit delegates PHI reads and Visit writes through updateAuthorizedVisit', () => {
   const src = read('base44/functions/processCompletedVisit/entry.ts');
-  const markerIndex = src.indexOf('const PROCESS_COMPLETED_VISIT_PAUSED = true;');
+  // Released by the owner on 2026-10-08; the static gate stays as the
+  // operator's off switch and still answers before SDK construction.
+  const markerIndex = src.indexOf('const PROCESS_COMPLETED_VISIT_PAUSED = false;');
   const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
   const guardIndex = src.indexOf('if (PROCESS_COMPLETED_VISIT_PAUSED)', handlerIndex);
   const clientIndex = src.indexOf('createClientFromRequest(', handlerIndex);
   assert.ok(markerIndex !== -1 && markerIndex < handlerIndex
     && handlerIndex < guardIndex && guardIndex < clientIndex,
-  'processCompletedVisit must pause before SDK construction');
+  'processCompletedVisit gate must precede SDK construction');
   assert.match(src.slice(guardIndex, clientIndex), /status:\s*503/);
   assert.match(src, /base44\.functions\.fetch\('\/updateAuthorizedVisit'/);
   for (const action of ['read_ai_processing_source', 'claim_ai_processing', 'publish_ai_processing']) {

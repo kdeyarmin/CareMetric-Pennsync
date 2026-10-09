@@ -144,8 +144,20 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
     // inbound patient call routing on 2026-10-08.
     legacy(),
   ]),
+  // Released 2026-10-08: the proposal notice carries the recipient envelope
+  // for the assigned nurse's own active membership in the chart's agency.
   'monitorClinicalDataForCarePlanUpdates/entry.ts': Object.freeze([
-    legacy('create', PRODUCER_EXECUTION_STATES.SOURCE_DISABLED),
+    authorityV1({ kind: 'call-argument' }),
+  ]),
+  // Released 2026-10-08: one envelope-bearing notice per recipient, keyed by
+  // message and recipient, created only under the sender's claim.
+  'notifyUrgentMessage/entry.ts': Object.freeze([
+    authorityV1({
+      kind: 'factory-binding',
+      name: 'expectedNotification',
+      argumentPath: ['notification'],
+      payloadPath: [],
+    }),
   ]),
   'pollFaxStatuses/entry.ts': Object.freeze([
     authorityV1(
@@ -161,8 +173,10 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
   'processAnnualEducationRenewals/entry.ts': Object.freeze([
     scheduleQuarantinedLegacy(),
   ]),
+  // Released 2026-10-08: the completion notice is the caller's own, minted
+  // with the caller's exact active membership in the visit's agency.
   'processCompletedVisit/entry.ts': Object.freeze([
-    legacy('create', PRODUCER_EXECUTION_STATES.SOURCE_DISABLED),
+    authorityV1({ kind: 'call-argument' }),
   ]),
   'processInboundFaxes/entry.ts': Object.freeze([
     authorityV1(

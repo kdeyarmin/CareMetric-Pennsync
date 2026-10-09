@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, CheckCircle2, Users, FileText, ClipboardCheck } from "lucide-react";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+import DataQualityRecalculate from '@/components/admin/DataQualityRecalculate';
 
 const EMPTY_ROWS = Object.freeze([]);
 // PersonnelCredential's read rule admits each employee's own rows and the
@@ -256,6 +257,7 @@ export default function DataQualityDashboard() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Data Quality Dashboard</h2>
           <p className="text-sm text-slate-500">Monitor data completeness and compliance</p>
+          <div className="mt-2"><DataQualityRecalculate /></div>
         </div>
         <div className="text-right">
           <p className="text-sm text-slate-500">Verified-source Score</p>

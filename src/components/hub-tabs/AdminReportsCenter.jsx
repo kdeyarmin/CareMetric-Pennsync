@@ -13,6 +13,7 @@ import ReportsCenter from "@/components/admin/ReportsCenter";
 import QualityMetricsDashboard from "@/components/admin/QualityMetricsDashboard";
 import AIKPIReportGenerator from "@/components/admin/AIKPIReportGenerator";
 import NoteConversionReport from "@/components/admin/NoteConversionReport";
+import AgencyComprehensiveReport from "@/components/admin/AgencyComprehensiveReport";
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
 
 const FRESH_QUERY_OPTIONS = Object.freeze({
@@ -60,6 +61,14 @@ export default function AdminReportsCenterPage() {
   const currentUser = currentUserAvailable ? currentUserQuery.data : null;
   const auxiliaryTenantScope = currentUserAvailable
     ? getTrustedTenantContext(currentUser)
+    : null;
+  // The server-rendered agency PDF admits an agency_admin or manager of the
+  // agency it reports on; the control is offered only to those two roles.
+  const agencyLeadScope = auxiliaryTenantScope
+    && ['agency_admin', 'manager'].includes(auxiliaryTenantScope.tenant_role)
+    && typeof auxiliaryTenantScope.agency_id === 'string'
+    && auxiliaryTenantScope.agency_id
+    ? auxiliaryTenantScope
     : null;
 
 
@@ -160,7 +169,13 @@ export default function AdminReportsCenterPage() {
           </TabsList>
         </div>
 
-        <TabsContent value="reports">
+        <TabsContent value="reports" className="space-y-4">
+          {agencyLeadScope && (
+            <AgencyComprehensiveReport
+              key={agencyLeadScope.agency_id}
+              agencyId={agencyLeadScope.agency_id}
+            />
+          )}
           {reportsSnapshot ? (
             <ReportsCenter
               key={reportsSnapshot.authorityKey}
