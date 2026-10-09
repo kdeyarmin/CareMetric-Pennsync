@@ -122,6 +122,21 @@ test('both production workflows install every service ci.yml installs before run
   }
 });
 
+test('both production workflows install one pinned Base44 CLI, relaxing pnpm only for that install', () => {
+  // pnpm 11 refuses URL-resolved subdependencies, and the CLI depends on
+  // @deno/loader from npm.jsr.io; an unpinned install also deploys with
+  // whatever CLI was published that morning.
+  for (const workflow of ['deploy-production-functions.yml', 'publish-production-frontend.yml']) {
+    const source = readFileSync(new URL(`./.github/workflows/${workflow}`, import.meta.url), 'utf8')
+      .split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
+    const installs = source.match(/add --ignore-scripts[^\n]*/g) || [];
+    assert.equal(installs.length, 1, `${workflow}: exactly one CLI install`);
+    assert.match(installs[0], /--config\.block-exotic-subdeps=false base44@\d+\.\d+\.\d+ /, workflow);
+    assert.equal((source.match(/block-exotic-subdeps/g) || []).length, 1, `${workflow}: relaxed only for the CLI`);
+    assert.match(source, /BASE44_CLI_INSTALL_FAILED/, `${workflow}: a failed install says so`);
+  }
+});
+
 test('workspace-key acknowledgement is not mistaken for authenticated production access', () => {
   const yaml = readFileSync(new URL('./.github/workflows/publish-production-frontend.yml', import.meta.url), 'utf8');
   const source = yaml.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
