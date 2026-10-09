@@ -589,7 +589,7 @@ export default async function(req) {
       final_packet_url: download.signed_url,
       final_packet_pages: totalPages,
       front_matter_pages: frontPages,
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('ADR packet generation error:', error);
     return Response.json({ error: 'Failed to generate ADR packet' }, { status: 500 });

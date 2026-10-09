@@ -70,6 +70,9 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 export default async function(req) {
   try {
+    if (!req.headers.get('Authorization')?.trim()) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
@@ -297,7 +300,7 @@ export default async function(req) {
       success: true,
       file_url: file_url_result.signed_url,
       cover_sheet_data: payload,
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
 
   } catch (error) {
     console.error('Cover sheet generation error:', error);

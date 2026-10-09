@@ -258,6 +258,9 @@ const buildLessonContext = (modules) =>
 
 export default async function(req) {
   try {
+    if (!req.headers.get('Authorization')?.trim()) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await base44.auth.me().catch(() => null);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
