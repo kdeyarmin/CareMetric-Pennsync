@@ -198,3 +198,34 @@ test('a refused delete says the phase, table and SQLSTATE, never a value, and un
       drop function pennsync_records.refuse_patient_delete();`);
   }
 });
+
+test('a refused dependent scan names the referencing table it was scanning', async () => {
+  await wipe();
+  const receipt = await load();
+  const before = await total();
+  // The store refuses the scan of visit rows pointing at rows about to go, with a
+  // message that quotes a value. PGlite runs as a superuser, so the refusal is injected
+  // at the connection rather than raised by a policy.
+  const scanned = /^select to_jsonb\(r\) j from "pennsync_records"\."visit" r where r\.source_app_id = \$1 and r\."[a-z_]+"::text = any/;
+  let refused = 0;
+  const refusing = {
+    query: (sql, params) => {
+      if (scanned.test(sql)) {
+        refused += 1;
+        return Promise.reject(Object.assign(new Error('could not obtain lock on row for Alpha'), { code: '55P03' }));
+      }
+      return db.query(sql, params);
+    },
+  };
+  await assert.rejects(rollbackRun({ db: refusing, receipt, tableWaves, tables }), (e) => {
+    assert.ok(e instanceof RollbackError);
+    assert.equal(e.code, 'rollback_refused');
+    assert.equal(e.phase, 'dependents');
+    assert.equal(e.table, 'visit', 'the referencing table being scanned, not null');
+    assert.equal(e.sqlstate, '55P03');
+    assert.doesNotMatch(JSON.stringify({ ...e, message: e.message }), /Alpha|could not obtain/);
+    return true;
+  });
+  assert.equal(refused, 1, 'the scan of visit was reached and refused once');
+  assert.equal(await total(), before, 'nothing was deleted');
+});

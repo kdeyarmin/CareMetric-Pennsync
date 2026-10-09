@@ -65,8 +65,11 @@ async function referenceColumns(db, tables) {
   return out;
 }
 
-/** Rows no receipt entry covers that point at a row this rollback is still going to delete. */
-async function newDependents({ db, refColumns, ordered, outcomes, byKey, inReceipt }) {
+/**
+ * Rows no receipt entry covers that point at a row this rollback is still going to
+ * delete. `at` is told each referencing table before it is queried, so a refusal names it.
+ */
+async function newDependents({ db, refColumns, ordered, outcomes, byKey, inReceipt, at }) {
   const doomed = new Map();
   for (const e of ordered) if (outcomes.get(rowKey(e)) === 'deleted') {
     const k = `${e.table}|${e.source_app_id}`;
@@ -81,6 +84,7 @@ async function newDependents({ db, refColumns, ordered, outcomes, byKey, inRecei
       for (const [k, ids] of doomed) {
         const [t, app] = k.split('|');
         if (t !== target) continue;
+        at(table);
         const res = await db.query(`select to_jsonb(r) j from ${q(SCHEMA)}.${q(table)} r where r.source_app_id = $1 and r.${q(column)}::text = any($2::text[]) for update`, [app, ids]);
         for (const r of res.rows) {
           const row = typeof r.j === 'string' ? JSON.parse(r.j) : r.j;
@@ -167,7 +171,9 @@ export async function rollbackRun({ db, receipt, tableWaves, tables, dryRun = fa
     };
     settle();
     for (;;) {
-      const found = await newDependents({ db, refColumns, ordered, outcomes, byKey, inReceipt });
+      table = null;
+      const found = await newDependents({ db, refColumns, ordered, outcomes, byKey, inReceipt, at: (t) => { table = t; } });
+      table = null;
       if (!found.length) break;
       for (const d of found) { d.parent && outcomes.set(rowKey(d.parent), 'kept_for_dependent'); }
       for (const d of found) queue.push({ source_app_id: d.source_app_id, row: d.row });
