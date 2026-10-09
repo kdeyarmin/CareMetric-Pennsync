@@ -2158,7 +2158,12 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
   // module keeps its flag, now pinned false, and must no longer read as paused;
   // its disposition stays `preserved_paused`, which the one-directional gate
   // permits for a live module.
-  const releasedByOwner = new Set(['createTelehealthToken', 'markMessageRead', 'sendMessage']);
+  // saveOasisResponses joined them on the same date with the OASIS Center: its
+  // writes are authorized by membership and the care-team table, and its
+  // contract suite pins that rather than the pause.
+  const releasedByOwner = new Set([
+    'createTelehealthToken', 'markMessageRead', 'saveOasisResponses', 'sendMessage',
+  ]);
   for (const name of flipped) {
     const source = readFileSync(
       resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');

@@ -156,22 +156,19 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 // Even an evidence-only prompt can leak an OASIS response through unconstrained
-// model text when a direct caller bypasses the browser sanitizer. Keep the
+// model text, which is why every browser consumer passes the answer through the
+// AI-response sanitiser before anything is shown, copied or saved.
 // Released by the owner on 2026-10-08 ("turn everything on", option 1). The
 // deployment serves one agency, chart access is checked against membership and
 // the care-team assignment table, and the output is guidance a clinician reviews.
 const OASIS_ASSESSMENT_AI_ENABLED = true;
 
 
-/**
- * Chart access for an OASIS AI request, from the same authority the chart
- * brokers use rather than the legacy Patient.assigned_nurses / agency_name scan
- * (patients created through createAuthorizedPatient never fill assigned_nurses,
- * so that scan refused every nurse). The platform owner may open any chart. Any
- * other caller needs an active membership (from withTrustedClaims) in the
- * patient's own agency, and then an agency-wide role (agency_admin or manager),
- * to be the patient's creator, or an exact active PatientCareTeamAssignment.
- */
+// Chart access for an OASIS AI request comes from the same authority the chart
+// brokers use: the built-in admin role, the caller's one active membership (from
+// withTrustedClaims), and the care-team table. The shared block below is the one
+// definition every OASIS function uses.
+// <<<BEGIN SHARED HELPER: oasisChartAccess — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function assertOasisChartAccess(base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
   if (user.role === 'admin') return null;
@@ -194,6 +191,7 @@ async function assertOasisChartAccess(base44, user, patient) {
   ));
   return active ? null : Response.json({ error: 'Forbidden' }, { status: 403 });
 }
+// <<<END SHARED HELPER: oasisChartAccess>>>
 
 Deno.serve(async (req) => {
   if (!OASIS_ASSESSMENT_AI_ENABLED) {
@@ -230,13 +228,21 @@ Deno.serve(async (req) => {
       if (denied) return denied;
       patientData = claimed;
     } else if (referral_data) {
-      // referral_data-only path still feeds PHI into the LLM — require admin
-      // so a nurse cannot submit arbitrary referral payloads for another tenant.
-      const isAdminLike = user.role === 'admin'
-        || user.account_type === 'agency_admin'
-        || user.account_type === 'super_admin';
-      if (!isAdminLike) {
-        return Response.json({ error: 'Forbidden: patient_id is required' }, { status: 403 });
+      // The referral-only path reads no record: the referral is the caller's own
+      // upload, being prepared for intake before a chart exists. It is still a
+      // staff tool, so it needs the platform owner or a trusted active agency
+      // membership (agency_id rebuilt by withTrustedClaims, never the profile's
+      // own field) — the intake screen is worked by office staff, nurses and
+      // leads alike, so no narrower role applies.
+      const trustedMember = typeof user.agency_id === 'string' && user.agency_id !== '';
+      if (user.role !== 'admin' && !trustedMember) {
+        return Response.json({ error: 'Forbidden: an active agency membership is required' }, { status: 403 });
+      }
+      if (!referral_data || typeof referral_data !== 'object' || Array.isArray(referral_data)) {
+        return Response.json({ error: 'referral_data must be an object' }, { status: 400 });
+      }
+      if (JSON.stringify(referral_data).length > 200_000) {
+        return Response.json({ error: 'referral_data is too large' }, { status: 413 });
       }
     }
 

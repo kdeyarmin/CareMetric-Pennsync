@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
+import { useAuth } from "@/lib/AuthContext";
+import { isOasisPlatformOwnerView } from "@/lib/oasisRoles";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +35,6 @@ import {
   CheckCircle2,
   AlertTriangle
 } from "lucide-react";
-import { ALL_ROWS } from '@/lib/queryLimits';
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
 /**
@@ -50,8 +51,37 @@ const numOrDefault = (raw, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+// The triggers and actions the OASIS record broker evaluates and runs. A rule
+// naming anything else is refused on save, so the form offers only these.
+const TRIGGER_OPTIONS = [
+  ['compliance_issue', 'Compliance score below threshold'],
+  ['accuracy_concern', 'Accuracy score below threshold'],
+  ['score_threshold', 'Score threshold'],
+  ['missing_documentation', 'Missing documentation'],
+  ['specific_m_item', 'Specific M-items flagged'],
+  ['clinical_concern', 'Clinical concern'],
+];
+const ACTION_OPTIONS = [
+  ['create_task', 'Create a follow-up task'],
+  ['create_alert', 'Create a patient alert'],
+  ['notify_clinician', 'Notify the reviewer'],
+  ['flag_for_review', 'Flag for the audit queue'],
+];
+const SCORE_TYPE_OPTIONS = [
+  ['overall', 'Overall'],
+  ['compliance', 'Compliance'],
+  ['accuracy', 'Accuracy'],
+];
+const listText = (value) => (Array.isArray(value) ? value.join(', ') : '');
+const textList = (raw) => String(raw || '').split(',').map((item) => item.trim()).filter(Boolean);
+
 export default function OASISAutomationSettings() {
   const confirm = useConfirm();
+  const { user } = useAuth();
+  // Rules apply to every agency's analyses, so only the platform owner (the
+  // built-in admin role, which a profile edit cannot grant) changes them; the
+  // broker enforces the same rule. Everyone else sees what is configured.
+  const canEdit = isOasisPlatformOwnerView(user);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const queryClient = useQueryClient();
@@ -61,8 +91,8 @@ export default function OASISAutomationSettings() {
     description: '',
     trigger_type: 'compliance_issue',
     trigger_conditions: {
-      severity_levels: ['critical', 'high'],
       score_operator: 'less_than',
+      score_type: 'overall',
       score_value: 70
     },
     action_type: 'create_task',
@@ -75,48 +105,47 @@ export default function OASISAutomationSettings() {
     priority: 0
   });
 
-  // Fetch automation rules
+  // Fetch automation rules (the same list the workflow engine evaluates).
   const { data: rules = [] } = useQuery({
-    queryKey: ['automationRules'],
-    queryFn: () => base44.entities.OASISAutomationRule.list('-priority', ALL_ROWS),
+    queryKey: ['oasisAutomationRules'],
+    queryFn: async () => (await manageOASISRecords('list_rules'))?.rules || [],
   });
 
   // Create/update rule
   const saveMutation = useMutation({
-    mutationFn: (data) => 
-      editingRule 
-        ? base44.entities.OASISAutomationRule.update(editingRule.id, data)
-        : base44.entities.OASISAutomationRule.create(data),
+    mutationFn: (data) => manageOASISRecords('save_rule', {
+      ...(editingRule ? { rule_id: editingRule.id } : {}),
+      rule: data,
+    }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['automationRules'] });
+      queryClient.invalidateQueries({ queryKey: ['oasisAutomationRules'] });
       resetForm();
       setIsDialogOpen(false);
     },
-    onError: () => {
-      toast.error("Couldn't save the rule. Please try again.");
+    onError: (error) => {
+      toast.error(error?.message || "Couldn't save the rule. Please try again.");
     },
   });
 
   // Delete rule
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.OASISAutomationRule.delete(id),
+    mutationFn: (id) => manageOASISRecords('delete_rule', { rule_id: id }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['automationRules'] });
+      queryClient.invalidateQueries({ queryKey: ['oasisAutomationRules'] });
     },
-    onError: () => {
-      toast.error("Couldn't delete the rule. Please try again.");
+    onError: (error) => {
+      toast.error(error?.message || "Couldn't delete the rule. Please try again.");
     },
   });
 
   // Toggle active status
   const toggleActiveMutation = useMutation({
-    mutationFn: ({ id, is_active }) => 
-      base44.entities.OASISAutomationRule.update(id, { is_active }),
+    mutationFn: ({ id, is_active }) => manageOASISRecords('save_rule', { rule_id: id, rule: { is_active } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['automationRules'] });
+      queryClient.invalidateQueries({ queryKey: ['oasisAutomationRules'] });
     },
-    onError: () => {
-      toast.error("Couldn't update the rule. Please try again.");
+    onError: (error) => {
+      toast.error(error?.message || "Couldn't update the rule. Please try again.");
     },
   });
 
@@ -126,8 +155,8 @@ export default function OASISAutomationSettings() {
       description: '',
       trigger_type: 'compliance_issue',
       trigger_conditions: {
-        severity_levels: ['critical', 'high'],
         score_operator: 'less_than',
+        score_type: 'overall',
         score_value: 70
       },
       action_type: 'create_task',
@@ -144,7 +173,12 @@ export default function OASISAutomationSettings() {
 
   const handleEdit = (rule) => {
     setEditingRule(rule);
-    setFormData(rule);
+    setFormData({
+      ...rule,
+      description: rule.description || '',
+      trigger_conditions: rule.trigger_conditions || {},
+      action_config: rule.action_config || {},
+    });
     setIsDialogOpen(true);
   };
 
@@ -170,6 +204,7 @@ export default function OASISAutomationSettings() {
             <Settings className="w-5 h-5 text-blue-600" />
             Automation Rules Configuration
           </CardTitle>
+          {canEdit && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" onClick={resetForm} className="bg-blue-600 hover:bg-blue-700">
@@ -215,11 +250,9 @@ export default function OASISAutomationSettings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="compliance_issue">Compliance Issue</SelectItem>
-                        <SelectItem value="accuracy_concern">Accuracy Concern</SelectItem>
-                        <SelectItem value="missing_documentation">Missing Documentation</SelectItem>
-                        <SelectItem value="score_threshold">Score Threshold</SelectItem>
-                        <SelectItem value="clinical_concern">Clinical Concern</SelectItem>
+                        {TRIGGER_OPTIONS.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -234,11 +267,9 @@ export default function OASISAutomationSettings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="create_task">Create Task</SelectItem>
-                        <SelectItem value="create_alert">Create Alert</SelectItem>
-                        <SelectItem value="suggest_documentation">Suggest Documentation</SelectItem>
-                        <SelectItem value="schedule_reassessment">Schedule Reassessment</SelectItem>
-                        <SelectItem value="flag_for_review">Flag for Review</SelectItem>
+                        {ACTION_OPTIONS.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -250,6 +281,53 @@ export default function OASISAutomationSettings() {
                     Trigger Conditions
                   </h4>
                   <div className="grid grid-cols-2 gap-3">
+                    {formData.trigger_type === 'score_threshold' && (
+                      <div className="col-span-2">
+                        <Label>Score Type</Label>
+                        <Select
+                          value={formData.trigger_conditions?.score_type || 'overall'}
+                          onValueChange={(value) => setFormData({
+                            ...formData,
+                            trigger_conditions: { ...formData.trigger_conditions, score_type: value }
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SCORE_TYPE_OPTIONS.map(([value, label]) => (
+                              <SelectItem key={value} value={value}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {formData.trigger_type === 'specific_m_item' && (
+                      <div className="col-span-2">
+                        <Label>M-items (comma separated)</Label>
+                        <Input
+                          value={listText(formData.trigger_conditions?.m_item_codes)}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            trigger_conditions: { ...formData.trigger_conditions, m_item_codes: textList(e.target.value) }
+                          })}
+                          placeholder="e.g., M1830, M1860"
+                        />
+                      </div>
+                    )}
+                    {formData.trigger_type === 'clinical_concern' && (
+                      <div className="col-span-2">
+                        <Label>Keywords (comma separated, optional)</Label>
+                        <Input
+                          value={listText(formData.trigger_conditions?.keywords)}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            trigger_conditions: { ...formData.trigger_conditions, keywords: textList(e.target.value) }
+                          })}
+                          placeholder="e.g., fall, wound, dyspnea"
+                        />
+                      </div>
+                    )}
                     <div>
                       <Label>Score Operator</Label>
                       <Select
@@ -280,8 +358,8 @@ export default function OASISAutomationSettings() {
                         value={formData.trigger_conditions?.score_value ?? 70}
                         onChange={(e) => setFormData({
                           ...formData,
-                          trigger_conditions: { 
-                            ...formData.trigger_conditions, 
+                          trigger_conditions: {
+                            ...formData.trigger_conditions,
                             score_value: numOrDefault(e.target.value, 70)
                           }
                         })}
@@ -322,8 +400,8 @@ export default function OASISAutomationSettings() {
                         value={formData.action_config?.due_in_days ?? 7}
                         onChange={(e) => setFormData({
                           ...formData,
-                          action_config: { 
-                            ...formData.action_config, 
+                          action_config: {
+                            ...formData.action_config,
                             due_in_days: numOrDefault(e.target.value, 7)
                           }
                         })}
@@ -331,6 +409,21 @@ export default function OASISAutomationSettings() {
                     </div>
                   </div>
                 </div>
+
+                {formData.action_type === 'notify_clinician' && (
+                  <div>
+                    <Label>Notification Message</Label>
+                    <Textarea
+                      value={formData.action_config?.notification_message || ''}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        action_config: { ...formData.action_config, notification_message: e.target.value }
+                      })}
+                      placeholder="What should the reviewer be told?"
+                      rows={2}
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2">
                   <Switch
@@ -351,6 +444,7 @@ export default function OASISAutomationSettings() {
               </div>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </CardHeader>
 
@@ -359,7 +453,9 @@ export default function OASISAutomationSettings() {
           <Alert>
             <AlertTriangle className="w-4 h-4" />
             <AlertDescription>
-              No automation rules configured. Create your first rule to enable AI-driven follow-up actions.
+              {canEdit
+                ? 'No automation rules configured. Create your first rule to enable AI-driven follow-up actions.'
+                : 'No automation rules are configured yet. The platform owner sets them up.'}
             </AlertDescription>
           </Alert>
         ) : (
@@ -376,7 +472,7 @@ export default function OASISAutomationSettings() {
                     <div className="flex items-center gap-2 mb-2">
                       <h4 className="font-semibold text-slate-900">{rule.rule_name}</h4>
                       <Badge className={getTriggerBadge(rule.trigger_type)}>
-                        {rule.trigger_type.replace(/_/g, ' ')}
+                        {String(rule.trigger_type || '').replace(/_/g, ' ')}
                       </Badge>
                       {rule.is_active && (
                         <Badge className="bg-green-100 text-green-800">
@@ -387,15 +483,16 @@ export default function OASISAutomationSettings() {
                     </div>
                     <p className="text-sm text-slate-600 mb-2">{rule.description}</p>
                     <div className="flex gap-4 text-xs text-slate-500">
-                      <span>Action: {rule.action_type.replace(/_/g, ' ')}</span>
+                      <span>Action: {String(rule.action_type || '').replace(/_/g, ' ')}</span>
                       <span>Priority: {rule.action_config?.task_priority || 'medium'}</span>
                       <span>Due: {rule.action_config?.due_in_days ?? 7} days</span>
                     </div>
                   </div>
+                  {canEdit && (
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={rule.is_active}
-                      onCheckedChange={(checked) => 
+                      onCheckedChange={(checked) =>
                         toggleActiveMutation.mutate({ id: rule.id, is_active: checked })
                       }
                     />
@@ -426,6 +523,7 @@ export default function OASISAutomationSettings() {
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
+                  )}
                 </div>
               </div>
             ))}

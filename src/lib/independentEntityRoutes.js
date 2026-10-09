@@ -1431,7 +1431,8 @@ const DECLARED_ROUTES = Object.freeze({
    * so its route was withdrawn; `listChartRecommendations` itself stays in
    * the service.) The other three are
    * `NotificationPreference.create`/`.update` and `PatientRecommendation.
-   * create`, which pass a whole variable as their payload: the route gate
+   * create` (since withdrawn with its caller), which pass a whole variable as
+   * their payload: the route gate
    * proves a declaration by running each call site's real arguments, and it
    * cannot read those, so declaring them would fail the build rather than
    * serve anything. The capabilities exist — `saveMyNotificationPreferences`
@@ -1639,7 +1640,11 @@ const DECLARED_ROUTES = Object.freeze({
     reason: 'The regulatory monitor looks a rule up by its auditor-matchable code before offering a change.',
   }),
   /**
-   * Batch E's three writes, declared UNPROVED.
+   * Batch E's writes, declared UNPROVED. There were three; the third,
+   * `PatientRecommendation.create`, went with its only caller when the OASIS
+   * Center was turned back on — the OASIS chart pusher now adds follow-up
+   * Tasks through the OASIS record broker instead — so its route was
+   * withdrawn. `recordChartRecommendation` itself stays in the service.
    *
    * Every one of their call sites passes a whole variable as its payload, so
    * `check:entity-routes` cannot run the real arguments through `request` and
@@ -1658,19 +1663,6 @@ const DECLARED_ROUTES = Object.freeze({
    * off the answer gets `undefined` rather than a stale value — the per-screen
    * work Stage J is made of, and the reason `projection` is declared.
    */
-  'PatientRecommendation.create': Object.freeze({
-    function: 'recordChartRecommendation',
-    projection: 'chart_recommendation_id',
-    reason: 'The OASIS chart pusher creates one recommendation against a chart the contract authorizes.',
-    request: (recommendation) => {
-      if (recommendation === null || typeof recommendation !== 'object' || Array.isArray(recommendation)) {
-        unsupported('payload');
-      }
-      const { patient_id: patientId, ...rest } = recommendation;
-      return { patient_id: patientId ?? null, recommendation: rest };
-    },
-    response: (result) => ({ id: result?.id }),
-  }),
   'NotificationPreference.create': Object.freeze({
     function: 'saveMyNotificationPreferences',
     projection: 'own_notification_preference_id',
@@ -2031,16 +2023,9 @@ const DECLARED_ROUTES = Object.freeze({
     ...libraryRead({ capability: 'listClinicalPathways', sortable: ['-created_date'] }),
     reason: 'The pathway manager reads every pathway, newest first.',
   }),
-  'ClinicalPathway.filter': Object.freeze({
-    ...libraryRead({
-      capability: 'listClinicalPathways',
-      sortable: ['-created_date'],
-      filterable: ['is_active'],
-      filtered: true,
-      request: (query) => ({ active_only: query?.is_active === true }),
-    }),
-    reason: 'The OASIS recommender and the trigger both read the active pathways.',
-  }),
+  // `ClinicalPathway.filter` was withdrawn with its two callers: the OASIS
+  // recommender and the pathway trigger read the active library through the
+  // OASIS record broker since the OASIS Center was turned back on.
   'ClinicalPathway.create': Object.freeze({
     ...libraryWrite({ capability: 'manageClinicalPathway', action: 'create' }),
     reason: 'The pathway manager saves a new pathway, and the AI generator writes one it drafted.',

@@ -284,10 +284,30 @@ test("released OASIS endpoints decide the caller's authority before any record o
   assert.ok(hosts > 0 && hosts < batchHandler.indexOf("ExtractDataFromUploadedFile"),
     "processOASISBatch extracts only files in the app's own storage");
 
+  // listOASISUploads reads as the caller for the caller's own uploads, and as
+  // the service role only inside a scope it computed from trusted claims: every
+  // upload for the platform owner, the lead's own agency, or exactly the charts
+  // the caller may open in their own agency.
   const uploads = await read("base44/functions/listOASISUploads/entry.ts");
   assert.match(uploads, /OASIS_UPLOAD_LIST_ENABLED\s*=\s*true/);
-  assert.doesNotMatch(uploads.slice(uploads.indexOf("Deno.serve")), /asServiceRole/,
-    "listOASISUploads reads as the caller, so OASISUpload's own read rule decides");
+  const listHandler = uploads.slice(uploads.indexOf("Deno.serve"));
+  assert.match(listHandler, /withTrustedClaims\(base44, await base44\.auth\.me\(\)\)/);
+  const leadBranch = listHandler.indexOf("if (scope && (scope.platform || scope.lead))");
+  const serviceReads = [...listHandler.matchAll(/asServiceRole\.entities\.OASISUpload\.(?:filter|list)\(/g)]
+    .map((match) => match.index);
+  assert.equal(serviceReads.length, 3, "three reviewed service reads");
+  assert.ok(leadBranch > 0 && serviceReads.every((index) => index > leadBranch));
+  assert.match(listHandler, /const scoped = scope\.platform \? query : \{ \.\.\.query, agency_id: scope\.agencyId \};/);
+  assert.match(listHandler, /records = \(records \|\| \[\]\)\.filter\(\(row\) => scope\.platform \|\| row\?\.agency_id === scope\.agencyId\);/);
+  assert.match(listHandler, /\{ \.\.\.query, agency_id: scope\.agencyId, patient_id: \{ \$in: wanted \} \}/);
+  assert.match(listHandler, /const openable = scope \? await oasisOpenablePatientIds\(base44, scope\) : null;/);
+  assert.match(listHandler, /\.map\(stripFinancial\)/);
+  const scopeHelper = uploads.slice(uploads.indexOf("function oasisCallerScope"), uploads.indexOf("Deno.serve"));
+  assert.match(scopeHelper, /user\.role === 'admin'/);
+  assert.match(scopeHelper, /user\.account_type === 'agency_admin' \|\| user\.is_manager === true/);
+  assert.match(scopeHelper, /PatientCareTeamAssignment/);
+  assert.doesNotMatch(scopeHelper, /assigned_nurses|agency_name/,
+    "the upload scope never authorizes from editable profile fields");
 
   for (const path of [
     "base44/functions/generateOASISReportPDF/entry.ts",
@@ -321,39 +341,63 @@ test("legacy Patient Details context is permanently retired before any data acce
   assert.doesNotMatch(source, /createClientFromRequest|OASISAssessment|Patient\.filter|Visit\.filter/);
 });
 
-test("OASIS analyzer remains paused and Patient Details mounts no OASIS child", async () => {
+// The owner turned the analyzer on on 2026-10-08. It reviews documentation; its
+// records are written only through the OASIS record broker, and Patient Details
+// still mounts no OASIS child.
+test("OASIS analyzer writes only through the record broker and Patient Details mounts no OASIS child", async () => {
   const [analyzer, patientDetails] = await Promise.all([
     read("src/components/hub-tabs/OASISAnalyzer.jsx"),
     read("src/pages/PatientDetails.jsx"),
   ]);
-  assert.match(analyzer, /OASIS_ANALYZER_ENABLED\s*=\s*false/);
-  assert.match(analyzer, /if \(!OASIS_ANALYZER_ENABLED\)[\s\S]*OASIS AI Analyzer Paused/);
+  assert.match(analyzer, /OASIS_ANALYZER_ENABLED\s*=\s*true/);
+  assert.match(analyzer, /if \(!OASIS_ANALYZER_ENABLED\)[\s\S]*OASIS Analyzer Off/);
+  assert.doesNotMatch(analyzer, /\.entities\.[A-Za-z]+\.(?:create|update|delete|bulkCreate)\s*\(/,
+    "no direct entity write from the analyzer");
+  assert.match(analyzer, /manageOASISRecords\('create_upload', data\)/);
   assert.doesNotMatch(patientDetails, /<AIProactiveOASISAssistant|<AIGeneratedOASISAssessment/);
 });
 
-test("OASIS AI, analytics, reporting, and workflow surfaces default to static pre-hook pauses", async () => {
+// The owner turned every OASIS surface on on 2026-10-08 ("turn everything
+// on"). What stays pinned is HOW each is safe: each reaches records only
+// through its reviewed server route — the scoped upload list, the OASIS record
+// broker, the response writer, or the chart-checked AI endpoint — never a
+// direct entity call; and each keeps a static off switch that mounts no hook,
+// query or SDK call, so a deployment can still turn it off without a data path.
+test("OASIS surfaces reach records only through reviewed server routes and keep a static off switch", async () => {
   const surfaces = [
-    ["src/components/hub-tabs/OASISReview.jsx", "OASIS_AI_REVIEW_ENABLED", "OASIS AI Suggestion Review Paused"],
-    ["src/components/hub-tabs/OASISAnalyticsDashboard.jsx", "OASIS_AI_ANALYTICS_ENABLED", "OASIS AI Analytics Paused"],
-    ["src/components/hub-tabs/OASISClinicalReview.jsx", "OASIS_CLINICAL_AI_ENABLED", "OASIS Clinical AI Review Paused"],
-    ["src/components/hub-tabs/OASISAuditDashboard.jsx", "OASIS_AUDIT_AI_ENABLED", "OASIS AI Audit Dashboard Paused"],
-    ["src/components/reports/OASISComplianceReport.jsx", "OASIS_COMPLIANCE_REPORT_ENABLED", "OASIS Compliance Report Paused"],
-    ["src/components/hub-tabs/SmartOASISAssessment.jsx", "SMART_OASIS_ASSESSMENT_ENABLED", "Smart OASIS Assessment Paused"],
-    ["src/components/clinical/OASISQuickUpdate.jsx", "OASIS_QUICK_UPDATE_ENABLED", "OASIS Quick Update Paused"],
-    ["src/components/hub-tabs/OASISComplianceReview.jsx", "OASIS_COMPLIANCE_REVIEW_ENABLED", "OASIS Compliance AI Review Paused"],
-    ["src/components/hub-tabs/OASISDocumentationReview.jsx", "OASIS_DOCUMENTATION_REVIEW_ENABLED", "OASIS Documentation AI Review Paused"],
-    ["src/components/oasis/AIGeneratedOASISAssessment.jsx", "AI_OASIS_ASSESSMENT_ENABLED", "AI OASIS Assessment Guidance Paused"],
+    ["src/components/hub-tabs/OASISReview.jsx", "OASIS_AI_REVIEW_ENABLED", ["invoke:listOASISUploads"]],
+    ["src/components/hub-tabs/OASISAnalyticsDashboard.jsx", "OASIS_AI_ANALYTICS_ENABLED", ["invoke:listOASISUploads"]],
+    ["src/components/hub-tabs/OASISClinicalReview.jsx", "OASIS_CLINICAL_AI_ENABLED", []],
+    ["src/components/hub-tabs/OASISAuditDashboard.jsx", "OASIS_AUDIT_AI_ENABLED",
+      ["broker:list_auditors", "broker:list_audits", "broker:update_audit"]],
+    ["src/components/reports/OASISComplianceReport.jsx", "OASIS_COMPLIANCE_REPORT_ENABLED", ["broker:assessment_report"]],
+    ["src/components/hub-tabs/SmartOASISAssessment.jsx", "SMART_OASIS_ASSESSMENT_ENABLED", ["writer:saveOfficialResponses"]],
+    ["src/components/clinical/OASISQuickUpdate.jsx", "OASIS_QUICK_UPDATE_ENABLED", ["writer:saveOfficialResponses"]],
+    ["src/components/hub-tabs/OASISComplianceReview.jsx", "OASIS_COMPLIANCE_REVIEW_ENABLED", []],
+    ["src/components/hub-tabs/OASISDocumentationReview.jsx", "OASIS_DOCUMENTATION_REVIEW_ENABLED", []],
+    ["src/components/oasis/AIGeneratedOASISAssessment.jsx", "AI_OASIS_ASSESSMENT_ENABLED", ["invoke:generateOASISAssessment"]],
   ];
 
-  for (const [path, flag, notice] of surfaces) {
+  for (const [path, flag, routes] of surfaces) {
     const source = await read(path);
-    assert.match(source, new RegExp(`${flag}\\s*=\\s*false`), `${path} must default off`);
+    assert.match(source, new RegExp(`const ${flag}\\s*=\\s*true;`), `${path} is on`);
+    assert.doesNotMatch(source, /\.entities\.[A-Za-z]+\.[A-Za-z]+\s*\(/, `${path} makes no direct entity call`);
+    const found = [
+      ...[...source.matchAll(/functions\.invoke\(\s*'([A-Za-z]+)'/g)].map((m) => `invoke:${m[1]}`),
+      ...[...source.matchAll(/manageOASISRecords\(\s*['"]([a-z_]+)['"]/g)].map((m) => `broker:${m[1]}`),
+      ...(/saveOfficialResponses\(/.test(source) ? ["writer:saveOfficialResponses"] : []),
+    ];
+    assert.deepEqual([...new Set(found)].sort(), routes, `${path} uses exactly its reviewed routes`);
+    assert.equal((source.match(/functions\.invoke\(/g) || []).length,
+      found.filter((route) => route.startsWith("invoke:")).length,
+      `${path} has no function call this list cannot name`);
+
     const wrapperAndTail = source.slice(source.lastIndexOf("export default function"));
-    const enabledMount = wrapperAndTail.indexOf("return <");
+    const enabledMount = wrapperAndTail.indexOf("return <Enabled");
     const wrapperEnd = enabledMount >= 0 ? wrapperAndTail.indexOf("\n}", enabledMount) : -1;
     const wrapper = wrapperEnd >= 0 ? wrapperAndTail.slice(0, wrapperEnd + 2) : wrapperAndTail;
-    assert.match(wrapper, new RegExp(`if \\(!${flag}\\)`), `${path} must gate before enabled component mount`);
-    assert.ok(wrapper.includes(notice), `${path} must render its static pause notice`);
+    assert.match(wrapper, new RegExp(`if \\(!${flag}\\)`), `${path} keeps its off switch before the mount`);
+    assert.match(wrapper, /switched off for this deployment/, `${path} says what its off switch means`);
     assert.doesNotMatch(wrapper, /useQuery\s*\(|useMutation\s*\(|base44\.|InvokeLLM|invokeLLM/);
   }
 });

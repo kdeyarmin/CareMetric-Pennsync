@@ -4125,9 +4125,8 @@ going backwards, and the totals are the block's to state.
 owner turned the admin, AI, security, education and discharge screens back on**
 — another printer run, not an adjustment of anything above it.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 99 declared, 167/292 landable call sites SERVED, 125 still to adopt
@@ -4147,6 +4146,39 @@ incident count, was written to list the agency's incidents and narrow them on
 the screen rather than filter on a field the incident route refuses, so it
 landed in SERVED instead of adding a refused site. The totals are the block's
 to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner turned the OASIS Center back on** — another printer run, not an
+adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 97 declared, 161/283 landable call sites SERVED, 122 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 73 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, Physician.create
+  of those 122, across 36 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 121 need a named capability
+```
+
+**No route was adopted between these two blocks, and the move is a POPULATION
+change.** The OASIS Center's screens stopped calling entities and reach OASIS
+records through the OASIS record broker and the scoped upload list instead, and
+nine never-mounted duplicate OASIS components were deleted. Nine landable call
+sites left with them: six that a declared route served (among them the two
+pathway-library reads, the audit queue's staff read and the compliance report's
+audit read), two that passed arguments the scan cannot read, and one unrouted
+write — the automation engine's patient-alert create, which the broker now makes
+on the server. Two of those were their key's only call site, the pathway
+library's filtered read and the chart pusher's recommendation create, and a
+declared route nothing calls fails this gate, so both routes were WITHDRAWN in
+the same change: the declared count fell by two without anything being refused
+or reclassified. The compliance-audit create moved onto the unproved list,
+because its one call site that passed a literal payload was in a deleted
+component; it is the same route over the same contract. The OASIS entities'
+own call sites were never landable here and move the destination gate instead.
+The totals are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4283,15 +4315,15 @@ different kinds of work:
   confidently showing nobody. The approver dropdown in the same file was repaired
   and asks only for `tenant_role`, which the roster does project. That contrast
   is the reason a refusal is read per SITE and not per file.
-- **Seventy-five pass arguments the scan cannot read**, because the call builds
+- **Seventy-three pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Forty-six have no route declared at all**, over thirty-four entity and
-  operation keys: thirty-two reads over twenty-one keys, and fourteen writes over
-  thirteen.
+- **Forty-five have no route declared at all**, over thirty-three entity and
+  operation keys: thirty-two reads over twenty-one keys, and thirteen writes over
+  twelve.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
   adding two branches' deltas is wrong in both directions. **The write half fell
@@ -4301,8 +4333,8 @@ different kinds of work:
   back, so a bucket nobody adopted from has moved in both directions. That is
   what a remainder does: it is a property of what is LEFT, and of what ARRIVES.
   The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.76 call sites and a write
-  key 1.28, so a read port has historically served many screens per route while
+  the sites already served: a read key there carries 2.71 call sites and a write
+  key 1.29, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.52 sites and a
   write key 1.08, which is nothing like the served spread.
@@ -4442,6 +4474,24 @@ different kinds of work:
   so the served read pair went from 128 sites over 49 keys to 135 over the same
   49 and its ratio rose with no route declared. Nothing was declared and nothing
   was repaired; both pools grew because the population did.
+
+  **And again when the OASIS Center was turned back on, which is the first
+  head where a remainder QUOTIENT held while both of its terms moved.** The
+  automation engine's patient-alert create left the no-route pool with its key —
+  the OASIS record broker now makes that write on the server — so the
+  remainder's write pair went from fourteen sites over thirteen keys to thirteen
+  over twelve, and its ratio printed 1.08 both times. That is the failure this
+  bullet's pins were written for: a pin on the quotient alone would have seen no
+  change in a head where the population moved, and only the integer pair shows
+  it. The remainder's read pair did not move. The served pool lost six sites as
+  the OASIS screens stopped calling entities — five reads, two of them the
+  pathway library's filtered read, whose key left with its last site and whose
+  route was withdrawn, and one write, the deleted assistant's compliance-audit
+  create, which was that key's only served site: every remaining caller passes
+  a variable, so the key left the served pool for the unproved list rather than
+  the remainder. So its read pair went from 135 sites over 49 keys to 130 over
+  48 and its write pair from 32 over 25 to 31 over 24. Nothing was declared and nothing
+  was repaired; screens moved onto a server broker the route gate does not see.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the

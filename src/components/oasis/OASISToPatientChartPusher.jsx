@@ -1,17 +1,27 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowRight, Send, CheckCircle2, Loader2 } from "lucide-react";
+import { manageOASISRecords, oasisClientKey } from "@/functions/manageOASISRecords";
 
+const PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+
+/**
+ * Turn selected documentation findings into follow-up tasks on the patient's
+ * chart. These used to be written as PatientRecommendation rows — an entity no
+ * screen reads — so a "pushed" recommendation went nowhere. They now become
+ * Tasks assigned to the clinician, created by the OASIS record broker only after
+ * it confirms the clinician may open this chart, and keyed per finding so a
+ * second click files nothing new.
+ */
 export default function OASISToPatientChartPusher({
   analysisResults,
   patientId,
-  oasisUploadId,
+  analysisId,
 }) {
   const [selectedRecs, setSelectedRecs] = useState([]);
   const [isPushing, setIsPushing] = useState(false);
@@ -20,19 +30,12 @@ export default function OASISToPatientChartPusher({
   const [pushError, setPushError] = useState(null);
   const queryClient = useQueryClient();
 
-  const createRecommendationMutation = useMutation({
-    mutationFn: (data) => base44.entities.PatientRecommendation.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['patientRecommendations', patientId] });
-    },
-  });
-
   // Generate recommendations from analysis
   const generateRecommendations = () => {
     const recs = [];
 
     // From compliance concerns
-    analysisResults.compliance_concerns?.forEach((concern, idx) => {
+    analysisResults?.compliance_concerns?.forEach((concern, idx) => {
       recs.push({
         id: `compliance-${idx}`,
         type: 'compliance',
@@ -40,13 +43,12 @@ export default function OASISToPatientChartPusher({
         description: concern.issue,
         priority: concern.severity === 'high' ? 'high' : concern.severity === 'medium' ? 'medium' : 'low',
         rationale: concern.recommendation,
-        impact: 'Improves compliance score and reduces audit risk',
-        steps: [concern.recommendation]
+        steps: [concern.recommendation].filter(Boolean),
       });
     });
 
     // From documentation improvements
-    analysisResults.documentation_improvements?.forEach((imp, idx) => {
+    analysisResults?.documentation_improvements?.forEach((imp, idx) => {
       recs.push({
         id: `doc-${idx}`,
         type: 'documentation',
@@ -54,8 +56,7 @@ export default function OASISToPatientChartPusher({
         description: `Current: ${imp.current_state}`,
         priority: 'medium',
         rationale: imp.rationale,
-        impact: imp.improved_state,
-        steps: imp.exact_text_to_add ? [imp.exact_text_to_add] : ['Review and update documentation']
+        steps: imp.exact_text_to_add ? [imp.exact_text_to_add] : ['Review and update documentation'],
       });
     });
 
@@ -65,7 +66,7 @@ export default function OASISToPatientChartPusher({
   const recommendations = generateRecommendations();
 
   const toggleRecommendation = (recId) => {
-    setSelectedRecs(prev => 
+    setSelectedRecs(prev =>
       prev.includes(recId) ? prev.filter(id => id !== recId) : [...prev, recId]
     );
   };
@@ -77,49 +78,41 @@ export default function OASISToPatientChartPusher({
     setPushError(null);
 
     const recsToCreate = recommendations.filter(rec => selectedRecs.includes(rec.id));
-    const failedTitles = [];
-
-    // Create each recommendation independently so one failure doesn't abort the
-    // rest, and so a partial push is reported instead of silently swallowed.
-    for (const rec of recsToCreate) {
-      try {
-        await createRecommendationMutation.mutateAsync({
-          patient_id: patientId,
-          source_type: 'oasis_analysis',
-          source_id: oasisUploadId,
-          recommendation_type: rec.type,
-          title: rec.title,
-          description: rec.description,
-          priority: rec.priority,
-          ai_rationale: rec.rationale,
-          expected_impact: rec.impact,
-          implementation_steps: rec.steps,
-          suggested_by_user: 'AI Assistant',
-          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
-        });
-      } catch (error) {
-        console.error("Error pushing recommendation:", error);
-        failedTitles.push(rec.title);
+    try {
+      const { results = [] } = await manageOASISRecords('create_tasks', {
+        patient_id: patientId,
+        tasks: recsToCreate.map((rec) => ({
+          key: oasisClientKey('oasis-finding', patientId, analysisId, rec.id, rec.title),
+          title: String(rec.title || 'OASIS documentation follow-up').slice(0, 200),
+          description: [rec.description, rec.steps?.length ? `Steps:\n${rec.steps.map((step) => `• ${step}`).join('\n')}` : '']
+            .filter(Boolean).join('\n\n'),
+          type: 'document',
+          priority: PRIORITIES.has(rec.priority) ? rec.priority : 'medium',
+          ai_reason: rec.rationale || 'Found by the OASIS documentation analysis',
+        })),
+      });
+      const failedTitles = recsToCreate
+        .filter((rec, index) => !['created', 'existing'].includes(results[index]?.status))
+        .map((rec) => rec.title);
+      const succeeded = recsToCreate.length - failedTitles.length;
+      setPushedCount(succeeded);
+      if (failedTitles.length > 0) {
+        setPushError(`${succeeded} of ${recsToCreate.length} added. ${failedTitles.length} failed — please retry the remaining items.`);
+        const failedIds = recommendations.filter(r => failedTitles.includes(r.title)).map(r => r.id);
+        setSelectedRecs(failedIds);
+      } else {
+        setSelectedRecs([]);
       }
+      if (succeeded > 0) {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        setPushSuccess(true);
+        setTimeout(() => setPushSuccess(false), 3000);
+      }
+    } catch (error) {
+      setPushError(error?.message || 'The tasks could not be created. Please try again.');
+    } finally {
+      setIsPushing(false);
     }
-
-    const succeeded = recsToCreate.length - failedTitles.length;
-    setPushedCount(succeeded);
-
-    if (failedTitles.length > 0) {
-      setPushError(`${succeeded} of ${recsToCreate.length} added. ${failedTitles.length} failed — please retry the remaining items.`);
-      // Keep only the failed items selected so the user can retry just those.
-      const failedIds = recommendations.filter(r => failedTitles.includes(r.title)).map(r => r.id);
-      setSelectedRecs(failedIds);
-    } else {
-      setSelectedRecs([]);
-    }
-
-    if (succeeded > 0) {
-      setPushSuccess(true);
-      setTimeout(() => setPushSuccess(false), 3000);
-    }
-    setIsPushing(false);
   };
 
   if (!patientId || recommendations.length === 0) return null;
@@ -130,7 +123,7 @@ export default function OASISToPatientChartPusher({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <ArrowRight className="w-5 h-5 text-blue-600" />
-            Push to Patient Chart
+            Add Findings as Follow-up Tasks
           </CardTitle>
           <Badge variant="outline">
             {selectedRecs.length} selected
@@ -139,7 +132,7 @@ export default function OASISToPatientChartPusher({
       </CardHeader>
       <CardContent className="pt-4">
         <p className="text-sm text-slate-600 mb-4">
-          Select AI-generated recommendations to add to the patient's chart as suggested actions
+          Select documentation findings to add to your task list for this patient
         </p>
 
         <div className="space-y-2 mb-4 max-h-96 overflow-y-auto">
@@ -193,11 +186,11 @@ export default function OASISToPatientChartPusher({
             className="bg-blue-600 hover:bg-blue-700"
           >
             {isPushing ? (
-              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Pushing...</>
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Adding...</>
             ) : pushSuccess ? (
-              <><CheckCircle2 className="w-4 h-4 mr-2" /> Pushed!</>
+              <><CheckCircle2 className="w-4 h-4 mr-2" /> Added!</>
             ) : (
-              <><Send className="w-4 h-4 mr-2" /> Push {selectedRecs.length} to Chart</>
+              <><Send className="w-4 h-4 mr-2" /> Add {selectedRecs.length} as Tasks</>
             )}
           </Button>
         </div>
@@ -206,7 +199,7 @@ export default function OASISToPatientChartPusher({
           <Alert className="bg-green-50 border-green-200 mt-3">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
             <AlertDescription className="text-green-800">
-              Successfully pushed {pushedCount} recommendation{pushedCount === 1 ? '' : 's'} to patient chart
+              Added {pushedCount} follow-up task{pushedCount === 1 ? '' : 's'} for this patient
             </AlertDescription>
           </Alert>
         )}
