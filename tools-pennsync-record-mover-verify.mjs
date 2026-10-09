@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { referenceTarget } from './tools-pennsync-record-mover-references.mjs';
 
 /**
  * The record mover's verifier.
@@ -127,22 +128,17 @@ export async function checkCountsAndContent({ db, landing }) {
  * 3: every `<name>_id` column that names another planned table must hold the id of a
  * row that exists there and, where both tables carry an agency, in the same one.
  * Pass `links` to name them yourself (the archive plan names the target ENTITY of a
- * reference, not its column, so the column is inferred from the name, with the usual
- * `target_` / `related_` style prefixes removed); the result says which it used.
+ * reference, not its column, so the column is inferred from the name by the rule the
+ * rollback also uses, in `tools-pennsync-record-mover-references.mjs`, which removes the
+ * usual `target_` / `related_` style prefixes); the result says which it used.
  */
-const REFERENCE_PREFIXES = ['target_', 'related_', 'parent_', 'source_', 'linked_', 'primary_', 'referring_', 'original_'];
-
 export function inferLinks(landing) {
   const tables = new Set(landing.map((r) => r.table));
   const found = new Map();
   for (const r of landing) {
     for (const column of Object.keys(r.row)) {
-      const m = /^([a-z][a-z0-9_]*)_id$/.exec(column);
-      if (!m || column === 'agency_id') continue;
-      const base = REFERENCE_PREFIXES.reduce((name, p) => (name.startsWith(p) ? name.slice(p.length) : name), m[1]);
-      for (const target of new Set([m[1], base])) {
-        if (tables.has(target)) found.set(`${r.table}.${column}`, { table: r.table, column, target });
-      }
+      const target = referenceTarget(column, tables);
+      if (target) found.set(`${r.table}.${column}`, { table: r.table, column, target });
     }
   }
   return [...found.values()].sort((a, b) => (`${a.table}.${a.column}` < `${b.table}.${b.column}` ? -1 : 1));
