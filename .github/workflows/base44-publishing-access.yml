@@ -1,8 +1,18 @@
 name: Base44 publishing access (read-only)
 
-# A diagnostic, not a deployment. It checks only the availability of the three
-# documented CLI credential inputs; it never prints credentials or starts login.
-# Production environment protection rules, when configured, remain in force.
+# A diagnostic, not a deployment. It classifies the configured credential by
+# its shape and proves whether Base44 accepts it with one read-only GET of the
+# production app under each header Base44 documents, printing only HTTP status
+# codes. It never prints a credential, never logs in, never deploys and never
+# writes. Production environment protection rules, when configured, remain in
+# force.
+#
+# Why the shape matters (measured 2026-10-09): the Base44 CLI the deployment
+# workflows use treats BASE44_API_KEY as a credential only when it starts
+# `b44k_` (a workspace API key). Base44's personal access tokens are sent as
+# `Authorization: Bearer`, and its account API keys (`api_key` header) stop
+# working on 2026-10-15. A secret of the wrong kind is present but unusable,
+# and this job says which kind it is.
 on:
   workflow_dispatch:
   push:
@@ -24,7 +34,7 @@ jobs:
     environment: production
     timeout-minutes: 3
     steps:
-      - name: Report credential availability only
+      - name: Classify the credential and probe it read-only
         env:
           BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
           BASE44_ACCESS_TOKEN: ${{ secrets.BASE44_ACCESS_TOKEN }}
@@ -33,27 +43,60 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const workspaceKey = typeof process.env.BASE44_API_KEY === 'string'
-            && process.env.BASE44_API_KEY.trim().startsWith('b44k_');
-          const accessToken = Boolean(process.env.BASE44_ACCESS_TOKEN?.trim());
-          const refreshToken = Boolean(process.env.BASE44_REFRESH_TOKEN?.trim());
-          const report = {
-            operation: 'credential_availability_only',
-            target_app_id: '694ec16e72e01b60d22f7cbf',
-            workspace_key_configured: workspaceKey,
-            access_token_configured: accessToken,
-            refresh_token_configured: refreshToken,
-            supported_credentials_configured: workspaceKey || (accessToken && refreshToken),
-            credentials_validated: false,
-            login_attempted: false,
-            deployment_attempted: false,
-            production_deployed: false,
-          };
-          console.log(JSON.stringify(report, null, 2));
-          const state = report.supported_credentials_configured
-            ? 'A supported credential input is configured. Validity and deployment are NOT yet verified.'
-            : 'BLOCKED: no supported Base44 publishing credential is configured for this production job.';
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-            '# Base44 publishing access — diagnostic only\n\n' + state
-            + '\n\nNo secret values were emitted. No login, site publication, backend deployment, data mutation, or DNS change was performed.\n');
+          const APP = '694ec16e72e01b60d22f7cbf';
+          const raw = typeof process.env.BASE44_API_KEY === 'string' ? process.env.BASE44_API_KEY : '';
+          const key = raw.trim();
+          // The kind is read from the shape only. The one fragment ever printed
+          // is a short lowercase prefix before the first underscore (such as
+          // `b44k`), which identifies the key type and carries no secret.
+          const prefix = /^([a-z0-9]{2,8})_/.exec(key)?.[1] ?? null;
+          const kind = !key ? 'absent'
+            : /^BASE44_API_KEY\s*=/.test(key) ? 'pasted_with_variable_name'
+            : /^["'`]|["'`]$/.test(key) ? 'pasted_with_quotes'
+            : /\s/.test(key) ? 'contains_whitespace'
+            : key.startsWith('b44k_') ? 'workspace_api_key'
+            : /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(key) ? 'jwt_session_token'
+            : 'other';
+          async function probe(headers) {
+            try {
+              const response = await fetch(`https://app.base44.com/api/apps/${APP}`, {
+                method: 'GET', headers, signal: AbortSignal.timeout(20000),
+              });
+              await response.arrayBuffer().catch(() => null);
+              return response.status;
+            } catch {
+              return 'unreachable';
+            }
+          }
+          (async () => {
+            const usable = key && !/\s/.test(key);
+            const report = {
+              operation: 'credential_shape_and_read_only_probe',
+              target_app_id: APP,
+              api_key_secret_present: Boolean(key),
+              api_key_kind: kind,
+              api_key_prefix: prefix,
+              workspace_key_configured: kind === 'workspace_api_key',
+              access_token_configured: Boolean(process.env.BASE44_ACCESS_TOKEN?.trim()),
+              refresh_token_configured: Boolean(process.env.BASE44_REFRESH_TOKEN?.trim()),
+              probe_get_app_with_api_key_header: usable ? await probe({ api_key: key }) : 'not_attempted',
+              probe_get_app_with_bearer_header: usable ? await probe({ Authorization: `Bearer ${key}` }) : 'not_attempted',
+              login_attempted: false,
+              deployment_attempted: false,
+              production_deployed: false,
+            };
+            report.cli_can_use_api_key = report.workspace_key_configured;
+            console.log(JSON.stringify(report, null, 2));
+            const accepted = [report.probe_get_app_with_api_key_header, report.probe_get_app_with_bearer_header]
+              .some((status) => status === 200);
+            const state = report.cli_can_use_api_key && accepted
+              ? 'A workspace API key is configured and Base44 accepted it for a read of the production app.'
+              : report.cli_can_use_api_key
+                ? 'A workspace API key is configured, but Base44 did not accept it for a read of the production app.'
+                : `BLOCKED for the deployment workflows: BASE44_API_KEY is ${kind}${prefix ? ` (prefix ${prefix}_)` : ''}, and the Base44 CLI only uses a key starting b44k_.`
+                  + (accepted ? ' Base44 did accept it for a read, so it is a valid credential of another kind.' : '');
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '# Base44 publishing access — diagnostic only\n\n' + state
+              + '\n\nNo secret values were emitted. One read-only GET per header; no login, site publication, backend deployment, data mutation, or DNS change was performed.\n');
+          })();
           NODE
