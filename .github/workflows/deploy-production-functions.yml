@@ -111,7 +111,17 @@ jobs:
           cli_dir="$RUNNER_TEMP/base44-functions-cli"
           mkdir -p "$cli_dir"
           printf '{"private":true}\n' > "$cli_dir/package.json"
-          pnpm --dir "$cli_dir" add --ignore-scripts base44 > "$RUNNER_TEMP/base44-cli-install.log" 2>&1
+          # Pinned: 0.1.32 is the version verified to bundle base44/shared/ and
+          # resolve base44:runtime for the editor's newer function format. It
+          # depends on @deno/loader from JSR's npm registry (npm.jsr.io), a
+          # URL-resolved package that pnpm 11 refuses by default, so that check
+          # is relaxed for this one isolated install, outside the workspace.
+          if ! pnpm --dir "$cli_dir" add --ignore-scripts --config.block-exotic-subdeps=false base44@0.1.32 \
+            > "$RUNNER_TEMP/base44-cli-install.log" 2>&1; then
+            echo 'BASE44_CLI_INSTALL_FAILED: nothing was deployed.'
+            tail -n 20 "$RUNNER_TEMP/base44-cli-install.log"
+            exit 2
+          fi
           cli="$cli_dir/node_modules/.bin/base44"
           # A protected metadata read must succeed before anything is deployed.
           if ! timeout --kill-after=5s 45s "$cli" --app-id 694ec16e72e01b60d22f7cbf \
