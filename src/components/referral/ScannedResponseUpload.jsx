@@ -1,12 +1,10 @@
 import { useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { updateAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
-import { invokeLLMWithFile } from "@/lib/invokeLLM";
+import { extractReferralResponseScan } from '@/functions/extractReferralResponseScan';
 import { validateReferralFile, resolveMimeType, REFERRAL_ACCEPT_ATTR } from "./referralUploadUtils";
 import {
   openItemsForExtraction,
-  buildResponseExtractionPrompt,
-  RESPONSE_EXTRACTION_SCHEMA,
   usableAnswers,
 } from "./responseIngestion.js";
 import { applyFaxAnswersToItems } from "./followUpFaxMatcher.js";
@@ -77,12 +75,11 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
       if (referralIdRef.current !== forReferralId) return; // referral changed mid-flight — discard
       setDocUrl(file_url);
       const mime = resolveMimeType(file) || "application/pdf";
-      const extraction = await invokeLLMWithFile({
-        model: "automatic",
-        prompt: buildResponseExtractionPrompt(openItems) +
-          (mime.includes("image") ? "\n\nThis is a scanned image — read handwriting carefully." : ""),
-        file_urls: [file_url],
-        response_json_schema: RESPONSE_EXTRACTION_SCHEMA,
+      const extraction = await extractReferralResponseScan({
+        fileUrl: file_url,
+        referralId: forReferralId,
+        agencyId: referral.agency_id,
+        isImage: mime.includes('image'),
       });
       if (referralIdRef.current !== forReferralId) return; // referral changed mid-flight — discard
       const usable = usableAnswers(extraction, openItems);

@@ -11,7 +11,8 @@ export async function smartNoteRequest(req) {
   const base44 = createClientFromRequest(new Request(req.url, { headers }));
   const user = await base44.auth.me();
   if (!user?.id || user.is_active === false || user.disabled === true || user.is_service === true) throw Object.assign(new Error('Unauthorized'), { status: 401 });
-  try { await requireClinicalWorkspace(base44); }
+  let context;
+  try { context = await requireClinicalWorkspace(base44); }
   catch { throw Object.assign(new Error('Active clinical workspace required'), { status: 403 }); }
   const body = await req.text();
   if (body.length > 100000) throw Object.assign(new Error('Note input is too large'), { status: 413 });
@@ -19,7 +20,7 @@ export async function smartNoteRequest(req) {
   try { input = JSON.parse(body); }
   catch { throw Object.assign(new Error('Invalid request'), { status: 400 }); }
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Object.assign(new Error('Invalid request'), { status: 400 });
-  return { base44, input };
+  return { base44, input, user, context };
 }
 export function noteText(value, max = 30000) {
   if (typeof value !== 'string' || !value.trim() || value.length > max) throw Object.assign(new Error('Invalid note text'), { status: 400 });
