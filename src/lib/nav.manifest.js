@@ -120,39 +120,7 @@ export const NAV_MANIFEST = [
     breadcrumbParent: "Patients",
     keywords: ["duplicate", "merge", "deduplicate"],
   },
-  {
-    // Care Plans hub (list + drag-and-drop builder tab). Ported back from the
-    // live PENNSync app; the Builder and Automatic pages below are its
-    // non-sidebar children.
-    page: "CarePlanManagement",
-    label: "Care Plans",
-    icon: Target,
-    category: "Patient Care",
-    adminOnly: false,
-    access: "nursing",
-    breadcrumbParent: null,
-    keywords: ["care plan", "goals", "treatment plan"],
-  },
-  {
-    page: "CarePlanBuilder",
-    label: "Care Plan Builder",
-    icon: Target,
-    category: null,
-    adminOnly: false,
-    access: "nursing",
-    breadcrumbParent: "CarePlanManagement",
-    keywords: ["care plan", "builder", "create"],
-  },
-  {
-    page: "AutomaticCarePlans",
-    label: "Automatic Care Plans",
-    icon: Zap,
-    category: null,
-    adminOnly: false,
-    access: "nursing",
-    breadcrumbParent: "CarePlanManagement",
-    keywords: ["auto care plan", "ai care plan"],
-  },
+
   {
     // Hub combining OASIS assessment entry (SmartOASISAssessment, the default
     // "Assessment" tab) with the former OASIS Analyzer / Review / Clinical /

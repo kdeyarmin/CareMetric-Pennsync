@@ -24,7 +24,14 @@ import Dashboard from '@/pages/Dashboard';
 // Spec/test files live alongside the pages and are never routed, but an
 // unfiltered glob still emits a chunk for each one — publishing test code and
 // fixtures to the asset host. Exclude them from the glob.
-const pageModules = import.meta.glob(['./pages/*.jsx', '!./pages/*.spec.jsx', '!./pages/*.test.jsx']);
+const pageModules = import.meta.glob([
+  './pages/*.jsx',
+  '!./pages/*.spec.jsx',
+  '!./pages/*.test.jsx',
+  '!./pages/CarePlanManagement.jsx',
+  '!./pages/CarePlanBuilder.jsx',
+  '!./pages/AutomaticCarePlans.jsx',
+]);
 const factoryFor = (name) => pageModules[`./pages/${name}.jsx`];
 
 // NOTE: stale-chunk auto-recovery (the "Failed to fetch dynamically imported
@@ -217,10 +224,10 @@ export const REDIRECTS = [
   { from: '/UserActivityLog', to: '/UserActivityReport?tab=log' },
   { from: '/PDFTemplateLibrary', to: '/TemplateManagement?tab=pdf' },
 
-  // NOTE: the Care Plans feature (CarePlanManagement, CarePlanBuilder,
-  // AutomaticCarePlans, their components, backend functions and data entities)
-  // was ported back from the live PENNSync app, so those paths are real
-  // manifest-derived routes again — their former removal redirects are gone.
+  // Retired care-plan screens: preserve bookmarks without opening generators.
+  { from: '/CarePlanManagement', to: '/Patients' },
+  { from: '/CarePlanBuilder', to: '/Patients' },
+  { from: '/AutomaticCarePlans', to: '/Patients' },
 ];
 
 export const MAIN_PAGE = 'Dashboard';
