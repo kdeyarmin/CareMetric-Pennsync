@@ -280,7 +280,7 @@ test('App gates on broker status and never on legacy User flags', async () => {
   // call's answer. Since 2026-10-09 that read lives in its own helper.
   assert.match(app, /onAccepted=\{\(\) => verifyAiContentAgreementAcceptance\(/);
   const verify = await readFile(
-    new URL('../../src/functions/verifyAiContentAgreementAcceptance.js', import.meta.url),
+    new URL('../../src/lib/verifyAiContentAgreementAcceptance.js', import.meta.url),
     'utf8',
   );
   assert.match(verify, /await getAiContentAgreementStatus\(\)/);

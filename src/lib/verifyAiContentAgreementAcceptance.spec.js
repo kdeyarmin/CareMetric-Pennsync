@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { verifyAiContentAgreementAcceptance } from '@/functions/verifyAiContentAgreementAcceptance';
+import { verifyAiContentAgreementAcceptance } from '@/lib/verifyAiContentAgreementAcceptance';
 const { readStatus } = vi.hoisted(() => ({ readStatus: vi.fn() }));
 vi.mock('@/functions/getAiContentAgreementStatus', () => ({ getAiContentAgreementStatus: readStatus }));
 const key = ['aiContentAgreementStatus', 'nurse-1', 'agency-1'];
