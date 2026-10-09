@@ -1237,6 +1237,59 @@ async function handleInboundConsentKeyword(base44, telnyxCreds, event, payload) 
 }
 
 // ============================ MESSAGING ============================
+// <<<BEGIN SHARED HELPER: telnyxSmsOutcome — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/messaging/smsRedrive.js and
+// src/components/voice/telnyxRetry.js.
+const TELNYX_OPT_OUT_ERROR_CODE = "40300";
+const CONNECT_PHASE_FAILURE = /\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)\b|getaddrinfo|dns error|failed to lookup address|tcp connect error|client error \(Connect\)|connection refused/i;
+function connectionNeverOpened(err) {
+  if (!err || err.name === "AbortError" || err.name === "TimeoutError") return false;
+  const cause = err.cause && typeof err.cause === "object" ? err.cause : {};
+  return [err.code, err.message, cause.code, cause.message]
+    .some((part) => typeof part === "string" && CONNECT_PHASE_FAILURE.test(part));
+}
+function telnyxErrorCode(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const raw = first && (typeof first.code === "string" || typeof first.code === "number")
+    ? String(first.code).trim() : "";
+  return /^\d{1,10}$/.test(raw) ? raw : null;
+}
+function telnyxErrorsInclude(errors, code) {
+  return Array.isArray(errors) && errors.some((error) => !!error
+    && (typeof error.code === "string" || typeof error.code === "number")
+    && String(error.code).trim() === code);
+}
+function telnyxApiFailureReason(httpStatus, errors) {
+  const status = Number(httpStatus);
+  const shown = Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0;
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx API error: HTTP ${shown}, code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxTransportFailureReason(err, timeoutMs) {
+  if (err && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    return `Outcome unknown: Telnyx did not answer within ${timeoutMs} ms, so the text may have been sent. Not retried automatically.`;
+  }
+  if (connectionNeverOpened(err)) {
+    return "Connection never opened: Telnyx could not be reached, so the text was not sent.";
+  }
+  return "Outcome unknown: the connection to Telnyx failed after the request may have been sent. Not retried automatically.";
+}
+function telnyxDeliveryFailureReason(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx delivery failed: code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxSendStatus(responseBody) {
+  const to = responseBody && responseBody.data && Array.isArray(responseBody.data.to)
+    ? responseBody.data.to[0] : null;
+  const status = String((to && to.status) || "").toLowerCase();
+  return status === "queued" || status === "sending" || status === "" ? "queued" : "sent";
+}
+// <<<END SHARED HELPER: telnyxSmsOutcome>>>
+
 // Monotonic rank so a late/out-of-order delivery webhook can't downgrade a
 // terminal state (e.g. a re-delivered 'sending' arriving after 'sent'). Mirrors
 // the SMS_RANK guard the former handleTwilioSmsStatus enforced.
@@ -1260,9 +1313,11 @@ async function handleOutboundMessageStatus(base44, payload) {
     return Response.json({ success: true, status: row.status, deduped: true });
   }
   const update = { status: mapped };
+  const firstError = Array.isArray(payload?.errors) ? payload.errors[0] : null;
   if (mapped === 'failed') {
-    const err = Array.isArray(payload?.errors) ? payload.errors[0] : null;
-    update.failure_reason = err?.detail || err?.title || 'Delivery failed';
+    // Telnyx's own code leads the reason (smsRedrive.js format). A receipt's
+    // failure is never redriven: Telnyx accepted the message.
+    update.failure_reason = telnyxDeliveryFailureReason(payload?.errors);
   }
   await base44.asServiceRole.entities.SmsMessage.update(row.id, update);
 
@@ -1273,7 +1328,7 @@ async function handleOutboundMessageStatus(base44, payload) {
     await base44.asServiceRole.entities.Notification.create({
       user_email: row.nurse_email,
       title: '⚠️ Text not delivered',
-      message: `Your text to ${row.to_number} could not be delivered (${update.failure_reason}). Verify the number and try again.`,
+      message: `Your text to ${row.to_number} could not be delivered (${firstError?.detail || firstError?.title || 'delivery failed'}). Verify the number and try again.`,
       type: 'sms_failed', priority: 'high', metadata: { related_entity: 'SmsMessage', related_entity_id: row.id }, is_read: false,
     }).catch((err) => console.error('Failed to send sms failure notification:', err));
   }

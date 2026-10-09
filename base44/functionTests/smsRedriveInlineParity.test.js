@@ -33,22 +33,36 @@ async function loadInline(entryPath, names) {
 const REASONS = [
   "Outcome unknown: Telnyx did not answer within 15000 ms, so the text may have been sent. Not retried automatically.",
   "Outcome unknown: Telnyx did not answer the redrive in time, so the text may have been sent. Not retried automatically.",
+  "Outcome unknown: the connection to Telnyx failed after the request may have been sent. Not retried automatically.",
+  "Connection never opened: Telnyx could not be reached, so the text was not sent.",
   "Timed out after 15000 ms reaching Telnyx",
   "Timed out reaching Telnyx (redrive)",
   "Network error reaching Telnyx: dns error",
   "Telnyx API error (503)",
+  "Telnyx API error (502)",
   "Invalid response from Telnyx API (502)",
   "Invalid 'To' number (503 while validating)",
   "Blocked due to STOP message",
   "Recipient opted out",
   "rate limit exceeded",
+  "Telnyx delivery failed: code 40006: Carrier temporarily unavailable",
   "",
   null,
 ];
+// Every status, in the format the writers now use, with and without a code.
+for (let status = 100; status <= 599; status += 1) {
+  REASONS.push(smsRedrive.telnyxApiFailureReason(status, [{ code: "10011", detail: "Too many requests" }]));
+  REASONS.push(smsRedrive.telnyxApiFailureReason(status, []));
+}
+REASONS.push(smsRedrive.telnyxApiFailureReason(429, [{ code: smsRedrive.TELNYX_OPT_OUT_ERROR_CODE, title: "Blocked" }]));
+REASONS.push(smsRedrive.telnyxApiFailureReason(503, [{ code: smsRedrive.TELNYX_OPT_OUT_ERROR_CODE }]));
 
 test("redriveFailedSms inlines the smsRedrive policy unchanged", async () => {
   const inline = await loadInline("../functions/redriveFailedSms/entry.ts", ["isTransientFailureReason", "shouldRedriveSms"]);
   const now = Date.parse("2026-06-04T12:05:00Z");
+  // The policy is not vacuous: both outcomes occur in the list.
+  assert.ok(REASONS.some((reason) => smsRedrive.isTransientFailureReason(reason)));
+  assert.ok(REASONS.some((reason) => reason && !smsRedrive.isTransientFailureReason(reason)));
   for (const reason of REASONS) {
     assert.equal(inline.isTransientFailureReason(reason), smsRedrive.isTransientFailureReason(reason), `isTransientFailureReason(${reason})`);
     const row = {

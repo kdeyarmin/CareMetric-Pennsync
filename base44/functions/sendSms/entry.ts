@@ -756,6 +756,60 @@ async function sendWithRetry(
   throw new Error('sendWithRetry exhausted attempts');
 }
 
+// ---- send outcome: failure_reason format + accepted status (smsRedrive.js) ----
+// <<<BEGIN SHARED HELPER: telnyxSmsOutcome — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/messaging/smsRedrive.js and
+// src/components/voice/telnyxRetry.js.
+const TELNYX_OPT_OUT_ERROR_CODE = "40300";
+const CONNECT_PHASE_FAILURE = /\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)\b|getaddrinfo|dns error|failed to lookup address|tcp connect error|client error \(Connect\)|connection refused/i;
+function connectionNeverOpened(err) {
+  if (!err || err.name === "AbortError" || err.name === "TimeoutError") return false;
+  const cause = err.cause && typeof err.cause === "object" ? err.cause : {};
+  return [err.code, err.message, cause.code, cause.message]
+    .some((part) => typeof part === "string" && CONNECT_PHASE_FAILURE.test(part));
+}
+function telnyxErrorCode(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const raw = first && (typeof first.code === "string" || typeof first.code === "number")
+    ? String(first.code).trim() : "";
+  return /^\d{1,10}$/.test(raw) ? raw : null;
+}
+function telnyxErrorsInclude(errors, code) {
+  return Array.isArray(errors) && errors.some((error) => !!error
+    && (typeof error.code === "string" || typeof error.code === "number")
+    && String(error.code).trim() === code);
+}
+function telnyxApiFailureReason(httpStatus, errors) {
+  const status = Number(httpStatus);
+  const shown = Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0;
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx API error: HTTP ${shown}, code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxTransportFailureReason(err, timeoutMs) {
+  if (err && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    return `Outcome unknown: Telnyx did not answer within ${timeoutMs} ms, so the text may have been sent. Not retried automatically.`;
+  }
+  if (connectionNeverOpened(err)) {
+    return "Connection never opened: Telnyx could not be reached, so the text was not sent.";
+  }
+  return "Outcome unknown: the connection to Telnyx failed after the request may have been sent. Not retried automatically.";
+}
+function telnyxDeliveryFailureReason(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx delivery failed: code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxSendStatus(responseBody) {
+  const to = responseBody && responseBody.data && Array.isArray(responseBody.data.to)
+    ? responseBody.data.to[0] : null;
+  const status = String((to && to.status) || "").toLowerCase();
+  return status === "queued" || status === "sending" || status === "" ? "queued" : "sent";
+}
+// <<<END SHARED HELPER: telnyxSmsOutcome>>>
+
 // ---- TCPA quiet hours (mirrors src/components/voice/quietHours.js) ----
 // <<<BEGIN SHARED HELPER: areaCodeTimezone — generated, edit base44/_shared/backendHelpers.mjs>>>
 const AREA_CODE_TIMEZONE = {
@@ -1379,11 +1433,11 @@ Deno.serve(async (req) => {
       });
     } catch (netErr) {
       const aborted = netErr?.name === 'AbortError';
-      const reason = aborted
-        // Not a retryable failure: Telnyx may have accepted it. smsRedrive's
-        // policy refuses "outcome unknown" so the cron cannot double-text.
-        ? `Outcome unknown: Telnyx did not answer within ${SEND_TIMEOUT_MS} ms, so the text may have been sent. Not retried automatically.`
-        : `Network error reaching Telnyx: ${netErr.message}`;
+      // A timeout, or a connection that failed after the request was written,
+      // may have been accepted: "Outcome unknown", which the redrive policy
+      // refuses so the cron cannot double-text. Only a connection that never
+      // opened says the text was not sent (and is redrivable).
+      const reason = telnyxTransportFailureReason(netErr, SEND_TIMEOUT_MS);
       await base44.asServiceRole.entities.SmsMessage
         .update(smsRow.id, { status: 'failed', failure_reason: reason }).catch(() => {});
       return Response.json(
@@ -1395,21 +1449,22 @@ Deno.serve(async (req) => {
     const data = result.data || {};
 
     if (!result.ok) {
-      // Telnyx error envelope: { errors: [{ detail, title, code }] }.
-      const firstErr = Array.isArray(data?.errors) ? data.errors[0] : null;
+      // Telnyx error envelope: { errors: [{ code, title, detail }] }. The reason
+      // leads with the HTTP status and Telnyx's code, which is what the redrive
+      // policy decides on.
       await base44.asServiceRole.entities.SmsMessage.update(smsRow.id, {
         status: 'failed',
-        failure_reason: firstErr?.detail || firstErr?.title || `Telnyx API error (${result.status})`,
+        failure_reason: telnyxApiFailureReason(result.status, data?.errors),
       });
       return Response.json({ error: 'Telnyx SMS API error', details: data }, { status: result.status });
     }
 
     // Telnyx success envelope: { data: { id, to: [{ status }], ... } }.
     const messageId = data?.data?.id || null;
-    const recipientStatus = (data?.data?.to?.[0]?.status || '').toLowerCase();
+    const storedStatus = telnyxSendStatus(data);
     await base44.asServiceRole.entities.SmsMessage.update(smsRow.id, {
       provider_message_id: messageId,
-      status: recipientStatus === 'queued' || recipientStatus === 'sending' || recipientStatus === '' ? 'queued' : 'sent',
+      status: storedStatus,
     });
 
     // Keep delivery identifiers, endpoints, patient linkage, and message
@@ -1428,7 +1483,9 @@ Deno.serve(async (req) => {
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));
 
-    return Response.json({ success: true, message_id: smsRow.id, provider_message_id: messageId, status: 'sent' });
+    // The status the row was written with: Telnyx accepting a text is not it
+    // being sent, and the delivery receipt moves the row on from here.
+    return Response.json({ success: true, message_id: smsRow.id, provider_message_id: messageId, status: storedStatus });
   } catch (error) {
     console.error('sendTelnyxSms error:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

@@ -19,6 +19,11 @@ import { isAllowedDestination, PREMIUM_AREA_CODES } from '../../src/components/v
 import { OASIS_AUDIT_THRESHOLDS, buildOasisAuditRecord } from '../../src/components/oasis/oasisAuditFlag.js';
 import { OASIS_EXTRACTED_ITEM_MAP, buildExtractedReviewItems } from '../../src/components/oasis/oasisExtractedItems.js';
 import { deriveActionTypes, evaluateRuleTrigger } from '../../src/components/oasis/workflowEngineUtils.js';
+import { CONNECT_PHASE_FAILURE, connectionNeverOpened } from '../../src/components/voice/telnyxRetry.js';
+import {
+  TELNYX_OPT_OUT_ERROR_CODE, telnyxErrorCode, telnyxErrorsInclude, telnyxApiFailureReason,
+  telnyxTransportFailureReason, telnyxDeliveryFailureReason, telnyxSendStatus,
+} from '../../src/components/messaging/smsRedrive.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -48,6 +53,25 @@ function isAllowedDestinationSource() {
 // src/components/voice/costControls.js — this copy is generated from it verbatim.
 const PREMIUM_AREA_CODES = new Set([${codes}]);
 ${isAllowedDestination.toString()}`;
+}
+
+// SMS send outcome — single source of truth is src/components/messaging/smsRedrive.js
+// (and telnyxRetry.js for the connect-phase test). Every writer of
+// SmsMessage.failure_reason uses these, and the redrive policy reads the HTTP
+// status and Telnyx error code they put first, so the writers and the reader
+// cannot drift into the prose-matching that rarely recognised a 429.
+function telnyxSmsOutcomeSource() {
+  return `// Generated verbatim from src/components/messaging/smsRedrive.js and
+// src/components/voice/telnyxRetry.js.
+const TELNYX_OPT_OUT_ERROR_CODE = ${JSON.stringify(TELNYX_OPT_OUT_ERROR_CODE)};
+const CONNECT_PHASE_FAILURE = ${CONNECT_PHASE_FAILURE.toString()};
+${connectionNeverOpened.toString()}
+${telnyxErrorCode.toString()}
+${telnyxErrorsInclude.toString()}
+${telnyxApiFailureReason.toString()}
+${telnyxTransportFailureReason.toString()}
+${telnyxDeliveryFailureReason.toString()}
+${telnyxSendStatus.toString()}`;
 }
 
 // OASIS audit flag — single source of truth is src/components/oasis/oasisAuditFlag.js.
@@ -808,6 +832,7 @@ function validateOasisResponseWrite(payload) {
   areaCodeTimezone: areaCodeTimezoneSource(),
   urgentKeywords: urgentKeywordsSource(),
   isAllowedDestination: isAllowedDestinationSource(),
+  telnyxSmsOutcome: telnyxSmsOutcomeSource(),
 
   // SSRF guard used by every function that fetches or hands a user-supplied URL to
   // a provider integration. Keep in step with src/components/utils/security.

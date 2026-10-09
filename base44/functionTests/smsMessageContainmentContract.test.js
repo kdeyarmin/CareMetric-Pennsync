@@ -251,12 +251,31 @@ test('redriveFailedSms re-sends only rows whose provenance, line, sender and con
     // Telnyx may have accepted a send that timed out; re-sending double-texts.
     ['a timed-out send whose outcome is unknown', { failure_reason: 'Outcome unknown: Telnyx did not answer within 15000 ms, so the text may have been sent. Not retried automatically.' }],
     ['a timed-out send recorded before the outcome-unknown wording', { failure_reason: 'Timed out reaching Telnyx' }],
+    // A 5xx can follow an accepted message: outcome unknown, never re-sent.
+    ['an outcome-unknown 502', { failure_reason: 'Telnyx API error: HTTP 502, code none' }],
+    ['an outcome-unknown 504 described as temporary', { failure_reason: 'Telnyx API error: HTTP 504, code 10007: Temporary network timeout' }],
+    // Prose is no longer what admits a row: only the status prefix.
+    ['a rate limit recorded only as prose', { failure_reason: 'Too many requests' }],
+    ['a delivery receipt failure (Telnyx accepted the message)', { failure_reason: 'Telnyx delivery failed: code 40006: Carrier temporarily unavailable' }],
   ]) {
     const result = await run(rowOverrides, seed);
     assert.equal(result.status, 200, label);
     assert.equal(result.sends.length, 0, `${label}: nothing is re-sent`);
     assert.equal(result.fixture.data.SmsMessage[0].redrive_claimed_by, undefined, `${label}: the row is not claimed`);
   }
+
+  // A structured 429 (Telnyx refused it unprocessed) is redriven.
+  const rateLimited = await run({ failure_reason: 'Telnyx API error: HTTP 429, code 10011: Too many requests' });
+  assert.equal(rateLimited.sends.length, 1);
+  const neverConnected = await run({ failure_reason: 'Connection never opened: Telnyx could not be reached, so the text was not sent.' });
+  assert.equal(neverConnected.sends.length, 1);
+
+  // A redrive Telnyx refuses records the status and Telnyx's code first.
+  const refusedFixture = redriveFixture();
+  const refusedHandler = await loadFunction('redriveFailedSms', refusedFixture.client, env, async () =>
+    Response.json({ errors: [{ code: '10011', title: 'Too many requests', detail: 'Too many requests' }] }, { status: 429 }));
+  assert.equal((await refusedHandler(cron())).status, 200);
+  assert.equal(refusedFixture.data.SmsMessage[0].failure_reason, 'Telnyx API error: HTTP 429, code 10011: Too many requests');
 
   // A signed-in non-admin can never trigger the cron.
   const fixture = redriveFixture();
