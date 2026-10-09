@@ -31,6 +31,7 @@ describe('tenant-safe global toast facade', () => {
   });
 
   it('does not publish tenant-A PHI when a raw continuation resolves after tenant B is ready', async () => {
+    const historyStart = rawToast.getHistory().length;
     const oldTenantRequest = deferred();
     const oldTenantContinuation = (async () => {
       const patient = await oldTenantRequest.promise;
@@ -53,9 +54,11 @@ describe('tenant-safe global toast facade', () => {
     await oldTenantContinuation;
 
     expect(readyAuthority).toBe('authority-b');
-    const published = rawToast.getHistory().at(-1);
-    expect(published.title).toBe('Action completed.');
-    expect(JSON.stringify(published)).not.toMatch(/Patient A|patient-a|example\.test/i);
+    // Successes are silent (bc9d7e85 removed the generic "Action completed."
+    // toast), so the late continuation publishes nothing, and no PHI reaches
+    // Sonner history at all.
+    expect(rawToast.getHistory().slice(historyStart)).toEqual([]);
+    expect(JSON.stringify(rawToast.getHistory())).not.toMatch(/Patient A|patient-a|example\.test/i);
   });
 
   it('never places a caller promise or its resolved PHI into Sonner history', async () => {
