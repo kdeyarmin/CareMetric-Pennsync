@@ -67,28 +67,27 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 /**
- * trackUserLogin — records the signed-in caller's own sign-in on the activity
- * trail (owner decision, 2026-10-08: login tracking is back).
+ * markSmsRead — marks inbound texts addressed to the caller as read.
  *
- * What makes it safe to call from a browser:
- *   - the identity is the authenticated caller (base44.auth.me on the pinned
- *     client). Nothing in the body names a person; any key other than
- *     `device_type` is refused, so a caller can only ever record themselves;
- *   - the row is written by the service role with a server timestamp, never a
- *     client-supplied time;
- *   - no fingerprint: no user agent, no IP address. `device_type` is the same
- *     coarse mobile/tablet/desktop category activityLogger already stores, and
- *     anything else is refused;
- *   - replay is bounded: a caller whose last recorded sign-in is younger than
- *     LOGIN_DEDUPE_MS gets `recorded: false` and no new row, and when that last
- *     sign-in cannot be read nothing is written (503), so a reload loop cannot
- *     flood the trail.
+ * Owner decision, 2026-10-08: SmsMessage has no browser write rule at all, so
+ * that every field on a row — sending line, recipient, body, owner — is the
+ * server's. redriveFailedSms re-sends rows and has to be able to trust them;
+ * an update rule scoped to `nurse_email` let a nurse rewrite any field of a row
+ * addressed to them. This broker is the one browser-initiated SmsMessage write
+ * left, and it can set exactly one field to exactly one value:
+ *   - the caller is the authenticated session (no id or email in the body);
+ *   - only `message_ids` may be sent, 1..100 distinct bounded ids;
+ *   - a row is touched only when it is inbound, addressed to the caller
+ *     (nurse_email), and not yet read; anything else is skipped, not refused,
+ *     so a stale id cannot be used to probe another person's rows;
+ *   - the only write is `{ is_read: true }`.
  */
 
-const LOGIN_DEDUPE_MS = 30 * 60 * 1000;
-const DEVICE_TYPES = new Set(['mobile', 'tablet', 'desktop']);
-const ALLOWED_KEYS = new Set(['device_type']);
-const normalizeLoginEmail = (value) => String(value || '').trim().toLowerCase();
+const MAX_IDS = 100;
+const MAX_ID_LENGTH = 200;
+const normalizeReadEmail = (value) => String(value || '').trim().toLowerCase();
+const exactMessageId = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= MAX_ID_LENGTH && value.trim() === value && !value.startsWith('$');
 const json = (body, status = 200) => Response.json(body, {
   status,
   headers: { 'Cache-Control': 'no-store' },
@@ -102,50 +101,32 @@ Deno.serve(async (req) => {
     if (!user?.id || !user?.email) return json({ error: 'Unauthorized' }, 401);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (user.disabled === true || user.is_service === true) return json({ error: 'Forbidden' }, 403);
-    const email = normalizeLoginEmail(user.email);
+    const email = normalizeReadEmail(user.email);
 
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => null);
+    const ids = body?.message_ids;
     if (!body || typeof body !== 'object' || Array.isArray(body)
-      || Object.keys(body).some((key) => !ALLOWED_KEYS.has(key))) {
-      return json({ error: 'Only device_type may be sent.' }, 400);
-    }
-    if (body.device_type != null && !DEVICE_TYPES.has(body.device_type)) {
-      return json({ error: 'device_type must be mobile, tablet or desktop.' }, 400);
-    }
-
-    let recent;
-    try {
-      recent = await base44.asServiceRole.entities.UserActivity.filter(
-        { user_email: email, action: 'login' }, '-created_date', 1,
-      );
-    } catch {
-      recent = null;
-    }
-    if (!Array.isArray(recent)) {
-      return json({ error: 'Sign-in history is unavailable; nothing was recorded.' }, 503);
-    }
-    const lastAt = Date.parse(recent[0]?.created_date || '');
-    if (Number.isFinite(lastAt) && Date.now() - lastAt < LOGIN_DEDUPE_MS) {
-      return json({ success: true, recorded: false });
+      || Object.keys(body).some((key) => key !== 'message_ids')
+      || !Array.isArray(ids) || ids.length < 1 || ids.length > MAX_IDS
+      || !ids.every(exactMessageId) || new Set(ids).size !== ids.length) {
+      return json({ error: 'message_ids must be 1 to 100 distinct message ids.' }, 400);
     }
 
-    const loginTime = new Date().toISOString();
-    const row = await base44.asServiceRole.entities.UserActivity.create({
-      user_email: email,
-      user_name: typeof user.full_name === 'string' ? user.full_name.slice(0, 120) : undefined,
-      action: 'login',
-      page: 'login',
-      device_type: body.device_type || undefined,
-      details: {
-        login_time: loginTime,
-        user_role: user.role === 'admin' ? 'admin' : 'user',
-      },
-      status: 'success',
-    });
-    return json({ success: true, recorded: true, activity_id: row?.id || null });
+    const rows = await base44.asServiceRole.entities.SmsMessage.filter(
+      { id: { $in: ids } }, undefined, ids.length + 1,
+    );
+    const requested = new Set(ids);
+    const mine = (Array.isArray(rows) ? rows : []).filter((row) => requested.has(row?.id)
+      && row.direction === 'inbound'
+      && normalizeReadEmail(row.nurse_email) === email
+      && row.is_read !== true);
+    for (const row of mine) {
+      await base44.asServiceRole.entities.SmsMessage.update(row.id, { is_read: true });
+    }
+    return json({ success: true, marked: mine.length });
   } catch {
     // Errors can echo row content; never log them.
-    console.error('trackUserLogin failed');
+    console.error('markSmsRead failed');
     return json({ error: 'Internal server error' }, 500);
   }
 });

@@ -223,6 +223,7 @@
     "manageVehicleMaintenance": "port",
     "mapNoteToOASIS": "preserved_paused",
     "markMessageRead": "preserved_paused",
+    "markSmsRead": "preserved_paused",
     "matchPatientWithAI": "port",
     "mergePDFs": "port",
     "messagingAssistant": "preserved_paused",
@@ -606,7 +607,8 @@
     "Nightly Outcome Measure Computation.jsonc": "preserved_paused",
     "Poll Fax Statuses.jsonc": "preserved_paused",
     "Process Inbound Referral Faxes.jsonc": "preserved_paused",
-    "Process Scheduled Faxes.jsonc": "preserved_paused"
+    "Process Scheduled Faxes.jsonc": "preserved_paused",
+    "Redrive Failed SMS.jsonc": "preserved_paused"
   },
   "integrations": {
     "InvokeLLM": "port",

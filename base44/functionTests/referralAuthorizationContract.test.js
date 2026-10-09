@@ -293,6 +293,7 @@ test('Referral broker failures cannot masquerade as verified empty queues, docum
     ['../../src/components/hub-tabs/ReferralAdmissionNote.jsx', /isError: referralUnavailable[\s\S]*No referral data is being shown/],
     ['../../src/components/reports/FollowUpAnalytics.jsx', /if \(!referralQuery\.isSuccess \|\| referralQuery\.isError\) return <ReportReadState queries=\{\[referralQuery\]\}/],
     ['../../src/components/reports/ReferralVolumeReport.jsx', /if \(!referralQuery\.isSuccess \|\| referralQuery\.isError\) return <ReportReadState queries=\{\[referralQuery\]\}/],
+    ['../../src/components/dashboard/OverdueFollowUpsWidget.jsx', /isError: referralsUnavailable[\s\S]*No empty queue is being inferred/],
     ['../../src/components/referral/PendingReferralsWidget.jsx', /isError: referralsUnavailable[\s\S]*No empty queue is being inferred/],
   ]);
   for (const [relativePath, marker] of expectedFailureStates) {

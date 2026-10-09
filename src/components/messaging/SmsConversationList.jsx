@@ -18,8 +18,8 @@ import { useScopedPatients } from "@/hooks/useScopedPatients";
  * (where a text can be sent now or scheduled for later).
  *
  * Restored 2026-10-08 (owner decision). SmsMessage RLS admits a non-admin only
- * to rows whose nurse_email or sent_by is them, and lets them update only
- * their own rows (marking inbound texts read). Patient names come from the
+ * to rows whose nurse_email or sent_by is them and refuses every browser write;
+ * marking inbound texts read goes through markSmsRead. Patient names come from the
  * authorized `contact` projection, never a direct Patient read. The consent
  * ledger is not readable here, so the thread does not guess consent: sendSms
  * and scheduleSms both check the scoped ledger and refuse with a reason.
@@ -88,11 +88,11 @@ export default function SmsConversationList() {
     .filter((m) => m.direction === "inbound" && !m.is_read)
     .map((m) => m.id)
     .join(",");
+  // SmsMessage has no browser write rule; markSmsRead flips is_read on inbound
+  // rows addressed to the caller and nothing else.
   useEffect(() => {
     if (!user?.email || !selectedUnreadKey) return;
-    Promise.all(
-      selectedUnreadKey.split(",").map((id) => base44.entities.SmsMessage.update(id, { is_read: true }))
-    )
+    base44.functions.invoke("markSmsRead", { message_ids: selectedUnreadKey.split(",").slice(0, 100) })
       .then(() => queryClient.invalidateQueries({ queryKey: ["sms-messages", user?.email] }))
       .catch((e) => console.warn("Failed to mark SMS read:", e?.message));
   }, [selectedUnreadKey, user?.email, queryClient]);

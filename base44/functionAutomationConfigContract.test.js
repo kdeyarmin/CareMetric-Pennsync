@@ -15,6 +15,7 @@ const EXPECTED_TARGETS = {
   'Poll Fax Statuses.jsonc': 'pollFaxStatuses',
   'Process Inbound Referral Faxes.jsonc': 'processInboundFaxes',
   'Process Scheduled Faxes.jsonc': 'processScheduledFaxes',
+  'Redrive Failed SMS.jsonc': 'redriveFailedSms',
 };
 
 test('native workflows are the sole schedule authority and legacy function configs stay absent', async () => {

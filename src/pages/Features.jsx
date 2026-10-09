@@ -356,22 +356,22 @@ export default function FeaturesPage() {
       color: "green",
       items: [
         {
-          name: "AI Personalized Training Engine (Paused)",
+          name: "AI Personalized Training Engine",
           icon: Brain,
-          description: "Personalized skill-gap analysis is unavailable until performance inputs have immutable tenant provenance",
-          timeSaved: "Unavailable",
+          description: "Skill gaps found in your own audit, documentation and efficiency data, with AI-generated lessons, scenarios and quizzes for each",
+          timeSaved: "Targeted learning",
           impact: "critical",
-          details: "Required training, the course library, progress tracking, and documentation education remain available",
-          howToUse: "Use the non-personalized Training Hub tabs while performance-derived recommendations are paused."
+          details: "Gaps cover documentation compliance, AI-assisted documentation, efficiency and time management. Nothing predicts burnout or clinical risk",
+          howToUse: "Open Training Hub → AI Personalized, then Start Training or Generate Training on a skill gap."
         },
         {
-          name: "Personalized Training Plans (Paused)",
+          name: "Personalized Training Plans",
           icon: Target,
-          description: "Performance-derived learning paths are unavailable pending a tenant-authorized analysis broker",
-          timeSaved: "Unavailable",
+          description: "Each skill gap becomes an interactive lesson whose completion is recorded in your progress",
+          timeSaved: "Builds competency",
           impact: "high",
-          details: "The app does not infer zero skill gaps when the source cohort cannot be verified",
-          howToUse: "Use required and library training modules until personalized analysis is restored."
+          details: "When the analysis cannot be loaded the hub says so, rather than showing that you have no gaps",
+          howToUse: "Complete the generated lesson and quiz; it appears under My Progress."
         },
         {
           name: "Interactive Scenarios",
@@ -437,11 +437,11 @@ export default function FeaturesPage() {
         {
           name: "Performance Analytics",
           icon: BarChart3,
-          description: "Documentation and quality trends remain visible; activity-derived AI utilization and nurse performance conclusions are paused",
+          description: "Documentation and quality trends, plus AI utilization read from the recorded activity trail for your agency",
           timeSaved: "Strategic insight",
           impact: "high",
           details: "Quality metrics, time savings, compliance rates, trend analysis",
-          howToUse: "Admins: Use the available Analytics Dashboard measures and treat paused measures as unavailable, not zero."
+          howToUse: "Admins: Open the Analytics Dashboard. A measure that cannot be read shows as unavailable, never as zero."
         }
       ]
     },
@@ -677,7 +677,7 @@ export default function FeaturesPage() {
       <span class="step-number">3</span>Click "Sign In"
     </div>
     <div class="tip">
-      <span class="tip-icon">💡 TIP:</span> PennSync's in-app login-event collection is currently paused. Use identity-provider audit logs for current login monitoring; PennSync activity reports show only previously stored login records.
+      <span class="tip-icon">💡 TIP:</span> PennSync records each sign-in on your activity trail (once per half hour, stamped by the server). Administrators see sign-ins in User Activity Tracking.
     </div>
 
     <h3>1.2 Dashboard Overview</h3>
@@ -877,7 +877,7 @@ export default function FeaturesPage() {
       <span class="step-number">1</span>Click <strong>"Training Hub"</strong> in navigation
     </div>
     <div class="step">
-      <span class="step-number">2</span>Choose Required, Library, Progress, or Documentation Training; personalized skill-gap analysis is currently unavailable
+      <span class="step-number">2</span>Choose AI Personalized for your skill gaps, or Required, Library, Progress, or Documentation Training
     </div>
     <div class="step">
       <span class="step-number">3</span>Complete assigned or selected modules and review recorded progress

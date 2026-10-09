@@ -43,15 +43,16 @@ test('reviewed privileged functions never authorize from mutable account_type cl
 });
 
 test('provider and platform-administration handlers gate on the protected owner before parsing a request payload', () => {
+  // sendSms and startMaskedCall left this list on 2026-10-08 (owner decision):
+  // any active agency member may text or call a chart open to them, pinned in
+  // 'patient texting and calling authorize from protected sources' below.
   const protectedOwnerOnly = [
     'managePhoneNumberPool',
     'manageSmsConsent',
     'provisionNurseWorkNumber',
     'searchPurchaseTelnyxNumbers',
     'sendFax',
-    'sendSms',
     'sendTestSms',
-    'startMaskedCall',
   ];
 
   for (const name of protectedOwnerOnly) {
@@ -145,23 +146,41 @@ test('patient-bearing clinical helpers retain exact creator and assigned-nurse c
     );
   }
 
-  // scheduleSms left this list on 2026-10-08: it now authorizes a chart by
-  // agency, agency-wide role, chart creator id, or an active care-team
-  // assignment (pinned in 'scheduleSms authorizes from protected sources').
-  for (const name of ['sendSms']) {
-    const source = readEntry(name);
-    assert.match(source, /const\s+isAssigned\s*=\s*Array\.isArray\(claimed\.assigned_nurses\)[\s\S]{0,160}claimed\.assigned_nurses\.includes\(user\.email\)/);
-    assert.match(
-      source,
-      /return\s+isProtectedSuperAdmin\(user\)\s*\|\|\s*claimed\.created_by\s*===\s*user\.email\s*\|\|\s*isAssigned\s*;/,
-      `${name} must authorize a chart only by protected owner, immutable creator, or assigned nurse`,
-    );
+  // scheduleSms, sendSms and startMaskedCall left this list on 2026-10-08:
+  // they authorize a chart by agency, agency-wide role, chart creator id, or an
+  // active care-team assignment (pinned in the release tests below).
+  for (const name of ['scheduleSms', 'sendSms', 'startMaskedCall']) {
+    const code = readEntry(name).replace(/^\s*(?:\/\/|\*).*$/gm, '');
+    assert.doesNotMatch(code, /assigned_nurses|created_by\s*===\s*user\.email/, `${name} uses no retired chart rule`);
   }
+});
 
+test('patient texting and calling authorize from protected sources, never from mutable profile fields', () => {
+  for (const name of ['sendSms', 'startMaskedCall']) {
+    const source = readEntry(name);
+    const handler = source.slice(source.indexOf('Deno.serve'));
+    assert.match(source, /<<<BEGIN SHARED HELPER: trustedCallerClaims/, name);
+    assert.match(source, /<<<BEGIN SHARED HELPER: patientCareTeamAccess/, name);
+    // Caller: the protected owner or one active service-owned membership,
+    // decided before the body is read.
+    assert.match(handler, /const user = await withTrustedClaims\(base44, caller\);/, name);
+    assert.match(handler, /user\.role === 'user' && claimIdentifier\(user\.agency_id\)/, name);
+    const gate = handler.indexOf("code: 'agency_membership_required'");
+    assert.ok(gate > 0 && gate < handler.indexOf('await req.json()'), `${name}: membership before the body`);
+    // The line is a service-owned binding in the caller's agency.
+    assert.match(handler, /\.agencyId !== memberAgencyId|line\.agency_id !== memberAgencyId/, name);
+    // Charts: same agency, then the generated care-team rule.
+    assert.match(handler, /callerMayAccessPatient\(base44, caller, (?:claimed|p)\)/, name);
+    assert.doesNotMatch(handler, /agency_name|account_type|is_manager/, `${name} never reads a self-editable tenant label`);
+  }
+  const sms = readEntry('sendSms');
+  const smsHandler = sms.slice(sms.indexOf('Deno.serve'));
+  assert.match(smsHandler, /resolveActiveTelnyxSmsBinding\(base44, \{[\s\S]*?requireOutbound: true/);
+  assert.match(smsHandler, /loadLatestScopedSmsConsent\(base44, smsAuthority, destination\)/);
+  assert.match(smsHandler, /agency_id: agencyId,\s*destination_binding_id: smsAuthority\.bindingId,/);
   const call = readEntry('startMaskedCall');
-  assert.match(call, /if\s*\(isProtectedSuperAdmin\(user\)\)\s*return true/);
-  assert.match(call, /if\s*\(p\.created_by\s*===\s*user\.email\)\s*return true/);
-  assert.match(call, /return\s+Array\.isArray\(p\.assigned_nurses\)\s*&&\s*p\.assigned_nurses\.includes\(user\.email\)/);
+  assert.match(call, /async function resolveCallerLineBinding\(base44, telnyxCreds, workNumber\)/);
+  assert.match(call, /row\.binding_key !== `telnyx:\$\{secretId\}:\$\{workNumber\}`/);
 });
 
 test('legacy creator and assignee paths require one immutable active AgencyMembership', () => {

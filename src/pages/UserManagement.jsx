@@ -72,6 +72,8 @@ import { toast } from "sonner";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
 import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
+import { useActivityReport } from "@/hooks/useActivityReport";
+import { formatEastern } from "@/components/utils/timezone";
 import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
 import { STAFF_ROLE_OPTIONS, getStaffRole, getTrustedTenantContext, staffRoleLabel } from "@/lib/roles";
 import { isAdminLike, isSuperAdmin } from "@/lib/superAdmin";
@@ -122,6 +124,15 @@ export default function UserManagement() {
       return filterUsersByCallerAgency(_rows, currentUser);
     },
     enabled: canManageUsers,
+  });
+
+  // Per-user activity summaries (owner decision, 2026-10-08) come from the
+  // scoped activity report, never a direct UserActivity read: the server
+  // returns the built-in administrator's whole trail, newest first, with
+  // identifying detail fields removed.
+  const activityReport = useActivityReport({
+    enabled: canManageUsers,
+    scopeKey: currentUser?.email || null,
   });
 
   const { data: invitations = [] } = useQuery({
@@ -437,6 +448,21 @@ export default function UserManagement() {
   );
   const pagedUsers = userPageWindow.items;
 
+  const activityByEmail = useMemo(() => {
+    const byEmail = new Map();
+    for (const row of activityReport.data?.activity || []) {
+      const email = String(row?.user_email || '').trim().toLowerCase();
+      if (!email) continue;
+      const entry = byEmail.get(email);
+      // Rows arrive newest first, so the first row seen is the latest.
+      if (entry) entry.count += 1;
+      else byEmail.set(email, { count: 1, last: row.created_date || null });
+    }
+    return byEmail;
+  }, [activityReport.data]);
+  const activityAvailable = activityReport.isSuccess;
+  const activityFor = (email) => activityByEmail.get(String(email || '').trim().toLowerCase()) || null;
+
   const now = new Date();
   const pendingInvitations = invitations.filter(i => i.status === 'pending' && new Date(i.expires_at) >= now);
   const expiredInvitations = invitations.filter(i => i.status === 'expired' || (i.status === 'pending' && new Date(i.expires_at) < now));
@@ -487,9 +513,16 @@ export default function UserManagement() {
         favoritePage="UserManagement"
       />
 
-      <div className="mb-4 sm:mb-6">
-        <UserActivityUnavailable title="User activity summaries unavailable" />
-      </div>
+      {activityReport.isError && (
+        <div className="mb-4 sm:mb-6">
+          <UserActivityUnavailable title="User activity summaries unavailable" />
+        </div>
+      )}
+      {activityReport.data?.truncated && (
+        <p className="mb-4 text-xs text-amber-700" role="status">
+          Activity counts cover the most recent {activityReport.data.rowLimit?.toLocaleString() || 'available'} events.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <StatCard label="Total Users" value={stats.total} icon={Users} tone="slate" />
@@ -763,10 +796,21 @@ export default function UserManagement() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs sm:text-sm hidden lg:table-cell">
-                          Unavailable
+                          {!activityAvailable
+                            ? (activityReport.isLoading ? '…' : 'Unavailable')
+                            : activityFor(user.email)
+                              ? `${activityFor(user.email).count} actions`
+                              : 'No activity'}
                         </TableCell>
                         <TableCell className="text-xs sm:text-sm text-slate-600 hidden lg:table-cell">
-                          Unavailable
+                          {!activityAvailable
+                            ? (activityReport.isLoading ? '…' : 'Unavailable')
+                            : activityFor(user.email)?.last ? (
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" aria-hidden="true" />
+                                {formatEastern(activityFor(user.email).last, 'MMM d, yyyy')}
+                              </div>
+                            ) : 'Never'}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 sm:gap-2">
@@ -775,7 +819,7 @@ export default function UserManagement() {
                               size="sm"
                               onClick={() => setExpandedActivityUser(expandedActivityUser === user.id ? null : user.id)}
                               className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 min-h-[44px] w-10 sm:w-auto p-2"
-                              title="Why activity history is unavailable"
+                              title="View activity"
                             >
                               <Activity className="w-4 h-4" />
                             </Button>

@@ -825,12 +825,17 @@ test('generateTrainingCertificate refuses an unmatched requested module (no body
 });
 
 // sendSms must authorize a phone-resolved patient before linking the message to
-// its chart (canAccessPatient), mirroring scheduleSms.
+// its chart (canAccessPatient), mirroring scheduleSms. Since the 2026-10-08
+// release the lookup is also confined to the sending line's agency.
 test('sendSms access-gates the phone-resolved patient', () => {
   const src = read('base44/functions/sendSms/entry.ts');
   assert.ok(
-    /resolvePatientId\(base44, destination, canAccessPatient\)/.test(src),
-    'sendSms must pass canAccessPatient into resolvePatientId so a foreign-agency chart with the same number cannot be linked.',
+    /resolvePatientId\(base44, destination, agencyId, canAccessPatient\)/.test(src),
+    'sendSms must pass the line agency and canAccessPatient into resolvePatientId so a foreign-agency chart with the same number cannot be linked.',
+  );
+  assert.ok(
+    /Patient\s*\.filter\(\{ phone: variant, agency_id: agencyId \}/.test(src),
+    'sendSms must look the number up only among the sending agency\'s charts.',
   );
 });
 

@@ -131,6 +131,14 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
     assert.equal(inert.includes(name), false, `${name} performs work again`);
     assert.equal(declared[name], 'preserved_paused');
   }
+  // trackUserLogin was a constant 503 and records the caller's own sign-in
+  // again (owner decision, 2026-10-08); markSmsRead is the new SmsMessage
+  // read-marker. Both keep or take `preserved_paused`, so the port queue does
+  // not move.
+  for (const name of ['trackUserLogin', 'markSmsRead']) {
+    assert.equal(inert.includes(name), false, `${name} performs work`);
+    assert.equal(declared[name], 'preserved_paused');
+  }
 });
 
 test('a handler that refuses from its first statement is paused, whatever gates it', () => {
@@ -2145,12 +2153,14 @@ test('a flag pinned true pauses a handler exactly as one pinned false does', () 
   assert.equal(manifest.functions.deduplicatePatients, 'preserved_paused');
   const flipped = ['createTelehealthToken',
     'generateMessageSuggestions', 'markMessageRead', 'messagingAssistant',
-    'notifyUrgentMessage', 'processCompletedVisit', 'redriveFailedSms',
+    'notifyUrgentMessage', 'processCompletedVisit',
     'saveOasisResponses', 'sendMessage', 'summarizeMessageThread'];
   // scheduleSms and dispatchScheduledSms were released by the owner on
   // 2026-10-08 and no longer pause; they keep the `preserved_paused`
   // disposition (Base44-hosted, no port-queue movement).
-  for (const name of ['scheduleSms', 'dispatchScheduledSms']) {
+  // redriveFailedSms followed on the same day, once SmsMessage rows became
+  // server-only and carry the provenance it re-proves; its flag is removed.
+  for (const name of ['scheduleSms', 'dispatchScheduledSms', 'redriveFailedSms']) {
     assert.equal(paused.has(name), false, `${name} is released`);
     assert.equal(manifest.functions[name], 'preserved_paused');
   }

@@ -189,9 +189,9 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // 22 sites left with the deleted screens, 7 landable and 15 unserved. That
   // IS a movement of `unserved`, and of the right kind — a removal rather than
   // a decision or a contract — so the baseline was lowered with it.
-  assert.equal(report.total, 452);
-  assert.equal(report.served, 283);
-  // 169 of 452. Stage J reads as "replace call sites tier by tier", which is a
+  assert.equal(report.total, 453);
+  assert.equal(report.served, 284);
+  // 169 of 453. Stage J reads as "replace call sites tier by tier", which is a
   // refactor whose size is the count; 46% of them have no destination. The
   // percentage is the trap: it read 46% against 453 too, so the denominator
   // moved underneath it and the derived figure did not budge. 179 of the 193 reach
@@ -229,7 +229,7 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // the OASIS Center moved onto its broker; `preserved_paused` fell by the
   // same 27 below, because every one of them was an OASIS entity.
   assert.deepEqual(report.by_destination, {
-    record_store: 263, broker_family: 7, activity_trail: 13,
+    record_store: 263, broker_family: 7, activity_trail: 14,
     no_table: 123, no_access_contract: 31,
     broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
@@ -237,8 +237,8 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   assert.equal(report.by_destination.no_table + report.by_destination.no_access_contract, 154);
   // The training domain alone is more call sites than the broker family serves
   // in total, and it is `hub` — a different destination entirely.
-  assert.equal(report.by_disposition.hub, 120);
-  assert.equal(report.by_disposition.preserved_paused, 35);
+  assert.equal(report.by_disposition.hub, 121);
+  assert.equal(report.by_disposition.preserved_paused, 34);
   assert.equal(report.within_baseline, true);
 });
 
@@ -275,7 +275,7 @@ test('the baseline ratchets one way and refuses a malformed one', () => {
 
 test('an undeclared entity fails the run rather than being counted as fine', () => {
   const measured = { sites: [], undeclared: ['Invented'] };
-  const report = compare(measured, JSON.parse(baseline(0)));
+  const report = compare(measured, JSON.parse(baseline(169)));
   assert.equal(report.within_baseline, false);
   assert.deepEqual(report.undeclared_entities, ['Invented']);
 });
@@ -295,7 +295,7 @@ test('an undeclared call site is still counted, so a failing run reports every s
     const measured = measureDestinations(root);
     assert.equal(measured.sites.length, 2, 'both call sites are rows');
     assert.deepEqual(measured.undeclared, ['Invented']);
-    const report = compare(measured, JSON.parse(baseline(10)));
+    const report = compare(measured, JSON.parse(baseline(169)));
     assert.equal(report.total, 2);
     assert.equal(report.served, 1);
     assert.equal(report.unserved, 1);
@@ -337,7 +337,7 @@ test('the command line refuses an unknown argument and an unavailable baseline',
 test('the summary names what cannot land and stays quiet about what can', () => {
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
-  assert.match(lines[0], /452 call sites, 283 can land, 169\/169 cannot/);
+  assert.match(lines[0], /453 call sites, 284 can land, 169\/169 cannot/);
   assert.ok(lines.some(line => /no_table: 123/.test(line)));
   assert.ok(lines.some(line => /no_access_contract: 31/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));

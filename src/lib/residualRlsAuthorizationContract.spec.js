@@ -271,6 +271,9 @@ describe('residual RLS source containment', () => {
       'src/components/training/InteractiveDocumentationScenarios.jsx',
       'src/components/training/LearnerMemoryBoosters.jsx',
       'src/hooks/useMyTrainingCompletions.js',
+      // Restored skill-gap training records a finished AI lesson as the
+      // caller's own row (owner decision, 2026-10-08).
+      'src/pages/NurseTrainingHub.jsx',
     ]);
   });
 

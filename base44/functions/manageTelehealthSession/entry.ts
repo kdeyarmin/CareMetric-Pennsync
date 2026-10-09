@@ -106,6 +106,17 @@ const VISIT_TYPES = new Set(['routine_followup', 'urgent_care', 'medication_revi
 const AGENCY_WIDE_ROLES = new Set(['agency_admin', 'manager']);
 const CHART_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']);
 const MAX_ID = 200;
+// Physiological sanity bounds for live vital capture (wider than "normal";
+// anything outside is a typo, not a reading).
+const VITAL_BOUNDS: Record<string, [number, number]> = {
+  heart_rate: [10, 300],
+  blood_pressure_systolic: [40, 300],
+  blood_pressure_diastolic: [20, 200],
+  temperature: [80, 115],
+  respiratory_rate: [3, 80],
+  oxygen_saturation: [50, 100],
+  pain_level: [0, 10],
+};
 
 const exactId = (value: unknown) => (typeof value === 'string' && value.length > 0 && value.length <= MAX_ID
   && value.trim() === value && !value.startsWith('$')) ? value : '';
@@ -178,12 +189,18 @@ Deno.serve(async (req) => {
 
     if (action === 'list') {
       const query: Record<string, unknown> = { agency_id: agencyId };
-      if (!(authority.agencyWide && body.all === true)) query.host_user_id = user.id;
+      // A chart's own visit history (the patient chart's telehealth panel) is
+      // shown to whoever may open that chart; otherwise a caller sees the
+      // visits they host, or, for an agency-wide role asking for `all`, the
+      // agency's.
+      let chartWide = false;
       if (body.patient_id != null) {
         const patientId = exactId(body.patient_id);
         if (!patientId) return json({ error: 'patient_id is invalid' }, 400);
         query.patient_id = patientId;
+        chartWide = !!(await canOpenChart(entities, authority, user, patientId));
       }
+      if (!chartWide && !(authority.agencyWide && body.all === true)) query.host_user_id = user.id;
       const rows = await entities.TelehealthSession.filter(query, '-scheduled_at', 50, 0, [...FIELDS, 'join_token_hash']);
       const sessions = (Array.isArray(rows) ? rows : [])
         .filter((row: any) => row?.agency_id === agencyId
@@ -252,6 +269,54 @@ Deno.serve(async (req) => {
         if (session.started_at) patch.duration_minutes = Math.round((Date.now() - Date.parse(session.started_at)) / 60000);
       }
       return json({ session: project(await entities.TelehealthSession.update(session.id, patch)) });
+    }
+
+    if (action === 'record_vitals') {
+      // Live vital capture (owner decision, 2026-10-08). The session gate above
+      // already requires the host or an agency-wide role in this agency; a
+      // chart-bound session additionally needs the chart to be open to the
+      // caller now. Values are range-checked here, and the merge into
+      // vitals_captured is a compare-and-swap on the row's updated_date, so a
+      // co-participant's reading recorded a moment earlier is never lost.
+      if (session.status !== 'active') return json({ error: 'Vitals can be recorded only during a live visit' }, 409);
+      if (session.patient_id && !(await canOpenChart(entities, authority, user, String(session.patient_id)))) {
+        return json({ error: 'This chart is not open to you' }, 403);
+      }
+      const input = body.vitals && typeof body.vitals === 'object' && !Array.isArray(body.vitals) ? body.vitals : null;
+      if (!input || Object.keys(input).length === 0
+        || Object.keys(input).some((key) => !Object.hasOwn(VITAL_BOUNDS, key))) {
+        return json({ error: `vitals may contain only ${Object.keys(VITAL_BOUNDS).join(', ')}` }, 400);
+      }
+      const reading: Record<string, number> = {};
+      for (const [key, raw] of Object.entries(input)) {
+        const value = typeof raw === 'number' ? raw : Number.NaN;
+        const [min, max] = VITAL_BOUNDS[key];
+        if (!Number.isFinite(value) || value < min || value > max) {
+          return json({ error: `${key.replace(/_/g, ' ')} must be between ${min} and ${max}` }, 400);
+        }
+        reading[key] = value;
+      }
+      let current = session;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (attempt > 0) {
+          const again = await entities.TelehealthSession.filter({ id: session.id, agency_id: agencyId }, undefined, 2);
+          current = Array.isArray(again) && again.length === 1 ? again[0] : null;
+          if (!current || current.id !== session.id || current.agency_id !== agencyId) return json({ error: 'Session not found' }, 404);
+          if (current.status !== 'active') return json({ error: 'Vitals can be recorded only during a live visit' }, 409);
+        }
+        const prior = current.vitals_captured && typeof current.vitals_captured === 'object' && !Array.isArray(current.vitals_captured)
+          ? current.vitals_captured
+          : {};
+        const merged = { ...prior, ...reading, recorded_at: new Date().toISOString() };
+        const result = await entities.TelehealthSession.updateMany(
+          { id: current.id, agency_id: agencyId, updated_date: current.updated_date },
+          { $set: { vitals_captured: merged } },
+        );
+        if (result && result.success === true && result.updated === 1) {
+          return json({ session: project({ ...current, vitals_captured: merged }) });
+        }
+      }
+      return json({ error: 'The visit changed while saving vitals. Please try again.' }, 409);
     }
 
     return json({ error: 'Unknown action' }, 400);

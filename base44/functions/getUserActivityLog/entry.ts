@@ -165,6 +165,11 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
  *   { mode: 'report', days? }
  *     The activity trail for the caller's whole scope, plus the member list,
  *     for the User Activity Report and its Activity Log tab.
+ *   { mode: 'phone', days? }
+ *     Texting and calling metadata for the same scope, for the Phone & SMS
+ *     Analytics panel: masked numbers, no bodies, consent status per scoped
+ *     consent key under an opaque per-response label, and whether each member
+ *     has a work number and a bridge cell (booleans, never the numbers).
  *
  * Who may ask, decided from protected sources only:
  *   - the built-in admin (Base44 role 'admin', which callers cannot set) reads
@@ -245,7 +250,7 @@ function activityScope(user) {
 }
 
 /** Active members of one agency, joined to their display names. */
-async function agencyMembers(base44, agencyId) {
+async function agencyMembers(base44, agencyId, { coverage = false } = {}) {
   const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
     { agency_id: agencyId, status: 'active' }, undefined, MEMBER_SCAN_LIMIT + 1,
   );
@@ -264,7 +269,150 @@ async function agencyMembers(base44, agencyId) {
     email: row.user_email_normalized,
     full_name: byId.get(row.user_id)?.full_name || null,
     role: row.tenant_role,
+    ...(coverage ? telecomCoverage(byId.get(row.user_id)) : {}),
   }));
+}
+
+/** Whether a profile is provisioned for calling: booleans only, never the numbers. */
+function telecomCoverage(profile) {
+  const dialable = (raw) => String(raw || '').replace(/[^\d]/g, '').length >= 10;
+  return {
+    has_work_number: dialable(profile?.work_phone_number),
+    has_personal_cell: dialable(profile?.personal_cell_e164),
+  };
+}
+
+const PHONE_ROW_LIMIT = 5000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function withinCutoff(row, cutoff, field = 'created_date') {
+  if (cutoff === null) return true;
+  const at = Date.parse(row?.[field] || row?.created_date || '');
+  return Number.isFinite(at) && at >= cutoff;
+}
+
+function smsMetadata(m) {
+  return {
+    id: m.id,
+    created_date: m.created_date,
+    direction: m.direction,
+    status: m.status,
+    nurse_email: normalizeEmail(m.nurse_email) || null,
+    from_masked: maskLast4(m.from_number),
+    to_masked: maskLast4(m.to_number),
+    body_length: m.body ? String(m.body).length : 0,
+    patient_linked: !!m.patient_id,
+  };
+}
+
+function callMetadata(c) {
+  return {
+    id: c.id,
+    created_date: c.created_date,
+    direction: c.direction,
+    call_mode: c.call_mode,
+    status: c.status,
+    nurse_email: normalizeEmail(c.nurse_email) || null,
+    duration_seconds: c.duration_seconds ?? null,
+    disposition: c.disposition || null,
+    has_voicemail: !!c.has_voicemail,
+    from_masked: maskLast4(c.from_number),
+    to_masked: maskLast4(c.to_number),
+    displayed_masked: maskLast4(c.displayed_number),
+  };
+}
+
+/**
+ * Consent ledger rows with the scoped key (which embeds the phone number)
+ * replaced by an opaque label that is only stable within this response, so
+ * the panel can still take the latest status per key.
+ */
+function consentMetadata(rows) {
+  const labels = new Map();
+  return rows.map((row) => {
+    const digits = String(row?.phone_e164 || '').replace(/[^\d]/g, '').slice(-10);
+    const key = typeof row?.consent_key === 'string' && row.consent_key ? row.consent_key : `legacy:${digits}`;
+    if (!labels.has(key)) labels.set(key, `k${labels.size + 1}`);
+    return {
+      consent_key: labels.get(key),
+      consent_status: row?.consent_status === 'opted_in' || row?.consent_status === 'opted_out'
+        ? row.consent_status
+        : 'unknown',
+      captured_at: row?.captured_at || null,
+      created_date: row?.created_date || null,
+    };
+  });
+}
+
+/** Merge two row lists by id, keeping the first occurrence. */
+function mergeById(...lists) {
+  const seen = new Map();
+  for (const list of lists) {
+    for (const row of Array.isArray(list) ? list : []) {
+      if (row?.id && !seen.has(row.id)) seen.set(row.id, row);
+    }
+  }
+  return [...seen.values()].sort((a, b) => String(b?.created_date || '').localeCompare(String(a?.created_date || '')));
+}
+
+async function phoneReport(base44, scope, cutoff) {
+  const entities = base44.asServiceRole.entities;
+  let sms;
+  let calls;
+  let consents;
+  let members;
+  if (scope.platform) {
+    [sms, calls, consents, members] = await Promise.all([
+      entities.SmsMessage.list('-created_date', PHONE_ROW_LIMIT + 1),
+      entities.CallLog.list('-created_date', PHONE_ROW_LIMIT + 1),
+      entities.SmsConsent.list('-captured_at', PHONE_ROW_LIMIT + 1),
+      entities.User.list(undefined, MEMBER_SCAN_LIMIT + 1),
+    ]);
+    if (!Array.isArray(members) || members.length > MEMBER_SCAN_LIMIT) throw new Error('MEMBER_SCAN_INCOMPLETE');
+    members = members
+      .filter((row) => claimEmail(normalizeEmail(row?.email)) && row?.is_service !== true)
+      .map((row) => ({ id: row.id, email: normalizeEmail(row.email), full_name: row.full_name || null, role: null, ...telecomCoverage(row) }));
+  } else {
+    const agencyId = scope.agencyId;
+    members = await agencyMembers(base44, agencyId, { coverage: true });
+    const emails = members.map((member) => member.email);
+    const memberEmails = new Set(emails);
+    const byMember = (query) => (emails.length ? query : Promise.resolve([]));
+    const [stampedSms, memberSms, memberCalls, agencyConsents] = await Promise.all([
+      entities.SmsMessage.filter({ agency_id: agencyId }, '-created_date', PHONE_ROW_LIMIT + 1),
+      byMember(entities.SmsMessage.filter({ nurse_email: { $in: emails } }, '-created_date', PHONE_ROW_LIMIT + 1)),
+      byMember(entities.CallLog.filter({ nurse_email: { $in: emails } }, '-created_date', PHONE_ROW_LIMIT + 1)),
+      entities.SmsConsent.filter({ agency_id: agencyId }, '-captured_at', PHONE_ROW_LIMIT + 1),
+    ]);
+    // A text stamped with an agency belongs to that agency only (a member of
+    // two agencies texts from each one's line); an unstamped legacy row is
+    // attributed by its member's address, as the per-user view does.
+    sms = mergeById(stampedSms, memberSms).filter((row) => (row?.agency_id
+      ? row.agency_id === agencyId
+      : memberEmails.has(normalizeEmail(row?.nurse_email))));
+    calls = (Array.isArray(memberCalls) ? memberCalls : [])
+      .filter((row) => memberEmails.has(normalizeEmail(row?.nurse_email)));
+    consents = (Array.isArray(agencyConsents) ? agencyConsents : [])
+      .filter((row) => row?.agency_id === agencyId);
+  }
+  sms = Array.isArray(sms) ? sms : [];
+  calls = Array.isArray(calls) ? calls : [];
+  consents = Array.isArray(consents) ? consents : [];
+  const truncated = sms.length > PHONE_ROW_LIMIT || calls.length > PHONE_ROW_LIMIT || consents.length > PHONE_ROW_LIMIT;
+  return {
+    truncated,
+    texts: sms.slice(0, PHONE_ROW_LIMIT).filter((row) => withinCutoff(row, cutoff)).map(smsMetadata),
+    calls: calls.slice(0, PHONE_ROW_LIMIT).filter((row) => withinCutoff(row, cutoff)).map(callMetadata),
+    // The whole ledger (bounded) so the latest status per key is right; the
+    // panel counts in-window changes from captured_at.
+    consents: consentMetadata(consents.slice(0, PHONE_ROW_LIMIT)),
+    members: members.map((member) => ({
+      email: member.email,
+      full_name: member.full_name,
+      has_work_number: member.has_work_number === true,
+      has_personal_cell: member.has_personal_cell === true,
+    })),
+  };
 }
 
 Deno.serve(async (req) => {
@@ -285,7 +433,23 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const mode = body?.mode === 'report' ? 'report' : 'user';
+    const mode = body?.mode === 'report' || body?.mode === 'phone' ? body.mode : 'user';
+
+    if (mode === 'phone') {
+      const days = body?.days == null || body.days === 'all' ? null : Number(body.days);
+      if (days !== null && (!Number.isInteger(days) || days < 1 || days > 3650)) {
+        return Response.json({ error: 'days must be a whole number between 1 and 3650, or omitted.' }, { status: 400 });
+      }
+      const cutoff = days === null ? null : Date.now() - days * DAY_MS;
+      const report = await phoneReport(base44, scope, cutoff);
+      return Response.json({
+        success: true,
+        scope: scope.platform ? 'platform' : 'agency',
+        row_limit: PHONE_ROW_LIMIT,
+        ...report,
+        generated_at: new Date().toISOString(),
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
 
     if (mode === 'report') {
       const days = body?.days == null || body.days === 'all' ? null : Number(body.days);
