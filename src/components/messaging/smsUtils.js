@@ -11,8 +11,9 @@
 // Characters encodable in a single GSM-7 unit.
 const GSM7_BASIC =
   "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-// GSM-7 extension characters — each costs two units (escape + char).
-const GSM7_EXTENDED = "^{}\\[~]|€";
+// GSM-7 extension characters — each costs two units (escape + char). The
+// extension table (3GPP TS 23.038) also carries the form feed (page break).
+const GSM7_EXTENDED = "\f^{}\\[~]|€";
 
 function isGsm7(text) {
   for (const ch of text) {

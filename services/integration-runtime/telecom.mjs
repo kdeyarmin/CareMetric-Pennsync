@@ -196,8 +196,13 @@ export function telecomPayload(operation, params, credential) {
 function acceptance(operation, body) {
   const id = body?.data?.id;
   if (typeof id !== 'string' || !id || id.length > 200) fail(502, 'TELECOM_ACCEPTANCE_UNREADABLE');
-  const status = typeof body?.data?.status === 'string' && body.data.status.length <= 64
-    ? body.data.status : null;
+  // A message's status is per recipient: Telnyx's message payload carries it on
+  // data.to[0].status and has no top-level status (the Base44 senders read it
+  // there too). A fax's status is top-level. The top-level read stays as the
+  // message fallback so an answer of the older shape is still labelled.
+  const recipient = operation === 'SendSms' && Array.isArray(body?.data?.to) ? body.data.to[0] : null;
+  const raw = recipient && recipient.status !== undefined ? recipient.status : body?.data?.status;
+  const status = typeof raw === 'string' && raw.length <= 64 ? raw : null;
   return {
     accepted: true,
     delivered: false,

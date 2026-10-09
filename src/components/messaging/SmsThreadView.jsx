@@ -17,6 +17,10 @@ import ScheduleSendDialog from "@/components/messaging/ScheduleSendDialog";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 
+// sendSms refuses a body longer than this many UTF-16 code units, which is
+// also what a textarea's maxLength counts.
+const SMS_MAX_LENGTH = 1600;
+
 /** A faint day divider between message groups, like a real texting app. */
 function DayDivider({ date }) {
   return (
@@ -264,6 +268,7 @@ export default function SmsThreadView({
             <div className="flex flex-1 items-center rounded-3xl border border-slate-300 bg-white px-3">
               <textarea
                 rows={1}
+                maxLength={SMS_MAX_LENGTH}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -289,8 +294,13 @@ export default function SmsThreadView({
             </Button>
           </div>
           {meta.chars > 0 && (
-            <p className={`px-4 pb-1.5 text-right text-[10px] ${meta.segments > 1 ? "text-amber-600" : "text-slate-400"}`}>
-              {meta.chars} chars · {meta.segments} SMS{meta.segments > 1 ? ` (${meta.encoding})` : ""}
+            // An estimate: the messaging profile's Smart Encoding can send fewer
+            // segments than this counts. The length cap is exact.
+            <p
+              className={`px-4 pb-1.5 text-right text-[10px] ${meta.segments > 1 ? "text-amber-600" : "text-slate-400"}`}
+              title="Estimated: the carrier's encoding can use fewer segments"
+            >
+              {draft.length}/{SMS_MAX_LENGTH} · ~{meta.segments} SMS{meta.segments > 1 ? ` (${meta.encoding})` : ""}
             </p>
           )}
         </div>

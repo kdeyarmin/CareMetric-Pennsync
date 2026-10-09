@@ -53,6 +53,14 @@ describe("SmsThreadView", () => {
     });
   });
 
+  it("caps the draft at the server's 1600-character limit and shows the estimate", () => {
+    renderThread([]);
+    const box = screen.getByLabelText("Message text");
+    expect(box).toHaveAttribute("maxLength", "1600");
+    fireEvent.change(box, { target: { value: "a".repeat(161) } });
+    expect(screen.getByText("161/1600 · ~2 SMS (GSM-7)")).toBeInTheDocument();
+  });
+
   it("offers no second Resend for a text that was already resent", () => {
     renderThread([{ ...failedText, superseded_by: "client_2" }]);
     expect(screen.queryByRole("button", { name: /resend/i })).not.toBeInTheDocument();
