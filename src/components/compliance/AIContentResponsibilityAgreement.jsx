@@ -47,7 +47,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
   const accept = async () => {
     if (!allChecked || saving) return;
     setError("");
-    setSaving(true);
+    setSaving("recording");
     try {
       // The purpose-specific broker derives the actor, appends the canonical
       // audit event, and creates the immutable authority attestation. Mutable
@@ -60,6 +60,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
       // Compatibility fields may still be displayed elsewhere, but the gate
       // opens only after App.jsx re-reads the protected attestation status.
       void queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      setSaving("verifying");
       if (onAccepted) await onAccepted();
       toast.success("Thank you — your acknowledgment has been recorded.");
       setSaving(false);
@@ -164,6 +165,13 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               </span>
             </div>
 
+            {saving && (
+              <p role="status" aria-live="polite" className="mt-4 text-sm text-muted-foreground">
+                {saving === "verifying"
+                  ? "Your acknowledgment was recorded. Verifying access to your workspace…"
+                  : "Recording your acknowledgment…"}
+              </p>
+            )}
             {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -183,7 +191,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               >
                 {saving ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording…
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {saving === "verifying" ? "Verifying…" : "Recording…"}
                   </>
                 ) : (
                   "I Agree & Continue"
