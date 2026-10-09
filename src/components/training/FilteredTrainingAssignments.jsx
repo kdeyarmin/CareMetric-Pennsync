@@ -24,7 +24,7 @@ export default function FilteredTrainingAssignments() {
       return response.data;
     },
   });
-  useEffect(() => { if (assignments.data) setDepartments(assignments.data.departments); }, [assignments.data]);
+  useEffect(() => { if (assignments.data) setDepartments(Array.isArray(assignments.data.departments) ? assignments.data.departments : []); }, [assignments.data]);
   const changeFilters = next => { setFilters(next); setCursors([null]); };
   return <Card className="border-border bg-card text-card-foreground">
     <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="text-lg">{teamView ? 'Staff Training Assignments' : 'My Training Assignments'}</CardTitle><Button variant="outline" size="sm" disabled={assignments.isFetching} onClick={() => assignments.refetch()}>Refresh assignments</Button></div>

@@ -38,7 +38,7 @@ export default function DepartmentTrainingSummary() {
       {summary.isPending ? <LoadingState className="py-6" /> : summary.isError ?
         <div role="alert"><p className="mb-3 text-sm text-muted-foreground">Department completion could not be loaded.</p><Button variant="outline" onClick={() => summary.refetch()}>Try again</Button></div> : <>
           <div className="rounded-lg bg-muted p-4"><p className="text-sm text-muted-foreground">Overall course completion</p><strong className="text-2xl text-foreground">{overall?.percentage == null ? 'Not assessed' : `${overall.percentage}%`}</strong><p className="text-sm text-muted-foreground">{overall?.completed ?? 0} of {overall?.total ?? 0} assigned courses completed</p></div>
-          {summary.data?.items.length ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{summary.data.items.map(department => <DepartmentCompletionRow key={department.id} department={department} />)}</div> : <p className="py-4 text-center text-sm text-muted-foreground">No active course assignments for your current staff.</p>}
+          {summary.data?.items?.length ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{summary.data.items.map(department => <DepartmentCompletionRow key={department.id} department={department} />)}</div> : <p className="py-4 text-center text-sm text-muted-foreground">No active course assignments for your current staff.</p>}
         </>}
       {!summary.isError && (offset > 0 || summary.data?.next_offset != null) && <div className="flex justify-end gap-2">
         <Button variant="outline" disabled={offset === 0 || summary.isFetching} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</Button>

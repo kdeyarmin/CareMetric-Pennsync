@@ -213,7 +213,7 @@ const BUSINESS_LINES = [
   { key: 'hospice', label: 'Hospice' },
 ];
 
-export default async function(req) {
+Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await withTrustedClaims(base44, await base44.auth.me().catch(rethrowAuthReadFailure));
@@ -225,14 +225,22 @@ export default async function(req) {
       const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
       if (_agencyAdminGate) return _agencyAdminGate;
     }
-    const input = req.method === 'POST' ? await req.json() : {};
+    // A malformed body is the caller's error, not an internal one.
+    const input = req.method === 'POST' ? await req.json().catch(() => null) : {};
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return Response.json({ error: 'Invalid request body.' }, { status: 400 });
+    }
     const assignmentsOnly = input?.assignmentsOnly === true;
     if (assignmentsOnly && !validTrainingAssignmentFilters(input)) {
       return Response.json({ error: 'Invalid assignment filters.' }, { status: 400 });
     }
     if (!isAuthorized(user)) {
       if (assignmentsOnly) {
-        return Response.json(await filteredTrainingAssignments(base44.entities, [user.email], 0, [user], input), { headers: { 'Cache-Control': 'no-store' } });
+        // Hand the helper only the one caller-scoped entity it reads, never the
+        // whole registry: an escaped registry could reach Patient or Visit with
+        // no literal call for the containment contract to see.
+        const ownAssignments = { TrainingAssignment: base44.entities.TrainingAssignment };
+        return Response.json(await filteredTrainingAssignments(ownAssignments, [user.email], 0, [user], input), { headers: { 'Cache-Control': 'no-store' } });
       }
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -422,4 +430,4 @@ export default async function(req) {
     console.error('getTeamTrainingReadiness failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
