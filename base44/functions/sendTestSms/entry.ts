@@ -528,7 +528,7 @@ function isProtectedSuperAdmin(user) {
 
 
 // ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
-// Telnyx has no client idempotency key for POST /v2/messages, so we retry only a
+// Telnyx has no client idempotency key for a message-create request, so we retry only a
 // status that proves the send was not processed (408/425/429/503). 500/502/504
 // can follow an accepted message, and a THROWN error (a timeout above all) can
 // follow a request Telnyx received; neither is retried — a blind retry could
@@ -660,7 +660,11 @@ Deno.serve(async (req) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 15000);
         try {
-          const payload = { from: boundFromNumber, to: destination, text: TEST_BODY };
+          // A test text writes no SmsMessage row, so a delivery receipt for it
+          // would 404 at handleTelnyxStatusWebhook and be redelivered by Telnyx.
+          // use_profile_webhooks: false and no webhook_url ask for none
+          // (CreateMessageRequest.use_profile_webhooks, default true).
+          const payload = { from: boundFromNumber, to: destination, text: TEST_BODY, use_profile_webhooks: false };
           if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
           const resp = await fetch(telnyxUrl, {
             method: 'POST',

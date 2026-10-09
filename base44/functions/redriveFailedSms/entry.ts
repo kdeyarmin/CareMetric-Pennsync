@@ -215,7 +215,7 @@ function telnyxSendStatus(responseBody) {
 // Only a failure that PROVES Telnyx did not process the send is re-driven: HTTP
 // 408/425/429/503 in the status-and-code prefix every writer puts on the reason
 // (telnyxApiFailureReason), or a connection that never opened. 500/502/504 and
-// timeouts are outcome-unknown — POST /v2/messages has no idempotency key, so a
+// timeouts are outcome-unknown — a message-create request has no idempotency key, so a
 // re-send could text the patient twice. The prose after the prefix is never what
 // admits a row; it can only veto one (PERMANENT_FAILURE_PATTERNS).
 const REDRIVABLE_HTTP_STATUSES = new Set([408, 425, 429, 503]);

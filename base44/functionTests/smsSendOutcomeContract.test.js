@@ -158,6 +158,23 @@ test('sendSms sends an outcome-unknown 5xx once and records it as such', async (
   assert.equal(state.data.SmsMessage[0].failure_reason, 'Telnyx API error: HTTP 502, code 10007: Bad gateway');
 });
 
+test('a test text writes no row, so it asks Telnyx for no delivery receipt', async () => {
+  // A receipt for a rowless send 404s at handleTelnyxStatusWebhook and Telnyx
+  // redelivers it; use_profile_webhooks: false with no webhook_url asks for none.
+  const state = fixture();
+  state.client.auth.me = async () => owner;
+  const telnyx = telnyxAnswer(200, { data: { id: 'prov_test', to: [{ status: 'queued' }] } });
+  const handler = await loadFunction('sendTestSms', state.client, RELEASED, telnyx.impl);
+  const response = await handler(new Request('https://app/functions/sendTestSms', {
+    method: 'POST', body: JSON.stringify({ to_number: PATIENT_PHONE }),
+  }));
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(telnyx.sends.length, 1);
+  assert.equal(telnyx.sends[0].body.use_profile_webhooks, false);
+  assert.equal(Object.hasOwn(telnyx.sends[0].body, 'webhook_url'), false);
+  assert.equal(state.data.SmsMessage.length, 0);
+});
+
 test('sendSms answers with the status it stored, not "sent"', async () => {
   const state = fixture();
   state.client.auth.me = async () => owner;

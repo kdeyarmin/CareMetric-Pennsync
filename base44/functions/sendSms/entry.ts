@@ -714,7 +714,7 @@ async function agencyMemberEmails(base44, agencyId) {
 }
 
 // ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
-// POST /v2/messages takes no idempotency key, so only a status that proves Telnyx
+// A message-create request takes no idempotency key, so only a status that proves Telnyx
 // did not process the send is retried: 408, 425, 429 and 503. 500/502/504 can
 // follow an accepted message (outcome unknown) and a THROWN error — a timeout
 // above all — can follow a request Telnyx received; neither is ever retried.

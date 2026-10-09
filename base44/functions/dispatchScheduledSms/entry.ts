@@ -157,7 +157,7 @@ async function getAgencyConfig(base44, agencyHint) {
 }
 
 // ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
-// Telnyx has no client idempotency key for POST /v2/messages, so we retry only a
+// Telnyx has no client idempotency key for a message-create request, so we retry only a
 // status that proves the send was not processed (408/425/429/503). 500/502/504
 // can follow an accepted message, and a THROWN error (a timeout above all) can
 // follow a request Telnyx received; neither is retried — a blind retry could

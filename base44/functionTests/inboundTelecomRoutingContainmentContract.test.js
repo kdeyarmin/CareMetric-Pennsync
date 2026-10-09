@@ -754,6 +754,10 @@ test("inbound texts land in the line agency's thread, attributed only through se
     const reply = JSON.parse(fetchCalls[0][1].body);
     assert.equal(reply.from, "+12155550100");
     assert.equal(reply.to, "+13125550182");
+    // The reply has no SmsMessage row, so it asks for no delivery receipt: one
+    // would 404 here and Telnyx would redeliver it.
+    assert.equal(reply.use_profile_webhooks, false);
+    assert.equal(Object.hasOwn(reply, "webhook_url"), false);
     await handler(signedWebhook(privateKey, keywordEvent({
       eventId: "event_stop_x", messageId: "message_stop_x", keyword: "STOP", occurredAt: new Date().toISOString(),
     })));
@@ -1103,6 +1107,42 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
     }));
     assert.equal(invalidResponse.status, 401, "a forged inbound event is rejected before the migration response");
   } finally {
+    globalThis.Deno = originalDeno;
+    globalThis.fetch = originalFetch;
+    globalThis.__inboundRoutingMakeClient = originalMakeClient;
+  }
+});
+
+test("a refused auto-reply is logged by status and Telnyx code, never by number or text", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const publicKeyB64 = rawEd25519PublicKeyB64(publicKey);
+  const originalDeno = globalThis.Deno;
+  const originalFetch = globalThis.fetch;
+  const originalMakeClient = globalThis.__inboundRoutingMakeClient;
+  const originalError = console.error;
+  const logged = [];
+  try {
+    const state = makeStatefulClient({ publicKeyB64 });
+    seedAgencyA(state);
+    state.data.AgencySettings = [{ auto_off_duty_enabled: false, business_hours_enabled: true, business_hours: {} }];
+    const fetchCalls = [];
+    const handler = await loadHandler(() => state.client, async (...args) => {
+      fetchCalls.push(args);
+      return Response.json({
+        errors: [{ code: "40310", title: "Invalid to", detail: "+13125550182 is not a valid destination" }],
+      }, { status: 422 });
+    });
+    console.error = (...args) => { logged.push(args); };
+    const response = await handler(signedWebhook(privateKey, textEvent({ messageId: "in_refused", text: "question" })));
+    console.error = originalError;
+    assert.equal(response.status, 200, "the inbound text is still stored and acknowledged");
+    assert.equal(fetchCalls.length, 1);
+    const entry = logged.find((args) => args[0] === "auto-reply not accepted");
+    assert.ok(entry, "the refusal is logged instead of discarded");
+    assert.deepEqual(entry[1], { status: 422, code: "40310" });
+    assert.doesNotMatch(JSON.stringify(logged), /3125550182|question/, "no number or message text reaches the log");
+  } finally {
+    console.error = originalError;
     globalThis.Deno = originalDeno;
     globalThis.fetch = originalFetch;
     globalThis.__inboundRoutingMakeClient = originalMakeClient;

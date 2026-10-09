@@ -1007,21 +1007,37 @@ async function callCommand(apiKey, callControlId, command, payload = {}) {
 const SPEAK_DEFAULTS = { voice: 'female', language: 'en-US' };
 
 // ---- Telnyx outbound SMS (auto-reply) ----
+// An auto-reply writes no SmsMessage row, so its delivery receipt would find
+// nothing to update: handleOutboundMessageStatus answers 404 for an unknown
+// provider id (so a receipt that races sendSms's own write is redelivered), and
+// Telnyx would keep redelivering this one. use_profile_webhooks: false with no
+// webhook_url asks Telnyx for no receipt at all (message-create request,
+// CreateMessageRequest.use_profile_webhooks, default true).
 async function sendAutoReply(apiKey, messagingProfileId, from, to, text) {
   if (!outboundDeliveryReleased()) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const payload = { from, to, text };
+    const payload = { from, to, text, use_profile_webhooks: false };
     if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
-    return await fetch('https://api.telnyx.com/v2/messages', {
+    const resp = await fetch('https://api.telnyx.com/v2/messages', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
+    if (!resp.ok) {
+      // The error body can echo the patient's number; log the status and
+      // Telnyx's code only.
+      const data = await resp.json().catch(() => ({}));
+      console.error('auto-reply not accepted', { status: resp.status, code: telnyxErrorCode(data?.errors) });
+    } else {
+      await resp.body?.cancel?.().catch(() => {});
+    }
+    return resp;
   } catch (err) {
-    console.error('auto-reply send failed:', err?.message);
+    // The message of a fetch error can carry the request URL; the name is enough.
+    console.error('auto-reply send failed', { error: err?.name || 'Error' });
     return null;
   } finally {
     clearTimeout(timer);
@@ -1305,7 +1321,9 @@ async function handleOutboundMessageStatus(base44, payload) {
   const rows = await base44.asServiceRole.entities.SmsMessage.filter({ provider_message_id: providerId }, '-created_date', 1).catch(() => []);
   // 404 (not 200) so Telnyx redelivers: sendSms persists provider_message_id
   // only AFTER the API round-trip, so a fast DLR can race the write. Acking it
-  // would lose the status forever — SMS has no poller to reconcile later.
+  // would lose the status forever — SMS has no poller to reconcile later. The
+  // sends that write no row at all (sendAutoReply, sendTestSms) ask Telnyx for
+  // no receipt (use_profile_webhooks: false), so they never loop here.
   if (!rows.length) return Response.json({ success: false, message: 'SmsMessage not found' }, { status: 404 });
   const row = rows[0];
   // Forward-only: ignore an unchanged or out-of-order (lower-rank) transition.

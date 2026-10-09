@@ -769,7 +769,10 @@ Deno.serve(async (req) => {
             notifications.push({ type: 'sms', status: 'skipped', reason: 'scoped consent unavailable' });
           } else if (scopedConsent.effectiveStatus === 'opted_in') {
             if (apiKey) {
-              const payload = { from: smsAuthority.destinationE164, to: phone, text: smsMessage };
+              // No SmsMessage row exists for this text, so ask Telnyx for no
+              // delivery receipt: one would 404 at handleTelnyxStatusWebhook and
+              // be redelivered (CreateMessageRequest.use_profile_webhooks).
+              const payload = { from: smsAuthority.destinationE164, to: phone, text: smsMessage, use_profile_webhooks: false };
               if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
               const response = await fetch('https://api.telnyx.com/v2/messages', {
                 method: 'POST',
