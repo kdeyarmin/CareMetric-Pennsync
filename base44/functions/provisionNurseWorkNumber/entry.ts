@@ -284,7 +284,17 @@ function assessTelnyxWorkLine(lookup, creds, e164) {
       + '", not the configured Voice connection "' + voice + '", so its calls will not reach PennSync.');
   }
   const profile = creds && creds.messagingProfileId;
-  if (!profile) {
+  // A number on NO messaging profile cannot send a text at all: Telnyx refuses
+  // the send as "not on a messaging profile". Said in those words, because
+  // "profile none, not X" reads like a mismatch the admin can ignore.
+  const noProfile = !number.messaging_profile_id;
+  if (noProfile && profile) {
+    problems.push(e164 + " is not on any messaging profile, so every text from it fails (Telnyx: 'not on a messaging profile')."
+      + ' Add it to the configured Messaging Profile "' + profile + '" in Telnyx first.');
+  } else if (noProfile) {
+    warnings.push(e164 + " is not on any messaging profile, so every text from it will fail (Telnyx: 'not on a messaging profile'),"
+      + ' and no Messaging Profile id is saved in Telnyx Credentials.');
+  } else if (!profile) {
     warnings.push('No Messaging Profile id is saved in Telnyx Credentials, so ' + e164 + "'s texting was not checked.");
   } else if (number.messaging_profile_id === 'UNAVAILABLE') {
     warnings.push('Telnyx could not report ' + e164 + "'s messaging profile right now, so its texting was not checked.");
@@ -325,7 +335,9 @@ async function telnyx10dlcWarnings(apiKey, e164, savedCampaignId) {
         + saved + ', so its texts may be filtered under the wrong registration.'];
     }
     if (row.assignmentStatus && row.assignmentStatus !== 'ASSIGNED') {
-      return [e164 + "'s A2P 10DLC campaign assignment is " + row.assignmentStatus + ', so US carriers may filter its texts until it is ASSIGNED.'];
+      // PENDING_ASSIGNMENT is normal for a few days after enrolment: a warning, never a refusal.
+      return [e164 + "'s A2P 10DLC assignment to campaign " + (row.tcrCampaignId || row.campaignId) + ' is '
+        + row.assignmentStatus + ', so US carriers may filter its texts until it is ASSIGNED.'];
     }
     return [];
   } catch {
@@ -342,9 +354,14 @@ async function verifyTelnyxWorkLine(creds, e164, options = {}) {
     return { checked: false, problems: [], telnyxNumberId: null, telnyxStatus: null,
       warnings: [e164 + ' was not checked with Telnyx because ' + why + '.'] };
   }
-  const result = assessTelnyxWorkLine(await lookupTelnyxNumber(creds.apiKey, e164), creds, e164);
-  // 10DLC is a US registration: only a +1 line that is otherwise good is worth the extra read.
-  if (result.checked && result.problems.length === 0 && e164.slice(0, 2) === '+1') {
+  const lookup = await lookupTelnyxNumber(creds.apiKey, e164);
+  const result = assessTelnyxWorkLine(lookup, creds, e164);
+  // 10DLC registers US local long codes: only a +1, non-toll-free line that is
+  // otherwise good is worth the extra read (toll-free has its own verification).
+  const type = lookup.ok && lookup.number ? String(lookup.number.phone_number_type || '') : '';
+  const tollFree = type === 'toll_free' || type === 'tollfree'
+    || ['800', '833', '844', '855', '866', '877', '888'].includes(e164.slice(2, 5));
+  if (result.checked && result.problems.length === 0 && e164.slice(0, 2) === '+1' && !tollFree) {
     result.warnings.push(...await telnyx10dlcWarnings(creds.apiKey, e164, options && options.campaignId));
   }
   return result;

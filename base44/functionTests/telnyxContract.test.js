@@ -909,6 +909,9 @@ test("manual nurse assignment refuses a number Telnyx reports as not ready, befo
     ["purchase pending", [ownedNumber("+12155550188", { status: "purchase-pending" })], /"purchase-pending" in Telnyx, not active/],
     ["another voice connection", [ownedNumber("+12155550188", { connection_id: "OTHER" })], /connection "OTHER", not the configured Voice connection "VC1"/],
     ["another messaging profile", [ownedNumber("+12155550188", { messaging_profile_id: "MP-OTHER" })], /messaging profile "MP-OTHER", not the configured Messaging Profile "MP1"/],
+    // Telnyx refuses every send from such a number ("not on a messaging profile").
+    ["no messaging profile", [ownedNumber("+12155550188", { messaging_profile_id: null, messaging_profile_name: null })],
+      /not on any messaging profile, so every text from it fails \(Telnyx: 'not on a messaging profile'\)\. Add it to the configured Messaging Profile "MP1"/],
   ];
   for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
     for (const [label, owned, problem] of cases) {
@@ -952,7 +955,7 @@ test("a nurse line that is not on the saved 10DLC campaign is assigned with a wa
       /not on any A2P 10DLC campaign \(the saved campaign is CAMP1\)/],
     ["another campaign", onCampaign({ campaignId: "OTHER", tcrCampaignId: "C0OTHER", telnyxCampaignId: "OTHER" }),
       /on A2P 10DLC campaign C0OTHER, not the saved campaign CAMP1/],
-    ["assignment still pending", onCampaign({ assignmentStatus: "PENDING_ASSIGNMENT" }), /assignment is PENDING_ASSIGNMENT/],
+    ["assignment still pending", onCampaign({ assignmentStatus: "PENDING_ASSIGNMENT" }), /assignment to campaign C0ZURTX is PENDING_ASSIGNMENT/],
     ["campaign unreadable", campaignRoute(() => ({ status: 500, json: {} })), /campaign could not be checked \(HTTP 500\)/],
   ];
   for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
@@ -971,6 +974,34 @@ test("a nurse line that is not on the saved 10DLC campaign is assigned with a wa
     const out = await assignWith(name, data, [lookupRoute(() => ({ json: { data: [ownedNumber("+12155550188")] } })),
       onCampaign({ campaignId: "3008dd9f-66d7-40e0-bf23-bf2d8d1a96ba", telnyxCampaignId: "3008dd9f-66d7-40e0-bf23-bf2d8d1a96ba" })]);
     assert.deepEqual(out.json.warnings, [], `${name}: a TCR campaign id matches`);
+  }
+});
+
+test("a toll-free line is not checked against 10DLC, and a profile-less line warns when no profile is saved", async () => {
+  for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
+    // Toll-free numbers are not 10DLC long codes; a 404 there would be a false alarm.
+    const tollFree = assignmentData();
+    tollFree.PhoneNumber[0].e164 = "+18555140223";
+    tollFree.AgencySettings = [{ id: "AS1", a2p_campaign_id: "C0ZURTX" }];
+    const routes = [lookupRoute(() => ({ json: { data: [ownedNumber("+18555140223", { phone_number_type: "toll_free" })] } })),
+      campaignRoute(() => { throw new Error("toll-free must not be checked against 10DLC"); })];
+    const { impl, calls } = makeFetch(routes);
+    const handler = await loadHandler(`../functions/${name}/entry.ts`, {
+      env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data: tollFree }), fetchImpl: impl,
+    });
+    const res = await handler(new Request("https://app/functions/test", { method: "POST", body: JSON.stringify({
+      action: "assign", id: "p1", target_user_email: "n@x.com", work_phone_number: "+18555140223",
+    }) }));
+    assert.equal(res.status, 200, name);
+    assert.deepEqual((await res.json()).warnings, [], name);
+    assert.equal(calls.some((c) => c.url.includes("/10dlc/")), false, name);
+
+    // With no Messaging Profile saved there is nothing to compare against, but
+    // a number on no profile still cannot text, and the admin is told so.
+    const noSaved = assignmentData({ messaging_profile_id: "" });
+    const out = await assignWith(name, noSaved, [lookupRoute(() => ({ json: { data: [ownedNumber("+12155550188", { messaging_profile_id: null })] } })), onCampaign()]);
+    assert.equal(out.res.status, 200, name);
+    assert.ok(out.json.warnings.some((w) => /not on any messaging profile, so every text from it will fail/.test(w)), out.json.warnings.join(" | "));
   }
 });
 
