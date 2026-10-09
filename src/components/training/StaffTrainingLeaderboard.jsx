@@ -29,6 +29,7 @@ export default function StaffTrainingLeaderboard() {
       </div>
       <p className="text-sm text-muted-foreground">Ranked by average training plan progress, then completed plan courses. Equal results share a rank.</p>
       <p className="text-xs text-muted-foreground">All-time progress across non-cancelled plans for active staff; course completions are summed across plans. Independent of the nurse and date filters above.</p>
+      <p className="text-xs text-muted-foreground">Badges show plan completion status and issued training certificates, excluding revoked awards. Earned certificates may include expired awards; these are not professional licenses.</p>
     </CardHeader>
     <CardContent className="space-y-4">
       {leaderboard.isPending ? <LoadingState className="py-6" /> : leaderboard.isError ?

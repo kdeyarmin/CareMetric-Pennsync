@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import LoadingState from '@/components/ui/LoadingState';
 import DepartmentCompletionRow from '@/components/training/DepartmentCompletionRow';
+import PrintTrainingSummaryButton from '@/components/training/PrintTrainingSummaryButton';
 
 export default function DepartmentTrainingSummary() {
   const { user, tenantContext, tenantAuthorityKey } = useAuth();
@@ -26,7 +27,10 @@ export default function DepartmentTrainingSummary() {
     <CardHeader className="pb-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <CardTitle className="text-lg">Course Completion by Department</CardTitle>
-        <Button variant="outline" size="sm" disabled={summary.isFetching} onClick={() => summary.refetch()}>Refresh</Button>
+        <div className="flex flex-wrap items-start gap-2">
+          <PrintTrainingSummaryButton disabled={!summary.isSuccess || summary.isFetching} />
+          <Button variant="outline" size="sm" disabled={summary.isFetching} onClick={() => summary.refetch()}>Refresh</Button>
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">Completed or passed course assignments divided by all active assignments, grouped by their assigned department.</p>
     </CardHeader>

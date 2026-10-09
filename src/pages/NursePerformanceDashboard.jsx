@@ -54,6 +54,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 import StaffTrainingLeaderboard from '@/components/training/StaffTrainingLeaderboard';
+import DepartmentTrainingHeatmap from '@/components/training/DepartmentTrainingHeatmap';
 
 const COLORS = ['#3557b0', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0d9488'];
 
@@ -219,6 +220,7 @@ export default function NursePerformanceDashboard() {
         }
       />
 
+      <DepartmentTrainingHeatmap />
       <StaffTrainingLeaderboard />
 
       {!performanceData ? (
