@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { after, before, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,15 @@ import { transpileTs } from '../../tools-transpile-ts.mjs';
 // decided before the body is read, a sending line that is an active
 // TelecomDestinationBinding in the caller's agency, the scoped consent ledger
 // (texts), and chart access through callerMayAccessPatient.
+
+// sendSms also enforces the TCPA quiet-hours window in the recipient's area
+// code, from the wall clock. Every case here is about authority, so pin a
+// daytime instant (noon in Chicago, the patient's 312 number) for the whole
+// file: a success must not depend on when the suite runs, and a refusal must
+// mean what its case says rather than "it is night". Only Date is mocked.
+const DAYTIME = Date.parse('2026-10-08T17:00:00.000Z');
+before(() => mock.timers.enable({ apis: ['Date'], now: DAYTIME }));
+after(() => mock.timers.reset());
 
 const AGENCY = 'agency_a';
 const WORK = '+12155550100';
