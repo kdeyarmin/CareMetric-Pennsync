@@ -39,6 +39,7 @@ import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
 import { getRoleView, canAccessLevel } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { getAiContentAgreementStatus } from '@/functions/getAiContentAgreementStatus';
+import { verifyAiContentAgreementAcceptance } from '@/functions/verifyAiContentAgreementAcceptance';
 import { getRouterBasename } from '@/lib/routerBasename';
 import {
   getPublicCapabilitySnapshot,
@@ -409,13 +410,11 @@ const TenantReadyApp = () => {
   if (!hasAcceptedAiContentAgreement(agreementStatus.data)) {
     return (
       <AIContentResponsibilityAgreement
-        onAccepted={async () => {
-          const result = await agreementStatus.refetch({ cancelRefetch: true });
-          if (result.error) throw result.error;
-          if (!hasAcceptedAiContentAgreement(result.data)) {
-            throw new Error('Protected agreement verification did not confirm the current version.');
-          }
-        }}
+        onAccepted={() => verifyAiContentAgreementAcceptance(queryClientInstance, [
+          'aiContentAgreementStatus',
+          user.id || 'authenticated-user',
+          tenantAuthorityKey,
+        ])}
       />
     );
   }

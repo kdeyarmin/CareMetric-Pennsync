@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+
 import { useAuth } from "@/lib/AuthContext";
 import { acceptAiContentAgreement } from "@/functions/acceptAiContentAgreement";
 import { Button } from "@/components/ui/button";
 
 import { Sparkles, ShieldCheck, LogOut, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+
 import { BRAND_LOGO_URL } from "@/lib/brand";
 import {
   AI_CONTENT_AGREEMENT_TITLE,
@@ -30,7 +30,7 @@ import {
  */
 export default function AIContentResponsibilityAgreement({ onAccepted }) {
   const { logout } = useAuth();
-  const queryClient = useQueryClient();
+  const [recorded, setRecorded] = useState(false);
 
   // One checkbox per acknowledgment; all must be checked to continue.
   const [checked, setChecked] = useState(() =>
@@ -47,26 +47,26 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
   const accept = async () => {
     if (!allChecked || saving) return;
     setError("");
-    setSaving("recording");
+    setSaving(recorded ? "verifying" : "recording");
+    let acknowledgmentRecorded = recorded;
     try {
-      // The purpose-specific broker derives the actor, appends the canonical
-      // audit event, and creates the immutable authority attestation. Mutable
-      // compatibility fields on User are not acceptance authority.
-      await acceptAiContentAgreement({
-        accepted: true,
-        agreement_version: AI_CONTENT_AGREEMENT_VERSION,
-      });
-
-      // Compatibility fields may still be displayed elsewhere, but the gate
-      // opens only after App.jsx re-reads the protected attestation status.
-      void queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      if (!acknowledgmentRecorded) {
+        await acceptAiContentAgreement({
+          accepted: true,
+          agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+        });
+        acknowledgmentRecorded = true;
+        setRecorded(true);
+      }
       setSaving("verifying");
-      if (onAccepted) await onAccepted();
-      toast.success("Thank you — your acknowledgment has been recorded.");
+      if (!onAccepted) throw new Error("Protected verification is required.");
+      await onAccepted();
       setSaving(false);
     } catch (err) {
       console.error("Failed to record AI content agreement:", err);
-      setError("We couldn't complete your acknowledgment or verify it. Please try again; access remains closed until verification succeeds.");
+      setError(acknowledgmentRecorded
+        ? "Your acknowledgment was recorded, but access could not be verified. Select Retry verification; access remains closed until verification succeeds."
+        : "Your acknowledgment could not be recorded. Please try again; access remains closed until verification succeeds.");
       setSaving(false);
     }
     // In the app, a successful protected recheck unmounts this gate. A failed
@@ -142,7 +142,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
                           id={id}
                           type="checkbox"
                           required
-                          disabled={saving}
+                          disabled={Boolean(saving) || recorded}
                           checked={checked[index]}
                           onChange={(event) => setAcknowledgment(index, event.target.checked)}
                           className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-navy-600"
@@ -186,7 +186,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               <Button
                 type="button"
                 onClick={() => { void accept(); }}
-                disabled={!allChecked || saving}
+                disabled={!allChecked || Boolean(saving)}
                 className="bg-navy-600 hover:bg-navy-700 sm:min-w-[220px]"
               >
                 {saving ? (
@@ -194,7 +194,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {saving === "verifying" ? "Verifying…" : "Recording…"}
                   </>
                 ) : (
-                  "I Agree & Continue"
+                  recorded ? "Retry verification" : "I Agree & Continue"
                 )}
               </Button>
             </div>
