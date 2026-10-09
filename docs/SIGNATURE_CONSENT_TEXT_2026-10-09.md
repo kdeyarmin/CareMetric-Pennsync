@@ -59,3 +59,6 @@ Signing for someone else. If you sign on behalf of another person, you confirm t
 
 Two commitments in it belong to the agency and are easy to change: paper and
 copies "at no charge", and paper not affecting care or services.
+
+**Confirmed by the owner on 2026-10-09** ("Confirmed - signature agreement"),
+with both commitments as written.
