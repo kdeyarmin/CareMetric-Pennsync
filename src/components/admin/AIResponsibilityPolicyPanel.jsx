@@ -5,14 +5,15 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { manageAiResponsibilityPolicy } from '@/functions/manageAiResponsibilityPolicy';
 
+const POLICY_QUERY_KEY = ['platformAiResponsibilityPolicy'];
+
 export default function AIResponsibilityPolicyPanel() {
   const client = useQueryClient();
-  const key = ['platformAiResponsibilityPolicy'];
-  const policy = useQuery({ queryKey: key, queryFn: () => manageAiResponsibilityPolicy(), retry: false });
+  const policy = useQuery({ queryKey: POLICY_QUERY_KEY, queryFn: () => manageAiResponsibilityPolicy(), retry: false });
   const save = useMutation({
     mutationFn: enabled => manageAiResponsibilityPolicy({ bypass_previously_acknowledged: enabled }),
     onSuccess: async result => {
-      client.setQueryData(key, result);
+      client.setQueryData(POLICY_QUERY_KEY, result);
       await client.invalidateQueries({ queryKey: ['aiContentAgreementStatus'] });
     },
   });

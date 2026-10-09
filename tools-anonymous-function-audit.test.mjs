@@ -112,3 +112,52 @@ test('an empty or unavailable discovery directory cannot report success', async 
   const root = fixture(t); assert.equal((await auditAnonymousFunctions(root)).passed, false);
   assert.equal((await auditAnonymousFunctions(join(root, 'missing'))).passed, false);
 });
+
+// The Base44 editor's newer function format (2026-10-09): a default export
+// instead of Deno.serve, secrets from `base44:runtime`, and imports from
+// base44/shared/ that the CLI bundles. Each shape is planted here, because a
+// harness that cannot load a function reports it as uncaptured and nothing more.
+test('a default-exported handler is captured and judged like a served one', async () => {
+  const refused = await auditAnonymousSource(`export default async function () { return Response.json({error:'sign in'}, {status:401}); }`, 'modern');
+  assert.equal(refused.outcome, 'rejected');
+  assert.equal(refused.safeNegativeResult, true);
+  const open = await auditAnonymousSource(`export default async function () { return Response.json({ok:true}); }`, 'modernOpen');
+  assert.equal(open.outcome, 'success_without_session');
+  assert.equal(open.safeNegativeResult, false);
+});
+
+test('a base44:runtime secret read is recorded as an environment read', async () => {
+  const result = await auditAnonymousSource(`import { secrets } from 'base44:runtime';
+    export default async function () {
+      if (!secrets.get('RELEASE_SWITCH')) return Response.json({error:'unavailable'}, {status:403});
+      return Response.json({ok:true});
+    }`, 'modernSecret');
+  assert.equal(result.outcome, 'rejected');
+  assert.deepEqual(result.environmentKeys, ['RELEASE_SWITCH']);
+});
+
+test('a shared import is evaluated as code under base44/, and nothing outside it is read', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'anon-audit-shared-'));
+  try {
+    mkdirSync(join(root, 'base44/functions/modern'), { recursive: true });
+    mkdirSync(join(root, 'base44/shared'), { recursive: true });
+    writeFileSync(join(root, 'base44/shared/gate.ts'), `import { secrets } from 'base44:runtime';
+      export function gate() { return secrets.get('SHARED_SWITCH') ? null : Response.json({error:'off'}, {status:403}); }`);
+    writeFileSync(join(root, 'base44/functions/modern/entry.ts'), `import { gate } from '../../shared/gate.ts';
+      export default async function () { return gate() ?? Response.json({ok:true}); }`);
+    writeFileSync(join(root, 'outside.ts'), `export function gate() { return Response.json({ok:true}); }`);
+    mkdirSync(join(root, 'base44/functions/escape'), { recursive: true });
+    writeFileSync(join(root, 'base44/functions/escape/entry.ts'), `import { gate } from '../../../outside.ts';
+      export default async function () { return gate(); }`);
+    const result = await auditAnonymousFunctions(root);
+    const modern = result.results.find(row => row.name === 'modern');
+    assert.equal(modern.outcome, 'rejected');
+    assert.deepEqual(modern.environmentKeys, ['SHARED_SWITCH'], 'the shared module ran, and its secret read was recorded');
+    // An import leaving base44/ is not read: it gets the trapping provider.
+    const escape = result.results.find(row => row.name === 'escape');
+    assert.equal(escape.safeNegativeResult, false);
+    assert.deepEqual(escape.operations, ['provider.gate']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -246,7 +246,7 @@ describe("isPageAllowedForRole — URL-level route guard", () => {
     expect(isPageAllowedForRole("Telehealth", "nurse", social)).toBe(true);
     expect(isPageAllowedForRole("OASISCenter", "nurse", social)).toBe(false);
     expect(isPageAllowedForRole("ClinicalDocumentation", "nurse", social)).toBe(false);
-    expect(isPageAllowedForRole("CarePlanManagement", "nurse", social)).toBe(false);
+    expect(isPageAllowedForRole("SmartNoteAssistant", "nurse", social)).toBe(false);
   });
   it("lets nurses reach clinical pages", () => {
     expect(isPageAllowedForRole("OASISCenter", "nurse", nurse)).toBe(true);

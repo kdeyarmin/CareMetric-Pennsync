@@ -5,7 +5,7 @@
 // negative test, not evidence of valid-user behavior or hosted authorization.
 import { readdirSync, readFileSync, lstatSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -21,7 +21,7 @@ const unavailableExpectations = JSON.parse(readFileSync(
 // it, which would turn a method sweep into an execution_error.
 const bodyless = (method) => method === 'GET' || method === 'HEAD';
 
-export async function auditAnonymousSource(source, name, payload = {}, { method = 'POST' } = {}) {
+export async function auditAnonymousSource(source, name, payload = {}, { method = 'POST', resolveImport = null } = {}) {
   const operations = [];
   const environmentKeys = [];
   let interceptedNetworkAttempts = 0;
@@ -42,16 +42,45 @@ export async function auditAnonymousSource(source, name, payload = {}, { method 
   client.asServiceRole = { entities: entityStore, integrations: integrationStore, functions: client.functions };
   let handler;
   const importNames = [];
+  // The newer Base44 function format reads secrets from `base44:runtime`. They
+  // go through the same recorded accessor as `Deno.env.get`, so the set of
+  // environment reads stays complete whichever format a function uses.
+  const runtime = {
+    secrets: { get: key => context.Deno.env.get(key) },
+    waitUntil: () => rejectOperation('runtime.waitUntil'),
+  };
+  // A relative import (the CLI bundles `base44/shared/` into each function) is
+  // evaluated as real code in this same sandbox when the caller can resolve it;
+  // otherwise it gets the trapping provider, as any other package does.
+  const evaluate = (code, filename, requireFrom) => {
+    const scope = { ...context, exports: {}, module: { exports: {} }, require: requireFrom };
+    runInNewContext(code, scope, { timeout: 1000, filename });
+    return scope.module.exports;
+  };
+  const requireFrom = (from) => (specifier) => {
+    if (/^base44:runtime(?:\/|$)/.test(specifier)) { importNames.push(specifier); return runtime; }
+    if (/^\.{1,2}\//.test(specifier) && resolveImport) {
+      const dependency = resolveImport(specifier, from);
+      if (dependency) {
+        const code = transformSync(dependency.source, { loader: 'ts', format: 'cjs', target: 'es2022', logLevel: 'silent' }).code;
+        importNames.push(specifier);
+        return evaluate(code, dependency.name, requireFrom(dependency.from));
+      }
+    }
+    return trappingRequire(specifier);
+  };
+  // Anything else: the SDK gets the inert client, every other package a trap.
+  function trappingRequire(specifier) {
+    importNames.push(specifier);
+    if (/^(?:npm:)?@base44\/sdk(?:@|$)/.test(specifier)) return { createClientFromRequest: () => client };
+    const provider = new Proxy(function () { return rejectOperation('provider.construct'); }, {
+      get: (_, property) => property === '__esModule' ? true : () => rejectOperation(`provider.${String(property)}`),
+    });
+    return provider;
+  }
   const context = {
     exports: {}, module: { exports: {} },
-    require(specifier) {
-      importNames.push(specifier);
-      if (/^(?:npm:)?@base44\/sdk(?:@|$)/.test(specifier)) return { createClientFromRequest: () => client };
-      const provider = new Proxy(function () { return rejectOperation('provider.construct'); }, {
-        get: (_, property) => property === '__esModule' ? true : () => rejectOperation(`provider.${String(property)}`),
-      });
-      return provider;
-    },
+    require: specifier => requireFrom(null)(specifier),
     // Every environment read goes through this one accessor, at module scope as
     // well as inside the handler, so recording the key here is the complete set
     // of values whose answer could differ in a deployed environment. A consumer
@@ -81,6 +110,11 @@ export async function auditAnonymousSource(source, name, payload = {}, { method 
   try {
     const code = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022', logLevel: 'silent' }).code;
     runInNewContext(code, context, { timeout: 1000, filename: `${name}.ts` });
+    // The newer format exports the handler as the module default instead of
+    // passing it to Deno.serve.
+    if (typeof handler !== 'function' && typeof context.module.exports?.default === 'function') {
+      handler = context.module.exports.default;
+    }
     if (typeof handler !== 'function') return { name, status, outcome: 'handler_not_captured', operations, unexpectedOperations: operations, interceptedNetworkAttempts, safeNegativeResult: false, importNames, environmentKeys: [...new Set(environmentKeys)] };
     const req = new Request(`https://audit.invalid/functions/${name}`, bodyless(method)
       ? { method }
@@ -141,7 +175,15 @@ export async function auditAnonymousFunctions(root = process.cwd(), payload = {}
       if (!lstatSync(parent).isDirectory() || !lstatSync(entry).isFile()) throw new Error('ENTRY_NOT_REGULAR_FILE');
       const source = readSource(entry, 'utf8');
       if (typeof source !== 'string' || !source.trim()) throw new Error('ENTRY_EMPTY_OR_INVALID');
-      results.push(await auditAnonymousSource(source, name, payload, { method }));
+      // Relative imports resolve from the function's own directory and must
+      // stay inside base44/, as the CLI's bundle of base44/shared/ does.
+      const backend = join(root, 'base44');
+      const resolveImport = (specifier, from) => {
+        const path = resolve(from ?? parent, specifier);
+        if (!path.startsWith(`${backend}/`) || !lstatSync(path).isFile()) return null;
+        return { source: readSource(path, 'utf8'), name: path.slice(root.length + 1), from: dirname(path) };
+      };
+      results.push(await auditAnonymousSource(source, name, payload, { method, resolveImport }));
     } catch {
       // Never silently skip an entry. Return a named failing result without
       // printing filesystem errors that could contain private paths/source.

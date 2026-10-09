@@ -1084,7 +1084,9 @@ test('the carried report blocks are the original s text, with four named changes
   };
   const metrics = slice('function calculateMetrics(data) {', 'async function generateAIInsights(');
   const trend = slice('function calculateDailyTrend(', 'function generatePDFReport(');
-  let pdf = original.slice(original.indexOf('function generatePDFReport('));
+  // The block runs to the end of the original, whose final newline is a property
+  // of the file rather than of the code (the Base44 editor saves without one).
+  let pdf = original.slice(original.indexOf('function generatePDFReport(')).replace(/\n?$/, '\n');
 
   // 1. The builder takes a jsPDF-shaped object instead of constructing one.
   pdf = pdf.replace(

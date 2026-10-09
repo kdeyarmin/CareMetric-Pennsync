@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { transpileFunctionEntry } from '../../tools-transpile-ts.mjs';
 
 const source = await readFile(
   new URL('../functions/checkAllIntegrations/entry.ts', import.meta.url),
@@ -31,7 +31,7 @@ async function loadHandler({ env = {}, client, entrySource = source } = {}) {
     tmpdir(),
     `integration_health_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
   );
-  await writeFile(temporaryModule, transpileTs(rewritten).outputText);
+  await writeFile(temporaryModule, (await transpileFunctionEntry(rewritten)).outputText);
 
   let handler;
   globalThis.__integrationHealthClient = client || {
@@ -83,6 +83,18 @@ const PROVIDER_KEYS = {
 };
 const PROVIDER_IDS = ['openai_transcription', 'anthropic_soap', 'heygen'];
 
+// Real calls carry the caller's credential, and since 2026-10-09 several of
+// these functions answer 401 before anything else when it is missing.
+const signedIn = (body) => new Request('https://example.invalid/function', {
+  method: 'POST', headers: { Authorization: 'Bearer synthetic-test-session' }, body,
+});
+// Since 2026-10-09 a person-triggered learning job admits the platform owner (a
+// built-in admin whose address is SUPER_ADMIN_EMAIL) or a verified
+// agency_admin membership; a bare role of admin is refused. The owner's check
+// reads no data, so these tests can still prove no course data is touched.
+const OWNER_EMAIL = 'owner@example.test';
+const owner = { id: 'admin-a', role: 'admin', is_active: true, email: OWNER_EMAIL };
+
 const retiredLearningFunctions = [
   'generateTrainingCourse', 'manageTrainingVideos', 'syncTrainingVideoStatuses',
   'duplicateInService', 'rebuildExistingInServices', 'seedYearlyRequiredInServices',
@@ -98,7 +110,7 @@ for (const name of retiredLearningFunctions) {
       get asServiceRole() { throw new Error('Retired operation accessed service-owned data'); },
     };
     const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
-    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    const response = await handler(signedIn('{}'));
     const data = await response.json();
     assert.equal(response.status, learningSchedulers.has(name) ? 200 : 410);
     if (learningSchedulers.has(name)) assert.equal(data.reason, 'central_learning');
@@ -112,7 +124,7 @@ for (const name of retiredLearningFunctions) {
       get asServiceRole() { throw new Error('Unauthorized caller accessed course data'); },
     };
     const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
-    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    const response = await handler(signedIn('{}'));
     assert.equal(response.status, 403);
   });
 }
@@ -128,11 +140,11 @@ for (const name of retiredLearningAutomation) {
   test(`${name} skips after the central cutover without touching course data`, async () => {
     const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
     const client = {
-      auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+      auth: { me: async () => ({ ...owner }) },
       get asServiceRole() { throw new Error('Retired automation accessed service-owned data'); },
     };
-    const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
-    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1', SUPER_ADMIN_EMAIL: OWNER_EMAIL } });
+    const response = await handler(signedIn('{}'));
     const data = await response.json();
     assert.equal(response.status, 200);
     assert.equal(data.skipped, true);
@@ -144,11 +156,11 @@ for (const name of retiredLearningAutomation) {
       const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
       let reachedCourseData = false;
       const client = {
-        auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+        auth: { me: async () => ({ ...owner }) },
         get asServiceRole() { reachedCourseData = true; throw new Error('reached service-owned data'); },
       };
-      const handler = await loadHandler({ entrySource, client, env });
-      const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+      const handler = await loadHandler({ entrySource, client, env: { ...env, SUPER_ADMIN_EMAIL: OWNER_EMAIL } });
+      const response = await handler(signedIn('{}'));
       const data = await response.json().catch(() => ({}));
       assert.equal(reachedCourseData, true, 'with the guard off the job must proceed to its data');
       assert.notEqual(data.reason, 'central_learning');
@@ -160,11 +172,11 @@ test('autoEnrollAnnualPlans leaves the person-clicked scope all action alone aft
   const entrySource = await readFile(new URL('../functions/autoEnrollAnnualPlans/entry.ts', import.meta.url), 'utf8');
   let reachedCourseData = false;
   const client = {
-    auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+    auth: { me: async () => ({ ...owner }) },
     get asServiceRole() { reachedCourseData = true; throw new Error('reached service-owned data'); },
   };
-  const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
-  const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: JSON.stringify({ scope: 'all' }) }));
+  const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1', SUPER_ADMIN_EMAIL: OWNER_EMAIL } });
+  const response = await handler(signedIn(JSON.stringify({ scope: 'all' })));
   const data = await response.json().catch(() => ({}));
   assert.equal(reachedCourseData, true, 'scope all must proceed to its data');
   assert.notEqual(data.reason, 'central_learning');

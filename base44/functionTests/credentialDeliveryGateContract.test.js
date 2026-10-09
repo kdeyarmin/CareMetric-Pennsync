@@ -103,6 +103,9 @@ function fixture({ user = adminUser(), target = targetUser(), authError, clientE
       },
     },
   };
+  // Since 2026-10-09 adminResetPassword looks its target up under the caller's
+  // own permissions rather than the service role; the same User table.
+  client.entities = { User: client.asServiceRole.entities.User };
   return { calls, bump, client, invitation, clientError };
 }
 
