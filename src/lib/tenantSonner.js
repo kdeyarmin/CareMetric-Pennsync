@@ -39,10 +39,13 @@ function toast(_message, options) {
   return rawToast(SAFE_MESSAGES.default, safeOptions(options));
 }
 
-toast.success = (_message, options) => rawToast.success(
-  SAFE_MESSAGES.success,
-  safeOptions(options),
-);
+// Generic "Action completed." toasts carried no information and stacked up
+// on every save/load, so successes are silent. A pending loading toast with
+// the same id is still cleared.
+toast.success = (_message, options) => {
+  if (options && options.id !== undefined) rawToast.dismiss(options.id);
+  return undefined;
+};
 toast.error = (_message, options) => rawToast.error(
   SAFE_MESSAGES.error,
   safeOptions(options),
@@ -84,7 +87,7 @@ toast.promise = (promiseOrFactory, options) => {
   const observed = Promise.resolve(source);
   const updateOptions = { ...safeOptions(options), id };
   void observed.then(
-    () => rawToast.success(SAFE_MESSAGES.success, updateOptions),
+    () => rawToast.dismiss(id),
     () => rawToast.error(SAFE_MESSAGES.error, updateOptions),
   );
   const unwrap = () => observed;
