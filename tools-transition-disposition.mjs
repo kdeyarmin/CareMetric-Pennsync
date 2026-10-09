@@ -685,7 +685,11 @@ export const CARE_TEAM_SIGNALS = Object.freeze(['assigned_nurses', 'PatientCareT
 export function classifyPortBlocker(source) {
   if (typeof source !== 'string') return 'records_schema';
   // Dynamic access (`entities[name]`) reads rows exactly as the dotted form does.
-  if (/\.\s*entities\s*[.[]|asServiceRole/.test(source)) return 'records_schema';
+  // `asServiceRole` counts too (it catches `const { entities } = base44.asServiceRole`),
+  // EXCEPT where it is immediately followed by `.integrations`: a service-role
+  // `Core.InvokeLLM` call reads no record, and treating it as one put four
+  // entity-free SmartNote capabilities in `records_schema` (2026-10-09).
+  if (/\.\s*entities\s*[.[]|asServiceRole(?!\s*\.\s*integrations\b)/.test(source)) return 'records_schema';
   // A file locator, the shared SSRF guard that only admits Base44's storage
   // hosts, or an upload/signing operation. Any of them means the handler is
   // bound to the old file layer.

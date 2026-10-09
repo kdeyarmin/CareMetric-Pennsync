@@ -123,12 +123,12 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=5 files=8 external_secret=2 none=82
+port queue: entity_authorization=5 files=12 core_integration=4 external_secret=2 none=82
 ```
 
-98 carried capabilities, **79 written, 19 blocked** (2026-09-30, after D223),
-which is the line above summed — `none` is the written total and the other
-three buckets are the blocked one. Derive it that way rather than carrying it
+105 carried capabilities, **82 written, 23 blocked** (2026-10-09), which is
+the line above summed — `none` is the written total and every other
+bucket is blocked. Derive it that way rather than carrying it
 forward: this paragraph read 78 and 20 for a day after the queue line beside it
 had moved, so the page carried two measurements of one thing that disagreed,
 which is the defect its own next sentence is about.
