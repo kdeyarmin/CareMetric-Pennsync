@@ -52,19 +52,28 @@ jobs:
       # Base44's managed preview resolves dependencies with npm, not pnpm.
       # Validate that path independently: pnpm can accept peer combinations
       # that npm rejects before the preview server ever starts.
+      #
+      # Two runtimes. Node 20 with npm 10.8.2 resolves with peers enforced,
+      # so the tree itself stays coherent. Node 24.21.0 with npm 10.9.9 is
+      # what Base44's sandbox ran on 2026-10-09, and there npm crashes on this
+      # tree unless the repository's .npmrc turns peer installation off. The
+      # first check alone stayed green while the preview could not start.
       - name: Check Base44 npm dependency compatibility
-        timeout-minutes: 5
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
           check_dir="$(mktemp -d "$RUNNER_TEMP/base44-npm-check.XXXXXX")"
           trap 'rm -rf "$check_dir"' EXIT
-          cp package.json "$check_dir/package.json"
+          cp package.json .npmrc "$check_dir/"
           cp -R vendor "$check_dir/vendor"
           cd "$check_dir"
           npm exec --yes --package=node@20.20.2 --package=npm@10.8.2 -- npm install \
             --package-lock-only --ignore-scripts --no-audit --no-fund \
             --legacy-peer-deps=false --force=false
+          rm -f package-lock.json
+          npm exec --yes --package=node@24.21.0 --package=npm@10.9.9 -- npm install \
+            --package-lock-only --ignore-scripts --no-audit --no-fund --force=false
 
       - name: Lint GitHub Actions workflows
         run: pnpm run lint:actions
