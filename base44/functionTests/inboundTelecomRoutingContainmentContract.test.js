@@ -1113,6 +1113,100 @@ test("signed inbound SMS routes only through its binding, fax requires exact des
   }
 });
 
+function optOutReceipt({ eventId = "event_dlr_1", messageId = "prov_out_1", from = "+12155550100", profile = "MP1", code = "40300" } = {}) {
+  return {
+    data: {
+      id: eventId,
+      occurred_at: "2026-09-06T12:00:00.000Z",
+      event_type: "message.finalized",
+      payload: {
+        id: messageId,
+        direction: "outbound",
+        messaging_profile_id: profile,
+        from: { phone_number: from },
+        to: [{ phone_number: "+13125550182", status: "sending_failed" }],
+        errors: [{ code, title: "Blocked due to STOP message", detail: "Blocked due to STOP message" }],
+      },
+    },
+  };
+}
+
+function sentRow(overrides = {}) {
+  return {
+    id: "out_1", direction: "outbound", status: "queued", provider_message_id: "prov_out_1",
+    from_number: "+12155550100", to_number: "+13125550182", nurse_email: "nurse@agency-a.test",
+    sent_by: "nurse@agency-a.test", agency_id: "agency_a", destination_binding_id: "binding_1",
+    thread_id: "+12155550100|+13125550182", ...overrides,
+  };
+}
+
+test("a delivery receipt with Telnyx 40300 records a replay-safe provider opt-out in the line's scope", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const publicKeyB64 = rawEd25519PublicKeyB64(publicKey);
+  const originalDeno = globalThis.Deno;
+  const originalFetch = globalThis.fetch;
+  const originalMakeClient = globalThis.__inboundRoutingMakeClient;
+  try {
+    let state = makeStatefulClient({ publicKeyB64 });
+    state.data.SmsMessage = [sentRow()];
+    let handler = await loadHandler(() => state.client, async () => Response.json({ data: {} }));
+    let response = await handler(signedWebhook(privateKey, optOutReceipt()));
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(state.data.SmsConsent.length, 1);
+    const row = state.data.SmsConsent[0];
+    assert.deepEqual({
+      consent_key: row.consent_key, agency_id: row.agency_id, destination_binding_id: row.destination_binding_id,
+      phone_e164: row.phone_e164, consent_status: row.consent_status, consent_source: row.consent_source,
+      provider_event_id: row.provider_event_id, provider_message_id: row.provider_message_id,
+      captured_at: row.captured_at, provider_event_occurred_at: row.provider_event_occurred_at, captured_by: row.captured_by,
+    }, {
+      consent_key: "telnyx:integration_1:MP1:agency_a:+13125550182", agency_id: "agency_a", destination_binding_id: "binding_1",
+      phone_e164: "+13125550182", consent_status: "opted_out", consent_source: "provider_opt_out",
+      provider_event_id: "event_dlr_1", provider_message_id: "prov_out_1",
+      captured_at: "2026-09-06T12:00:00.000Z", provider_event_occurred_at: "2026-09-06T12:00:00.000Z", captured_by: null,
+    });
+    const failed = state.entityCalls.find((call) => call.name === "SmsMessage" && call.operation === "update" && call.patch.status === "failed");
+    assert.equal(failed.patch.failure_reason, "Telnyx delivery failed: code 40300: Blocked due to STOP message");
+
+    // A redelivered receipt appends nothing.
+    response = await handler(signedWebhook(privateKey, optOutReceipt()));
+    assert.equal(response.status, 200);
+    assert.equal(state.data.SmsConsent.length, 1);
+
+    // Authority must be exact: a receipt from a number that is not the row's
+    // bound line, a row stamped for another agency, or another code writes nothing.
+    for (const [label, event, row] of [
+      ["unbound sending number", optOutReceipt({ from: "+12155550999" }), sentRow({ from_number: "+12155550999" })],
+      ["row stamped for another agency", optOutReceipt(), sentRow({ agency_id: "agency_b" })],
+      ["a different Telnyx error", optOutReceipt({ code: "40008" }), sentRow()],
+    ]) {
+      state = makeStatefulClient({ publicKeyB64 });
+      state.data.SmsMessage = [row];
+      handler = await loadHandler(() => state.client, async () => Response.json({ data: {} }));
+      response = await handler(signedWebhook(privateKey, event));
+      assert.equal(response.status, 200, label);
+      assert.equal((state.data.SmsConsent || []).length, 0, `${label}: no consent written`);
+    }
+
+    // A consent store that cannot be written asks Telnyx to redeliver.
+    state = makeStatefulClient({ publicKeyB64 });
+    state.data.SmsMessage = [sentRow()];
+    const entities = state.client.asServiceRole.entities;
+    const failingEntities = new Proxy({}, {
+      get: (_target, name) => (name === "SmsConsent"
+        ? { ...entities.SmsConsent, create: async () => { throw new Error("store down"); } }
+        : entities[name]),
+    });
+    handler = await loadHandler(() => ({ entities: failingEntities, asServiceRole: { entities: failingEntities } }), async () => Response.json({ data: {} }));
+    response = await handler(signedWebhook(privateKey, optOutReceipt()));
+    assert.equal(response.status, 503);
+  } finally {
+    globalThis.Deno = originalDeno;
+    globalThis.fetch = originalFetch;
+    globalThis.__inboundRoutingMakeClient = originalMakeClient;
+  }
+});
+
 test("a refused auto-reply is logged by status and Telnyx code, never by number or text", async () => {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const publicKeyB64 = rawEd25519PublicKeyB64(publicKey);

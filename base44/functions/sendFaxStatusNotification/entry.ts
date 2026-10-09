@@ -545,6 +545,20 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       && row?.provider_event_id == null
       && row?.provider_message_id == null
       && row?.provider_event_occurred_at == null;
+    // provider_opt_out: Telnyx refused a send to this recipient with error
+    // 40300 ("Blocked due to STOP message"). From a delivery receipt it carries
+    // the receipt's event and message ids, exactly as a keyword row does; from a
+    // refused API request there is no provider event, so all three are null.
+    const providerOptOutMatches = source === 'provider_opt_out'
+      && status === 'opted_out'
+      && (row?.captured_by ?? null) === null
+      && ((!!providerEventId && row?.provider_event_id === providerEventId
+        && !!providerMessageId && row?.provider_message_id === providerMessageId
+        && Number.isFinite(occurredAtMs)
+        && row?.provider_event_occurred_at === row?.captured_at)
+        || (row?.provider_event_id == null
+          && row?.provider_message_id == null
+          && row?.provider_event_occurred_at == null));
     if (row?.consent_key !== consentKey
       || row?.provider !== 'telnyx'
       || row?.integration_secret_id !== authority.integrationSecretId
@@ -553,7 +567,7 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       || row?.phone_e164 !== phoneE164
       || !provenanceMatches
       || !Number.isFinite(capturedAtMs)
-      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      || (!keywordSourceMatches && !manualProvenanceMatches && !providerOptOutMatches)) {
       return { ok: false, reason: 'sms_consent_integrity_failed' };
     }
   }
@@ -566,9 +580,13 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
         : 'sms_consent_order_invalid' };
     }
   }
-  const newestKeyword = rows.find((row) =>
-    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
-  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  // A provider-classified STOP — the keyword itself, or Telnyx refusing a send
+  // because of it (provider_opt_out) — is lifted only by a provider START: a
+  // manual opt-in cannot override it, and Telnyx keeps blocking until then.
+  const newestKeyword = rows.find((row) => row.consent_source === 'keyword_stop'
+    || row.consent_source === 'keyword_start' || row.consent_source === 'provider_opt_out');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop'
+    || newestKeyword?.consent_source === 'provider_opt_out';
   return {
     ok: true,
     row: rows[0] || null,

@@ -257,3 +257,134 @@ test('the scheduled monthly cap counts the line agency as sendSms does, not a pr
   assert.equal(telnyx.sends.length, 0, 'cap reached for the line agency');
   assert.equal(state.data.ScheduledSms[0].status, 'pending', 'left for a later run, not failed');
 });
+
+// ---- Telnyx error 40300 ("Blocked due to STOP message") feeds the ledger ----
+
+const OPT_OUT_REFUSAL = { errors: [{ code: '40300', title: 'Blocked due to STOP message', detail: 'Blocked due to STOP message' }] };
+
+function assertProviderOptOut(row) {
+  assert.deepEqual({
+    consent_key: row.consent_key, agency_id: row.agency_id, integration_secret_id: row.integration_secret_id,
+    messaging_profile_id: row.messaging_profile_id, destination_binding_id: row.destination_binding_id,
+    destination_binding_key: row.destination_binding_key, destination_e164: row.destination_e164,
+    phone_e164: row.phone_e164, consent_status: row.consent_status, consent_source: row.consent_source,
+    captured_by: row.captured_by, patient_id: row.patient_id,
+  }, {
+    consent_key: `telnyx:integration_1:MP1:agency_a:${PATIENT_PHONE}`, agency_id: 'agency_a',
+    integration_secret_id: 'integration_1', messaging_profile_id: 'MP1', destination_binding_id: 'binding_1',
+    destination_binding_key: `telnyx:integration_1:${LINE}`, destination_e164: LINE, phone_e164: PATIENT_PHONE,
+    consent_status: 'opted_out', consent_source: 'provider_opt_out', captured_by: null, patient_id: null,
+  });
+}
+
+test('a send Telnyx blocks for a STOP records the opt-out, and the next send never reaches Telnyx', async () => {
+  const state = fixture();
+  state.client.auth.me = async () => owner;
+  const telnyx = telnyxAnswer(400, OPT_OUT_REFUSAL);
+  const handler = await loadFunction('sendSms', state.client, RELEASED, telnyx.impl);
+  const first = await handler(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10' }));
+  assert.equal(first.status, 400);
+  assert.equal((await first.json()).reason, 'provider_opt_out');
+  assert.equal(telnyx.sends.length, 1);
+  const recorded = state.data.SmsConsent.filter((row) => row.consent_source === 'provider_opt_out');
+  assert.equal(recorded.length, 1);
+  assertProviderOptOut(recorded[0]);
+  assert.equal(recorded[0].provider_event_id, null, 'a refused request carries no provider event');
+  assert.equal(state.data.SmsMessage[0].failure_reason, 'Telnyx API error: HTTP 400, code 40300: Blocked due to STOP message');
+
+  const second = await handler(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 11' }));
+  assert.equal(second.status, 403, 'the ledger now refuses before Telnyx does');
+  assert.equal(telnyx.sends.length, 1);
+  assert.equal(state.data.SmsConsent.filter((row) => row.consent_source === 'provider_opt_out').length, 1);
+});
+
+test('only Telnyx code 40300 records an opt-out; other refusals leave consent alone', async () => {
+  const state = fixture();
+  state.client.auth.me = async () => owner;
+  const telnyx = telnyxAnswer(400, { errors: [{ code: '40310', detail: 'Blocked: invalid number' }] });
+  const handler = await loadFunction('sendSms', state.client, RELEASED, telnyx.impl);
+  await handler(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10' }));
+  assert.equal(state.data.SmsConsent.length, 1, 'nothing appended');
+});
+
+test('a provider opt-out is lifted only by a provider START, never by a manual opt-in', async () => {
+  const inline = await (async () => {
+    const source = (await readFile(new URL('../functions/sendSms/entry.ts', import.meta.url), 'utf8'))
+      .replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, 'const createClientFromRequest = () => ({});');
+    const file = join(tmpdir(), `sms_ledger_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+    await writeFile(file, `${transpileTs(source).outputText}\nexport { loadLatestScopedSmsConsent, resolveActiveTelnyxSmsBinding };\n`);
+    globalThis.Deno = { serve() {}, env: { get: () => undefined } };
+    try { return await import(pathToFileURL(file).href); } finally { await unlink(file).catch(() => {}); }
+  })();
+  const read = async (consents) => {
+    const state = fixture({ SmsConsent: consents });
+    const authority = await inline.resolveActiveTelnyxSmsBinding(state.client, {
+      integrationSecretId: 'integration_1', integrationProvider: 'telnyx', integrationIsActive: true,
+      messagingProfileId: 'MP1', destinationE164: LINE, requireOutbound: true,
+    });
+    assert.equal(authority.ok, true);
+    return inline.loadLatestScopedSmsConsent(state.client, authority, PATIENT_PHONE);
+  };
+  const blocked = optIn({
+    id: 'c2', consent_status: 'opted_out', consent_source: 'provider_opt_out', captured_by: null,
+    captured_at: '2026-09-03T00:00:00.000Z', notes: 'x',
+  });
+  const blockedByReceipt = {
+    ...blocked, provider_event_id: 'event_1', provider_message_id: 'message_1',
+    provider_event_occurred_at: blocked.captured_at,
+  };
+  for (const row of [blocked, blockedByReceipt]) {
+    const result = await read([optIn(), row]);
+    assert.equal(result.ok, true);
+    assert.equal(result.effectiveStatus, 'opted_out');
+    assert.equal(result.keywordStopActive, true);
+  }
+  const manualLater = optIn({ id: 'c3', captured_at: '2026-09-04T00:00:00.000Z' });
+  assert.equal((await read([optIn(), blocked, manualLater])).effectiveStatus, 'opted_out', 'a manual opt-in cannot override it');
+  const startLater = optIn({
+    id: 'c4', consent_status: 'opted_in', consent_source: 'keyword_start', captured_by: null,
+    captured_at: '2026-09-05T00:00:00.000Z', provider_event_id: 'event_start', provider_message_id: 'message_start',
+    provider_event_occurred_at: '2026-09-05T00:00:00.000Z',
+  });
+  assert.equal((await read([optIn(), blocked, startLater])).effectiveStatus, 'opted_in', 'the recipient texting START lifts it');
+
+  // A malformed provider row is an integrity failure, never an authorization.
+  for (const malformed of [
+    { ...blocked, consent_status: 'opted_in' },
+    { ...blocked, captured_by: 'nurse@example.test' },
+    { ...blocked, provider_event_id: 'event_1' },
+    { ...blockedByReceipt, provider_event_occurred_at: '2026-09-03T00:00:01.000Z' },
+  ]) {
+    const result = await read([optIn(), malformed]);
+    assert.equal(result.ok, false, JSON.stringify(malformed).slice(0, 120));
+  }
+});
+
+test('a scheduled send and a redrive Telnyx blocks for a STOP record the opt-out too', async () => {
+  let state = scheduledFixture();
+  let telnyx = telnyxAnswer(400, OPT_OUT_REFUSAL);
+  let handler = await loadFunction('dispatchScheduledSms', state.client, RELEASED, telnyx.impl);
+  await handler(cron('dispatchScheduledSms'));
+  assert.equal(state.data.ScheduledSms[0].status, 'failed');
+  let recorded = state.data.SmsConsent.filter((row) => row.consent_source === 'provider_opt_out');
+  assert.equal(recorded.length, 1);
+  assertProviderOptOut(recorded[0]);
+
+  state = fixture({
+    SmsMessage: [{
+      id: 'sms_1', direction: 'outbound', status: 'failed', failure_reason: 'Telnyx API error: HTTP 429, code 10011',
+      created_date: new Date(Date.now() - 10 * 60_000).toISOString(), retry_count: 0,
+      from_number: LINE, to_number: PATIENT_PHONE, body: 'Visit at 10',
+      nurse_email: 'nurse@example.test', sent_by: 'nurse@example.test',
+      agency_id: 'agency_a', destination_binding_id: 'binding_1',
+    }],
+  });
+  telnyx = telnyxAnswer(400, OPT_OUT_REFUSAL);
+  handler = await loadFunction('redriveFailedSms', state.client, RELEASED, telnyx.impl);
+  await handler(cron('redriveFailedSms'));
+  assert.equal(telnyx.sends.length, 1);
+  recorded = state.data.SmsConsent.filter((row) => row.consent_source === 'provider_opt_out');
+  assert.equal(recorded.length, 1);
+  assertProviderOptOut(recorded[0]);
+  assert.match(state.data.SmsMessage[0].failure_reason, /^Telnyx API error: HTTP 400, code 40300/);
+});
