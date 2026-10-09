@@ -115,6 +115,7 @@ jobs:
           echo 'The CLI reported function deployment success. Publishing follows.'
 
       - name: Publish the app so production serves the deployed functions
+        id: publish
         env:
           BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
         shell: bash
@@ -158,8 +159,12 @@ jobs:
 
       # Publishing rebuilt the site from base44/config.jsonc. Put the exact,
       # validated build back through the site-only publication, which verifies
-      # every asset on both production origins itself.
+      # every asset on both production origins itself. This keys on the
+      # publish, not on the verification above: a drifted or unverifiable
+      # function check still fails the job, but must not leave the rebuilt
+      # site (Help launcher off) live.
       - name: Dispatch the site-only publication to restore the exact build
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

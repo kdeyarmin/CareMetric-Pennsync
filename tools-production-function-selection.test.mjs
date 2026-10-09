@@ -76,8 +76,12 @@ test('the function deployment stays manual, production-protected, functions-only
   assert.match(source.slice(at(publish)), /BASE44_APP_PUBLISH_FAILED[\s\S]*?exit 2/);
   assert.doesNotMatch(source, /echo[^\n]*BASE44_API_KEY/);
   // Publishing rebuilds the site from config, so the exact build is restored
-  // through the site-only publication, and only after verification.
+  // through the site-only publication after verification, and whenever the
+  // publish succeeded: a failed verification must not leave the rebuilt site.
   assert.ok(at('node tools-live-function-sync.mjs') < at('gh workflow run publish-production-frontend.yml'));
+  assert.match(source.slice(at('Publish the app so production serves'), at(publish)), /^ {8}id: publish$/m);
+  assert.match(source.slice(at('Dispatch the site-only publication'), at('gh workflow run publish-production-frontend.yml')),
+    /^ {8}if: \$\{\{ !cancelled\(\) && steps\.publish\.outcome == 'success' \}\}$/m);
   assert.match(source, /^ {2}actions: write$/m);
   assert.doesNotMatch(source, /path:.*base44-(?:access-check|functions-receipt|functions\.log)/);
 });
