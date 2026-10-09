@@ -363,6 +363,9 @@ function isTransientFailureReason(reason) {
 }
 function shouldRedriveSms(row, now = Date.now(), maxAttempts = 4, baseGapMs = 60_000, maxAgeMs = 24 * 60 * 60 * 1000) {
   if (!row || row.status !== 'failed' || row.direction !== 'outbound') return false;
+  // A nurse resent it by hand (sendSms resend_of): re-sending it too would text
+  // the patient twice.
+  if (row.superseded_by) return false;
   const attempts = Number(row.retry_count) || 0;
   if (attempts >= maxAttempts) return false;
   if (!isTransientFailureReason(row.failure_reason)) return false;
@@ -1320,6 +1323,14 @@ Deno.serve(async (req) => {
       }
       const check = await base44.asServiceRole.entities.SmsMessage.filter({ id: row.id }, '-created_date', 1).catch(() => []);
       if (!check[0] || check[0].redrive_claimed_by !== runId) { result.skipped++; continue; }
+      // A manual Resend that superseded the row after it was listed wins; the
+      // claim is released and nothing is sent (sendSms's re-read sees the claim
+      // the other way round and refuses the resend instead).
+      if (check[0].superseded_by) {
+        await base44.asServiceRole.entities.SmsMessage.update(row.id, { redrive_claimed_by: null }).catch(() => {});
+        result.skipped++;
+        continue;
+      }
       result.redriven++;
 
       // The original client_message_id is kept for our own tracking but is NOT

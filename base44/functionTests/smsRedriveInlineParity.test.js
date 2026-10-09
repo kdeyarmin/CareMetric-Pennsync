@@ -70,5 +70,9 @@ test("redriveFailedSms inlines the smsRedrive policy unchanged", async () => {
       created_date: "2026-06-04T12:00:00Z", last_retry_at: null,
     };
     assert.equal(inline.shouldRedriveSms(row, now), smsRedrive.shouldRedriveSms(row, now), `shouldRedriveSms(${reason})`);
+    // A row a manual Resend superseded is never redriven by either copy.
+    const superseded = { ...row, superseded_by: "client_resend" };
+    assert.equal(inline.shouldRedriveSms(superseded, now), false, `superseded: ${reason}`);
+    assert.equal(smsRedrive.shouldRedriveSms(superseded, now), false, `superseded: ${reason}`);
   }
 });

@@ -98,6 +98,19 @@
     "destination_binding_id": {
       "type": "string",
       "description": "Service-stamped id of the active TelecomDestinationBinding of the agency line (from_number for outbound, to_number for inbound). redriveFailedSms re-sends only rows carrying it and re-proves the binding at send time."
+    },
+    "resend_of": {
+      "type": "string",
+      "description": "Service-stamped id of the failed outbound SmsMessage this text manually re-sends (sendSms resend_of, after proving the caller sent that row)."
+    },
+    "superseded_by": {
+      "type": "string",
+      "description": "client_message_id of the manual resend that replaced this failed row. Set only by sendSms; redriveFailedSms never re-sends a superseded row, so a manual Resend and the redrive cannot both text the patient."
+    },
+    "superseded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When a manual resend superseded this failed row"
     }
   },
   "required": [

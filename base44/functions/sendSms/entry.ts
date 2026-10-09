@@ -731,6 +731,50 @@ async function agencyMemberEmails(base44, agencyId) {
     .filter(Boolean));
 }
 
+/**
+ * Retire a failed outbound text that the caller is resending by hand, so the
+ * redrive cron can never send it as well (it refuses a row with superseded_by).
+ * The caller may act on the row only if it is THEIR failed outbound text (they
+ * sent it and own it), to this destination, with this body, from this agency.
+ * The mark is written, then re-read: a redrive that claimed the row in between,
+ * or one that already re-sent it, wins and the manual resend is refused, so the
+ * two can never both text the patient.
+ */
+async function supersedeFailedText(base44, rowId, { callerEmail, destination, body, agencyId, clientMessageId }) {
+  const entities = base44.asServiceRole.entities;
+  const email = String(callerEmail || '').trim().toLowerCase();
+  const notFound = { ok: false, status: 404, error: 'The text being resent was not found.', reason: 'resend_not_found' };
+  const busy = { ok: false, status: 409, error: 'This text is being retried automatically right now. Refresh in a minute.', reason: 'resend_conflict' };
+  const read = async () => {
+    const rows = await entities.SmsMessage.filter({ id: rowId }, undefined, 2).catch(() => null);
+    return Array.isArray(rows) && rows.length === 1 && rows[0]?.id === rowId ? rows[0] : null;
+  };
+  const row = await read();
+  if (!row || row.direction !== 'outbound'
+    || String(row.sent_by || '').trim().toLowerCase() !== email
+    || String(row.nurse_email || '').trim().toLowerCase() !== email
+    || normalizeE164(row.to_number) !== destination
+    || (row.agency_id != null && row.agency_id !== agencyId)) return notFound;
+  if (row.body !== body) {
+    return { ok: false, status: 400, error: 'A resend must repeat the original text.', reason: 'resend_body_mismatch' };
+  }
+  if (row.superseded_by) return { ok: false, status: 409, error: 'This text was already resent.', reason: 'resend_already_superseded' };
+  if (row.status !== 'failed' || row.redrive_claimed_by) return busy;
+  try {
+    await entities.SmsMessage.update(row.id, { superseded_by: clientMessageId, superseded_at: new Date().toISOString() });
+  } catch {
+    return { ok: false, status: 503, error: 'The text could not be resent right now. Try again shortly.', reason: 'resend_unavailable' };
+  }
+  const after = await read();
+  if (!after || after.superseded_by !== clientMessageId || after.status !== 'failed' || after.redrive_claimed_by) {
+    if (after?.superseded_by === clientMessageId) {
+      await entities.SmsMessage.update(row.id, { superseded_by: null, superseded_at: null }).catch(() => {});
+    }
+    return busy;
+  }
+  return { ok: true };
+}
+
 // ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
 // A message-create request takes no idempotency key, so only a status that proves Telnyx
 // did not process the send is retried: 408, 425, 429 and 503. 500/502/504 can
@@ -1328,7 +1372,7 @@ Deno.serve(async (req) => {
     if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) {
       return Response.json({ error: 'Missing required fields: to_number, body' }, { status: 400 });
     }
-    const { to_number, body, patient_id, media_urls } = requestBody;
+    const { to_number, body, patient_id, media_urls, resend_of } = requestBody;
     if (!to_number || !body) {
       return Response.json({ error: 'Missing required fields: to_number, body' }, { status: 400 });
     }
@@ -1350,6 +1394,11 @@ Deno.serve(async (req) => {
 
     if (patient_id != null && (typeof patient_id !== 'string' || !claimIdentifier(patient_id))) {
       return Response.json({ error: 'patient_id is invalid' }, { status: 400 });
+    }
+    // A manual Resend names the failed row it replaces, so that row can be
+    // retired from the redrive cron (see supersedeFailedText).
+    if (resend_of != null && (typeof resend_of !== 'string' || !claimIdentifier(resend_of))) {
+      return Response.json({ error: 'resend_of is invalid' }, { status: 400 });
     }
 
     const destination = normalizeE164(to_number);
@@ -1508,6 +1557,17 @@ Deno.serve(async (req) => {
 
     const clientMessageId = crypto.randomUUID();
 
+    // A manual Resend retires the failed original from the redrive cron BEFORE
+    // texting, or the cron could re-send it too and the patient get it twice.
+    if (resend_of != null) {
+      const superseded = await supersedeFailedText(base44, resend_of, {
+        callerEmail: user.email, destination, body, agencyId, clientMessageId,
+      });
+      if (!superseded.ok) {
+        return Response.json({ error: superseded.error, reason: superseded.reason }, { status: superseded.status });
+      }
+    }
+
     // Log the message before sending so we always have a record.
     const smsRow = await base44.asServiceRole.entities.SmsMessage.create({
       direction: 'outbound',
@@ -1525,6 +1585,7 @@ Deno.serve(async (req) => {
       // Provenance redriveFailedSms requires and re-proves before any re-send.
       agency_id: agencyId,
       destination_binding_id: smsAuthority.bindingId,
+      ...(resend_of != null ? { resend_of } : {}),
     });
 
     // Send via the Telnyx Messages API. Bounded by an AbortController timeout.

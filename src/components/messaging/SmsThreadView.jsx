@@ -51,15 +51,18 @@ export default function SmsThreadView({
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
 
+  // One path to sendSms for a new text and for a Resend.
+  const invokeSendSms = async (body, extra = {}) => {
+    const res = await base44.functions.invoke("sendSms", {
+      to_number: otherPartyNumber, body, patient_id: patientId || undefined, ...extra,
+    });
+    const data = res?.data ?? res;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
   const sendMutation = useMutation({
-    mutationFn: async (body) => {
-      const res = await base44.functions.invoke("sendSms", {
-        to_number: otherPartyNumber, body, patient_id: patientId || undefined,
-      });
-      const data = res?.data ?? res;
-      if (data?.error) throw new Error(data.error);
-      return data;
-    },
+    mutationFn: (body) => invokeSendSms(body),
     onSuccess: () => {
       setDraft("");
       toast.success("Message sent");
@@ -72,16 +75,11 @@ export default function SmsThreadView({
 
   // Resend a previously failed outbound message (re-sends the same body; the
   // backend creates a fresh SmsMessage row, so the original failure stays in
-  // the thread as a record).
+  // the thread as a record). `resend_of` names the original so the backend
+  // retires it from the automatic redrive first — otherwise the cron could
+  // re-send it as well and the patient would get the text twice.
   const resendMutation = useMutation({
-    mutationFn: async (body) => {
-      const res = await base44.functions.invoke("sendSms", {
-        to_number: otherPartyNumber, body, patient_id: patientId || undefined,
-      });
-      const data = res?.data ?? res;
-      if (data?.error) throw new Error(data.error);
-      return data;
-    },
+    mutationFn: (msg) => invokeSendSms(msg.body, { resend_of: msg.id }),
     onSuccess: () => {
       toast.success("Message resent");
       onSent?.();
@@ -95,7 +93,7 @@ export default function SmsThreadView({
     // is still driven by resendingId).
     if (resendMutation.isPending || sendMutation.isPending) return;
     setResendingId(msg.id);
-    resendMutation.mutate(msg.body);
+    resendMutation.mutate(msg);
   };
 
   const { data: agencySettingsRow = null } = useQuery({
@@ -173,7 +171,10 @@ export default function SmsThreadView({
                     <span className="capitalize">{msg.status.replace(/_/g, " ")}</span>
                   )}
                 </div>
-                {outbound && failed && canText && (
+                {outbound && failed && msg.superseded_by && (
+                  <span className="mt-0.5 px-1 text-[11px] text-slate-400">Resent</span>
+                )}
+                {outbound && failed && !msg.superseded_by && canText && (
                   <button
                     type="button"
                     onClick={() => handleResend(msg)}

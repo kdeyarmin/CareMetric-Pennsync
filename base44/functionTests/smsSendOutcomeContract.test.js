@@ -258,6 +258,94 @@ test('the scheduled monthly cap counts the line agency as sendSms does, not a pr
   assert.equal(state.data.ScheduledSms[0].status, 'pending', 'left for a later run, not failed');
 });
 
+// ---- a manual Resend retires the failed original from the redrive ----
+
+function failedOriginal(overrides = {}) {
+  return {
+    id: 'sms_orig', direction: 'outbound', status: 'failed',
+    failure_reason: 'Telnyx API error: HTTP 429, code 10011: Too many requests',
+    created_date: new Date(Date.now() - 10 * 60_000).toISOString(), retry_count: 0,
+    from_number: LINE, to_number: PATIENT_PHONE, body: 'Visit at 10',
+    nurse_email: owner.email, sent_by: owner.email,
+    agency_id: 'agency_a', destination_binding_id: 'binding_1', client_message_id: 'client_orig',
+    ...overrides,
+  };
+}
+
+test('a manual Resend supersedes the failed original, and the redrive then leaves it alone', async () => {
+  // The owner row lets the redrive authorize the sender, so the ONLY thing that
+  // can stop it re-sending the original is the supersede.
+  const state = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+  state.client.auth.me = async () => owner;
+  const telnyx = telnyxAnswer(200, { data: { id: 'prov_resend', to: [{ status: 'queued' }] } });
+  const send = await loadFunction('sendSms', state.client, RELEASED, telnyx.impl);
+  const response = await send(sendSmsRequest({ to_number: PATIENT_PHONE, body: 'Visit at 10', resend_of: 'sms_orig' }));
+  assert.equal(response.status, 200, await response.clone().text());
+  const [original, resent] = state.data.SmsMessage;
+  assert.equal(resent.resend_of, 'sms_orig');
+  assert.equal(original.superseded_by, resent.client_message_id);
+  assert.ok(original.superseded_at);
+  assert.equal(telnyx.sends.length, 1);
+
+  // The original still reads failed with a redrivable 429, yet it is not re-sent.
+  const redrive = await loadFunction('redriveFailedSms', state.client, RELEASED, telnyx.impl);
+  await redrive(cron('redriveFailedSms'));
+  assert.equal(telnyx.sends.length, 1, 'the patient is texted once');
+
+  // Control: without the supersede the same row IS redriven, so the assertion
+  // above is about the supersede and nothing else.
+  const control = fixture({ SmsMessage: [failedOriginal()], User: [owner] });
+  const controlTelnyx = telnyxAnswer(200, { data: { id: 'prov_redrive', to: [{ status: 'queued' }] } });
+  const controlRedrive = await loadFunction('redriveFailedSms', control.client, RELEASED, controlTelnyx.impl);
+  await controlRedrive(cron('redriveFailedSms'));
+  assert.equal(controlTelnyx.sends.length, 1);
+});
+
+test('a Resend is refused for a row the caller did not send, a changed text, or one already resent or claimed', async () => {
+  for (const [label, original, body, status] of [
+    ["another sender's text", failedOriginal({ sent_by: 'other@example.test', nurse_email: 'other@example.test' }), 'Visit at 10', 404],
+    ['a text to another number', failedOriginal({ to_number: '+13125550199' }), 'Visit at 10', 404],
+    ["another agency's text", failedOriginal({ agency_id: 'agency_b' }), 'Visit at 10', 404],
+    ['an inbound text', failedOriginal({ direction: 'inbound' }), 'Visit at 10', 404],
+    ['a changed body', failedOriginal(), 'Visit at 11', 400],
+    ['a text already resent', failedOriginal({ superseded_by: 'client_earlier' }), 'Visit at 10', 409],
+    ['a text the redrive has claimed', failedOriginal({ redrive_claimed_by: 'run_1' }), 'Visit at 10', 409],
+    ['a text that is no longer failed', failedOriginal({ status: 'sent' }), 'Visit at 10', 409],
+  ]) {
+    const state = fixture({ SmsMessage: [original] });
+    state.client.auth.me = async () => owner;
+    const telnyx = telnyxAnswer(200, { data: { id: 'prov_resend', to: [{ status: 'queued' }] } });
+    const send = await loadFunction('sendSms', state.client, RELEASED, telnyx.impl);
+    const response = await send(sendSmsRequest({ to_number: PATIENT_PHONE, body, resend_of: 'sms_orig' }));
+    assert.equal(response.status, status, label);
+    assert.equal(telnyx.sends.length, 0, `${label}: nothing is sent`);
+    assert.equal(state.data.SmsMessage.length, 1, `${label}: no new row`);
+  }
+});
+
+test('a redrive that listed the row before a Resend superseded it releases its claim and sends nothing', async () => {
+  const state = fixture({ SmsMessage: [failedOriginal({ superseded_by: 'client_resend', nurse_email: 'nurse@example.test', sent_by: 'nurse@example.test' })] });
+  // The cron's listing predates the Resend: it does not see superseded_by.
+  const entities = state.client.asServiceRole.entities;
+  const stale = new Proxy({}, {
+    get: (_target, name) => (name === 'SmsMessage'
+      ? {
+        ...entities.SmsMessage,
+        filter: async (query, sort, limit) => {
+          const rows = await entities.SmsMessage.filter(query, sort, limit);
+          return query.status === 'failed' ? rows.map(({ superseded_by, ...row }) => row) : rows;
+        },
+      }
+      : entities[name]),
+  });
+  const telnyx = telnyxAnswer(200, { data: { id: 'prov_2', to: [{ status: 'queued' }] } });
+  const redrive = await loadFunction('redriveFailedSms', { auth: { me: async () => null }, entities: stale, asServiceRole: { entities: stale } }, RELEASED, telnyx.impl);
+  const response = await redrive(cron('redriveFailedSms'));
+  assert.equal(response.status, 200);
+  assert.equal(telnyx.sends.length, 0);
+  assert.equal(state.data.SmsMessage[0].redrive_claimed_by, null, 'the claim is released');
+});
+
 // ---- Telnyx error 40300 ("Blocked due to STOP message") feeds the ledger ----
 
 const OPT_OUT_REFUSAL = { errors: [{ code: '40300', title: 'Blocked due to STOP message', detail: 'Blocked due to STOP message' }] };

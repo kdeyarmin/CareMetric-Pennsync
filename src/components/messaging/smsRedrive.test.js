@@ -112,6 +112,11 @@ test("shouldRedriveSms respects the attempt cap", () => {
   assert.equal(shouldRedriveSms({ ...baseRow, retry_count: 3 }, NOW + 60 * 60 * 1000), true);
 });
 
+test("shouldRedriveSms never re-sends a row a manual Resend superseded", () => {
+  assert.equal(shouldRedriveSms(baseRow, NOW), true);
+  assert.equal(shouldRedriveSms({ ...baseRow, superseded_by: "client_resend" }, NOW), false);
+});
+
 test("shouldRedriveSms will not retry a permanent failure", () => {
   assert.equal(shouldRedriveSms({ ...baseRow, failure_reason: "Recipient opted out" }, NOW), false);
 });

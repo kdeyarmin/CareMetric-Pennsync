@@ -141,6 +141,9 @@ export function isTransientFailureReason(reason) {
  */
 export function shouldRedriveSms(row, now = Date.now(), { maxAttempts = 4, baseGapMs = 60_000, maxAgeMs = 24 * 60 * 60 * 1000 } = {}) {
   if (!row || row.status !== "failed" || row.direction !== "outbound") return false;
+  // A nurse resent it by hand (sendSms resend_of): re-sending it too would text
+  // the patient twice.
+  if (row.superseded_by) return false;
   const attempts = Number(row.retry_count) || 0;
   if (attempts >= maxAttempts) return false;
   if (!isTransientFailureReason(row.failure_reason)) return false;
