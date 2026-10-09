@@ -16,6 +16,7 @@ import { getTemplates, renderTemplate, buildTemplateContext } from "@/components
 import ScheduleSendDialog from "@/components/messaging/ScheduleSendDialog";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
+import { requestAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // sendSms refuses a body longer than this many UTF-16 code units, which is
 // also what a textarea's maxLength counts.
@@ -66,7 +67,8 @@ function SmsAttachment({ messageId, index, item }) {
       onClick={async () => {
         try {
           const { url } = await fetchSmsMediaUrl(messageId, index);
-          window.open(url, "_blank", "noopener,noreferrer");
+          // Through the tenant-bound opener, never window.open directly.
+          if (!requestAuthorityBoundWindow(url).opened) throw new Error("The attachment could not be opened");
         } catch (err) {
           toast.error(err?.message || "Attachment unavailable");
         }
