@@ -11,7 +11,7 @@ const SOURCE = readFileSync(
 
 function loadAuthorizationHelpers() {
   const start = SOURCE.indexOf('const normalizeEmail');
-  const end = SOURCE.indexOf('Deno.serve', start);
+  const end = SOURCE.indexOf('export default async function', start);
   assert.ok(start >= 0 && end > start, 'authorization helpers must be testable before the handler');
   const helperSource = SOURCE.slice(start, end);
   return Function(`${helperSource}\nreturn { isProtectedSuperAdmin, canProcessAttemptBadges };`)();
@@ -52,7 +52,7 @@ test('mutable account_type cannot grant badge-processing privilege', () => {
   }), false);
 });
 
-test('protected admins are limited to owners in their own non-empty agency', () => {
+test('matching mutable agency names does not authorize protected admins', () => {
   const { canProcessAttemptBadges } = loadAuthorizationHelpers();
   const admin = { email: 'admin@example.com', role: 'admin', agency_name: ' Agency A ' };
 
@@ -60,6 +60,12 @@ test('protected admins are limited to owners in their own non-empty agency', () 
     caller: admin,
     ownerEmail: 'staff@example.com',
     ownerUser: { email: 'staff@example.com', agency_name: 'agency a' },
+    configuredSuperAdminEmail: 'owner@example.com',
+  }), false);
+  assert.equal(canProcessAttemptBadges({
+    caller: admin,
+    ownerEmail: 'staff@example.com',
+    sameAgencyAuthorized: true,
     configuredSuperAdminEmail: 'owner@example.com',
   }), true);
   assert.equal(canProcessAttemptBadges({
