@@ -6,14 +6,17 @@ export const filterRecentFaxLogs = (logs = [], now = Date.now(), rangeMs = TWENT
   return logs.filter((log) => new Date(log.created_date).getTime() > cutoff);
 };
 
-// Equivalent statuses collapse into the same summary bucket: a successfully
-// transmitted fax ('sent') counts as delivered, and an in-progress 'sending' fax
-// counts as queued — otherwise both would fall through to 'pending'. A fax
-// mid-retry ('retrying') is in flight, so it counts as queued; a 'retried' fax
-// is a failed attempt that was superseded by a new FaxLog row, so it counts as
-// failed (the retry row reports its own outcome).
+// Equivalent statuses collapse into the same summary bucket. 'sent' is NOT a
+// delivery: it ranks below 'delivered' in both status consumers, which never
+// notify a sender of it, and Telnyx's fax status enum has no 'sent' at all (it
+// survives only on legacy rows). So 'sent' and an in-progress 'sending' fax
+// both count as queued (in flight), matching EnhancedFaxHistory, which shows
+// 'sent' apart from 'delivered'. A fax mid-retry ('retrying') is in flight, so
+// it counts as queued; a 'retried' fax is a failed attempt that was superseded
+// by a new FaxLog row, so it counts as failed (the retry row reports its own
+// outcome). FaxLogsDashboard groups by these same buckets.
 const STATUS_GROUP = {
-  sent: 'delivered',
+  sent: 'queued',
   sending: 'queued',
   retrying: 'queued',
   retried: 'failed',

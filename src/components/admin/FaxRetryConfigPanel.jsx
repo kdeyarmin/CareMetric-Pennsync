@@ -98,7 +98,8 @@ export default function FaxRetryConfigPanel() {
         <CardDescription>
           How the app re-sends a fax that Telnyx reports as failed. Applies to automatic retries and the
           manual &ldquo;Retry&rdquo; button. Busy / no-answer failures are treated as temporary; hard rejections
-          (bad number, blocked) are never retried.
+          (bad number, blocked) are never retried automatically &mdash; a person can still retry one by hand
+          once its cause is fixed.
           {agencyKey ? ` Scoped to ${agencyKey}.` : ""}
         </CardDescription>
       </CardHeader>

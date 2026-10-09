@@ -1384,10 +1384,15 @@ test("a stray inbound fax on the blind line is passed straight through to the of
   assert.equal(routed?.query.claimed_by, claim.patch.$set.claimed_by, "only the claim owner can finalize");
 });
 
-test("an exact-bound opt-in inbound fax is ingested once with immutable tenant provenance", async () => {
+// The app receives no faxes (product owner, 2026-10-09): the retired
+// fax_receiving_enabled opt-in no longer selects in-app ingestion, so an
+// exact-bound inbound fax is forwarded to the office machine, never ingested.
+test("an exact-bound inbound fax is forwarded once with immutable tenant provenance, never ingested, even with the retired opt-in set", async () => {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const pubB64 = rawEd25519PublicKeyB64(publicKey);
-  const { impl, calls } = makeFetch([]);
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.endsWith("/v2/faxes"), respond: () => ({ status: 202, json: { data: { id: "fwd_bound_1" } } }) },
+  ]);
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret({
@@ -1438,10 +1443,15 @@ test("an exact-bound opt-in inbound fax is ingested once with immutable tenant p
     ingress_binding_version: 1,
     integration_secret_id: "integration_1",
     received_to_number: "+12155550190",
-    processing_status: "pending",
+    // 'completed' keeps it away from the processInboundFaxes OCR worker.
+    processing_status: "completed",
     version: 1,
   });
-  assert.equal(calls.length, 0, "opt-in ingestion does not forward the fax");
+  assert.equal(state.IncomingFax[0].status, "routed");
+  assert.equal(state.IncomingFax[0].routed_to, "office_fax");
+  const forwards = calls.filter((c) => c.url.endsWith("/v2/faxes"));
+  assert.equal(forwards.length, 1, "forwarded exactly once; the replay never forwards again");
+  assert.equal(forwards[0].body.to, "+17244650444");
 });
 
 test("an existing foreign inbound fax identity blocks disclosure, creation, and forwarding", async () => {
@@ -2705,7 +2715,10 @@ test("ambiguous outbound fax identity and legacy URL rows never receive a retry 
     fetchImpl: makeFetch([]).impl,
   });
   const legacyResponse = await legacyHandler(signedWebhook(privateKey, event));
-  assert.equal(legacyResponse.status, 409, JSON.stringify(await legacyResponse.clone().json()));
+  // A legacy URL row can never be authorized for a status write, so its event
+  // is acknowledged (no Telnyx redelivery) — and still nothing is written.
+  assert.equal(legacyResponse.status, 200, JSON.stringify(await legacyResponse.clone().json()));
+  assert.equal((await legacyResponse.clone().json()).skipped, "untracked_fax_row");
   assert.equal(legacyState.FaxLog[0].status, "sending");
   assert.equal(legacyState.FaxLog[0].next_retry_at, undefined);
   assert.equal(legacyState.FaxLog[0].retry_count, 0);
@@ -3255,11 +3268,16 @@ test('stale retries proven unstarted return to the queue with bounded backoff', 
 });
 
 
-test('inbound producer replay releases the original reservation only after verifying publication permission', async () => {
+// Inbound faxes are only ever forwarded now, so a recovered row is the
+// 'completed' forward record: a lost create acknowledgement is recovered on the
+// replay, its reservation released, and the fax forwarded exactly once.
+test('inbound forward replay recovers a lost create acknowledgement and forwards once', async () => {
   for (const dropMarker of [false, true]) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const pubB64 = rawEd25519PublicKeyB64(publicKey);
-  const { impl, calls } = makeFetch([]);
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.endsWith("/v2/faxes"), respond: () => ({ status: 202, json: { data: { id: "fwd_replay_1" } } }) },
+  ]);
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret({
@@ -3298,11 +3316,16 @@ test('inbound producer replay releases the original reservation only after verif
   assert.notEqual(first.status, 200);
   assert.equal(state.IncomingFax.length, 1);
   assert.equal(Object.keys(state.Agency[0].fax_workflow_reservations).length, 1);
+  assert.equal(calls.length, 0, 'nothing is forwarded before the forward record is confirmed');
   const second = await handler(signedWebhook(privateKey, event));
-  assert.equal(second.status, dropMarker ? 409 : 200);
-  assert.equal(Object.keys(state.Agency[0].fax_workflow_reservations).length, dropMarker ? 1 : 0);
+  // The OCR publication marker only fenced in-app ingestion; a forward record
+  // never carries one, so its absence no longer blocks the recovery.
+  assert.equal(second.status, 200, JSON.stringify(await second.clone().json()));
+  assert.equal(Object.keys(state.Agency[0].fax_workflow_reservations).length, 0);
   assert.equal(writes.filter(write => write.entity === 'IncomingFax' && write.op === 'create').length, 1);
-  assert.equal(calls.length, 0);
+  assert.equal(state.IncomingFax[0].processing_status, 'completed');
+  assert.equal(state.IncomingFax[0].status, 'routed');
+  assert.equal(calls.filter((c) => c.url.endsWith('/v2/faxes')).length, 1);
   }
 });
 

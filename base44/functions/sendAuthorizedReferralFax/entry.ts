@@ -76,6 +76,120 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
   });
 }
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
+// <<<BEGIN SHARED HELPER: faxProviderCorrelation — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = "pennsync.fax.v1";
+const FAX_CLIENT_STATE_KINDS = ["outbound","office_forward"];
+function exactFaxCorrelationId(value) {
+  if (typeof value !== "string" || !value || value.length > 200
+    || value.trim() !== value || value.startsWith("$")) return null;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return null;
+  }
+  return value;
+}
+function encodeFaxClientState(kind, id) {
+  const exact = exactFaxCorrelationId(id);
+  if (!FAX_CLIENT_STATE_KINDS.includes(kind) || !exact) return null;
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: FAX_CLIENT_STATE_VERSION, k: kind, id: exact }));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function decodeFaxClientState(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let parsed;
+  try {
+    const binary = atob(value.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || parsed.v !== FAX_CLIENT_STATE_VERSION || !FAX_CLIENT_STATE_KINDS.includes(parsed.k)) return null;
+  const id = exactFaxCorrelationId(parsed.id);
+  return id ? { kind: parsed.k, id } : null;
+}
+function faxEventProviderId(payload) {
+  const faxId = payload && typeof payload === "object" ? payload.fax_id : undefined;
+  const legacyId = payload && typeof payload === "object" ? payload.id : undefined;
+  if (faxId == null && legacyId == null) return { present: false, id: null };
+  if (faxId != null && legacyId != null && faxId !== legacyId) return { present: true, id: null };
+  return { present: true, id: exactFaxCorrelationId(faxId != null ? faxId : legacyId) };
+}
+function faxStatusWebhookUrl(requestUrl, selfName) {
+  if (typeof selfName !== "string" || !/^[A-Za-z][A-Za-z0-9]*$/.test(selfName)) return null;
+  let url;
+  try {
+    url = new URL(String(requestUrl));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const segments = url.pathname.replace(/\/+$/, "").split("/");
+  if (segments.length < 2 || segments[segments.length - 1] !== selfName) return null;
+  segments[segments.length - 1] = "handleTelnyxStatusWebhook";
+  return `${url.origin}${segments.join("/")}`;
+}
+// <<<END SHARED HELPER: faxProviderCorrelation>>>
+// <<<BEGIN SHARED HELPER: faxOrigination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated from src/components/fax/faxOrigination.js.
+const FAX_ORIGINATION_UNVERIFIED = "office_fax_number_unverified";
+const FAX_ORIGINATION_UNAVAILABLE = "office_fax_verification_unavailable";
+function faxOriginationPlan(officeE164, blindE164) {
+  const office = typeof officeE164 === "string" && officeE164 ? officeE164 : null;
+  const blind = typeof blindE164 === "string" && blindE164 ? blindE164 : null;
+  if (!blind) return { from: office, office: null, lookup: false };
+  if (!office || office === blind) return { from: blind, office: null, lookup: false };
+  return { from: blind, office, lookup: true };
+}
+function isVerifiedOriginationRecord(body, officeE164) {
+  const data = body && typeof body === "object" && !Array.isArray(body) ? body.data : null;
+  return !!data && typeof data === "object" && !Array.isArray(data)
+    && typeof officeE164 === "string" && !!officeE164
+    && data.phone_number === officeE164
+    && typeof data.verified_at === "string"
+    && Number.isFinite(Date.parse(data.verified_at));
+}
+const FAX_ORIGINATION_LOOKUP_TIMEOUT_MS = 5000;
+const faxOriginationLookups = new WeakMap();
+async function resolveFaxOrigination(req, apiKey, officeE164, blindE164) {
+  const plan = faxOriginationPlan(officeE164, blindE164);
+  if (!plan.lookup) return { from: plan.from, officeVerified: null, warning: null };
+  const key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) return { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  const cache = req && typeof req === 'object' ? (faxOriginationLookups.get(req) || new Map()) : new Map();
+  if (req && typeof req === 'object') faxOriginationLookups.set(req, cache);
+  const cacheKey = key + '|' + plan.office;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  let result;
+  try {
+    const response = await fetch(
+      'https://api.telnyx.com/v2/verified_numbers/' + encodeURIComponent(plan.office),
+      {
+        headers: { Authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(FAX_ORIGINATION_LOOKUP_TIMEOUT_MS),
+      },
+    );
+    const body = response.ok ? await response.json().catch(() => null) : null;
+    if (!response.ok) await response.text().catch(() => '');
+    if (response.ok && isVerifiedOriginationRecord(body, plan.office)) {
+      result = { from: plan.office, officeVerified: true, warning: null };
+    } else if (response.ok || response.status === 404) {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNVERIFIED };
+    } else {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+    }
+  } catch {
+    result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  }
+  cache.set(cacheKey, result);
+  return result;
+}
+// <<<END SHARED HELPER: faxOrigination>>>
 
 const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
@@ -940,13 +1054,20 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Send FROM the office fax number when Telnyx has it as a Verified Number,
+    // so a receiving machine's redial reaches the office; otherwise exactly
+    // fromNumber (the blind line), as before. The manual retry path
+    // (retryFailedFax / FaxLogsDashboard) reaches this same call.
+    const origination = await resolveFaxOrigination(req, finalCredentials.apiKey, officeFax, outboundFax);
+    const sendFrom = origination.from || fromNumber;
+
     const submissionAttemptId = crypto.randomUUID();
     const retryAttempt = retryContext ? retryContext.retryGeneration + 1 : 0;
     const faxLog = await entities.FaxLog.create({
       agency_id: input.agencyId,
       referral_id: input.referralId,
       document_id: input.documentId,
-      from_number: fromNumber,
+      from_number: sendFrom,
       to_number: input.toNumber,
       to_name: input.toName || null,
       document_name: input.documentName || finalDocument.document.file_name,
@@ -1023,20 +1144,23 @@ Deno.serve(async (req) => {
       }, { headers: NO_STORE_HEADERS });
     }
 
-    const requestUrl = new URL(req.url);
-    const functionsBase = requestUrl.protocol === 'https:'
-      ? (requestUrl.origin + requestUrl.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '')
-      : '';
+    // Derived only when this request provably reached sendAuthorizedReferralFax
+    // by name over https; otherwise Telnyx uses the Fax Application's
+    // webhook_event_url (the same handleTelnyxStatusWebhook, per the runbook).
+    const statusWebhookUrl = faxStatusWebhookUrl(req.url, 'sendAuthorizedReferralFax');
     const providerPayload: Record<string, any> = {
       connection_id: credentials.connectionId,
-      from: fromNumber,
+      from: sendFrom,
       to: input.toNumber,
       media_url: finalDocument.delivery.download_url,
       quality: 'high',
     };
     const displayName = officeFaxDisplayName(officeFax);
     if (displayName) providerPayload.from_display_name = displayName;
-    if (functionsBase) providerPayload.webhook_url = `${functionsBase}/handleTelnyxStatusWebhook`;
+    if (statusWebhookUrl) providerPayload.webhook_url = statusWebhookUrl;
+    // Name this FaxLog in every subsequent fax.* webhook (see sendBatchFax).
+    const clientState = encodeFaxClientState('outbound', faxLogId);
+    if (clientState) providerPayload.client_state = clientState;
 
     let telnyxResponse: Response;
     providerAttemptStarted = true;
@@ -1091,7 +1215,11 @@ Deno.serve(async (req) => {
       const rejectedStored = await transitionCreatedFaxSubmission(entities, createdFaxLog, {
         status: 'failed',
         provider_submission_state: 'rejected',
-        failure_reason: boundedLabel(firstError?.title) || 'Fax provider rejected the request',
+        // Same wording source as sendFax and sendBatchFax: Telnyx's `detail`
+        // is the specific reason, `title` the generic class.
+        failure_reason: boundedLabel(firstError?.detail)
+          || boundedLabel(firstError?.title)
+          || 'Fax provider rejected the request',
       });
       const retrySettled = await settleRetrySource(
         entities,
@@ -1252,6 +1380,9 @@ Deno.serve(async (req) => {
         status: acceptedFaxLog.status,
         ...(retryContext ? { retry_of_fax_log_id: retryContext.row.id } : {}),
         ...(!retrySettled ? { warning: 'The fax was accepted, but its prior attempt needs reconciliation.' } : {}),
+        // Non-PHI: sent from the blind line because the office number is not
+        // (or could not be confirmed as) a Telnyx Verified Number.
+        ...(origination.warning ? { origination_warning: origination.warning } : {}),
       },
       { headers: NO_STORE_HEADERS },
     );

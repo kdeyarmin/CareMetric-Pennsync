@@ -28,6 +28,21 @@ import {
   SMS_MEDIA_LIMIT, SMS_MEDIA_MAX_BYTES, SMS_MEDIA_CONTENT_TYPE, SMS_MEDIA_LAYOUT_TYPE, smsMediaContentType, smsMediaFetchUrl,
   inboundSmsMediaPlaceholders, isPrivateSmsFileUri, smsMediaFileName,
 } from '../../src/components/messaging/smsMedia.js';
+import {
+  FAX_CLIENT_STATE_KINDS,
+  FAX_CLIENT_STATE_VERSION,
+  decodeFaxClientState,
+  encodeFaxClientState,
+  exactFaxCorrelationId,
+  faxEventProviderId,
+  faxStatusWebhookUrl,
+} from '../../src/components/fax/faxProviderCorrelation.js';
+import {
+  FAX_ORIGINATION_UNAVAILABLE,
+  FAX_ORIGINATION_UNVERIFIED,
+  faxOriginationPlan,
+  isVerifiedOriginationRecord,
+} from '../../src/components/fax/faxOrigination.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -120,6 +135,71 @@ function oasisWorkflowRulesSource() {
   return `// Generated verbatim from src/components/oasis/workflowEngineUtils.js.
 const deriveActionTypes = ${deriveActionTypes.toString()};
 const evaluateRuleTrigger = ${evaluateRuleTrigger.toString()};`;
+}
+
+// Fax provider correlation — single source of truth is
+// src/components/fax/faxProviderCorrelation.js. The senders write a
+// client_state and derive their per-fax webhook_url with these; the status
+// webhook decodes the same client_state. Generating every copy from the module
+// the unit tests run against is what keeps the writer and the reader agreeing.
+function faxProviderCorrelationSource() {
+  return `// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = ${JSON.stringify(FAX_CLIENT_STATE_VERSION)};
+const FAX_CLIENT_STATE_KINDS = ${JSON.stringify(FAX_CLIENT_STATE_KINDS)};
+${exactFaxCorrelationId.toString()}
+${encodeFaxClientState.toString()}
+${decodeFaxClientState.toString()}
+${faxEventProviderId.toString()}
+${faxStatusWebhookUrl.toString()}`;
+}
+
+// Outbound fax origination — the pure decision is generated from
+// src/components/fax/faxOrigination.js; the one provider call around it is
+// written here. All three senders inline this block so they cannot disagree
+// about which number a fax is sent from. The lookup is a read-only GET with a
+// hard timeout, cached per request so a batch asks once; ANY failure keeps the
+// blind line (today's behaviour) and reports a non-PHI warning category.
+function faxOriginationSource() {
+  return `// Generated from src/components/fax/faxOrigination.js.
+const FAX_ORIGINATION_UNVERIFIED = ${JSON.stringify(FAX_ORIGINATION_UNVERIFIED)};
+const FAX_ORIGINATION_UNAVAILABLE = ${JSON.stringify(FAX_ORIGINATION_UNAVAILABLE)};
+${faxOriginationPlan.toString()}
+${isVerifiedOriginationRecord.toString()}
+const FAX_ORIGINATION_LOOKUP_TIMEOUT_MS = 5000;
+const faxOriginationLookups = new WeakMap();
+async function resolveFaxOrigination(req, apiKey, officeE164, blindE164) {
+  const plan = faxOriginationPlan(officeE164, blindE164);
+  if (!plan.lookup) return { from: plan.from, officeVerified: null, warning: null };
+  const key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) return { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  const cache = req && typeof req === 'object' ? (faxOriginationLookups.get(req) || new Map()) : new Map();
+  if (req && typeof req === 'object') faxOriginationLookups.set(req, cache);
+  const cacheKey = key + '|' + plan.office;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  let result;
+  try {
+    const response = await fetch(
+      'https://api.telnyx.com/v2/verified_numbers/' + encodeURIComponent(plan.office),
+      {
+        headers: { Authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(FAX_ORIGINATION_LOOKUP_TIMEOUT_MS),
+      },
+    );
+    const body = response.ok ? await response.json().catch(() => null) : null;
+    if (!response.ok) await response.text().catch(() => '');
+    if (response.ok && isVerifiedOriginationRecord(body, plan.office)) {
+      result = { from: plan.office, officeVerified: true, warning: null };
+    } else if (response.ok || response.status === 404) {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNVERIFIED };
+    } else {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+    }
+  } catch {
+    result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  }
+  cache.set(cacheKey, result);
+  return result;
+}`;
 }
 
 // The e-signature helpers are long enough that a template literal would hide
@@ -776,6 +856,10 @@ async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resour
     agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
   });
 }`,
+
+  faxProviderCorrelation: faxProviderCorrelationSource(),
+
+  faxOrigination: faxOriginationSource(),
 
   // Global reimbursement kill switch. This deliberately remains false until
   // PennSync uses the official CMS HHGS 432-group grouper, server-resolves

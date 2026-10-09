@@ -117,8 +117,10 @@ test('every AgencySettings column the admin panels mirror is one the save accept
   const writable = new Set([...declaration[0].matchAll(/'([a-z0-9_]+)'/g)]
     .map(match => match[1]));
 
-  const panels = ['A2PCompliancePanel', 'CallingHoursPanel', 'PhoneProvisioningPanel',
-    'FaxReceivingToggle'].map(name => `src/components/admin/${name}.jsx`);
+  // FaxReceivingToggle left this list on 2026-10-09 with the panel itself: the
+  // app receives no faxes, so fax_receiving_enabled is no longer written.
+  const panels = ['A2PCompliancePanel', 'CallingHoursPanel', 'PhoneProvisioningPanel']
+    .map(name => `src/components/admin/${name}.jsx`);
   let mirrored = 0;
   for (const panel of panels) {
     const source = readFileSync(resolve(REPOSITORY, panel), 'utf8');

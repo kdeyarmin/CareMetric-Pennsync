@@ -189,9 +189,16 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // 22 sites left with the deleted screens, 7 landable and 15 unserved. That
   // IS a movement of `unserved`, and of the right kind — a removal rather than
   // a decision or a contract — so the baseline was lowered with it.
-  assert.equal(report.total, 453);
-  assert.equal(report.served, 284);
-  // 169 of 453. Stage J reads as "replace call sites tier by tier", which is a
+  //
+  // 453 became 451 and 284 became 282 on 2026-10-09 when the fax receiving
+  // switch (`src/components/admin/FaxReceivingToggle.jsx`) was removed: the
+  // product owner decided the app receives no faxes, and the webhook no longer
+  // honours the setting it wrote. Its AgencySettings create and update LEFT,
+  // both landable, so `unserved` held still: a removal of landable sites, not
+  // a decision or a contract.
+  assert.equal(report.total, 451);
+  assert.equal(report.served, 282);
+  // 169 of 451. Stage J reads as "replace call sites tier by tier", which is a
   // refactor whose size is the count; 46% of them have no destination. The
   // percentage is the trap: it read 46% against 453 too, so the denominator
   // moved underneath it and the derived figure did not budge. 179 of the 193 reach
@@ -228,8 +235,11 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // It fell again, from 58 to 31, and `record_store` from 272 to 263, when
   // the OASIS Center moved onto its broker; `preserved_paused` fell by the
   // same 27 below, because every one of them was an OASIS entity.
+  //
+  // `record_store` then fell from 263 to 261 when the fax receiving switch's
+  // two AgencySettings writes left (2026-10-09); no other bucket moved.
   assert.deepEqual(report.by_destination, {
-    record_store: 263, broker_family: 7, activity_trail: 14,
+    record_store: 261, broker_family: 7, activity_trail: 14,
     no_table: 123, no_access_contract: 31,
     broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
@@ -337,7 +347,7 @@ test('the command line refuses an unknown argument and an unavailable baseline',
 test('the summary names what cannot land and stays quiet about what can', () => {
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
-  assert.match(lines[0], /453 call sites, 284 can land, 169\/169 cannot/);
+  assert.match(lines[0], /451 call sites, 282 can land, 169\/169 cannot/);
   assert.ok(lines.some(line => /no_table: 123/.test(line)));
   assert.ok(lines.some(line => /no_access_contract: 31/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));

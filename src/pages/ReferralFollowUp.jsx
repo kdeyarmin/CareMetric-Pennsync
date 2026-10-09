@@ -981,12 +981,11 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           <div>
                             <Label htmlFor="fu-fax" className="text-xs">Return fax (on the form)</Label>
                             <Input id="fu-fax" value={contactBackFax} onChange={(e) => setContactBackFax(e.target.value)} placeholder="(555) 555-0100" />
-                            {!agencySettings?.fax_receiving_enabled && (
-                              <p className="text-[11px] text-slate-500 mt-0.5">
-                                Faxed replies arrive at the office machine on paper — mark items resolved here when
-                                they do.
-                              </p>
-                            )}
+                            {/* The app receives no faxes: every reply goes to the office machine. */}
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Faxed replies arrive at the office machine on paper — mark items resolved here when
+                              they do.
+                            </p>
                           </div>
                           <div>
                             <Label htmlFor="fu-phone" className="text-xs">Questions phone</Label>

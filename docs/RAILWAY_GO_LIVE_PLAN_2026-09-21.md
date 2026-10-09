@@ -4181,9 +4181,8 @@ The totals are the block's to state.
 
 **That block is a dated record as well. What follows is this tree after the telecom and activity screens were turned on** — another printer run, not an adjustment of anything above it.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 97 declared, 161/284 landable call sites SERVED, 123 still to adopt
@@ -4193,6 +4192,21 @@ entity routes: 97 declared, 161/284 landable call sites SERVED, 123 still to ado
 ```
 
 **No route was declared between these two blocks, and the move is one landable site.** The restored audit trail viewer reads the security log directly for the built-in administrator, over a key the remainder already held, so the landable denominator and the remainder each rose by one and nothing else in this pool moved. Two other sites changed outside it: marking a text read now goes through its own server function, taking one unserved site away, and the training hub saves a finished lesson, adding one, so the unserved count is unchanged. The totals are the block's to state.
+
+**That block is a dated record as well. What follows is this tree after the fax receiving switch was removed** — another printer run, not an adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 97 declared, 161/282 landable call sites SERVED, 121 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 71 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, Physician.create
+  of those 121, across 36 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 120 need a named capability
+```
+
+**No route was declared or withdrawn between these two blocks, and the move is two landable sites leaving.** The product owner decided the app receives no faxes, so the administration screen's fax receiving switch was removed rather than left as a control the webhook no longer honours. Its agency-settings create and update were both landable, over routes other screens still call, and both passed arguments the scan cannot read, so the landable denominator, the remainder and the unreadable part each fell by two while the served count and the unrouted part did not move. Nothing was adopted. The totals are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4329,7 +4343,7 @@ different kinds of work:
   confidently showing nobody. The approver dropdown in the same file was repaired
   and asks only for `tenant_role`, which the roster does project. That contrast
   is the reason a refusal is read per SITE and not per file.
-- **Seventy-three pass arguments the scan cannot read**, because the call builds
+- **Seventy-one pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining

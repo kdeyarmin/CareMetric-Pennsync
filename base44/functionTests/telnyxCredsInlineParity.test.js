@@ -115,7 +115,6 @@ const FILES = {
   "../functions/retryFailedFax/entry.ts": ALL,
   "../functions/autoRetryFailedFaxes/entry.ts": ALL,
   "../functions/sendBatchFax/entry.ts": ALL,
-  "../functions/syncFaxStatuses/entry.ts": ALL,
   "../functions/pollFaxStatuses/entry.ts": ALL,
   "../functions/sendFaxStatusNotification/entry.ts": ALL,
   "../functions/sendTestSms/entry.ts": ALL,
