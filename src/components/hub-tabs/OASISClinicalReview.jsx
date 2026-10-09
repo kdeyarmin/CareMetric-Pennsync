@@ -7,10 +7,14 @@ import ClinicalPathwayTrigger from "@/components/oasis/ClinicalPathwayTrigger";
 import OASISTaskGenerator from "@/components/oasis/OASISTaskGenerator";
 import WorkflowExecutionEngine from "@/components/oasis/WorkflowExecutionEngine";
 
-const OASIS_CLINICAL_AI_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). Pathways are read
+// and tasks, alerts and automation runs are written only through the OASIS
+// record broker, which confirms the clinician may open the chart first; the
+// clinical summary below shows clinical grouping only, never payment.
+const OASIS_CLINICAL_AI_ENABLED = true;
 
 function EnabledOASISClinicalReview({ analysisHandoff }) {
-  const { analysisResults, pdgmData, patientName, patientId } = analysisHandoff || {};
+  const { analysisResults, pdgmData, patientName, patientId, uploadId, analysisId } = analysisHandoff || {};
 
   if (!analysisResults || !pdgmData) {
     return <OASISNoAnalysisCard />;
@@ -40,15 +44,14 @@ function EnabledOASISClinicalReview({ analysisHandoff }) {
         analysisResults={analysisResults}
         patientId={patientId}
         patientName={patientName}
+        analysisId={analysisId}
       />
 
       {/* Automated Workflow Engine */}
       <WorkflowExecutionEngine
         analysisResults={analysisResults}
-        pdgmData={pdgmData}
         patientId={patientId}
-        patientName={patientName}
-        oasisUploadId={null}
+        oasisUploadId={uploadId || null}
         autoExecute={true}
       />
 
@@ -106,12 +109,11 @@ export default function OASISClinicalReview({ analysisHandoff }) {
       <Card className="border-2 border-amber-300">
         <CardHeader className="bg-amber-50">
           <CardTitle className="flex items-center gap-2 text-amber-950">
-            <Stethoscope className="h-5 w-5" /> OASIS Clinical AI Review Paused
+            <Stethoscope className="h-5 w-5" /> OASIS Clinical Review Off
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 pt-5 text-sm text-slate-700">
-          <p>This surface is unavailable while its tenant-scoped reads, response suggestions, and automated workflow writes are being verified.</p>
-          <p>No AI analysis, global data query, task creation, or alert creation runs from this tab.</p>
+          <p>Clinical pathways and OASIS automation are switched off for this deployment.</p>
         </CardContent>
       </Card>
     );

@@ -29,9 +29,9 @@ import { transpileTs } from "../../tools-transpile-ts.mjs";
 async function loadHandler(entryPath, { env = {}, makeClient, fetchImpl }) {
   env = { OUTBOUND_DELIVERY_RELEASE: 'enabled-v1', ...env };
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
-  // The shipped source keeps legacy inbound SMS routing and telehealth
-  // provider access literally paused (inbound call routing was released on
-  // 2026-10-08, so its replacement below is a no-op kept for symmetry).
+  // Telehealth provider access and inbound call and SMS routing were all
+  // released on 2026-10-08, so the replacements below are no-ops kept for
+  // symmetry (they would re-open a gate if one were ever restored).
   // Dedicated containment contracts assert those gates; this harness rewrites
   // only its temporary copy so dormant Telnyx request shapes remain regression
   // tested. Fax ingress is live only through its exact service-owned
@@ -397,10 +397,15 @@ test("startMaskedCall posts the Telnyx Call Control create-call contract", async
   ]);
   const handler = await loadHandler("../functions/startMaskedCall/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_VOICE_CONNECTION_ID: "VC1", SUPER_ADMIN_EMAIL: "n@x.com" },
+    // The caller id must be an active TelecomDestinationBinding of the
+    // current credential (released 2026-10-08).
     makeClient: () => makeBase44({ user: {
       email: "n@x.com", role: "admin", full_name: "Nora",
       work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
-    }, data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1" }] } }),
+    }, data: {
+      IntegrationSecret: [activeTelnyxSecret({ voice_connection_id: "VC1" })],
+      TelecomDestinationBinding: [smsBinding()],
+    } }),
     fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/startMaskedCall", {
@@ -2474,18 +2479,24 @@ test("an inbound text to an off-duty nurse gets the off-duty auto-reply", async 
   ]);
   const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
+    // Inbound texts route through the receiving line's binding and the line's
+    // service-written PhoneNumber assignment to an active member of that
+    // agency (released 2026-10-08) — not through User.work_phone_number.
     makeClient: () => makeBase44({
       data: {
-        IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+        IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64, messaging_profile_id: "MP1" })],
+        TelecomDestinationBinding: [smsBinding()],
+        PhoneNumber: [{ id: "phone_number_1", e164: "+12155550100", status: "assigned", assigned_to_email: "n@x.com" }],
+        AgencyMembership: [{ id: "m1", agency_id: "agency_a", user_id: "u1", user_email_normalized: "n@x.com", tenant_role: "clinician", status: "active" }],
         // Nurse with no duty_status → default OFF until they toggle on.
-        User: [{ email: "n@x.com", work_phone_number: "+12155550100" }],
+        User: [{ id: "u1", email: "n@x.com" }],
         AgencySettings: [{ main_office_number_e164: "724-465-0440" }],
         SmsConsent: [], Patient: [],
       },
     }),
     fetchImpl: impl,
   });
-  await handler(signedWebhook(privateKey, { data: { event_type: "message.received", payload: { id: "in_1", from: { phone_number: "+13125550182" }, to: [{ phone_number: "+12155550100" }], text: "are you available?" } } }));
+  await handler(signedWebhook(privateKey, { data: { event_type: "message.received", payload: { id: "in_1", from: { phone_number: "+13125550182" }, to: [{ phone_number: "+12155550100" }], messaging_profile_id: "MP1", text: "are you available?" } } }));
   const reply = calls.find((c) => c.url === "https://api.telnyx.com/v2/messages");
   assert.ok(reply, "sent an auto-reply");
   assert.equal(reply.body.from, "+12155550100", "reply comes from the work number");

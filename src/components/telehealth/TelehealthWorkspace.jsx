@@ -10,6 +10,7 @@ import SessionCard from "./SessionCard";
 import NewSessionForm from "./NewSessionForm";
 import TelehealthCall from "./TelehealthCall";
 import SessionDocumentation from "./SessionDocumentation";
+import RealtimeVitalMonitor from "./RealtimeVitalMonitor";
 import { rememberJoinLink } from "./joinLinkAccess";
 import { buildPatientJoinLink } from "./telehealthUtils";
 
@@ -25,9 +26,11 @@ function brokerError(error, fallback) {
  * against the caller's exact membership there. Outcomes are shown inline
  * because production replaces toast text with a generic line.
  */
-export default function TelehealthWorkspace({ patientId, patientName }) {
+export default function TelehealthWorkspace({ patientId, patientName, agencyId: chartAgencyId = null }) {
   const { user, tenantContext } = useAuth();
-  const agencyId = tenantContext?.agency_id || null;
+  // A chart names its own agency (the server re-checks the caller's exact
+  // membership there); the staff page uses the selected workspace.
+  const agencyId = chartAgencyId || tenantContext?.agency_id || null;
   const qc = useQueryClient();
   const key = ["telehealthSessions", agencyId, patientId || "mine"];
   const [showForm, setShowForm] = useState(false);
@@ -98,10 +101,27 @@ export default function TelehealthWorkspace({ patientId, patientName }) {
     );
   }
 
+  // Vitals recorded during the call live on the server row, so the
+  // documentation form starts from a fresh read rather than the copy taken
+  // when the call began; if that read fails the form still opens, and its
+  // save omits untouched vitals rather than overwriting them.
+  const finishCall = async (session) => {
+    setLive(null);
+    try {
+      const fresh = await manageTelehealthSession({ action: "get", agency_id: agencyId, session_id: session.id });
+      setDocumenting(fresh?.session || session);
+    } catch {
+      setDocumenting(session);
+    }
+  };
+
   if (live) {
     return (
-      <TelehealthCall role="provider" roomName={live.room_name} identity={user?.full_name || user?.email}
-        onDisconnect={() => { setDocumenting(live); setLive(null); }} />
+      <div className="space-y-4">
+        <TelehealthCall role="provider" roomName={live.room_name} identity={user?.full_name || user?.email}
+          onDisconnect={() => { void finishCall(live); }} />
+        <RealtimeVitalMonitor sessionId={live.id} agencyId={agencyId} />
+      </div>
     );
   }
 

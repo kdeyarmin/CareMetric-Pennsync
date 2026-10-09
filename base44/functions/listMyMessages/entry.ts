@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
     '-created_date',
     300,
     0,
-    ['id', 'thread_id', 'thread_subject', 'sender_user_id', 'sender_name', 'message_text', 'priority', 'created_date', 'read_by_user_ids', 'participant_user_ids'],
+    ['id', 'thread_id', 'thread_subject', 'patient_id', 'sender_user_id', 'sender_name', 'message_text', 'priority', 'created_date', 'read_by_user_ids', 'participant_user_ids'],
   );
 
   const members = await entities.AgencyMembership.filter(

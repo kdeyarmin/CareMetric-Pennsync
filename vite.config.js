@@ -129,6 +129,9 @@ export default defineConfig(withOwnerSuperAdminEmail(({ command }) => ({
         // Everything else keeps Vite's default per-dynamic-import splitting.
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
+          // The pdf.js parser module used on the main thread by the signing
+          // viewer stays out of the shared pdf.js chunk other routes load.
+          if (id.includes('pdfjs-dist/build/pdf.worker')) return 'vendor-pdfjs-parser';
           if (id.includes('pdfjs-dist')) return 'vendor-pdfjs';
           if (id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf-export';
           if (id.includes('@telnyx/video')) return 'vendor-telnyx';

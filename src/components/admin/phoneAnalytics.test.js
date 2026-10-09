@@ -107,6 +107,29 @@ test("provisioning coverage counts work numbers and full provisioning", () => {
   assert.equal(r.provisioning.coverageRate, 50);
 });
 
+test("the server report's opaque scoped consent keys and coverage booleans count like raw rows", () => {
+  // getUserActivityLog's phone mode sends no numbers: consent rows carry an
+  // opaque per-scope key, members carry booleans. One phone consented on two
+  // lines is two scopes.
+  const r = summarizePhoneActivity({
+    consents: [
+      { consent_key: "k1", consent_status: "opted_out" },
+      { consent_key: "k1", consent_status: "opted_in" },
+      { consent_key: "k2", consent_status: "opted_in" },
+    ],
+    users: [
+      { has_work_number: true, has_personal_cell: true },
+      { has_work_number: true, has_personal_cell: false },
+      { has_work_number: false, has_personal_cell: true },
+    ],
+  });
+  assert.equal(r.consent.tracked, 2);
+  assert.equal(r.consent.optedOut, 1);
+  assert.equal(r.consent.optedIn, 1);
+  assert.equal(r.provisioning.withWorkNumber, 2);
+  assert.equal(r.provisioning.fullyProvisioned, 1);
+});
+
 test("sinceDays filters out rows older than the window", () => {
   const r = summarizePhoneActivity({
     smsMessages: [

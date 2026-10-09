@@ -106,11 +106,16 @@ const scheduleQuarantinedLegacy = (
  * even when a service-role write remains reachable. They must not be backfilled
  * merely from mutable email/title/message data.
  */
+// The e-signature sealing pipeline (shared helper esignFinalization, inlined
+// into every function that can seal) mints the requester's completion notice
+// with the full authority-v1 envelope as a literal call argument.
 export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
+  'archiveSignedDocument/entry.ts': Object.freeze([authorityV1({ kind: 'call-argument' })]),
   'assignInService/entry.ts': Object.freeze([legacy()]),
   'awardBadgeOnCompletion/entry.ts': Object.freeze([legacy()]),
   'cancelTimeOffRequest/entry.ts': Object.freeze([legacy()]),
   'checkAdrDeadlines/entry.ts': Object.freeze([legacy()]),
+  'checkPendingSignatureRequests/entry.ts': Object.freeze([authorityV1({ kind: 'call-argument' })]),
   'checkStaleFollowUpRequests/entry.ts': Object.freeze([
     authorityV1(
       {
@@ -129,8 +134,11 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
   'gradeTrainingAttempt/entry.ts': Object.freeze([legacy(), legacy()]),
   'handleTelnyxStatusWebhook/entry.ts': Object.freeze([
     legacy(),
-    legacy('create', PRODUCER_EXECUTION_STATES.RUNTIME_GATED),
-    legacy('create', PRODUCER_EXECUTION_STATES.RUNTIME_GATED),
+    // The urgent-text and new-text notices. Reachable since the owner released
+    // inbound patient SMS routing on 2026-10-08; they go only to the reader the
+    // receiving line's binding and its agency's membership name.
+    legacy(),
+    legacy(),
     authorityV1({
       kind: 'factory-binding',
       name: 'outboundFaxNotificationSpec',
@@ -141,9 +149,23 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
     // inbound patient call routing on 2026-10-08.
     legacy(),
   ]),
+  // Released 2026-10-08: the proposal notice carries the recipient envelope
+  // for the assigned nurse's own active membership in the chart's agency.
   'monitorClinicalDataForCarePlanUpdates/entry.ts': Object.freeze([
-    legacy('create', PRODUCER_EXECUTION_STATES.SOURCE_DISABLED),
+    authorityV1({ kind: 'call-argument' }),
   ]),
+  // Released 2026-10-08: one envelope-bearing notice per recipient, keyed by
+  // message and recipient, created only under the sender's claim.
+  'notifyUrgentMessage/entry.ts': Object.freeze([
+    authorityV1({
+      kind: 'factory-binding',
+      name: 'expectedNotification',
+      argumentPath: ['notification'],
+      payloadPath: [],
+    }),
+  ]),
+  'notifyAdminOfSignedDocument/entry.ts': Object.freeze([authorityV1({ kind: 'call-argument' })]),
+  'onDocumentSigned/entry.ts': Object.freeze([authorityV1({ kind: 'call-argument' })]),
   'pollFaxStatuses/entry.ts': Object.freeze([
     authorityV1(
       {
@@ -158,8 +180,10 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
   'processAnnualEducationRenewals/entry.ts': Object.freeze([
     scheduleQuarantinedLegacy(),
   ]),
+  // Released 2026-10-08: the completion notice is the caller's own, minted
+  // with the caller's exact active membership in the visit's agency.
   'processCompletedVisit/entry.ts': Object.freeze([
-    legacy('create', PRODUCER_EXECUTION_STATES.SOURCE_DISABLED),
+    authorityV1({ kind: 'call-argument' }),
   ]),
   'processInboundFaxes/entry.ts': Object.freeze([
     authorityV1(
@@ -195,6 +219,7 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
     scheduleQuarantinedLegacy('create', true),
     scheduleQuarantinedLegacy('create', true),
   ]),
+  'submitDocumentSignatures/entry.ts': Object.freeze([authorityV1({ kind: 'call-argument' })]),
   'submitFollowUpResponse/entry.ts': Object.freeze([
     authorityV1({
       kind: 'factory-binding',
@@ -204,6 +229,7 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
     }),
   ]),
   'submitIncidentReport/entry.ts': Object.freeze([legacy()]),
+  'submitSignerSignature/entry.ts': Object.freeze([authorityV1({ kind: 'call-argument' })]),
   'submitStateReportableIncident/entry.ts': Object.freeze([legacy()]),
   'submitTimeOffRequest/entry.ts': Object.freeze([legacy()]),
   'submitTimesheet/entry.ts': Object.freeze([legacy()]),

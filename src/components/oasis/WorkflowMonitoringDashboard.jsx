@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toLocalISODate } from "@/lib/dateLocal";
-import { base44 } from "@/api/base44Client";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
 import { useQuery } from "@tanstack/react-query";
 import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,8 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  Activity, 
+import {
+  Activity,
   Clock,
   Download
 } from "lucide-react";
@@ -37,7 +37,6 @@ import {
   ResponsiveContainer
 } from "recharts";
 import { endOfDay, parseISO } from "date-fns";
-import { ALL_ROWS } from '@/lib/queryLimits';
 
 const COLORS = ['#10b981', '#3557b0', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -46,19 +45,19 @@ export default function WorkflowMonitoringDashboard() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [ruleFilter, setRuleFilter] = useState('all');
 
-  // Fetch workflow executions
+  // Workflow runs through the OASIS record broker: the platform owner sees
+  // every run, an agency_admin or manager their own agency's (from an active
+  // AgencyMembership), and anyone else the runs they started.
   const { data: workflowExecutions = [] } = useQuery({
-    queryKey: ['workflowExecutions'],
-    queryFn: () => base44.entities.OASISWorkflowExecution.list('-created_date', 200),
+    queryKey: ['oasisWorkflowExecutions'],
+    queryFn: async () => (await manageOASISRecords('list_executions', { limit: 200 }))?.executions || [],
   });
 
-  // Fetch automation rules for filtering
+  // Fetch automation rules for filtering — the same cache entry and order
+  // OASISAutomationSettings uses.
   const { data: automationRules = [] } = useQuery({
-    // Same sort as OASISAutomationSettings so the two views that share the
-    // ['automationRules'] cache entry can't hand each other a differently
-    // ordered list depending on which mounted first.
-    queryKey: ['automationRules'],
-    queryFn: () => base44.entities.OASISAutomationRule.list('-priority', ALL_ROWS),
+    queryKey: ['oasisAutomationRules'],
+    queryFn: async () => (await manageOASISRecords('list_rules'))?.rules || [],
   });
 
   // Filter data

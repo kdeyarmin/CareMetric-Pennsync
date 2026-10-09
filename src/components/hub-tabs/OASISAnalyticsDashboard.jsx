@@ -42,7 +42,14 @@ import {
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 
-const OASIS_AI_ANALYTICS_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). The dashboard
+// aggregates documentation-quality scores over the saved analyses the caller
+// may see, and reads them only through listOASISUploads: the platform owner
+// sees every upload, an agency_admin or manager their own agency's (from an
+// active AgencyMembership, never the editable profile), and anyone else their
+// own uploads plus those on charts they are assigned to. Financial fields are
+// stripped server-side, so nothing here can render a payment figure.
+const OASIS_AI_ANALYTICS_ENABLED = true;
 
 function EnabledOASISAnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState("30");
@@ -52,17 +59,17 @@ function EnabledOASISAnalyticsDashboard() {
   // Fetch all OASIS uploads with analysis data
   const { data: oasisUploads = [], isLoading } = useQuery({
     // Source + limit in the key: a bare ['oasisUploads'] collided with
-    // OASISAnalyzer's 50-row, financially-stripped listOASISUploads fetch and
-    // with the 500-row direct lists, so whichever resolved first served them all.
+    // OASISAnalyzer's 50-row listOASISUploads fetch, so whichever resolved
+    // first served them all.
     queryKey: ['oasisUploads', 'list', 200],
-    queryFn: () => base44.entities.OASISUpload.list('-created_date', 200),
+    queryFn: async () => (await base44.functions.invoke('listOASISUploads', { sort: '-created_date', limit: 200 }))?.data?.uploads || [],
   });
 
   // Filter data based on time range and assessment type
   const filteredData = useMemo(() => {
     const now = new Date();
     const cutoffDate = timeRange === "all" ? new Date(0) : subDays(now, parseInt(timeRange));
-    
+
     return oasisUploads.filter(upload => {
       const uploadDate = new Date(upload.created_date);
       const inRange = uploadDate >= cutoffDate;
@@ -81,9 +88,9 @@ function EnabledOASISAnalyticsDashboard() {
     const avgOverall = filteredData.reduce((sum, d) => sum + (d.scores?.overall || 0), 0) / totalAnalyses;
 
     // Count issues
-    const totalAccuracyIssues = filteredData.reduce((sum, d) => 
+    const totalAccuracyIssues = filteredData.reduce((sum, d) =>
       sum + (d.analysis_results?.accuracy_issues?.length || 0), 0);
-    const totalComplianceIssues = filteredData.reduce((sum, d) => 
+    const totalComplianceIssues = filteredData.reduce((sum, d) =>
       sum + (d.analysis_results?.compliance_concerns?.length || 0), 0);
 
     // Status distribution
@@ -103,7 +110,7 @@ function EnabledOASISAnalyticsDashboard() {
     const midpoint = Math.floor(filteredData.length / 2);
     const firstHalf = filteredData.slice(midpoint);
     const secondHalf = filteredData.slice(0, midpoint);
-    
+
     const firstHalfAvg = firstHalf.reduce((sum, d) => sum + (d.scores?.overall || 0), 0) / (firstHalf.length || 1);
     const secondHalfAvg = secondHalf.reduce((sum, d) => sum + (d.scores?.overall || 0), 0) / (secondHalf.length || 1);
     // Need both halves populated; with a single data point secondHalf is empty and
@@ -308,7 +315,7 @@ function EnabledOASISAnalyticsDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                     <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ fontSize: 12 }}
                       formatter={(value) => `${value.toFixed(1)}%`}
                     />
@@ -335,7 +342,7 @@ function EnabledOASISAnalyticsDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="range" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ fontSize: 12 }}
                       formatter={(value, name, props) => [
                         `${value} (${props.payload.percentage}%)`,
@@ -448,10 +455,9 @@ export default function OASISAnalyticsDashboard() {
       <Card className="border-2 border-amber-300">
         <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
           <div className="flex items-center gap-2 font-semibold text-amber-950">
-            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Analytics Paused
+            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS Analytics Off
           </div>
-          <p>This dashboard is unavailable while tenant-scoped analytics reads and legacy AI-derived quality fields are being verified.</p>
-          <p>No OASIS upload list, patient detail, legacy score, or AI recommendation is loaded from this tab.</p>
+          <p>OASIS analytics are switched off for this deployment.</p>
         </CardContent>
       </Card>
     );

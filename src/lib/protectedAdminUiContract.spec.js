@@ -102,8 +102,12 @@ describe('protected-admin frontend alignment', () => {
     }
 
     expect(setup).toMatch(/enabled: canManageUsers/);
-    expect(management.match(/enabled: canManageUsers/g)).toHaveLength(2);
+    // The roster, the invitations and (owner decision, 2026-10-08) the scoped
+    // activity summaries are the page's three protected reads.
+    expect(management.match(/enabled: canManageUsers/g)).toHaveLength(3);
     expect(management).toMatch(/enabled: canManageUsers && allUsers\.length > 0/);
+    expect(management).toMatch(/useActivityReport\(\{\s*enabled: canManageUsers,/);
+    expect(management).not.toMatch(/entities\.UserActivity/);
 
     for (const backend of [
       'base44/functions/createUserWithTempPassword/entry.ts',
@@ -144,7 +148,12 @@ describe('protected-admin frontend alignment', () => {
       /"read"\s*:\s*false/,
     );
     expect(documentHub).toMatch(/const adminView = isAdminView\(currentUser\)/);
-    expect(documentHub).toMatch(/const canReadDocumentAudit = isAdminLike\(currentUser\)/);
+    // The signature audit tab also opens for an agency_admin or manager of the
+    // server-validated tenant context (released 2026-10-08); the broker
+    // re-checks the same rule.
+    expect(documentHub).toMatch(
+      /const canReadDocumentAudit = isAdminLike\(currentUser\)\s*\|\| SIGNATURE_MANAGER_ROLES\.includes\(getTrustedTenantContext\(currentUser\)\?\.tenant_role\)/,
+    );
     expect(documentHub).toMatch(/validTabKeys = canReadDocumentAudit/);
     expect(documentHub.match(/\{canReadDocumentAudit && \(/g)).toHaveLength(2);
 
@@ -188,14 +197,25 @@ describe('protected-admin frontend alignment', () => {
     expect(dashboard).toMatch(/invoke\('analyzeNursePerformance', \{ action: 'roster' \}\)/);
     expect(dashboard).toMatch(/const canPickNurse = Array\.isArray\(roster\);/);
     expect(dashboard).not.toMatch(/isAdminView|account_type|entities\.User\b|burnout/i);
-    expect(training).toMatch(/<UserActivityUnavailable title="Personalized skill-gap analysis unavailable" \/>/);
-    expect(training).toMatch(/<StatCard label="Skill Gaps" value="Unavailable"/);
-    expect(training).not.toMatch(/analyzeNursePerformance/);
+    // Skill-gap training is back in the Training Hub (owner decision,
+    // 2026-10-08). The hub asks only about the caller (no nurse_email), uses the
+    // model-free `skill_gaps` action, and reads nothing that predicts burnout or
+    // clinical risk; a failed read is shown as unavailable, never as no gaps.
+    expect(training).toMatch(/invoke\('analyzeNursePerformance', \{\s*action: 'skill_gaps',\s*date_range_days: 30,\s*\}\)/);
+    const trainingCode = training.replace(/^\s*\/\/.*$/gm, '');
+    expect(trainingCode).not.toMatch(/insights|risk_factors|burnout|isAdminView|account_type/i);
+    expect(training).toMatch(/skillGapsQuery\.isError \? \(\s*<UserActivityUnavailable\s+title="Personalized skill-gap analysis unavailable"/);
+    expect(training).toMatch(/invoke\('generatePersonalizedTraining', \{ skill_gap: skillGap \}\)/);
+    const performance = read('base44/functions/analyzeNursePerformance/entry.ts');
+    const gapsOnly = performance.indexOf("if (body?.action === 'skill_gaps')");
+    expect(gapsOnly).toBeGreaterThan(-1);
+    expect(gapsOnly).toBeLessThan(performance.indexOf('InvokeLLM'));
 
     const features = read('src/pages/Features.jsx');
     expect(features).toMatch(/10\.2 Nurse Performance Dashboard<\/h3>/);
     expect(features).not.toMatch(/Nurse Performance Dashboard \(Paused\)/);
-    expect(features).toMatch(/personalized skill-gap analysis is currently unavailable/);
+    expect(features).not.toMatch(/personalized skill-gap analysis is currently unavailable/);
+    expect(features).toMatch(/Nothing predicts burnout or clinical risk/);
     expect(features).not.toMatch(/View your personalized learning path/);
   });
 

@@ -119,17 +119,17 @@ function phoneVariants(value) {
   return variants.filter((v, i) => variants.indexOf(v) === i);
 }
 
-async function getAgencyConfig(base44, user) {
-  // Prefer the caller's agency settings row when multi-tenant rows exist.
+async function getAgencyConfig(base44, agencyName) {
+  // Prefer the sending line's agency settings row when multi-tenant rows exist.
   // Newest-row fallback is only safe for single-tenant (≤1 settings row).
   let settings = [];
-  if (user?.agency_name) {
+  if (agencyName) {
     settings = await base44.asServiceRole.entities.AgencySettings
-      .filter({ agency_code: user.agency_name }, '-created_date', 1)
+      .filter({ agency_code: agencyName }, '-created_date', 1)
       .catch(() => []);
     if (!settings?.length) {
       settings = await base44.asServiceRole.entities.AgencySettings
-        .filter({ office_name: user.agency_name }, '-created_date', 1)
+        .filter({ office_name: agencyName }, '-created_date', 1)
         .catch(() => []);
     }
   }
@@ -164,6 +164,119 @@ function isProtectedSuperAdmin(user) {
     && normalizeProtectedEmail(user.email) === configuredEmail;
 }
 // <<<END SHARED HELPER: protectedUserAuthz>>>
+
+// <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
+}
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
+  try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId }, undefined, 101,
+    );
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
+    }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
+  } catch {
+    // No lookup failure may be interpreted as membership approval.
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
+  if (profile.role === 'admin') return profile;
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
+}
+// <<<END SHARED HELPER: trustedCallerClaims>>>
+
+// <<<BEGIN SHARED HELPER: patientCareTeamAccess — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function callerMayAccessPatient(base44, user, patient) {
+  if (!user || !patient || typeof patient !== 'object') return false;
+  if (user.role === 'admin') return true;
+  const claims = await withTrustedClaims(base44, user);
+  const agencyId = claims && claimIdentifier(claims.agency_id) ? claims.agency_id : null;
+  if (!agencyId || patient.agency_id !== agencyId || !claimIdentifier(patient.id)) return false;
+  if (claims.account_type === 'agency_admin' || claims.is_manager === true) return true;
+  if (claimIdentifier(patient.created_by_user_id) && patient.created_by_user_id === user.id) return true;
+  try {
+    const rows = await base44.asServiceRole.entities.PatientCareTeamAssignment.filter(
+      { agency_id: agencyId, patient_id: patient.id, user_id: user.id, status: 'active' },
+      undefined,
+      2,
+    );
+    return Array.isArray(rows) && rows.some((row) => row && row.agency_id === agencyId
+      && row.patient_id === patient.id && row.user_id === user.id && row.status === 'active');
+  } catch {
+    return false;
+  }
+}
+// <<<END SHARED HELPER: patientCareTeamAccess>>>
 
 // <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
@@ -540,15 +653,64 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
 // it is linked — otherwise a nurse texting a number that also appears on another
 // agency's chart (shared landline, family member, stale data) would write their
 // message body into that foreign chart. Mirrors scheduleSms, whose canAccessPatient
-// gate on phone-resolved patients is pinned by securityGuardrails.test.js.
-async function resolvePatientId(base44, e164, canAccessPatient) {
+// gate on phone-resolved patients is pinned by securityGuardrails.test.js. The
+// search itself is limited to the sending line's agency.
+async function resolvePatientId(base44, e164, agencyId, canAccessPatient) {
   for (const variant of phoneVariants(e164)) {
-    const matches = await base44.asServiceRole.entities.Patient.filter({ phone: variant }, undefined, 5000).catch(() => []);
+    const matches = await base44.asServiceRole.entities.Patient
+      .filter({ phone: variant, agency_id: agencyId }, undefined, 10).catch(() => []);
     for (const match of matches || []) {
       if (match?.id && await canAccessPatient(match)) return match.id;
     }
   }
   return null;
+}
+
+/**
+ * The one outbound SMS line for an agency, when the caller has no work number
+ * of their own (mirrors scheduleSms). Two or more lines are ambiguous and refuse.
+ */
+async function soleAgencyOutboundLine(base44, telnyxCreds, agencyId) {
+  const rows = await base44.asServiceRole.entities.TelecomDestinationBinding.filter({
+    provider: 'telnyx',
+    integration_secret_id: telnyxCreds?.record?.id,
+    messaging_profile_id: telnyxCreds?.messagingProfileId,
+    agency_id: agencyId,
+    status: 'active',
+    sms_outbound_enabled: true,
+  }, undefined, 3).catch(() => []);
+  const lines = Array.isArray(rows)
+    ? rows.filter((row) => row?.agency_id === agencyId && row?.status === 'active' && row?.sms_outbound_enabled === true)
+    : [];
+  return lines.length === 1 ? lines[0].destination_e164 : null;
+}
+
+/** The service-owned Agency name for a binding's agency id (never a profile field). */
+async function bindingAgencyName(base44, agencyId) {
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+  } catch {
+    rows = [];
+  }
+  const agency = Array.isArray(rows) && rows.length === 1 && rows[0]?.id === agencyId ? rows[0] : null;
+  return typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+}
+
+/** Active members of the sending line's agency, for the monthly cap cohort. */
+async function agencyMemberEmails(base44, agencyId) {
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership
+      .filter({ agency_id: agencyId, status: 'active' }, undefined, 5001);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows) || rows.length > 5000) return null;
+  return new Set(rows
+    .filter((row) => row?.agency_id === agencyId && row?.status === 'active')
+    .map((row) => String(row?.user_email_normalized || '').trim().toLowerCase())
+    .filter(Boolean));
 }
 
 // ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
@@ -929,26 +1091,52 @@ function monthStartISO(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
+/*
+ * Released to every agency member 2026-10-08 (owner decision), on the same
+ * authority scheduleSms uses. From protected sources only:
+ *   - the caller is the protected platform owner, or a role-'user' account
+ *     holding one active service-owned AgencyMembership (withTrustedClaims),
+ *     decided before the body is read;
+ *   - the SENDING number is never the caller's say-so: it must be an active,
+ *     outbound-enabled TelecomDestinationBinding in the caller's agency. The
+ *     caller's work number only selects which one; with none, the agency's
+ *     single outbound line is used;
+ *   - consent is the scoped ledger for that binding (a provider STOP wins);
+ *   - a linked chart must be in the line's agency and open to the caller under
+ *     callerMayAccessPatient (built-in admin, agency_admin/manager, the chart's
+ *     creator, or an active PatientCareTeamAssignment);
+ *   - agency settings and the monthly cap cohort come from the binding's agency
+ *     and its active memberships, never the caller's self-editable agency_name.
+ */
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405 });
+    }
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await base44.auth.me();
+    const caller = await base44.auth.me();
+    const user = await withTrustedClaims(base44, caller);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    // The exact provider destination is checked against a service-owned binding
-    // below, but selecting that destination still begins with a mutable custom
-    // User field. Keep general caller enablement paused; only the protected
-    // platform owner may cause a provider send until caller-to-binding assignment
-    // is itself service-owned.
-    if (user.disabled === true || user.is_service === true || user.is_verified === false
-      || !isProtectedSuperAdmin(user)) {
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const owner = isProtectedSuperAdmin(user);
+    // withTrustedClaims rebuilds agency_id only for a role 'user' profile; a
+    // built-in admin's copy is self-editable and is never read here.
+    const memberAgencyId = user.role === 'user' && claimIdentifier(user.agency_id) ? user.agency_id : null;
+    if (!owner && !memberAgencyId) {
       return Response.json({
-        error: 'SMS sending is restricted to the protected platform owner pending telecom-binding migration',
-        code: 'telecom_authority_migration_pending',
-      }, { status: 503 });
+        error: 'An active agency membership is required to send texts.',
+        code: 'agency_membership_required',
+      }, { status: 403 });
     }
 
-    const { to_number, body, patient_id, media_urls } = await req.json();
+    const requestBody = await req.json().catch(() => null);
+    if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) {
+      return Response.json({ error: 'Missing required fields: to_number, body' }, { status: 400 });
+    }
+    const { to_number, body, patient_id, media_urls } = requestBody;
     if (!to_number || !body) {
       return Response.json({ error: 'Missing required fields: to_number, body' }, { status: 400 });
     }
@@ -968,9 +1156,8 @@ Deno.serve(async (req) => {
       mediaUrls = media_urls;
     }
 
-    const fromNumber = user.work_phone_number;
-    if (!fromNumber) {
-      return Response.json({ error: 'No work number assigned to your account. Ask an admin to provision one.' }, { status: 400 });
+    if (patient_id != null && (typeof patient_id !== 'string' || !claimIdentifier(patient_id))) {
+      return Response.json({ error: 'patient_id is invalid' }, { status: 400 });
     }
 
     const destination = normalizeE164(to_number);
@@ -981,22 +1168,38 @@ Deno.serve(async (req) => {
     const telnyxCreds = await resolveTelnyxCreds(base44);
 
     const { apiKey, messagingProfileId } = telnyxCreds;
+    // The sending line comes from the service-owned binding, never from the
+    // caller's profile alone.
+    let candidateLine = normalizeE164(user.work_phone_number);
+    if (!candidateLine && memberAgencyId) {
+      candidateLine = normalizeE164(await soleAgencyOutboundLine(base44, telnyxCreds, memberAgencyId));
+    }
+    if (!candidateLine) {
+      return Response.json({
+        error: 'No agency texting line is available to you. Ask an admin to assign your work number.',
+        code: 'sms_line_unavailable',
+      }, { status: 400 });
+    }
     const smsAuthority = await resolveActiveTelnyxSmsBinding(base44, {
       integrationSecretId: telnyxCreds?.record?.id,
       integrationProvider: telnyxCreds?.record?.provider,
       integrationIsActive: telnyxCreds?.record?.is_active === true,
       messagingProfileId,
-      destinationE164: fromNumber,
+      destinationE164: candidateLine,
       requireOutbound: true,
     });
     if (!smsAuthority.ok) {
       return Response.json({
-        error: 'SMS sending is unavailable pending an exact service-owned destination binding',
+        error: 'Texting is unavailable until your work number is an active, outbound-enabled agency line.',
         code: 'telecom_authority_migration_pending',
       }, { status: 503 });
     }
+    if (memberAgencyId && smsAuthority.agencyId !== memberAgencyId) {
+      return Response.json({ error: 'Your work number belongs to a different agency.' }, { status: 403 });
+    }
+    const agencyId = smsAuthority.agencyId;
     const boundFromNumber = smsAuthority.destinationE164;
-    const { settings, smsEnabled } = await getAgencyConfig(base44, user);
+    const { settings, smsEnabled } = await getAgencyConfig(base44, await bindingAgencyName(base44, agencyId));
     if (!apiKey) {
       return Response.json({ error: telnyxCredsMessage(telnyxCreds, "SMS credentials") }, { status: 500 });
     }
@@ -1012,30 +1215,24 @@ Deno.serve(async (req) => {
 
     // Cost control: enforce an optional monthly outbound-SMS cap for THIS
     // agency. Counting every tenant's outbound rows made one busy agency trip
-    // every other agency's cap. Scope by nurse_email ∈ caller's agency when known.
+    // every other agency's cap. The cohort is the line agency's active
+    // memberships (or a row stamped with that agency), never a profile field.
     const monthlyCap = Number(settings?.monthly_sms_cap);
     if (Number.isFinite(monthlyCap) && monthlyCap > 0) {
       const since = monthStartISO();
-      let agencyNurseEmails = null;
-      if (user.agency_name) {
-        const agencyUsers = await base44.asServiceRole.entities.User
-          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
-          .catch(() => []);
-        agencyNurseEmails = new Set(
-          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
-        );
-        agencyNurseEmails.add(user.email);
+      const agencyNurseEmails = await agencyMemberEmails(base44, agencyId);
+      if (!agencyNurseEmails) {
+        return Response.json({ error: 'The agency texting allowance could not be verified. Try again shortly.' }, { status: 503 });
       }
-      const fetchLimit = agencyNurseEmails
-        ? Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000)
-        : monthlyCap;
+      agencyNurseEmails.add(String(user.email || '').trim().toLowerCase());
+      const fetchLimit = Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000);
       const recentOutbound = await base44.asServiceRole.entities.SmsMessage
         .filter({ direction: 'outbound' }, '-created_date', fetchLimit)
         .catch(() => []);
       const sentThisMonth = (Array.isArray(recentOutbound) ? recentOutbound : [])
         .filter((m) => m.created_date && m.created_date >= since)
-        .filter((m) => !agencyNurseEmails || (m.nurse_email && agencyNurseEmails.has(m.nurse_email))
-          || m.sent_by === user.email)
+        .filter((m) => m.agency_id === agencyId
+          || agencyNurseEmails.has(String(m.nurse_email || '').trim().toLowerCase()))
         .length;
       if (sentThisMonth >= monthlyCap) {
         return Response.json({ error: 'This agency has reached its monthly text-message limit. Ask an admin to raise the cap.', reason: 'monthly_cap_reached' }, { status: 429 });
@@ -1077,25 +1274,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Caller-access predicate for a service-role-fetched patient. Same tiers as
-    // scheduleSms: platform admin / creator / assigned nurse pass directly; an
-    // agency-scoped admin passes only when the chart belongs to their agency
-    // (fails closed without an agency_name).
+    // Caller-access predicate for a service-role-fetched patient: the chart is
+    // in the sending line's agency AND open to the caller under the generated
+    // care-team rule (built-in admin, agency_admin/manager membership, chart
+    // creator id, or an active PatientCareTeamAssignment). The retired
+    // assigned_nurses / creator-email checks are gone.
     const canAccessPatient = async (claimed) => {
-      if (!claimed) return false;
-      if (claimed.agency_id !== smsAuthority.agencyId) return false;
-      const isAssigned = Array.isArray(claimed.assigned_nurses)
-        && claimed.assigned_nurses.includes(user.email);
-      return isProtectedSuperAdmin(user)
-        || claimed.created_by === user.email
-        || isAssigned;
+      if (!claimed?.id || claimed.agency_id !== agencyId) return false;
+      return callerMayAccessPatient(base44, caller, claimed);
     };
 
     // Prefer phone→patient resolution (only to a chart the caller can access).
     // If the client supplied a patient_id, verify it matches the destination
     // phone (or that the caller can access that chart) so SMS history cannot be
     // linked to the wrong — or another tenant's — patient.
-    let resolvedPatientId = await resolvePatientId(base44, destination, canAccessPatient);
+    let resolvedPatientId = await resolvePatientId(base44, destination, agencyId, canAccessPatient);
     if (patient_id) {
       if (resolvedPatientId && resolvedPatientId !== patient_id) {
         return Response.json({
@@ -1106,7 +1299,7 @@ Deno.serve(async (req) => {
       if (!resolvedPatientId) {
         const [claimed] = await base44.asServiceRole.entities.Patient
           .filter({ id: patient_id }, '', 1).catch(() => []);
-        if (!claimed) {
+        if (!claimed || claimed.id !== patient_id) {
           return Response.json({ error: 'Patient not found' }, { status: 404 });
         }
         if (!(await canAccessPatient(claimed))) {
@@ -1137,6 +1330,9 @@ Deno.serve(async (req) => {
       is_read: true,
       sent_by: user.email,
       consent_checked: consentStatus === 'opted_in',
+      // Provenance redriveFailedSms requires and re-proves before any re-send.
+      agency_id: agencyId,
+      destination_binding_id: smsAuthority.bindingId,
     });
 
     // Send via the Telnyx Messages API. Bounded by an AbortController timeout.

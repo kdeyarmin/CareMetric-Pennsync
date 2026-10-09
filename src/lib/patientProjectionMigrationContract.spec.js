@@ -74,8 +74,10 @@ describe('purpose-bound Patient projection migration', () => {
   });
 
   it('loads OASIS analysis Patient fields through its reviewed projection', () => {
+    // AIProactiveOASISAssistant.jsx, the other reader of this projection, was
+    // never mounted and was deleted when the OASIS Center was turned back on.
     for (const relativePath of [
-      'src/components/oasis/AIProactiveOASISAssistant.jsx',
+      'src/components/compliance/AIComplianceAuditor.jsx',
     ]) {
       const source = read(relativePath);
       expect(source).toMatch(/purpose:\s*'oasis_analysis_context'/);

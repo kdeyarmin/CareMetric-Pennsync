@@ -24,22 +24,18 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const APPROVED_WRITERS = new Map([
   [
     "base44/functions/saveOasisResponses/entry.ts",
-    "The future protected write path. It is hard-paused before client creation; its dormant validator remains contract-tested for the eventual server-broker redesign.",
+    "The protected response writer, released by the owner on 2026-10-08. It "
+    + "decides authority from the built-in admin role or an exact active "
+    + "membership, applies the chart rule, derives every row's provenance and "
+    + "schema itself, and deletes only the row it just created when that row "
+    + "loses its authority or a concurrent twin landed first.",
   ],
   [
-    "src/components/hub-tabs/OASISAnalyzer.jsx",
-    "Dormant AI-extraction writer retained for redesign only. OASISUpload write "
-    + "RLS is service-role-only; restoration requires a tenant/chart broker.",
-  ],
-  [
-    "src/components/oasis/OASISApprovalWorkflow.jsx",
-    "Dormant review writer retained for redesign only. Service-only OASISUpload "
-    + "write RLS blocks it until authorized broker support exists.",
-  ],
-  [
-    "src/components/oasis/OASISComparisonView.jsx",
-    "Dormant comparison writer retained for redesign only. Service-only "
-    + "OASISUpload write RLS blocks it until authorized broker support exists.",
+    "base44/functions/manageOASISRecords/entry.ts",
+    "The OASIS record broker, released with the OASIS Center on 2026-10-08. It "
+    + "writes OASISUpload (saved analyses, extraction review, sign-off, the "
+    + "comprehensive review) under the caller's trusted scope and the chart "
+    + "rule, and never writes OASISAssessment.",
   ],
 ]);
 
@@ -76,8 +72,8 @@ test("no unapproved direct OASISAssessment/OASISUpload write exists", async () =
     [],
     "Unapproved direct OASIS write(s) found:\n"
     + unapproved.map((f) => `  ${f} → ${found.get(f).join(", ")}`).join("\n")
-    + "\n\nBrowser OASIS writes are paused. Add a server-owned tenant + patient-access "
-    + "broker before registering any new writer.",
+    + "\n\nBrowser code never writes OASIS rows: route the write through "
+    + "saveOasisResponses or the manageOASISRecords broker.",
   );
 });
 
@@ -116,9 +112,37 @@ test("no writer outside the adapter builds a v2 response row by hand", async () 
   }
 });
 
-// Source-cohort verification depends on assessment rows never changing after creation.
+// Source-cohort verification depends on assessment rows never changing after
+// creation. The writer may delete only the row it created in the same request
+// (a write that lost its authority, or a concurrent twin), never update one.
 test("OASISAssessment source rows remain append-only", async () => {
   for (const [path, operations] of await findWriters()) {
-    assert.deepEqual(operations.filter(op => op.startsWith("OASISAssessment.") && op !== "OASISAssessment.create"), [], path);
+    const allowed = path === "base44/functions/saveOasisResponses/entry.ts"
+      ? ["OASISAssessment.create", "OASISAssessment.delete"]
+      : ["OASISAssessment.create"];
+    assert.deepEqual(
+      operations.filter((op) => op.startsWith("OASISAssessment.") && !allowed.includes(op)), [], path);
   }
+  const writer = await readFile(join(ROOT, "base44/functions/saveOasisResponses/entry.ts"), "utf8");
+  const deletes = [...writer.matchAll(/OASISAssessment\.delete\(([^)]*)\)/g)].map((match) => match[1]);
+  assert.ok(deletes.length > 0);
+  assert.deepEqual([...new Set(deletes)], ["assessmentId"], "only the just-created id is ever deleted");
+  assert.match(writer, /const assessmentId = exactIdentifier\(created\?\.id\);/);
+  const created = writer.indexOf("const created = await entities.OASISAssessment.create(");
+  assert.ok(created > 0 && [...writer.matchAll(/OASISAssessment\.delete\(/g)].every((m) => m.index > created));
+});
+
+// The broker also writes through two generic helpers (a create-once and a
+// compare-and-set), which the literal scan above cannot see. Their entity names
+// are enumerated here so a new OASIS entity reached that way is reviewed too.
+test("the OASIS record broker's generic writers reach only reviewed entities", async () => {
+  const broker = await readFile(join(ROOT, "base44/functions/manageOASISRecords/entry.ts"), "utf8");
+  const reached = (helper) => [...new Set([...broker.matchAll(
+    new RegExp(`${helper}\\(entities, '([A-Za-z]+)'`, "g"))].map((match) => match[1]))].sort();
+  assert.deepEqual(reached("compareAndSet"), ["OASISUpload"]);
+  assert.deepEqual(reached("createKeyedOnce"), ["OASISAudit", "OASISWorkflowExecution", "Task"]);
+  assert.equal((broker.match(/entities\[entity\]/g) || []).length,
+    (broker.match(/entities\[entity\]\.(?:updateMany|filter|create|delete)\(/g) || []).length,
+    "the generic helpers are the only computed entity reach");
+  assert.doesNotMatch(broker, /OASISAssessment\.(?:create|update|delete)/, "the broker never writes a response row");
 });

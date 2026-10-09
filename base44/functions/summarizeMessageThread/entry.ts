@@ -57,8 +57,17 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-/** Read-only, dormant secure-message v2 summary broker. */
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+/**
+ * Read-only secure-message v2 summary broker.
+ *
+ * Released by the owner on 2026-10-08 ("turn everything on"). The caller must
+ * hold exactly one active membership in the named agency and be a bound
+ * participant of the thread (their own membership id and version are in the
+ * thread's immutable participant set); a patient-bound thread additionally
+ * requires chart access through the care-team assignment table. All of that is
+ * decided before the model is called, and nothing is written.
+ */
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
 const MAX_BODY_BYTES = 2_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;

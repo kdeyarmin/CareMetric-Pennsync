@@ -81,7 +81,7 @@ function matches(row, query) {
   });
 }
 
-function makeClient(me) {
+function makeClient(me, extra = {}) {
   const reads = [];
   const table = (name, rows) => ({
     filter: async (query) => { reads.push([name, query]); return rows.filter((row) => matches(row, query)); },
@@ -89,7 +89,8 @@ function makeClient(me) {
   });
   const users = [
     { id: 'admin-a', email: 'admin@a.test', full_name: 'Admin A', role: 'user' },
-    { id: 'nurse-a', email: 'nurse@a.test', full_name: 'Nurse A', role: 'user' },
+    { id: 'nurse-a', email: 'nurse@a.test', full_name: 'Nurse A', role: 'user',
+      work_phone_number: '+12155550100', personal_cell_e164: '+12155550199' },
     { id: 'nurse-b', email: 'nurse@b.test', full_name: 'Nurse B', role: 'user' },
   ];
   const entities = {
@@ -97,8 +98,9 @@ function makeClient(me) {
     Agency: table('Agency', AGENCIES),
     User: table('User', users),
     UserActivity: table('UserActivity', ACTIVITY),
-    CallLog: table('CallLog', []),
-    SmsMessage: table('SmsMessage', []),
+    CallLog: table('CallLog', extra.CallLog || []),
+    SmsMessage: table('SmsMessage', extra.SmsMessage || []),
+    SmsConsent: table('SmsConsent', extra.SmsConsent || []),
     TrainingRecommendation: table('TrainingRecommendation', []),
     ComplianceAudit: table('ComplianceAudit', []),
     Visit: table('Visit', []),
@@ -170,4 +172,67 @@ test('analyzeNursePerformance: a nurse gets no roster and is always answered abo
   assert.equal((await response.json()).nurse_email, 'nurse@a.test');
   const activityReads = reads.filter(([name]) => name === 'UserActivity').map(([, query]) => query);
   assert.deepEqual(activityReads, [{ user_email: 'nurse@a.test' }]);
+});
+
+test('getUserActivityLog phone mode: one agency\'s texting and calling metadata, masked, with no bodies', async () => {
+  const now = new Date().toISOString();
+  const extra = {
+    SmsMessage: [
+      // Stamped to agency A by its line.
+      { id: 's1', created_date: now, agency_id: 'agency-a', direction: 'outbound', status: 'delivered',
+        nurse_email: 'nurse@a.test', from_number: '+12155550100', to_number: '+12155551234', body: 'Your visit is at 3pm', patient_id: 'p1' },
+      // An inbound text on agency A's line that no staff member was attributed.
+      { id: 's2', created_date: now, agency_id: 'agency-a', direction: 'inbound', status: 'received',
+        nurse_email: null, from_number: '+12155551234', to_number: '+12155550100', body: 'Thanks' },
+      // A member of agency A, but this text went out on agency B's line.
+      { id: 's3', created_date: now, agency_id: 'agency-b', direction: 'outbound', status: 'sent',
+        nurse_email: 'nurse@a.test', from_number: '+16105550100', to_number: '+16105559876', body: 'B text' },
+      // Legacy unstamped row from an agency A member.
+      { id: 's4', created_date: now, direction: 'outbound', status: 'failed',
+        nurse_email: 'nurse@a.test', from_number: '+12155550100', to_number: '+12155554321', body: 'old' },
+      // Agency B's own text.
+      { id: 's5', created_date: now, agency_id: 'agency-b', direction: 'outbound', status: 'sent',
+        nurse_email: 'nurse@b.test', from_number: '+16105550100', to_number: '+16105559876', body: 'B only' },
+    ],
+    CallLog: [
+      { id: 'c1', created_date: now, direction: 'outbound', status: 'completed', nurse_email: 'nurse@a.test',
+        from_number: '+12155550100', to_number: '+12155551234', displayed_number: '+12155550100', duration_seconds: 65 },
+      { id: 'c2', created_date: now, direction: 'inbound', status: 'completed', nurse_email: 'nurse@b.test',
+        from_number: '+16105559876', to_number: '+16105550100' },
+    ],
+    SmsConsent: [
+      { id: 'k1', agency_id: 'agency-a', consent_key: 'telnyx:sec:prof:agency-a:+12155551234', phone_e164: '+12155551234',
+        consent_status: 'opted_in', captured_at: now },
+      { id: 'k2', agency_id: 'agency-b', consent_key: 'telnyx:sec:prof:agency-b:+16105559876', phone_e164: '+16105559876',
+        consent_status: 'opted_out', captured_at: now },
+    ],
+  };
+  const { client } = makeClient(AGENCY_ADMIN, extra);
+  const handler = await loadHandler('getUserActivityLog', client);
+  const response = await handler(post({ mode: 'phone', days: 30 }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.scope, 'agency');
+  assert.deepEqual(body.texts.map((row) => row.id).sort(), ['s1', 's2', 's4'],
+    'stamped rows follow their agency; only unstamped rows fall back to the member address');
+  assert.deepEqual(body.calls.map((row) => row.id), ['c1']);
+  assert.deepEqual(body.consents.map((row) => row.consent_status), ['opted_in']);
+  const serialized = JSON.stringify(body);
+  for (const secret of ['Your visit', 'Thanks', '+12155551234', '2155551234', 'agency-a:+1', 'p1']) {
+    assert.equal(serialized.includes(secret), false, `${secret} must not leave the server`);
+  }
+  assert.equal(body.texts.find((row) => row.id === 's1').to_masked, '(•••) •••-1234');
+  assert.equal(body.texts.find((row) => row.id === 's1').body_length, 'Your visit is at 3pm'.length);
+  assert.match(body.consents[0].consent_key, /^k\d+$/);
+  const nurse = body.members.find((row) => row.email === 'nurse@a.test');
+  assert.deepEqual(nurse, { email: 'nurse@a.test', full_name: 'Nurse A', has_work_number: true, has_personal_cell: true });
+  assert.equal(body.members.some((row) => row.email === 'nurse@b.test'), false);
+
+  for (const me of [NURSE, CLAIMED_ADMIN]) {
+    const refused = makeClient(me, extra);
+    const refusedHandler = await loadHandler('getUserActivityLog', refused.client);
+    const answer = await refusedHandler(post({ mode: 'phone' }));
+    assert.equal(answer.status, 403);
+    assert.equal(refused.reads.filter(([name]) => ['SmsMessage', 'CallLog', 'SmsConsent'].includes(name)).length, 0);
+  }
 });

@@ -57,32 +57,35 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-// Dormant validator and future protected write path for OASIS responses.
+// The protected write path for OASIS responses. Released by the owner on
+// 2026-10-08 ("turn everything on").
 //
 // WHY THIS FUNCTION EXISTS
-// `OASISAssessment` is now source-locked to service-role writes. The former
-// browser writer derived tenant scope from mutable User fields and did not prove
-// Patient/chart access, so enabling a feature flag could have crossed the
-// tenant boundary. The server-owned create-draft broker is implemented below,
-// but this endpoint remains HARD PAUSED before body parsing, client creation,
-// auth, settings reads, validation, or writes until hosted two-agency and
-// exact-broker service-role mutation proofs pass. Activation also requires an
-// atomic authorization/create boundary, an authority-bound idempotency key,
-// and an approved semantic mapping between optional Visit rows and OASIS time
-// points. There is deliberately no browser, admin, feature-flag, or
-// environment-variable bypass.
+// `OASISAssessment` is source-locked to service-role writes. The former browser
+// writer derived tenant scope from mutable User fields and did not prove
+// Patient/chart access. This broker is the only writer, and it decides
+// authority from protected sources alone:
+//   * the built-in admin role (the platform owner), which auth.updateMe cannot
+//     grant;
+//   * otherwise the caller's exact active AgencyMembership in the named agency,
+//     with a role that completes OASIS (agency_admin, manager or clinician);
+//   * and the chart: an agency-wide role opens every chart in its agency, a
+//     clinician must be the patient's recorded creator or hold an exact active
+//     PatientCareTeamAssignment bound to that membership.
+// User.agency_id / agency_name / account_type / is_manager are never read.
 //
-// The request carries only definition ids and response values. Tenant scope,
-// draft state, schema metadata, item metadata, clinician provenance, and write
-// timestamps are derived here. The canonical rows are then re-validated by the
-// shared response guard. It refuses:
+// The request carries only definition ids and response values (plus whether
+// the clinician is saving a draft or a completed record, and an optional
+// summary). Tenant scope, schema metadata, item metadata, clinician provenance,
+// completion and write timestamps are derived here. The canonical rows are then
+// re-validated by the shared response guard. It refuses:
 //   * an unknown definition or obsolete/non-canonical response representation;
 //   * an unresolved instrument (missing/invalid assessment date);
 //   * an unresolved or inapplicable time point;
 //   * an invalid code, response shape, or grid row;
-//   * client-supplied schema, provenance, lifecycle, or assessment-id fields;
-//   * update, submit, and approval operations without an atomic lifecycle/CAS
-//     design.
+//   * client-supplied schema, provenance, assessment-id or authority fields;
+//   * update, submit, and approval operations on an existing record: every save
+//     is a new dated record, so there is no read-modify-write to race.
 //
 // It never converts, recodes or repairs a value. A row that does not validate is
 // rejected with a named reason so the client can tell the clinician what to fix.
@@ -289,25 +292,30 @@ function validateOasisResponseWrite(payload) {
 }
 // <<<END SHARED HELPER: oasisResponseGuard>>>
 
-// Rollout flags remain flat AgencySettings fields. AgencySettings has no
-// immutable agency_id yet, so this dormant broker binds exactly one settings
-// row to the exact, unique Agency.agency_code loaded through immutable
+// Rollout controls remain flat AgencySettings fields. AgencySettings has no
+// immutable agency_id yet, so this broker binds at most one settings row to the
+// exact, unique Agency.agency_code loaded through immutable
 // AgencyMembership.agency_id. It never uses User.agency_name or a global
-// newest-row fallback.
+// newest-row fallback. Since the owner turned OASIS entry on (2026-10-08) the
+// rollout flag is an opt-OUT: an agency with no settings row, or a row that does
+// not set the flag, writes; a row that sets it to false does not; and the kill
+// switch stops every write whatever the flag says.
 const OASIS_V2_FLAG_FIELD = 'oasis_response_schema_v2_enabled';
 const OASIS_WRITE_KILL_SWITCH_FIELD = 'oasis_response_writes_disabled';
 
-// Release safety gate: keep this literal true. The dormant path rechecks
-// authority after create so it never reports a raced write as success, but
-// Base44 exposes no cross-entity transaction here: a revocation or kill-switch
-// change after create can leave an unacknowledged draft. The request also has no
-// idempotency key, so a retry after an ambiguous create can duplicate a draft.
-// Finally, an optional Visit is scope-checked but its clinical type/status
-// mapping to an OASIS time point still needs named review. Hosted two-agency,
-// exact-OASIS service-role, atomicity/idempotency, and Visit-policy proofs are
-// all activation blockers. Tests rewrite only an isolated transpiled copy;
-// deployed code has no bypass.
-const OASIS_V2_WRITES_PAUSED = true;
+// Released by the owner on 2026-10-08. The flag stays as the deployment's
+// switch-off, now pinned false. What each former activation blocker became:
+//   * No cross-entity transaction: authority is checked, rechecked immediately
+//     before the create, and rechecked after it; a create whose post-write
+//     recheck fails (a revocation, a kill switch) is DELETED and the request
+//     answers with the reason, so a raced write never survives as a draft.
+//   * No idempotency key: a save is keyed on its content — the same author,
+//     patient, reason, date, status and responses return the record a first
+//     attempt created instead of a second one, and a concurrent twin found on
+//     read-back removes this request's own row.
+//   * The optional Visit is scope-checked only; the CMS time point is the
+//     assessment's own stated reason (visit_type), never inferred from a Visit.
+const OASIS_V2_WRITES_PAUSED = false;
 
 const MAX_BODY_BYTES = 100_000;
 const MAX_IDENTIFIER_LENGTH = 200;
@@ -333,7 +341,14 @@ const TENANT_ROLES = new Set([
   'social_worker',
   'spiritual_care',
 ]);
-const OASIS_WRITER_ROLES = new Set(['clinician']);
+// Roles that complete OASIS. An agency-wide role (and the platform owner) opens
+// every chart in its agency; a clinician opens a chart through creation or an
+// exact active care-team assignment. Office staff, social workers and
+// spiritual care do not author OASIS responses.
+const OASIS_WRITER_ROLES = new Set(['agency_admin', 'manager', 'clinician']);
+const AGENCY_WIDE_WRITER_ROLES = new Set(['platform_owner', 'agency_admin', 'manager']);
+const ASSESSMENT_SAVE_STATUSES = new Set(['draft', 'completed']);
+const MAX_SUMMARY_LENGTH = 2000;
 const VISIBLE_PATIENT_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 const ASSIGNMENT_STATUSES = new Set(['active', 'suspended', 'revoked']);
 const ASSIGNMENT_SOURCES = new Set([
@@ -453,6 +468,10 @@ const WRITTEN_ASSESSMENT_FIELDS = [
   'migration_status',
   'last_written_by',
   'last_written_at',
+  'completion_percentage',
+  'completed_by',
+  'completed_date',
+  'clinical_summary',
   'created_by',
   'created_date',
   'updated_date',
@@ -606,6 +625,8 @@ async function parseRequest(req: Request) {
     'visit_type',
     'assessment_date',
     'oasis_items',
+    'status',
+    'clinical_summary',
   ];
   if (Object.keys(body).some((key) => !supported.includes(key))) {
     throw new PublicError(400, 'Request contains unsupported fields', 'unsupported_fields');
@@ -626,6 +647,19 @@ async function parseRequest(req: Request) {
   }
   if (!validCalendarDate(body.assessment_date)) {
     throw new PublicError(400, 'assessment_date is invalid', 'invalid_assessment_date');
+  }
+  // A save is either a draft or the clinician's completed record. Submission and
+  // approval belong to the agency's EMR, so neither is a status a caller sets.
+  const status = body.status === undefined ? 'draft' : body.status;
+  if (typeof status !== 'string' || !ASSESSMENT_SAVE_STATUSES.has(status)) {
+    throw new PublicError(400, 'status must be draft or completed', 'invalid_status');
+  }
+  let clinicalSummary: string | null = null;
+  if (body.clinical_summary !== undefined && body.clinical_summary !== null) {
+    if (typeof body.clinical_summary !== 'string' || body.clinical_summary.length > MAX_SUMMARY_LENGTH) {
+      throw new PublicError(400, 'clinical_summary is invalid', 'invalid_clinical_summary');
+    }
+    clinicalSummary = body.clinical_summary.trim() || null;
   }
   const instrument = oasisResolveInstrument(body.assessment_date);
   if (!instrument.resolved) {
@@ -669,6 +703,8 @@ async function parseRequest(req: Request) {
     visitType,
     assessmentDate: body.assessment_date as string,
     items: body.oasis_items as Array<Record<string, any>>,
+    status,
+    clinicalSummary,
   };
 }
 
@@ -752,7 +788,15 @@ async function loadExactActiveAgency(entities: Record<string, any>, agencyId: st
   if (rows.length === 0 || rows[0].status !== 'active') {
     throw new PublicError(403, 'Agency is unavailable', 'agency_unavailable');
   }
-  if (rows.length !== 1 || !exactIdentifier(rows[0].agency_code)) {
+  if (rows.length !== 1) {
+    throw new PublicError(409, 'Agency integrity check failed', 'authority_integrity_failed');
+  }
+  // An agency with no code has no settings row to bind, so it has neither the
+  // opt-out nor the kill switch; it writes under the released default.
+  if (rows[0].agency_code === undefined || rows[0].agency_code === null || rows[0].agency_code === '') {
+    return rows[0];
+  }
+  if (!exactIdentifier(rows[0].agency_code)) {
     throw new PublicError(409, 'Agency integrity check failed', 'authority_integrity_failed');
   }
 
@@ -786,12 +830,15 @@ async function loadAuthority(
 ) {
   const user = await base44.auth.me().catch(() => null);
   if (!user) throw new PublicError(401, 'Unauthorized', 'unauthorized');
+  // The built-in admin role is protected from auth.updateMe and is the platform
+  // owner; every other caller must be an ordinary user with a membership.
+  const isPlatformOwner = user.role === 'admin';
   if (
     user.is_active === false
     || user.disabled === true
     || user.is_service === true
     || user.is_verified === false
-    || user.role !== 'user'
+    || (!isPlatformOwner && user.role !== 'user')
   ) {
     throw new PublicError(403, 'Forbidden', 'forbidden');
   }
@@ -800,30 +847,33 @@ async function loadAuthority(
   if (!userId || !normalizedEmail) throw new PublicError(403, 'Forbidden', 'forbidden');
 
   const entities = base44.asServiceRole.entities;
-  const rawMemberships = requireRows(
-    await entities.AgencyMembership.filter(
-      { user_id: userId },
-      '-updated_date',
-      MEMBERSHIP_SCAN_LIMIT,
-      undefined,
-      MEMBERSHIP_AUTHORITY_FIELDS,
-    ),
-    'AgencyMembership.filter',
-  );
-  const memberships = validateMembershipRows(rawMemberships, userId, normalizedEmail);
-  const selected = memberships.find(
-    (row) => row.agency_id === agencyId && row.status === 'active',
-  ) ?? null;
-  if (!selected) {
-    throw new PublicError(403, 'No active membership for agency', 'no_active_membership');
-  }
-  if (!OASIS_WRITER_ROLES.has(String(selected.tenant_role || ''))) {
-    throw new PublicError(403, 'Tenant role cannot author OASIS responses', 'role_not_allowed');
+  let selected: Record<string, any> | null = null;
+  if (!isPlatformOwner) {
+    const rawMemberships = requireRows(
+      await entities.AgencyMembership.filter(
+        { user_id: userId },
+        '-updated_date',
+        MEMBERSHIP_SCAN_LIMIT,
+        undefined,
+        MEMBERSHIP_AUTHORITY_FIELDS,
+      ),
+      'AgencyMembership.filter',
+    );
+    const memberships = validateMembershipRows(rawMemberships, userId, normalizedEmail);
+    selected = memberships.find(
+      (row) => row.agency_id === agencyId && row.status === 'active',
+    ) ?? null;
+    if (!selected) {
+      throw new PublicError(403, 'No active membership for agency', 'no_active_membership');
+    }
+    if (!OASIS_WRITER_ROLES.has(String(selected.tenant_role || ''))) {
+      throw new PublicError(403, 'Tenant role cannot author OASIS responses', 'role_not_allowed');
+    }
   }
   const agency = await loadExactActiveAgency(entities, agencyId);
   const snapshot = {
     user: { id: userId, email: normalizedEmail, role: user.role },
-    membership: pickFields(selected, MEMBERSHIP_AUTHORITY_FIELDS),
+    membership: selected ? pickFields(selected, MEMBERSHIP_AUTHORITY_FIELDS) : null,
     agency: pickFields(agency, AGENCY_AUTHORITY_FIELDS),
   };
   if (expectedSnapshot && !sameValue(snapshot, expectedSnapshot)) {
@@ -833,7 +883,7 @@ async function loadAuthority(
     agencyId,
     userId,
     normalizedEmail,
-    tenantRole: String(selected.tenant_role),
+    tenantRole: selected ? String(selected.tenant_role) : 'platform_owner',
     membership: selected,
     agency,
     snapshot,
@@ -1024,7 +1074,10 @@ async function loadPatientAccess(
   expectedSnapshot: Record<string, any> | null = null,
 ) {
   let snapshot: Record<string, any>;
-  if (isPatientCreator(patient, authority)) {
+  if (AGENCY_WIDE_WRITER_ROLES.has(authority.tenantRole)) {
+    // loadExactPatient already proved the chart is in this agency.
+    snapshot = { basis: 'agency_wide', assignment: null };
+  } else if (isPatientCreator(patient, authority)) {
     snapshot = { basis: 'patient_creator', assignment: null };
   } else {
     const assignment = await loadExactAssignment(entities, patient.id, authority);
@@ -1117,7 +1170,9 @@ async function loadAgencySettings(
   entities: Record<string, any>,
   authority: Record<string, any>,
 ) {
-  const agencyCode = exactIdentifier(authority.agency?.agency_code);
+  // No code, no settings row to bind: the released defaults apply.
+  if (!authority.agency?.agency_code) return null;
+  const agencyCode = exactIdentifier(authority.agency.agency_code);
   if (!agencyCode) {
     throw new PublicError(409, 'Agency settings binding is unavailable', 'settings_integrity_failed');
   }
@@ -1137,20 +1192,14 @@ async function loadAgencySettings(
   if (rows.some((row) => row?.agency_code !== agencyCode)) {
     throw new PublicError(409, 'Agency settings query scope could not be verified', 'settings_integrity_failed');
   }
-  if (rows.length === 0) {
-    throw new PublicError(
-      403,
-      'CMS-aligned OASIS response entry is not enabled for this agency.',
-      'feature_disabled',
-    );
-  }
+  if (rows.length === 0) return null;
   if (
     rows.length !== 1
     || !exactIdentifier(rows[0].id)
     || !validInstant(rows[0].updated_date)
-    || (rows[0][OASIS_V2_FLAG_FIELD] !== undefined
+    || (rows[0][OASIS_V2_FLAG_FIELD] != null
       && typeof rows[0][OASIS_V2_FLAG_FIELD] !== 'boolean')
-    || (rows[0][OASIS_WRITE_KILL_SWITCH_FIELD] !== undefined
+    || (rows[0][OASIS_WRITE_KILL_SWITCH_FIELD] != null
       && typeof rows[0][OASIS_WRITE_KILL_SWITCH_FIELD] !== 'boolean')
   ) {
     throw new PublicError(409, 'Agency settings integrity check failed', 'settings_integrity_failed');
@@ -1158,7 +1207,9 @@ async function loadAgencySettings(
   return rows[0];
 }
 
-function enforceSettingsPolicy(settings: Record<string, any>) {
+function enforceSettingsPolicy(settings: Record<string, any> | null) {
+  // No settings row: the owner's released default (entry on, no kill switch).
+  if (!settings) return;
   // Incident containment always wins, including during a snapshot drift.
   if (settings[OASIS_WRITE_KILL_SWITCH_FIELD] === true) {
     throw new PublicError(
@@ -1167,10 +1218,11 @@ function enforceSettingsPolicy(settings: Record<string, any>) {
       'write_kill_switch',
     );
   }
-  if (settings[OASIS_V2_FLAG_FIELD] !== true) {
+  // The rollout flag is an opt-out now: only an explicit false turns entry off.
+  if (settings[OASIS_V2_FLAG_FIELD] === false) {
     throw new PublicError(
       403,
-      'CMS-aligned OASIS response entry is not enabled for this agency.',
+      'CMS-aligned OASIS response entry is turned off for this agency.',
       'feature_disabled',
     );
   }
@@ -1184,8 +1236,8 @@ function visitSnapshot(row: Record<string, any> | null) {
   return row ? pickFields(row, VISIT_AUTHORITY_FIELDS) : null;
 }
 
-function settingsSnapshot(row: Record<string, any>) {
-  return pickFields(row, SETTINGS_AUTHORITY_FIELDS);
+function settingsSnapshot(row: Record<string, any> | null) {
+  return row ? pickFields(row, SETTINGS_AUTHORITY_FIELDS) : null;
 }
 
 async function recheckWriteAccess(
@@ -1246,20 +1298,97 @@ function expectedAssessmentRecord(
   rows: Array<Record<string, any>>,
   nowIso: string,
 ) {
-  return {
+  const record: Record<string, any> = {
     agency_id: authority.agencyId,
     patient_id: input.patientId,
     visit_id: input.visitId,
     visit_type: input.visitType,
     assessment_date: input.assessmentDate,
     oasis_items: rows,
-    status: 'draft',
+    status: input.status,
+    completion_percentage: completionPercentage(input.visitType, rows),
     response_schema_id: OASIS_RESPONSE_SCHEMA_V2_CMS_E2,
     instrument_version: 'oasis-e2',
     response_schema_source: 'final-oasis-e2-all-item-04-01-2026',
     migration_status: 'native_v2',
     last_written_by: authority.normalizedEmail,
     last_written_at: nowIso,
+  };
+  if (input.status === 'completed') {
+    record.completed_by = authority.normalizedEmail;
+    record.completed_date = nowIso;
+  }
+  if (input.clinicalSummary) record.clinical_summary = input.clinicalSummary;
+  return record;
+}
+
+/** Share of the CMS items collected at this time point that carry a response. */
+function completionPercentage(visitType: string, rows: Array<Record<string, any>>) {
+  const timepoint = oasisVisitTypeToTimepoint(visitType);
+  const applicable = Object.entries(OASIS_V2_APPLICABILITY)
+    .filter(([id, points]) => !OASIS_V2_SCREENING_IDS.includes(id) && (points as string[]).includes(String(timepoint)))
+    .map(([id]) => id);
+  if (applicable.length === 0) return 0;
+  const answered = new Set(rows.map((row) => row.definition_id));
+  return Math.round((applicable.filter((id) => answered.has(id)).length / applicable.length) * 100);
+}
+
+/** The response content a retry would repeat: definition and value, in order. */
+function responseFingerprint(items: unknown) {
+  const list = Array.isArray(items) ? items : [];
+  return JSON.stringify(canonicalJson(list
+    .map((row: any) => ({ definition_id: row?.definition_id ?? null, response_value: row?.response_value ?? null }))
+    .sort((a, b) => String(a.definition_id).localeCompare(String(b.definition_id)))));
+}
+
+/**
+ * Prior saves of the SAME content by the SAME author: what a retry after an
+ * ambiguous create would otherwise duplicate. Oldest first.
+ */
+async function loadIdenticalSaves(
+  entities: Record<string, any>,
+  record: Record<string, any>,
+) {
+  const rows = requireRows(
+    await entities.OASISAssessment.filter(
+      {
+        agency_id: record.agency_id,
+        patient_id: record.patient_id,
+        visit_type: record.visit_type,
+        assessment_date: record.assessment_date,
+        last_written_by: record.last_written_by,
+      },
+      'created_date',
+      EXACT_ROW_LIMIT,
+      undefined,
+      WRITTEN_ASSESSMENT_FIELDS,
+    ),
+    'OASISAssessment.filter',
+  );
+  const fingerprint = responseFingerprint(record.oasis_items);
+  return rows.filter((row) => (
+    row?.agency_id === record.agency_id
+    && row.patient_id === record.patient_id
+    && row.visit_type === record.visit_type
+    && row.assessment_date === record.assessment_date
+    && row.last_written_by === record.last_written_by
+    && row.status === record.status
+    && (row.visit_id ?? null) === (record.visit_id ?? null)
+    && responseFingerprint(row.oasis_items) === fingerprint
+  ));
+}
+
+function assessmentSummary(row: Record<string, any>) {
+  return {
+    id: row.id,
+    patient_id: row.patient_id,
+    visit_id: row.visit_id ?? null,
+    visit_type: row.visit_type,
+    assessment_date: row.assessment_date,
+    status: row.status,
+    response_schema_id: row.response_schema_id,
+    instrument_version: row.instrument_version,
+    migration_status: row.migration_status,
   };
 }
 
@@ -1326,8 +1455,8 @@ function responseScope(
   return {
     agency_id: authority.agencyId,
     patient_id: patientId,
-    membership_id: authority.membership.id,
-    membership_version: authority.membership.version,
+    membership_id: authority.membership?.id ?? null,
+    membership_version: authority.membership?.version ?? null,
     tenant_role: authority.tenantRole,
     chart_access_basis: access.basis,
   };
@@ -1394,38 +1523,79 @@ Deno.serve(async (req) => {
       );
     }
     const record = expectedAssessmentRecord(input, prewrite.authority, canonicalRows, nowIso);
-    const created = await entities.OASISAssessment.create(record);
+
+    // A retry of a save that already landed returns that save, not a twin.
+    const earlier = await loadIdenticalSaves(entities, record);
+    if (earlier.length > 0) {
+      return Response.json(
+        {
+          ok: true,
+          operation: 'create_draft',
+          created: false,
+          assessment: assessmentSummary(earlier[0]),
+          written: canonicalRows.length,
+          scope: responseScope(prewrite.authority, input.patientId, prewrite.access),
+        },
+        { headers: NO_STORE_HEADERS },
+      );
+    }
+
+    // The author is stamped explicitly: a service-role create would otherwise
+    // carry the service identity, and the protected reader requires an author.
+    const created = await entities.OASISAssessment.create({
+      ...record,
+      created_by: prewrite.authority.normalizedEmail,
+    });
     const assessmentId = exactIdentifier(created?.id);
     if (!assessmentId) {
       throw new PublicError(409, 'Created OASIS assessment could not be verified', 'write_verification_failed');
     }
 
-    const firstReadback = await loadExactWrittenAssessment(entities, assessmentId, record);
-    const postwrite = await recheckWriteAccess(base44, entities, input, snapshots);
-    const finalReadback = await loadExactWrittenAssessment(entities, assessmentId, record);
-    if (!sameValue(
-      pickFields(firstReadback, WRITTEN_ASSESSMENT_FIELDS),
-      pickFields(finalReadback, WRITTEN_ASSESSMENT_FIELDS),
-    )) {
-      throw new PublicError(409, 'Created OASIS assessment changed during request', 'write_verification_failed');
+    let postwrite;
+    try {
+      const firstReadback = await loadExactWrittenAssessment(entities, assessmentId, record);
+      postwrite = await recheckWriteAccess(base44, entities, input, snapshots);
+      const finalReadback = await loadExactWrittenAssessment(entities, assessmentId, record);
+      if (!sameValue(
+        pickFields(firstReadback, WRITTEN_ASSESSMENT_FIELDS),
+        pickFields(finalReadback, WRITTEN_ASSESSMENT_FIELDS),
+      )) {
+        throw new PublicError(409, 'Created OASIS assessment changed during request', 'write_verification_failed');
+      }
+    } catch (error) {
+      // No cross-entity transaction: a write whose authority did not survive the
+      // request is removed rather than left behind as an unacknowledged draft.
+      await entities.OASISAssessment.delete(assessmentId).catch(() => {});
+      throw error;
+    }
+
+    // A concurrent identical save that landed first keeps its record; this
+    // request's twin is removed and the first one is reported.
+    const twins = await loadIdenticalSaves(entities, record);
+    const first = twins[0];
+    if (first && first.id !== assessmentId) {
+      await entities.OASISAssessment.delete(assessmentId).catch(() => {});
+      return Response.json(
+        {
+          ok: true,
+          operation: 'create_draft',
+          created: false,
+          assessment: assessmentSummary(first),
+          written: canonicalRows.length,
+          scope: responseScope(postwrite.authority, input.patientId, postwrite.access),
+        },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
     return Response.json(
       {
         ok: true,
         operation: 'create_draft',
-        assessment: {
-          id: assessmentId,
-          patient_id: record.patient_id,
-          visit_id: record.visit_id,
-          visit_type: record.visit_type,
-          assessment_date: record.assessment_date,
-          status: 'draft',
-          response_schema_id: record.response_schema_id,
-          instrument_version: record.instrument_version,
-          migration_status: record.migration_status,
-        },
+        created: true,
+        assessment: assessmentSummary({ ...record, id: assessmentId }),
         written: canonicalRows.length,
+        completion_percentage: record.completion_percentage,
         scope: responseScope(postwrite.authority, input.patientId, postwrite.access),
       },
       { headers: NO_STORE_HEADERS },

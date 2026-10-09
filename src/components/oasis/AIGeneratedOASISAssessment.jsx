@@ -21,7 +21,15 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 
-const AI_OASIS_ASSESSMENT_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). Guidance only:
+// generateOASISAssessment opens a chart through the shared OASIS chart-access
+// rule (platform owner; otherwise an active membership in the patient's agency
+// AND agency_admin/manager, the chart's creator, or an exact active care-team
+// assignment) and takes referral text only from the platform owner or a caller
+// with one active membership. Every item passes the AI-response sanitiser
+// below, so no model-chosen response can be displayed, copied or saved — the
+// clinician answers each item in the official assessment.
+const AI_OASIS_ASSESSMENT_ENABLED = true;
 
 function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Care", referralData }) {
   const [assessment, setAssessment] = useState(null);
@@ -67,7 +75,7 @@ function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Ca
       }
 
       const { data } = await base44.functions.invoke('generateOASISAssessment', payload);
-      
+
       // Filter out administrative items
       if (data.oasis_items) {
         data.oasis_items = data.oasis_items.filter(item => {
@@ -84,7 +92,7 @@ function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Ca
           return true;
         });
       }
-      
+
       // Defensive sanitisation at the boundary. Even with the prompt changed,
       // a model can still emit a code — through a field nobody planned for, or
       // inside prose. Stripping it here is what makes it inert: nothing below
@@ -462,10 +470,9 @@ export default function AIGeneratedOASISAssessment(props) {
     return (
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="p-6">
-          <p className="font-semibold text-amber-900">AI OASIS Assessment Guidance Paused</p>
+          <p className="font-semibold text-amber-900">AI OASIS Assessment Guidance Off</p>
           <p className="mt-2 text-sm text-amber-800">
-            Automated OASIS item guidance is unavailable pending verified CMS definitions,
-            tenant-scoped authorization, and clinician review. Use the official assessment workflow.
+            Automated OASIS item guidance is switched off for this deployment. Use the official assessment workflow.
           </p>
         </CardContent>
       </Card>

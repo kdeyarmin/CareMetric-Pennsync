@@ -195,8 +195,12 @@ test('browser SecurityLog handles exist only in the reviewed administrator views
       readers.add(url.pathname.slice(url.pathname.indexOf('/src/') + 1));
     }
   }
+  // AuditTrailViewer joined the reviewed list with the restored audit trail
+  // (owner decision, 2026-10-08): its security view reads SecurityLog only for
+  // the administrator account and takes activity from the scoped report.
   assert.deepEqual([...readers].sort(), [
     'src/components/security/AIAuditAnalyzer.jsx',
+    'src/components/security/AuditTrailViewer.jsx',
     'src/components/security/BreachDetectionSystem.jsx',
     'src/components/security/SecurityAnomalyDetector.jsx',
     'src/components/security/SecurityAuditScheduler.jsx',
@@ -212,6 +216,15 @@ test('browser SecurityLog handles exist only in the reviewed administrator views
     'utf8',
   );
   assert.match(unavailable, /No zero-event or all-clear conclusion/);
+
+  const trail = await readFile(
+    new URL('../../src/components/security/AuditTrailViewer.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(trail, /const canReadSecurityLog = isAdminLike\(currentUser\);/);
+  assert.match(trail, /enabled: wantsSecurityLog && canReadSecurityLog,/);
+  assert.match(trail, /useActivityReport\(\{/);
+  assert.doesNotMatch(trail, /entities\.UserActivity/);
 });
 
 test('SecurityLog handle scanner covers aliases, destructuring, optional chains, and computed keys', () => {

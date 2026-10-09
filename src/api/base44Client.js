@@ -65,4 +65,32 @@ export const publicCapabilityClient = Object.freeze({
     lease,
     () => rawBase44.functions.invoke('createTelehealthToken', payload),
   ),
+  // The outside signer's /signer page (released 2026-10-08). The emailed link's
+  // bearer is the only authority: validateSignerToken looks it up by SHA-256
+  // and discloses only that signer's own package; submitSignerSignature also
+  // needs the per-document review nonce the validation issued.
+  validateSignerToken: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('validateSignerToken', payload),
+  ),
+  submitSignerSignature: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('submitSignerSignature', payload),
+  ),
+  // The 60-second signed review URL the validation returned: fetched without
+  // credentials under the same lease, so a revoked lease aborts the read.
+  fetchSignerReviewDocument: (lease, reviewUrl) => runPublicCapabilityOperation(
+    lease,
+    async ({ signal }) => {
+      const url = new URL(reviewUrl);
+      if (url.protocol !== 'https:' || url.username || url.password) {
+        throw new Error('The review link is not a secure link');
+      }
+      const response = await fetch(url.toString(), {
+        method: 'GET', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal,
+      });
+      if (!response.ok) throw new Error('The document could not be opened');
+      return new Uint8Array(await response.arrayBuffer());
+    },
+  ),
 });

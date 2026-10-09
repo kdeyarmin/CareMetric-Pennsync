@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
+import AIUtilizationPanel from "@/components/analytics/AIUtilizationPanel";
 import { format, subDays } from "date-fns";
 import { parseLocalDate } from '@/lib/dateLocal';
 import { ALL_ROWS } from '@/lib/queryLimits';
@@ -408,10 +408,6 @@ export default function AnalyticsDashboard() {
         }
       />
 
-      <div className="mb-4 sm:mb-6">
-        <UserActivityUnavailable title="AI utilization analytics unavailable" />
-      </div>
-
       {/* Filters */}
       <Card className="mb-4 sm:mb-6">
         <CardContent className="p-3 sm:p-4">
@@ -512,6 +508,15 @@ export default function AnalyticsDashboard() {
           </ResponsiveContainer>
         </CardContent>
       </Card>
+
+      {/* AI utilization, from the server-scoped activity report. */}
+      <AIUtilizationPanel
+        startDate={startDate}
+        endDate={endDate}
+        selectedUser={selectedUser}
+        enabled={isAdmin && rangeAvailable}
+        scopeKey={currentUser?.email || null}
+      />
 
       {/* User Performance Table (Admin Only) */}
       {isAdmin && userPerformance.length > 0 && (

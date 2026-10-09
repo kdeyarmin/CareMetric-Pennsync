@@ -53,22 +53,56 @@ test('the approved clinical-task analysis function remains read-only', async () 
   assert.doesNotMatch(source, /\bfunctions\.invoke\s*\(/);
 });
 
-test('legacy OASIS workflow execution remains literally hard-paused before every mutation path', async () => {
-  const source = await read('src/components/oasis/WorkflowExecutionEngine.jsx');
-  assert.match(source, /const OASIS_AUTOMATION_EXECUTION_PAUSED = true;/);
-  assert.match(source, /enabled:\s*!OASIS_AUTOMATION_EXECUTION_PAUSED/);
+// The owner released OASIS automation on 2026-10-08. What keeps it safe is
+// WHERE it runs: the browser names only the saved upload, and the OASIS record
+// broker opens the chart, evaluates the active rules against the analysis it
+// stored, and claims each (upload, rule) run before any task, alert or
+// notification is written. Nothing from the browser can choose a rule, a
+// threshold, an action or a patient.
+test('OASIS workflow execution runs only in the record broker, against the stored analysis', async () => {
+  const engine = await read('src/components/oasis/WorkflowExecutionEngine.jsx');
+  assert.match(engine, /const OASIS_AUTOMATION_EXECUTION_PAUSED = false;/);
+  assert.doesNotMatch(engine, ENTITY_MUTATION_PATTERN);
+  assert.doesNotMatch(engine, FUNCTION_INVOKE_PATTERN);
+  const runs = [...engine.matchAll(/manageOASISRecords\(\s*'execute_workflows'\s*,\s*(\{[^}]*\})\s*\)/g)];
+  assert.equal(runs.length, 1, 'one run path');
+  assert.equal(runs[0][1].replace(/\s+/g, ' '), '{ upload_id: oasisUploadId }',
+    'the browser sends the upload id and nothing a rule could be evaluated against');
 
-  const executeStart = source.indexOf('const executeWorkflows = useCallback');
-  const pauseGuard = source.indexOf('if (OASIS_AUTOMATION_EXECUTION_PAUSED)', executeStart);
-  const actionDispatch = source.indexOf('await executeActions', executeStart);
-  assert.ok(executeStart >= 0 && pauseGuard > executeStart && pauseGuard < actionDispatch);
-  assert.match(source, /Automated OASIS actions are paused pending one atomic, idempotent, patient-authorized broker/);
+  const broker = await read('base44/functions/manageOASISRecords/entry.ts');
+  const body = broker.slice(broker.indexOf('async function executeWorkflows('));
+  const fn = body.slice(0, body.indexOf('\n}\n'));
+  const access = fn.indexOf('uploadAccess(');
+  const chart = fn.indexOf('openChart(');
+  const rules = fn.indexOf('OASISAutomationRule.filter(');
+  const claim = fn.indexOf("createKeyedOnce(entities, 'OASISWorkflowExecution', 'run_id'");
+  const action = fn.indexOf('runRuleAction(');
+  assert.ok(access > 0 && access < chart && chart < rules && rules < claim && claim < action,
+    'upload access, then the chart, then the stored rules, then the run claim, then any action');
+  assert.match(fn, /upload\.analysis_results/);
+  assert.doesNotMatch(fn, /body\.(analysis|rules?|actions?|patient_id|analysis_results)\b/,
+    'no rule input is taken from the request');
+  assert.match(fn, /if \(!claim\.created\)[\s\S]*?continue;/, 'a claimed run is re-reported, never re-run');
 });
 
-test('AI pathway activation and IDT alert creation stay fail-closed', async () => {
+// Pathway activation adds tasks only through the broker's create_tasks, which
+// opens the chart server-side and keys every task to the caller; the IDT
+// coordinator stays read-only.
+test('AI pathway activation writes tasks only through the chart-checked broker; IDT stays read-only', async () => {
   const pathway = await read('src/components/oasis/AIPathwayRecommender.jsx');
   const idt = await read('src/components/coordination/InterdisciplinaryTeamCoordinator.jsx');
-  assert.match(pathway, /if \(selectedTaskCount > 0\) \{\s*return;/);
   assert.doesNotMatch(pathway, ENTITY_MUTATION_PATTERN);
+  assert.doesNotMatch(pathway, FUNCTION_INVOKE_PATTERN);
+  assert.match(pathway, /manageOASISRecords\("create_tasks",\s*\{\s*patient_id: patientId,/);
+  assert.match(pathway, /disabled=\{activating \|\| \(selectedTaskCount > 0 && !patientId\)\}/,
+    'tasks cannot be requested without a chart');
   assert.doesNotMatch(idt, ENTITY_MUTATION_PATTERN);
+
+  const broker = await read('base44/functions/manageOASISRecords/entry.ts');
+  const body = broker.slice(broker.indexOf('async function createTasks('));
+  const fn = body.slice(0, body.indexOf('\n}\n'));
+  assert.ok(fn.indexOf('openChart(') >= 0 && fn.indexOf('openChart(') < fn.indexOf("createKeyedOnce(entities, 'Task'"),
+    'the chart is opened before any task is written');
+  assert.match(fn, /`oasis:\$\{scope\.userId\}:\$\{key\}`/, 'task keys are scoped to the caller');
+  assert.match(fn, /assigned_to: scope\.email/);
 });

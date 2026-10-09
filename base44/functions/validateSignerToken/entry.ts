@@ -57,8 +57,14 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-/** Token-authenticated, projection-only signing review broker (release-gated). */
-const PUBLIC_SIGNATURE_RELEASE_ENABLED = false;
+/**
+ * Token-authenticated, projection-only signing review broker (released
+ * 2026-10-08, owner decision). The bearer link is the signer's only authority:
+ * it is looked up by its SHA-256, is single-purpose (one signer, one package),
+ * is capped at 20 reviews and at every package/document deadline, and only
+ * ever discloses that signer's own package. Each pending document gets a
+ * one-use review grant and a 60-second signed URL; nothing durable leaves.
+ */
 const MAX_BODY_BYTES = 2_000;
 const EXACT_ROW_LIMIT = 10;
 const MAX_IDENTIFIER_LENGTH = 200;
@@ -70,12 +76,16 @@ const MAX_REVIEW_ACCESSES = 20;
 
 class PublicError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code: string | null;
+  constructor(status: number, message: string, code: string | null = null) {
     super(message);
     this.name = 'PublicError';
     this.status = status;
+    this.code = code;
   }
 }
+
+const SIGNING_NOT_CONFIGURED = 'Electronic signing is not configured yet. Please contact your care team.';
 
 function exactIdentifier(value: unknown) {
   if (typeof value !== 'string' || !value || value.length > MAX_IDENTIFIER_LENGTH
@@ -145,7 +155,9 @@ async function configuredAgreement() {
   const digest = String(Deno.env.get('SIGNATURE_AGREEMENT_SHA256') || '').trim().toLowerCase();
   const text = String(Deno.env.get('SIGNATURE_AGREEMENT_TEXT') || '').trim();
   if (!exactDigest(digest) || text.length < 40 || text.length > 5_000 || await sha256(text) !== digest) {
-    throw new PublicError(500, 'Signature agreement is not configured');
+    // Fail closed: SIGNATURE_AGREEMENT_TEXT and its exact SIGNATURE_AGREEMENT_SHA256
+    // are required; no default consent text is ever substituted.
+    throw new PublicError(503, SIGNING_NOT_CONFIGURED, 'signature_agreement_not_configured');
   }
   return { digest, text };
 }
@@ -372,6 +384,7 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
   }
   const agencies = requireRows(await entities.Agency.filter({ id: agencyId }, undefined, EXACT_ROW_LIMIT), 'Agency.filter');
   if (agencies.length !== 1 || !['active', 'trial'].includes(agencies[0]?.status)) throw new PublicError(401, 'Invalid or expired token');
+  const agencyName = typeof agencies[0].agency_name === 'string' ? agencies[0].agency_name.slice(0, 200) : null;
   const memberships = requireRows(await entities.AgencyMembership.filter(
     { id: creatorMembershipId, agency_id: agencyId, user_id: creatorId }, undefined, EXACT_ROW_LIMIT,
   ), 'AgencyMembership.filter');
@@ -453,7 +466,10 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
     package: {
       id: packageId, agency_id: agencyId, patient_id: patientId, package_name: pkg.package_name,
       due_date: pkg.due_date, status: pkg.status, authority_version: pkg.authority_version,
-      document_signatures: liveIds,
+      document_signatures: liveIds, agency_name: agencyName,
+      // The requester's note lives on each document of the request.
+      message: authoritySignatures.map((row) => row?.message).find((value) => typeof value === 'string' && value)
+        ?.slice(0, 1000) ?? null,
     },
     documents,
     deadline,
@@ -484,20 +500,24 @@ async function claimReviewAccess(entities: Record<string, any>, tokenDigest: str
   return confirmed;
 }
 
-Deno.serve(async (req) => {
-  if (!PUBLIC_SIGNATURE_RELEASE_ENABLED) {
-    return Response.json(
-      { error: 'Secure document review and signing are temporarily unavailable.', code: 'signer_validation_unavailable' },
-      { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
-    );
+function configuredAuditKey() {
+  try {
+    const auditKeys = signatureAuditKeyring();
+    const auditKeyId = auditKeys.activeId;
+    return { auditKeyId, auditKey: retainedSignatureAuditKey(auditKeys, auditKeyId) };
+  } catch {
+    // SIGNATURE_HMAC_SECRET (or SIGNATURE_HMAC_KEYRING + SIGNATURE_HMAC_ACTIVE_KEY_ID)
+    // is required before any review grant is issued.
+    throw new PublicError(503, SIGNING_NOT_CONFIGURED, 'signature_audit_key_not_configured');
   }
+}
+
+Deno.serve(async (req) => {
   try {
     const token = await parseToken(req);
     const tokenDigest = await sha256(token);
     const agreement = await configuredAgreement();
-    const auditKeys = signatureAuditKeyring();
-    const auditKeyId = auditKeys.activeId;
-    const auditKey = retainedSignatureAuditKey(auditKeys, auditKeyId);
+    const { auditKeyId, auditKey } = configuredAuditKey();
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const entities = base44.asServiceRole.entities;
     const initial = await claimReviewAccess(entities, tokenDigest, await loadTokenContext(entities, tokenDigest));
@@ -519,7 +539,15 @@ Deno.serve(async (req) => {
 
     const signedDocuments = [];
     for (const document of initial.documents) {
-      if (document.status !== 'pending') continue;
+      if (document.status !== 'pending') {
+        // Already signed by this signer: listed for progress, never re-opened.
+        signedDocuments.push({
+          id: document.id, name: document.name, status: document.status,
+          signed_at: document.signed_at, review_url: null, review_nonce: null,
+          review_nonce_expires_at: null, review_url_expires_in_seconds: null,
+        });
+        continue;
+      }
       const reviewNonce = generateOpaqueSecret();
       const grantDigest = await sha256(reviewNonce);
       const grantExpiresAt = new Date(Math.min(
@@ -592,6 +620,7 @@ Deno.serve(async (req) => {
     return Response.json({
       valid: true, package_id: initial.package.id, package_name: initial.package.package_name,
       package_status: initial.package.status, due_date: initial.package.due_date,
+      agency_name: initial.package.agency_name, message: initial.package.message,
       signer_id: initial.token.signer_id, signer_name: initial.token.signer_name,
       agreement: { version: AGREEMENT_VERSION, text: agreement.text, sha256: agreement.digest },
       documents: signedDocuments, expires_at: initial.token.expires_at,
@@ -599,7 +628,8 @@ Deno.serve(async (req) => {
   } catch (error) {
     const status = error instanceof PublicError ? error.status : 500;
     const message = error instanceof PublicError ? error.message : 'Unable to validate token';
-    return Response.json({ error: message, valid: false }, {
+    const code = error instanceof PublicError && error.code ? { code: error.code } : {};
+    return Response.json({ error: message, valid: false, ...code }, {
       status, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
     });
   }

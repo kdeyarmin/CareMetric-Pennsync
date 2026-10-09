@@ -241,6 +241,25 @@
         "type": "string"
       },
       "description": "Email addresses of users who have read the message"
+    },
+    "urgent_notification_claim_token": {
+      "type": "string",
+      "description": "Server-stamped claim taken by notifyUrgentMessage under a state_version compare-and-swap before it fans out recipient notifications. Never accepted from a caller."
+    },
+    "urgent_notification_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server time the urgent-notification claim was taken. A claim older than the broker's lease with no urgent_notified_at may be taken over by a retry."
+    },
+    "urgent_notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server time notifyUrgentMessage finished fanning out this urgent message. Once set, every later call answers already_notified and creates nothing."
+    },
+    "urgent_notification_recipient_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of participants holding an urgent-message notification when urgent_notified_at was stamped."
     }
   },
   // Message contains legacy rows without immutable selected-tenant provenance.

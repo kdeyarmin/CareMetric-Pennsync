@@ -209,7 +209,10 @@ describe('residual RLS source containment', () => {
   it('admits every ClinicalPathway operation for the administrator only, and only the manager is on', () => {
     // 2026-10-08 owner decision: the Clinical Pathway Manager is on again, so
     // pathways are administrator-managed content rather than fully locked. The
-    // OASIS hosts that read them stay paused (another workstream owns OASIS).
+    // OASIS Center was turned on the same day; its two pathway readers do not
+    // read the entity (whose read rule is the administrator's) but the active
+    // library through the OASIS record broker's list_pathways, projected
+    // without any PDGM group or rescore field.
     expect(entity('ClinicalPathway').rls).toEqual({
       read: ADMIN,
       create: ADMIN,
@@ -220,10 +223,16 @@ describe('residual RLS source containment', () => {
     expect(directConsumers('ClinicalPathway')).toEqual([
       'src/components/clinical/AIPathwayGenerator.jsx',
       'src/components/clinical/AIPathwayUpdater.jsx',
-      'src/components/oasis/AIPathwayRecommender.jsx',
-      'src/components/oasis/ClinicalPathwayTrigger.jsx',
       'src/pages/ClinicalPathwayManager.jsx',
     ]);
+    for (const path of ['src/components/oasis/AIPathwayRecommender.jsx', 'src/components/oasis/ClinicalPathwayTrigger.jsx']) {
+      expect(read(path), path).toMatch(/manageOASISRecords\('list_pathways'\)/);
+    }
+    const broker = read('base44/functions/manageOASISRecords/entry.ts');
+    const fields = broker.slice(broker.indexOf('const PATHWAY_FIELDS = ['), broker.indexOf('];', broker.indexOf('const PATHWAY_FIELDS = [')));
+    expect(fields).not.toMatch(/pdgm|rescore|revenue|payment|reimburs/i);
+    expect(broker).toMatch(/ClinicalPathway\.filter\(\{ is_active: true \}/);
+    expect(broker).not.toMatch(/ClinicalPathway\.(?:create|update|delete)\(/);
 
     const manager = read('src/pages/ClinicalPathwayManager.jsx');
     expect(manager).not.toContain('CLINICAL_PATHWAY_MANAGER_ENABLED');
@@ -234,9 +243,9 @@ describe('residual RLS source containment', () => {
     expect(read('src/components/clinical/AIPathwayUpdater.jsx'))
       .toContain('pathwayUpdatePayload(pathway, recommendation.suggested_change)');
     expect(read('src/components/hub-tabs/OASISAnalyzer.jsx'))
-      .toMatch(/const OASIS_ANALYZER_ENABLED\s*=\s*false\s*;/);
+      .toMatch(/const OASIS_ANALYZER_ENABLED\s*=\s*true\s*;/);
     expect(read('src/components/hub-tabs/OASISClinicalReview.jsx'))
-      .toMatch(/const OASIS_CLINICAL_AI_ENABLED\s*=\s*false\s*;/);
+      .toMatch(/const OASIS_CLINICAL_AI_ENABLED\s*=\s*true\s*;/);
   });
 
   it('keeps AutomaticCarePlanTrigger to protected admins and its one admin page', () => {
@@ -262,6 +271,9 @@ describe('residual RLS source containment', () => {
       'src/components/training/InteractiveDocumentationScenarios.jsx',
       'src/components/training/LearnerMemoryBoosters.jsx',
       'src/hooks/useMyTrainingCompletions.js',
+      // Restored skill-gap training records a finished AI lesson as the
+      // caller's own row (owner decision, 2026-10-08).
+      'src/pages/NurseTrainingHub.jsx',
     ]);
   });
 

@@ -213,8 +213,10 @@
     "manageAgencyMembership": "port",
     "manageAuthorizedReferral": "port",
     "manageMyNotifications": "port",
+    "manageOASISRecords": "preserved_paused",
     "managePatientCareTeamAssignment": "port",
     "managePhoneNumberPool": "preserved_paused",
+    "manageSignatureRequests": "preserved_paused",
     "manageSmsConsent": "preserved_paused",
     "manageTelehealthSession": "preserved_paused",
     "manageTrainingVideos": "hub",
@@ -222,6 +224,7 @@
     "manageVehicleMaintenance": "port",
     "mapNoteToOASIS": "preserved_paused",
     "markMessageRead": "preserved_paused",
+    "markSmsRead": "preserved_paused",
     "matchPatientWithAI": "port",
     "mergePDFs": "port",
     "messagingAssistant": "preserved_paused",
@@ -599,13 +602,17 @@
   },
   "workflows": {
     "Auto Retry Failed Faxes.jsonc": "preserved_paused",
+    "Check Pending Signature Requests.jsonc": "preserved_paused",
     "Check Stale Follow-Up Requests.jsonc": "preserved_paused",
+    "Daily Compliance Documentation Monitor.jsonc": "preserved_paused",
+    "Daily Data Quality Scores.jsonc": "preserved_paused",
     "Dispatch Scheduled Signature Reminders.jsonc": "preserved_paused",
     "Dispatch Scheduled SMS.jsonc": "preserved_paused",
     "Nightly Outcome Measure Computation.jsonc": "preserved_paused",
     "Poll Fax Statuses.jsonc": "preserved_paused",
     "Process Inbound Referral Faxes.jsonc": "preserved_paused",
-    "Process Scheduled Faxes.jsonc": "preserved_paused"
+    "Process Scheduled Faxes.jsonc": "preserved_paused",
+    "Redrive Failed SMS.jsonc": "preserved_paused"
   },
   "integrations": {
     "InvokeLLM": "port",

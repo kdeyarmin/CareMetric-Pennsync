@@ -56,8 +56,9 @@ async function downloadSummaryPDF(summary) {
  * Discharge summaries (owner decision, 2026-10-08). Drafts are generated
  * server-side by generateDischargeSummary, which checks the caller's access to
  * the chart; the list reads DischargeSummary under its own rule (the staff
- * member who generated the draft, or an administrator). Clinician signature
- * capture stays with the agency's approved signing workflow.
+ * member who generated the draft, or an administrator). A reviewed summary is
+ * signed by the clinician through submitDocumentSignatures (discharge mode),
+ * which decides chart access and seals the reviewed content's digest.
  */
 export default function DischargeSummaries() {
   const queryClient = useQueryClient();
@@ -309,6 +310,15 @@ export default function DischargeSummaries() {
                         >
                           <CheckCircle className="w-3 h-3 mr-1" />
                           Review & Sign
+                        </Button>
+                      )}
+                      {summary.status === 'reviewed' && (
+                        <Button
+                          size="sm"
+                          onClick={() => openSummary(summary, 'sign')}
+                        >
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Sign
                         </Button>
                       )}
                       {summary.status === 'signed' && (

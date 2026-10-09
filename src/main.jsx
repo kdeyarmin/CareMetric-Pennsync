@@ -25,22 +25,11 @@ const authorityGuardCleanups = []
 // guard installation without logging tokens, page content, or user data.
 let bootstrapFailureCode = 'FRAME_NOT_ALLOWED'
 
-// Only the signer bearer is retired. The provider follow-up portal (/followup)
-// was released on 2026-10-08 (owner decision): its page reads the token once
-// through its capability lease and scrubs it from the URL itself
-// (scrubPublicCapabilityParameter), so it must reach the app intact.
-function scrubRetiredPublicTokenBeforeAppImport() {
-  const segment = String(window.location.pathname || '').toLowerCase().split('/')[1] || ''
-  if (segment !== 'signer') return
-  const url = new URL(window.location.href)
-  if (!url.searchParams.has('token')) return
-  url.searchParams.delete('token')
-  // Replace the whole entry state before React Router can retain either the
-  // retired bearer or a stale clinical state object from session history.
-  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`)
-}
-
-scrubRetiredPublicTokenBeforeAppImport()
+// No public bearer is scrubbed here any more. The signer portal (/signer) and
+// the provider follow-up portal (/followup) were both released on 2026-10-08
+// (owner decision): each page reads its token once through its capability
+// lease and scrubs it from the URL itself (scrubPublicCapabilityParameter) in
+// a layout effect, before anything renders, so the token must reach the app.
 
 function terminallyCloseDocumentAuthority() {
   try { poisonTenantSdkRealm() } catch { /* continue closing every realm */ }

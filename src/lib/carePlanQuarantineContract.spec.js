@@ -56,19 +56,25 @@ describe('care-plan access contract', () => {
     expect(source).not.toMatch(/\bbase44\b|CarePlanInteractive|useQuery|entities\./);
   });
 
-  it('keeps every adjacent care-plan backend path paused before client construction', () => {
+  // Released 2026-10-08 ("turn everything on"). Each adjacent backend path
+  // keeps a static gate before the SDK, then decides authority from
+  // service-owned rows (never a profile field) before any model call, and none
+  // writes a care plan or a Patient row: the AI output is a draft a clinician
+  // saves through the pages above. carePlanAiAuthorizationContract drives them.
+  it('decides each care-plan AI path from trusted authority and never writes a care plan or chart', () => {
     for (const functionName of carePlanHandlers) {
       const source = read(`base44/functions/${functionName}/entry.ts`);
       const handlerIndex = source.indexOf('Deno.serve(');
-      const clientIndex = source.indexOf('createClientFromRequest(', handlerIndex);
-      const pausedReturnIndex = source.indexOf('return Response.json(', handlerIndex);
-
+      const handler = source.slice(handlerIndex);
+      const gateIndex = handler.search(/if \(!\w+_ENABLED\)/);
+      const clientIndex = handler.indexOf('createClientFromRequest(');
+      const modelIndex = handler.indexOf('InvokeLLM');
       expect(handlerIndex, functionName).toBeGreaterThanOrEqual(0);
-      expect(pausedReturnIndex, functionName).toBeGreaterThan(handlerIndex);
-      expect(clientIndex, functionName).toBeGreaterThan(pausedReturnIndex);
-      expect(source.slice(handlerIndex, clientIndex), functionName).toMatch(
-        /(?:_ENABLED\)\s*\{|SECURITY CONTAINMENT)[\s\S]*return Response\.json/,
-      );
+      expect(gateIndex, functionName).toBeGreaterThanOrEqual(0);
+      expect(clientIndex, functionName).toBeGreaterThan(gateIndex);
+      expect(modelIndex, functionName).toBeGreaterThan(clientIndex);
+      expect(source, functionName).toMatch(/withTrustedClaims|callerMayAccessPatient/);
+      expect(handler, functionName).not.toMatch(/CarePlan\.create|Patient\.update|assigned_nurses|agency_name/);
     }
   });
 });

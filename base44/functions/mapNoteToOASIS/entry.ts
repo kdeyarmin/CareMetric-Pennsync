@@ -160,15 +160,11 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // and the care-team assignment table. Suggestions are prefill a clinician reviews.
 const NOTE_TO_OASIS_MAPPING_ENABLED = true;
 
-/**
- * Chart access for an OASIS AI request, from the same authority the chart
- * brokers use rather than the legacy Patient.assigned_nurses / agency_name scan
- * (patients created through createAuthorizedPatient never fill assigned_nurses,
- * so that scan refused every nurse). The platform owner may open any chart. Any
- * other caller needs an active membership (from withTrustedClaims) in the
- * patient's own agency, and then an agency-wide role (agency_admin or manager),
- * to be the patient's creator, or an exact active PatientCareTeamAssignment.
- */
+// Chart access for an OASIS AI request comes from the same authority the chart
+// brokers use: the built-in admin role, the caller's one active membership (from
+// withTrustedClaims), and the care-team table. The shared block below is the one
+// definition every OASIS function uses.
+// <<<BEGIN SHARED HELPER: oasisChartAccess — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function assertOasisChartAccess(base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
   if (user.role === 'admin') return null;
@@ -191,6 +187,7 @@ async function assertOasisChartAccess(base44, user, patient) {
   ));
   return active ? null : Response.json({ error: 'Forbidden' }, { status: 403 });
 }
+// <<<END SHARED HELPER: oasisChartAccess>>>
 
 
 Deno.serve(async (req) => {
