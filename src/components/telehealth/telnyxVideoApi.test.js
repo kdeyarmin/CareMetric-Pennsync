@@ -78,6 +78,8 @@ const REQUIRED_ROOM_METHODS = [
   "sendMessage",
   "enableNetworkMetricsReport",
   "disableNetworkMetricsReport",
+  // In-visit token renewal (createTokenRefresher in telehealthUtils.js).
+  "updateClientToken",
 ];
 const REQUIRED_EVENTS = [
   "connected",
@@ -141,6 +143,20 @@ test("telehealth components do not reference non-existent @telnyx/video symbols"
     !/getParticipantStream\(\s*participant\.id\s*\)/.test(videoRoom),
     "VideoRoom.jsx calls getParticipantStream with one arg; the SDK requires (participantId, key)",
   );
+});
+
+test("a connected room renews its client token in place, through the backend", () => {
+  // Telnyx caps a client token at an hour; without renewal a visit past that
+  // fails its next reconnect. The renewal must go through requestToken (the
+  // backend re-authorizes it) with action 'refresh', be applied with the SDK's
+  // updateClientToken, and stop when the room goes away.
+  assert.match(roomDts, /updateClientToken:\s*\(clientToken:\s*string\)\s*=>\s*Promise<void>/);
+  assert.match(videoRoom, /createTokenRefresher\(/);
+  assert.match(videoRoom, /requestToken\(\{\s*\.\.\.tokenRequest,\s*action:\s*["']refresh["']\s*\}\)/);
+  assert.match(videoRoom, /room\.updateClientToken\(/);
+  assert.ok((videoRoom.match(/tokenRefresherRef\.current\?\.stop\(\)/g) || []).length >= 3,
+    "the refresher is stopped on unmount, on disconnect and on a failed connect");
+  assert.ok(!/api\.telnyx\.com/.test(videoRoom), "the browser never calls the Telnyx REST API itself");
 });
 
 test("chat uses the SDK Message shape { type, payload } in both directions", () => {

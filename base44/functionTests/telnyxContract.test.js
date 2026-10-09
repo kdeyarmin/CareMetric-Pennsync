@@ -1698,6 +1698,86 @@ test("createTelehealthToken still honors legacy plaintext invite_link sessions (
   assert.equal(res.status, 200, "pre-hash sessions keep working via the invite_link token");
 });
 
+// ---- in-visit token renewal ----
+// Client tokens live at most 3600 s (Telnyx's token_ttl_secs maximum), so a
+// visit past an hour renews through action 'refresh': the same authorization,
+// an existing room only, and no Telnyx refresh_token in the browser (Telnyx's
+// refresh endpoint is `security: []`, so that token would renew access with no
+// check of ours).
+const GUEST_TOKEN = "c".repeat(48);
+const guestSession = (overrides = {}) => ({
+  room_name: "visit-r", host_email: "host@x.com", host_user_id: "host_1", status: "active",
+  scheduled_at: new Date().toISOString(), participant_list: ["family@x.com"],
+  join_token_hash: createHash("sha256").update(GUEST_TOKEN).digest("hex"),
+  ...overrides,
+});
+async function telehealthTokenWith({ session = guestSession(), user = null, rooms = [{ id: "room_r", unique_name: "visit-r" }], roomsStatus = 200, body }) {
+  const { impl, calls } = makeFetch([
+    { match: (u) => /\/v2\/rooms\?/.test(u), respond: () => ({ status: roomsStatus, json: { data: rooms } }) },
+    { match: (u, init) => u.endsWith("/v2/rooms") && init.method === "POST", respond: () => ({ status: 201, json: { data: { id: "room_new" } } }) },
+    { match: (u) => u.includes("/actions/generate_join_client_token"), respond: () => ({
+      status: 201, json: { data: { token: "JOIN-R", token_expires_at: "2026-10-09T21:00:00Z", refresh_token: "REFRESH-SECRET", refresh_token_expires_at: "2026-10-09T20:01:00Z" } },
+    }) },
+  ]);
+  const handler = await loadHandler("../functions/createTelehealthToken/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "owner@x.com" },
+    makeClient: () => makeBase44({ user, data: { IntegrationSecret: [{ api_key: "KEYtest" }], TelehealthSession: [session] } }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/createTelehealthToken", { method: "POST", body: JSON.stringify(body) }));
+  return { res, json: await res.json(), calls };
+}
+
+test("createTelehealthToken returns the token expiry and never hands the browser a Telnyx refresh token", async () => {
+  const out = await telehealthTokenWith({ body: { room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(out.res.status, 200);
+  assert.equal(out.json.token, "JOIN-R");
+  assert.equal(out.json.token_expires_at, "2026-10-09T21:00:00Z");
+  assert.equal(out.json.token_ttl_secs, 3600);
+  assert.equal(Object.hasOwn(out.json, "refresh_token"), false);
+  assert.equal(JSON.stringify(out.json).includes("REFRESH-SECRET"), false);
+  const mint = out.calls.find((c) => c.url.includes("/actions/generate_join_client_token"));
+  assert.deepEqual(mint.body, { token_ttl_secs: 3600, refresh_token_ttl_secs: 60 }, "within the spec's 10–3600 and 60–86400 bounds");
+});
+
+test("a token refresh re-runs the guest and staff authorization and reuses the existing room", async () => {
+  const guest = await telehealthTokenWith({ body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(guest.res.status, 200);
+  assert.equal(guest.json.token, "JOIN-R");
+  assert.equal(guest.calls.some((c) => c.method === "POST" && c.url.endsWith("/v2/rooms")), false, "a refresh never creates a room");
+  assert.ok(guest.calls.some((c) => c.url.includes("/v2/rooms/room_r/actions/generate_join_client_token")));
+
+  const host = await telehealthTokenWith({ user: { id: "host_1", email: "host@x.com", role: "user" }, body: { action: "refresh", room_name: "visit-r" } });
+  assert.equal(host.res.status, 200, "the host renews through the staff path");
+
+  const refusals = [
+    ["a wrong guest token", { body: { action: "refresh", room_name: "visit-r", join_token: "d".repeat(48) } }],
+    ["a visit that has ended", { session: guestSession({ status: "completed" }), body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } }],
+    ["a guest link past its window", { session: guestSession({ scheduled_at: new Date(Date.now() - 13 * 3600 * 1000).toISOString() }), body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } }],
+    ["a signed-in non-participant", { user: { id: "u9", email: "other@x.com", role: "user" }, body: { action: "refresh", room_name: "visit-r" } }],
+  ];
+  for (const [label, input] of refusals) {
+    const out = await telehealthTokenWith(input);
+    assert.equal(out.res.status, 403, label);
+    assert.equal(out.calls.length, 0, `${label}: refused before any Telnyx call`);
+  }
+});
+
+test("a token refresh for a room that no longer exists is refused, not re-provisioned", async () => {
+  const gone = await telehealthTokenWith({ rooms: [], body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(gone.res.status, 409);
+  assert.equal(gone.json.code, "telehealth_room_gone");
+  assert.equal(gone.calls.some((c) => c.method === "POST"), false);
+
+  const unreadable = await telehealthTokenWith({ roomsStatus: 503, body: { action: "refresh", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(unreadable.res.status, 502);
+  assert.equal(unreadable.calls.some((c) => c.method === "POST"), false);
+
+  const bad = await telehealthTokenWith({ body: { action: "renew", room_name: "visit-r", join_token: GUEST_TOKEN } });
+  assert.equal(bad.res.status, 400);
+  assert.equal(bad.calls.length, 0);
+});
+
 test("rotateTelehealthJoinToken mints a fresh token and stores only its hash", async () => {
   const writes = [];
   const sessionRow = { id: "ts1", room_name: "visit-3", host_email: "host@x.com", status: "scheduled", participant_list: [] };
