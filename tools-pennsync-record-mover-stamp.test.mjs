@@ -95,7 +95,8 @@ test('end to end: stamp a CSV and JSON export, seal it, and the planner lands th
   const patientId = (await readFile(join(f.dir, '0-Patient.jsonl'), 'utf8')).split('\n').map((l) => l && JSON.parse(l)).filter(Boolean)[2].id;
   await writeFile(join(f.dir, '0-Task.csv'), `id,patient_id,title,priority,status\r\n${T1},${patientId},Fixture call,medium,pending\r\n${T2},,Fixture orphan,low,pending\r\n`);
   const c = plan.collections.find((x) => x.entity === 'Task' && x.source_app_id === LIVE_APP);
-  Object.assign(c, { path: '0-Task.csv', rows: 2, fields: ['id', 'patient_id', 'title', 'priority', 'status'] });
+  const csv = await readFile(join(f.dir, '0-Task.csv'));
+  Object.assign(c, { path: '0-Task.csv', rows: 2, bytes: csv.length, sha256: createHash('sha256').update(csv).digest('hex'), fields: ['id', 'patient_id', 'title', 'priority', 'status'] });
   await writeFile(join(f.dir, 'plan.json'), JSON.stringify(plan));
   const before = await dirDigest(f.dir);
   const result = await stampExportDirectory({ inputDir: f.dir, outputDir: join(root, 'out'), rules, spec });
@@ -113,6 +114,24 @@ test('end to end: stamp a CSV and JSON export, seal it, and the planner lands th
   assert.equal(report.quarantine.length, 0);
   assert.equal(landing.filter((x) => x.entity === 'Task').length, 1, 'the held row is not sealed or planned');
   assert.ok((await stat(join(root, 'out', 'plan.json'))).size > 0);
+  // Unsealed records are owner-only.
+  assert.equal((await stat(join(root, 'out'))).mode & 0o077, 0);
+  assert.equal((await stat(join(root, 'out', 'held'))).mode & 0o077, 0);
+  assert.equal((await stat(join(root, 'out', '0-Task.jsonl'))).mode & 0o077, 0);
+  assert.equal((await stat(join(root, 'out', 'plan.json'))).mode & 0o077, 0);
+  // The declared field list is kept, plus the one column this step adds.
+  const outPlan = JSON.parse(await readFile(join(root, 'out', 'plan.json'), 'utf8'));
+  assert.deepEqual(outPlan.collections.find((x) => x.entity === 'Task' && x.source_app_id === LIVE_APP).fields, [...c.fields, 'agency_id']);
+});
+
+test('a changed or truncated input is refused before anything is written', async (t) => {
+  const root = await scratch(t);
+  const f = await buildFixture({ dir: join(root, 'in') });
+  const file = join(f.dir, '0-Patient.jsonl');
+  const text = await readFile(file, 'utf8');
+  await writeFile(file, text.replace('Fixture', 'Changed'));
+  await assert.rejects(stampExportDirectory({ inputDir: f.dir, outputDir: join(root, 'out'), rules, spec }), (e) => e.code === 'input_descriptor_mismatch');
+  await assert.rejects(stat(join(root, 'out')), /ENOENT/);
 });
 
 test('the cli names a fixed reason and nothing else', async (t) => {

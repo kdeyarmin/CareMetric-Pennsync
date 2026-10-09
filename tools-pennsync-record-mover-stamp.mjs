@@ -31,7 +31,7 @@
  * test fails if the committed file and the derivation disagree.
  */
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -142,12 +142,22 @@ const jsonl = (rows) => (rows.length ? `${rows.map((r) => JSON.stringify(r)).joi
 export async function stampExportDirectory({ inputDir, outputDir, rules, spec }) {
   const plan = JSON.parse(await readFile(join(resolve(inputDir), 'plan.json'), 'utf8'));
   const read = directoryReader(inputDir, spec);
+  // Every input is checked against the descriptor the export declared before it is used,
+  // so a changed or truncated file cannot be re-described and sealed as if it were the original.
+  const verify = async (d) => {
+    const raw = await readFile(join(resolve(inputDir), d.path));
+    need(d.sha256 === sha(raw) && d.bytes === raw.length, 'input_descriptor_mismatch');
+    return raw;
+  };
+  for (const d of [plan.identities, plan.agencies, ...plan.files, ...plan.collections]) await verify(d);
   const agencyRows = await read(plan.agencies);
   const agencies = new Map();
   for (const m of agencyRows) { const l = agencies.get(m.source_app_id) ?? []; l.push(m.agency_id); agencies.set(m.source_app_id, l); }
-  await mkdir(resolve(outputDir));
-  await mkdir(join(resolve(outputDir), 'held'));
+  // The output holds unencrypted records until it is sealed: owner-only, like the archive paths.
+  await mkdir(resolve(outputDir), { mode: 0o700 });
+  await mkdir(join(resolve(outputDir), 'held'), { mode: 0o700 });
   const out = resolve(outputDir);
+  const put = (path, data) => writeFile(path, data, { flag: 'wx', mode: 0o600 });
   const bindingKeys = new Map(Object.values(rules.entities).filter((r) => r.binding).map((r) => [r.binding, r.column]));
   const lookup = new Map(); const report = []; const next = structuredClone(plan);
   const byApp = new Map();
@@ -163,18 +173,18 @@ export async function stampExportDirectory({ inputDir, outputDir, rules, spec })
       const tenant = ['declared', 'parent', 'constant'].includes(rule.rule);
       const path = c.path.replace(/\.csv$/, '.jsonl');
       const text = jsonl(stamped);
-      await writeFile(join(out, path), text, { flag: 'wx' });
+      await put(join(out, path), text);
       Object.assign(target, { path, bytes: Buffer.byteLength(text), sha256: sha(text), rows: stamped.length });
-      target.fields = [...new Set(stamped.flatMap((r) => Object.keys(r)))];
+      if (tenant && !c.fields.includes(TENANT_COLUMN)) target.fields = [...c.fields, TENANT_COLUMN];
       if (tenant) target.scope = { kind: 'agency', pointer: `/${TENANT_COLUMN}` };
-      if (held.length) await writeFile(join(out, 'held', path), jsonl(held.map((h) => h.row)), { flag: 'wx' });
+      if (held.length) await put(join(out, 'held', path), jsonl(held.map((h) => h.row)));
       const codes = {};
       for (const h of held) codes[h.code] = (codes[h.code] ?? 0) + 1;
       report.push({ source_app_id: appId, entity, rule: rule.rule, stamped: stamped.length, held: held.length, ...(held.length ? { held_codes: codes } : {}) });
     }
   }
-  for (const d of [plan.identities, plan.agencies, ...plan.files]) await copyFile(join(resolve(inputDir), d.path), join(out, d.path));
-  await writeFile(join(out, 'plan.json'), JSON.stringify(next, null, 2), { flag: 'wx' });
+  for (const d of [plan.identities, plan.agencies, ...plan.files]) await put(join(out, d.path), await verify(d));
+  await put(join(out, 'plan.json'), JSON.stringify(next, null, 2));
   return { report, held_total: report.reduce((n, r) => n + r.held, 0) };
 }
 
