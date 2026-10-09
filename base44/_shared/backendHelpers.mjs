@@ -19,6 +19,15 @@ import { isAllowedDestination, PREMIUM_AREA_CODES } from '../../src/components/v
 import { OASIS_AUDIT_THRESHOLDS, buildOasisAuditRecord } from '../../src/components/oasis/oasisAuditFlag.js';
 import { OASIS_EXTRACTED_ITEM_MAP, buildExtractedReviewItems } from '../../src/components/oasis/oasisExtractedItems.js';
 import { deriveActionTypes, evaluateRuleTrigger } from '../../src/components/oasis/workflowEngineUtils.js';
+import {
+  FAX_CLIENT_STATE_KINDS,
+  FAX_CLIENT_STATE_VERSION,
+  decodeFaxClientState,
+  encodeFaxClientState,
+  exactFaxCorrelationId,
+  faxEventProviderId,
+  faxStatusWebhookUrl,
+} from '../../src/components/fax/faxProviderCorrelation.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -76,6 +85,22 @@ function oasisWorkflowRulesSource() {
   return `// Generated verbatim from src/components/oasis/workflowEngineUtils.js.
 const deriveActionTypes = ${deriveActionTypes.toString()};
 const evaluateRuleTrigger = ${evaluateRuleTrigger.toString()};`;
+}
+
+// Fax provider correlation — single source of truth is
+// src/components/fax/faxProviderCorrelation.js. The senders write a
+// client_state and derive their per-fax webhook_url with these; the status
+// webhook decodes the same client_state. Generating every copy from the module
+// the unit tests run against is what keeps the writer and the reader agreeing.
+function faxProviderCorrelationSource() {
+  return `// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = ${JSON.stringify(FAX_CLIENT_STATE_VERSION)};
+const FAX_CLIENT_STATE_KINDS = ${JSON.stringify(FAX_CLIENT_STATE_KINDS)};
+${exactFaxCorrelationId.toString()}
+${encodeFaxClientState.toString()}
+${decodeFaxClientState.toString()}
+${faxEventProviderId.toString()}
+${faxStatusWebhookUrl.toString()}`;
 }
 
 // The e-signature helpers are long enough that a template literal would hide
@@ -574,6 +599,8 @@ async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resour
     agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
   });
 }`,
+
+  faxProviderCorrelation: faxProviderCorrelationSource(),
 
   // Global reimbursement kill switch. This deliberately remains false until
   // PennSync uses the official CMS HHGS 432-group grouper, server-resolves

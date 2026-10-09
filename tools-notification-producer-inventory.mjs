@@ -233,7 +233,6 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
   'submitStateReportableIncident/entry.ts': Object.freeze([legacy()]),
   'submitTimeOffRequest/entry.ts': Object.freeze([legacy()]),
   'submitTimesheet/entry.ts': Object.freeze([legacy()]),
-  'syncFaxStatuses/entry.ts': Object.freeze([legacy()]),
   'triggerCorrectiveActionPlan/entry.ts': Object.freeze([
     scheduleQuarantinedLegacy(),
     scheduleQuarantinedLegacy(),

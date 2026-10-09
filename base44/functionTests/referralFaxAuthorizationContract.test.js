@@ -328,6 +328,13 @@ test('referral fax re-proves both brokers, sends a signed private document, and 
     providerPayload.media_url,
     'https://files.base44.app/private/document-a.pdf?signature=short-lived',
   );
+  // Every fax.* webhook for this fax names its FaxLog (Telnyx echoes
+  // client_state), and the status webhook is this function's sibling.
+  assert.deepEqual(
+    JSON.parse(Buffer.from(providerPayload.client_state, 'base64').toString('utf8')),
+    { v: 'pennsync.fax.v1', k: 'outbound', id: 'fax-1' },
+  );
+  assert.equal(providerPayload.webhook_url, 'https://functions.base44.app/handleTelnyxStatusWebhook');
   assert.equal(fixture.state.faxes[0].telnyx_fax_id, 'telnyx-fax-a');
   assert.equal(fixture.state.faxes[0].status, 'sending');
   assert.equal(fixture.state.faxes[0].provider_submission_state, 'accepted');
@@ -707,7 +714,10 @@ test('a definite provider rejection is recorded as rejected and remains ineligib
   const fixture = runtime();
   fixture.fetch = async (url, options) => {
     fixture.state.fetches.push([url, clone(options)]);
-    return Response.json({ errors: [{ title: 'Invalid fax destination' }] }, { status: 422 });
+    return Response.json({ errors: [{
+      title: 'Invalid fax destination',
+      detail: 'The destination number is not a valid fax line.',
+    }] }, { status: 422 });
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
@@ -723,6 +733,8 @@ test('a definite provider rejection is recorded as rejected and remains ineligib
   assert.equal(fixture.state.faxes[0].status, 'failed');
   assert.equal(fixture.state.faxes[0].provider_submission_state, 'rejected');
   assert.equal(fixture.state.faxes[0].provider_terminal_status, undefined);
+  // The specific reason, as sendFax and sendBatchFax record it (detail, then title).
+  assert.equal(fixture.state.faxes[0].failure_reason, 'The destination number is not a valid fax line.');
 });
 
 test('manual retry re-authorizes the private document, atomically claims the source, and logs a new attempt', async () => {

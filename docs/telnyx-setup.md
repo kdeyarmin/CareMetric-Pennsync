@@ -8,7 +8,7 @@ four channels:
 | **Text** (SMS/MMS) | Messaging API | `sendSms`, `sendTestSms`, `dispatchScheduledSms`, `redriveFailedSms` |
 | **Voice** (masked click-to-call + inbound IVR) | Call Control v2 | `startMaskedCall` (outbound), inbound handled in the webhook |
 | **Video** (telehealth) | Telnyx Video (Rooms) + `@telnyx/video` client | `createTelehealthToken` |
-| **Fax** | Programmable Fax | `sendFax`, `retryFailedFax`, `autoRetryFailedFaxes`, `sendBatchFax`, `syncFaxStatuses`, `pollFaxStatuses` |
+| **Fax** | Programmable Fax | `sendFax`, `retryFailedFax`, `autoRetryFailedFaxes`, `sendBatchFax`, `pollFaxStatuses` (`syncFaxStatuses` is retired in source and answers 410) |
 
 > The user-facing function names are provider-neutral (`sendSms`, `sendFax`,
 > `startMaskedCall`, `createTelehealthToken`) and run on Telnyx internally. The
@@ -65,7 +65,18 @@ https://<your-functions-base>/handleTelnyxStatusWebhook
 Outbound sends/calls also pass a per-request `webhook_url` pointing at the same
 function (derived automatically from each function's own request URL), so
 delivery/status updates flow back even before you finish the portal-level
-webhook configuration.
+webhook configuration. The fax senders derive it only when the request
+demonstrably reached them by their own name over https; otherwise they omit it
+and Telnyx uses the Fax Application's webhook URL, so **the portal-level Fax
+Application webhook is required**, not optional — the office forward of a stray
+inbound fax never carries a per-request URL at all.
+
+Every outbound fax also carries a `client_state` naming the `FaxLog` row that
+sent it (the office forward names its `IncomingFax`), which Telnyx echoes on
+each `fax.*` webhook. The webhook uses it only to identify a row — the office
+forward's events and legacy `sendFax` rows are acknowledged without a write, an
+accepted fax whose provider id is not recorded yet is redelivered — never to
+authorize a status write.
 
 ### Signature verification (fail-closed)
 

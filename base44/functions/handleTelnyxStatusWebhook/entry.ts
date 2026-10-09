@@ -624,7 +624,7 @@ function mapMessageStatus(status) {
 }
 function mapFaxStatus(status) {
   switch (String(status || '').toLowerCase()) {
-    case 'queued': return 'queued';
+    case 'queued': case 'media.processing': return 'queued';
     case 'media.processed': case 'originated': case 'sending': return 'sending';
     case 'sent': return 'sent';
     case 'delivered': return 'delivered';
@@ -1536,6 +1536,66 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
 }
 
 // ============================ FAX ============================
+// <<<BEGIN SHARED HELPER: faxProviderCorrelation — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = "pennsync.fax.v1";
+const FAX_CLIENT_STATE_KINDS = ["outbound","office_forward"];
+function exactFaxCorrelationId(value) {
+  if (typeof value !== "string" || !value || value.length > 200
+    || value.trim() !== value || value.startsWith("$")) return null;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return null;
+  }
+  return value;
+}
+function encodeFaxClientState(kind, id) {
+  const exact = exactFaxCorrelationId(id);
+  if (!FAX_CLIENT_STATE_KINDS.includes(kind) || !exact) return null;
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: FAX_CLIENT_STATE_VERSION, k: kind, id: exact }));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function decodeFaxClientState(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let parsed;
+  try {
+    const binary = atob(value.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || parsed.v !== FAX_CLIENT_STATE_VERSION || !FAX_CLIENT_STATE_KINDS.includes(parsed.k)) return null;
+  const id = exactFaxCorrelationId(parsed.id);
+  return id ? { kind: parsed.k, id } : null;
+}
+function faxEventProviderId(payload) {
+  const faxId = payload && typeof payload === "object" ? payload.fax_id : undefined;
+  const legacyId = payload && typeof payload === "object" ? payload.id : undefined;
+  if (faxId == null && legacyId == null) return { present: false, id: null };
+  if (faxId != null && legacyId != null && faxId !== legacyId) return { present: true, id: null };
+  return { present: true, id: exactFaxCorrelationId(faxId != null ? faxId : legacyId) };
+}
+function faxStatusWebhookUrl(requestUrl, selfName) {
+  if (typeof selfName !== "string" || !/^[A-Za-z][A-Za-z0-9]*$/.test(selfName)) return null;
+  let url;
+  try {
+    url = new URL(String(requestUrl));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const segments = url.pathname.replace(/\/+$/, "").split("/");
+  if (segments.length < 2 || segments[segments.length - 1] !== selfName) return null;
+  segments[segments.length - 1] = "handleTelnyxStatusWebhook";
+  return `${url.origin}${segments.join("/")}`;
+}
+// <<<END SHARED HELPER: faxProviderCorrelation>>>
+
 // Monotonic rank so a late/out-of-order or re-delivered fax webhook can't regress
 // a terminal state (e.g. a stale 'sending' from media.processed arriving after
 // 'delivered', which would re-open the fax and re-poll/re-send a delivered PHI
@@ -1621,6 +1681,79 @@ function outboundFaxHasRetryAuthority(row) {
     && Number.isSafeInteger(row.retry_generation)
     && row.retry_generation >= 0
     && row.retry_generation <= row.retry_count;
+}
+
+// A legacy URL row — written by sendFax, the platform-owner path that is held
+// pending the document-binding migration. It stores a caller-supplied document
+// URL and records no provider submission attempt, so outboundFaxHasStatusAuthority
+// refuses it forever and neither this webhook nor pollFaxStatuses may write it.
+// Refusing its events with a 409 only made Telnyx redeliver them; no redelivery
+// can make them acceptable, so they are acknowledged without any write. Every
+// row the authority senders create has document_url == null and a submission
+// attempt id from the moment it exists, so this never matches one of theirs.
+function outboundFaxIsUntrackedLegacyRow(row) {
+  return !!row
+    && (row.document_url != null || !boundedTelnyxAuthorityId(row.provider_submission_attempt_id));
+}
+
+// No FaxLog carries this provider id yet. Without a client_state that is the
+// sender race (telnyx_fax_id is recorded only after POST /v2/faxes returns), so
+// it stays a 404 and Telnyx redelivers. With our client_state the named row
+// decides — but only to choose an acknowledgement or a redelivery: a status is
+// never written here, because the row's provider identity is not yet recorded
+// and outboundFaxHasStatusAuthority requires it.
+async function correlateUnrecordedOutboundFaxEvent(base44, providerId, correlation) {
+  if (correlation?.kind !== 'outbound') {
+    return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  }
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.FaxLog.filter(
+      { id: correlation.id },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
+  if (!Array.isArray(rows)) {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
+  if (rows.length !== 1 || rows[0]?.id !== correlation.id) {
+    return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  }
+  const row = rows[0];
+  if (row.telnyx_fax_id != null && row.telnyx_fax_id !== providerId) {
+    return Response.json({
+      success: false,
+      message: 'Fax identity conflicts with its client state',
+      code: 'FAX_CLIENT_STATE_CONFLICT',
+    }, { status: 409 });
+  }
+  if (row.telnyx_fax_id === providerId) {
+    // The id was recorded between the two reads; the redelivery takes the
+    // ordinary authorized path.
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
+  if (outboundFaxIsUntrackedLegacyRow(row)) {
+    return Response.json({ success: true, skipped: 'untracked_fax_row' });
+  }
+  if (row.provider_submission_state === 'pending') {
+    return Response.json({
+      success: false,
+      message: 'Fax provider id is not recorded yet',
+      code: 'FAX_PROVIDER_ID_NOT_RECORDED',
+    }, { status: 404 });
+  }
+  // The sender gave up on this submission (indeterminate or rejected) while
+  // Telnyx reports it. Binding the provider id here would race the retry
+  // reconciliation that owns such rows, so leave it to operator reconciliation;
+  // the failed delivery stays visible in Telnyx's webhook log.
+  return Response.json({
+    success: false,
+    message: 'Fax submission requires reconciliation',
+    code: 'FAX_SUBMISSION_REQUIRES_RECONCILIATION',
+  }, { status: 409 });
 }
 
 const OUTBOUND_FAX_MAX_RETRY_ATTEMPTS = 10;
@@ -2292,10 +2425,12 @@ async function releaseInboundFaxForwardClaim(base44, authority, record) {
 // command is touched. `fax_receiving_enabled` selects in-app OCR versus office
 // forwarding only after that immutable tenant boundary is established.
 async function handleInboundFax(base44, telnyxCreds, payload) {
-  const providerId = boundedTelnyxAuthorityId(payload?.id);
+  // Telnyx names the fax in fax.* payloads as fax_id; payload.id is still read
+  // (both must agree when both are present), as handleFaxEvent does.
+  const providerId = faxEventProviderId(payload).id;
   const mediaUrl = exactInboundFaxHttpsUrl(payload?.media_url || payload?.original_media_url);
   const receivedOn = normalizeE164(payload?.to);
-  if (!providerId || payload?.id !== providerId || payload?.direction !== 'inbound'
+  if (!providerId || payload?.direction !== 'inbound'
     || !mediaUrl || !receivedOn) {
     return inboundFaxUnavailable(400, 'INVALID_INBOUND_FAX_EVENT');
   }
@@ -2387,18 +2522,26 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
   }
   authority = preSendAuthority;
 
+  // The forward is a new outbound fax with no FaxLog. Its client_state names the
+  // IncomingFax so handleFaxEvent can recognize and acknowledge its fax.* events
+  // instead of answering them 404 (no FaxLog) and drawing redeliveries. No
+  // webhook_url: those events reach the Fax Application's webhook_event_url,
+  // which is this function — the same route the fax.received just took.
+  const forwardRequest = {
+    connection_id: authority.binding.fax_connection_id,
+    from: receivedOn,
+    to: officeFax,
+    media_url: mediaUrl,
+    quality: 'high',
+  };
+  const forwardClientState = encodeFaxClientState('office_forward', record.id);
+  if (forwardClientState) forwardRequest.client_state = forwardClientState;
   let response;
   try {
     response = await fetch('https://api.telnyx.com/v2/faxes', {
       method: 'POST',
       headers: { Authorization: `Bearer ${telnyxCreds.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        connection_id: authority.binding.fax_connection_id,
-        from: receivedOn,
-        to: officeFax,
-        media_url: mediaUrl,
-        quality: 'high',
-      }),
+      body: JSON.stringify(forwardRequest),
     });
   } catch {
     // The provider may have accepted a request even when the client never saw a
@@ -2415,6 +2558,13 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
       ? inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED')
       : inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
   }
+  // A 2xx is the provider's acceptance either way; the id is read so the answer
+  // (visible in Telnyx's webhook delivery log) names the forward its later
+  // fax.* events will carry. No IncomingFax field holds it, so it is not stored,
+  // and a missing one is logged without identifiers.
+  const forwardBody = await response.json().catch(() => null);
+  const forwardFaxId = exactFaxCorrelationId(forwardBody?.data?.id);
+  if (!forwardFaxId) console.error('Inbound fax office forward was accepted without a provider fax id');
   const recordVersion = record.version;
   const update = await base44.asServiceRole.entities.IncomingFax.updateMany(
     {
@@ -2449,18 +2599,37 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
     return inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
   }
   return Response.json(
-    { success: true, forwarded_to_office: true, incoming_fax_id: record.id },
+    {
+      success: true,
+      forwarded_to_office: true,
+      incoming_fax_id: record.id,
+      ...(forwardFaxId ? { forward_fax_id: forwardFaxId } : {}),
+    },
     { headers: INBOUND_FAX_NO_STORE_HEADERS },
   );
 }
 
 async function handleFaxEvent(base44, telnyxCreds, payload) {
-  const rawProviderId = payload?.id;
-  const providerId = boundedTelnyxAuthorityId(rawProviderId);
+  // Telnyx names the fax in a fax.* webhook as payload.fax_id (OpenAPI spec,
+  // 2026-10-09); this read only payload.id, so every documented status event
+  // was acknowledged as 'no fax id' and never reached a row.
+  const providerRef = faxEventProviderId(payload);
+  const providerId = providerRef.id;
   const mapped = mapFaxStatus(payload?.status);
-  if (!rawProviderId) return Response.json({ success: true, skipped: 'no fax id' });
-  if (!providerId || providerId !== rawProviderId) {
+  if (!providerRef.present) return Response.json({ success: true, skipped: 'no fax id' });
+  if (!providerId) {
     return Response.json({ success: false, message: 'Invalid fax id' }, { status: 400 });
+  }
+  // client_state is set by this app's own POST /v2/faxes and arrives inside the
+  // signature-verified body. It identifies a row; it never authorizes a write.
+  const correlation = decodeFaxClientState(payload?.client_state);
+  if (correlation?.kind === 'office_forward') {
+    // The pass-through of a stray inbound fax to the office machine
+    // (handleInboundFax). It has no FaxLog and nothing here tracks its outcome,
+    // so acknowledge every event instead of answering 404 and having Telnyx
+    // redeliver it. A provider failure is logged without identifiers.
+    if (mapped === 'failed') console.error('Inbound fax office forward failed at the provider');
+    return Response.json({ success: true, skipped: 'office_forward' });
   }
   if (!mapped) return Response.json({ success: true, skipped: 'unknown status', status: payload?.status });
 
@@ -2474,16 +2643,27 @@ async function handleFaxEvent(base44, telnyxCreds, payload) {
   } catch {
     return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
   }
-  // 404 so Telnyx redelivers after the sender persists telnyx_fax_id (senders
-  // write the id only after the API call, so a fast status callback can race it).
   if (!Array.isArray(rows)) {
     return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
   }
-  if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  // Senders write the provider id only after the API call, so a fast status
+  // callback can race it; correlateUnrecordedOutboundFaxEvent answers 404 (so
+  // Telnyx redelivers) unless the client_state names a row that settles it.
+  if (!rows.length) return correlateUnrecordedOutboundFaxEvent(base44, providerId, correlation);
   if (rows.length !== 1 || rows.some((row) => row?.telnyx_fax_id !== providerId)) {
     return Response.json({ success: false, message: 'Fax identity is ambiguous' }, { status: 409 });
   }
   const faxLog = rows[0];
+  if (correlation?.kind === 'outbound' && correlation.id !== faxLog.id) {
+    return Response.json({
+      success: false,
+      message: 'Fax identity conflicts with its client state',
+      code: 'FAX_CLIENT_STATE_CONFLICT',
+    }, { status: 409 });
+  }
+  if (outboundFaxIsUntrackedLegacyRow(faxLog)) {
+    return Response.json({ success: true, skipped: 'untracked_fax_row' });
+  }
   if (!outboundFaxHasStatusAuthority(faxLog)
     || !Number.isFinite(Date.parse(faxLog?.updated_date || ''))) {
     return Response.json({ success: false, message: 'Fax identity is incomplete' }, { status: 409 });
@@ -2550,7 +2730,9 @@ async function handleFaxEvent(base44, telnyxCreds, payload) {
     const plan = retryAuthority && retryPolicy.ok && boundedPolicy.valid
       ? planFaxRetry({
         retryCount: faxLog.retry_count || 0,
-        errorCode: payload?.failure_code || payload?.error_code,
+        // fax.failed carries failure_reason and the more granular
+        // internal_failure_reason; there is no failure_code/error_code.
+        errorCode: payload?.internal_failure_reason,
         errorMessage: failureReason,
         priority: faxLog.priority || 'normal',
         config: cfg,

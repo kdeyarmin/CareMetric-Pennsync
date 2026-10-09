@@ -2239,7 +2239,10 @@ test("ambiguous outbound fax identity and legacy URL rows never receive a retry 
     fetchImpl: makeFetch([]).impl,
   });
   const legacyResponse = await legacyHandler(signedWebhook(privateKey, event));
-  assert.equal(legacyResponse.status, 409, JSON.stringify(await legacyResponse.clone().json()));
+  // A legacy URL row can never be authorized for a status write, so its event
+  // is acknowledged (no Telnyx redelivery) — and still nothing is written.
+  assert.equal(legacyResponse.status, 200, JSON.stringify(await legacyResponse.clone().json()));
+  assert.equal((await legacyResponse.clone().json()).skipped, "untracked_fax_row");
   assert.equal(legacyState.FaxLog[0].status, "sending");
   assert.equal(legacyState.FaxLog[0].next_retry_at, undefined);
   assert.equal(legacyState.FaxLog[0].retry_count, 0);

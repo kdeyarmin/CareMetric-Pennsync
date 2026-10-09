@@ -76,6 +76,65 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
   });
 }
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
+// <<<BEGIN SHARED HELPER: faxProviderCorrelation — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = "pennsync.fax.v1";
+const FAX_CLIENT_STATE_KINDS = ["outbound","office_forward"];
+function exactFaxCorrelationId(value) {
+  if (typeof value !== "string" || !value || value.length > 200
+    || value.trim() !== value || value.startsWith("$")) return null;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return null;
+  }
+  return value;
+}
+function encodeFaxClientState(kind, id) {
+  const exact = exactFaxCorrelationId(id);
+  if (!FAX_CLIENT_STATE_KINDS.includes(kind) || !exact) return null;
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: FAX_CLIENT_STATE_VERSION, k: kind, id: exact }));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function decodeFaxClientState(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let parsed;
+  try {
+    const binary = atob(value.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || parsed.v !== FAX_CLIENT_STATE_VERSION || !FAX_CLIENT_STATE_KINDS.includes(parsed.k)) return null;
+  const id = exactFaxCorrelationId(parsed.id);
+  return id ? { kind: parsed.k, id } : null;
+}
+function faxEventProviderId(payload) {
+  const faxId = payload && typeof payload === "object" ? payload.fax_id : undefined;
+  const legacyId = payload && typeof payload === "object" ? payload.id : undefined;
+  if (faxId == null && legacyId == null) return { present: false, id: null };
+  if (faxId != null && legacyId != null && faxId !== legacyId) return { present: true, id: null };
+  return { present: true, id: exactFaxCorrelationId(faxId != null ? faxId : legacyId) };
+}
+function faxStatusWebhookUrl(requestUrl, selfName) {
+  if (typeof selfName !== "string" || !/^[A-Za-z][A-Za-z0-9]*$/.test(selfName)) return null;
+  let url;
+  try {
+    url = new URL(String(requestUrl));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const segments = url.pathname.replace(/\/+$/, "").split("/");
+  if (segments.length < 2 || segments[segments.length - 1] !== selfName) return null;
+  segments[segments.length - 1] = "handleTelnyxStatusWebhook";
+  return `${url.origin}${segments.join("/")}`;
+}
+// <<<END SHARED HELPER: faxProviderCorrelation>>>
 
 const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
@@ -1023,10 +1082,10 @@ Deno.serve(async (req) => {
       }, { headers: NO_STORE_HEADERS });
     }
 
-    const requestUrl = new URL(req.url);
-    const functionsBase = requestUrl.protocol === 'https:'
-      ? (requestUrl.origin + requestUrl.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '')
-      : '';
+    // Derived only when this request provably reached sendAuthorizedReferralFax
+    // by name over https; otherwise Telnyx uses the Fax Application's
+    // webhook_event_url (the same handleTelnyxStatusWebhook, per the runbook).
+    const statusWebhookUrl = faxStatusWebhookUrl(req.url, 'sendAuthorizedReferralFax');
     const providerPayload: Record<string, any> = {
       connection_id: credentials.connectionId,
       from: fromNumber,
@@ -1036,7 +1095,10 @@ Deno.serve(async (req) => {
     };
     const displayName = officeFaxDisplayName(officeFax);
     if (displayName) providerPayload.from_display_name = displayName;
-    if (functionsBase) providerPayload.webhook_url = `${functionsBase}/handleTelnyxStatusWebhook`;
+    if (statusWebhookUrl) providerPayload.webhook_url = statusWebhookUrl;
+    // Name this FaxLog in every subsequent fax.* webhook (see sendBatchFax).
+    const clientState = encodeFaxClientState('outbound', faxLogId);
+    if (clientState) providerPayload.client_state = clientState;
 
     let telnyxResponse: Response;
     providerAttemptStarted = true;
@@ -1091,7 +1153,11 @@ Deno.serve(async (req) => {
       const rejectedStored = await transitionCreatedFaxSubmission(entities, createdFaxLog, {
         status: 'failed',
         provider_submission_state: 'rejected',
-        failure_reason: boundedLabel(firstError?.title) || 'Fax provider rejected the request',
+        // Same wording source as sendFax and sendBatchFax: Telnyx's `detail`
+        // is the specific reason, `title` the generic class.
+        failure_reason: boundedLabel(firstError?.detail)
+          || boundedLabel(firstError?.title)
+          || 'Fax provider rejected the request',
       });
       const retrySettled = await settleRetrySource(
         entities,

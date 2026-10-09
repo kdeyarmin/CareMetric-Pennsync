@@ -49,7 +49,6 @@ test("inline classifyFaxFailure matches faxRetry across both functions", async (
     "../functions/handleTelnyxStatusWebhook/entry.ts",
     "../functions/autoRetryFailedFaxes/entry.ts",
     "../functions/pollFaxStatuses/entry.ts",
-    "../functions/syncFaxStatuses/entry.ts",
   ]) {
     const { mod } = await loadInline(f, ["classifyFaxFailure"]);
     for (const [code, msg] of FAILURES) {
@@ -63,7 +62,6 @@ test("inline faxRetryConfig matches faxRetry across both functions", async () =>
     "../functions/handleTelnyxStatusWebhook/entry.ts",
     "../functions/autoRetryFailedFaxes/entry.ts",
     "../functions/pollFaxStatuses/entry.ts",
-    "../functions/syncFaxStatuses/entry.ts",
   ]) {
     const { mod } = await loadInline(f, ["faxRetryConfig"]);
     for (const cfg of CONFIGS) {

@@ -218,6 +218,66 @@ function isSafeFetchUrl(raw) {
 }
 // <<<END SHARED HELPER: isSafeFetchUrl>>>
 
+// <<<BEGIN SHARED HELPER: faxProviderCorrelation — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = "pennsync.fax.v1";
+const FAX_CLIENT_STATE_KINDS = ["outbound","office_forward"];
+function exactFaxCorrelationId(value) {
+  if (typeof value !== "string" || !value || value.length > 200
+    || value.trim() !== value || value.startsWith("$")) return null;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return null;
+  }
+  return value;
+}
+function encodeFaxClientState(kind, id) {
+  const exact = exactFaxCorrelationId(id);
+  if (!FAX_CLIENT_STATE_KINDS.includes(kind) || !exact) return null;
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: FAX_CLIENT_STATE_VERSION, k: kind, id: exact }));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function decodeFaxClientState(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let parsed;
+  try {
+    const binary = atob(value.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || parsed.v !== FAX_CLIENT_STATE_VERSION || !FAX_CLIENT_STATE_KINDS.includes(parsed.k)) return null;
+  const id = exactFaxCorrelationId(parsed.id);
+  return id ? { kind: parsed.k, id } : null;
+}
+function faxEventProviderId(payload) {
+  const faxId = payload && typeof payload === "object" ? payload.fax_id : undefined;
+  const legacyId = payload && typeof payload === "object" ? payload.id : undefined;
+  if (faxId == null && legacyId == null) return { present: false, id: null };
+  if (faxId != null && legacyId != null && faxId !== legacyId) return { present: true, id: null };
+  return { present: true, id: exactFaxCorrelationId(faxId != null ? faxId : legacyId) };
+}
+function faxStatusWebhookUrl(requestUrl, selfName) {
+  if (typeof selfName !== "string" || !/^[A-Za-z][A-Za-z0-9]*$/.test(selfName)) return null;
+  let url;
+  try {
+    url = new URL(String(requestUrl));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const segments = url.pathname.replace(/\/+$/, "").split("/");
+  if (segments.length < 2 || segments[segments.length - 1] !== selfName) return null;
+  segments[segments.length - 1] = "handleTelnyxStatusWebhook";
+  return `${url.origin}${segments.join("/")}`;
+}
+// <<<END SHARED HELPER: faxProviderCorrelation>>>
+
 // ---- destination normalization + cost controls (mirrors sendFax) ----
 function normalizeFaxDest(raw) {
   if (!raw) return '';
@@ -234,10 +294,11 @@ function normalizeFaxDest(raw) {
   return null;
 }
 // Strict E.164 normalization for the OFFICE FAX `from` number (null when it
-// can't normalize — unlike normalizeFaxDest, which falls back to the raw
-// string). The admin-entered office fax may carry formatting ("(724) 465-0441");
-// Telnyx requires E.164 on `from`, so an unnormalizable value must fail loudly
-// rather than fail every send at the provider. Mirrors sendFax.
+// can't normalize, exactly like normalizeFaxDest above — neither one falls back
+// to the raw string). The admin-entered office fax may carry formatting
+// ("(724) 465-0441"); Telnyx requires E.164 on `from`, so an unnormalizable
+// value must fail loudly rather than fail every send at the provider. Mirrors
+// sendFax.
 function normalizeFromE164(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/[^\d]/g, '');
@@ -1365,10 +1426,13 @@ async function submitOneFax(
     );
   }
 
-  const requestUrl = new URL(req.url);
-  const functionsBase = requestUrl.protocol === 'https:'
-    ? (requestUrl.origin + requestUrl.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '')
-    : '';
+  // Per-fax status webhook, derived only when this request provably reached
+  // sendBatchFax by name over https. The automatic-retry path reaches this
+  // function through the platform's functions.invoke route, the same route the
+  // browser uses, so it derives the same URL; when nothing can be derived the
+  // override is omitted and Telnyx uses the Fax Application's
+  // webhook_event_url (the same handleTelnyxStatusWebhook, per the runbook).
+  const statusWebhookUrl = faxStatusWebhookUrl(req.url, 'sendBatchFax');
   const payload: Record<string, any> = {
     connection_id: finalCredentials.connectionId,
     from: finalAuthority.fromNumber,
@@ -1378,7 +1442,13 @@ async function submitOneFax(
   };
   const displayName = officeFaxDisplayName(finalAuthority.officeFax);
   if (displayName) payload.from_display_name = displayName;
-  if (functionsBase) payload.webhook_url = `${functionsBase}/handleTelnyxStatusWebhook`;
+  if (statusWebhookUrl) payload.webhook_url = statusWebhookUrl;
+  // Name this FaxLog in every subsequent fax.* webhook. The webhook still
+  // authorizes a status write only by telnyx_fax_id and the row's full
+  // authority envelope; client_state lets it tell "accepted, id not yet
+  // recorded" (redeliver) from "not ours" without guessing.
+  const clientState = encodeFaxClientState('outbound', faxLogId);
+  if (clientState) payload.client_state = clientState;
 
   let response: Response;
   try {
@@ -1423,7 +1493,11 @@ async function submitOneFax(
     const stored = await transitionAttempt(entities, durable, {
       status: 'failed',
       provider_submission_state: 'rejected',
-      failure_reason: boundedLabel(provider?.errors?.[0]?.title) || 'Fax provider rejected the request',
+      // Same wording source as sendFax and sendAuthorizedReferralFax: Telnyx's
+      // `detail` is the specific reason, `title` the generic class.
+      failure_reason: boundedLabel(provider?.errors?.[0]?.detail)
+        || boundedLabel(provider?.errors?.[0]?.title)
+        || 'Fax provider rejected the request',
     });
     return stored
       ? { to_number: toNumber, success: false, rejected: true, log_id: faxLogId }

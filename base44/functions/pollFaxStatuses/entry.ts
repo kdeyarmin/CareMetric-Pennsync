@@ -1580,7 +1580,9 @@ Deno.serve(async (req) => {
             const plan = retryAuthority && retryPolicy.ok && boundedPolicy.valid
               ? planFaxRetry({
                 retryCount: fax.retry_count || 0,
-                errorCode: faxData?.data?.failure_code || faxData?.data?.error_code,
+                // The Fax resource has no failure_code/error_code; its granular
+                // cause is internal_failure_reason (Telnyx OpenAPI, 2026-10-09).
+                errorCode: faxData?.data?.internal_failure_reason,
                 errorMessage: failureReason,
                 priority: fax.priority || 'normal',
                 config: cfg,
@@ -1677,19 +1679,20 @@ Deno.serve(async (req) => {
   }
 });
 
-function mapFaxStatus(telnyxStatus) {
-  const statusMap = {
-    'queued': 'queued',
-    'media.processed': 'sending',
-    'originated': 'sending',
-    'sending': 'sending',
-    'sent': 'sent',
-    'delivered': 'delivered',
-    'failed': 'failed',
-    'cancelled': 'failed',
-    'canceled': 'failed'
-  };
-  return statusMap[telnyxStatus] || null;
+// Mirrors src/components/integrations/telnyx/telnyxUtils.js mapFaxStatus and
+// the webhook's copy exactly (drift-guarded by
+// base44/functionTests/faxStatusInlineParity.test.js). The lookup table this
+// replaced was case-sensitive, so a poll and a webhook could disagree about the
+// same provider status; an unknown status stays null and is never written.
+function mapFaxStatus(status) {
+  switch (String(status || '').toLowerCase()) {
+    case 'queued': case 'media.processing': return 'queued';
+    case 'media.processed': case 'originated': case 'sending': return 'sending';
+    case 'sent': return 'sent';
+    case 'delivered': return 'delivered';
+    case 'failed': case 'cancelled': case 'canceled': return 'failed';
+    default: return null;
+  }
 }
 
 function getNotificationMessage(status, fax) {

@@ -14,15 +14,20 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { canManuallyRetryFax } from "@/components/fax/faxRetry";
+import { normalizeStatus } from "@/components/fax/faxTrackerUtils";
 
-// Filter buttons map to groups of terminal/transient statuses so that, e.g., the
-// 'Sent' filter also shows the terminal 'delivered' status and 'Queued' shows 'sending'.
-const STATUS_GROUPS = {
-  sent: ['sent', 'delivered'],
-  queued: ['queued', 'sending'],
-  failed: ['failed'],
-  review: ['submission_unknown'],
-};
+// Filter buttons, stats and badge colours all use the realtime tracker's status
+// buckets (normalizeStatus), so the two screens cannot disagree: an unconfirmed
+// 'sent' fax is in flight (Queued), not delivered; 'retrying' is in flight; a
+// 'retried' row is a superseded failed attempt; 'submission_unknown' needs review.
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'delivered', label: 'Delivered' },
+  { key: 'failed', label: 'Failed' },
+  { key: 'queued', label: 'Queued' },
+  { key: 'needs_review', label: 'Needs Review' },
+];
+const bucketOf = (log) => normalizeStatus(log?.status);
 
 export default function FaxLogsDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -42,8 +47,7 @@ export default function FaxLogsDashboard() {
       log.to_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.document_name?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const statusGroup = STATUS_GROUPS[selectedStatus];
-    const matchesStatus = selectedStatus === "all" || (statusGroup ? statusGroup.includes(log.status) : log.status === selectedStatus);
+    const matchesStatus = selectedStatus === "all" || bucketOf(log) === selectedStatus;
 
     return matchesSearch && matchesStatus;
   });
@@ -51,10 +55,10 @@ export default function FaxLogsDashboard() {
   // Statistics
   const stats = {
     total: faxLogs.length,
-    sent: faxLogs.filter(f => f.status === 'sent' || f.status === 'delivered').length,
-    failed: faxLogs.filter(f => f.status === 'failed').length,
-    pending: faxLogs.filter(f => f.status === 'queued' || f.status === 'sending').length,
-    review: faxLogs.filter(f => f.status === 'submission_unknown').length,
+    delivered: faxLogs.filter(f => bucketOf(f) === 'delivered').length,
+    failed: faxLogs.filter(f => bucketOf(f) === 'failed').length,
+    pending: faxLogs.filter(f => ['queued', 'pending'].includes(bucketOf(f))).length,
+    review: faxLogs.filter(f => bucketOf(f) === 'needs_review').length,
   };
 
   const failedLogs = faxLogs.filter(f => f.status === 'failed');
@@ -136,15 +140,13 @@ Provide actionable insights in a structured format with clear sections.`,
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'sent':
+    switch (normalizeStatus(status)) {
       case 'delivered':
         return 'bg-green-100 text-green-800 border-green-200';
       case 'failed':
         return 'bg-red-100 text-red-800 border-red-200';
-      case 'submission_unknown':
+      case 'needs_review':
         return 'bg-amber-100 text-amber-900 border-amber-300';
-      case 'sending':
       case 'queued':
         return 'bg-blue-100 text-blue-800 border-blue-200';
       default:
@@ -153,13 +155,12 @@ Provide actionable insights in a structured format with clear sections.`,
   };
 
   const getStatusIcon = (status) => {
-    switch (status) {
-      case 'sent':
+    switch (normalizeStatus(status)) {
       case 'delivered':
         return <CheckCircle2 className="w-4 h-4" />;
       case 'failed':
         return <AlertCircle className="w-4 h-4" />;
-      case 'submission_unknown':
+      case 'needs_review':
         return <AlertCircle className="w-4 h-4 text-amber-700" />;
       default:
         return <Clock className="w-4 h-4" />;
@@ -207,8 +208,8 @@ Provide actionable insights in a structured format with clear sections.`,
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Successfully Sent</p>
-                <p className="text-2xl font-bold text-green-600 mt-1">{stats.sent}</p>
+                <p className="text-sm text-slate-600">Delivered</p>
+                <p className="text-2xl font-bold text-green-600 mt-1">{stats.delivered}</p>
               </div>
               <CheckCircle2 className="w-8 h-8 text-green-400" />
             </div>
@@ -379,14 +380,14 @@ Provide actionable insights in a structured format with clear sections.`,
               />
             </div>
             <div className="flex gap-2">
-              {['all', 'sent', 'failed', 'queued', 'review'].map(status => (
+              {FILTERS.map(({ key, label }) => (
                 <Button
-                  key={status}
-                  variant={selectedStatus === status ? "default" : "outline"}
+                  key={key}
+                  variant={selectedStatus === key ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setSelectedStatus(status)}
+                  onClick={() => setSelectedStatus(key)}
                 >
-                  {status === 'review' ? 'Needs Review' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  {label}
                 </Button>
               ))}
             </div>

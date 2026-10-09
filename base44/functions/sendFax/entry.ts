@@ -130,6 +130,66 @@ function isSafeFetchUrl(raw) {
 }
 // <<<END SHARED HELPER: isSafeFetchUrl>>>
 
+// <<<BEGIN SHARED HELPER: faxProviderCorrelation — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = "pennsync.fax.v1";
+const FAX_CLIENT_STATE_KINDS = ["outbound","office_forward"];
+function exactFaxCorrelationId(value) {
+  if (typeof value !== "string" || !value || value.length > 200
+    || value.trim() !== value || value.startsWith("$")) return null;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return null;
+  }
+  return value;
+}
+function encodeFaxClientState(kind, id) {
+  const exact = exactFaxCorrelationId(id);
+  if (!FAX_CLIENT_STATE_KINDS.includes(kind) || !exact) return null;
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: FAX_CLIENT_STATE_VERSION, k: kind, id: exact }));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function decodeFaxClientState(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let parsed;
+  try {
+    const binary = atob(value.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || parsed.v !== FAX_CLIENT_STATE_VERSION || !FAX_CLIENT_STATE_KINDS.includes(parsed.k)) return null;
+  const id = exactFaxCorrelationId(parsed.id);
+  return id ? { kind: parsed.k, id } : null;
+}
+function faxEventProviderId(payload) {
+  const faxId = payload && typeof payload === "object" ? payload.fax_id : undefined;
+  const legacyId = payload && typeof payload === "object" ? payload.id : undefined;
+  if (faxId == null && legacyId == null) return { present: false, id: null };
+  if (faxId != null && legacyId != null && faxId !== legacyId) return { present: true, id: null };
+  return { present: true, id: exactFaxCorrelationId(faxId != null ? faxId : legacyId) };
+}
+function faxStatusWebhookUrl(requestUrl, selfName) {
+  if (typeof selfName !== "string" || !/^[A-Za-z][A-Za-z0-9]*$/.test(selfName)) return null;
+  let url;
+  try {
+    url = new URL(String(requestUrl));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const segments = url.pathname.replace(/\/+$/, "").split("/");
+  if (segments.length < 2 || segments[segments.length - 1] !== selfName) return null;
+  segments[segments.length - 1] = "handleTelnyxStatusWebhook";
+  return `${url.origin}${segments.join("/")}`;
+}
+// <<<END SHARED HELPER: faxProviderCorrelation>>>
+
 function normalizeFaxDest(raw) {
   if (!raw) return '';
   const digits = String(raw).replace(/[^\d]/g, '');
@@ -142,14 +202,17 @@ function normalizeFaxDest(raw) {
   }
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  return String(raw).trim();
+  // Unnormalizable → null, as in sendBatchFax and sendAuthorizedReferralFax. It
+  // used to fall back to the raw string, leaving only the destination gate
+  // below between a malformed number and the provider.
+  return null;
 }
 
 // Strict E.164 normalization for the OFFICE FAX `from` number (null when it
-// can't normalize — unlike normalizeFaxDest, which falls back to the raw
-// string). The admin-entered office fax may carry formatting ("(724) 465-0441");
-// Telnyx requires E.164 on `from`, so an unnormalizable value must fail loudly
-// rather than fail every send at the provider.
+// can't normalize, like normalizeFaxDest above). The admin-entered office fax
+// may carry formatting ("(724) 465-0441"); Telnyx requires E.164 on `from`, so
+// an unnormalizable value must fail loudly rather than fail every send at the
+// provider.
 function normalizeFromE164(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/[^\d]/g, '');
@@ -414,16 +477,12 @@ Deno.serve(async (req) => {
       sent_by: user.email,
     });
 
-    // Derive the functions base from this request's own URL — every backend
-    // function (including handleTelnyxStatusWebhook) is served from the same
-    // base, so the status-webhook peer is one path segment over. Replaces the
-    // retired FUNCTIONS_BASE_URL secret; non-https (local dev) derives nothing.
-    const functionsBaseUrl = (() => {
-      try {
-        const u = new URL(req.url);
-        return u.protocol === 'https:' ? (u.origin + u.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '') : '';
-      } catch { return ''; }
-    })();
+    // The status webhook is this function's sibling: derive it from this
+    // request's own URL, but only when the request provably reached sendFax by
+    // name over https (faxStatusWebhookUrl). Otherwise omit the override and
+    // Telnyx uses the Fax Application's webhook_event_url, which the setup
+    // runbook points at the same handleTelnyxStatusWebhook function.
+    const statusWebhookUrl = faxStatusWebhookUrl(req.url, 'sendFax');
     const payload = {
       connection_id: faxConnectionId,
       from: fromNumber,
@@ -434,7 +493,14 @@ Deno.serve(async (req) => {
     // Mask the blind line: present the office fax number as the caller-id name.
     const displayName = officeFaxDisplayName(officeFax);
     if (displayName) payload.from_display_name = displayName;
-    if (functionsBaseUrl) payload.webhook_url = `${functionsBaseUrl}/handleTelnyxStatusWebhook`;
+    if (statusWebhookUrl) payload.webhook_url = statusWebhookUrl;
+    // Telnyx echoes client_state on every fax.* webhook for this fax, so the
+    // status webhook can name this row even before telnyx_fax_id is persisted
+    // below. A sendFax row is a legacy URL row with no tenant or document
+    // authority; the webhook acknowledges its events without writing, rather
+    // than refusing them and having Telnyx redeliver them for nothing.
+    const clientState = encodeFaxClientState('outbound', faxLog.id);
+    if (clientState) payload.client_state = clientState;
 
     let telnyxResponse;
     try {
