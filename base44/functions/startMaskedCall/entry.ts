@@ -370,7 +370,11 @@ function telnyxCredsMessage(creds, what) {
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
 // ---- transient-failure retry policy (origination is NOT idempotent) ----
-const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+// Mirrors src/components/voice/telnyxRetry.js (telnyxRetryInlineParity.test.js).
+// POST /v2/calls takes no idempotency key, so only a status that proves the call
+// was not placed is retried (408/425/429/503); a 500/502/504 can follow a call
+// Telnyx already originated, and a thrown error is never retried.
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 503]);
 function isRetryableStatus(status) { return RETRYABLE_STATUSES.has(Number(status)); }
 function parseRetryAfter(headerValue, nowMs = Date.now()) {
   if (headerValue == null) return null;

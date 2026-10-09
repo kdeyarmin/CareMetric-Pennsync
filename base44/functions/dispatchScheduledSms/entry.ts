@@ -156,14 +156,16 @@ async function getAgencyConfig(base44, agencyHint) {
   };
 }
 
-// ---- transient-failure retry policy ----
-// Telnyx has no client idempotency key. Therefore
-// we only retry on explicit retryable HTTP statuses (408/425/429/500/502/503/504).
-// We do NOT retry thrown network errors — a blind retry could double-text.
+// ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
+// Telnyx has no client idempotency key for POST /v2/messages, so we retry only a
+// status that proves the send was not processed (408/425/429/503). 500/502/504
+// can follow an accepted message, and a THROWN error (a timeout above all) can
+// follow a request Telnyx received; neither is retried — a blind retry could
+// double-text. Held to telnyxRetry.js by telnyxRetryInlineParity.test.js.
 // Capped at 2 attempts here so a batch of up to BATCH_LIMIT rows stays bounded;
 // a row that still fails is retried on the next cron tick only if re-queued.
 const MAX_SEND_ATTEMPTS = 2;
-const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 503]);
 function isRetryableStatus(status) {
   return RETRYABLE_STATUSES.has(Number(status));
 }

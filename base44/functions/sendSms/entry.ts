@@ -714,9 +714,12 @@ async function agencyMemberEmails(base44, agencyId) {
 }
 
 // ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
-// We only retry on explicit retryable HTTP statuses and never on a THROWN network
-// error for a send — a blind retry could double-text the patient.
-const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+// POST /v2/messages takes no idempotency key, so only a status that proves Telnyx
+// did not process the send is retried: 408, 425, 429 and 503. 500/502/504 can
+// follow an accepted message (outcome unknown) and a THROWN error — a timeout
+// above all — can follow a request Telnyx received; neither is ever retried.
+// Held to telnyxRetry.js by base44/functionTests/telnyxRetryInlineParity.test.js.
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 503]);
 function isRetryableStatus(status) { return RETRYABLE_STATUSES.has(Number(status)); }
 function parseRetryAfter(headerValue, nowMs = Date.now()) {
   if (headerValue == null) return null;
