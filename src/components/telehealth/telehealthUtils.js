@@ -69,7 +69,7 @@ export const TOKEN_REFRESH_MAX_RETRY_MS = 60 * 1000;
  * clock. The server's token_expires_at and the skew-free receivedAt + ttl are
  * both honoured and the EARLIER wins, so a client clock running behind cannot
  * push the renewal past the real expiry.
- * @param {{ token_expires_at?: string|null, token_ttl_secs?: number }} reply
+ * @param {{ token?: string, token_expires_at?: string|null, token_ttl_secs?: number }} reply
  * @param {number} receivedAtMs
  * @returns {number}
  */
