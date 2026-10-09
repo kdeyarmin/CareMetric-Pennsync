@@ -39,6 +39,9 @@ export const SCHEMA = 'pennsync_records';
 export class LoadError extends Error {
   constructor(code, detail = {}) { super(code); this.code = code; Object.assign(this, detail); }
 }
+
+/** A PostgreSQL error's five-character SQLSTATE, or null: a code, never a message. */
+const sqlstateOf = (error) => (typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : null);
 const IDENT = /^[a-z][a-z0-9_]{0,62}$/;
 const SYNTHETIC_NAME = /^(Fixture|Synthetic)\b/;
 const q = (name) => `"${name}"`;
@@ -128,7 +131,9 @@ export async function applyLanding({ db, landing, waves, tables, report, previou
     } catch (e) {
       try { await db.query('rollback'); } catch { /* the session is already closed out */ }
       if (e instanceof LoadError) throw e;
-      throw new LoadError('wave_refused', { wave: w, committed_waves: committed.slice(), table: current?.table, id: current?.id, partial_entries: entries.slice() });
+      // The SQLSTATE says how the store refused; the message is never kept, since it can
+      // quote a row's values.
+      throw new LoadError('wave_refused', { wave: w, committed_waves: committed.slice(), table: current?.table, id: current?.id, sqlstate: sqlstateOf(e), partial_entries: entries.slice() });
     }
     entries.push(...done); committed.push(w);
   }

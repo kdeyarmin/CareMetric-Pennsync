@@ -31,7 +31,15 @@ function ident(name) {
   return name;
 }
 
-/** Compare one planned value with one stored value. Dates compare as instants. */
+/**
+ * Compare one planned value with one stored value. Dates compare as instants.
+ *
+ * Types are compared, never coerced: the planner only lands a number in a numeric
+ * column and a string in a text one, and `to_jsonb` hands both back with the same
+ * JSON type, so a number equals only a number. Coercing (`Number("")` is 0,
+ * `Number([])` is 0, `Number("0x10")` is 16) would report a wrong stored value as
+ * content-equal, which is the one thing this check exists to catch.
+ */
 export function sameValue(planned, stored) {
   if (planned === null || planned === undefined) return stored === null || stored === undefined;
   if (stored === null || stored === undefined) return false;
@@ -43,7 +51,7 @@ export function sameValue(planned, stored) {
     }
     return false;
   }
-  if (typeof planned === 'number' || typeof stored === 'number') return Number(planned) === Number(stored);
+  if (typeof planned === 'number' || typeof stored === 'number') return typeof planned === 'number' && typeof stored === 'number' && planned === stored;
   if (Array.isArray(planned)) {
     return Array.isArray(stored) && planned.length === stored.length && planned.every((v, i) => sameValue(v, stored[i]));
   }

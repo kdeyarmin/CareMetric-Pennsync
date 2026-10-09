@@ -170,3 +170,31 @@ test('a conflicted row is still in the comparison, not reported as new', async (
   d = planDelta({ landing: landing.filter((r) => r !== p), receipt: conflicted });
   assert.deepEqual(d.removed_from_source.map((x) => x.id), [p.id]);
 });
+
+test('a refused delete says the phase, table and SQLSTATE, never a value, and undoes the whole run', async () => {
+  await wipe();
+  const receipt = await load();
+  const before = await total();
+  // The store refuses with a message that quotes the row, as a real constraint error does.
+  await db.exec(`
+    create function pennsync_records.refuse_patient_delete() returns trigger language plpgsql as $$
+    begin raise exception using errcode = '42501', message = 'refusing to delete ' || old.last_name; end $$;
+    create trigger refuse_patient_delete before delete on pennsync_records.patient
+      for each row execute function pennsync_records.refuse_patient_delete();`);
+  try {
+    await assert.rejects(rollbackRun({ db, receipt, tableWaves, tables }), (e) => {
+      assert.ok(e instanceof RollbackError);
+      assert.equal(e.code, 'rollback_refused');
+      assert.equal(e.phase, 'delete');
+      assert.equal(e.table, 'patient');
+      assert.equal(e.sqlstate, '42501');
+      const said = JSON.stringify({ ...e, message: e.message });
+      assert.doesNotMatch(said, /Alpha|Beta|Gamma|refusing to delete/, 'no row value and no store message on the error');
+      return true;
+    });
+    assert.equal(await total(), before, 'children deleted before the refusal are restored with it');
+  } finally {
+    await db.exec(`drop trigger refuse_patient_delete on pennsync_records.patient;
+      drop function pennsync_records.refuse_patient_delete();`);
+  }
+});
