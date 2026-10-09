@@ -9,7 +9,7 @@ overrides:
   # docs/DEPENDENCY_ADVISORY_BASELINE.md for which of them the browser bundle
   # can actually reach.
   axios: 1.20.0
-  brace-expansion@^1.1.7: 1.1.18
+  brace-expansion@^1.1.7: 1.1.21
   esbuild: 0.28.2
   quill: 2.0.3
   # GHSA-2m8v-j782-fhvr (high): Socket.IO zero-attachment memory exhaustion in
@@ -23,10 +23,10 @@ overrides:
   # css-tree > jsdom. Every consumer declares a ^1.x range that 1.2.2 is
   # inside, so none of them needs to move; pin the patched line here.
   source-map-js: 1.2.2
-  undici: 7.29.0
+  undici: 7.29.1
   ws: 8.21.0
 minimumReleaseAgeExclude:
-  - brace-expansion@1.1.18
+  - brace-expansion@1.1.21
   - vitest@4.1.10
   - '@vitest/expect@4.1.10'
   - '@vitest/mocker@4.1.10'
