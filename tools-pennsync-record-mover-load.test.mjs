@@ -90,6 +90,8 @@ test('a wave that fails leaves the store as it found it, and earlier waves stay'
   await assert.rejects(applyLanding({ db, landing: bad.landing, report: bad.report, waves, tables }), (e) => {
     assert.ok(e instanceof LoadError && e.code === 'wave_refused'); assert.equal(e.table, 'visit');
     assert.ok(!JSON.stringify({ c: e.code, t: e.table, i: e.id, w: e.committed_waves }).includes('not a date'));
+    assert.ok(e.partial_entries.length > 0 && e.partial_entries.every((x) => x.outcome === 'inserted'), 'the waves that did commit are on the error, so they can be rolled back');
+    assert.ok(!JSON.stringify(e.partial_entries).includes('not a date'));
     return true;
   });
   assert.equal(await count('visit'), 0); assert.equal(await count('task'), 0);
