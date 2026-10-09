@@ -5,6 +5,8 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { productionDiagnosticsPlugin } from './scripts/production-diagnostics-plugin.mjs'
+// Supplies the owner's VITE_SUPER_ADMIN_EMAIL for the owner's apps (see module).
+import { withOwnerSuperAdminEmail } from './scripts/owner-super-admin-email.mjs'
 
 const tenantSonnerModule = fileURLToPath(new URL('./src/lib/tenantSonner.js', import.meta.url))
 const rawSonnerModule = fileURLToPath(new URL('./node_modules/sonner/dist/index.mjs', import.meta.url))
@@ -66,32 +68,6 @@ if (existsSync(base44EnvPath)) {
     let v = m[2]
     if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1)
     process.env[m[1]] = v
-  }
-}
-
-// Base44's hosted Publish build does not run base44/config.jsonc's
-// site.buildCommand, so the owner email assigned there never reached published
-// bundles and the Super Admin page stayed locked for the platform owner. Supply
-// that same committed value for the owner's CareMetric apps when the build
-// environment leaves it unset. This is UI gating only: backend functions
-// independently require Base44's protected admin role plus SUPER_ADMIN_EMAIL.
-const OWNER_SUPER_ADMIN_EMAIL = 'kdeyarmin@comcast.net'
-const OWNER_SUPER_ADMIN_APP_IDS = new Set([
-  '694ec16e72e01b60d22f7cbf', // CareMetric AI (production)
-  '6a9881683dc68a0bd54f1ef7', // caremetric-pennsync-staging-2026-09-02
-])
-
-function withOwnerSuperAdminEmail(configFn) {
-  return (configEnv) => {
-    const appId = String(process.env.VITE_BASE44_APP_ID || '').trim()
-    if (
-      configEnv.command === 'build'
-      && process.env.VITE_SUPER_ADMIN_EMAIL === undefined
-      && OWNER_SUPER_ADMIN_APP_IDS.has(appId)
-    ) {
-      process.env.VITE_SUPER_ADMIN_EMAIL = OWNER_SUPER_ADMIN_EMAIL
-    }
-    return configFn(configEnv)
   }
 }
 
