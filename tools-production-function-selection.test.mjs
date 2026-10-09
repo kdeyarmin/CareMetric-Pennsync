@@ -75,6 +75,15 @@ test('the function deployment stays manual, production-protected, functions-only
   assert.ok(at(publish) < at('node tools-live-function-sync.mjs'));
   assert.match(source.slice(at(publish)), /BASE44_APP_PUBLISH_FAILED[\s\S]*?exit 2/);
   assert.doesNotMatch(source, /echo[^\n]*BASE44_API_KEY/);
+  // Either persistent credential works: the CLI is handed a personal access
+  // token before its first call, and the publish sends a workspace key as
+  // api_key and anything else as Bearer (Base44 refuses a token in api_key).
+  assert.ok(at('node tools-base44-cli-credential.mjs') < at('--json functions list'));
+  assert.match(source, /trap 'rm -f "\$HOME\/\.base44\/auth\/auth\.json"' EXIT\n\s*node tools-base44-cli-credential\.mjs/);
+  const header = source.slice(at('case "${BASE44_API_KEY}" in'), at(publish));
+  assert.match(header, /b44k_\*\) auth_header="api_key: \$\{BASE44_API_KEY\}" ;;/);
+  assert.match(header, /\*\) auth_header="Authorization: Bearer \$\{BASE44_API_KEY\}" ;;/);
+  assert.match(header, /-H "\$auth_header"/);
   // Publishing rebuilds the site from config, so the exact build is restored
   // through the site-only publication after verification, and whenever the
   // publish succeeded: a failed verification must not leave the rebuilt site.
