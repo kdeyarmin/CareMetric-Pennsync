@@ -47,7 +47,7 @@ import { canAccessLevel } from "@/lib/roles";
 let _routedPages = null;
 function getRoutedPages() {
   if (_routedPages) return _routedPages;
-  const pageModules = import.meta.glob('../pages/*.jsx', { eager: false });
+  const pageModules = import.meta.glob(['../pages/*.jsx', '!../pages/*.spec.jsx', '!../pages/*.test.jsx'], { eager: false });
   _routedPages = new Set(
     Object.keys(pageModules).map(k => k.replace('../pages/', '').replace('.jsx', ''))
   );
