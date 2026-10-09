@@ -128,7 +128,7 @@ export async function applyLanding({ db, landing, waves, tables, report, previou
     } catch (e) {
       try { await db.query('rollback'); } catch { /* the session is already closed out */ }
       if (e instanceof LoadError) throw e;
-      throw new LoadError('wave_refused', { wave: w, committed_waves: committed.slice(), table: current?.table, id: current?.id });
+      throw new LoadError('wave_refused', { wave: w, committed_waves: committed.slice(), table: current?.table, id: current?.id, partial_entries: entries.slice() });
     }
     entries.push(...done); committed.push(w);
   }
