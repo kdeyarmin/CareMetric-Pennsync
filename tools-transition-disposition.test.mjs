@@ -51,8 +51,10 @@ test('no committed disposition contradicts the source it describes', () => {
   // floor guards against a discovery that finds nothing; it is not a count to
   // hold. The owner's 2026-10-08 releases took the population below the 25 it
   // used to name, because each released endpoint does work again; the
-  // e-signature release alone retired fifteen static 503 stubs.
-  assert.ok(report.inert_functions > 5, `only ${report.inert_functions} inert functions found`);
+  // e-signature release alone retired fifteen static 503 stubs. What remains
+  // inert is deliberate (the PDGM payment trio, one retired endpoint and one
+  // maintenance cleanup), so the floor asks only that discovery found any.
+  assert.ok(report.inert_functions > 0, `only ${report.inert_functions} inert functions found`);
 });
 
 test('every retirement says where its existing rows go', () => {
