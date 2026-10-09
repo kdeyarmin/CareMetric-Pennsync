@@ -39,7 +39,7 @@ import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
 import { getRoleView, canAccessLevel } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { getAiContentAgreementStatus } from '@/functions/getAiContentAgreementStatus';
-import { verifyAiContentAgreementAcceptance } from '@/functions/verifyAiContentAgreementAcceptance';
+import { verifyAiContentAgreementAcceptance } from '@/lib/verifyAiContentAgreementAcceptance';
 import { getRouterBasename } from '@/lib/routerBasename';
 import {
   getPublicCapabilitySnapshot,

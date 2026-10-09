@@ -14,7 +14,8 @@ const expectations = () => parseExpectations(readFileSync(resolve(repository, EX
 test('every entity schema parses, so no file field can be missed by a parse failure', () => {
   const census = buildCensus(repository);
   assert.equal(census.totals.unreadable, 0);
-  assert.equal(census.totals.entities, 253);
+  // AIResponsibilityPolicy adds a schema, but no stored-file fields.
+  assert.equal(census.totals.entities, 254);
   assert.ok(census.totals.locator_fields > 50);
 });
 

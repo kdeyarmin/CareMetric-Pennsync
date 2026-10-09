@@ -23,7 +23,10 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)));
  * the cost of a ratchet that cannot go quiet.
  */
 const COMPARABLE = Object.freeze([
-  'acceptAiContentAgreement -> acceptAiContentAgreement',
+  // acceptAiContentAgreement now awaits withTimeout and verifies the response,
+  // so the expression-only pass-through reader cannot compare it. Its wrapper
+  // spec proves unchanged payload forwarding; the agreement component tests
+  // assert the submitted agreement fields.
   'analyzeVisitForSupplyUsage -> analyzeVisitForSupplyUsage',
   'cancelTimeOffRequest -> cancelTimeOffRequest',
   'distributePolicyAcknowledgment -> distributePolicyAcknowledgment',
@@ -79,7 +82,6 @@ const REFUSED = Object.freeze([]);
 
 /** A multiset: `TimesheetApprovalsQueue.jsx` calls `reviewTimesheet` twice. */
 const COMPARED = Object.freeze([
-  'src/components/compliance/AIContentResponsibilityAgreement.jsx: acceptAiContentAgreement',
   'src/components/incident/SmartIncidentForm.jsx: submitIncidentReport',
   'src/components/incident/SmartIncidentForm.jsx: submitStateReportableIncident',
   'src/components/physician/ProviderCsvImport.jsx: importProvidersCsv',

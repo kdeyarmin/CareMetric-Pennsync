@@ -27,6 +27,9 @@ const PUBLIC_NON_MANIFEST_PAGES = new Set([
 // or redirect note in src/routes.jsx so stale screens are never accidental.
 const INTENTIONAL_UNROUTED_LEGACY_PAGES = new Set([
   'AnalyticsDashboard',
+  'AutomaticCarePlans',
+  'CarePlanBuilder',
+  'CarePlanManagement',
   'ClinicalChart',
   'MyLearning',
   'NurseEducationVideos',

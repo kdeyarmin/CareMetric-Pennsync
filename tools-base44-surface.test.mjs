@@ -20,6 +20,11 @@ const measured = (patch = {}) => ({
 });
 
 test('the frontend stays within its committed Base44 coupling baseline', () => {
+  // The owner-requested platform consent setting adds one client importer and
+  // invocation and wrapper (manageAiResponsibilityPolicy). The local
+  // verifyAiContentAgreementAcceptance helper belongs in src/lib and adds no
+  // SDK call. The unused test-runner config was removed from src/functions.
+  // No entity, integration, SDK-import or handle allowance was widened.
   const report = compareSurface(measureSurface(repository), parseBaseline(readFileSync(resolve(repository, BASELINE_FILE), 'utf8')));
   assert.deepEqual(report.regressions, [], 'Base44 coupling grew. Migrate the new consumer or justify the change.');
   assert.equal(report.within_baseline, true);

@@ -37,7 +37,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
   const [checked, setChecked] = useState(() =>
     AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.map(() => false),
   );
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
 
   const allChecked = useMemo(() => checked.every(Boolean), [checked]);
@@ -62,13 +62,13 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
       setSaving("verifying");
       if (!onAccepted) throw new Error("Protected verification is required.");
       await onAccepted();
-      setSaving(false);
+      setSaving("");
     } catch (err) {
       console.error("Failed to record AI content agreement:", err);
       setError(acknowledgmentRecorded
         ? "Your acknowledgment was recorded, but access could not be verified. Select Retry verification; access remains closed until verification succeeds."
         : "Your acknowledgment could not be recorded. Please try again; access remains closed until verification succeeds.");
-      setSaving(false);
+      setSaving("");
     }
     // In the app, a successful protected recheck unmounts this gate. A failed
     // or not-yet-visible recheck throws above and restores the retry control.

@@ -8,7 +8,7 @@ import { manageAiResponsibilityPolicy } from '@/functions/manageAiResponsibility
 export default function AIResponsibilityPolicyPanel() {
   const client = useQueryClient();
   const key = ['platformAiResponsibilityPolicy'];
-  const policy = useQuery({ queryKey: key, queryFn: () => manageAiResponsibilityPolicy(), retry: false });
+  const policy = useQuery({ queryKey: ['platformAiResponsibilityPolicy'], queryFn: () => manageAiResponsibilityPolicy(), retry: false });
   const save = useMutation({
     mutationFn: enabled => manageAiResponsibilityPolicy({ bypass_previously_acknowledged: enabled }),
     onSuccess: async result => {

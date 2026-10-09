@@ -11,15 +11,17 @@ import {
   AI_CONTENT_AGREEMENT_VERSION,
 } from '../../src/lib/aiContentAgreement.js';
 
-async function loadStatusBroker(client) {
+async function loadStatusBroker(client, { functionName = 'getAiContentAgreementStatus', environment = {} } = {}) {
   let source = await readFile(
-    new URL('../functions/getAiContentAgreementStatus/entry.ts', import.meta.url),
+    new URL(`../functions/${functionName}/entry.ts`, import.meta.url),
     'utf8',
   );
   source = source.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:@base44\/sdk@[^']*';?/,
     'const createClientFromRequest = globalThis.__agreementStatusClient;',
   );
+  source = `const agreementEnvironment = ${JSON.stringify(environment)};\n${source}`
+    .replace(/Deno\.env\.get\(([^)]+)\)/g, 'agreementEnvironment[$1]');
   const file = join(
     tmpdir(),
     `agreement_status_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
@@ -66,10 +68,16 @@ const currentAttestation = {
   audit_event_id: 'event-1',
 };
 
-function statusClient({ rows = [], currentActor = actor, onActorRead } = {}) {
+function statusClient({ rows = [], policyRows = [], currentActor = actor, onActorRead } = {}) {
   return {
     auth: { me: async () => currentActor },
     asServiceRole: { entities: {
+      AIResponsibilityPolicy: { filter: async (query, sort, limit) => {
+        assert.deepEqual(query, { policy_key: 'platform-ai-responsibility-v1' });
+        assert.equal(sort, '-created_date');
+        assert.equal(limit, 2);
+        return policyRows;
+      } },
       User: { filter: async (query, sort, limit) => {
         assert.deepEqual(query, { id: 'user-1' });
         assert.equal(sort, undefined);
@@ -139,6 +147,52 @@ test('valid historical authority re-prompts instead of failing verification', as
   assert.deepEqual(await response.json(), {
     accepted: false,
     agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+  });
+
+  test('signed bypass policy applies only to a previously attested actor and its own environment', async () => {
+    const historical = { ...currentAttestation, agreement_version: '0.9', acknowledgments: ['Prior acknowledgment'] };
+    const environment = { SIGNATURE_HMAC_SECRET: 'synthetic-policy-test-key', SUPER_ADMIN_EMAIL: 'owner@example.test' };
+    let policyRows = [];
+    const owner = { ...actor, email: 'owner@example.test', role: 'admin' };
+    const manager = await loadStatusBroker({
+      auth: { me: async () => owner },
+      asServiceRole: { entities: { AIResponsibilityPolicy: {
+        filter: async () => policyRows,
+        create: async (row) => { policyRows = [{ id: 'policy-1', ...row }]; },
+      } } },
+    }, { functionName: 'manageAiResponsibilityPolicy', environment });
+    const saved = await manager(statusRequest({ bypass_previously_acknowledged: true }));
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await saved.json(), { bypass_previously_acknowledged: true });
+
+    const verify = async (rows, policies = policyRows, env = environment, dataEnv) => {
+      const handler = await loadStatusBroker(statusClient({ rows, policyRows: policies }), { environment: env });
+      const request = statusRequest();
+      if (dataEnv) request.headers.set('X-Data-Env', dataEnv);
+      return handler(request);
+    };
+    assert.deepEqual(await (await verify([historical])).json(), {
+      accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION, bypassed: true,
+    });
+    assert.deepEqual(await (await verify([])).json(), {
+      accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+    });
+    assert.equal((await verify([historical], policyRows, environment, 'dev')).status, 500);
+    assert.equal((await verify([historical], policyRows, {})).status, 500);
+    assert.equal((await verify([historical], [...policyRows, ...policyRows])).status, 500);
+    assert.equal((await verify([historical], [{ ...policyRows[0], bypass_previously_acknowledged: false }])).status, 500);
+    assert.equal((await verify([historical], [{ ...policyRows[0], policy_key: 'foreign-policy' }])).status, 500);
+  });
+
+  test('policy management denies anonymous and non-owner administrators before service access', async () => {
+    for (const user of [null, actor, { ...actor, role: 'admin' }]) {
+      const handler = await loadStatusBroker({
+        auth: { me: async () => user },
+        asServiceRole: { get entities() { throw new Error('service access must not occur'); } },
+      }, { functionName: 'manageAiResponsibilityPolicy', environment: { SUPER_ADMIN_EMAIL: 'owner@example.test' } });
+      assert.equal((await handler(statusRequest())).status, user ? 403 : 401);
+      assert.equal((await handler(statusRequest(undefined, 'GET'))).status, 405);
+    }
   });
 });
 
@@ -217,5 +271,12 @@ test('App gates on broker status and never on legacy User flags', async () => {
   assert.doesNotMatch(app, /hasAcceptedAiContentAgreement\(user\)/);
   assert.match(app, /AgreementVerificationUnavailable/);
   assert.match(app, /agreementStatus\.isFetching/);
-  assert.match(app, /Protected agreement verification did not confirm the current version/);
+  assert.match(app, /onAccepted:\s*\(\) => verifyAiContentAgreementAcceptance|onAccepted=\{\(\) => verifyAiContentAgreementAcceptance/);
+  const verificationImport = app.match(/import\s+\{\s*verifyAiContentAgreementAcceptance\s*\}\s+from\s+['"]@\/([^'"]+)['"]/);
+  assert.ok(verificationImport, 'App delegates acceptance verification to its protected-read helper');
+  const verification = await readFile(new URL(`../../src/${verificationImport[1]}.js`, import.meta.url), 'utf8');
+  assert.match(verification, /await queryClient\.cancelQueries\(\{ queryKey, exact: true \}\)/);
+  assert.match(verification, /await getAiContentAgreementStatus\(\)/);
+  assert.match(verification, /if \(!hasAcceptedAiContentAgreement\(status\)\)/);
+  assert.match(verification, /queryClient\.setQueryData\(queryKey, status\)/);
 });
