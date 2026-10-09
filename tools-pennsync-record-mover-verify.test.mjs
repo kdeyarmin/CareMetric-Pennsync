@@ -9,7 +9,7 @@ import { buildFixture } from './tools-pennsync-record-mover-fixtures.mjs';
 // The loader is imported ONLY to put rows in the store for the verifier to look at.
 import { applyLanding } from './tools-pennsync-record-mover-load.mjs';
 import { canonical, loadTargetSpec, planFromDirectory } from './tools-pennsync-record-mover-plan.mjs';
-import { checkFiles, inferLinks, sameValue, verifyRun } from './tools-pennsync-record-mover-verify.mjs';
+import { checkFiles, checkVisibility, inferLinks, sameValue, verifyRun } from './tools-pennsync-record-mover-verify.mjs';
 
 const require = createRequire(new URL('./services/authority-store/package.json', import.meta.url));
 const { PGlite } = require('@electric-sql/pglite');
@@ -61,17 +61,17 @@ before(async () => {
 });
 after(async () => { await db?.close(); await rm(root, { recursive: true, force: true }); });
 
-const verify = (over = {}) => verifyRun({ db, report, landing, tables, identities, ...over });
+const verify = (over = {}) => verifyRun({ db, report, landing, tables, identities, acknowledgeUnclassified: ['user', 'agency'], skip: ['files', 'source'], ...over });
 const sourceIds = () => {
   const m = new Map();
-  for (const r of landing) { if (!m.has(r.entity)) m.set(r.entity, new Set()); m.get(r.entity).add(r.id); }
-  for (const h of report.quarantine) { if (!m.has(h.entity)) m.set(h.entity, new Set()); m.get(h.entity).add(h.id); }
+  for (const r of landing) { if (!m.has(r.entity)) m.set(r.entity, new Set()); m.get(r.entity).add(`${r.source_app_id}|${r.id}`); }
+  for (const h of report.quarantine) { if (!m.has(h.entity)) m.set(h.entity, new Set()); m.get(h.entity).add(`${h.source_app_id}|${h.id}`); }
   return m;
 };
 
 test('a clean run passes all six checks', async () => {
   const bytes = Buffer.from('synthetic');
-  const v = await verify({ sourceIds: sourceIds(), files: [{ name: 'a', bytes, sha256: sha(bytes), size: bytes.length }] });
+  const v = await verify({ sourceIds: sourceIds(), skip: [], files: [{ name: 'a', bytes, sha256: sha(bytes), size: bytes.length }] });
   assert.equal(v.ok, true, JSON.stringify(v));
   assert.ok(Object.values(v.counts).every((c) => c.missing === 0));
   assert.ok(v.content.rows_compared === landing.length);
@@ -127,7 +127,7 @@ test('visibility: an agency that can see another agency\'s rows fails, through t
 });
 
 test('quarantine: a row in neither state, or in both, fails', async () => {
-  const missingFromSource = sourceIds(); missingFromSource.get('Visit').add('ffffffffffffffffffffffff');
+  const missingFromSource = sourceIds(); missingFromSource.get('Visit').add(`${APP}|ffffffffffffffffffffffff`);
   let v = await verify({ sourceIds: missingFromSource });
   assert.ok(v.quarantine.problems.some((p) => p.code === 'source_row_unaccounted'));
   const twice = { ...report, quarantine: [...report.quarantine, { source_app_id: APP, entity: 'Task', id: landing.find((r) => r.entity === 'Task').id, code: 'x' }] };
@@ -139,8 +139,9 @@ test('quarantine: a row in neither state, or in both, fails', async () => {
 test('files: a changed byte fails', () => {
   const bytes = Buffer.from('abc');
   assert.equal(checkFiles({ files: [{ name: 'f', bytes, sha256: sha(bytes), size: 3 }] }).files.ok, true);
-  const bad = checkFiles({ files: [{ name: 'f', bytes: Buffer.from('abd'), sha256: sha(bytes), size: 3 }] });
-  assert.deepEqual(bad.files.problems, [{ file: 'f', code: 'file_digest_differs' }]);
+  const bad = checkFiles({ files: [{ name: 'Jane Doe intake.pdf', bytes: Buffer.from('abd'), sha256: sha(bytes), size: 3 }] });
+  assert.deepEqual(bad.files.problems.map((p) => [p.file_index, p.code]), [[0, 'file_digest_differs']]);
+  assert.ok(!JSON.stringify(bad).includes('Jane'), 'the file name is never echoed');
 });
 
 test('the verifier shares no code with the loader, and reports no value', async () => {
@@ -149,4 +150,61 @@ test('the verifier shares no code with the loader, and reports no value', async 
   assert.equal(sameValue('2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05+00:00'), true);
   assert.equal(sameValue('a', 'b'), false);
   assert.ok(inferLinks(landing).some((l) => l.table === 'visit' && l.target === 'patient'));
+});
+
+test('plan binding: a changed row, a stale digest or a swapped report is found by recomputing them here', async () => {
+  assert.equal((await verify()).plan.ok, true);
+  const p = landing.find((r) => r.entity === 'Patient');
+  const altered = landing.map((r) => (r === p ? { ...r, row: { ...r.row, last_name: 'Other' } } : r));
+  let v = await verify({ landing: altered });
+  assert.ok(v.plan.problems.some((x) => x.code === 'row_hash_differs' && x.id === p.id));
+  const dropped = await verify({ landing: landing.slice(1) });
+  assert.ok(dropped.plan.problems.some((x) => x.code === 'rows_digest_differs'));
+  v = await verify({ report: { ...report, totals: { ...report.totals, to_load: 99 } } });
+  assert.ok(v.plan.problems.some((x) => x.code === 'report_digest_differs'));
+  assert.equal(v.ok, false);
+});
+
+test('a check that did not run is not a pass: ok stays false, and a waiver is recorded', async () => {
+  const bare = await verifyRun({ db, report, landing, tables });
+  assert.equal(bare.ok, false);
+  assert.deepEqual(bare.incomplete.sort(), ['files', 'source', 'visibility'].sort());
+  const waived = await verify();
+  assert.equal(waived.ok, true);
+  assert.deepEqual(waived.skipped_on_purpose, ['files', 'source']);
+  const unack = await verify({ acknowledgeUnclassified: [] });
+  assert.equal(unack.ok, false);
+  assert.deepEqual(unack.visibility.unclassified_tables, ['agency', 'user']);
+  assert.deepEqual(unack.incomplete, ['visibility_unclassified_tables']);
+});
+
+test('quarantine: the same id from another source app is not mistaken for a quarantined row', async () => {
+  const task = landing.find((r) => r.entity === 'Task');
+  const other = { source_app_id: 'another-source-app', entity: 'Task', id: task.id, code: 'x' };
+  const rep = { ...report, quarantine: [...report.quarantine, other], loads: report.loads.map((l) => (l.entity === 'Task' ? { ...l, quarantined: l.quarantined + 1, rows: l.rows + 1 } : l)) };
+  const v = await verify({ report: rep });
+  assert.ok(!v.quarantine.problems.some((x) => x.code === 'quarantined_row_in_store' || x.code === 'both_loaded_and_quarantined'), JSON.stringify(v.quarantine.problems));
+});
+
+test('links: a prefixed reference column finds its target, and the result says the links were inferred', () => {
+  const rows = [{ table: 'patient', row: { id: 'p' } }, { table: 'shared_document', row: { id: 'd', related_patient_id: 'p' } }, { table: 'note', row: { id: 'n', target_patient_id: 'p' } }];
+  assert.deepEqual(inferLinks(rows).map((l) => `${l.table}.${l.column}>${l.target}`), ['note.target_patient_id>patient', 'shared_document.related_patient_id>patient']);
+});
+
+test('visibility: a table with no agency column is judged through the row it links to, or listed as unclassified', async () => {
+  const v = await verify();
+  assert.deepEqual(v.visibility.unclassified_tables, ['agency', 'user'], 'the tenants themselves and the roster table have no agency to judge them by');
+  assert.ok(v.visibility.visibility.some((x) => x.table === 'visit' && x.expected > 0));
+});
+
+test('visibility: a planned table whose rows carry no agency is judged through the row it links to', async () => {
+  const stripped = landing.map((r) => {
+    if (r.entity !== 'Visit') return r;
+    const { agency_id: _a, ...row } = r.row;
+    return { ...r, row };
+  });
+  const { visibility } = await checkVisibility({ db, landing: stripped, identities, tables: [...tables] });
+  const visits = visibility.visibility.filter((x) => x.table === 'visit');
+  assert.ok(visits.every((x) => x.missing === 0 && x.leaked === 0) && visits.some((x) => x.expected > 0));
+  assert.ok(!visibility.unclassified_tables.includes('visit'));
 });

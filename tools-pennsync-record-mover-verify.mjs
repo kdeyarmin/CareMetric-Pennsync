@@ -58,6 +58,27 @@ export function sameValue(planned, stored) {
 
 const key = (table, app, id) => `${table}|${app}|${id}`;
 
+/** The plan's own canonical form, restated here so this module needs nothing from the planner. */
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+
+/** 0: the rows being checked are the rows the plan describes: every row hash, the aggregate digest and the report digest are recomputed here. */
+export function checkPlanBinding({ report, landing }) {
+  const problems = [];
+  const { digest, ...body } = report ?? {};
+  if (typeof digest !== 'string' || sha(canonical(body)) !== digest) problems.push({ code: 'report_digest_differs' });
+  const lines = [];
+  for (const r of landing) {
+    if (r.hash !== sha(canonical({ table: r.table, row: r.row }))) problems.push({ code: 'row_hash_differs', table: r.table, id: r.id });
+    lines.push(`${r.table}|${r.source_app_id}|${r.id}|${r.hash}`);
+  }
+  if (sha(lines.sort().join('\n')) !== report?.rows_digest) problems.push({ code: 'rows_digest_differs' });
+  return { plan: { problems, ok: problems.length === 0 } };
+}
+
 async function storedRows(db, table) {
   const { rows } = await db.query(`select to_jsonb(r) as j from ${q(SCHEMA)}.${q(ident(table))} r`);
   return rows.map((x) => (typeof x.j === 'string' ? JSON.parse(x.j) : x.j));
@@ -97,21 +118,31 @@ export async function checkCountsAndContent({ db, landing }) {
 /**
  * 3: every `<name>_id` column that names another planned table must hold the id of a
  * row that exists there and, where both tables carry an agency, in the same one.
- * Pass `links` to name them yourself; otherwise they are inferred from column names.
+ * Pass `links` to name them yourself (the archive plan names the target ENTITY of a
+ * reference, not its column, so the column is inferred from the name, with the usual
+ * `target_` / `related_` style prefixes removed); the result says which it used.
  */
+const REFERENCE_PREFIXES = ['target_', 'related_', 'parent_', 'source_', 'linked_', 'primary_', 'referring_', 'original_'];
+
 export function inferLinks(landing) {
   const tables = new Set(landing.map((r) => r.table));
   const found = new Map();
   for (const r of landing) {
     for (const column of Object.keys(r.row)) {
       const m = /^([a-z][a-z0-9_]*)_id$/.exec(column);
-      if (m && tables.has(m[1]) && m[1] !== r.table && column !== 'agency_id') found.set(`${r.table}.${column}`, { table: r.table, column, target: m[1] });
+      if (!m || column === 'agency_id') continue;
+      const base = REFERENCE_PREFIXES.reduce((name, p) => (name.startsWith(p) ? name.slice(p.length) : name), m[1]);
+      for (const target of new Set([m[1], base])) {
+        if (tables.has(target)) found.set(`${r.table}.${column}`, { table: r.table, column, target });
+      }
     }
   }
   return [...found.values()].sort((a, b) => (`${a.table}.${a.column}` < `${b.table}.${b.column}` ? -1 : 1));
 }
 
-export async function checkLinks({ db, landing, links = inferLinks(landing) }) {
+export async function checkLinks({ db, landing, links = null }) {
+  const inferred = links === null;
+  links ??= inferLinks(landing);
   const out = [];
   for (const link of links) {
     ident(link.table); ident(link.column); ident(link.target);
@@ -127,34 +158,53 @@ export async function checkLinks({ db, landing, links = inferLinks(landing) }) {
     }
     out.push({ ...link, checked, dangling, cross_agency });
   }
-  return { links: { items: out, ok: out.every((l) => l.dangling === 0 && l.cross_agency === 0) } };
+  return { links: { inferred, items: out, ok: out.every((l) => l.dangling === 0 && l.cross_agency === 0) } };
 }
 
 /**
- * 4: sign in as each identity (a caller supplies the claims; the rehearsal seeds
- * the identities) and read the agency-keyed tables through the real policies.
- * `identities` is [{ label, agency_id, claims }]. The store's callers run as the
- * `authenticated` role, which the rehearsal must be allowed to use.
+ * 4: sign in as each identity (a caller supplies the claims; the rehearsal seeds the
+ * identities) and read EVERY planned table through the real policies. A row's agency
+ * is its own `agency_id`, or, where it has none, the agency of a row it links to or
+ * that links to it (a document reaches its agency through its binding row, a visit
+ * through its patient). A row whose agency cannot be worked out is `unclassified`:
+ * it is read, never judged, and the table is listed so the result cannot read as
+ * complete. `identities` is [{ label, agency_id, claims }]; the store's callers run as
+ * the `authenticated` role.
  */
-export async function checkVisibility({ db, landing, identities, tables }) {
-  const agencyKeyed = [...new Set(landing.filter((r) => Object.hasOwn(r.row, 'agency_id') && tables.includes(r.table)).map((r) => r.table))];
-  const planned = new Map();
-  for (const r of landing) {
-    if (!agencyKeyed.includes(r.table)) continue;
-    if (!planned.has(r.table)) planned.set(r.table, []);
-    planned.get(r.table).push(r);
+export async function checkVisibility({ db, landing, identities, tables, links = inferLinks(landing) }) {
+  const planned = landing.filter((r) => tables.includes(r.table));
+  const agencyOf = new Map(planned.map((r) => [key(r.table, r.source_app_id, r.id), r.row.agency_id ?? null]));
+  const edges = [];
+  for (const link of links) {
+    for (const r of planned) {
+      if (r.table !== link.table || !r.row[link.column]) continue;
+      const parent = key(link.target, r.source_app_id, r.row[link.column]);
+      if (agencyOf.has(parent)) edges.push([key(r.table, r.source_app_id, r.id), parent]);
+    }
+  }
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const [child, parent] of edges) {
+      if (agencyOf.get(child) && !agencyOf.get(parent)) { agencyOf.set(parent, agencyOf.get(child)); changed = true; }
+      else if (agencyOf.get(parent) && !agencyOf.get(child)) { agencyOf.set(child, agencyOf.get(parent)); changed = true; }
+    }
+  }
+  const byTable = new Map();
+  for (const r of planned) {
+    if (!byTable.has(r.table)) byTable.set(r.table, []);
+    byTable.get(r.table).push({ id: r.id, agency: agencyOf.get(key(r.table, r.source_app_id, r.id)) });
   }
   const results = [];
   for (const who of identities) {
-    for (const table of agencyKeyed) {
-      const own = planned.get(table).filter((r) => r.row.agency_id === who.agency_id).map((r) => r.id).sort();
-      const others = new Set(planned.get(table).filter((r) => r.row.agency_id !== who.agency_id).map((r) => r.id));
+    for (const [table, rows] of byTable) {
+      const own = rows.filter((x) => x.agency === who.agency_id).map((x) => x.id).sort();
+      const others = new Set(rows.filter((x) => x.agency && x.agency !== who.agency_id).map((x) => x.id));
       let seen;
       await db.exec('begin');
       try {
         await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify(who.claims)]);
         await db.exec('set local role authenticated');
-        seen = (await db.query(`select id from ${q(SCHEMA)}.${q(table)}`)).rows.map((x) => x.id);
+        seen = (await db.query(`select id from ${q(SCHEMA)}.${q(ident(table))}`)).rows.map((x) => x.id);
       } finally { await db.exec('rollback'); }
       results.push({
         identity: who.label, table, expected: own.length,
@@ -163,7 +213,8 @@ export async function checkVisibility({ db, landing, identities, tables }) {
       });
     }
   }
-  return { visibility: results, ok: results.every((r) => r.missing === 0 && r.leaked === 0) };
+  const unclassified = [...byTable].filter(([, rows]) => rows.some((x) => !x.agency)).map(([table]) => table).sort();
+  return { visibility: { visibility: results, unclassified_tables: unclassified, ok: results.every((r) => r.missing === 0 && r.leaked === 0) } };
 }
 
 /**
@@ -174,8 +225,9 @@ export async function checkVisibility({ db, landing, identities, tables }) {
 export async function checkQuarantine({ db, report, landing, tables = new Map(), sourceIds = null }) {
   const problems = [];
   const loadedBy = new Map(); const heldBy = new Map();
-  for (const r of landing) { if (!loadedBy.has(r.entity)) loadedBy.set(r.entity, new Set()); loadedBy.get(r.entity).add(r.id); }
-  for (const h of report.quarantine) { if (!heldBy.has(h.entity)) heldBy.set(h.entity, new Set()); heldBy.get(h.entity).add(h.id); }
+  const ident2 = (app, id) => `${app}|${id}`;
+  for (const r of landing) { if (!loadedBy.has(r.entity)) loadedBy.set(r.entity, new Set()); loadedBy.get(r.entity).add(ident2(r.source_app_id, r.id)); }
+  for (const h of report.quarantine) { if (!heldBy.has(h.entity)) heldBy.set(h.entity, new Set()); heldBy.get(h.entity).add(ident2(h.source_app_id, h.id)); }
   for (const l of report.loads) {
     const loaded = loadedBy.get(l.entity) ?? new Set(); const held = heldBy.get(l.entity) ?? new Set();
     if (loaded.size !== l.load) problems.push({ entity: l.entity, code: 'loaded_count_differs' });
@@ -183,6 +235,7 @@ export async function checkQuarantine({ db, report, landing, tables = new Map(),
     if (l.load + l.quarantined !== l.rows) problems.push({ entity: l.entity, code: 'rows_not_accounted_for' });
     for (const id of held) if (loaded.has(id)) problems.push({ entity: l.entity, code: 'both_loaded_and_quarantined' });
     if (sourceIds) {
+      // sourceIds holds `source_app_id|id` strings per entity.
       const source = sourceIds.get(l.entity) ?? new Set();
       for (const id of source) if (!loaded.has(id) && !held.has(id)) problems.push({ entity: l.entity, code: 'source_row_unaccounted' });
       for (const id of [...loaded, ...held]) if (!source.has(id)) problems.push({ entity: l.entity, code: 'row_not_in_source' });
@@ -190,29 +243,50 @@ export async function checkQuarantine({ db, report, landing, tables = new Map(),
     // A set-aside row must not have reached the store.
     const table = tables.get(l.entity) ?? l.table;
     if (held.size && table) {
-      const present = new Set((await storedRows(db, table)).map((j) => j.id));
+      const present = new Set((await storedRows(db, table)).map((j) => ident2(j.source_app_id, j.id)));
       for (const id of held) if (present.has(id)) problems.push({ entity: l.entity, code: 'quarantined_row_in_store' });
     }
   }
   return { quarantine: { problems, ok: problems.length === 0 } };
 }
 
-/** 6: each declared file's bytes against its declared sha256 and size. */
+/** 6: each declared file's bytes against its declared sha256 and size. Files are named by position and digest, never by name: a name can carry a person's. */
 export function checkFiles({ files }) {
-  const problems = files.filter((f) => sha(f.bytes) !== f.sha256 || f.bytes.length !== f.size).map((f) => ({ file: f.name, code: 'file_digest_differs' }));
+  const problems = [];
+  files.forEach((f, index) => {
+    if (sha(f.bytes) !== f.sha256 || f.bytes.length !== f.size) problems.push({ file_index: index, declared_sha256: String(f.sha256).slice(0, 12), code: 'file_digest_differs' });
+  });
   return { files: { checked: files.length, problems, ok: problems.length === 0 } };
 }
 
-export async function verifyRun({ db, report, landing, tables, identities = null, links, sourceIds = null, files = null }) {
+/**
+ * `ok` means every check ran and passed. A check that was not given what it needs is
+ * `skipped`, and a skipped check is not a pass: `ok` stays false and `incomplete` says
+ * which. To leave one out on purpose, name it in `skip`; the waiver is recorded.
+ * `acknowledgeUnclassified` names tables whose rows have no agency to judge them by
+ * (for example the roster table, which the store tenants through memberships).
+ */
+export async function verifyRun({ db, report, landing, tables, identities = null, links = null, sourceIds = null, files = null, skip = [], acknowledgeUnclassified = [] }) {
   const names = new Map(report.loads.map((l) => [l.entity, l.table]));
   const out = {
     format: 'pennsync-record-mover-verification', version: 1, plan_digest: report.digest,
+    ...checkPlanBinding({ report, landing }),
     ...(await checkCountsAndContent({ db, landing })),
     ...(await checkLinks({ db, landing, links })),
     ...(await checkQuarantine({ db, report, landing, tables: names, sourceIds })),
-    visibility: identities ? await checkVisibility({ db, landing, identities, tables: [...tables] }) : { skipped: 'no_identities_given', ok: null },
-    files: files ? checkFiles({ files }).files : { skipped: 'no_files_given', ok: null },
   };
-  out.ok = [out.counts_ok, out.content.ok, out.links.ok, out.quarantine.ok, out.visibility.ok, out.files.ok].every((v) => v !== false);
+  out.visibility = identities
+    ? (await checkVisibility({ db, landing, identities, tables: [...tables], links: links ?? inferLinks(landing) })).visibility
+    : { skipped: 'no_identities_given', ok: null };
+  out.files = files ? checkFiles({ files }).files : { skipped: 'no_files_given', ok: null };
+  const loose = out.visibility.unclassified_tables?.filter((t) => !acknowledgeUnclassified.includes(t)) ?? [];
+  const incomplete = [];
+  if (out.visibility.ok === null && !skip.includes('visibility')) incomplete.push('visibility');
+  if (out.files.ok === null && !skip.includes('files')) incomplete.push('files');
+  if (loose.length) incomplete.push('visibility_unclassified_tables');
+  if (!sourceIds && !skip.includes('source')) incomplete.push('source');
+  out.skipped_on_purpose = skip;
+  out.incomplete = incomplete;
+  out.ok = incomplete.length === 0 && [out.plan.ok, out.counts_ok, out.content.ok, out.links.ok, out.quarantine.ok, out.visibility.ok, out.files.ok].every((v) => v !== false);
   return out;
 }
