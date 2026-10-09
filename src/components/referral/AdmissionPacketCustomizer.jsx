@@ -27,8 +27,7 @@ export default function AdmissionPacketCustomizer({ referralData, referralId }) 
     ai_risk_analysis: true,
     nursing_notes: true,
     homebound_status: true,
-    sample_assessment: true,
-    care_plans: true
+    sample_assessment: true
   });
 
   const sectionLabels = {
@@ -47,8 +46,7 @@ export default function AdmissionPacketCustomizer({ referralData, referralId }) 
     ai_risk_analysis: "AI-Powered Risk Analysis",
     nursing_notes: "Important Nursing Notes",
     homebound_status: "Homebound Status Justification",
-    sample_assessment: "Sample Admission Nursing Assessment",
-    care_plans: "Suggested Care Plans"
+    sample_assessment: "Sample Admission Nursing Assessment"
   };
 
   const toggleSection = (section) => {

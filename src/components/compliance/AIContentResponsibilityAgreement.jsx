@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+
 import { useAuth } from "@/lib/AuthContext";
 import { acceptAiContentAgreement } from "@/functions/acceptAiContentAgreement";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import ResponsibilityAcknowledgment from "@/components/compliance/ResponsibilityAcknowledgment";
+
 import { Sparkles, ShieldCheck, LogOut, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+
 import { BRAND_LOGO_URL } from "@/lib/brand";
 import {
   AI_CONTENT_AGREEMENT_TITLE,
@@ -30,13 +31,14 @@ import {
  */
 export default function AIContentResponsibilityAgreement({ onAccepted }) {
   const { logout } = useAuth();
-  const queryClient = useQueryClient();
+  const [recorded, setRecorded] = useState(false);
 
   // One checkbox per acknowledgment; all must be checked to continue.
   const [checked, setChecked] = useState(() =>
     AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.map(() => false),
   );
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(/** @type {false | "recording" | "verifying"} */ (false));
+  const [error, setError] = useState("");
 
   const allChecked = useMemo(() => checked.every(Boolean), [checked]);
 
@@ -45,25 +47,27 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
 
   const accept = async () => {
     if (!allChecked || saving) return;
-    setSaving(true);
+    setError("");
+    setSaving(recorded ? "verifying" : "recording");
+    let acknowledgmentRecorded = recorded;
     try {
-      // The purpose-specific broker derives the actor, appends the canonical
-      // audit event, and creates the immutable authority attestation. Mutable
-      // compatibility fields on User are not acceptance authority.
-      await acceptAiContentAgreement({
-        accepted: true,
-        agreement_version: AI_CONTENT_AGREEMENT_VERSION,
-      });
-
-      // Compatibility fields may still be displayed elsewhere, but the gate
-      // opens only after App.jsx re-reads the protected attestation status.
-      void queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-      if (onAccepted) await onAccepted();
-      toast.success("Thank you — your acknowledgment has been recorded.");
+      if (!acknowledgmentRecorded) {
+        await acceptAiContentAgreement({
+          accepted: true,
+          agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+        });
+        acknowledgmentRecorded = true;
+        setRecorded(true);
+      }
+      setSaving("verifying");
+      if (!onAccepted) throw new Error("Protected verification is required.");
+      await onAccepted();
       setSaving(false);
     } catch (err) {
       console.error("Failed to record AI content agreement:", err);
-      toast.error("We couldn't record your acknowledgment. Please try again.");
+      setError(acknowledgmentRecorded
+        ? "Your acknowledgment was recorded, but access could not be verified. Select Retry verification; access remains closed until verification succeeds."
+        : "Your acknowledgment could not be recorded. Please try again; access remains closed until verification succeeds.");
       setSaving(false);
     }
     // In the app, a successful protected recheck unmounts this gate. A failed
@@ -115,30 +119,33 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               </p>
             </section>
 
-            <ScrollArea className="max-h-[40vh] rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <p id="ai-ack-guidance" className="mb-3 text-sm text-muted-foreground" role="status">
+              Select all {AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.length} acknowledgments below to enable I Agree &amp; Continue. Scroll within the list to review each one.
+              {" "}{checked.filter(Boolean).length} of {checked.length} selected.
+            </p>
+            <div
+              role="region"
+              aria-label="Required AI responsibility acknowledgments"
+              aria-describedby="ai-ack-guidance"
+              tabIndex={0}
+              className="max-h-[40dvh] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-1"
+            >
               <ul className="space-y-3 p-3">
                 {AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.map((text, index) => {
                   const id = `ai-ack-${index}`;
                   return (
-                    <li key={id}>
-                      <label
-                        htmlFor={id}
-                        className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-navy-300"
-                      >
-                        <input
-                          id={id}
-                          type="checkbox"
-                          checked={checked[index]}
-                          onChange={(event) => setAcknowledgment(index, event.target.checked)}
-                          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-navy-600"
-                        />
-                        <span className="text-sm leading-relaxed text-slate-700">{text}</span>
-                      </label>
-                    </li>
+                    <ResponsibilityAcknowledgment
+                      key={id}
+                      id={id}
+                      text={text}
+                      checked={checked[index]}
+                      disabled={Boolean(saving) || recorded}
+                      onCheckedChange={(value) => setAcknowledgment(index, value)}
+                    />
                   );
                 })}
               </ul>
-            </ScrollArea>
+            </div>
 
             <div className="mt-4 flex items-start gap-2 rounded-xl border border-navy-100 bg-navy-50/60 p-3 text-xs text-slate-600">
               <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-navy-600" />
@@ -149,6 +156,15 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
                 date, and this agreement version are recorded for compliance.
               </span>
             </div>
+
+            {saving && (
+              <p role="status" aria-live="polite" className="mt-4 text-sm text-muted-foreground">
+                {saving === "verifying"
+                  ? "Your acknowledgment was recorded. Verifying access to your workspace…"
+                  : "Recording your acknowledgment…"}
+              </p>
+            )}
+            {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Button
@@ -162,15 +178,15 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
               <Button
                 type="button"
                 onClick={() => { void accept(); }}
-                disabled={!allChecked || saving}
+                disabled={!allChecked || Boolean(saving)}
                 className="bg-navy-600 hover:bg-navy-700 sm:min-w-[220px]"
               >
                 {saving ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording…
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {saving === "verifying" ? "Verifying…" : "Recording…"}
                   </>
                 ) : (
-                  "I Agree & Continue"
+                  recorded ? "Retry verification" : "I Agree & Continue"
                 )}
               </Button>
             </div>

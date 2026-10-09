@@ -13,8 +13,8 @@
  * rows are not gate authority; the application trusts only the immutable,
  * service-owned AIContentAgreementAttestation returned by the status broker.
  *
- * Bumping AI_CONTENT_AGREEMENT_VERSION invalidates prior acceptances, so a
- * material change to the responsibilities below re-prompts every user.
+ * Bumping AI_CONTENT_AGREEMENT_VERSION re-prompts users unless the platform
+ * administrator enables the server-verified previous-acknowledgment policy.
  */
 
 /**
@@ -68,8 +68,8 @@ export const AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS = [
 ];
 
 /**
- * Whether the protected status broker verified acceptance of the CURRENT
- * agreement version. A prior acceptance of an older version does not count.
+ * Whether the protected broker verified current acceptance or explicitly
+ * permitted a previous acknowledgment under the platform administrator policy.
  *
  * @param {object|null|undefined} status - The broker's narrow status response.
  * @returns {boolean}
@@ -77,7 +77,7 @@ export const AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS = [
 export function hasAcceptedAiContentAgreement(status) {
   if (!status) return false;
   return (
-    status.accepted === true &&
+    (status.accepted === true || status.bypassed === true) &&
     status.agreement_version === AI_CONTENT_AGREEMENT_VERSION
   );
 }

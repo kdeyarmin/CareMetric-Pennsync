@@ -14,6 +14,7 @@
  */
 export const PUBLIC_TOKEN_SEGMENTS = Object.freeze([
   'join',
+  'jointelehealth',
   'signer',
   'followup',
   'privacy',

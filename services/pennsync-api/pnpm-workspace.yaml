@@ -7,3 +7,6 @@
 # a build script, so the answer is stated rather than left to a default.
 allowBuilds:
   core-js: false
+# Security fixes GHSA-p98j-92pf-mc4p and GHSA-6688-9rhm-gjv2.
+overrides:
+  dompurify: 3.4.16

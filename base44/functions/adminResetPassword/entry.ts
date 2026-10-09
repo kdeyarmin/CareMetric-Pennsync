@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { canManageUserInAgency } from '../../shared/userTargetAuthorization.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -241,15 +242,18 @@ function getAppBaseUrl() {
   return parsed.origin;
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
+    if (!req.headers.get('Authorization')?.trim()) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
 
     // Only an admin-tier account may force a password reset for another account.
     // Previously unauthenticated — anyone could trigger reset invites for any user.
     // Custom User fields are self-mutable, so only Base44's protected role is
     // accepted here.
-    const currentUser = await base44.auth.me();
+    const currentUser = await base44.auth.me().catch(() => null);
+    if (!currentUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (currentUser.disabled === true || currentUser.is_service === true) return Response.json({ error: 'Forbidden' }, { status: 403 });
     if (!isProtectedAdmin(currentUser)) {
       return Response.json({ error: 'Unauthorized. Admin access required.' }, { status: 403 });
     }
@@ -257,12 +261,12 @@ Deno.serve(async (req) => {
 
     const { userEmail } = await req.json();
 
-    if (!userEmail) {
+    if (typeof userEmail !== 'string' || !userEmail.trim()) {
       return Response.json({ error: 'userEmail is required' }, { status: 400 });
     }
 
-    const users = await base44.asServiceRole.entities.User.filter({ email: userEmail }, undefined, 5000);
-    if (!users || users.length === 0) {
+    const users = await base44.entities.User.filter({ email: userEmail }, undefined, 2);
+    if (!Array.isArray(users) || users.length !== 1) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
     const targetUser = users[0];
@@ -278,14 +282,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
     }
 
-    // Agency admins may only reset staff in their own agency.
-    if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-    }
-    if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
-      if (targetUser.agency_name !== currentUser.agency_name) {
-        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
-      }
+    if (!await canManageUserInAgency(base44, currentUser, targetUser, { platformOwner: callerIsSuperAdmin })) {
+      return Response.json({ error: 'Forbidden: target user is outside your verified agency.' }, { status: 403 });
     }
 
     // Resolve the environment-specific origin before any invite/email side
@@ -340,4 +338,4 @@ Deno.serve(async (req) => {
     console.error('adminResetPassword failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-});
+}

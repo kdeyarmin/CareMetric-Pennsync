@@ -43,9 +43,20 @@ test('credential presence is not reported as validated authentication or publica
 });
 
 test('empty, malformed, or multiline keys fail before Base44 is invoked', () => {
-  for (const key of ['', 'b44k_', '  ', 'sk-SYNTHETIC', 'b44k_SYNTHETIC\nOTHER']) {
+  for (const key of ['', 'b44k_', 'b44u_', '  ', 'sk-SYNTHETIC', 'b44x_SYNTHETIC', 'b44k_SYNTHETIC\nOTHER', 'b44u_SYNTHETIC OTHER']) {
     assert.equal(checkPublishingAccess({ ...CONTEXT, BASE44_API_KEY: key }).allowed, false);
   }
+});
+
+test('a personal access token is a persistent publishing credential too', () => {
+  // Base44 personal access tokens (b44u_) replace account API keys, which stop
+  // working on 2026-10-15; tools-base44-cli-credential.mjs hands one to the CLI.
+  const token = 'b44u_SYNTHETIC_TEST_ONLY_NOT_A_REAL_TOKEN';
+  const result = checkPublishingAccess({ ...CONTEXT, BASE44_API_KEY: token });
+  assert.equal(result.allowed, true);
+  assert.equal(result.credential_kind, 'personal_access_token');
+  assert.equal(checkPublishingAccess(VALID).credential_kind, 'workspace_api_key');
+  assert.equal(JSON.stringify(result).includes(token), false);
 });
 
 test('preflight emits no credential values, even for rejected inputs', () => {
@@ -80,10 +91,35 @@ test('workflow stays manual, production-protected, site-only and sequential', ()
   assert.doesNotMatch(source, /(?:entities push|functions deploy|auth push|connectors push)/);
   assert.ok(source.includes('--app-id ' + PRODUCTION_APP_ID));
   assert.ok(source.indexOf('node tools-production-publish-preflight.mjs') < source.indexOf('base44-publish-cli'));
+  // A personal access token is handed to the CLI before its first call, and
+  // the session file goes when the step ends.
+  assert.ok(source.indexOf('node tools-base44-cli-credential.mjs') > 0);
+  assert.ok(source.indexOf('node tools-base44-cli-credential.mjs') < source.indexOf('--json functions list'));
+  assert.match(source, /trap 'rm -f "\$HOME\/\.base44\/auth\/auth\.json"' EXIT\n\s*node tools-base44-cli-credential\.mjs/);
   assert.ok(source.indexOf('pnpm test') < source.indexOf('site deploy'));
   assert.ok(source.indexOf('site deploy') < source.indexOf('node tools-live-frontend-sync.mjs'));
   assert.match(source, /path: \$\{\{ runner.temp \}\}\/pennsync-publication-verification.json/);
   assert.doesNotMatch(source, /path:.*base44-(?:whoami|access-check|site-receipt|site\.log)/);
+});
+
+test('both production workflows install every service ci.yml installs before running pnpm test', () => {
+  const uncommented = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
+    .split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
+  // ci.yml is the list of record: the per-service installs its verify job runs
+  // before the suites. A production workflow missing one fails every suite
+  // that imports that service's packages, before an assertion runs.
+  const installs = uncommented('./.github/workflows/ci.yml').match(/pnpm --dir services\/[^\n]+ install[^\n]*/g);
+  assert.ok(installs && installs.length >= 2, 'ci.yml installs no service dependencies');
+  for (const workflow of ['deploy-production-functions.yml', 'publish-production-frontend.yml']) {
+    const source = uncommented(`./.github/workflows/${workflow}`);
+    const test = source.indexOf('pnpm test');
+    assert.ok(test > 0, workflow);
+    for (const install of installs) {
+      const at = source.indexOf(install);
+      assert.ok(at > 0, `${workflow} does not run: ${install}`);
+      assert.ok(at < test, `${workflow} runs pnpm test before: ${install}`);
+    }
+  }
 });
 
 test('workspace-key acknowledgement is not mistaken for authenticated production access', () => {

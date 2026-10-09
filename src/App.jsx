@@ -39,6 +39,7 @@ import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
 import { getRoleView, canAccessLevel } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { getAiContentAgreementStatus } from '@/functions/getAiContentAgreementStatus';
+import { verifyAiContentAgreementAcceptance } from '@/lib/verifyAiContentAgreementAcceptance';
 import { getRouterBasename } from '@/lib/routerBasename';
 import {
   getPublicCapabilitySnapshot,
@@ -374,7 +375,13 @@ const TenantReadyApp = () => {
   // protected verification is in flight. This matters when returning from a
   // public token route or re-enabling the query for the same authenticated
   // user: React Query may retain old data while it performs the new request.
-  if (!user || agreementStatus.isPending || agreementStatus.isFetching) {
+  // Keep an unaccepted agreement mounted during its protected recheck.
+  // Replacing it with the loader discarded checked boxes and pending feedback
+  // during acceptance or a background refresh. Cached acceptance still never
+  // opens clinical routes while a fresh verification is in flight.
+  if (!user || agreementStatus.isPending || (
+    agreementStatus.isFetching && hasAcceptedAiContentAgreement(agreementStatus.data)
+  )) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <PageLoader />
@@ -403,13 +410,11 @@ const TenantReadyApp = () => {
   if (!hasAcceptedAiContentAgreement(agreementStatus.data)) {
     return (
       <AIContentResponsibilityAgreement
-        onAccepted={async () => {
-          const result = await agreementStatus.refetch({ cancelRefetch: true });
-          if (result.error) throw result.error;
-          if (!hasAcceptedAiContentAgreement(result.data)) {
-            throw new Error('Protected agreement verification did not confirm the current version.');
-          }
-        }}
+        onAccepted={() => verifyAiContentAgreementAcceptance(queryClientInstance, [
+          'aiContentAgreementStatus',
+          user.id || 'authenticated-user',
+          tenantAuthorityKey,
+        ])}
       />
     );
   }
@@ -530,6 +535,7 @@ const AuthenticatedApp = () => {
         <Suspense fallback={publicFallback}>
           <Routes>
             <Route path="/join/*" element={<JoinTelehealth />} />
+            <Route path="/JoinTelehealth/*" element={<RedirectTo to="/join" />} />
             <Route path="/signer/*" element={<SignerPortal />} />
             <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
             <Route path="/consent/*" element={<OAuthConsent />} />

@@ -56,6 +56,7 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
+import { requireClinicalWorkspace } from '../../shared/securityAccess.ts';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -67,16 +68,22 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
+    if (!req.headers.get('Authorization')?.trim()) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (user.disabled === true || user.is_service === true) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    try { await requireClinicalWorkspace(base44); }
+    catch { return Response.json({ error: 'Active clinical workspace required' }, { status: 403 }); }
     const payload = await req.json();
     const {
       from_name,
@@ -284,15 +291,16 @@ Deno.serve(async (req) => {
     const pdfBytes = doc.output('arraybuffer');
     const file = new File([pdfBytes], 'fax_cover_sheet.pdf', { type: 'application/pdf' });
 
-    const file_url_result = await base44.integrations.Core.UploadFile({
-      file
+    const uploaded = await base44.asServiceRole.integrations.Core.UploadPrivateFile({ file });
+    const file_url_result = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({
+      file_uri: uploaded.file_uri, expires_in: 300,
     });
 
     return Response.json({
       success: true,
-      file_url: file_url_result.file_url,
+      file_url: file_url_result.signed_url,
       cover_sheet_data: payload,
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
 
   } catch (error) {
     console.error('Cover sheet generation error:', error);
@@ -302,4 +310,4 @@ Deno.serve(async (req) => {
       details: 'Failed to generate cover sheet'
     }, { status: 500 });
   }
-});
+}

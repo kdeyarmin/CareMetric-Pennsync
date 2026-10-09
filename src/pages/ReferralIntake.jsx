@@ -54,7 +54,6 @@ import {
   Sparkles,
   ClipboardCheck,
   ClipboardList,
-  Target,
   Trash2,
   UserCheck,
   Loader2,
@@ -1690,26 +1689,7 @@ export default function ReferralIntake() {
                   </Alert>
                 )}
                 
-                {/* Suggested Care Plans Preview */}
-                {extractedFormData.suggested_care_plans?.length > 0 && (
-                  <Alert className="bg-indigo-50 border-indigo-300">
-                    <Target className="w-4 h-4 text-indigo-600" />
-                    <AlertDescription className="text-indigo-900 text-sm">
-                      <strong>AI Suggested {extractedFormData.suggested_care_plans.length} Care Plans</strong>
-                      <div className="mt-2 text-xs space-y-2">
-                        {extractedFormData.suggested_care_plans.slice(0, 2).map((plan, idx) => (
-                          <div key={idx} className="bg-white p-2 rounded border border-indigo-200">
-                            <div className="font-semibold">{plan.problem}</div>
-                            <div className="text-slate-700">Goal: {plan.goal}</div>
-                          </div>
-                        ))}
-                        {extractedFormData.suggested_care_plans.length > 2 && (
-                          <div className="text-xs text-slate-600">+ {extractedFormData.suggested_care_plans.length - 2} more care plans</div>
-                        )}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
+
               </div>
             )}
 

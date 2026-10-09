@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { transpileFunctionEntry } from '../../tools-transpile-ts.mjs';
 
 const ROOT = new URL('../', import.meta.url);
 const RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
@@ -28,10 +28,12 @@ const ASSIGNED_FUNCTIONS = [
   'sendPersonnelExpirationNotifications',
 ];
 
+// Real calls carry the caller's credential; since 2026-10-09 generateAIReport
+// answers 401 before anything else when it is missing.
 function request(body = {}, headers = {}) {
   return new Request('https://functions.example.test', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: { 'content-type': 'application/json', Authorization: 'Bearer synthetic-test-session', ...headers },
     body: JSON.stringify(body),
   });
 }
@@ -123,7 +125,7 @@ async function loadHandler(name, client, {
     serve: (candidate) => { handler = candidate; },
     env: { get: (key) => env[key] },
   };
-  const compiled = transpileTs(source, { fileName: `${name}/entry.ts` }).outputText;
+  const compiled = (await transpileFunctionEntry(source, { fileName: `${name}/entry.ts` })).outputText;
   const encoded = Buffer.from(compiled).toString('base64');
   await import(`data:text/javascript;base64,${encoded}#maintenance-gate-${moduleSequence++}`);
   assert.equal(typeof handler, 'function', name);
@@ -133,7 +135,12 @@ async function loadHandler(name, client, {
 test('assigned senders embed one canonical gate after authentication and before email', async () => {
   for (const name of ASSIGNED_FUNCTIONS) {
     const source = await readFile(new URL(`functions/${name}/entry.ts`, ROOT), 'utf8');
-    const handler = source.slice(source.indexOf('Deno.serve'));
+    // The handler starts at Deno.serve, or at the default export in the newer
+    // Base44 function format.
+    const start = [source.indexOf('Deno.serve'), source.search(/export\s+default\b/)]
+      .filter((at) => at >= 0).sort((a, b) => a - b)[0] ?? -1;
+    assert.notEqual(start, -1, `${name}: handler located`);
+    const handler = source.slice(start);
     const auth = handler.indexOf('.auth.me');
     const release = handler.indexOf('outboundDeliveryReleased()');
     const provider = source.indexOf('.SendEmail(');
@@ -146,7 +153,7 @@ test('assigned senders embed one canonical gate after authentication and before 
     assert.notEqual(release, -1, `${name}: checks release at runtime`);
     assert.notEqual(provider, -1, `${name}: email provider primitive exists`);
     assert.ok(auth < release, `${name}: authentication precedes the release decision`);
-    assert.ok(source.indexOf('Deno.serve') + release < provider,
+    assert.ok(start + release < provider,
       `${name}: release decision precedes the email primitive`);
   }
 });

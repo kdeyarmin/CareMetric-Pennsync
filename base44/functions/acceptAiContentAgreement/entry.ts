@@ -166,7 +166,7 @@ async function readCurrentAuthority(entities, actorId, actorEmail) {
   return rows;
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, {
       status: 405,
@@ -305,4 +305,4 @@ Deno.serve(async (req) => {
       headers: NO_STORE_HEADERS,
     });
   }
-});
+}
