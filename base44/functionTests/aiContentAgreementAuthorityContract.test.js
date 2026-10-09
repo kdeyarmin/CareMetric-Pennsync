@@ -1,43 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import JSON5 from 'json5';
-import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { importBackendModule, loadFunctionEntry } from './functionEntryLoader.js';
 import {
   AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS,
   AI_CONTENT_AGREEMENT_VERSION,
 } from '../../src/lib/aiContentAgreement.js';
 
-async function loadStatusBroker(client) {
-  let source = await readFile(
+async function loadStatusBroker(client, runtime) {
+  return loadFunctionEntry(
     new URL('../functions/getAiContentAgreementStatus/entry.ts', import.meta.url),
-    'utf8',
+    { client, runtime },
   );
-  source = source.replace(
-    /import\s+\{[^}]*\}\s+from\s+'npm:@base44\/sdk@[^']*';?/,
-    'const createClientFromRequest = globalThis.__agreementStatusClient;',
-  );
-  const file = join(
-    tmpdir(),
-    `agreement_status_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
-  );
-  await writeFile(file, transpileTs(source).outputText);
-  let handler;
-  const previousDeno = globalThis.Deno;
-  globalThis.__agreementStatusClient = () => client;
-  globalThis.Deno = { serve: (candidate) => { handler = candidate; } };
-  try {
-    await import(pathToFileURL(file).href);
-  } finally {
-    await unlink(file).catch(() => {});
-    delete globalThis.__agreementStatusClient;
-    if (previousDeno === undefined) delete globalThis.Deno;
-    else globalThis.Deno = previousDeno;
-  }
-  return handler;
 }
 
 const statusRequest = (body = {}, method = 'POST') => new Request(
@@ -66,7 +41,7 @@ const currentAttestation = {
   audit_event_id: 'event-1',
 };
 
-function statusClient({ rows = [], currentActor = actor, onActorRead } = {}) {
+function statusClient({ rows = [], currentActor = actor, onActorRead, policyRows = [] } = {}) {
   return {
     auth: { me: async () => currentActor },
     asServiceRole: { entities: {
@@ -86,6 +61,16 @@ function statusClient({ rows = [], currentActor = actor, onActorRead } = {}) {
           assert.equal(sort, '-created_date');
           assert.equal(limit, 50);
           return rows;
+        },
+      },
+      // The platform consent policy (base44/shared/aiResponsibilityPolicy.ts).
+      // Absent by default: no bypass, so every historical row re-prompts.
+      AIResponsibilityPolicy: {
+        filter: async (query, sort, limit) => {
+          assert.deepEqual(query, { policy_key: 'platform-ai-responsibility-v1' });
+          assert.equal(sort, '-created_date');
+          assert.equal(limit, 2);
+          return policyRows;
         },
       },
       // Historical UserActivity data was once browser-forgeable. The status
@@ -140,6 +125,80 @@ test('valid historical authority re-prompts instead of failing verification', as
     accepted: false,
     agreement_version: AI_CONTENT_AGREEMENT_VERSION,
   });
+});
+
+// The platform consent policy (2026-10-09): a server-signed row may let a
+// person who acknowledged an EARLIER version through without re-prompting.
+// Signed with the shared module's own signAiPolicy, never a retyped HMAC.
+const POLICY_SECRET = 'synthetic-policy-signing-secret';
+const policyRuntime = (secret = POLICY_SECRET) => ({
+  secrets: { get: (key) => (key === 'SIGNATURE_HMAC_SECRET' ? secret : undefined) },
+});
+async function signedPolicy(bypass, secret = POLICY_SECRET) {
+  const { AI_POLICY_KEY, signAiPolicy } = await importBackendModule(
+    new URL('../shared/aiResponsibilityPolicy.ts', import.meta.url),
+    { runtime: policyRuntime(secret) },
+  );
+  return {
+    id: 'policy-1',
+    ...await signAiPolicy({
+      policy_key: AI_POLICY_KEY,
+      bypass_previously_acknowledged: bypass,
+      changed_by_user_id: 'owner-1',
+      changed_at: '2026-10-09T15:00:00.000Z',
+    }, undefined),
+  };
+}
+const historicalAttestation = {
+  ...currentAttestation,
+  id: 'attestation-old',
+  agreement_version: '0.9',
+  acknowledgments: ['A prior canonical acknowledgment'],
+};
+
+test('a signed bypass policy lets an earlier acknowledgment through, and nothing else', async () => {
+  const bypassOn = await signedPolicy(true);
+  const answer = async (rows, policyRows) => {
+    const handler = await loadStatusBroker(statusClient({ rows, policyRows }), policyRuntime());
+    const response = await handler(statusRequest());
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  assert.deepEqual(await answer([historicalAttestation], [bypassOn]), {
+    accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION, bypassed: true,
+  });
+  // Never acknowledged anything: the policy does not stand in for consent.
+  assert.deepEqual(await answer([], [bypassOn]), {
+    accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+  });
+  // A current acceptance is reported as acceptance, not as a bypass.
+  assert.deepEqual(await answer([currentAttestation], [bypassOn]), {
+    accepted: true, agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+  });
+  // The policy turned off re-prompts exactly as having no policy does.
+  assert.deepEqual(await answer([historicalAttestation], [await signedPolicy(false)]), {
+    accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+  });
+});
+
+test('a policy that is altered, unsigned, foreign-keyed or duplicated fails closed', async () => {
+  const bypassOff = await signedPolicy(false);
+  for (const [name, policyRows] of [
+    ['bypass flipped after signing', [{ ...bypassOff, bypass_previously_acknowledged: true }]],
+    ['signature removed', [{ ...bypassOff, bypass_previously_acknowledged: true, policy_signature: undefined }]],
+    ['signed with another key', [await signedPolicy(true, 'not-the-deployment-secret')]],
+    ['two policy rows', [await signedPolicy(true), { ...await signedPolicy(true), id: 'policy-2' }]],
+  ]) {
+    const handler = await loadStatusBroker(
+      statusClient({ rows: [historicalAttestation], policyRows }),
+      policyRuntime(),
+    );
+    const response = await handler(statusRequest());
+    assert.equal(response.status, 500, name);
+    const body = await response.json();
+    assert.equal(body.bypassed, undefined, name);
+    assert.equal(body.accepted, undefined, name);
+  }
 });
 
 test('status broker rejects wrong transport, caller-shaped input, and blocked actors', async () => {
@@ -217,5 +276,13 @@ test('App gates on broker status and never on legacy User flags', async () => {
   assert.doesNotMatch(app, /hasAcceptedAiContentAgreement\(user\)/);
   assert.match(app, /AgreementVerificationUnavailable/);
   assert.match(app, /agreementStatus\.isFetching/);
-  assert.match(app, /Protected agreement verification did not confirm the current version/);
+  // Acceptance is confirmed by a fresh protected read, not by the recording
+  // call's answer. Since 2026-10-09 that read lives in its own helper.
+  assert.match(app, /onAccepted=\{\(\) => verifyAiContentAgreementAcceptance\(/);
+  const verify = await readFile(
+    new URL('../../src/functions/verifyAiContentAgreementAcceptance.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(verify, /await getAiContentAgreementStatus\(\)/);
+  assert.match(verify, /if \(!hasAcceptedAiContentAgreement\(status\)\) \{\s*throw new Error\(/);
 });
