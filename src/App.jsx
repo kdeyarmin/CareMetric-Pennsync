@@ -535,6 +535,7 @@ const AuthenticatedApp = () => {
         <Suspense fallback={publicFallback}>
           <Routes>
             <Route path="/join/*" element={<JoinTelehealth />} />
+            <Route path="/JoinTelehealth/*" element={<RedirectTo to="/join" />} />
             <Route path="/signer/*" element={<SignerPortal />} />
             <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
             <Route path="/consent/*" element={<OAuthConsent />} />

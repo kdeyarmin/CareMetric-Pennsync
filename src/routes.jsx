@@ -230,6 +230,7 @@ export const PAGE_NAMES = ROUTES.map((route) => route.name);
 export const ROUTER_PATHS = [
   '/',
   '/join',
+  '/JoinTelehealth',
   '/signer',
   '/followup',
   '/consent',

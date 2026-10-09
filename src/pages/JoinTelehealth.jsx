@@ -58,6 +58,9 @@ export default function JoinTelehealth() {
               <p className="mt-2 text-sm text-slate-600">
                 {ended ? "Thank you. You can close this window." : "Please contact your care team for a new link."}
               </p>
+              <a href="/" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+                Return to workspace
+              </a>
             </CardContent>
           </Card>
         )}
