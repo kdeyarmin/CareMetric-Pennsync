@@ -62,6 +62,15 @@ const EXPECTED = {
     releaseEnv: 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
     releaseConst: 'PROCESS_SCHEDULED_FAXES_ENABLED',
   },
+  // Added 2026-10-08 when the owner released SMS redrive. Like the scheduled
+  // SMS dispatcher it has no workflow-specific release key: it is gated by the
+  // shared OUTBOUND_DELIVERY_RELEASE and by the scheduler auth helper, and it
+  // re-proves every row's line, sender and consent before a re-send.
+  'Redrive Failed SMS.jsonc': {
+    target: 'redriveFailedSms',
+    schedule: { mode: 'interval', value: 10, unit: 'minutes' },
+    releaseState: 'live',
+  },
 };
 
 function assertSchedule(config, expected, file) {

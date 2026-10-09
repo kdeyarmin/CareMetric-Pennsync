@@ -137,8 +137,19 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // risk and PDGM payment screens left (-7 landable, -15 unserved), and the
   // phone, PDF, feedback and report features came back (+7 landable, +2
   // unserved), and the admin, security, education and discharge screens came
-  // back (+29 landable, +1 unserved), so this tree reads 488, 292 and 196.
-  // Each movement is recorded below on its own.
+  // back (+29 landable, +1 unserved), and the activity, audit-trail, telecom
+  // and telehealth screens came back (+1 landable, unserved unchanged), so
+  // this tree reads 489, 293 and 196. Each movement is recorded below on its
+  // own.
+  //
+  // The activity, audit-trail, telecom and telehealth screens (2026-10-08).
+  // Two sites ARRIVED and one LEFT. The restored audit trail viewer reads the
+  // security log again for a built-in administrator (activity trail, landable),
+  // and the training hub records a finished AI lesson as the caller's own
+  // micro-learning progress (`hub`, no table here). The texts tab's mark-read
+  // update LEFT: marking a text read is now a server action (`markSmsRead`)
+  // and the browser cannot write SmsMessage at all, so a `preserved_paused`
+  // no_table site was replaced by a `hub` one and `unserved` held still.
   //
   // The admin, security, education and discharge screens (measured on their
   // own branch as 452 to 482, 244 to 273 and 208 to 209) came back when the
@@ -181,9 +192,9 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // 22 sites left with the deleted screens, 7 landable and 15 unserved. That
   // IS a movement of `unserved`, and of the right kind — a removal rather than
   // a decision or a contract — so the baseline was lowered with it.
-  assert.equal(report.total, 488);
-  assert.equal(report.served, 292);
-  // 196 of 488. Stage J reads as "replace call sites tier by tier", which is a
+  assert.equal(report.total, 489);
+  assert.equal(report.served, 293);
+  // 196 of 489. Stage J reads as "replace call sites tier by tier", which is a
   // refactor whose size is the count; 46% of them have no destination. The
   // percentage is the trap: it read 46% against 453 too, so the denominator
   // moved underneath it and the derived figure did not budge. 179 of the 193 reach
@@ -217,7 +228,7 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   // 15 were all `preserved_paused` sites, which is why that disposition fell by
   // the same 15 below.
   assert.deepEqual(report.by_destination, {
-    record_store: 272, broker_family: 7, activity_trail: 13,
+    record_store: 272, broker_family: 7, activity_trail: 14,
     no_table: 123, no_access_contract: 58,
     broker_is_read_only: 9, global_reference_is_read_only: 5,
     no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
@@ -225,8 +236,8 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   assert.equal(report.by_destination.no_table + report.by_destination.no_access_contract, 181);
   // The training domain alone is more call sites than the broker family serves
   // in total, and it is `hub` — a different destination entirely.
-  assert.equal(report.by_disposition.hub, 120);
-  assert.equal(report.by_disposition.preserved_paused, 62);
+  assert.equal(report.by_disposition.hub, 121);
+  assert.equal(report.by_disposition.preserved_paused, 61);
   assert.equal(report.within_baseline, true);
 });
 
@@ -325,7 +336,7 @@ test('the command line refuses an unknown argument and an unavailable baseline',
 test('the summary names what cannot land and stays quiet about what can', () => {
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
-  assert.match(lines[0], /488 call sites, 292 can land, 196\/196 cannot/);
+  assert.match(lines[0], /489 call sites, 293 can land, 196\/196 cannot/);
   assert.ok(lines.some(line => /no_table: 123/.test(line)));
   assert.ok(lines.some(line => /no_access_contract: 58/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));

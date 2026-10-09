@@ -129,8 +129,11 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
   'gradeTrainingAttempt/entry.ts': Object.freeze([legacy(), legacy()]),
   'handleTelnyxStatusWebhook/entry.ts': Object.freeze([
     legacy(),
-    legacy('create', PRODUCER_EXECUTION_STATES.RUNTIME_GATED),
-    legacy('create', PRODUCER_EXECUTION_STATES.RUNTIME_GATED),
+    // The urgent-text and new-text notices. Reachable since the owner released
+    // inbound patient SMS routing on 2026-10-08; they go only to the reader the
+    // receiving line's binding and its agency's membership name.
+    legacy(),
+    legacy(),
     authorityV1({
       kind: 'factory-binding',
       name: 'outboundFaxNotificationSpec',

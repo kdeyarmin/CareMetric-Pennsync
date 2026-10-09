@@ -143,6 +143,66 @@ test('create stamps agency and host server-side and refuses a chart the caller c
   assert.equal(refused.status, 403, 'a revoked care-team seat closes the chart');
 });
 
+test('a chart\'s visit history is listed to whoever may open that chart, and to no one else', async () => {
+  // Released for the patient chart's telehealth panel (owner decision,
+  // 2026-10-08): the chart rule decides, not who hosted the visit.
+  const { client, state } = fixture(nurse);
+  state.sessions.push(
+    { id: 's-p1', agency_id: 'agency-1', host_user_id: 'nurse-2', patient_id: 'patient-1', room_name: 'th-p', status: 'completed' },
+    { id: 's-p2', agency_id: 'agency-2', host_user_id: 'nurse-2', patient_id: 'patient-1', room_name: 'th-q', status: 'completed' },
+  );
+  const handler = await loadBroker(client);
+  const chart = await (await handler(post({ action: 'list', agency_id: 'agency-1', patient_id: 'patient-1' }))).json();
+  assert.deepEqual(chart.sessions.map((s) => s.id), ['s-p1'], 'the care team sees the chart\'s visits in this agency only');
+
+  state.seats[0].status = 'revoked';
+  const closed = await (await handler(post({ action: 'list', agency_id: 'agency-1', patient_id: 'patient-1' }))).json();
+  assert.deepEqual(closed.sessions, [], 'without the chart, only visits the caller hosted are listed');
+});
+
+test('live vitals are range-checked, chart-checked and merged by compare-and-swap', async () => {
+  const { client, state } = fixture(nurse);
+  state.sessions.push({
+    id: 's-live', agency_id: 'agency-1', host_user_id: 'nurse-1', patient_id: 'patient-1', room_name: 'th-l',
+    status: 'active', vitals_captured: { heart_rate: 80 }, updated_date: '2026-10-08T10:00:00.000Z',
+  });
+  const casCalls = [];
+  client.asServiceRole.entities.TelehealthSession.updateMany = async (query, patch) => {
+    casCalls.push(query);
+    const row = state.sessions.find((r) => matches(r, query));
+    if (!row) return { success: true, updated: 0, has_more: false };
+    Object.assign(row, patch.$set, { updated_date: new Date(Date.parse(row.updated_date) + 1000).toISOString() });
+    return { success: true, updated: 1, has_more: false };
+  };
+  const handler = await loadBroker(client);
+  const record = (vitals, sessionId = 's-live') => handler(post({ action: 'record_vitals', agency_id: 'agency-1', session_id: sessionId, vitals }));
+
+  const ok = await record({ oxygen_saturation: 96, temperature: 98.6 });
+  assert.equal(ok.status, 200, await ok.clone().text());
+  const live = state.sessions.find((s) => s.id === 's-live');
+  assert.equal(live.vitals_captured.heart_rate, 80, 'an earlier reading survives the merge');
+  assert.equal(live.vitals_captured.oxygen_saturation, 96);
+  assert.match(live.vitals_captured.recorded_at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(casCalls[0], { id: 's-live', agency_id: 'agency-1', updated_date: '2026-10-08T10:00:00.000Z' });
+
+  for (const [vitals, status] of [
+    [{ heart_rate: 9000 }, 400],
+    [{ heart_rate: '80' }, 400],
+    [{ blood_glucose: 120 }, 400],
+    [{}, 400],
+  ]) {
+    assert.equal((await record(vitals)).status, status, JSON.stringify(vitals));
+  }
+  assert.equal(casCalls.length, 1, 'refused readings write nothing');
+
+  assert.equal((await record({ heart_rate: 72 }, 's-2')).status, 404, 'another clinician\'s visit is not found');
+  state.sessions.push({ id: 's-done', agency_id: 'agency-1', host_user_id: 'nurse-1', status: 'completed', room_name: 'th-d' });
+  assert.equal((await record({ heart_rate: 72 }, 's-done')).status, 409, 'only a live visit takes readings');
+  state.seats[0].status = 'revoked';
+  assert.equal((await record({ heart_rate: 72 })).status, 403, 'a revoked care-team seat closes the chart mid-visit');
+  assert.equal(casCalls.length, 1);
+});
+
 test('createTelehealthToken authorizes by stored identity or the session\'s hashed join token', async () => {
   const source = await readFile(entryUrl, 'utf8');
   assert.match(source, /const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;/);

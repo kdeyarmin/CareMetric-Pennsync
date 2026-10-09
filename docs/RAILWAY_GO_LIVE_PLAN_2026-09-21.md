@@ -4125,9 +4125,8 @@ going backwards, and the totals are the block's to state.
 owner turned the admin, AI, security, education and discharge screens back on**
 — another printer run, not an adjustment of anything above it.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
 
 ```
 entity routes: 99 declared, 167/292 landable call sites SERVED, 125 still to adopt
@@ -4147,6 +4146,32 @@ incident count, was written to list the agency's incidents and narrow them on
 the screen rather than filter on a field the incident route refuses, so it
 landed in SERVED instead of adding a refused site. The totals are the block's
 to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner turned the activity, audit-trail, telecom and telehealth screens back on**
+— another printer run, not an adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 99 declared, 167/293 landable call sites SERVED, 126 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 75 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 126, across 37 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 125 need a named capability
+```
+
+**No route was declared between these two blocks, and the move is again a
+POPULATION change and not adoption.** One landable call site arrived: the
+restored audit trail viewer reads the security log again, for a built-in
+administrator only, and that read joined the unrouted remainder over a key it
+already held, so the remainder gained a site and no key. Everything else those
+screens brought back reaches its records through server functions — the
+activity and phone reports, the telehealth session broker, the patient contact
+brokers and the referral follow-up broker — so it moved the Base44-surface
+count of function invocations rather than this population. The totals are the
+block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4289,8 +4314,8 @@ different kinds of work:
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Forty-six have no route declared at all**, over thirty-four entity and
-  operation keys: thirty-two reads over twenty-one keys, and fourteen writes over
+- **Forty-seven have no route declared at all**, over thirty-four entity and
+  operation keys: thirty-three reads over twenty-one keys, and fourteen writes over
   thirteen.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
@@ -4304,7 +4329,7 @@ different kinds of work:
   the sites already served: a read key there carries 2.76 call sites and a write
   key 1.28, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.52 sites and a
+  the remainder, though**: inside this pool a read key covers 1.57 sites and a
   write key 1.08, which is nothing like the served spread.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
@@ -4442,6 +4467,17 @@ different kinds of work:
   so the served read pair went from 128 sites over 49 keys to 135 over the same
   49 and its ratio rose with no route declared. Nothing was declared and nothing
   was repaired; both pools grew because the population did.
+
+  **And once more when the activity, audit-trail, telecom and telehealth
+  screens came back, by the smallest possible arrival: one read over a key the
+  remainder already held.** The audit trail viewer's security-log read put a
+  single site into the no-route pool and no key, so its read pair went from
+  thirty-two sites over twenty-one keys to thirty-three over the same
+  twenty-one and its read ratio rose from 1.52 to 1.57, while its write pair,
+  its key total and all four of the served pool's figures stayed exactly where
+  they were. A remainder ratio rising because one site joined a key it already
+  held is the arrival half of the same mechanism, and says nothing about the
+  remaining work getting harder.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the

@@ -22,6 +22,24 @@ const mocks = vi.hoisted(() => ({
     return mocks.routeScopeResult;
   }),
   lastRouteScopeOptions: null,
+  contactPanelProps: [],
+  telehealthPanelProps: [],
+}));
+
+// The two chart panels carry their own server authority and have their own
+// suites; here they are markers that record what the page handed them.
+vi.mock('@/components/voice/PatientContactActions', () => ({
+  default: (props) => {
+    mocks.contactPanelProps.push(props);
+    return <section aria-label="contact panel" />;
+  },
+}));
+
+vi.mock('@/components/telehealth/PatientTelehealthPanel', () => ({
+  default: (props) => {
+    mocks.telehealthPanelProps.push(props);
+    return <section aria-label="telehealth panel" />;
+  },
 }));
 
 vi.mock('@/functions/listAuthorizedVisits', () => ({
@@ -103,6 +121,8 @@ beforeEach(() => {
   mocks.lastPatientOptions = null;
   mocks.patientOptions = [];
   mocks.lastRouteScopeOptions = null;
+  mocks.contactPanelProps = [];
+  mocks.telehealthPanelProps = [];
   mocks.routeScopeResult = {
     agencyId: null,
     error: null,
@@ -135,7 +155,7 @@ beforeEach(() => {
 });
 
 describe('PatientDetails purpose-bound chart gate', () => {
-  it('authorizes Patient and Visit reads before auditing and mounts no PHI panels', async () => {
+  it('authorizes Patient and Visit reads before auditing and mounts only the self-authorizing panels', async () => {
     const qc = queryClient();
     const { default: PatientDetails } = await import('@/pages/PatientDetails');
     renderWithProviders(<PatientDetails />, {
@@ -159,7 +179,7 @@ describe('PatientDetails purpose-bound chart gate', () => {
       pageSize: 50,
       cursor: null,
     }));
-    expect(await screen.findByText('Patient details temporarily unavailable')).toBeInTheDocument();
+    expect(await screen.findByText('Verified chart access')).toBeInTheDocument();
     await waitFor(() => expect(mocks.logActivity).toHaveBeenCalledTimes(1));
     const visitAuthorizationKey = [
       'patient-details',
@@ -188,6 +208,18 @@ describe('PatientDetails purpose-bound chart gate', () => {
     expect(screen.queryByText(/Ada|Lovelace/)).not.toBeInTheDocument();
     expect(screen.queryByText(/OASIS assessment/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Fax Document/i)).not.toBeInTheDocument();
+
+    // Contact and telehealth mount only after both authorizations settle, and
+    // are handed the route's exact chart and agency; each re-authorizes on
+    // the server.
+    expect(screen.getByRole('region', { name: 'contact panel' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'telehealth panel' })).toBeInTheDocument();
+    expect(mocks.contactPanelProps.at(-1)).toEqual({ patientId: 'patient-a', agencyId: 'agency-a' });
+    expect(mocks.telehealthPanelProps.at(-1)).toEqual({
+      patientId: 'patient-a',
+      agencyId: 'agency-a',
+      patientName: 'Ada Lovelace',
+    });
   });
 
   it('shows verification and requests no PHI while implicit route scope is pending', async () => {
@@ -337,7 +369,7 @@ describe('PatientDetails purpose-bound chart gate', () => {
       purpose: 'display',
       enabled: true,
     });
-    expect(await screen.findByText('Patient details temporarily unavailable')).toBeInTheDocument();
+    expect(await screen.findByText('Verified chart access')).toBeInTheDocument();
     await waitFor(() => expect(mocks.logActivity).toHaveBeenCalledTimes(1));
   });
 
@@ -412,8 +444,10 @@ describe('PatientDetails purpose-bound chart gate', () => {
     try {
       await waitFor(() => expect(mocks.listAuthorizedVisits).toHaveBeenCalledTimes(1));
       expect(await screen.findByText('Verifying chart access')).toBeInTheDocument();
-      expect(screen.queryByText('Patient details temporarily unavailable')).not.toBeInTheDocument();
+      expect(screen.queryByText('Verified chart access')).not.toBeInTheDocument();
       expect(screen.queryByText(/Ada|Lovelace/)).not.toBeInTheDocument();
+      expect(mocks.contactPanelProps).toEqual([]);
+      expect(mocks.telehealthPanelProps).toEqual([]);
       expect(mocks.logActivity).not.toHaveBeenCalled();
     } finally {
       unmount();
@@ -431,7 +465,7 @@ describe('PatientDetails purpose-bound chart gate', () => {
     try {
       expect(await screen.findByText('Verifying chart access')).toBeInTheDocument();
       expect(mocks.listAuthorizedVisits).not.toHaveBeenCalled();
-      expect(screen.queryByText('Patient details temporarily unavailable')).not.toBeInTheDocument();
+      expect(screen.queryByText('Verified chart access')).not.toBeInTheDocument();
       expect(mocks.logActivity).not.toHaveBeenCalled();
     } finally {
       unmount();

@@ -348,7 +348,10 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
     new URL('../../src/components/telehealth/PatientTelehealthPanel.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(telehealth, /TELEHEALTH_UNAVAILABLE_MESSAGE/);
+  // The chart's telehealth panel (released 2026-10-08) schedules telehealth
+  // sessions through the shared workspace and manageTelehealthSession; it
+  // never creates a Visit and never touches a session row itself.
+  assert.match(telehealth, /<TelehealthWorkspace patientId=\{patientId\}/);
   assert.doesNotMatch(telehealth, /createAuthorizedVisit|base44\.entities\.TelehealthSession|useMutation|base44\./);
 });
 

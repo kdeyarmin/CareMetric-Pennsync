@@ -257,19 +257,15 @@ test("every live consent broker uses composite authority while unsafe provider p
     assert.match(source, /loadLatestScopedSmsConsent\(/, `${name} uses the scoped consent ledger`);
     assert.doesNotMatch(source, /SmsConsent\s*\.filter\(\{ phone_e164/, `${name} never reads a phone-only consent row`);
   }
-  const paused = [
-    ["redriveFailedSms", "const SMS_REDRIVE_MIGRATION_PAUSED = true;"],
-  ];
-  for (const [name, literal] of paused) {
-    const source = await readFile(new URL(`${name}/entry.ts`, FUNCTIONS_URL), "utf8");
-    const handler = source.slice(source.indexOf("Deno.serve"));
-    assert.ok(source.includes(literal), `${name} retains its literal pause`);
-    assert.ok(
-      handler.indexOf("status: 503") >= 0
-        && handler.indexOf("status: 503") < handler.indexOf("entities.SmsConsent"),
-      `${name} returns 503 before its legacy consent path`,
-    );
-  }
+  // redriveFailedSms was released 2026-10-08: it re-proves the stamped
+  // binding, the sender's membership and the scoped consent per row (its
+  // behaviour is pinned in smsMessageContainmentContract.test.js).
+  const redrive = await readFile(new URL("redriveFailedSms/entry.ts", FUNCTIONS_URL), "utf8");
+  assert.doesNotMatch(redrive, /SMS_REDRIVE_MIGRATION_PAUSED/);
+  assert.match(redrive, /<<<BEGIN SHARED HELPER: telnyxSmsAuthority/);
+  assert.match(redrive.slice(redrive.indexOf("Deno.serve")), /requireOutbound: true/);
+  assert.match(redrive, /loadLatestScopedSmsConsent\(base44, lineAuthority, destination\)/);
+  assert.doesNotMatch(redrive.slice(redrive.indexOf("Deno.serve")), /SmsConsent\s*\.filter\(\{ phone_e164/);
 });
 
 test("Telnyx webhook gates only provider egress and preserves signed inbound/status handling", async () => {
@@ -420,20 +416,6 @@ test("signed provider-classified STOP/START appends scoped, replay-safe consent 
       .sort((a, b) => Date.parse(b.captured_at) - Date.parse(a.captured_at))[0];
     assert.equal(newest.consent_status, "opted_in");
 
-    const help = keywordEvent({
-      eventId: "event_help",
-      messageId: "message_help",
-      keyword: "HELP",
-      occurredAt: "2026-09-05T12:00:04.000Z",
-    });
-    assert.equal(
-      (await handler(signedWebhook(privateKey, help))).status,
-      503,
-      "HELP and all non-consent inbound handling retain the literal routing pause",
-    );
-    assert.equal(state.data.SmsConsent.length, 3, "HELP never becomes a consent event");
-    assert.equal(fetchCalls.length, 0, "Telnyx owns the keyword autoresponse; the webhook sends no duplicate reply");
-
     for (const entity of ["User", "Patient", "AgencySettings", "SmsMessage", "Notification"]) {
       assert.equal(
         state.entityCalls.filter((call) => call.name === entity).length,
@@ -441,6 +423,22 @@ test("signed provider-classified STOP/START appends scoped, replay-safe consent 
         `keyword handling never reads or writes ${entity}`,
       );
     }
+
+    // Inbound routing is released (2026-10-08): HELP is not a consent event,
+    // it is an ordinary inbound text stored in the line's agency thread, and
+    // because Telnyx already answered it (autoresponse_type) no reply is sent.
+    const help = keywordEvent({
+      eventId: "event_help",
+      messageId: "message_help",
+      keyword: "HELP",
+      occurredAt: "2026-09-05T12:00:04.000Z",
+    });
+    const helpResponse = await handler(signedWebhook(privateKey, help));
+    assert.equal(helpResponse.status, 200);
+    assert.equal(state.data.SmsConsent.length, 3, "HELP never becomes a consent event");
+    assert.equal(state.data.SmsMessage.length, 1, "HELP is stored as an inbound text");
+    assert.equal(state.data.SmsMessage[0].agency_id, "agency_a");
+    assert.equal(fetchCalls.length, 0, "Telnyx owns the keyword autoresponse; the webhook sends no duplicate reply");
   } finally {
     globalThis.Deno = originalDeno;
     globalThis.fetch = originalFetch;
@@ -643,6 +641,140 @@ test("signed consent keywords fail closed without one exact active destination/p
   }
 });
 
+function textEvent({ messageId, text, from = "+13125550182", to = "+12155550100", profile = "MP1" }) {
+  return {
+    data: {
+      id: `event_${messageId}`,
+      occurred_at: new Date().toISOString(),
+      event_type: "message.received",
+      payload: {
+        id: messageId,
+        direction: "inbound",
+        from: { phone_number: from },
+        to: [{ phone_number: to }],
+        messaging_profile_id: profile,
+        text,
+      },
+    },
+  };
+}
+
+function seedAgencyA(state, { assignedTo = "nurse@agency-a.test", memberAgency = "agency_a" } = {}) {
+  state.data.PhoneNumber = assignedTo
+    ? [{ id: "phone_number_1", e164: "+12155550100", status: "assigned", assigned_to_email: assignedTo }]
+    : [];
+  state.data.AgencyMembership = [{
+    id: "m1", agency_id: memberAgency, user_id: "u_nurse", user_email_normalized: "nurse@agency-a.test",
+    tenant_role: "clinician", status: "active",
+  }];
+  state.data.User = [{
+    id: "u_nurse", email: "nurse@agency-a.test", is_active: true,
+    duty_status: "on_duty", duty_on_since: new Date().toISOString(),
+  }];
+  state.data.Patient = [
+    { id: "patient_a", agency_id: "agency_a", phone: "+13125550182" },
+    { id: "patient_b", agency_id: "agency_b", phone: "+13125550182" },
+  ];
+  state.data.AgencySettings = [{ auto_off_duty_enabled: false }];
+}
+
+test("inbound texts land in the line agency's thread, attributed only through service-owned records", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const publicKeyB64 = rawEd25519PublicKeyB64(publicKey);
+  const originalDeno = globalThis.Deno;
+  const originalFetch = globalThis.fetch;
+  const originalMakeClient = globalThis.__inboundRoutingMakeClient;
+  try {
+    // 1. A line assigned (PhoneNumber, service-written) to a member of the
+    //    binding's agency: the text is hers, linked to HER agency's chart only.
+    let state = makeStatefulClient({ publicKeyB64 });
+    seedAgencyA(state);
+    let fetchCalls = [];
+    let handler = await loadHandler(() => state.client, async (...args) => { fetchCalls.push(args); return Response.json({ data: {} }); });
+    let response = await handler(signedWebhook(privateKey, textEvent({ messageId: "in_1", text: "running late" })));
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal((await response.json()).routed, "line_assignment");
+    assert.equal(state.data.SmsMessage.length, 1);
+    let row = state.data.SmsMessage[0];
+    assert.equal(row.nurse_email, "nurse@agency-a.test");
+    assert.equal(row.agency_id, "agency_a");
+    assert.equal(row.destination_binding_id, "binding_1");
+    assert.equal(row.patient_id, "patient_a", "the same number on another agency's chart is never linked");
+    assert.equal(row.thread_id, "+12155550100|+13125550182");
+    assert.deepEqual(state.data.Notification.map((n) => n.user_email), ["nurse@agency-a.test"]);
+    assert.equal(
+      state.entityCalls.filter((call) => call.name === "User" && call.query && Object.hasOwn(call.query, "work_phone_number")).length,
+      0,
+      "the self-editable work number is never read to route a text",
+    );
+    assert.equal(fetchCalls.length, 0, "an on-duty reader in open hours gets no auto-reply");
+
+    // Redelivery of the same provider message stores nothing new.
+    response = await handler(signedWebhook(privateKey, textEvent({ messageId: "in_1", text: "running late" })));
+    assert.equal((await response.json()).deduped, true);
+    assert.equal(state.data.SmsMessage.length, 1);
+
+    // 2. The line names someone who is a member of ANOTHER agency only: the
+    //    text is stored for agency_a and shown to no staff member.
+    state = makeStatefulClient({ publicKeyB64 });
+    seedAgencyA(state, { memberAgency: "agency_b" });
+    handler = await loadHandler(() => state.client, async () => Response.json({ data: {} }));
+    response = await handler(signedWebhook(privateKey, textEvent({ messageId: "in_2", text: "hello" })));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).routed, "unattributed");
+    row = state.data.SmsMessage[0];
+    assert.equal(row.nurse_email, null, "never attributed outside the binding's agency");
+    assert.equal(row.agency_id, "agency_a");
+    assert.equal((state.data.Notification || []).length, 0);
+    assert.equal(state.data.UserActivity[0].action, "sms_received_unresolved");
+
+    // 3. A shared (unassigned) line: the reply goes to whoever texted this
+    //    person from this line, if they are still a member of the agency.
+    state = makeStatefulClient({ publicKeyB64 });
+    seedAgencyA(state, { assignedTo: null });
+    state.data.SmsMessage = [{
+      id: "out_1", direction: "outbound", thread_id: "+12155550100|+13125550182",
+      from_number: "+12155550100", to_number: "+13125550182", sent_by: "nurse@agency-a.test",
+      nurse_email: "nurse@agency-a.test", agency_id: "agency_a", provider_message_id: "prov_out_1",
+    }];
+    handler = await loadHandler(() => state.client, async () => Response.json({ data: {} }));
+    response = await handler(signedWebhook(privateKey, textEvent({ messageId: "in_3", text: "thanks" })));
+    assert.equal((await response.json()).routed, "thread");
+    assert.equal(state.data.SmsMessage[1].nurse_email, "nurse@agency-a.test");
+
+    // 4. Consent gates every automatic reply: after hours, an opted-in sender
+    //    gets the after-hours text from the line; after a provider STOP, none.
+    state = makeStatefulClient({ publicKeyB64 });
+    seedAgencyA(state);
+    state.data.AgencySettings = [{ auto_off_duty_enabled: false, business_hours_enabled: true, business_hours: {} }];
+    fetchCalls = [];
+    handler = await loadHandler(() => state.client, async (...args) => { fetchCalls.push(args); return Response.json({ data: {} }); });
+    await handler(signedWebhook(privateKey, textEvent({ messageId: "in_4", text: "question" })));
+    assert.equal(fetchCalls.length, 1, "closed agency: one after-hours reply");
+    const reply = JSON.parse(fetchCalls[0][1].body);
+    assert.equal(reply.from, "+12155550100");
+    assert.equal(reply.to, "+13125550182");
+    await handler(signedWebhook(privateKey, keywordEvent({
+      eventId: "event_stop_x", messageId: "message_stop_x", keyword: "STOP", occurredAt: new Date().toISOString(),
+    })));
+    await handler(signedWebhook(privateKey, textEvent({ messageId: "in_5", text: "another question" })));
+    assert.equal(fetchCalls.length, 1, "no automatic reply after the sender opted out");
+    assert.equal(state.data.SmsMessage.length, 2, "the opted-out sender's text is still stored for the nurse");
+
+    // 5. A text to a number with no inbound-enabled binding is not stored.
+    state = makeStatefulClient({ publicKeyB64, bindings: [makeBinding({ sms_inbound_enabled: false })] });
+    seedAgencyA(state);
+    handler = await loadHandler(() => state.client, async () => Response.json({ data: {} }));
+    response = await handler(signedWebhook(privateKey, textEvent({ messageId: "in_6", text: "hi" })));
+    assert.equal(response.status, 503);
+    assert.equal((state.data.SmsMessage || []).length, 0);
+  } finally {
+    globalThis.Deno = originalDeno;
+    globalThis.fetch = originalFetch;
+    globalThis.__inboundRoutingMakeClient = originalMakeClient;
+  }
+});
+
 test("the same subscriber has independent consent scopes across provider profiles and tenants", async () => {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const publicKeyB64 = rawEd25519PublicKeyB64(publicKey);
@@ -698,14 +830,31 @@ test("the same subscriber has independent consent scopes across provider profile
   }
 });
 
-test("signed inbound SMS stays paused, fax requires exact destination authority, and inbound calls route", async () => {
-  // Inbound patient CALL routing was released by the owner on 2026-10-08
-  // (single agency, staff-only). SMS stays literally paused, except that a
-  // provider-classified STOP/START is recorded in the scoped consent ledger
-  // first, so releasing SMS later can no longer skip consent (28d3f369).
+test("signed inbound SMS routes only through its binding, fax requires exact destination authority, and inbound calls route", async () => {
+  // Inbound patient CALL and SMS routing were released by the owner on
+  // 2026-10-08. A provider-classified STOP/START is still recorded in the
+  // scoped consent ledger first (28d3f369), and an inbound text whose
+  // receiving number has no exact active binding is stored nowhere.
   const source = await readFile(ENTRY_URL, "utf8");
-  assert.match(source, /const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;/);
+  assert.match(source, /const INBOUND_PATIENT_SMS_ROUTING_PAUSED = false;/);
   assert.match(source, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = false;/);
+  const inbound = source.slice(
+    source.indexOf("async function handleInboundMessage"),
+    source.indexOf("// ============================ FAX"),
+  );
+  assert.ok(
+    inbound.indexOf("resolveActiveTelnyxSmsBinding(base44") < inbound.indexOf("entities.SmsMessage.create"),
+    "the receiving binding is proven before anything is stored",
+  );
+  assert.match(inbound, /requireInbound: true/);
+  assert.match(inbound, /requireClaimedProfile: true/);
+  assert.match(inbound, /agency_id: authority\.agencyId, destination_binding_id: authority\.bindingId/);
+  const smsRouting = source.slice(
+    source.indexOf("// ---- Inbound patient SMS routing"),
+    source.indexOf("// ============================ FAX"),
+  ).replace(/^\s*(?:\/\/|\*).*$/gm, "");
+  assert.doesNotMatch(smsRouting, /work_phone_number|(?:reader|user|nurse)\.agency_name|User\.filter\(\{ email/,
+    "inbound text routing never reads a self-editable User field");
   assert.match(source, /async function resolveActiveTelnyxFaxBinding/);
   assert.match(source, /TelecomDestinationBinding\.filter\(\{[\s\S]{0,240}destination_e164:\s*destinationE164/);
   assert.match(source, /handleInboundFax\(base44, telnyxCreds, payload\)/);
@@ -803,9 +952,10 @@ test("signed inbound SMS stays paused, fax requires exact destination authority,
         },
       },
     }));
-    assert.equal(smsResponse.status, 503);
+    assert.equal(smsResponse.status, 503, "an inbound text to an unbound number is not routed anywhere");
     assert.equal(smsResponse.headers.get("retry-after"), "300");
-    assert.equal((await smsResponse.json()).code, "INBOUND_TELECOM_BINDING_MIGRATION_PAUSED");
+    assert.equal((await smsResponse.json()).code, "INBOUND_SMS_BINDING_UNAVAILABLE");
+    assert.equal(entityCalls.filter((call) => call.name === "SmsMessage").length, 0, "nothing is stored for an unbound line");
 
     const inboundFaxResponse = await handler(signedWebhook(privateKey, {
       data: {
@@ -824,14 +974,14 @@ test("signed inbound SMS stays paused, fax requires exact destination authority,
     assert.equal(
       entityCalls.filter((call) => call.name === "User").length,
       0,
-      "paused inbound SMS and unbound fax never consult mutable User telecom fields",
+      "unbound inbound SMS and unbound fax never consult mutable User telecom fields",
     );
     assert.equal(
       entityCalls.filter((call) => call.name === "AgencySettings").length,
       0,
       "paused inbound fax events never consult mutable agency routing settings",
     );
-    assert.equal(fetchCalls.length, 0, "paused SMS and unbound fax execute no Telnyx routing command");
+    assert.equal(fetchCalls.length, 0, "unbound SMS and unbound fax execute no Telnyx routing command");
 
     const inboundCallResponse = await handler(signedWebhook(privateKey, {
       data: {

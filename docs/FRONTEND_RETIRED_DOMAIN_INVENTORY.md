@@ -35,8 +35,8 @@ Reads 114, writes 81, subscriptions 1. 55 of the 81 files lose everything they r
 | `TrainingCertificate` | 10 | 10 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `OASISUpload` | 9 | 7 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `FaxLog` | 7 | 5 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
+| `MicroLearningProgress` | 7 | 6 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `OASISAutomationRule` | 7 | 3 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
-| `MicroLearningProgress` | 6 | 5 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `TrainingQuestion` | 6 | 4 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `FaxTemplate` | 5 | 1 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `OASISAudit` | 5 | 3 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
@@ -53,12 +53,12 @@ Reads 114, writes 81, subscriptions 1. 55 of the 81 files lose everything they r
 | `OASISAssessment` | 2 | 2 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `OASISFeedback` | 2 | 2 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `RegulatoryUpdate` | 2 | 1 | the broker family serves this entity read-only, so the write has no destination |
-| `SmsMessage` | 2 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `TrainingRecommendation` | 2 | 2 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `TrainingTemplate` | 2 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 | `MedicareGuideline` | 1 | 1 | D83 reference data: the table is written by migration and grants no caller role anything, so the write is refused by the GRANT rather than by a policy |
 | `PhoneNumber` | 1 | 1 | the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer |
 | `ScheduledSms` | 1 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
+| `SmsMessage` | 1 | 1 | no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7) |
 
 ## By file — what each screen loses
 
@@ -239,10 +239,6 @@ Reads 114, writes 81, subscriptions 1. 55 of the 81 files lose everything they r
 - `TrainingAssignment` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
 - `TrainingCourse` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
 
-### `src/components/messaging/SmsConversationList.jsx` — **whole**
-
-- `SmsMessage` (filter, update) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
-
 ### `src/components/oasis/ComprehensiveOASISReviewer.jsx` — **whole**
 
 - `OASISActionItem` (bulkCreate, filter) — the table exists — the entity is paused but carries its schema under D7 — and nothing can reach it yet: the generic broker family serves only `broker`, so the row waits on a hand-written access contract rather than on a schema or a product answer
@@ -271,6 +267,11 @@ Reads 114, writes 81, subscriptions 1. 55 of the 81 files lose everything they r
 ### `src/pages/AdminTrainingAnalytics.jsx`
 
 - `TrainingAssignment` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+- `TrainingModule` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+
+### `src/pages/NurseTrainingHub.jsx` — **whole**
+
+- `MicroLearningProgress` (create) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
 - `TrainingModule` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
 
 ### `src/components/admin/AdminOnboardingChecklistStrip.jsx`
@@ -344,6 +345,10 @@ Reads 114, writes 81, subscriptions 1. 55 of the 81 files lose everything they r
 ### `src/components/messaging/ScheduledSmsList.jsx` — **whole**
 
 - `ScheduledSms` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
+
+### `src/components/messaging/SmsConversationList.jsx` — **whole**
+
+- `SmsMessage` (filter) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
 
 ### `src/components/oasis/AIProactiveOASISAssistant.jsx`
 
@@ -428,8 +433,4 @@ Reads 114, writes 81, subscriptions 1. 55 of the 81 files lose everything they r
 ### `src/pages/MedicareGuidelinesLibrary.jsx`
 
 - `MedicareGuideline` (update) — D83 reference data: the table is written by migration and grants no caller role anything, so the write is refused by the GRANT rather than by a policy
-
-### `src/pages/NurseTrainingHub.jsx` — **whole**
-
-- `TrainingModule` (list) — no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)
 

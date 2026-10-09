@@ -834,7 +834,7 @@ test('the landable sites partition exactly, and the audit prose carries the part
     14: 'Fourteen',
     17: 'Seventeen', 18: 'Eighteen', 21: 'Twenty-one', 22: 'Twenty-two', 23: 'Twenty-three', 25: 'Twenty-five',
     26: 'Twenty-six', 29: 'Twenty-nine', 31: 'Thirty-one', 32: 'Thirty-two', 33: 'Thirty-three', 34: 'Thirty-four',
-    46: 'Forty-six',
+    46: 'Forty-six', 47: 'Forty-seven',
     50: 'Fifty', 54: 'Fifty-four', 56: 'Fifty-six', 60: 'Sixty', 67: 'Sixty-seven', 68: 'Sixty-eight',
     75: 'Seventy-five' };
   for (const [count, word] of [[refused.length, spelled[refused.length]],
@@ -912,7 +912,7 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   assert.deepEqual(servedSplit, { readSites: 135, readKeys: 49, writeSites: 32, writeKeys: 25 },
     'the served pool moved. Re-derive the WHOLE bullet — both of its ratios and\n'
     + '  the sentence about past waves — rather than editing the figure that moved.');
-  assert.deepEqual(remainder, { readSites: 32, readKeys: 21, writeSites: 14, writeKeys: 13 },
+  assert.deepEqual(remainder, { readSites: 33, readKeys: 21, writeSites: 14, writeKeys: 13 },
     'the unrouted remainder moved. Re-derive the WHOLE bullet; its ratios are\n'
     + '  over a remainder, so they move when anything LEAVES it too.');
 
