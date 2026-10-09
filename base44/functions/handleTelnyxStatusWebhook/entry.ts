@@ -1608,6 +1608,7 @@ function faxStatusWebhookUrl(requestUrl, selfName) {
 const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4, retrying: 4, retried: 5 };
 
 const INBOUND_FAX_EXACT_ROW_LIMIT = 10;
+const INBOUND_FAX_FORWARD_TIMEOUT_MS = 7000;
 const OUTBOUND_FAX_EXACT_ROW_LIMIT = 10;
 const INBOUND_FAX_NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
@@ -2422,8 +2423,9 @@ async function releaseInboundFaxForwardClaim(base44, authority, record) {
 
 // Signed Telnyx fax ingress. The exact dialed destination is resolved through
 // TelecomDestinationBinding before any tenant setting, media row, or forward
-// command is touched. `fax_receiving_enabled` selects in-app OCR versus office
-// forwarding only after that immutable tenant boundary is established.
+// command is touched. Every inbound fax is then passed through to the office
+// fax machine: the app receives no faxes (product owner, 2026-10-09). The
+// IncomingFax row it writes is only the at-most-once forward record.
 async function handleInboundFax(base44, telnyxCreds, payload) {
   // Telnyx names the fax in fax.* payloads as fax_id; payload.id is still read
   // (both must agree when both are present), as handleFaxEvent does.
@@ -2453,27 +2455,11 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
       return inboundFaxUnavailable(503, 'INBOUND_FAX_RESERVATION_UNCONFIRMED');
     }
   }
-  if (authority.settings.fax_receiving_enabled === true) {
-    if (existing.rows.length === 1) {
-      return Response.json(
-        { success: true, deduped: true, incoming_fax_id: existing.rows[0].id },
-        { headers: INBOUND_FAX_NO_STORE_HEADERS },
-      );
-    }
-    const record = await createInboundFax(
-      base44,
-      authority,
-      payload,
-      providerId,
-      mediaUrl,
-      'pending',
-    );
-    return Response.json(
-      { success: true, incoming_fax_id: record.id },
-      { headers: INBOUND_FAX_NO_STORE_HEADERS },
-    );
-  }
-
+  // AgencySettings.fax_receiving_enabled is NO LONGER HONOURED. It used to
+  // select in-app ingestion (an IncomingFax row left 'pending' for the
+  // processInboundFaxes OCR worker); the product owner wants no incoming faxes
+  // in the app (2026-10-09), so every inbound fax takes the office forward
+  // below. The field stays in the schema; nothing reads it.
   const officeFax = normalizeE164(authority.settings.office_fax_number_e164);
   if (!telnyxCreds.apiKey || !officeFax || officeFax === receivedOn) {
     return inboundFaxUnavailable(409, 'INBOUND_FAX_FORWARDING_UNAVAILABLE');
@@ -2542,6 +2528,9 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
       method: 'POST',
       headers: { Authorization: `Bearer ${telnyxCreds.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(forwardRequest),
+      // Telnyx times a webhook out after about ten seconds; answer inside it.
+      // An abort is an unknown outcome and keeps the claim, like a network error.
+      signal: AbortSignal.timeout(INBOUND_FAX_FORWARD_TIMEOUT_MS),
     });
   } catch {
     // The provider may have accepted a request even when the client never saw a

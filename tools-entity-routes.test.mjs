@@ -835,7 +835,7 @@ test('the landable sites partition exactly, and the audit prose carries the part
     17: 'Seventeen', 18: 'Eighteen', 21: 'Twenty-one', 22: 'Twenty-two', 23: 'Twenty-three', 25: 'Twenty-five',
     26: 'Twenty-six', 29: 'Twenty-nine', 31: 'Thirty-one', 32: 'Thirty-two', 33: 'Thirty-three', 34: 'Thirty-four',
     45: 'Forty-five', 46: 'Forty-six', 50: 'Fifty', 54: 'Fifty-four', 56: 'Fifty-six', 60: 'Sixty',
-    67: 'Sixty-seven', 68: 'Sixty-eight', 73: 'Seventy-three', 75: 'Seventy-five' };
+    67: 'Sixty-seven', 68: 'Sixty-eight', 71: 'Seventy-one', 73: 'Seventy-three', 75: 'Seventy-five' };
   for (const [count, word] of [[refused.length, spelled[refused.length]],
     [unreadable.length, spelled[unreadable.length]], [noRoute.length, spelled[noRoute.length]]]) {
     assert.ok(word,

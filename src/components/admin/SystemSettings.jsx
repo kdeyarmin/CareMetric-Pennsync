@@ -5,7 +5,7 @@ import AnnouncementManager from "@/components/admin/AnnouncementManager";
 import AIConfigurationManager from "@/components/admin/AIConfigurationManager";
 import PhoneProvisioningPanel from "@/components/admin/PhoneProvisioningPanel";
 import PhoneAnalyticsPanel from "@/components/admin/PhoneAnalyticsPanel";
-import FaxReceivingToggle from "@/components/admin/FaxReceivingToggle";
+import InboundFaxRoutingNotice from "@/components/admin/InboundFaxRoutingNotice";
 import FaxRetryConfigPanel from "@/components/admin/FaxRetryConfigPanel";
 
 export default function SystemSettingsPage() {
@@ -34,7 +34,7 @@ export default function SystemSettingsPage() {
 
       <PhoneProvisioningPanel />
       <PhoneAnalyticsPanel />
-      <FaxReceivingToggle />
+      <InboundFaxRoutingNotice />
       <FaxRetryConfigPanel />
       <AnnouncementManager />
       <AIConfigurationManager />

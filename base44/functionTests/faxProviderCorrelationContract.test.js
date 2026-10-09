@@ -48,7 +48,7 @@ function makeFetch(routes = []) {
     const u = String(url);
     let body = init.body;
     try { body = typeof body === "string" ? JSON.parse(body) : body; } catch { /* keep raw */ }
-    calls.push({ url: u, method: init.method || "GET", body });
+    calls.push({ url: u, method: init.method || "GET", body, signal: init.signal });
     const route = routes.find((r) => r.match(u, init));
     if (!route) throw new Error(`unexpected provider call ${init.method || "GET"} ${u}`);
     const { status = 200, json = {} } = route.respond(u, init);
@@ -385,11 +385,13 @@ const faxBinding = () => ({
   version: 1,
 });
 
-test("a documented fax_id inbound fax is forwarded with an office_forward client_state", async () => {
+test("a documented fax_id inbound fax is forwarded with an office_forward client_state, never ingested", async () => {
   const state = {
     TelecomDestinationBinding: [faxBinding()],
     Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
-    AgencySettings: [{ agency_id: "agency_a", agency_code: "AGENCY-A", office_fax_number_e164: "+17244650444" }],
+    // The retired in-app opt-in is set and must change nothing: the app
+    // receives no faxes (product owner, 2026-10-09).
+    AgencySettings: [{ agency_id: "agency_a", agency_code: "AGENCY-A", office_fax_number_e164: "+17244650444", fax_receiving_enabled: true }],
     IncomingFax: [],
   };
   const { response, body, provider } = await webhookRun(state, { data: { event_type: "fax.received", payload: {
@@ -410,6 +412,13 @@ test("a documented fax_id inbound fax is forwarded with an office_forward client
     id: state.IncomingFax[0].id,
   });
   assert.equal(forward.body.to, "+17244650444");
+  // Bounded inside Telnyx's ~10 s webhook timeout.
+  assert.ok(forward.signal instanceof AbortSignal);
+  assert.equal(state.IncomingFax[0].processing_status, "completed", "never queued for in-app OCR");
+  assert.equal(state.IncomingFax[0].status, "routed");
+  const source = await readFile(new URL(WEBHOOK, import.meta.url), "utf8");
+  assert.doesNotMatch(source, /settings\.fax_receiving_enabled/, "the retired opt-in is never read");
+  assert.doesNotMatch(source, /createInboundFax\([\s\S]{0,120}'pending'/, "nothing is ingested for OCR");
 });
 
 // ---------------------------- senders ----------------------------
