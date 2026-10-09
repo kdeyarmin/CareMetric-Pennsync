@@ -1,0 +1,169 @@
+name: Deployment drift report
+
+# Why this exists, and why it is a REPORT rather than a gate.
+#
+# The published SPA is a separate artifact from this repository, and nothing
+# periodic looked at it. The byte-level verification in
+# `publish-production-frontend.yml` runs only on the publish path, so it
+# confirms a publication that happened and says nothing on the days nobody
+# publishes. On 2026-10-08 production was found serving a build from
+# 2026-09-17 — roughly three weeks and some two hundred merges behind `main` —
+# and the only reason anybody noticed was a hand-run audit.
+#
+# It cannot be a blocking gate: a deployment legitimately lags a merge, so a
+# gap is the normal state between publishing and says nothing about this commit.
+# So a gap is a NOTICE here. What does fail is being unable to READ the
+# deployment, because a question that was not answered must not read as a clean
+# one — the rule `tools-live-function-sync.mjs` already follows for its own
+# exits.
+#
+# It deliberately does NOT build. The byte comparison can only be trusted where
+# the local build reproduces the publish inventory (same app id, same flags,
+# same `PENNSYNC_ASSET_REVISION`), and a build without those reports a mismatch
+# that reads exactly like staleness and is not. `--published-revision` reads the
+# revision off the served entry filename instead, which needs no build and
+# cannot be confused by local flags.
+
+on:
+  schedule:
+    # Jittered off the hour: a run at :00 queues behind everything else.
+    - cron: '43 13 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: caremetric-pennsync-deployment-drift-report
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    name: Report which revision production serves
+    if: github.repository == 'kdeyarmin/CareMetric-Pennsync'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Pinned, not defaulted. `workflow_dispatch` names no branch, so a
+          # manual run picks its own ref and `actions/checkout` takes it — the
+          # mechanism pennsync-authority.yml records for its credential steps.
+          # There it would leak a secret; here it would LIE: the distance would
+          # be measured from that ref's HEAD while the summary still called it
+          # `main`, so a dispatch from a feature branch could report production
+          # as current. Drift is only meaningful against the branch that gets
+          # published. A manual run from anywhere is still allowed and still
+          # answers about `main` — unlike the credential steps, there is
+          # nothing here to withhold from a collaborator.
+          ref: main
+          persist-credentials: false
+          # Full history so the published revision can be counted against HEAD.
+          # A shallow clone cannot resolve a three-week-old commit.
+          fetch-depth: 0
+
+      # Both tools import only Node builtins, so there is nothing to install.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Read the revision each production address serves
+        id: published
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Exit 2 means an address could not be read, which is a real failure:
+          # the report must not be able to stay quiet about not knowing.
+          node tools-live-frontend-sync.mjs --published-revision \
+            > "$RUNNER_TEMP/published-revision.json"
+          cat "$RUNNER_TEMP/published-revision.json"
+          {
+            echo "report<<PENNSYNC_EOF"
+            cat "$RUNNER_TEMP/published-revision.json"
+            echo "PENNSYNC_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Say how far behind the published build is
+        shell: bash
+        env:
+          REPORT: ${{ steps.published.outputs.report }}
+        run: |
+          set -euo pipefail
+          head_sha="$(git rev-parse HEAD)"
+          # DERIVED from the `ref:` above rather than a second copy of it: if
+          # that line changes, this follows instead of going on claiming
+          # `main`. A detached HEAD (a tag or sha) names no ref at all below,
+          # which is vaguer than a name and never a wrong one.
+          head_ref="$(git rev-parse --abbrev-ref HEAD)"
+          # One line per origin: the revision it serves, and the distance from
+          # HEAD when that revision is a commit this repository knows.
+          printf '%s' "$REPORT" | node -e '
+            const fs = require("node:fs");
+            const { execFileSync } = require("node:child_process");
+            const report = JSON.parse(fs.readFileSync(0, "utf8"));
+            const head = process.argv[1];
+            const ref = process.argv[2];
+            const lines = ["## Which revision production serves", "",
+              ref === "HEAD"
+                ? `Compared against \`${head.slice(0, 12)}\`.`
+                : `\`${ref}\` here is \`${head.slice(0, 12)}\`.`, ""];
+            let behind = false;
+            for (const row of report.reports) {
+              if (row.revision === head) { lines.push(`- ${row.origin}: current`); continue; }
+              behind = true;
+              let distance = "an unknown distance behind (not a commit this clone resolves)";
+              try {
+                const count = execFileSync("git",
+                  ["rev-list", "--count", `${row.revision}..${head}`],
+                  { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+                const when = execFileSync("git",
+                  ["log", "-1", "--format=%ad", "--date=short", row.revision],
+                  { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+                distance = `${count} commit(s) behind; that revision is dated ${when}`;
+              } catch { /* an unresolvable revision keeps the wording above */ }
+              lines.push(`- ${row.origin}: serves \`${row.revision}\` — ${distance}`);
+            }
+            lines.push("", behind
+              ? "A gap is NOT a failure: publishing is manual and deliberately lags a merge. It is a failure only if nobody intends to publish."
+              : "Both addresses serve this commit.");
+            lines.push("", "This says nothing about authenticated workflows, tenant isolation, data migration, or the Base44 function deployments (`check:live-functions` is their instrument).");
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            console.log(lines.join("\n"));
+          ' "$head_sha" "$head_ref"
+
+  dependencies:
+    name: Report available dependency updates
+    if: github.repository == 'kdeyarmin/CareMetric-Pennsync'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Informational only. `check:audit-advisories` in ci.yml is the blocking
+    # security gate; this is the survey of what has merely moved on.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - name: Survey dependency updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This job deliberately surveys the DISPATCHED ref rather than
+          # pinning `main`: "what updates are available" is a property of the
+          # manifest in front of you, and surveying a branch's own is a
+          # legitimate thing to dispatch. It makes no claim about `main`, and
+          # the heading names what it actually read so it cannot imply one.
+          ref="$(git rev-parse --abbrev-ref HEAD)"
+          node tools-check-updates.mjs | tee "$RUNNER_TEMP/updates.txt"
+          {
+            printf '## Available dependency updates (`%s`)\n' "$ref"
+            echo '```'
+            cat "$RUNNER_TEMP/updates.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

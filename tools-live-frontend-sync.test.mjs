@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createBuildInventory, environmentOrigin, htmlReferences, main, PRODUCTION_ORIGINS, validateOrigin, VERIFY_ORIGIN_VARIABLE, verifyOrigin } from './tools-live-frontend-sync.mjs';
+import { createBuildInventory, entryRevision, environmentOrigin, htmlReferences, main, PRODUCTION_ORIGINS, validateOrigin, VERIFY_ORIGIN_VARIABLE, verifyOrigin } from './tools-live-frontend-sync.mjs';
 
 const ORIGIN = PRODUCTION_ORIGINS[0];
 const HTML = '<html><head><script src="./assets/index-good.js" crossorigin type="module"></script>'
@@ -253,4 +253,140 @@ test('a bad or doubled origin refuses instead of silently checking production', 
   assert.equal(await main([PRODUCTION_ORIGINS[0]],
     { ...noNetwork, env: { [VERIFY_ORIGIN_VARIABLE]: 'https://site.caremetricai.com' } }), 2);
   assert.equal(output[1].error, 'INVALID_ARGUMENTS');
+});
+
+// --- `--published-revision`: the build-independent staleness reading --------
+//
+// Each case asserts the property that made this mode necessary rather than the
+// shape of its output: it must read the revision WITHOUT a local build, and it
+// must refuse rather than answer when an origin cannot be read.
+
+const entryOf = (revision) => `<html><head><script src="./assets/index-Cq2uld1D-${revision}.js" `
+  + 'crossorigin type="module"></script></head><body></body></html>';
+
+test('the published revision is read off the entry name, for both revision shapes', () => {
+  // A published build stamps PENNSYNC_ASSET_REVISION (a full sha); a local one
+  // falls back to the short HEAD, plus `-dirty-<t>` for a dirty tree. Both are
+  // legible, which is the whole point of reading the filename.
+  assert.equal(entryRevision('/assets/index-Cq2uld1D-8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c.js'),
+    '8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c');
+  assert.equal(entryRevision('/assets/index-WwVTi7Pz-a615d9a8c78f-dirty-muzlom2s.js'),
+    'a615d9a8c78f-dirty-muzlom2s');
+  // Not an entry, or no revision segment at all: null, never a guess.
+  assert.equal(entryRevision('/assets/index-good.js'), null);
+  assert.equal(entryRevision('/assets/site.css'), null);
+  assert.equal(entryRevision(undefined), null);
+});
+
+test('--published-revision reads every origin and needs no local build', async () => {
+  const output = [];
+  const fetchImpl = async (url) => {
+    assert.ok(String(url).endsWith('/'), 'only the index is fetched; no asset is downloaded');
+    return new Response(entryOf('8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c'), { status: 200 });
+  };
+  // `--dist` points at a directory that does not exist: the byte comparison
+  // would die on it, and this mode must not reach the inventory at all.
+  const code = await main(['--published-revision', '--dist', join(tmpdir(), 'pennsync-absent-dist-dir')],
+    { fetchImpl, log: (line) => output.push(JSON.parse(line)), env: {} });
+  assert.equal(code, 0);
+  const report = output.at(-1);
+  assert.equal(report.scope, 'published_revision_only');
+  assert.deepEqual(report.reports.map((r) => r.origin), [...PRODUCTION_ORIGINS]);
+  for (const entry of report.reports) {
+    assert.equal(entry.read, true);
+    assert.equal(entry.revision, '8cdd1e5d83ce24a28920fa788fa8ab0fd794d62c');
+  }
+});
+
+test('an origin that cannot be read exits 2 rather than reporting a clean reading', async () => {
+  const output = [];
+  const code = await main(['--published-revision'], {
+    fetchImpl: async () => { throw new Error('PRIVATE_TEST_VALUE'); },
+    log: (line) => output.push(JSON.parse(line)),
+    env: {},
+  });
+  assert.equal(code, 2, 'a question that was not answered must not read as a clean one');
+  const report = output.at(-1);
+  for (const entry of report.reports) {
+    assert.equal(entry.read, false);
+    assert.ok(entry.code, 'the reason is reported, never a silent absence');
+    assert.ok(!JSON.stringify(entry).includes('PRIVATE_TEST_VALUE'),
+      'a transport error message is not surfaced verbatim');
+  }
+});
+
+test('an entry whose name carries no revision is read but reported without one, and exits 2', async () => {
+  // A deployment built before the revision stamp, or by another pipeline, is a
+  // legitimate read with nothing to compare. It must not pass as answered.
+  const output = [];
+  const code = await main(['--published-revision'], {
+    fetchImpl: async () => new Response(
+      '<html><head><script src="./assets/index-good.js" crossorigin type="module"></script></head><body></body></html>',
+      { status: 200 }),
+    log: (line) => output.push(JSON.parse(line)),
+    env: {},
+  });
+  assert.equal(code, 2);
+  for (const entry of output.at(-1).reports) {
+    assert.equal(entry.read, true);
+    assert.equal(entry.revision, null);
+  }
+});
+
+// --- the scheduled drift report's own hazard --------------------------------
+//
+// `workflow_dispatch` names no branch, so a manual run selects its own ref and
+// `actions/checkout` takes it. `pennsync-authority.yml` records that mechanism
+// at length for its credential steps, where the consequence is a leak. Here it
+// is a FALSE READING instead: the distance measured from a feature branch's
+// HEAD, printed under a label saying `main`. A branch whose HEAD happened to
+// match would be reported as "current" while production sat weeks behind, and
+// the distance to an unmerged branch answers a question nobody asked.
+//
+// These assert the two halves that stop it — the ref is PINNED, and the label
+// is DERIVED from that pin rather than restated beside it.
+
+const DRIFT_WORKFLOW = new URL('./.github/workflows/deployment-drift-report.yml', import.meta.url);
+
+function driftFrontendJob() {
+  const workflow = readFileSync(DRIFT_WORKFLOW, 'utf8');
+  const at = workflow.indexOf('\n  frontend:');
+  assert.ok(at > 0, 'the drift report no longer has a frontend job');
+  const next = workflow.indexOf('\n  dependencies:', at + 1);
+  const job = next === -1 ? workflow.slice(at) : workflow.slice(at, next);
+  // Comments describe this hazard in detail, so a check that read them would
+  // pass on the prose explaining the very bug it is looking for.
+  return job.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+}
+
+test('the drift report measures against a pinned ref, not the dispatched one', () => {
+  const code = driftFrontendJob();
+  const pinned = code.match(/^\s*ref:\s*(\S+)\s*$/m);
+  assert.ok(pinned,
+    'the checkout does not pin a ref, so a manual dispatch measures whatever ref it was run from');
+  assert.equal(pinned[1], 'main',
+    'drift is only meaningful against the branch that actually gets published');
+  assert.match(code, /fetch-depth:\s*0/,
+    'a shallow clone cannot resolve a weeks-old published revision, so the distance would be unknown');
+});
+
+test('the ref the drift report names is the ref it checked out, stated once', () => {
+  const code = driftFrontendJob();
+  // The label was the literal "`main` here is …" sitting beside the checkout:
+  // two representations of one fact, which is the shape this repository is
+  // repeatedly bitten by. The branch name may appear ONCE, in the line that
+  // decides it. If a second mention is ever legitimate, derive it from the
+  // first rather than retyping it.
+  assert.equal([...code.matchAll(/\bmain\b/g)].length, 1,
+    'the branch name appears more than once, so a restated copy can disagree with the checkout');
+  assert.match(code, /ref:\s*main/);
+  // ...and the name in the summary must come from git, not from a constant.
+  assert.match(code, /head_ref="\$\(git rev-parse --abbrev-ref HEAD\)"/,
+    'the step no longer resolves the ref it is reporting about');
+  assert.match(code, /' "\$head_sha" "\$head_ref"/,
+    'the resolved ref is not passed into the script that writes the summary');
+  assert.match(code, /const ref = process\.argv\[2\];/,
+    'the summary script does not read the resolved ref');
+  assert.match(code, /\$\{ref\}/,
+    'the summary label does not interpolate the resolved ref, so it is a constant again');
 });
