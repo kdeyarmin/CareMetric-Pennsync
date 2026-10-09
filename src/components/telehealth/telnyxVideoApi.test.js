@@ -151,10 +151,13 @@ test("a connected room renews its client token in place, through the backend", (
   // backend re-authorizes it) with action 'refresh', be applied with the SDK's
   // updateClientToken, and stop when the room goes away.
   assert.match(roomDts, /updateClientToken:\s*\(clientToken:\s*string\)\s*=>\s*Promise<void>/);
-  assert.match(videoRoom, /createTokenRefresher\(/);
-  assert.match(videoRoom, /requestToken\(\{\s*\.\.\.tokenRequest,\s*action:\s*["']refresh["']\s*\}\)/);
-  assert.match(videoRoom, /room\.updateClientToken\(/);
-  assert.ok((videoRoom.match(/tokenRefresherRef\.current\?\.stop\(\)/g) || []).length >= 3,
+  // Code only: the file's header comment names updateClientToken too, and a
+  // comment must not satisfy an assertion about what the code calls.
+  const code = videoRoom.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.match(code, /createTokenRefresher\(/);
+  assert.match(code, /requestToken\(\{\s*\.\.\.tokenRequest,\s*action:\s*["']refresh["']\s*\}\)/);
+  assert.match(code, /room\.updateClientToken\(next\)/);
+  assert.ok((code.match(/tokenRefresherRef\.current\?\.stop\(\)/g) || []).length >= 3,
     "the refresher is stopped on unmount, on disconnect and on a failed connect");
   assert.ok(!/api\.telnyx\.com/.test(videoRoom), "the browser never calls the Telnyx REST API itself");
 });
