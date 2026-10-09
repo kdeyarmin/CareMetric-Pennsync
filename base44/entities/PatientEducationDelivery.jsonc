@@ -106,10 +106,46 @@
     "topic",
     "education_content"
   ],
+  // 2026-10-08 owner decision: the record's creator or an administrator. The
+  // generator saves through the caller's own client, so the creator is the
+  // staff member who generated the material; deletion stays refused.
   "rls": {
-    "read": false,
-    "create": false,
-    "update": false,
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "delete": false
   }
 }

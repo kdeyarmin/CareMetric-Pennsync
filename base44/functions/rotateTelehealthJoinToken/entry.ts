@@ -211,26 +211,20 @@ Deno.serve(async (req) => {
     if (!session) return Response.json({ error: 'Telehealth session not found' }, { status: 404 });
 
     // Same staff predicate as createTelehealthToken: stable identity only
-    // (email/role), never the mutable, non-unique full_name.
+    // (the stamped host_user_id, or email), never the mutable full_name.
     const participants = Array.isArray(session.participant_list) ? session.participant_list : [];
-    const isHostOrParticipant = session.host_email === user.email
+    const isHostOrParticipant = (typeof session.host_user_id === 'string' && session.host_user_id === user.id)
+      || session.host_email === user.email
       || participants.includes(user.email);
-    const isAdminLike = user.role === 'admin'
-      || user.account_type === 'agency_admin'
-      || user.account_type === 'super_admin';
-    if (!isHostOrParticipant && !isAdminLike) {
+    // An agency administrator or manager may rotate a colleague's link only
+    // inside their own agency. manageTelehealthSession stamps the session's
+    // agency_id; withTrustedClaims derives the caller's from the membership.
+    const isAgencyStaffLead = (user.account_type === 'agency_admin' || user.is_manager === true)
+      && typeof user.agency_id === 'string' && user.agency_id !== ''
+      && session.agency_id === user.agency_id;
+    const isPlatformOwner = user.role === 'admin';
+    if (!isHostOrParticipant && !isAgencyStaffLead && !isPlatformOwner) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const isAgencyScopedAdmin = !isHostOrParticipant
-      && user.account_type !== 'super_admin'
-      && user.agency_name
-      && (user.account_type === 'agency_admin' || user.role === 'admin');
-    if (isAgencyScopedAdmin) {
-      const [host] = await base44.asServiceRole.entities.User
-        .filter({ email: session.host_email }, '-created_date', 1).catch(() => []);
-      if (!host?.agency_name || host.agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
     }
 
     if (session.status !== 'scheduled' && session.status !== 'active') {

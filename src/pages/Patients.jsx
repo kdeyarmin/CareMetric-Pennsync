@@ -675,6 +675,7 @@ export default function Patients({ independentReadOnly = false }) {
         }}
         patient1={patientsToMerge.patient1}
         patient2={patientsToMerge.patient2}
+        agencyId={patientTenantScope?.agency_id || null}
       />
                 </PageContainer>
               );

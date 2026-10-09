@@ -107,7 +107,8 @@ const importerFor = (name) => pageModules[`../pages/${name}.jsx`];
 const routePages = [...new Set(ROUTES.map((route) => route.name))];
 
 // Long enough for a mounted page's queries to resolve and re-render; short
-// enough that 77 pages stay well inside the file's budget.
+// enough that every routed page stays well inside the file's budget.
+// (`routePages` is derived from the manifest, so do not pin its size here.)
 const SETTLE_MS = 60;
 // Guard against a page whose tab list keeps growing as panels mount.
 const MAX_TABS = 40;

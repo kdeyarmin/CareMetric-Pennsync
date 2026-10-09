@@ -23,11 +23,9 @@ vi.mock('@/api/base44Client', () => ({
 }));
 
 import { base44 } from '@/api/base44Client';
-import {
-  fetchCallerAgencySettings,
-  fetchCallerPdgmRateConfig,
-  fetchCallerFollowUpRuleConfig,
-} from './agencySettings.js';
+import * as agencySettings from './agencySettings.js';
+
+const { fetchCallerAgencySettings, fetchCallerFollowUpRuleConfig } = agencySettings;
 
 describe('fetchCallerAgencySettings', () => {
   beforeEach(() => {
@@ -67,38 +65,55 @@ describe('fetchCallerAgencySettings', () => {
   });
 });
 
-describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
+describe('PDGM payment configuration helpers (removed) / FollowUpRuleConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('keeps browser PDGM rate reads paused without invoking any backend or entity path', async () => {
-    const row = await fetchCallerPdgmRateConfig('Acme');
-    expect(row).toBeNull();
+  it('exposes no PDGM rate or payer-rate configuration reader', () => {
+    // Both were removed with the PDGM payment features: the rate-settings and
+    // payer-rate editors that read them no longer exist.
+    expect(agencySettings.fetchCallerPdgmRateConfig).toBeUndefined();
+    expect(agencySettings.fetchCallerPayerRateConfig).toBeUndefined();
     expect(base44.functions.invoke).not.toHaveBeenCalled();
     expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
     expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
   });
 
-  it('keeps browser follow-up-rule reads paused without invoking any entity path', async () => {
+  it('refuses a payer-rate lookup through the generic config reader', async () => {
+    await expect(agencySettings.fetchCallerScopedConfig('PayerRateConfig', 'Acme')).resolves.toBeNull();
+    await expect(agencySettings.fetchCallerScopedConfig('PDGMRateConfig', 'Acme')).resolves.toBeNull();
+    expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
+  });
+
+  it('reads follow-up rules through the membership-scoped function, never the entity', async () => {
+    base44.functions.invoke.mockResolvedValueOnce({
+      data: {
+        config: {
+          disabled_rules: ['f2f_missing', 7],
+          severity_overrides: { orders_missing: 'critical' },
+          custom_items: [{ title: 'Ask', question: 'Q?' }, null],
+          updated_by_email: 'admin@example.test',
+        },
+      },
+    });
     const row = await fetchCallerFollowUpRuleConfig('Acme');
-    expect(row).toBeNull();
+    expect(base44.functions.invoke).toHaveBeenCalledWith('saveFollowUpRuleConfig', { action: 'get' });
+    expect(row).toEqual({
+      disabled_rules: ['f2f_missing'],
+      severity_overrides: { orders_missing: 'critical' },
+      custom_items: [{ title: 'Ask', question: 'Q?' }],
+    });
     expect(base44.entities.FollowUpRuleConfig.filter).not.toHaveBeenCalled();
     expect(base44.entities.FollowUpRuleConfig.list).not.toHaveBeenCalled();
   });
 
-  it('ignores caller-controlled agency hints for follow-up rules while the broker is unavailable', async () => {
-    const row = await fetchCallerFollowUpRuleConfig('other-tenant');
-    expect(row).toBeNull();
-    expect(base44.entities.FollowUpRuleConfig.filter).not.toHaveBeenCalled();
-    expect(base44.entities.FollowUpRuleConfig.list).not.toHaveBeenCalled();
+  it('ignores the caller agency hint and falls back to built-in rules on any failure', async () => {
+    base44.functions.invoke.mockRejectedValueOnce(new Error('denied'));
+    expect(await fetchCallerFollowUpRuleConfig('other-tenant')).toBeNull();
+    expect(base44.functions.invoke).toHaveBeenCalledWith('saveFollowUpRuleConfig', { action: 'get' });
+    base44.functions.invoke.mockResolvedValueOnce({ data: { config: null } });
+    expect(await fetchCallerFollowUpRuleConfig()).toBeNull();
   });
 
-  it('ignores caller-controlled agency hints while the broker is unavailable', async () => {
-    const row = await fetchCallerPdgmRateConfig('other-tenant');
-    expect(row).toBeNull();
-    expect(base44.functions.invoke).not.toHaveBeenCalled();
-    expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
-    expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
-  });
 });

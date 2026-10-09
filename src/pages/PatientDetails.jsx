@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
+import PatientTelehealthPanel from '@/components/telehealth/PatientTelehealthPanel';
 import { logActivity, ActivityActions } from '@/components/utils/activityLogger';
+import PatientContactActions from '@/components/voice/PatientContactActions';
 import { listAuthorizedVisits } from '@/functions/listAuthorizedVisits';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
@@ -267,10 +269,47 @@ export default function PatientDetails() {
     );
   }
 
+  // Only the panels that carry their own server authority are mounted here:
+  // contacting the patient (the `contact` read purpose plus startMaskedCall /
+  // sendSms / scheduleSms, each re-checking the chart) and the chart's
+  // telehealth visits (manageTelehealthSession, which re-checks the chart on
+  // every list and create). The rest of the chart stays hidden until each
+  // clinical panel has its own purpose-bound read.
+  const displayName = [patientQuery.data?.first_name, patientQuery.data?.last_name]
+    .filter((part) => typeof part === 'string' && part.trim())
+    .join(' ');
   return (
-    <AccessMessage title="Patient details temporarily unavailable">
-      Current Patient and Visit authority was verified. The chart remains hidden until every
-      related clinical panel has its own purpose-bound tenant read service.
-    </AccessMessage>
+    <PageContainer>
+      <PageHeader
+        icon={Users}
+        eyebrow="Patient Care"
+        title="Patient details"
+        description="Purpose-bound chart access"
+        favoritePage="PatientDetails"
+      />
+      <div className="mx-auto max-w-4xl space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldAlert className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+              Verified chart access
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-slate-600">
+            Current Patient and Visit authority was verified. Contact and telehealth tools for this
+            chart are below; the other clinical panels open as each gains its own purpose-bound
+            tenant read service.
+          </CardContent>
+        </Card>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-1">
+            <PatientContactActions patientId={patientId} agencyId={agencyId} />
+          </div>
+          <div className="lg:col-span-2">
+            <PatientTelehealthPanel patientId={patientId} patientName={displayName} agencyId={agencyId} />
+          </div>
+        </div>
+      </div>
+    </PageContainer>
   );
 }

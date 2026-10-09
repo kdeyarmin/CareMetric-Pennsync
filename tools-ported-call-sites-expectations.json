@@ -3,11 +3,6 @@
   "absent": [
     "src/components/alerts/PatientAlertsDashboard.jsx:82 getScopedPatientAlerts",
     "src/components/alerts/PatientAlertsDashboard.jsx:123 updateScopedPatientAlert",
-    "src/components/alerts/RiskAlertWidget.jsx:32 getScopedPatientAlerts",
-    "src/components/alerts/RiskAlertWidget.jsx:40 getScopedPatientAlerts",
-    "src/components/alerts/RiskAlertWidget.jsx:52 updateScopedPatientAlert",
-    "src/components/alerts/RiskAlertWidget.jsx:66 updateScopedPatientAlert",
-    "src/components/dashboard/useHighRiskPatientAlerts.js:78 getScopedPatientAlerts",
     "src/components/documents/DocumentIngestionUploader.jsx:82 extractClinicalDocument",
     "src/components/documents/PDFSearchInterface.jsx:42 searchPDFs",
     "src/components/documents/PDFSearchInterface.jsx:62 searchPDFs",
@@ -63,17 +58,17 @@
     "src/lib/notify.js:59 createNotification",
     "src/lib/retiredOfflineQueue.js:484 appendPatientNoteHistory",
     "src/lib/retiredOfflineQueue.js:571 submitIncidentReport",
-    "src/pages/Dashboard.jsx:91 getDashboardData",
+    "src/pages/Dashboard.jsx:89 getDashboardData",
     "src/pages/Help.jsx:50 generateUserManual",
-    "src/pages/PatientEducationHub.jsx:289 generatePatientHandout",
-    "src/pages/PatientEducationHub.jsx:370 generatePatientHandout",
+    "src/pages/PatientEducationHub.jsx:288 generatePatientHandout",
+    "src/pages/PatientEducationHub.jsx:369 generatePatientHandout",
     "src/pages/PatientRecordDashboard.jsx:200 getScopedPatientAlerts",
     "src/pages/ReferralIntake.jsx:510 analyzeReferralPriority",
     "src/pages/ReferralIntake.jsx:514 analyzeReferralIntake",
-    "src/pages/ReferralIntake.jsx:624 matchPatientWithAI",
+    "src/pages/ReferralIntake.jsx:616 matchPatientWithAI",
     "src/pages/TimeOff.jsx:55 getApprovedTimeOff",
     "src/pages/UserGuides.jsx:25 generateUserGuidePDF",
-    "src/pages/UserManagement.jsx:148 resendInvitationV2",
-    "src/pages/UserSettings.jsx:244 createNotification"
+    "src/pages/UserManagement.jsx:165 resendInvitationV2",
+    "src/pages/UserSettings.jsx:251 createNotification"
   ]
 }

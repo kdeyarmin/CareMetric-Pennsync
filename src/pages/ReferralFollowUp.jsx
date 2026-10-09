@@ -25,8 +25,8 @@ import StatCard from "@/components/ui/stat-card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  ClipboardCheck, ShieldCheck, TrendingUp, Brain, Sparkles, CheckCircle2,
-  AlertTriangle, Printer, Settings2, FileDown, DollarSign, Inbox, Link2, ClipboardCopy,
+  ClipboardCheck, ShieldCheck, ListChecks, Brain, Sparkles, CheckCircle2,
+  AlertTriangle, Printer, Settings2, FileDown, Inbox, Link2, ClipboardCopy,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -41,7 +41,6 @@ import {
 import ProviderFollowUpForm, { followUpFormPdfContent } from "../components/referral/ProviderFollowUpForm";
 import ScannedResponseUpload from "../components/referral/ScannedResponseUpload";
 import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
-import { estimateFollowUpRevenueImpact, fmtUsd } from "../components/referral/followUpRevenueImpact";
 import { exportToPDF } from "@/components/utils/pdfExporter";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
@@ -77,10 +76,20 @@ function validatedPortalLink(value) {
  * tracking with per-item resolution, tenant-bound single-use online responses,
  * and agency-tunable rules.
  *
- * VISIBILITY POLICY: revenue/dollar figures (followUpRevenueImpact) render
- * ONLY for admin-level users (isAdminView) and are never persisted or put on
- * the provider form. Nurses see the clinical/compliance review only.
+ * Restored 2026-10-08 (owner decision) WITHOUT its payment-estimate
+ * content: no dollar figures, no rate configuration, and the rule engine's
+ * coding/case-mix items are filtered out, so the review, the AI suggestions
+ * and the provider form cover CMS compliance only.
  */
+// Coding/case-mix items (the engine's "reimbursement" category) are payment
+// content, which this page no longer shows. Keep only compliance items and
+// recount them.
+function complianceOnlyPlan(plan) {
+  if (!plan) return plan;
+  const items = (plan.items || []).filter((item) => item?.category !== "reimbursement");
+  return { ...plan, items, counts: countFollowUpItems(items) };
+}
+
 export default function ReferralFollowUp() {
   const { tenantContext } = useAuth();
   const queryClient = useQueryClient();
@@ -133,15 +142,6 @@ export default function ReferralFollowUp() {
     enabled: !!tenantContext?.agency_id,
   });
 
-  const { data: rateConfig } = useQuery({
-    queryKey: ["pdgm-rate-config", currentUser?.agency_name || null],
-    queryFn: async () => {
-      const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
-      return fetchCallerPdgmRateConfig(currentUser?.agency_name);
-    },
-    enabled: !!currentUser,
-  });
-
   const { data: ruleConfig } = useQuery({
     queryKey: ["followUpRuleConfig", currentUser?.agency_name || null],
     queryFn: async () => {
@@ -166,8 +166,8 @@ export default function ReferralFollowUp() {
   });
 
   const engineOpts = useMemo(
-    () => ({ rates: rateConfig?.rates, icdGroups: rateConfig?.icd10_clinical_groups, ruleConfig: ruleConfig || undefined }),
-    [rateConfig, ruleConfig]
+    () => ({ ruleConfig: ruleConfig || undefined }),
+    [ruleConfig]
   );
 
   // Referrals that finished FULL processing and are still in an actionable
@@ -190,7 +190,9 @@ export default function ReferralFollowUp() {
     const map = new Map();
     for (const r of reviewable) {
       try {
-        map.set(r.id, buildFollowUpPlan(r.extracted_data, { ...engineOpts, socDate: r.estimated_start_date }));
+        map.set(r.id, complianceOnlyPlan(
+          buildFollowUpPlan(r.extracted_data, { ...engineOpts, socDate: r.estimated_start_date }),
+        ));
       } catch (error) {
         console.error("Follow-up review failed for referral", r.id, error);
       }
@@ -201,12 +203,6 @@ export default function ReferralFollowUp() {
   const selected = reviewable.find((r) => r.id === selectedId) || null;
   const selectedPlan = selected ? plans.get(selected.id) : null;
   const tracking = selected?.follow_up_requests || null;
-
-  // Revenue impact — computed on demand, admin eyes only, never persisted.
-  const revenue = useMemo(
-    () => (adminView && selectedPlan ? estimateFollowUpRevenueImpact(selectedPlan, { rates: rateConfig?.rates }) : null),
-    [adminView, selectedPlan, rateConfig]
-  );
 
   // Reset per-referral working state when the selection changes.
   useEffect(() => {
@@ -282,7 +278,7 @@ export default function ReferralFollowUp() {
     try {
       const result = await ai.run({
         model: "automatic",
-        prompt: `You are a home health coding specialist (HCS-D certified) and quality assurance nurse with 30 years of experience reviewing referrals for Medicare home health agencies. You know exactly which missing or vague documentation causes claim denials, RTPs, ADR takebacks, and underpaid PDGM case-mix — and how to ask a busy referring provider for it so it comes back right the first time.
+        prompt: `You are a home health coding specialist (HCS-D certified) and quality assurance nurse with 30 years of experience reviewing referrals for Medicare home health agencies. You know exactly which missing or vague documentation causes CMS compliance failures, RTPs, ADR takebacks and denials — and how to ask a busy referring provider for it so it comes back right the first time.
 
 A deterministic rule engine has ALREADY flagged the following issues on this referral (do NOT repeat these):
 ${selectedPlan.items.map((i) => `- ${i.title}`).join("\n")}
@@ -290,8 +286,8 @@ ${selectedPlan.items.map((i) => `- ${i.title}`).join("\n")}
 Review the referral data below and identify ADDITIONAL follow-up items the provider should be asked for, beyond the list above. Rules you must follow:
 - Ground every item in what is actually present, absent, vague, or contradictory in THIS referral. Quote or reference the specific referral content in "grounded_in".
 - Never invent clinical facts, diagnoses, or ICD-10 codes. You may ask the provider to supply or clarify them.
-- Each item needs: what exactly the provider must send back, why it matters (regulation, PDGM payment mechanism, or QA/denial pattern), and a provider-facing question a busy office can answer quickly.
-- Only include items with real compliance or reimbursement consequence. If the referral is genuinely complete beyond the flagged list, return an empty list — do not pad.
+- Each item needs: what exactly the provider must send back, why it matters (regulation or QA/denial pattern), and a provider-facing question a busy office can answer quickly.
+- Only include items with a real compliance consequence; do not raise coding, case-mix or payment items. If the referral is genuinely complete beyond the flagged list, return an empty list — do not pad.
 
 Referral data: ${JSON.stringify(selected.extracted_data)}`,
         response_json_schema: {
@@ -302,7 +298,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
               items: {
                 type: "object",
                 properties: {
-                  category: { type: "string", enum: ["compliance", "reimbursement"] },
+                  category: { type: "string", enum: ["compliance"] },
                   severity: { type: "string", enum: ["critical", "high", "medium"] },
                   title: { type: "string" },
                   needed: { type: "string" },
@@ -328,7 +324,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
           // within their severity/category band instead of jumping ahead.
           seq: 10000 + idx,
           source: "ai",
-          category: a.category === "reimbursement" ? "reimbursement" : "compliance",
+          category: "compliance",
           severity: ["critical", "high", "medium"].includes(a.severity) ? a.severity : "medium",
           title: a.title,
           needed: a.needed || a.provider_question || "",
@@ -859,7 +855,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                   </Card>
                 )}
 
-                <div className={`grid ${adminView && revenue ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
+                <div className="grid grid-cols-2 gap-3">
                   <StatCard
                     title="Compliance gaps"
                     value={selectedPlan.counts.compliance}
@@ -867,34 +863,11 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                     tone="amber"
                   />
                   <StatCard
-                    title="Reimbursement gaps"
-                    value={selectedPlan.counts.reimbursement}
-                    icon={TrendingUp}
-                    tone="emerald"
+                    title="Items to request"
+                    value={includedItems.length}
+                    icon={ListChecks}
+                    tone="navy"
                   />
-                  {/* Revenue exposure — ADMIN ONLY by policy */}
-                  {adminView && revenue && (
-                    <Card className="border-emerald-200 bg-emerald-50">
-                      <CardContent className="p-4 flex items-center gap-3">
-                        <DollarSign className="w-6 h-6 text-emerald-600 flex-shrink-0" />
-                        <div>
-                          <p className="text-xs font-semibold text-emerald-800 uppercase">Est. exposure (admin)</p>
-                          <p className="text-lg font-bold text-emerald-900">
-                            {!revenue.available
-                              ? "Unavailable — not $0"
-                              : revenue.totalAtRisk > 0
-                                ? `${fmtUsd(revenue.totalAtRisk)} at risk`
-                                : "—"}
-                          </p>
-                          {revenue.available && revenue.totalUpsideHigh > 0 && (
-                            <p className="text-xs text-emerald-800">
-                              +{fmtUsd(revenue.totalUpsideLow)}–{fmtUsd(revenue.totalUpsideHigh)} upside
-                            </p>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
                 </div>
 
                 {/* Item checklist */}
@@ -940,14 +913,6 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                               <Badge variant="outline">{it.category}</Badge>
                               {it.source === "ai" && <Badge variant="gold">AI-suggested — verify</Badge>}
                               {it.source === "agency" && <Badge variant="info">agency rule</Badge>}
-                              {/* Dollar figures: admin eyes only, by policy */}
-                              {adminView && revenue?.available && revenue.perItem[it.id] && (
-                                <Badge className="bg-emerald-100 text-emerald-800">
-                                  {revenue.perItem[it.id].type === "at_risk"
-                                    ? `${fmtUsd(revenue.perItem[it.id].high)} at risk`
-                                    : `+${fmtUsd(revenue.perItem[it.id].low)}${revenue.perItem[it.id].high !== revenue.perItem[it.id].low ? `–${fmtUsd(revenue.perItem[it.id].high)}` : ""} est.`}
-                                </Badge>
-                              )}
                             </Label>
                             <p className="text-sm text-slate-800 mt-1">
                               <span className="font-semibold">Needed:</span> {it.needed}
@@ -1184,7 +1149,6 @@ function RuleSettingsCard({ ruleConfig, onSaved }) {
               <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="compliance">compliance</SelectItem>
-                <SelectItem value="reimbursement">reimbursement</SelectItem>
               </SelectContent>
             </Select>
             <Select value={draft.severity} onValueChange={(v) => setDraft({ ...draft, severity: v })}>

@@ -292,7 +292,7 @@ BASELINE VITALS:
     // below referenced an undeclared `riskAnalysis` — a guaranteed ReferenceError
     // that 500'd every call, so this clinical feature produced no risk scores or
     // alerts at all.)
-    const riskAnalysis = await base44.integrations.Core.InvokeLLM({
+    const riskAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt: `You are an expert clinical risk assessment AI for home health/hospice care. Analyze this patient's comprehensive data to predict risk of adverse events and recommend preventative interventions.
 

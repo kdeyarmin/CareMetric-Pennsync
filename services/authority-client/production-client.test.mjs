@@ -31,11 +31,20 @@ const target = (overrides = {}) => ({
  */
 function fixture(overrides = {}) {
   const live = new Map();
+  // Refresh tokens the project will honour, each exactly ONCE, as GoTrue rotates
+  // them. `refreshed` counts exchanges so a test can tell a resume that reached
+  // the provider from one that answered out of nothing.
+  const refreshable = new Set();
   const state = {
     requests: [], user: {
       id: AUTH_USER_ID, email: EMAIL, role: 'authenticated', is_anonymous: false,
       email_confirmed_at: '2026-10-01T00:00:00Z',
-    }, context: null, apiResponse: null, ...overrides,
+    }, context: null, apiResponse: null, refreshed: 0, live, refreshable,
+    // Link tokens this fixture will honour, and the passwords it was asked to
+    // write. Both are the fixture's own strings: nothing real is involved.
+    rotateOnWrite: false, rotatedShape: null, linkUser: null,
+    links: new Set(['invite:invitetoken-aaaaaa', 'recovery:recoverytoken-bbbbbb']),
+    passwords: [], password: PASSWORD, consumeLinks: true, refuseLogout: false, ...overrides,
   };
   let next = 0;
   const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -61,15 +70,70 @@ function fixture(overrides = {}) {
     }
     if (!url.startsWith(`${PROJECT_URL}/`)) throw new Error('FIXTURE_FOREIGN_DESTINATION');
     const body = options.body ? JSON.parse(options.body) : {};
-    if (url.endsWith('/token?grant_type=password')) {
-      if (body.email !== EMAIL || body.password !== PASSWORD) return json({}, 401);
-      const bearer = `production.session${++next}.token`;
+    if (url.endsWith('/verify')) {
+      // A fake transport, and deliberately a STRICT one: the exchange has to name
+      // one of the two link kinds and a hash this fixture minted, and must carry
+      // NO address and no bare token -- the shape where the provider redeems the
+      // link and hands back a session is the one this path refuses to use. No real
+      // address and no real link is used anywhere, and nothing here sends.
+      if (body.email !== undefined || body.token !== undefined
+        || !['invite', 'recovery'].includes(body.type)
+        || !state.links.has(`${body.type}:${body.token_hash}`)) return json({}, 401);
+      if (state.consumeLinks) state.links.delete(`${body.type}:${body.token_hash}`);
+      const bearer = `production.link${++next}.token`;
       live.set(bearer, true);
-      return json({ user: state.user, access_token: bearer, token_type: 'bearer' });
+      // `linkUser` mints the grant for somebody else, which is what a mistyped
+      // address produces now that the provider resolves the link on its own.
+      return json({ user: state.linkUser ?? state.user, access_token: bearer, token_type: 'bearer' });
+    }
+    if (url.endsWith('/token?grant_type=password')) {
+      // The CURRENT password, so a grant after a link write has to use what the
+      // write set rather than what the fixture started with.
+      if (body.email !== EMAIL || body.password !== state.password) return json({}, 401);
+      const bearer = `production.session${++next}.token`;
+      const refresh = `refresh${next}`;
+      live.set(bearer, refresh);
+      refreshable.add(refresh);
+      return json({ user: state.user, access_token: bearer, token_type: 'bearer', refresh_token: refresh });
+    }
+    if (url.endsWith('/token?grant_type=refresh_token')) {
+      state.refreshed += 1;
+      // Single use and rotating, which is the whole reason this is the value kept
+      // on the device rather than a bearer.
+      if (typeof body.refresh_token !== 'string' || !refreshable.delete(body.refresh_token)) return json({}, 401);
+      assert.equal(body.email, undefined, 'a refresh names nobody; the token is the claim');
+      const bearer = `production.resumed${++next}.token`;
+      const refresh = `refresh${next}`;
+      live.set(bearer, refresh);
+      refreshable.add(refresh);
+      return json({ user: state.refreshUser ?? state.user, access_token: bearer, token_type: 'bearer',
+        refresh_token: refresh });
     }
     const bearer = options.headers.Authorization?.slice(7);
     if (!live.has(bearer)) return json({}, 401);
-    if (url.endsWith('/logout?scope=local')) { live.delete(bearer); return new Response(null, { status: 204 }); }
+    if (url.endsWith('/logout?scope=local')) {
+      if (state.refuseLogout) return json({}, 500);
+      // A local logout ends the SESSION, so the refresh token minted with that
+      // access token dies with it.
+      refreshable.delete(live.get(bearer));
+      live.delete(bearer); return new Response(null, { status: 204 });
+    }
+    if (url.endsWith('/user') && options.method === 'PUT') {
+      if (typeof body.password !== 'string' || body.password.length < 12) return json({}, 422);
+      state.passwords.push(body.password);
+      state.password = body.password;
+      // `rotateOnWrite` makes the write answer with a session of its own, which is
+      // provider behaviour this repository cannot measure and must survive either
+      // way: a token nothing registered is a token nothing can revoke.
+      if (!state.rotateOnWrite) return json(state.user);
+      // `rotatedShape` lets a test mint a token that is NOT JWT-shaped, which is
+      // the case the tracking bound used to drop on the floor.
+      const rotated = state.rotatedShape
+        ? state.rotatedShape(next + 1) : `production.rotated${++next}.token`;
+      if (state.rotatedShape) next += 1;
+      live.set(rotated, true);
+      return json({ ...state.user, access_token: rotated, token_type: 'bearer' });
+    }
     if (url.endsWith('/user')) return json(state.user);
     if (url.endsWith('/pennsync_staging_context')) {
       return json(state.context ?? context(body.p_agency_id));
@@ -85,6 +149,26 @@ function fixture(overrides = {}) {
 }
 
 const client = (state, overrides) => createProductionAuthorityClient(target(overrides), { fetchImpl: state.fetch });
+
+/**
+ * A device record, as the browser store would hold it, and nothing more.
+ *
+ * `writes` records every value the client asked to keep, so a test can assert
+ * that what survives is the ROTATED token rather than the one just spent.
+ */
+function deviceStore(initial = null) {
+  const port = {
+    value: initial, writes: [], clears: 0,
+    read: () => port.value,
+    write: value => { port.writes.push(value); port.value = value; return true; },
+    clear: () => { port.clears += 1; port.value = null; },
+  };
+  return port;
+}
+/** How many grants the project still honours. */
+const live = state => state.live.size;
+const resumable = (state, store, overrides) =>
+  createProductionAuthorityClient(target(overrides), { fetchImpl: state.fetch, sessionStore: store });
 
 test('a production target is derived and shaped, never pinned, and refuses the staging environment', () => {
   assert.doesNotThrow(() => createProductionAuthorityClient(target(), { fetchImpl: fixture().fetch }));
@@ -231,4 +315,393 @@ test('a short credential never reaches the project', async () => {
   const state = fixture();
   await assert.rejects(client(state).signIn('short'), { code: 'INVALID_PRODUCTION_CREDENTIAL' });
   assert.deepEqual(state.requests, []);
+});
+
+test('a link sets the password and never becomes a session', async () => {
+  const state = fixture();
+  const api = client(state);
+  const identity = await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(identity, { id: AUTH_USER_ID, email: EMAIL, provider: 'supabase', app_id: APP_ID });
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // The write is a PUT on the user, not a second grant, and the exchange named
+  // this address. Both are asserted from the requests the transport actually saw.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user', 'POST /auth/v1/logout?scope=local',
+  ]);
+  // THE PROPERTY THIS METHOD EXISTS FOR: the grant that came out of a mailbox was
+  // revoked, and no RPC can be made on it. A caller signs in afterwards with the
+  // password it just set, which is the only path that produces a session.
+  await assert.rejects(api.rpc('context', { p_agency_id: 'agency-real' }), { code: 'AUTHENTICATION_REQUIRED' });
+  await assert.doesNotReject(api.signIn('a-new-long-password').then(() => api.rpc('context', { p_agency_id: 'agency-real' })));
+});
+
+test('a wrong-person grant from a LINK is revoked, where the same grant from a sign-in is not', async () => {
+  // THE MIRROR OF `client-lifecycle.test.mjs:172`, and the pair is the point: that
+  // test pins the sign-in path NOT logging out a grant it refused (its `requests`
+  // is exactly the password exchange), and this one pins the link path logging one
+  // out. Neither suite proves the pair, and either side reads like it could be
+  // tidied into the other, so each names the other.
+  //
+  // What separates them is PROVENANCE and REACHABILITY, not whether the client
+  // accepted the grant. A mistyped address on a link is an ordinary mistake
+  // against a provider that behaved correctly, so a real person's session gets
+  // minted and nobody will ever clean it up: revoking wins. A password exchange
+  // that answers for a different identity means the responder is not behaving
+  // like the provider at all, so the token's provenance is unknown and not
+  // spending it as a credential wins -- and that is unreachable in ordinary
+  // operation, where a typo is not.
+  // THE ROOT CAUSE BEHIND THREE FINDINGS, in the instance that found it: a grant
+  // this client will not USE still has to be cleaned up, and those are different
+  // questions. Registering only what `validGrant` accepts meant a grant for
+  // somebody else was never registered, so the catch had nothing to revoke: the
+  // refusal was correct, no password was written, and a live session for the real
+  // account was left behind with the link spent.
+  const state = fixture();
+  state.linkUser = { ...state.user, id: '11111111-2222-4333-8444-555555555555',
+    email: 'somebody.else@agency.example' };
+  const api = client(state);
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHENTICATION_IDENTITY_MISMATCH' });
+  assert.deepEqual(state.passwords, []);
+  // The logout is OBSERVED rather than assumed, and the count is what is asserted:
+  // a reviewer's own version of this named a token the path never mints and passed
+  // while a grant was live.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
+});
+
+test('a mistyped address whose cleanup also fails still answers the mismatch', async () => {
+  // WHAT THE BARE `.catch(() => {})` IN THE CATCH IS FOR, and nothing else pinned
+  // it. `revokeKnown` raises `AUTHORITY_SESSION_CLEANUP_FAILED`, and the screen
+  // that drives this treats that code as the DONE state -- the password was
+  // written and only the cleanup failed. So without the swallow, a typo plus a
+  // flaky logout would replace the mismatch with a code meaning success, and tell
+  // somebody their password was set when no password was written at all. Delete
+  // the `.catch` and this test goes red; a reviewer measured that it does.
+  const state = fixture({ refuseLogout: true });
+  state.linkUser = { ...state.user, id: '11111111-2222-4333-8444-555555555555',
+    email: 'somebody.else@agency.example' };
+  const api = client(state);
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHENTICATION_IDENTITY_MISMATCH' });
+  // No password written, the logout attempted, and the session still live --
+  // which is the honest outcome and is NOT what the answer is about.
+  assert.deepEqual(state.passwords, []);
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 1);
+});
+
+test('a password write that answers with a session of its own leaves nothing live', async () => {
+  // A REVIEWER'S FINDING, found structurally: the write was sent without the
+  // callback that registers a grant, so a session in ITS answer was known to
+  // nobody -- not the success path, not the catch, not the next call's sweep --
+  // and the one thing this method promises would have failed silently. Whether
+  // the provider ever answers that way is not measured here, which is exactly why
+  // the client must not depend on it.
+  const state = fixture();
+  state.rotateOnWrite = true;
+  const api = client(state);
+  await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // BOTH grants revoked, not just the link's: two logouts, and nothing live.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user',
+    'POST /auth/v1/logout?scope=local', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
+});
+
+test('a rotated token the provider does not shape like a JWT is still revoked', async () => {
+  // THE QUIET EXCEPTION TO THIS METHOD'S OWN SENTENCE, measured by a reviewer and
+  // closed here. Tracking used to apply the JWT shape, which `validGrant` also
+  // applies -- so a token outside it failed closed for USE and open for CLEANUP:
+  // minted by the write, never usable, and never revokable. Unreachable while
+  // GoTrue returns JWTs, and reachable the moment the token format changes, which
+  // is a property of somebody else's service rather than of this code.
+  const state = fixture({ rotateOnWrite: true, rotatedShape: n => `two.segments${n}` });
+  const api = client(state);
+  await api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password');
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+  // Both the link's grant and the write's unshaped one, logged out by name.
+  assert.deepEqual(state.requests.map(entry => `${entry.method} ${entry.url.slice(PROJECT_URL.length)}`), [
+    'POST /auth/v1/verify', 'PUT /auth/v1/user',
+    'POST /auth/v1/logout?scope=local', 'POST /auth/v1/logout?scope=local',
+  ]);
+  assert.equal(state.live.size, 0);
+});
+
+test('a recovery link works the same way, and a consumed link cannot be replayed', async () => {
+  const state = fixture();
+  const api = client(state);
+  await api.setPasswordFromLink('recovery', 'recoverytoken-bbbbbb', 'another-long-password');
+  assert.deepEqual(state.passwords, ['another-long-password']);
+  // The fixture consumes the token, as GoTrue does, so the second attempt is the
+  // real replay case rather than a simulated one.
+  await assert.rejects(api.setPasswordFromLink('recovery', 'recoverytoken-bbbbbb', 'third-long-password'),
+    { code: 'AUTHENTICATION_FAILED' });
+  assert.deepEqual(state.passwords, ['another-long-password']);
+});
+
+test('a link this client will not exchange never leaves the browser', async () => {
+  const state = fixture();
+  const api = client(state);
+  for (const [label, args] of [
+    // The absent GoTrue types, each of which would be a way to get a session
+    // with no password, or to move the address the target is built around.
+    ['a magic link', ['magiclink', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['a signup link', ['signup', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['an email change', ['email_change', 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['no type at all', [undefined, 'invitetoken-aaaaaa', 'a-new-long-password']],
+    ['a token with a space', ['invite', 'invite token', 'a-new-long-password']],
+    ['a token carrying a path', ['invite', '../../etc/passwd', 'a-new-long-password']],
+    ['a token too short to be one', ['invite', 'abc', 'a-new-long-password']],
+    ['a token over the bound', ['invite', 'a'.repeat(513), 'a-new-long-password']],
+    ['no token', ['invite', null, 'a-new-long-password']],
+  ]) {
+    await assert.rejects(api.setPasswordFromLink(...args), { code: 'INVALID_PRODUCTION_LINK' }, label);
+  }
+  // The same bounds as a sign-in, and the same code: this is the same credential
+  // being written rather than a second kind of secret.
+  for (const password of ['short', '', null, 'a'.repeat(513)]) {
+    await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', password),
+      { code: 'INVALID_PRODUCTION_CREDENTIAL' });
+  }
+  assert.deepEqual(state.requests, []);
+  assert.deepEqual(state.passwords, []);
+});
+
+test('a link session whose revocation fails is reported rather than left quiet', async () => {
+  const state = fixture({ refuseLogout: true });
+  const api = client(state);
+  // A cleanup failure on the success path means a session minted from a mailbox
+  // is still live, so it is raised rather than swallowed by the return -- and the
+  // password was still written, which is why the code says cleanup and not write.
+  await assert.rejects(api.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'AUTHORITY_SESSION_CLEANUP_FAILED' });
+  assert.deepEqual(state.passwords, ['a-new-long-password']);
+});
+
+test('a staging client has no link exchange at all', async () => {
+  const { createStagingAuthorityClient } = await import('./client.mjs');
+  const state = fixture();
+  // The staging target's own reviewed values: a synthetic actor's address and one
+  // of the two approved reference/origin pairs. Nothing real appears here either.
+  const staging = createStagingAuthorityClient({
+    appId: STAGING_APP_ID, projectRef: 'local-pennsync-authority', projectUrl: 'http://127.0.0.1:54321',
+    publishableKey: 'sb_publishable_synthetic_test_key',
+    email: 'info+pennsync-admin-a@caremetricai.com', authUserId: '10000000-0000-4000-8000-000000000001',
+  }, { fetchImpl: state.fetch });
+  // Staging's four actors are fixed and their credentials are build
+  // configuration, so there is no invitation to accept and nothing to set.
+  await assert.rejects(staging.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'),
+    { code: 'STAGING_OPERATION_UNAVAILABLE' });
+  assert.deepEqual(state.requests, []);
+});
+
+test('a reload takes up the session this device holds, and the record ROTATES', async () => {
+  // The property this whole facility exists for. The Base44 path survives a reload
+  // because its access token is in `localStorage`; here nothing but a single-use
+  // refresh token is kept, and the access token never leaves the closure.
+  const state = fixture();
+  const store = deviceStore();
+  const first = resumable(state, store);
+  await first.signIn(PASSWORD);
+  assert.deepEqual(store.writes, ['refresh1'], 'signing in keeps exactly the grant`s refresh token');
+
+  // A reload is a NEW client over the same device record: nothing in memory
+  // survives, which is what makes this a reload rather than a second call.
+  const reloaded = resumable(state, store);
+  const identity = await reloaded.resume();
+  assert.equal(identity.email, EMAIL);
+  assert.equal(identity.id, AUTH_USER_ID);
+  assert.equal(state.refreshed, 1);
+  assert.equal(store.writes.length, 2);
+  assert.equal(typeof store.value, 'string');
+  assert.notEqual(store.value, 'refresh1', 'the record holds the rotated token, not the spent one');
+  assert.equal(store.clears, 0);
+  // And the resumed session is a real one: it authorizes a call.
+  const context = await reloaded.rpc('context', { p_agency_id: 'agency-real' });
+  assert.equal(context.agency_id, 'agency-real');
+});
+
+test('a signed-out session cannot be taken up again, by this device or anybody', async () => {
+  // THE SABOTAGE CASE. Three things have to hold at once, and only the first two
+  // are about this client: the record is gone, the provider has revoked the grant,
+  // and a client handed the old value back cannot use it.
+  const state = fixture();
+  const store = deviceStore();
+  const client1 = resumable(state, store);
+  await client1.signIn(PASSWORD);
+  const kept = store.value;
+  assert.equal(typeof kept, 'string');
+
+  await client1.signOut();
+  assert.equal(store.value, null, 'signing out leaves no record on the device');
+  assert.equal(live(state), 0, 'and no grant live at the provider');
+
+  // Nothing to resume from, and no request made: an empty device is not an
+  // authentication failure.
+  const before = state.requests.length;
+  assert.equal(await resumable(state, store).resume(), null);
+  assert.equal(state.requests.length, before);
+
+  // And the value that WAS kept is refused if somebody kept a copy of it. This is
+  // the assertion that fails if `signOut` stops revoking: the record check alone
+  // would pass against a provider that still honours the token.
+  const stolen = deviceStore(kept);
+  await assert.rejects(resumable(state, stolen).resume(), { code: 'AUTHENTICATION_FAILED' });
+  assert.equal(stolen.value, null, 'a refused token is removed rather than retried forever');
+});
+
+test('closing the realm keeps the device able to resume; only signing out forgets', async () => {
+  // The app closes a READY realm by itself — after five minutes, on returning to a
+  // hidden tab, on a back-forward restore. If those forgot the device, a reload
+  // would ask for a password and this facility would buy nothing.
+  const state = fixture();
+  const store = deviceStore();
+  const client1 = resumable(state, store);
+  await client1.signIn(PASSWORD);
+  const before = live(state);
+  const requests = state.requests.length;
+  await client1.signOut({ forget: false });
+  // Nothing is revoked, and nothing is even SENT: a local logout would end the
+  // session, and this session's refresh token would die with it, so the device
+  // record would be dead on arrival. What ends is the use of the access token,
+  // which goes with the document.
+  assert.equal(state.requests.length, requests);
+  assert.equal(live(state), before, 'the session stays live at the provider');
+  assert.equal(store.clears, 0);
+  assert.equal(typeof store.value, 'string');
+  // The access token is unusable through this client even though the session lives.
+  await assert.rejects(client1.rpc('context', { p_agency_id: 'agency-real' }),
+    { code: 'AUTHENTICATION_REQUIRED' });
+  const resumed = await resumable(state, store).resume();
+  assert.equal(resumed.email, EMAIL);
+});
+
+test('a resume on the SAME client takes up the session it closed rather than destroying it', async () => {
+  // A reviewer measured this one: the client resumed, and ended with no live
+  // session and a logout sent. `invalidate()` stops the old bearer being USED and
+  // deliberately does not empty `knownSessions`, so the bearer from before the
+  // close was still named — and revoking it ends the SESSION, which takes the
+  // refresh token on the device with it. The exchange then answered 401 and the
+  // record was cleared on the way out, so a reload in the same document signed the
+  // person out instead of resuming them.
+  //
+  // The fix drops the names rather than revoking them. Note what makes this
+  // testable at all: the fixture retires a session's refresh token with the
+  // session, as GoTrue does. A fixture treating each access token as independently
+  // live would pass either way.
+  const state = fixture();
+  const store = deviceStore();
+  const client1 = resumable(state, store);
+  await client1.signIn(PASSWORD);
+  await client1.signOut({ forget: false });
+  const logouts = state.requests.filter(({ url }) => url.endsWith('/logout?scope=local')).length;
+  const identity = await client1.resume();
+  assert.equal(identity.email, EMAIL);
+  assert.equal(state.refreshed, 1);
+  assert.equal(state.requests.filter(({ url }) => url.endsWith('/logout?scope=local')).length, logouts,
+    'nothing was revoked on the way in');
+  assert.equal(store.clears, 0);
+  // And the client it resumed into works, which is what the person would notice.
+  assert.equal((await client1.rpc('context', { p_agency_id: 'agency-real' })).agency_id, 'agency-real');
+  // Signing out from here still revokes what it resumed, which is the property the
+  // dropped names must not have cost. It is counted as a DIFFERENCE rather than
+  // against zero: the pre-close bearer was deliberately left live and this client
+  // no longer names it, and in the real provider a rotation stays inside one
+  // session, so the fixture's two entries are one session there.
+  const before = live(state);
+  await client1.signOut();
+  assert.equal(live(state), before - 1, 'the resumed session is the one that ends');
+  assert.equal(store.value, null);
+});
+
+test('a losing resume forgets only the token it spent, so the winner stays signed in', async () => {
+  // Two tabs booting over one record. Both read it, one exchanges it and writes the
+  // rotated token, the other is refused — and an unconditional clear in the loser
+  // deletes a record the provider still honours, so the person is signed in and the
+  // next boot asks for a password anyway.
+  //
+  // The browser store supplies `clearSpent`; this proves the CLIENT asks for it.
+  // The two are SEQUENCED rather than raced: the loser's port answers with the
+  // value it read BEFORE the winner rotated, which is what a second tab holds. Run
+  // concurrently, whether the loser's clean-up lands before or after the winner's
+  // write is the fixture's scheduling, and the interleaving the defect lives in is
+  // the one that cannot be chosen.
+  const state = fixture();
+  const store = deviceStore();
+  await resumable(state, store).signIn(PASSWORD);
+  const spent = store.value;
+  const winner = await resumable(state, store).resume();
+  assert.equal(winner.email, EMAIL);
+  const rotated = store.value;
+  assert.notEqual(rotated, spent);
+
+  let spentWith = null;
+  const stale = {
+    ...store,
+    read: () => spent,
+    clearSpent: value => {
+      spentWith = value;
+      if (store.value !== value) return false;
+      store.clear();
+      return true;
+    },
+  };
+  await assert.rejects(resumable(state, stale).resume(), { code: 'AUTHENTICATION_FAILED' });
+  assert.equal(spentWith, spent, 'the loser offered the token IT spent');
+  assert.equal(store.clears, 0, 'and the winner`s record survived');
+  assert.equal(store.value, rotated);
+  assert.equal((await resumable(state, store).resume()).email, EMAIL);
+});
+
+test('a refreshed grant about somebody else is refused and forgotten, and its token is not used', async () => {
+  // The rule this encodes is `client-lifecycle.test.mjs`'s, which refuses to treat
+  // a contradicted grant's token "as a cleanup credential": the client rejects the
+  // answer and sends nothing out of it. I had this backwards first and tracked the
+  // token by shape so it could be revoked, which made the ONE untrusted string in
+  // the exchange into something the client transmits.
+  const state = fixture();
+  const store = deviceStore();
+  const client1 = resumable(state, store);
+  await client1.signIn(PASSWORD);
+  const after = state.requests.length;
+  // A different ADDRESS, which is what the device record pins. An id this client
+  // has never seen is learned from the grant exactly as `signIn` learns it, so a
+  // test that changed the id instead would be refused one step later, by the
+  // `/user` read, and would prove nothing about this.
+  state.refreshUser = { ...state.user, email: 'someone.else@agency.example' };
+  await assert.rejects(resumable(state, store).resume(), { code: 'AUTHENTICATION_IDENTITY_MISMATCH' });
+  assert.deepEqual(state.requests.slice(after).map(({ url }) => url.replace(PROJECT_URL, '')),
+    ['/auth/v1/token?grant_type=refresh_token'], 'nothing is sent carrying the refused answer');
+  assert.equal(store.value, null, 'and the record that produced it is removed');
+});
+
+test('a transport failure keeps the record, because an offline boot is not a sign-out', async () => {
+  // Clearing here would sign out every person whose app booted against a service
+  // that was briefly unreachable. A token that really did die is refused on the
+  // next boot and cleared then.
+  const state = fixture();
+  const store = deviceStore();
+  await resumable(state, store).signIn(PASSWORD);
+  const kept = store.value;
+  const offline = { ...state, fetch: async () => { throw new TypeError('offline'); } };
+  await assert.rejects(resumable(offline, store).resume(), { code: 'AUTHORITY_NETWORK_FAILED' });
+  assert.equal(store.value, kept, 'the device still holds what it held');
+  assert.equal(store.clears, 0);
+});
+
+test('a device record that is not a credential reaches no provider', async () => {
+  const state = fixture();
+  for (const value of ['', 'short', 'has space', 'a'.repeat(513), 42, {}, []]) {
+    const store = deviceStore(value);
+    assert.equal(await resumable(state, store).resume(), null, JSON.stringify(value));
+    assert.equal(store.value, null, 'and it is removed rather than left to rot');
+  }
+  assert.equal(state.requests.length, 0);
 });

@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
+import { productionDevice as deviceRecord } from '@/test/independentProductionFixture';
 
 /** The principal AuthContext binds, which is where a ported call's tenant comes from. */
 const boundUser = Object.freeze({ id: 'user-1', email: 'nurse@example.test' });
@@ -437,5 +438,71 @@ describe('entity and integration calls in the independent build', () => {
       code: 'STAGING_OPERATION_UNAVAILABLE', operation: 'entities.TrainingCourse.list' });
     await expect(client.integrations.Core.InvokeLLM({})).rejects.toMatchObject({
       code: 'STAGING_OPERATION_UNAVAILABLE', operation: 'integrations.Core.InvokeLLM' });
+  });
+  it('has no link exchange at all, and asks the project nothing about one', async () => {
+    const fixture = stagingFixture();
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(stagingEnv), { fetchImpl: fixture.fetch });
+    // Staging's four actors are fixed and their credentials are build
+    // configuration, so there is no invitation to accept and no password a caller
+    // could set. The name exists so a screen can ask the owned backend for it
+    // rather than branching on which mode it is in.
+    await expect(adapter.auth.setPasswordFromLink('invite', 'invitetoken-aaaaaa', 'a-new-long-password'))
+      .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
+    expect(fixture.requests).toEqual([]);
+  });
+});
+
+describe('a staging session this device already holds', () => {
+  // Staging changes with production because the two are one closure with two entry
+  // points. What differs here is the gate: an address that is not one of the four
+  // pinned actors has no authority user id, so it can produce no client at all.
+  const adapterWith = (fixture, device) => createIndependentStagingAdapter(
+    readIndependentStagingConfig(stagingEnv), { fetchImpl: fixture.fetch, device });
+
+  it('is taken up without a password, and signing out leaves nothing to take up', async () => {
+    const fixture = stagingFixture();
+    const device = deviceRecord();
+    const first = adapterWith(fixture, device);
+    await first.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    expect(device.state.email).toBe(stagingEmails[0]);
+
+    const reloaded = adapterWith(fixture, device);
+    expect(await reloaded.auth.resume()).toBe(true);
+    expect((await reloaded.authority.me()).email).toBe(stagingEmails[0]);
+
+    await reloaded.auth.signOut();
+    expect(device.state.token).toBeNull();
+    expect(await adapterWith(fixture, device).auth.resume()).toBe(false);
+  });
+
+  it('two overlapping boots leave the record alone, because the loser refused nothing', async () => {
+    // The production spec carries the reasoning; this is the same guard at the
+    // other entry point, and both are pinned because the two share one closure
+    // and a fix applied to one of them is easy to believe applies to both.
+    const fixture = stagingFixture();
+    const device = deviceRecord();
+    const first = adapterWith(fixture, device);
+    await first.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    await first.auth.signOut({ forget: false });
+    expect(typeof device.state.token).toBe('string');
+
+    const booting = adapterWith(fixture, device);
+    const [loser, winner] = await Promise.all([booting.auth.resume(), booting.auth.resume()]);
+    expect(loser).toBe(false);
+    expect(winner).toBe(true);
+    expect(device.state.clears).toBe(0);
+    expect(typeof device.state.token).toBe('string');
+    expect(await adapterWith(fixture, device).auth.resume()).toBe(true);
+  });
+
+  it('refuses a record naming anybody but the four actors, and forgets it', async () => {
+    const fixture = stagingFixture();
+    const device = deviceRecord('nurse@agency.example', 'synthetic-refresh-forged');
+    const adapter = adapterWith(fixture, device);
+    expect(await adapter.auth.resume()).toBe(false);
+    expect(adapter.auth.hasSession()).toBe(false);
+    // Refused before any request: the actor map answers it, not the project.
+    expect(fixture.requests).toEqual([]);
+    expect(device.state.token).toBeNull();
   });
 });

@@ -215,7 +215,7 @@ Create professional medical chart content with:
 4. Easy-to-read lists and tables
 5. Professional medical terminology`;
 
-    const result = await base44.integrations.Core.InvokeLLM({
+    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "automatic",
       prompt,
       response_json_schema: {

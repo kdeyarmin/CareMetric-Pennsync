@@ -68,6 +68,7 @@ import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { formatEastern } from "../components/utils/timezone";
 import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+import PatientFileUpdateUploader from "@/components/patient/PatientFileUpdateUploader";
 
 const EMPTY_ROWS = Object.freeze([]);
 const FRESH_QUERY_OPTIONS = Object.freeze({
@@ -794,14 +795,11 @@ function ImportPatientsTab() {
         </p>
       </div>
 
-      <Alert className="border-amber-300 bg-amber-50" role="status">
-        <AlertTriangle className="h-4 w-4 text-amber-700" />
-        <AlertDescription className="text-amber-950">
-          Patient roster import is paused until upload and processing can run through
-          one atomic tenant-bound broker. This prevents a file uploaded under one
-          agency authority from being processed after an account or agency switch.
-        </AlertDescription>
-      </Alert>
+      {/* 2026-10-08 owner decision: the import is back on. The server admits an
+          agency administrator with one active membership, keeps every match and
+          write inside that agency, and refuses a commit for a different agency
+          than the one the preview was computed for. */}
+      <PatientFileUpdateUploader />
     </div>
   );
 }

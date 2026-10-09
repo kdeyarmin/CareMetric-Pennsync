@@ -190,8 +190,6 @@ export const userBlocks = [
       ${table(['Widget', 'What it shows'], [
         ['<strong>Today’s snapshot</strong>', 'Scheduled visits (and how many you’ve completed), AI-assisted notes created, and the time you’ve saved over the last 30 days.'],
         ['<strong>Real-time patient alerts</strong>', 'New incidents, clinical changes, and risk alerts for your patients as they happen.'],
-        ['<strong>High-risk patients</strong>', 'Patients flagged for possible deterioration or hospitalization so you can prioritize outreach.'],
-        ['<strong>Hospitalization risk monitor</strong>', 'AI prediction of which patients are most at risk of an avoidable hospitalization.'],
         ['<strong>Proactive clinical support</strong>', 'AI clinical guidance for the patients you’re scheduled to see.'],
         ['<strong>Upcoming telehealth</strong>', 'Your scheduled virtual visits, with quick join links.'],
         ['<strong>Pending referrals</strong>', 'New admissions awaiting action (where your role allows).'],
@@ -245,7 +243,7 @@ export const userBlocks = [
       <p>Opening a patient shows their full record, organized into tabs:</p>
       ${table(['Tab', 'What you’ll find'], [
         ['<strong>Overview</strong>', 'Snapshot, quick actions (call, email, refill, discharge), care-team messaging, health history, clinical-events timeline, documents, and an AI-generated patient summary.'],
-        ['<strong>AI Tools</strong>', 'Risk stratification, deterioration prediction, history summary, compliance auditor, and proactive OASIS suggestions.'],
+        ['<strong>AI Tools</strong>', 'History summary, compliance auditor, and proactive OASIS suggestions.'],
         ['<strong>Documents</strong>', 'View, upload, and download the patient’s documents and referral paperwork.'],
         ['<strong>Visits</strong>', 'Every past and scheduled visit; start a new visit here.'],
         ['<strong>Tasks</strong>', 'Proactive, AI-generated clinical tasks you can assign and track.'],
@@ -281,7 +279,7 @@ export const userBlocks = [
         ['Save as draft or submit', 'Save to finish later, or submit to send the assessment for review and sign-off.'],
       ])}
       ${callout('tip', 'Pre-fill OASIS from a note', '<p>At the top of the Assessment tab, open <strong>Pre-fill OASIS from a Note</strong> and paste a recent clinical note. PennSync suggests answers for matching OASIS items, each with a confidence score and the exact sentence from your note it was drawn from. Nothing is written to the assessment until you attest — choose <strong>Attest &amp; apply</strong> per item, or <strong>Attest all ≥85%</strong> for the high-confidence set. Only blank items are filled; your existing answers are never overwritten.</p>')}
-      ${callout('important', 'Always confirm AI answers', '<p>AI suggestions accelerate OASIS but never replace your clinical judgment. Review every item — especially those that drive the patient’s functional score and case mix — before submitting.</p>')}
+      ${callout('important', 'Always confirm AI answers', '<p>AI suggestions accelerate OASIS but never replace your clinical judgment. Review every item — especially those that drive the patient’s functional score — before submitting.</p>')}
 
       <h3 id="oasis-tabs"><span class="h3-eyebrow">Everything in one place</span>The OASIS Center</h3>
       <p>Beyond the assessment itself, the OASIS Center gathers related tools as tabs:</p>
@@ -293,7 +291,7 @@ export const userBlocks = [
         ['<strong>Clinical</strong>', 'Clinician quality check — validates answers against documented diagnoses and symptoms.'],
         ['<strong>Quality & Documentation</strong>', 'Compliance validation, missing fields, and documentation gaps.'],
       ])}
-      ${callout('note', 'Some tabs are for administrators', '<p>Revenue, Analytics, and Audit tabs present financial and agency-wide data and appear for facility administrators. Clinicians work primarily in Assessment, Analyze, Review, Clinical, and Quality.</p>')}
+      ${callout('note', 'Some tabs are for administrators', '<p>Analytics and Audit tabs present agency-wide data and appear for facility administrators. Clinicians work primarily in Assessment, Analyze, Review, Clinical, and Quality.</p>')}
     `,
   },
 
@@ -641,7 +639,7 @@ export const userBlocks = [
         { q: 'When is my timesheet due, and when is payday?', a: 'Pay periods are biweekly (Sunday through Saturday). Timesheets are due before noon on the Monday after the period ends, and payday is normally the Friday after the period ends — moved to Thursday when that Friday is a bank holiday, and occasionally adjusted for a specific period when payroll confirms it. The timesheet form shows the authoritative due date and payday for the period you pick.' },
         { q: 'What is the AI-content responsibility agreement I saw at sign-in?', a: 'A one-time acknowledgment (re-shown only if the wording changes) that AI-generated content may contain errors and that you are responsible for reviewing and approving anything you submit. Your acceptance is recorded with your name, the date, and the agreement version.' },
         { q: 'What does the “AI-generated — verify before clinical use” line mean?', a: 'It marks text that AI drafted (patient summaries, insights, incident narratives, and similar), often with a generated-at time. Treat it as a draft: read it, correct it, and only then rely on it or save it.' },
-        { q: 'How do OASIS suggestions work?', a: 'AI analyzes patient history, recent notes, and diagnoses to suggest appropriate OASIS responses, highlight compliance risks, and optimize for PDGM case mix. You confirm every answer.' },
+        { q: 'How do OASIS suggestions work?', a: 'AI analyzes patient history, recent notes, and diagnoses to suggest appropriate OASIS responses and highlight compliance risks. It never suggests a response to change payment, and you confirm every answer.' },
         { q: 'What happens to a flagged compliance issue?', a: 'Flagged notes appear where you can review them, apply AI suggestions to fix the issue, and re-save. PennSync tracks your improvement over time.' },
         { q: 'A feature in this manual isn’t in my sidebar — why?', a: 'Some tools are limited to facility administrators. If you don’t see it, your role doesn’t include it. Contact your administrator if you believe you need access.' },
       ])}

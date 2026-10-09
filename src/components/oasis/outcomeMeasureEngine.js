@@ -391,13 +391,20 @@ function isDeceasedEpisode({ dischargeDisposition }) {
  * @param {Object} opts.start       SOC/ROC answers map OR oasis_items array
  * @param {Object} opts.discharge   Discharge answers map OR oasis_items array
  * @param {string} [opts.dischargeDisposition]  e.g. "remained_home" | "deceased"
+ * @param {Object} [opts.startAssessment]      whole SOC/ROC assessment; PREFERRED over opts.start
+ * @param {Object} [opts.dischargeAssessment]  whole discharge assessment; PREFERRED over opts.discharge
  * @returns {{
  *   eligible: boolean,
  *   episode_excluded_reason: (string|null),
+ *   episode_excluded_reasons: string[],
+ *   excluded_row_count: number,
+ *   excluded_rows: Array<{item: string, reasons: string[]}>,
  *   measures: Array,
  *   improved_count: number,
  *   eligible_measure_count: number,
  *   overall_improvement_score: (number|null),
+ *   input_response_schema_ids: Array<string|null>,
+ *   calculation_version: string,
  *   internal_gg_18_item_raw_sum: object,
  * }}
  */

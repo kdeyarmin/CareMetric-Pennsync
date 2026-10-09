@@ -2,9 +2,17 @@
   "name": "TelehealthSession",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Agency the session belongs to. Stamped by manageTelehealthSession from the caller's exact active AgencyMembership; never accepted from a client."
+    },
+    "host_user_id": {
+      "type": "string",
+      "description": "Built-in User id of the clinician who created the session. Stamped by manageTelehealthSession and read as host authority instead of the mutable host_email."
+    },
     "room_name": {
       "type": "string",
-      "description": "Twilio Video room name (unique)"
+      "description": "Telnyx Video room unique name, minted server-side by manageTelehealthSession."
     },
     "patient_id": {
       "type": "string",

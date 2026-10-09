@@ -7,14 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, AlertTriangle, User, Calendar, XCircle, RotateCcw, ThumbsUp, MapPin, Phone, Award } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { base44 } from "@/api/base44Client";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-export default function PatientMatchSelector({ 
-  extractedName, 
+export default function PatientMatchSelector({
+  extractedName,
   extractedDOB,
-  matchResults, 
-  selectedPatientId, 
+  matchResults,
+  selectedPatientId,
   onSelectPatient,
   allPatients,
   oasisUploadId
@@ -26,7 +26,9 @@ export default function PatientMatchSelector({
   const queryClient = useQueryClient();
 
   const feedbackMutation = useMutation({
-    mutationFn: (data) => base44.entities.OASISFeedback.create(data),
+    // Match feedback is recorded by the OASIS record broker, which stamps the
+    // author from the session and refuses a patient id the caller cannot open.
+    mutationFn: (data) => manageOASISRecords('record_feedback', { feedback: data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisFeedback'] });
       setFeedbackSubmitted(true);
@@ -35,11 +37,11 @@ export default function PatientMatchSelector({
 
   const handleConfirmMatch = async (patientId, isCorrect = true) => {
     onSelectPatient(patientId);
-    
+
     // Log patient match activity
     const { logActivity, ActivityActions } = await import("@/components/utils/activityLogger");
     const selectedPatient = allPatients.find(p => p.id === patientId);
-    
+
     logActivity(ActivityActions.PATIENT_MATCH, {
       extracted_name: extractedName,
       matched_patient_id: patientId,
@@ -48,7 +50,7 @@ export default function PatientMatchSelector({
       is_correct_match: isCorrect,
       page: 'OASISAnalyzer'
     });
-    
+
     // Submit feedback
     if (matchResults && oasisUploadId) {
       feedbackMutation.mutate({
@@ -67,7 +69,7 @@ export default function PatientMatchSelector({
   const handleDispute = async () => {
     // Log dispute activity
     const { logActivity, ActivityActions } = await import("@/components/utils/activityLogger");
-    
+
     logActivity(ActivityActions.DISPUTE_MATCH, {
       extracted_name: extractedName,
       suggested_patient_id: matchResults.matches?.[0]?.patient?.id,
@@ -75,7 +77,7 @@ export default function PatientMatchSelector({
       dispute_notes: disputeNotes,
       page: 'OASISAnalyzer'
     });
-    
+
     if (matchResults && oasisUploadId) {
       feedbackMutation.mutate({
         oasis_upload_id: oasisUploadId,
@@ -157,7 +159,7 @@ export default function PatientMatchSelector({
                 {bestMatch.confidence}% confidence
               </Badge>
             </div>
-            
+
             <div className="bg-white p-2 rounded border mb-2">
               <p className="font-medium text-slate-900">
                 {bestMatch.patient.first_name} {bestMatch.patient.last_name}
@@ -266,7 +268,7 @@ export default function PatientMatchSelector({
             </div>
             <div className="space-y-2">
               {matchResults.matches.slice(1, showAllMatches ? undefined : 4).map((match, idx) => (
-                <div 
+                <div
                   key={idx}
                   className={`bg-white p-3 rounded-lg border-2 cursor-pointer hover:border-navy-400 transition-all ${
                     selectedPatientId === match.patient.id ? 'border-navy-500 ring-2 ring-navy-200' : 'border-slate-200'
@@ -334,8 +336,8 @@ export default function PatientMatchSelector({
               Reset
             </Button>
           </div>
-          <Select 
-            value={selectedPatientId || "none"} 
+          <Select
+            value={selectedPatientId || "none"}
             onValueChange={(v) => handleConfirmMatch(v === "none" ? "" : v, false)}
           >
             <SelectTrigger className="bg-white">
@@ -374,7 +376,7 @@ export default function PatientMatchSelector({
               Help us improve matching accuracy by explaining why this match is incorrect.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
               <p className="text-xs text-yellow-700 mb-1">Suggested Match:</p>

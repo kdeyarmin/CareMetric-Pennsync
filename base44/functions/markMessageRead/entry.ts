@@ -57,9 +57,12 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-/** Dormant secure-message v2 read-state broker with versioned updateMany CAS. */
-const SECURE_MESSAGE_DOMAIN_PAUSED = true;
-const SECURE_MESSAGE_MUTATIONS_PAUSED = true;
+/**
+ * Secure-message v2 read-state broker with versioned updateMany CAS. Released
+ * with the rest of the domain by the owner on 2026-10-08 ("approve everything").
+ */
+const SECURE_MESSAGE_DOMAIN_PAUSED = false;
+const SECURE_MESSAGE_MUTATIONS_PAUSED = false;
 
 const MAX_BODY_BYTES = 2_000;
 const MAX_IDENTIFIER_LENGTH = 200;

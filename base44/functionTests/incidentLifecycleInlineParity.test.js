@@ -196,21 +196,24 @@ test('submitIncidentReport persists the offline idempotency key', () => {
   );
 });
 
-test('patient merge stays paused until an atomic server broker can reassign Incident', () => {
-  // Incident and OASIS/outcome rows cannot be safely reassigned by a browser.
-  // The current contract must fail closed before any best-effort mutation can
-  // archive a duplicate and strand linked clinical history.
+test('patient merge re-points Incident through the server broker, never from the browser', () => {
+  // Incident writes are service-role only, so a browser cannot move one onto a
+  // surviving chart. The deduplicatePatients broker carries Incident in its
+  // reference table, and the browser boundary only invokes that broker.
   const merge = readFileSync(
     join(process.cwd(), 'src/components/patient/mergePatients.js'),
     'utf8',
   );
-  assert.match(merge, /PATIENT_MERGES_PAUSED\s*=\s*true/, 'browser merge must default off');
-  assert.match(merge, /"Incident"/, 'the future atomic broker scope must include Incident');
-  assert.match(merge, /throw new Error\(PATIENT_MERGE_PAUSED_MESSAGE\)/,
-    'merge must stop before reading or mutating chart data');
+  const broker = readFileSync(
+    join(process.cwd(), 'base44/functions/deduplicatePatients/entry.ts'),
+    'utf8',
+  );
+  assert.match(merge, /PATIENT_MERGES_PAUSED\s*=\s*false/);
+  assert.match(merge, /functions\.invoke\("deduplicatePatients"/);
+  assert.match(broker, /\['Incident', 'patient_id'\]/, 'the broker scope must include Incident');
   assert.doesNotMatch(
     merge,
-    /await api\.update\(record\.id, \{ patient_id: primaryId \}\)/,
-    'the paused browser boundary must not retain raw per-record reassignment',
+    /api\.update\(|reassignIncidentPatient/,
+    'the browser boundary must not retain raw per-record reassignment',
   );
 });

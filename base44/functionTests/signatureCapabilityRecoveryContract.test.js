@@ -78,9 +78,14 @@ async function fixture(options = {}) {
     globalThis.__signatureRecoveryClient = () => client;
     globalThis.__signatureRecoveryDeno = { serve: (candidate) => { handler = candidate; }, env: { get: (key) => env[key] } };
     let source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    // The brokers are released; only the SDK, Deno, the sealing renderer and the
+    // network are replaced. Sealing (exercised in esignWorkflowRuntime.test.js)
+    // finds no chart-filing store here and stays a recorded, retryable stage.
     source = source.replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/,
-      'const createClientFromRequest = globalThis.__signatureRecoveryClient; const Deno = globalThis.__signatureRecoveryDeno;')
-      .replace('const PUBLIC_SIGNATURE_RELEASE_ENABLED = false;', 'const PUBLIC_SIGNATURE_RELEASE_ENABLED = true;');
+      'const createClientFromRequest = globalThis.__signatureRecoveryClient; const Deno = globalThis.__signatureRecoveryDeno;'
+        + ' const fetch = () => Promise.reject(new Error("network disabled in tests"));')
+      .replace(/import \{ PDFDocument, StandardFonts, rgb \} from 'npm:pdf-lib@[^']+';/,
+        'const PDFDocument = null; const StandardFonts = {}; const rgb = () => null;');
     const compiled = transpileTs(source, { fileName: `${name}/entry.ts` }).outputText;
     await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${crypto.randomUUID()}`);
     delete globalThis.__signatureRecoveryClient;
@@ -170,7 +175,10 @@ test('invalid keyring configuration issues no grants, signed URLs or access incr
     `{"first":"${key}","\\u0066irst":"${key}replacement"}`,
     `{"first":"${key}",}`, `{"first":null}`, `{"first":"${key}"}garbage`]) {
     const f = await fixture({ env: { SIGNATURE_HMAC_KEYRING: configured, SIGNATURE_HMAC_ACTIVE_KEY_ID: 'first' } });
-    assert.equal((await f.review()).status, 500);
+    // Released brokers name the missing configuration (503 + code) instead of a bare 500.
+    const response = await f.review();
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, 'signature_audit_key_not_configured');
     assert.equal(f.db.DocumentPackageToken[0].access_count, 0);
     assert.equal(f.db.SignerReviewGrant.length, 0);
     assert.equal(f.calls.signedUrls, 0);

@@ -167,35 +167,64 @@ function securityLogPayloads(source) {
   return payloads;
 }
 
-test('SecurityLog denies every direct SDK operation', async () => {
+test('SecurityLog admits a creator-or-administrator read and refuses every browser write', async () => {
+  // 2026-10-08 owner decision: locked log tables read again as "the record's
+  // creator, or an admin"; rows remain append-only through service-role writers.
   const schema = JSON5.parse(await readFile(
     new URL('../entities/SecurityLog.jsonc', import.meta.url),
     'utf8',
   ));
   assert.deepEqual(schema.rls, {
-    read: false,
+    read: {
+      $or: [
+        { created_by: '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
     create: false,
     update: false,
     delete: false,
   });
 });
 
-test('browser source cannot obtain a SecurityLog entity handle', async () => {
-  const violations = [];
+test('browser SecurityLog handles exist only in the reviewed administrator views', async () => {
+  const readers = new Set();
   for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
     const source = await readFile(url, 'utf8');
-    const findings = securityLogHandleFindings(source, url.pathname);
-    if (findings.length) violations.push(`${url.pathname}: ${findings.join(', ')}`);
+    if (securityLogHandleFindings(source, url.pathname).length) {
+      readers.add(url.pathname.slice(url.pathname.indexOf('/src/') + 1));
+    }
   }
-  assert.deepEqual(violations, []);
+  // AuditTrailViewer joined the reviewed list with the restored audit trail
+  // (owner decision, 2026-10-08): its security view reads SecurityLog only for
+  // the administrator account and takes activity from the scoped report.
+  assert.deepEqual([...readers].sort(), [
+    'src/components/security/AIAuditAnalyzer.jsx',
+    'src/components/security/AuditTrailViewer.jsx',
+    'src/components/security/BreachDetectionSystem.jsx',
+    'src/components/security/SecurityAnomalyDetector.jsx',
+    'src/components/security/SecurityAuditScheduler.jsx',
+    'src/components/security/SecurityLogTabs.jsx',
+  ]);
+  for (const reader of readers) {
+    const source = await readFile(new URL(`../../${reader}`, import.meta.url), 'utf8');
+    assert.match(source, /isAdminLike\(/, `${reader} must gate the full-log read on the administrator account`);
+  }
 
   const unavailable = await readFile(
     new URL('../../src/components/security/SecurityLogUnavailable.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(unavailable, /immutable agency provenance/);
-  assert.match(unavailable, /tenant-authorized server broker/);
   assert.match(unavailable, /No zero-event or all-clear conclusion/);
+
+  const trail = await readFile(
+    new URL('../../src/components/security/AuditTrailViewer.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(trail, /const canReadSecurityLog = isAdminLike\(currentUser\);/);
+  assert.match(trail, /enabled: wantsSecurityLog && canReadSecurityLog,/);
+  assert.match(trail, /useActivityReport\(\{/);
+  assert.doesNotMatch(trail, /entities\.UserActivity/);
 });
 
 test('SecurityLog handle scanner covers aliases, destructuring, optional chains, and computed keys', () => {
@@ -220,9 +249,13 @@ test('SecurityLog handle scanner covers aliases, destructuring, optional chains,
   `), []);
 });
 
-test('security compliance UI uses bound identity and pauses provenance-free global histories', async () => {
+test('security compliance UI uses bound identity and reports unreadable logs as unavailable', async () => {
   const compliance = await readFile(
     new URL('../../src/components/hub-tabs/SecurityCompliance.jsx', import.meta.url),
+    'utf8',
+  );
+  const tabs = await readFile(
+    new URL('../../src/components/security/SecurityLogTabs.jsx', import.meta.url),
     'utf8',
   );
   const documentation = await readFile(
@@ -232,12 +265,15 @@ test('security compliance UI uses bound identity and pauses provenance-free glob
 
   assert.match(compliance, /useAuth\(\)/);
   assert.doesNotMatch(compliance, /base44\.auth\.me|entities(?:\.|\[['"])(?:SecurityLog|UserActivity)/);
-  assert.match(compliance, /<SecurityLogUnavailable\s*\/>/);
-  assert.match(compliance, /<UserActivityUnavailable\s*\/>/);
-  assert.doesNotMatch(compliance, /No (?:security events|audit logs)/i);
+  assert.match(compliance, /useSecurityLogSources\(currentUser\)/);
+  assert.match(compliance, /<SecurityEventLog sources=\{logSources\} \/>/);
+  assert.match(compliance, /<UserActivityLog sources=\{logSources\} \/>/);
+  assert.match(compliance, /logMetrics \? logMetrics\.totalEvents : "Unavailable"/);
   assert.match(compliance, /buildSecurityComplianceReport\(\{[\s\S]*assessedChecks/);
   assert.match(compliance, /evidenceType:\s*'platform_attestation',[^\n]*status:\s*'attested'/);
   assert.doesNotMatch(compliance, /checks:\s*complianceChecks/);
+  assert.match(tabs, /const permitted = isAdminLike\(currentUser\)/);
+  assert.match(tabs, /Missing rows do not mean zero events/);
 
   assert.match(documentation, /Coverage is not attested by this view/);
   assert.match(documentation, /not a compliance certification/);

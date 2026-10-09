@@ -14,14 +14,11 @@ import {
 } from "@/components/ui/select";
 import {
   AlertTriangle,
-  Brain,
-  Activity,
+  Filter,
   Zap,
-  CheckCircle2
 } from "lucide-react";
 
 import PatientAlertsDashboard from "../components/alerts/PatientAlertsDashboard";
-import PatientAlertAnalyzer from "../components/alerts/PatientAlertAnalyzer";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { ALL_ROWS } from '@/lib/queryLimits';
@@ -30,7 +27,6 @@ export default function PatientAlerts() {
   const [searchParams] = useSearchParams();
   const urlPatientId = searchParams.get("patientId") || searchParams.get("id") || "";
   const [selectedPatientId, setSelectedPatientId] = useState(urlPatientId);
-  const [analysisResults, setAnalysisResults] = useState(null);
 
   // Follow same-route deep-link changes (?patientId=A -> ?patientId=B): the
   // mount-time snapshot froze the page on the first patient. Manual dropdown
@@ -40,12 +36,6 @@ export default function PatientAlerts() {
       setSelectedPatientId(urlPatientId);
     }
   }, [urlPatientId]);
-
-  // Clear sticky analysis summary whenever the selected patient changes
-  // (URL deep-link OR manual dropdown), so Patient B never shows Patient A's results.
-  useEffect(() => {
-    setAnalysisResults(null);
-  }, [selectedPatientId]);
 
   // ACTIVE-only patient set. `status` is part of the hook's cache key, so this
   // can no longer be served the full unfiltered roster (or vice versa) depending
@@ -62,17 +52,13 @@ export default function PatientAlerts() {
     queryFn: () => base44.auth.me()
   });
 
-  const handleAlertsGenerated = (alerts, results) => {
-    setAnalysisResults(results);
-  };
-
   return (
     <PageContainer>
       <PageHeader
         icon={AlertTriangle}
         eyebrow="Patient Care"
         title="Patient Alerts"
-        description="AI-powered proactive identification of critical events and potential deteriorations"
+        description="Review, assign, and resolve recorded patient alerts by severity and type"
         favoritePage="PatientAlerts"
       />
 
@@ -82,23 +68,23 @@ export default function PatientAlerts() {
           <PatientAlertsDashboard patientId={selectedPatientId || null} />
         </div>
 
-        {/* Sidebar - Analyzer & Quick Actions */}
+        {/* Sidebar - Patient filter & response guide */}
         <div className="space-y-4 sm:space-y-6">
-          {/* Patient Selector for Analysis */}
+          {/* Patient filter for the stored-alert list */}
           <Card>
             <CardHeader className="py-3 border-b border-slate-100">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Brain className="w-4 h-4 text-navy-600" />
-                Analyze Patient
+                <Filter className="w-4 h-4 text-navy-600" />
+                Filter by Patient
               </CardTitle>
             </CardHeader>
             <CardContent className="p-3 sm:p-4">
               <Select value={selectedPatientId || "none"} onValueChange={(val) => setSelectedPatientId(val === "none" ? "" : val)}>
-                <SelectTrigger className="h-11 touch-target">
-                  <SelectValue placeholder="Select patient to analyze..." />
+                <SelectTrigger className="h-11 touch-target" aria-label="Filter alerts by patient">
+                  <SelectValue placeholder="All patients" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none" className="py-3">Select a patient</SelectItem>
+                  <SelectItem value="none" className="py-3">All patients</SelectItem>
                   {patients.map((p) => (
                     <SelectItem key={p.id} value={p.id} className="py-3">
                       {p.first_name} {p.last_name} - {p.primary_diagnosis || 'No diagnosis'}
@@ -106,74 +92,8 @@ export default function PatientAlerts() {
                   ))}
                 </SelectContent>
               </Select>
-
-              {selectedPatientId && (
-                <div className="mt-4">
-                  <PatientAlertAnalyzer
-                    patientId={selectedPatientId}
-                    onAlertsGenerated={handleAlertsGenerated}
-                  />
-                </div>
-              )}
             </CardContent>
           </Card>
-
-          {/* Analysis Results Summary */}
-          {analysisResults && (
-            <Card>
-              <CardHeader className="py-3 border-b border-slate-100">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-emerald-600" />
-                  Analysis Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 space-y-3">
-                <div className="p-3 bg-slate-50 rounded-lg">
-                  <p className="text-sm text-slate-700">{analysisResults.analysis_summary}</p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-600">Overall Risk:</span>
-                  <Badge variant={
-                    analysisResults.overall_risk_level === 'critical' ? 'destructive' :
-                    analysisResults.overall_risk_level === 'high' ? 'warning' :
-                    analysisResults.overall_risk_level === 'moderate' ? 'warning' :
-                    'success'
-                  } className="capitalize">
-                    {analysisResults.overall_risk_level}
-                  </Badge>
-                </div>
-
-                {analysisResults.positive_indicators?.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-emerald-700 mb-1">Positive Indicators:</p>
-                    <ul className="text-xs text-emerald-700 space-y-1">
-                      {analysisResults.positive_indicators.map((indicator, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
-                          <span>{indicator}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {analysisResults.monitoring_recommendations?.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-navy-700 mb-1">Monitor:</p>
-                    <ul className="text-xs text-navy-700 space-y-1">
-                      {analysisResults.monitoring_recommendations.slice(0, 3).map((rec, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5">
-                          <span className="mt-1 h-1 w-1 flex-shrink-0 rounded-full bg-navy-400" aria-hidden="true" />
-                          <span>{rec}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Quick Tips */}
           <Card>

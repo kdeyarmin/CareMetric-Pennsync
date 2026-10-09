@@ -1,0 +1,4 @@
+{
+  "auth": "oauth",
+  "consent_path": "/consent"
+}

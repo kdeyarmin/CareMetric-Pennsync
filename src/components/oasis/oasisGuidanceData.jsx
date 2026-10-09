@@ -89,7 +89,7 @@ export const OASIS_GUIDANCE = {
     complianceTips: [
       "Primary diagnosis must support medical necessity",
       "Must match physician certification and orders",
-      "Affects PDGM payment grouping"
+      "Determines the PDGM clinical group"
     ]
   },
 

@@ -209,6 +209,21 @@ export const PORTED_FUNCTIONS = Object.freeze({
   distributePolicyAcknowledgment: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',
+  listFaxContacts: 'json',
+  createFaxContact: 'json',
+  bulkCreateFaxContacts: 'json',
+  updateFaxContact: 'json',
+  deleteFaxContact: 'json',
+  listFaxTemplates: 'json',
+  createFaxTemplate: 'json',
+  updateFaxTemplate: 'json',
+  useFaxTemplate: 'json',
+  deleteFaxTemplate: 'json',
+  getFaxRetryConfig: 'json',
+  saveFaxRetryConfig: 'json',
+  listAgencyPhoneNumbers: 'json',
+  listFaxLogs: 'json',
+  searchFaxLogs: 'json',
 });
 /**
  * A JSON response allowance above the 1 MiB default, by handler name.
@@ -235,12 +250,50 @@ export const PORTED_FUNCTIONS = Object.freeze({
  * than the screen. It is a BOUND rather than an expectation: a page of real
  * text can still exceed it, and that is a loud refusal, not a truncation.
  */
+/*
+ * The telecom three cross it on a DIFFERENT measure, and the difference is the
+ * point rather than a detail.
+ *
+ * The compliance five above are over the default with every value NULL. These
+ * three are not: a null-valued page of 500 contacts is about 0.1 MiB. What puts
+ * them over is their own contracts' TEXT CAPS -- `fax_text` bounds `notes` at
+ * 2000 for a contact and 5000 for a cover page, and 500 contacts or 200 cover
+ * pages of capped text is 1.5 and 1.4 MiB measured. So the null floor is the
+ * wrong instrument here, and a map that only ever answered to it let fifteen
+ * handlers in with no entry at all: that is how these were found, by a review
+ * driving the real contracts rather than by anything in this repository.
+ *
+ * `bulkCreateFaxContacts` is here because it returns every created contact in
+ * full, at the same ceiling of 500 as the list.
+ *
+ * `listFaxLogs` is here on a THIRD measure, and it is the one I got wrong
+ * first. This paragraph said it and `searchFaxLogs` were deliberately absent
+ * because `fax_log_row` projects no `ocr_text`, so "both fit the default on any
+ * measure". The absent column is real and the conclusion did not follow: that
+ * row projects nineteen columns NONE of which any contract here caps, because
+ * the log has no writer in this tree, and at a ceiling of 500 an upper bound on
+ * them is 2.5 MiB. The reason it is an upper bound rather than a measurement is
+ * the paragraph below -- so this is the one entry justified by the absence of a
+ * cap rather than by the presence of one, and the suite computes it rather than
+ * taking either claim from here. `searchFaxLogs` really does fit: its ceiling is
+ * 100, and its two extra keys are a 300-character excerpt and a boolean.
+ *
+ * And the honest limit of all of it: on a READ the row functions project the
+ * carried column raw, so `fax_text`'s cap bounds what THIS store writes and not
+ * what Base44 wrote. A carried `notes` has no bound here, and a page of those
+ * can still exceed the allowance. That is the same loud refusal the paragraph
+ * above describes, not a truncation, and no computed figure can close it.
+ */
 export const BULK_RESPONSE_BYTES = Object.freeze({
   listAgencyIncidents: 8 * 1024 * 1024,
   listComplianceAudits: 8 * 1024 * 1024,
   listAdrAuditCases: 8 * 1024 * 1024,
   listPersonnelCredentials: 8 * 1024 * 1024,
   listPolicyAcknowledgments: 8 * 1024 * 1024,
+  listFaxContacts: 8 * 1024 * 1024,
+  bulkCreateFaxContacts: 8 * 1024 * 1024,
+  listFaxTemplates: 8 * 1024 * 1024,
+  listFaxLogs: 8 * 1024 * 1024,
 });
 /** The ported API's one route shape. No caller names a path. */
 const FUNCTION_PATH = name => `/v1/functions/${name}`;
@@ -547,7 +600,15 @@ function validateResult(result, method, params, config) {
   return result;
 }
 
-/** Credentials and tokens stay in this closure; no storage, refresh, or Base44 fallback. */
+/**
+ * No Base44 fallback, and the ACCESS token stays in this closure.
+ *
+ * This line used to read "no storage, refresh, or Base44 fallback", and two
+ * thirds of that is no longer true: with a `sessionStore`, the rotated refresh
+ * token is kept on the device and exchanged on boot, because the Base44 path a
+ * build replaces comes back signed in after a reload and this one asked for a
+ * password again. Without a store the closure is still the whole of it.
+ */
 export function createStagingAuthorityClient(input, options = {}) {
   return createAuthorityClient(validateTarget(input), 'staging', options);
 }
@@ -576,7 +637,51 @@ export function createProductionAuthorityClient(input, options = {}) {
   return createAuthorityClient(validateProductionTarget(input), 'production', options);
 }
 
-function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
+/**
+ * The two email link kinds this client will exchange, and nothing else.
+ *
+ * `invite` is a new member accepting; `recovery` is an existing one who has
+ * forgotten their password. The other GoTrue types are absent for TWO different
+ * reasons, which an earlier version of this comment ran together.
+ *
+ * `magiclink` and `signup` are refused on the property: each is a way to obtain a
+ * session without a password, which is this method's own negation.
+ *
+ * `email_change` is a different case, and absent only because nothing asks for it:
+ * it hands out no password-free session, it confirms a new address. If a member of
+ * staff is ever to change their own address, that flow needs a client half and has
+ * none, and somebody holding such a link today has nowhere to take it. That is a
+ * product question rather than a security one, and it is written down here rather
+ * than filed under the two above.
+ */
+const LINK_TYPES = Object.freeze(new Set(['invite', 'recovery']));
+/**
+ * The shape of a link's token. Bounded and character-restricted because it is
+ * read out of a URL the caller arrived on, so it is the least trusted input this
+ * module takes.
+ */
+const LINK_TOKEN = /^[A-Za-z0-9_-]{6,512}$/;
+
+/**
+ * A refresh token's shape, bounded here as well as in the device store.
+ *
+ * This value is SENT to the provider as a credential, so the client refuses to
+ * send something that is not one rather than finding out from a 401 — the same
+ * reason the access token's shape is checked in `validGrant`.
+ */
+const REFRESH_TOKEN = /^[A-Za-z0-9_-]{8,512}$/;
+/**
+ * An access token's shape: three dot-separated base64url segments.
+ *
+ * Named because two different questions ask it. `validGrant` asks whether a grant
+ * may be USED, and the tracker below asks whether a string is a token this client
+ * must revoke — and the second must not depend on the first, because a grant this
+ * client refuses is still a session the provider minted.
+ */
+const ACCESS_TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+function createAuthorityClient(config, mode,
+  { fetchImpl = globalThis.fetch, timeoutMs = 15000, sessionStore = null } = {}) {
   const staging = mode === 'staging';
   const targetCode = staging ? 'INVALID_STAGING_TARGET' : 'INVALID_PRODUCTION_TARGET';
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) fail(targetCode);
@@ -601,7 +706,7 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
     && user.role === 'authenticated' && user.is_anonymous === false
     && typeof user.email_confirmed_at === 'string' && Number.isFinite(Date.parse(user.email_confirmed_at));
   const validGrant = session => sameUser(session?.user) && typeof session.access_token === 'string'
-    && session.access_token.length <= 16384 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.access_token)
+    && session.access_token.length <= 16384 && ACCESS_TOKEN.test(session.access_token)
     && session.token_type === 'bearer';
   async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false,
     receivedGrant, maxResponseBytes = 1024 * 1024, origin = config.projectUrl, apikey = true,
@@ -671,6 +776,65 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
     return record.revoking;
   }
   const revokeAllKnown = () => Promise.all([...knownSessions.keys()].map(revokeKnown));
+  /**
+   * Keep this grant's refresh token on the device, or leave nothing there.
+   *
+   * Called only after a session has been established, and never with anything
+   * else: a provider that answers without a refresh token leaves the device with
+   * no record rather than a stale one, because a record beside a session the app
+   * cannot resume is a credential for a session nothing is tracking.
+   */
+  // A port may be synchronous (the browser's own storage is) or asynchronous (a
+  // test's, or a device store that is not). Awaiting the result covers both, so
+  // neither kind of port needs to know which the client expected.
+  const device = {
+    read: () => Promise.resolve(sessionStore.read()),
+    write: value => Promise.resolve(sessionStore.write(value)),
+    clear: () => Promise.resolve(sessionStore.clear()),
+  };
+  const persist = async session => {
+    if (!sessionStore) return;
+    const next = session?.refresh_token;
+    if (typeof next === 'string' && REFRESH_TOKEN.test(next)) await device.write(next);
+    else await device.clear();
+  };
+  /**
+   * What a refusal means for the device record.
+   *
+   * A grant the provider REFUSED, or one that answered about somebody else, means
+   * the stored token is spent or was never ours, so it goes. A transport failure
+   * means nothing about the token: clearing it there would sign out every person
+   * whose app booted offline or against a service that was briefly down, which is
+   * worse than the thing it would protect. A token that really did die while the
+   * transport failed is refused on the next boot and cleared then.
+   */
+  /**
+   * Register the grant a CREDENTIAL EXCHANGE answered with, and revoke it at once
+   * if the attempt is already over.
+   *
+   * It asks `validGrant` first, and that is deliberate rather than an oversight I
+   * nearly "fixed". A grant that contradicts the identity this client is pinned or
+   * bound to is not ours, and `client-lifecycle.test.mjs` asserts by name that such
+   * a token is "rejected without treating its token as a cleanup credential" — the
+   * client refuses the answer and touches nothing in it, rather than sending a
+   * string out of an answer it just called untrustworthy. The session that may be
+   * left behind is bounded by its own expiry and is known only to whoever produced
+   * that answer.
+   *
+   * The opposite rule holds one step later, and the discriminator is whose
+   * credential the request carried: a grant that comes back from a request made
+   * with a session this client ALREADY accepted is ours by construction, so there
+   * it is registered on the token's shape alone.
+   */
+  const trackGrant = async (value, canceled, accept) => {
+    if (!validGrant(value)) return;
+    const bearer = value.access_token;
+    if (!knownSessions.has(bearer)) knownSessions.set(bearer, { revoking: null });
+    accept(bearer);
+    if (canceled) await revokeKnown(bearer);
+  };
+  const KEEP_ON = new Set(['AUTHORITY_NETWORK_FAILED', 'AUTHORITY_REQUEST_ABORTED',
+    'AUTHORITY_REQUEST_FAILED', 'STALE_AUTHORITY_SESSION', 'AUTHORITY_SESSION_CLEANUP_FAILED']);
   return Object.freeze({
     async signIn(password) {
       invalidate();
@@ -682,13 +846,7 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
           fail(staging ? 'INVALID_STAGING_CREDENTIAL' : 'INVALID_PRODUCTION_CREDENTIAL');
         }
         const session = await request('/auth/v1/token?grant_type=password', { lease, body: { email: config.email, password },
-          receivedGrant: async (value, canceled) => {
-            if (validGrant(value)) {
-              candidate = value.access_token;
-              if (!knownSessions.has(candidate)) knownSessions.set(candidate, { revoking: null });
-              if (canceled) await revokeKnown(candidate);
-            }
-          } });
+          receivedGrant: (value, canceled) => trackGrant(value, canceled, bearer => { candidate = bearer; }) });
         if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
         // Bind the production identity BEFORE the confirmation read, so that
         // read is a check rather than a second chance to establish one: the
@@ -702,15 +860,221 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
         if (!sameUser(user)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
         current(lease);
         token = candidate;
+        await persist(session);
         return Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
       } catch (error) {
         // A learned identity that never produced a session is not one. Leaving
         // it bound would let the next failed attempt be checked against a
         // predecessor's grant instead of against nothing.
         if (!staging && !token) authUserId = null;
-        if (candidate) await revokeKnown(candidate);
+        // Everything registered, not only the candidate. This catches nothing the
+        // narrower call did not, because `trackGrant` returns before registering a
+        // grant `validGrant` refuses, so a refused grant is not in the set; it is
+        // kept because it costs nothing and does not depend on that ordering.
+        await revokeAllKnown();
         throw error;
       }
+    },
+    /**
+     * Take up the session this device already holds, without a password.
+     *
+     * This is the half that makes a reload survivable, and it is deliberately the
+     * SAME sequence as `signIn` from the grant onwards: the refreshed grant is
+     * checked by `validGrant`, the production identity is bound from it, the
+     * `/user` read has to agree, and only then does the token become usable. A
+     * resumed session is therefore held to exactly what a password session is.
+     *
+     * The address is NOT learned here. The device record names whose session it
+     * is, the client was constructed for that address, and `sameUser` compares
+     * the provider's answer against it — so a token moved into somebody else's
+     * record resumes nobody rather than resuming them as its new owner.
+     *
+     * READ THAT NARROWLY, as a reviewer had to point out. It is the TOKEN being
+     * swapped that this refuses. A WHOLE record copied onto another device, address
+     * and token together, does resume its owner there: the boot path reads the
+     * record's own address and constructs the client for it, so there is nothing
+     * for `sameUser` to disagree with. That is the same exposure as a copied
+     * `base44_access_token`, and narrower, since this one is single-use and dies on
+     * sign-out — see `signOut` for what that does and does not guarantee.
+     *
+     * Answers null when this device holds nothing, because that is the ordinary
+     * case on a fresh browser and not a failure to report.
+     */
+    async resume() {
+      if (!sessionStore) return null;
+      invalidate();
+      const lease = epoch;
+      let candidate = null;
+      let spent = null;
+      try {
+        // IT DROPS WHAT IT KNOWS RATHER THAN REVOKING IT, which is the opposite of
+        // `signIn`, and a reviewer measured why it has to be. A realm close leaves
+        // the provider's session live on purpose and `invalidate()` does not empty
+        // `knownSessions`, so the bearer from before the close is still named here.
+        // Revoking it ends that SESSION at the provider, and `scope=local` ends the
+        // session rather than one token — so the refresh token on the device dies
+        // with it and the exchange two lines down answers 401. A resume on the same
+        // adapter therefore destroyed the session it was about to inherit, and
+        // cleared the record on the way out. Dropping the names instead loses
+        // nothing: a sign-out revokes, and these tokens are the ones a close
+        // deliberately left live.
+        //
+        // And do NOT fix it by revoking AFTER the exchange: the rotated grant is in
+        // the same provider session, so a local logout then would revoke what was
+        // just resumed. A fixture that treats each access token as independently
+        // live would pass either way, which is why this is written down here.
+        knownSessions.clear(); current(lease);
+        const stored = await device.read();
+        if (stored === null || stored === undefined) return null;
+        if (typeof stored !== 'string' || !REFRESH_TOKEN.test(stored)) {
+          await device.clear();
+          return null;
+        }
+        spent = stored;
+        const session = await request('/auth/v1/token?grant_type=refresh_token', { lease, body: { refresh_token: stored },
+          receivedGrant: (value, canceled) => trackGrant(value, canceled, bearer => { candidate = bearer; }) });
+        if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        if (!staging) { current(lease); authUserId = session.user.id; }
+        const user = await request('/auth/v1/user', { lease, bearer: candidate, method: 'GET' });
+        if (!sameUser(user)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        token = candidate;
+        // The exchange ROTATES: the token just sent is spent, so the device record
+        // is replaced with the new one or emptied. Leaving the old one would make
+        // every later boot fail against a token the provider has already retired.
+        await persist(session);
+        return Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
+      } catch (error) {
+        if (!staging && !token) authUserId = null;
+        await revokeAllKnown();
+        // IT FORGETS ONLY WHAT IT SPENT. Another tab may have exchanged the same
+        // record and written the rotated token while this attempt was in flight, so
+        // an unconditional clear here deletes a record that is live and belongs to
+        // a session somebody is using — the person stays signed in and the next
+        // boot asks for a password anyway. A reviewer measured both interleavings.
+        if (!KEEP_ON.has(error?.code) && spent !== null) {
+          await Promise.resolve(sessionStore.clearSpent?.(spent) ?? device.clear()).catch(() => {});
+        }
+        throw error;
+      }
+    },
+    /**
+     * Set this account's password from an invitation or a recovery link.
+     *
+     * PRODUCTION ONLY. Staging's four actors are fixed and their credentials are
+     * build configuration, so there is no invitation to accept there and nothing
+     * a caller could set.
+     *
+     * A LINK NEVER BECOMES A SESSION. The grant the exchange returns is used for
+     * exactly one request — the password write — and then revoked, and the epoch
+     * is bumped either way, so this method cannot leave a caller signed in and no
+     * RPC can be made on a token that came from a mailbox. The caller signs in
+     * afterwards with the password they just set, through `signIn` above, which is
+     * the only path that produces a working session. A link arriving twice
+     * therefore cannot be replayed into a session either.
+     *
+     * The identity checks are `signIn`'s: the grant has to be for this client's
+     * own address with a confirmed email, and the user the write answers with has
+     * to be the same one. Nothing here sends anything — the halves that send, a
+     * `/invite` and a `/recover`, are not in this client at all.
+     */
+    async setPasswordFromLink(type, tokenHash, password) {
+      if (staging) fail('STAGING_OPERATION_UNAVAILABLE');
+      invalidate();
+      const lease = epoch;
+      // EVERY grant either request hands back, registered the same way, because a
+      // grant this method cannot name is a grant it cannot revoke. The write used
+      // to be sent without this: if `PUT /user` ever answers with a session --
+      // which is the provider's behaviour and is not measured here -- nothing
+      // registered it, so neither the success path, nor the catch, nor the next
+      // call's sweep could revoke it, and the one thing this method promises would
+      // have failed silently. A reviewer found that structurally and proved it
+      // with a transport whose write mints a second session.
+      //
+      // IT ADMITS A TOKEN ON ITS SHAPE RATHER THAN THROUGH `validGrant`, AND EACH
+      // CALL HAS ITS OWN REASON — the comment gave only the second, which is the
+      // one a future reader could satisfy by putting `validGrant` back on the
+      // first and reopening the finding.
+      //
+      // The VERIFY call's answer IS a grant, so `validGrant` would admit it; the
+      // reason it is not asked here is that this method's job on a REFUSAL is to
+      // clean up, and a grant refused for naming the wrong person is exactly the
+      // one that must still be revoked — a mistyped address is an ordinary
+      // mistake against a provider that behaved correctly, so a real person's
+      // session was minted and nobody else will ever clean it up. The sign-in
+      // path answers the same question the other way, deliberately
+      // (`client-lifecycle.test.mjs:172`): a password exchange answering for a
+      // different identity means the responder is not behaving like the provider,
+      // so the token's provenance is unknown and not spending it wins. The axis
+      // is provenance and reachability, not whether this client accepted the
+      // grant. The WRITE call's answer is a USER rather than a grant, so
+      // `validGrant` would reject it outright and a rotated token would go
+      // unnoticed again, which is how the finding arose.
+      //
+      // The bound is for MEMORY and nothing else. It used to be the JWT shape,
+      // which `validGrant` also applies — so a token outside it failed closed for
+      // use and OPEN for cleanup: minted, unusable, and unrevokable, which is a
+      // quiet exception to the one sentence this method promises. A reviewer
+      // measured it as unreachable while GoTrue returns JWTs and asked for the
+      // widening anyway, because the cost of being wrong is one logout request
+      // sent with a bearer the provider will refuse.
+      const track = async (value, canceled) => {
+        const token = value?.access_token;
+        if (typeof token !== 'string' || token.length === 0 || token.length > 16384) return;
+        if (!knownSessions.has(token)) knownSessions.set(token, { revoking: null });
+        if (canceled) await revokeKnown(token);
+      };
+      try {
+        await revokeAllKnown(); current(lease);
+        if (!LINK_TYPES.has(type) || typeof tokenHash !== 'string' || !LINK_TOKEN.test(tokenHash)) {
+          fail('INVALID_PRODUCTION_LINK');
+        }
+        // The same bounds as a sign-in, and the same code, because this is the
+        // same credential being written rather than a second kind of secret.
+        if (typeof password !== 'string' || password.length < 12 || password.length > 512) {
+          fail('INVALID_PRODUCTION_CREDENTIAL');
+        }
+        const session = await request('/auth/v1/verify', {
+          // `token_hash` rather than `token` and an address, because the hash is
+          // the half of a link that is redeemed HERE. The other shape is redeemed
+          // by the provider, which then hands the browser a whole session in the
+          // URL -- the one thing this method exists to avoid. The typed address is
+          // still checked, by `sameUser` against the grant's own, so a person who
+          // mistypes it is refused rather than quietly setting somebody's
+          // password: the link decides whose account, and the address has to
+          // agree with it.
+          lease, body: { type, token_hash: tokenHash }, receivedGrant: track });
+        if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        authUserId = session.user.id;
+        const updated = await request('/auth/v1/user', { lease, bearer: session.access_token,
+          method: 'PUT', body: { password }, receivedGrant: track });
+        if (!sameUser(updated)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        const identity = Object.freeze({ id: authUserId, email: config.email, provider: 'supabase', app_id: config.appId });
+        // EVERY known grant, not just the link's: the write may have rotated it,
+        // and revoking one by name would leave the other live. Not in the
+        // `finally`, because a cleanup failure on the success path means a live
+        // session minted from a mailbox is still out there, which the caller has
+        // to hear about rather than have swallowed by a return.
+        await revokeAllKnown();
+        return identity;
+      } catch (error) {
+        // THE SWALLOW IS LOAD-BEARING, not a shrug. `revokeKnown` raises
+        // `AUTHORITY_SESSION_CLEANUP_FAILED`, and the screen driving this treats
+        // that code as the DONE state — written, only the cleanup failed. Without
+        // the `.catch` it would replace the error that got us here, so a mistyped
+        // address plus a flaky logout would tell somebody their password was set
+        // when none was written. `production-client.test.mjs` pins it, and the
+        // test goes red if the `.catch` goes.
+        //
+        // Read the success path's code narrowly while you are here: a logout that
+        // fails once and succeeds on a retry still answers
+        // `AUTHORITY_SESSION_CLEANUP_FAILED`, so that code means "a cleanup call
+        // failed", never "a session is certainly still live".
+        await revokeAllKnown().catch(() => {});
+        throw error;
+      } finally { invalidate(); }
     },
     async rpc(method, input = {}) {
       const params = staging
@@ -777,8 +1141,53 @@ function createAuthorityClient(config, mode, { fetchImpl = globalThis.fetch, tim
       }
       return result.result;
     },
-    async signOut() {
+    /**
+     * End this session, and say whether the DEVICE should forget it too.
+     *
+     * The distinction is the whole reason persistence is worth anything, and it
+     * is not a convenience. The app closes a READY realm by itself — after five
+     * minutes, on returning to a tab that was hidden, on a back-forward restore
+     * — and each of those paths ends the session as part of re-establishing a
+     * fresh document, not because the person is leaving. If those forgot the
+     * device record, a reload would ask for a password again and the Base44
+     * behaviour this restores would be undone by the app's own housekeeping.
+     *
+     * So `forget` is TRUE by default, because a method named `signOut` that left
+     * a usable credential behind would be the dangerous default, and the handful
+     * of realm-closing callers pass false deliberately. The grants are revoked
+     * either way: what survives a realm close is the refresh token on the device,
+     * never a live access token in memory.
+     */
+    async signOut({ forget = true } = {}) {
       invalidate();
+      if (!forget) {
+        // A REALM CLOSE, and it deliberately revokes nothing. A local logout ends
+        // the provider's session, and that session's refresh token dies with it —
+        // so revoking here would leave the device record dead on arrival and the
+        // person signing in again after every closure, which is the whole thing
+        // this facility exists to end. What ends is the use: `invalidate` above
+        // drops the access token out of memory and aborts everything in flight.
+        //
+        // The cost, stated rather than hidden: after a closure the session stays
+        // live at the provider until its access token expires, so a token that
+        // leaked elsewhere cannot be invalidated early. Base44 revokes nothing on a
+        // realm close either, and the token it leaves live sits in storage, so this
+        // is parity and not more. The provider's own session limits could bound it
+        // further, which is a configuration question and not this client's.
+        return;
+      }
+      // The record goes FIRST, before the network call that can fail: a sign-out
+      // whose revoke never answers must still leave nothing on the device for the
+      // next boot to resume from.
+      //
+      // WHICH IS NOT THE SAME AS THE COPY BEING DEAD, and the distinction is a
+      // reviewer's. Clearing the record only empties THIS device; what kills a
+      // record somebody already copied is the revoke below, and that is a network
+      // call whose failure is swallowed — deliberately, because a sign-out must
+      // complete offline. So the copy is dead when the revoke succeeded, and when it
+      // did not the copy stays usable until the session expires at the provider.
+      // Nothing here can close that, and claiming otherwise would overstate it.
+      if (sessionStore) await device.clear().catch(() => {});
       await revokeAllKnown();
     },
     invalidate,

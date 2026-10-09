@@ -51,7 +51,7 @@ Perform a comprehensive review and identify:
 3. **Compliance Issues**:
    - Medicare CoP (Conditions of Participation) violations
    - OASIS item completion requirements
-   - Documentation gaps that affect reimbursement
+   - Documentation gaps that affect compliance or audit readiness
    - Missing signatures or authentication
 
 4. **Best Practice Recommendations**:

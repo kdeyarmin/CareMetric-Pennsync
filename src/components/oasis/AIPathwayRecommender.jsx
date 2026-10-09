@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { manageOASISRecords, oasisClientKey } from "@/functions/manageOASISRecords";
+import { addDaysToToday } from "@/components/oasis/oasisTaskDates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,22 +19,23 @@ import {
   ChevronUp
 } from "lucide-react";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
-import { ALL_ROWS } from '@/lib/queryLimits';
 
-const TASK_ACTIVATION_BLOCKER =
-  "Task-bearing pathway activation is unavailable pending an atomic, idempotent task-creation broker. No tasks have been created.";
+const TASK_TYPES = new Set(["call", "notify", "schedule", "order", "coordinate", "document", "safety", "followup", "other"]);
+const DUE_OFFSETS = { today: 0, "24_hours": 1, "48_hours": 2, this_week: 7 };
 
-export default function AIPathwayRecommender({ 
-  pdgmData, 
-  analysisResults, 
+export default function AIPathwayRecommender({
+  pdgmData,
+  analysisResults,
   patientId,
-  onPathwaysActivated 
+  onPathwaysActivated
 }) {
   const ai = useAICall();
   const [recommendations, setRecommendations] = useState(null);
   const [selectedPathways, setSelectedPathways] = useState([]);
   const [expandedPathway, setExpandedPathway] = useState(null);
+  const [activating, setActivating] = useState(false);
   const analysisRequestRef = useRef(0);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     // Recommendations and selections are patient-bound. Invalidate an
@@ -51,7 +54,9 @@ export default function AIPathwayRecommender({
     // retired ones) under the bare key, so a shared entry could recommend
     // deactivated pathways. Prefix-invalidated by the manager's writes.
     queryKey: ['clinicalPathways', 'active'],
-    queryFn: () => base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS),
+    // ClinicalPathway denies every direct client read; the OASIS record broker
+    // serves the active library without its legacy PDGM and rescore fields.
+    queryFn: async () => (await manageOASISRecords('list_pathways'))?.pathways || [],
   });
 
   const analyzePathways = useCallback(async () => {
@@ -167,7 +172,7 @@ Return JSON:
 
       if (analysisRequestRef.current !== requestId) return;
       setRecommendations(result);
-      
+
       // Auto-select high priority pathways (indices into the full
       // recommended_pathways array, which is how selectedPathways is consumed)
       const highPriority = (result.recommended_pathways || [])
@@ -207,22 +212,57 @@ Return JSON:
     return sum + (Array.isArray(tasks) ? tasks.length : 0);
   }, 0);
 
-  const handleActivatePathways = () => {
+  const handleActivatePathways = async () => {
     if (!recommendations || selectedPathways.length === 0) return;
+    const activated = selectedPathways.map(idx => recommendations.recommended_pathways[idx]);
 
-    // Base44 currently exposes neither a uniqueness constraint nor an atomic
-    // create-if-absent/CAS operation for Task. A read-before-write key would
-    // still race, and a retry after an ambiguous bulkCreate response could
-    // duplicate already-committed tasks. Keep every task-bearing activation
-    // fail-closed until it can go through an atomic, idempotent broker.
+    // Task-bearing pathways create their tasks through the OASIS record broker:
+    // it confirms this clinician may open the chart, assigns the tasks to them,
+    // and keys each task per pathway task so a repeat click or a retry after a
+    // dropped response creates nothing twice. No patient, no tasks.
     if (selectedTaskCount > 0) {
-      return;
+      if (!patientId) {
+        toast.error("Link this analysis to a patient before adding pathway tasks.");
+        return;
+      }
+      setActivating(true);
+      try {
+        const tasks = [];
+        selectedPathways.forEach((idx) => {
+          const pathway = recommendations.recommended_pathways[idx];
+          (pathway?.tasks_to_generate || []).forEach((task, taskIndex) => {
+            tasks.push({
+              key: oasisClientKey("ai-pathway-task", patientId, pathway.pathway_name, taskIndex, task.title),
+              title: String(task.title || `${pathway.pathway_name} task`).slice(0, 200),
+              description: task.description || "",
+              type: TASK_TYPES.has(task.type) ? task.type : "followup",
+              priority: task.priority,
+              due_date: addDaysToToday(DUE_OFFSETS[task.due_timeframe] ?? 7),
+              ai_reason: `Recommended with the ${pathway.pathway_name} pathway`,
+            });
+          });
+        });
+        const { results = [] } = await manageOASISRecords("create_tasks", {
+          patient_id: patientId,
+          tasks: tasks.slice(0, 25),
+        });
+        const added = results.filter((row) => row.status === "created" || row.status === "existing").length;
+        if (added) queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        if (added !== Math.min(tasks.length, 25)) {
+          toast.error(`${added} of ${Math.min(tasks.length, 25)} pathway tasks were added. Try again for the rest.`);
+          return;
+        }
+        toast.success(`${added} pathway task${added === 1 ? "" : "s"} added to this patient.`);
+        logActivity(ActivityActions.TASK_CREATE, { source: "pathway_recommendations", count: added, patient_id: patientId });
+      } catch (error) {
+        toast.error(error?.message || "The pathway tasks could not be created.");
+        return;
+      } finally {
+        setActivating(false);
+      }
     }
 
-    if (onPathwaysActivated) {
-      const activated = selectedPathways.map(idx => recommendations.recommended_pathways[idx]);
-      onPathwaysActivated(activated);
-    }
+    onPathwaysActivated?.(activated);
   };
 
   const getPriorityColor = (priority) => {
@@ -259,7 +299,7 @@ Return JSON:
           <div className="text-center py-8">
             <Loader2 className="w-8 h-8 animate-spin text-navy-600 mx-auto mb-3" />
             <p className="text-sm text-slate-600">Analyzing clinical pathways and interventions...</p>
-            <p className="text-xs text-slate-400 mt-1">Evaluating diagnosis, functional status, and PDGM optimization</p>
+            <p className="text-xs text-slate-400 mt-1">Evaluating diagnosis and functional status</p>
           </div>
         ) : !recommendations ? (
           <Button
@@ -311,9 +351,9 @@ Return JSON:
               {recommendations.recommended_pathways?.map((pathway, idx) => {
                 const isExpanded = expandedPathway === idx;
                 const isSelected = selectedPathways.includes(idx);
-                
+
                 return (
-                  <div 
+                  <div
                     key={idx}
                     className={`rounded-lg border-2 overflow-hidden ${
                       isSelected ? 'border-navy-400 ring-2 ring-navy-200' : 'border-slate-200'
@@ -325,8 +365,8 @@ Return JSON:
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={(checked) => {
-                            setSelectedPathways(prev => 
-                              checked 
+                            setSelectedPathways(prev =>
+                              checked
                                 ? [...prev, idx]
                                 : prev.filter(i => i !== idx)
                             );
@@ -478,23 +518,23 @@ Return JSON:
                     </p>
                     <p className="text-xs text-navy-700">
                       {selectedTaskCount > 0
-                        ? `${selectedTaskCount} task-bearing recommendation${selectedTaskCount === 1 ? '' : 's'} cannot be activated`
+                        ? `${selectedTaskCount} task${selectedTaskCount === 1 ? '' : 's'} will be added to this patient`
                         : 'No task-bearing recommendations selected'}
                     </p>
                   </div>
                   <Button
                     onClick={handleActivatePathways}
-                    disabled={selectedTaskCount > 0}
+                    disabled={activating || (selectedTaskCount > 0 && !patientId)}
                     className="bg-navy-600 hover:bg-navy-700"
                   >
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    {selectedTaskCount > 0 ? 'Task Creation Unavailable' : 'Activate Pathways'}
+                    {activating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                    {selectedTaskCount > 0 ? 'Activate & Add Tasks' : 'Activate Pathways'}
                   </Button>
                 </div>
-                {selectedTaskCount > 0 && (
+                {selectedTaskCount > 0 && !patientId && (
                   <Alert className="mt-3 border-amber-300 bg-amber-50">
                     <AlertDescription className="text-amber-900">
-                      {TASK_ACTIVATION_BLOCKER}
+                      Link this analysis to a patient to add pathway tasks.
                     </AlertDescription>
                   </Alert>
                 )}

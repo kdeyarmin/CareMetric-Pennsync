@@ -1210,7 +1210,6 @@ export const ALERT_CEILING = 500;
 
 export const SCREEN_CEILINGS = Object.freeze({
   listChartClinicalEvents: 200,
-  listChartRecommendations: 200,
   listOcrCorrections: 500,
   listOcrTrainingRuns: 200,
   listSentEducationMaterials: 200,
@@ -1219,7 +1218,7 @@ export const SCREEN_CEILINGS = Object.freeze({
 
 
 /**
- * Batch E's nine reads, each a named contract that orders and pages IN SQL.
+ * Batch E's eight reads, each a named contract that orders and pages IN SQL.
  *
  * So no re-ordering happens here and the complete-set rule has nothing to
  * prove about the order — the contract's `order by` is the screen's own. What
@@ -1426,9 +1425,14 @@ const DECLARED_ROUTES = Object.freeze({
    * store's policies do not — so these routes reach named contracts that carry
    * it, never a generic read.
    *
-   * Nine of the twelve batch E call sites are here. The other three are
+   * Eight of the eleven remaining batch E call sites are here. (A ninth,
+   * `PatientRecommendation.filter`, went with its only caller — the AI
+   * outcomes analyser removed with the clinical risk-prediction features —
+   * so its route was withdrawn; `listChartRecommendations` itself stays in
+   * the service.) The other three are
    * `NotificationPreference.create`/`.update` and `PatientRecommendation.
-   * create`, which pass a whole variable as their payload: the route gate
+   * create` (since withdrawn with its caller), which pass a whole variable as
+   * their payload: the route gate
    * proves a declaration by running each call site's real arguments, and it
    * cannot read those, so declaring them would fail the build rather than
    * serve anything. The capabilities exist — `saveMyNotificationPreferences`
@@ -1452,23 +1456,6 @@ const DECLARED_ROUTES = Object.freeze({
       build: (query, limit) => ({ patient_id: query.patient_id ?? null, ...(limit === undefined ? {} : { limit }) }),
     }),
     reason: 'The chart timeline reads one patient\'s events, which D24 narrows to the caller\'s care team.',
-  }),
-  'PatientRecommendation.filter': Object.freeze({
-    ...screenRead({
-      answerKey: 'entries',
-      entity: 'PatientRecommendation',
-      function: 'listChartRecommendations',
-      projection: 'chart_recommendation_status',
-      order: '-created_date',
-      ceiling: SCREEN_CEILINGS.listChartRecommendations,
-      query: { patient_id: true },
-      filtered: true,
-      build: (query, limit) => ({ patient_id: query.patient_id ?? null, ...(limit === undefined ? {} : { limit }) }),
-    }),
-    // The projection name is doing work: the analyser counts statuses and the
-    // contract returns the id and the status ONLY (D64), so a screen reading
-    // a title here gets `undefined` rather than a row that rode into a prompt.
-    reason: 'The outcomes analyser counts a chart\'s recommendations by status and reads no other field.',
   }),
   /**
    * Patient alerts: four of the five `PatientAlert` call sites, over
@@ -1653,7 +1640,11 @@ const DECLARED_ROUTES = Object.freeze({
     reason: 'The regulatory monitor looks a rule up by its auditor-matchable code before offering a change.',
   }),
   /**
-   * Batch E's three writes, declared UNPROVED.
+   * Batch E's writes, declared UNPROVED. There were three; the third,
+   * `PatientRecommendation.create`, went with its only caller when the OASIS
+   * Center was turned back on — the OASIS chart pusher now adds follow-up
+   * Tasks through the OASIS record broker instead — so its route was
+   * withdrawn. `recordChartRecommendation` itself stays in the service.
    *
    * Every one of their call sites passes a whole variable as its payload, so
    * `check:entity-routes` cannot run the real arguments through `request` and
@@ -1672,19 +1663,6 @@ const DECLARED_ROUTES = Object.freeze({
    * off the answer gets `undefined` rather than a stale value — the per-screen
    * work Stage J is made of, and the reason `projection` is declared.
    */
-  'PatientRecommendation.create': Object.freeze({
-    function: 'recordChartRecommendation',
-    projection: 'chart_recommendation_id',
-    reason: 'The OASIS chart pusher creates one recommendation against a chart the contract authorizes.',
-    request: (recommendation) => {
-      if (recommendation === null || typeof recommendation !== 'object' || Array.isArray(recommendation)) {
-        unsupported('payload');
-      }
-      const { patient_id: patientId, ...rest } = recommendation;
-      return { patient_id: patientId ?? null, recommendation: rest };
-    },
-    response: (result) => ({ id: result?.id }),
-  }),
   'NotificationPreference.create': Object.freeze({
     function: 'saveMyNotificationPreferences',
     projection: 'own_notification_preference_id',
@@ -2045,16 +2023,9 @@ const DECLARED_ROUTES = Object.freeze({
     ...libraryRead({ capability: 'listClinicalPathways', sortable: ['-created_date'] }),
     reason: 'The pathway manager reads every pathway, newest first.',
   }),
-  'ClinicalPathway.filter': Object.freeze({
-    ...libraryRead({
-      capability: 'listClinicalPathways',
-      sortable: ['-created_date'],
-      filterable: ['is_active'],
-      filtered: true,
-      request: (query) => ({ active_only: query?.is_active === true }),
-    }),
-    reason: 'The OASIS recommender and the trigger both read the active pathways.',
-  }),
+  // `ClinicalPathway.filter` was withdrawn with its two callers: the OASIS
+  // recommender and the pathway trigger read the active library through the
+  // OASIS record broker since the OASIS Center was turned back on.
   'ClinicalPathway.create': Object.freeze({
     ...libraryWrite({ capability: 'manageClinicalPathway', action: 'create' }),
     reason: 'The pathway manager saves a new pathway, and the AI generator writes one it drafted.',

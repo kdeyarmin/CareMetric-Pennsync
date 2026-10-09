@@ -6,20 +6,18 @@ import {
   MIN_COHORT_FOR_RATE,
 } from "./documentationGapAnalytics.js";
 
-// ADMINISTRATOR view of documentation-gap patterns and their revenue context.
+// ADMINISTRATOR view of documentation-gap patterns across closed episodes.
 //
-// Wrapped in <FinancialGate>, which is fail-closed: it renders nothing while
-// the current user is still resolving, and nothing for any non-admin. That is
-// the client-side half; `listOASISUploads` already strips financial keys
-// server-side, which is the half that actually matters.
+// Wrapped in <FinancialGate>, the shared fail-closed administrator gate: it
+// renders nothing while the current user is still resolving, and only the
+// fallback for any non-admin. This is a client-side visibility control; the
+// server remains the real boundary.
 //
 // What this panel deliberately does NOT do is name a patient, an assessment or
-// a nurse alongside a dollar figure. It reports where documentation is weakest
-// across closed episodes, which is a training signal. The moment a revenue
-// number is attached to one open assessment it stops being management
-// information and becomes a coding target aimed at the person who has to attest
-// to it — so `documentationGapAnalytics` refuses open episodes outright rather
-// than leaving that to the caller.
+// a nurse. It reports where documentation is weakest across closed episodes,
+// which is a training signal, and it carries no payment or case-mix figure.
+// `documentationGapAnalytics` refuses open episodes outright rather than
+// leaving that to the caller.
 
 /**
  * @param {object} props
@@ -101,10 +99,6 @@ function AdminBody({ episodes }) {
             </span>
           </p>
         )}
-
-        <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          <strong>Payment/case-mix cohort comparison is unavailable — not $0.</strong> Legacy estimator values are excluded until the verified CMS grouper is available.
-        </div>
       </div>
     </section>
   );

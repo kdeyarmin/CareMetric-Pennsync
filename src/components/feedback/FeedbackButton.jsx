@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -11,19 +12,57 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { MessageSquare, Send } from "lucide-react";
+import { MessageSquare, Send, CheckCircle2 } from "lucide-react";
 import { toast } from 'sonner';
-import { OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
+import { OUTBOUND_DELIVERY_PAUSED_CODE, OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
 
+const MAX_SUBJECT_LENGTH = 200;
+const MAX_FEEDBACK_LENGTH = 5000;
+
+/**
+ * Sidebar "Send Feedback" dialog. The message is delivered by the
+ * submitAppFeedback backend function, which sits behind the shared outbound
+ * delivery release gate and chooses the recipient itself; the browser never
+ * names an address or calls an email integration directly.
+ */
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const resetTimer = useRef(null);
 
-  const handleSubmit = (e) => {
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!feedback.trim()) return;
-    toast.error(OUTBOUND_DELIVERY_PAUSED_MESSAGE);
+    if (!feedback.trim() || sending) return;
+
+    setSending(true);
+    try {
+      const res = await base44.functions.invoke('submitAppFeedback', {
+        subject: subject.trim() || undefined,
+        feedback: feedback.trim(),
+      });
+      const data = res?.data ?? res;
+      if (data?.error) throw Object.assign(new Error(data.error), { code: data.code });
+
+      setSent(true);
+      resetTimer.current = setTimeout(() => {
+        setOpen(false);
+        setSubject("");
+        setFeedback("");
+        setSent(false);
+      }, 2000);
+    } catch (error) {
+      const code = error?.code || error?.response?.data?.code;
+      toast.error(code === OUTBOUND_DELIVERY_PAUSED_CODE
+        ? OUTBOUND_DELIVERY_PAUSED_MESSAGE
+        : 'Failed to send feedback. Please try again.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -43,12 +82,17 @@ export default function FeedbackButton() {
           <DialogTitle>Send Feedback or Suggestion</DialogTitle>
           <DialogDescription>
             Share your ideas, report issues, or suggest new features. Your feedback helps us improve PennSync by CareMetric.
+            Please do not include patient information.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              {OUTBOUND_DELIVERY_PAUSED_MESSAGE}
-            </p>
+        {sent ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center" role="status">
+            <CheckCircle2 className="w-16 h-16 text-green-600 mb-4" aria-hidden="true" />
+            <p className="text-lg font-semibold text-green-600">Feedback Sent!</p>
+            <p className="text-sm text-slate-600">Thank you for helping us improve.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="subject">Subject (Optional)</Label>
               <Input
@@ -56,6 +100,7 @@ export default function FeedbackButton() {
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="e.g., Feature Request, Bug Report, Improvement"
+                maxLength={MAX_SUBJECT_LENGTH}
                 className="mt-1"
               />
             </div>
@@ -66,6 +111,7 @@ export default function FeedbackButton() {
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder="Tell us what's on your mind..."
+                maxLength={MAX_FEEDBACK_LENGTH}
                 className="mt-1 min-h-[150px]"
                 required
               />
@@ -75,19 +121,27 @@ export default function FeedbackButton() {
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
+                disabled={sending}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={!feedback.trim()}
+                disabled={!feedback.trim() || sending}
                 className="gap-2"
               >
-                <Send className="w-4 h-4" />
-                Send Feedback
+                {sending ? (
+                  <>Sending...</>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Send Feedback
+                  </>
+                )}
               </Button>
             </div>
           </form>
+        )}
       </DialogContent>
     </Dialog>
   );

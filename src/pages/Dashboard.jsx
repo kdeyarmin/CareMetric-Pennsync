@@ -16,24 +16,21 @@ import { BRAND_LOGO_URL } from "@/lib/brand";
 
 // Critical above-the-fold — eager loaded
 import SmartRouteOptimizer from "@/components/scheduling/SmartRouteOptimizer";
-import ProactiveClinicalSupport from "@/components/clinical/ProactiveClinicalSupport";
 import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
 import TodayPriorities from "@/components/dashboard/TodayPriorities.jsx";
-import { useHighRiskPatientAlerts } from "@/components/dashboard/useHighRiskPatientAlerts";
 import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAlert";
 import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { calculateNurseStats } from "@/components/utils/statsCalculator";
 
 // Non-critical below-the-fold — lazy loaded
-const HighRiskPatientsWidget    = lazy(() => import("@/components/dashboard/HighRiskPatientsWidget"));
 const PendingReferralsWidget    = lazy(() => import("@/components/referral/PendingReferralsWidget"));
 const OverdueFollowUpsWidget    = lazy(() => import("@/components/dashboard/OverdueFollowUpsWidget"));
 const RealTimePatientAlerts     = lazy(() => import("@/components/dashboard/RealTimePatientAlerts"));
 const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTemplatesWidget"));
-const HospitalizationRiskWidget = lazy(() => import("@/components/dashboard/HospitalizationRiskWidget"));
 
 
 export default function Dashboard() {
@@ -61,6 +58,7 @@ export default function Dashboard() {
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['dashboardData'] }),
+        queryClient.refetchQueries({ queryKey: ['myNoteConversions'] }),
       ]);
       toast.success('Dashboard refreshed');
     } catch {
@@ -114,25 +112,37 @@ export default function Dashboard() {
     () => dashboardData.carePlans || [],
     [dashboardData.carePlans],
   );
-  // The high-risk priority and HighRiskPatientsWidget ask one question through
-  // one query key, so react-query serves both from a single request.
-  const { data: highRiskPage, error: patientAlertsError } = useHighRiskPatientAlerts();
-  const patientAlerts = highRiskPage?.alerts ?? [];
-  const patientAlertsTruncated = highRiskPage?.truncated ?? false;
-
   const visitsError = dashboardError;
   const patientsError = dashboardError;
 
   // Handle errors gracefully with user feedback
-  if (visitsError || patientsError || patientAlertsError) {
-    console.error('Dashboard data loading error:', visitsError || patientsError || patientAlertsError);
+  if (visitsError || patientsError) {
+    console.error('Dashboard data loading error:', visitsError || patientsError);
   }
 
-  // The alert read is counted here too. It feeds the high-risk priority, and a
-  // failed read is indistinguishable from an empty one once it reaches the
-  // builder — the tile would report no high-risk patients rather than saying it
-  // could not tell.
-  const hasDataError = visitsError || patientsError || patientAlertsError;
+  // The caller's own AI note conversions drive the "Time Saved" card and the
+  // "no AI-assisted notes this week" priority. NoteConversion RLS admits a
+  // non-admin only to rows whose nurse_email (or creator) is the caller; the
+  // nurse_email filter narrows the built-in admin's wider read to their own.
+  const { data: noteConversions = [], isError: noteConversionsError } = useQuery({
+    queryKey: ['myNoteConversions', currentUser?.email],
+    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser.email }, '-created_date', 5000),
+    initialData: [],
+    staleTime: 600000,
+    gcTime: 900000,
+    enabled: !!currentUser?.email,
+  });
+  const nurseStats = useMemo(() => (
+    currentUser?.email
+      ? calculateNurseStats(currentUser.email, { visits, noteConversions, dateRange: 30 })
+      : null
+  ), [visits, noteConversions, currentUser?.email]);
+
+  // getDashboardData and the caller's own NoteConversion rows are the
+  // dashboard's reads; getDashboardData's failure is the whole error signal. A failed read still has to reach the priority builder
+  // rather than arriving as an empty payload, or every tile would report all
+  // clear instead of saying it could not tell.
+  const hasDataError = visitsError || patientsError;
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -230,9 +240,8 @@ export default function Dashboard() {
             visits={visits}
             patients={patients}
             incidents={incidents}
-            patientAlerts={patientAlerts}
-            patientAlertsTruncated={patientAlertsTruncated}
-            noteConversionsAvailable={false}
+            noteConversions={noteConversions}
+            noteConversionsAvailable={!noteConversionsError}
             dashboardError={hasDataError}
           />
 
@@ -304,16 +313,16 @@ export default function Dashboard() {
         <Link to="/SmartNoteAssistant" className="block">
           <StatCard
             label="Notes"
-            value="Unavailable"
-            sub="Tenant metrics paused"
+            value={(dashboardData.recentCompletedVisits || []).length}
+            sub="Recently completed"
             icon={FileText}
             tone="slate"
           />
         </Link>
         <StatCard
           label="Time Saved"
-          value="Unavailable"
-          sub="Tenant metrics paused"
+          value={noteConversionsError || !nurseStats ? "Unavailable" : nurseStats.timeSavedDisplayInRange}
+          sub={noteConversionsError ? "Could not load your notes" : "30 days"}
           icon={Clock}
           tone="gold"
         />
@@ -360,29 +369,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Proactive Clinical Support - Show for first scheduled patient */}
-      {visits.length > 0 && visits[0]?.patient_id && (
-        <div>
-          <ProactiveClinicalSupport
-            patientId={visits[0].patient_id}
-            compact={true}
-          />
-        </div>
-      )}
-
-
-
       <Suspense fallback={<LoadingState className="py-12" />}>
-        {/* Hospitalization Risk Monitor */}
-        <HospitalizationRiskWidget autoAnalyze={false} />
-
-        {/* High-Risk Patients Alert */}
-        <HighRiskPatientsWidget />
-
         {/* Pending Referrals */}
         <PendingReferralsWidget />
 
-        {/* Provider follow-up requests needing attention (renders for admins only) */}
+        {/* Provider follow-up requests needing attention (agency_admin or manager only) */}
         <OverdueFollowUpsWidget />
 
         {/* Real-time Patient Alerts */}

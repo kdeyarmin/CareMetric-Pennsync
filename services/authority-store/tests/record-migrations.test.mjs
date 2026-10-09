@@ -528,3 +528,41 @@ test('every record migration opens and closes exactly one transaction', async ()
     'begin;\ncreate function public.f() returns int language plpgsql as $$\n'
     + 'begin\n  return 1;\nend $$;\ncommit;\n'), ['begin', 'commit']);
 });
+
+/**
+ * SOMEBODY holds the ordering guard, over the newest name.
+ *
+ * `assertNewestRecordMigration` is a BATON: it lives in whichever suite owns
+ * the newest record migration, and it moves by that file being OVERTAKEN —
+ * which is why its own error text talks about renaming rather than merging.
+ * The hazard is that the handover is a manual step in two halves, so a change
+ * that retires the call in the losing suite and forgets to add it in the
+ * winning one leaves nothing asserting the order, and nothing fails.
+ *
+ * This is the assertion that was missing when the guard moved from
+ * `record-store-catchup.test.mjs` to `contract-fax-log.test.mjs`, and it is
+ * deliberately NARROW: it says a suite calls the guard with the newest name as
+ * a module constant, not that the call is reached. A suite that imports the
+ * helper and never calls it, or calls it inside a branch, satisfies this and
+ * would be caught by its own `before` failing — which is the guard's own job.
+ * Claiming more than that here is how a check comes to describe something it
+ * does not do.
+ */
+test('one suite holds the record-migration ordering guard over the newest file', async () => {
+  const newest = (await recordMigrationNames()).at(-1);
+  const directory = new URL('./', import.meta.url);
+  const holders = [];
+  for (const name of (await readdir(directory)).filter(file => file.endsWith('.test.mjs'))) {
+    const source = await readFile(new URL(name, directory), 'utf8');
+    if (!source.includes('assertNewestRecordMigration(')) continue;
+    // The name has to be in the file for the call to be about the newest
+    // migration. Read rather than inferred from the call's arguments, because
+    // a suite may pass it as a constant and this check must not parse JS.
+    if (source.includes(newest)) holders.push(name);
+  }
+  assert.deepEqual(holders.length, 1,
+    `exactly one suite must assert ${newest} is the newest record migration; `
+    + `found ${holders.length} (${holders.join(', ') || 'none'}). The guard moves `
+    + 'to whichever suite owns the newest file and is RETIRED in the one it '
+    + 'leaves, so a handover done in one half leaves nothing asserting the order.');
+});
