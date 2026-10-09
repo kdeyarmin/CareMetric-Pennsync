@@ -36,6 +36,12 @@ describe('AI agreement request recovery', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('does not treat an unsuccessful recording response as saved consent', async () => {
+    invoke.mockResolvedValue({ data: { success: false, agreement_version: '1.0' } });
+    await expect(acceptAiContentAgreement({ accepted: true, agreement_version: '1.0' }))
+      .rejects.toThrow(/could not be confirmed/i);
+  });
+
   it('still rejects an invalid protected status', async () => {
     invoke.mockResolvedValue({ data: { success: true } });
     await expect(getAiContentAgreementStatus()).rejects.toThrow(/invalid response/i);

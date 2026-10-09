@@ -94,7 +94,7 @@ describe('AIContentResponsibilityAgreement', () => {
     });
 
     await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
-    expect(invalidateQueries).toHaveBeenCalled();
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it('does not set the acceptance flag when the attestation write fails', async () => {
@@ -116,6 +116,13 @@ describe('AIContentResponsibilityAgreement', () => {
 
     await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(agree).toBeEnabled());
+    expect(agree).toHaveTextContent('Retry verification');
+    expect(screen.getByRole('alert')).toHaveTextContent(/acknowledgment was recorded/i);
+    screen.getAllByRole('checkbox').forEach((box) => expect(box).toBeDisabled());
+    onAccepted.mockResolvedValueOnce();
+    fireEvent.click(agree);
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(2));
+    expect(acceptAgreement).toHaveBeenCalledTimes(1);
   });
 
   it('does not persist when the user chooses to sign out instead', () => {
