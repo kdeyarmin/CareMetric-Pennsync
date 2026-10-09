@@ -1,5 +1,5 @@
-import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
-import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
+import CentralCourseCatalog from '@/components/learning/CentralCourseCatalog';
+
 import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -511,14 +511,14 @@ function LegacyLearningCenter() {
   const requestedTab = searchParams.get('tab');
   const activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : 'active';
   const handleTabChange = (value) => {
-    setSearchParams(value === 'active' ? {} : { tab: value });
+    setSearchParams(value === 'active' ? { view: 'legacy' } : { view: 'legacy', tab: value });
   };
   // Converge on the canonical URL: strip a redundant or unknown ?tab= so the
   // default tab is plain /LearningCenter (a valid deep-link like ?tab=annual is
   // left untouched).
   useEffect(() => {
     if (requestedTab !== null && activeTab === 'active') {
-      setSearchParams({}, { replace: true });
+      setSearchParams({ view: 'legacy' }, { replace: true });
     }
   }, [requestedTab, activeTab, setSearchParams]);
 
@@ -1575,5 +1575,7 @@ function LegacyLearningCenter() {
 }
 
 export default function LearningCenter(props) {
-  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={false} /> : <LegacyLearningCenter {...props} />;
+  const [params] = useSearchParams();
+  return params.get('view') === 'legacy' || (TAB_KEYS.includes(params.get('tab')) && params.get('tab') !== 'catalog')
+    ? <LegacyLearningCenter {...props} /> : <CentralCourseCatalog />;
 }
