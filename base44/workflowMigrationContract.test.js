@@ -39,10 +39,18 @@ const EXPECTED = {
     schedule: { mode: 'recurring', cron: '30 5 * * *' },
     releaseState: 'live',
   },
+  // Released 2026-10-08 with the e-signature product (owner decision). The
+  // dispatcher is gated by the shared OUTBOUND_DELIVERY_RELEASE and by its own
+  // scheduler authorization; the hourly housekeeping sweep sends no email.
   'Dispatch Scheduled Signature Reminders.jsonc': {
     target: 'dispatchScheduledSignatureReminders',
     schedule: { mode: 'interval', value: 15, unit: 'minutes' },
-    releaseState: 'paused_signature',
+    releaseState: 'live',
+  },
+  'Check Pending Signature Requests.jsonc': {
+    target: 'checkPendingSignatureRequests',
+    schedule: { mode: 'interval', value: 60, unit: 'minutes' },
+    releaseState: 'live',
   },
   // Added 2026-10-08 when the owner released scheduled texting. It has no
   // workflow-specific release key: the dispatcher is gated by the shared
@@ -143,25 +151,6 @@ function assertHandlerReleaseState(source, expected, file) {
       `${file} release guard must return HTTP 503`);
     assert.match(source.slice(markerIndex, handlerIndex), /enabled-v1/,
       `${file} must require the exact reviewed release value`);
-    return;
-  }
-
-  if (expected.releaseState === 'paused_signature') {
-    const markerIndex = source.indexOf('const SIGNATURE_REMINDER_DISPATCH_ENABLED = false;');
-    const proofMarkerIndex = source.indexOf('const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;');
-    const handlerIndex = source.indexOf('Deno.serve(async (req) =>');
-    const guardIndex = source.indexOf(
-      'if (!SIGNATURE_REMINDER_DISPATCH_ENABLED || !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN)',
-      handlerIndex,
-    );
-    assert.match(source, /Signature reminders are temporarily unavailable/);
-    assert.match(source, /status:\s*503/);
-    assert.notEqual(markerIndex, -1, `${file} must retain its explicit inactive marker`);
-    assert.notEqual(proofMarkerIndex, -1, `${file} must retain its explicit atomic-uniqueness proof gate`);
-    assert.notEqual(clientIndex, -1, `${file} must retain its dormant reviewed implementation`);
-    assert.ok(markerIndex < proofMarkerIndex && proofMarkerIndex < handlerIndex
-      && handlerIndex < guardIndex && guardIndex < clientIndex,
-    `${file} must require both release and atomic-uniqueness proof before SDK construction`);
     return;
   }
 

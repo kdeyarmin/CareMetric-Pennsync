@@ -148,7 +148,12 @@ describe('protected-admin frontend alignment', () => {
       /"read"\s*:\s*false/,
     );
     expect(documentHub).toMatch(/const adminView = isAdminView\(currentUser\)/);
-    expect(documentHub).toMatch(/const canReadDocumentAudit = isAdminLike\(currentUser\)/);
+    // The signature audit tab also opens for an agency_admin or manager of the
+    // server-validated tenant context (released 2026-10-08); the broker
+    // re-checks the same rule.
+    expect(documentHub).toMatch(
+      /const canReadDocumentAudit = isAdminLike\(currentUser\)\s*\|\| SIGNATURE_MANAGER_ROLES\.includes\(getTrustedTenantContext\(currentUser\)\?\.tenant_role\)/,
+    );
     expect(documentHub).toMatch(/validTabKeys = canReadDocumentAudit/);
     expect(documentHub.match(/\{canReadDocumentAudit && \(/g)).toHaveLength(2);
 

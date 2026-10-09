@@ -684,22 +684,20 @@ describe('authority-bound auxiliary-window containment', () => {
     expect(main).not.toMatch(/postMessage\([^\n]*,\s*['"]\*['"]\)/);
   });
 
-  it('scrubs retired public bearers before App and React Router import', () => {
+  it('leaves each released public bearer to the page that consumes and scrubs it', () => {
     const main = readFileSync(join(process.cwd(), 'src/main.jsx'), 'utf8');
-    const scrubCall = main.indexOf('scrubRetiredPublicTokenBeforeAppImport()');
-    const appImport = main.indexOf("import('@/App.jsx')");
-
-    expect(scrubCall).toBeGreaterThan(-1);
-    expect(scrubCall).toBeLessThan(appImport);
-    // Only the retired signer bearer is scrubbed before the app loads. The
-    // provider follow-up portal was released (2026-10-08) and scrubs its own
-    // token from the URL once its capability lease has read it.
-    expect(main).toMatch(/if \(segment !== 'signer'\) return/);
-    expect(main).not.toMatch(/segment !== 'followup'/);
-    const portal = readFileSync(join(process.cwd(), 'src/pages/ProviderFollowUpPortal.jsx'), 'utf8');
-    expect(portal).toMatch(/scrubPublicCapabilityParameter\('token'\)/);
-    expect(main).toMatch(/url\.searchParams\.delete\('token'\)/);
-    expect(main).toMatch(/window\.history\.replaceState\(\{\}/);
+    // Both the signer portal and the provider follow-up portal were released
+    // (2026-10-08). Neither bearer is stripped before the app loads: each page
+    // reads its token once through its capability lease and scrubs it from the
+    // address bar in a layout effect, before anything renders.
+    expect(main).not.toMatch(/scrubRetiredPublicTokenBeforeAppImport/);
+    expect(main).not.toMatch(/segment !== 'signer'|segment !== 'followup'/);
+    for (const page of ['src/pages/SignerPortal.jsx', 'src/pages/ProviderFollowUpPortal.jsx']) {
+      const source = readFileSync(join(process.cwd(), page), 'utf8');
+      expect(source, page).toMatch(/useLayoutEffect\(\(\) => \{\s*scrubPublicCapabilityParameter\('token'\);/);
+      expect(source, page).toMatch(/usePublicCapabilityLease\(\)/);
+      expect(source, page).toMatch(/const \[token\] = useState\(initialToken\)/);
+    }
   });
 
   it('limits descendant frames to privacy-enhanced YouTube education and keeps auxiliary links same-tab', () => {

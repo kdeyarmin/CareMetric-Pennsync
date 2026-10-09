@@ -88,9 +88,11 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
     // 2026-10-08: processCompletedVisit and monitorClinicalDataForCarePlanUpdates
     // were released with authority-v1 notices (no longer source-disabled
     // legacy), and notifyUrgentMessage gained its first, authority-v1, notice.
-    producer_files: 31,
-    call_sites: 41,
-    authority_v1: 9,
+    // +6 the same day: the six e-signature functions that can seal a document
+    // each mint one authority-v1 completion notice (shared esignFinalization).
+    producer_files: 37,
+    call_sites: 47,
+    authority_v1: 15,
     legacy_unmigrated: 32,
     explicitly_quarantined: 0,
     workflow_schedule_quarantined: 12,

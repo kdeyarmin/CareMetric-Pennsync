@@ -57,18 +57,25 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-/** Authority-bound reminder scheduler. Kept release-gated with public signing. */
-const SIGNATURE_REMINDER_RELEASE_ENABLED = false;
-// Package-row conditional reservations serialize creation for each schedule key.
-// Hosted concurrent-create/audit/replay proof is recorded in the creation audit.
-// Product release remains independently disabled until the signing flow is complete.
-const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;
+/**
+ * Authority-bound reminder scheduler (released 2026-10-08, owner decision).
+ * Package-row conditional reservations serialize creation for each schedule
+ * key; the hosted concurrent-create/audit/replay proof is recorded in
+ * docs/audits/SIGNATURE_REMINDER_CREATION_2026-09-11.md. A reminder row stays
+ * non-dispatchable (pending_audit) until its audit event is read back. No
+ * email is sent here; dispatchScheduledSignatureReminders sends at send_at.
+ *
+ * Authority: an exact active AgencyMembership in the package's agency with
+ * chart access to the package's patient (agency_admin/manager there, the
+ * chart's creator, or an active PatientCareTeamAssignment). The dispatcher
+ * re-proves the same access at send time.
+ */
 const MAX_BODY_BYTES = 10_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;
 const MAX_FUTURE_DAYS = 90;
 const MAX_PACKAGE_DOCUMENTS = 25;
-const ALLOWED_ROLES = new Set(['agency_admin', 'manager']);
+const CHART_WIDE_ROLES = new Set(['agency_admin', 'manager']);
 
 class PublicError extends Error {
   status: number;
@@ -202,8 +209,7 @@ async function parseRequest(req: Request) {
 }
 
 function isPlatformOwner(user: Record<string, any>) {
-  const configured = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
-  return user?.role === 'admin' && !!configured && canonicalEmail(user.email) === configured;
+  return user?.role === 'admin';
 }
 
 async function loadAuthority(base44: Record<string, any>, agencyId: string) {
@@ -227,13 +233,30 @@ async function loadAuthority(base44: Record<string, any>, agencyId: string) {
   );
   if (!exactIdentifier(membership.id) || membership.membership_key !== `${agencyId}:${userId}`
       || canonicalEmail(membership.user_email_normalized) !== email || membership.status !== 'active'
-      || !ALLOWED_ROLES.has(membership.tenant_role)
       || !Number.isSafeInteger(membership.version) || membership.version < 1) {
     throw new PublicError(403, 'No active reminder authority for agency');
   }
   const agency = await exactOne(entities.Agency, { id: agencyId }, 'Agency');
   if (!['active', 'trial'].includes(agency.status)) throw new PublicError(403, 'Agency is unavailable');
   return { entities, userId, email, membership };
+}
+
+async function assertRequesterChartAccess(
+  entities: Record<string, any>,
+  authority: Record<string, any>,
+  agencyId: string,
+  patientId: string,
+) {
+  if (CHART_WIDE_ROLES.has(String(authority.membership.tenant_role || ''))) return;
+  const patient = await exactOne(entities.Patient,
+    { id: patientId, agency_id: agencyId, is_sample: false, is_archived: false }, 'Patient');
+  if (exactIdentifier(patient.created_by_user_id) && patient.created_by_user_id === authority.userId) return;
+  const assignments = requireRows(await entities.PatientCareTeamAssignment.filter(
+    { agency_id: agencyId, patient_id: patientId, user_id: authority.userId, status: 'active' }, undefined, 2,
+  ), 'PatientCareTeamAssignment.filter');
+  if (assignments.some((row) => row?.agency_id === agencyId && row?.patient_id === patientId
+    && row?.user_id === authority.userId && row?.status === 'active')) return;
+  throw new PublicError(404, 'Signature package unavailable');
 }
 
 async function loadReminderTarget(entities: Record<string, any>, input: Record<string, any>) {
@@ -452,17 +475,15 @@ async function createReminderOnce(entities: Record<string, any>, pkg: Record<str
 }
 
 Deno.serve(async (req) => {
-  if (!SIGNATURE_REMINDER_RELEASE_ENABLED || !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN) {
-    return Response.json(
-      { error: 'Signature reminders are temporarily unavailable.', code: 'signature_reminder_schedule_unavailable' },
-      { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
-    );
-  }
   try {
-    const input = await parseRequest(req);
+    if (req.method !== 'POST') throw new PublicError(405, 'Method not allowed');
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
+    // Authenticate before the body names any agency, package or signer.
+    if (!await base44.auth.me().catch(() => null)) throw new PublicError(401, 'Unauthorized');
+    const input = await parseRequest(req);
     const authority = await loadAuthority(base44, input.agencyId);
     const target = await loadReminderTarget(authority.entities, input);
+    await assertRequesterChartAccess(authority.entities, authority, input.agencyId, target.pkg.patient_id);
     const authorizedInput = { ...input, deadline: target.deadline };
     const scheduleKey = await sha256(`${input.agencyId}\0${input.packageId}\0${input.signerId}\0${input.clientRequestId}`);
     const { row, created } = await createReminderOnce(authority.entities, target.pkg, scheduleKey, {

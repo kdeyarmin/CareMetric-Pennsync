@@ -226,12 +226,42 @@
     },
     "signature": {
       "type": "object",
+      "description": "Written only by submitDocumentSignatures (mode discharge_summary): signer identity is the authenticated user, the image is private, and integrity_hmac_sha256 seals the summary content digest, signature digest, signer and time.",
       "properties": {
         "signature_data": {
           "type": "string",
-          "description": "Base64 signature image"
+          "description": "Legacy base64 signature image. New signatures store a private file instead."
         },
         "signed_by": {
+          "type": "string"
+        },
+        "signed_by_user_id": {
+          "type": "string"
+        },
+        "membership_id": {
+          "type": "string"
+        },
+        "signature_file_uri": {
+          "type": "string",
+          "description": "Private storage reference of the signature image (never a public URL)."
+        },
+        "signature_sha256": {
+          "type": "string"
+        },
+        "content_sha256": {
+          "type": "string",
+          "description": "SHA-256 of the canonical clinical content that was signed."
+        },
+        "integrity_hmac_sha256": {
+          "type": "string"
+        },
+        "hmac_key_id": {
+          "type": "string"
+        },
+        "attestation_version": {
+          "type": "string"
+        },
+        "client_request_id": {
           "type": "string"
         },
         "signed_by_name": {

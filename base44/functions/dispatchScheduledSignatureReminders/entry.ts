@@ -78,13 +78,20 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
 /**
- * Exact, one-attempt scheduled signature reminder dispatcher.
+ * Exact, one-attempt scheduled signature reminder dispatcher (released
+ * 2026-10-08, owner decision; runs every 15 minutes from the native workflow).
  *
  * A provider-call exception is an indeterminate delivery, never a retryable
  * failure. This prevents a scheduler replay from emailing two bearer links.
+ * Every due reminder re-proves, at send time, the requester's active
+ * membership and chart access, the creator's membership, the patient, the
+ * signer and the private source binding before a fresh hashed link is minted.
+ * Email leaves only through the released outbound delivery gate.
+ *
+ * Scheduler authority: the built-in administrator, or the INTERNAL_FN_SECRET
+ * shared secret in the x-internal-secret header (or `internal_secret` in the
+ * JSON body for the in-app delegations).
  */
-const SIGNATURE_REMINDER_DISPATCH_ENABLED = false;
-const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;
 const BATCH_LIMIT = 100;
@@ -190,25 +197,53 @@ function timingSafeEqual(left: string, right: string) {
 }
 
 function isPlatformOwner(user: Record<string, any> | null) {
-  const configured = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
-  return !!user && user.role === 'admin' && !!configured && canonicalEmail(user.email) === configured
+  return !!user && user.role === 'admin'
     && user.is_active !== false && user.disabled !== true && user.is_service !== true && user.is_verified !== false;
 }
 
-function schedulerAuthorized(req: Request, user: Record<string, any> | null) {
+async function schedulerAuthorized(req: Request, user: Record<string, any> | null) {
   if (isPlatformOwner(user)) return true;
   const expected = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
-  const provided = String(req.headers.get('x-internal-secret') || '').trim();
-  if (!expected) throw new PublicError(500, 'Scheduler authentication is not configured');
+  if (!expected) throw new PublicError(503, 'Scheduler authentication is not configured (INTERNAL_FN_SECRET)');
+  let provided = String(req.headers.get('x-internal-secret') || '').trim();
+  if (!provided && /^application\/json/i.test(req.headers.get('content-type') || '')) {
+    const raw = await req.text().catch(() => '');
+    if (raw.length <= 2_000) {
+      try {
+        const body = JSON.parse(raw || '{}');
+        if (body && typeof body === 'object' && typeof body.internal_secret === 'string') provided = body.internal_secret.trim();
+      } catch { /* an unreadable body carries no secret */ }
+    }
+  }
   return timingSafeEqual(provided, expected);
+}
+
+// The requester must still be able to open the chart the reminder is about:
+// agency_admin/manager of the agency, the chart's creator, or an active
+// care-team assignment. Self-editable profile fields never decide this.
+async function requesterRetainsChartAccess(
+  entities: Record<string, any>,
+  agencyId: string,
+  patientId: string,
+  membership: Record<string, any>,
+) {
+  if (['agency_admin', 'manager'].includes(String(membership.tenant_role || ''))) return true;
+  const patient = await exactOne(entities.Patient,
+    { id: patientId, agency_id: agencyId, is_sample: false, is_archived: false }, 'Patient');
+  if (exactIdentifier(patient.created_by_user_id) && patient.created_by_user_id === membership.user_id) return true;
+  const assignments = requireRows(await entities.PatientCareTeamAssignment.filter(
+    { agency_id: agencyId, patient_id: patientId, user_id: membership.user_id, status: 'active' }, undefined, 2,
+  ), 'PatientCareTeamAssignment.filter');
+  return assignments.some((row) => row?.agency_id === agencyId && row?.patient_id === patientId
+    && row?.user_id === membership.user_id && row?.status === 'active');
 }
 
 function signerPortalOrigin() {
   const raw = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
   let url: URL;
-  try { url = new URL(raw); } catch { throw new PublicError(500, 'Signer portal is not configured'); }
+  try { url = new URL(raw); } catch { throw new PublicError(503, 'Signer portal is not configured (APP_PUBLIC_URL must be an https origin)'); }
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
-    throw new PublicError(500, 'Signer portal is not configured');
+    throw new PublicError(503, 'Signer portal is not configured (APP_PUBLIC_URL must be an https origin)');
   }
   return url.origin;
 }
@@ -261,8 +296,7 @@ async function loadDispatchTarget(entities: Record<string, any>, reminder: Recor
   const requesterMembership = await exactOne(entities.AgencyMembership,
     { id: reminder.membershipId, agency_id: reminder.agencyId, user_id: reminder.requesterId }, 'AgencyMembership');
   if (requesterMembership.status !== 'active' || requesterMembership.version !== reminder.requesting_membership_version
-      || canonicalEmail(requesterMembership.user_email_normalized) !== reminder.requesterEmail
-      || !['agency_admin', 'manager'].includes(requesterMembership.tenant_role)) {
+      || canonicalEmail(requesterMembership.user_email_normalized) !== reminder.requesterEmail) {
     throw new PublicError(409, 'Reminder requester authority is no longer valid');
   }
   const pkg = await exactOne(entities.DocumentPackage,
@@ -293,6 +327,9 @@ async function loadDispatchTarget(entities: Record<string, any>, reminder: Recor
   }
   await exactOne(entities.Patient,
     { id: patientId, agency_id: reminder.agencyId, is_sample: false, is_archived: false }, 'Patient');
+  if (!await requesterRetainsChartAccess(entities, reminder.agencyId, patientId, requesterMembership)) {
+    throw new PublicError(409, 'Reminder requester no longer has access to this chart');
+  }
 
   let pending = false;
   let documentTitle = 'Document';
@@ -503,16 +540,10 @@ async function quarantineStaleReminderClaims(entities: Record<string, any>) {
 }
 
 Deno.serve(async (req) => {
-  if (!SIGNATURE_REMINDER_DISPATCH_ENABLED || !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN) {
-    return Response.json(
-      { error: 'Signature reminders are temporarily unavailable.', code: 'signature_reminder_dispatch_unavailable' },
-      { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
-    );
-  }
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await base44.auth.me().catch(() => null);
-    if (!schedulerAuthorized(req, user)) throw new PublicError(user ? 403 : 401, 'Scheduler authorization required');
+    if (!await schedulerAuthorized(req, user)) throw new PublicError(user ? 403 : 401, 'Scheduler authorization required');
     if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
     const entities = base44.asServiceRole.entities;
     const staleIndeterminate = await quarantineStaleReminderClaims(entities);

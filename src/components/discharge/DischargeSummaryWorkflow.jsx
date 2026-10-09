@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toLocalISODate, formatLocalDate } from '@/lib/dateLocal';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -12,6 +12,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import SignaturePadCanvas from '@/components/signature/SignaturePadCanvas';
+import { newEsignRequestId, signDischargeSummary, signatureFileFromDataUrl } from '@/lib/esignClient';
 
 // Discharge disposition options (mirror the DischargeSummary schema enum). The AI
 // generator no longer guesses a disposition — the reviewing clinician must set it.
@@ -42,6 +45,9 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
   const [dischargeDate, setDischargeDate] = useState(toLocalISODate());
   const [reviewNotes, setReviewNotes] = useState('');
   const [editedSummary, setEditedSummary] = useState(null);
+  const [attested, setAttested] = useState(false);
+  const [signatureImage, setSignatureImage] = useState(null);
+  const signRequestIdRef = useRef(null);
   const { tenantContext } = useAuth();
 
   const { data: currentUser } = useQuery({
@@ -117,6 +123,32 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
     }
   });
 
+  // Sign through the e-signature broker: it authenticates the clinician,
+  // requires an active membership and chart access, stores the image
+  // privately, and seals the reviewed content's digest with an HMAC. The
+  // browser never writes the signature or the signed status itself.
+  const signMutation = useMutation({
+    mutationFn: async () => {
+      const file = signatureFileFromDataUrl(signatureImage, 'discharge-signature.png');
+      signRequestIdRef.current ||= newEsignRequestId('discharge');
+      return signDischargeSummary({
+        agencyId: tenantContext?.agency_id,
+        dischargeSummaryId: summary?.id,
+        file,
+        clientRequestId: signRequestIdRef.current,
+      });
+    },
+    onSuccess: async () => {
+      toast.success('Discharge summary signed');
+      setEditedSummary(null);
+      await refetchSummary();
+      setCurrentStep('complete');
+    },
+    onError: (error) => {
+      toast.error(error?.message || 'The discharge summary could not be signed');
+    },
+  });
+
   // Mark as reviewed
   const handleReviewComplete = async () => {
     // Disposition is a required legal fact that the AI no longer guesses — the
@@ -143,6 +175,10 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
         review_notes: reviewNotes
       });
       toast.success('Review completed');
+      // Sign what was stored: drop the local draft so the signing step shows
+      // (and its status gate reads) the saved, reviewed record.
+      await refetchSummary();
+      setEditedSummary(null);
       setCurrentStep('sign');
     } catch {
       // Failure already surfaced by updateMutation.onError; do not advance the step.
@@ -493,12 +529,11 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
         {/* Step 3: Sign */}
         {currentStep === 'sign' && summary && (
           <div className="space-y-6">
-            <Alert className="border-amber-300 bg-amber-50">
+            <Alert>
               <PenTool className="w-4 h-4" />
-              <AlertDescription className="text-amber-950">
-                Clinician signature capture is unavailable in this source checkpoint. The reviewed
-                summary remains saved, but it cannot be signed or finalized here. Use the agency-approved
-                EMR signing workflow.
+              <AlertDescription>
+                Your signature is recorded against the exact reviewed content. The server stamps your identity,
+                the time, and a fingerprint of the summary; editing it afterwards is not possible.
               </AlertDescription>
             </Alert>
 
@@ -515,6 +550,49 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
               </CardContent>
             </Card>
 
+            {summary.status === 'reviewed' ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Clinician Signature</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      id="discharge-attestation"
+                      checked={attested}
+                      onCheckedChange={(value) => setAttested(value === true)}
+                    />
+                    <Label htmlFor="discharge-attestation" className="text-sm leading-snug">
+                      I personally reviewed this discharge summary and attest that it is accurate and complete
+                      to the best of my knowledge.
+                    </Label>
+                  </div>
+                  <SignaturePadCanvas onSignatureCapture={setSignatureImage} disabled={signMutation.isPending} />
+                  <div className="flex justify-end gap-3">
+                    <Button variant="outline" onClick={onClose}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => signMutation.mutate()}
+                      disabled={!attested || !signatureImage || signMutation.isPending || !tenantContext?.agency_id}
+                    >
+                      {signMutation.isPending
+                        ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        : <PenTool className="w-4 h-4 mr-2" />}
+                      Sign Discharge Summary
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Alert>
+                <AlertDescription>
+                  {summary.status === 'signed'
+                    ? 'This discharge summary is already signed.'
+                    : 'Complete the clinical review before signing.'}
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
 
