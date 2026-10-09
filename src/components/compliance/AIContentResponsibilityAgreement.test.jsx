@@ -52,8 +52,28 @@ describe('AIContentResponsibilityAgreement', () => {
     const region = screen.getByRole('region', { name: /required ai responsibility acknowledgments/i });
     expect(region).toHaveClass('overflow-y-auto');
     expect(region).toHaveAttribute('tabindex', '0');
-    expect(region.querySelectorAll('input[type="checkbox"]')).toHaveLength(AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.length);
+    expect(region.querySelectorAll('[role="checkbox"]')).toHaveLength(AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.length);
     expect(screen.getByRole('status')).toHaveTextContent('0 of 3 selected');
+  });
+
+  it('updates the visible checkmark and progress when a checkbox is clicked', () => {
+    render(<AIContentResponsibilityAgreement />);
+    const boxes = screen.getAllByRole('checkbox');
+    fireEvent.click(boxes[0]);
+    expect(boxes[0]).toBeChecked();
+    expect(boxes[0]).toHaveAttribute('data-state', 'checked');
+    expect(screen.getByRole('status')).toHaveTextContent('1 of 3 selected');
+    expect(boxes[1]).not.toBeChecked();
+    fireEvent.click(boxes[0]);
+    expect(boxes[0]).not.toBeChecked();
+    expect(screen.getByRole('status')).toHaveTextContent('0 of 3 selected');
+  });
+
+  it('accepts acknowledgment clicks on the associated text labels', () => {
+    render(<AIContentResponsibilityAgreement />);
+    AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.forEach((text) => fireEvent.click(screen.getByText(text)));
+    screen.getAllByRole('checkbox').forEach((box) => expect(box).toBeChecked());
+    expect(screen.getByRole('button', { name: /i agree & continue/i })).toBeEnabled();
   });
 
   it('shows a persistent error and allows retry when recording fails', async () => {

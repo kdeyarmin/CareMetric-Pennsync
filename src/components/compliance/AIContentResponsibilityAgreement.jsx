@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { acceptAiContentAgreement } from "@/functions/acceptAiContentAgreement";
 import { Button } from "@/components/ui/button";
+import ResponsibilityAcknowledgment from "@/components/compliance/ResponsibilityAcknowledgment";
 
 import { Sparkles, ShieldCheck, LogOut, Loader2 } from "lucide-react";
 
@@ -133,23 +134,14 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
                 {AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.map((text, index) => {
                   const id = `ai-ack-${index}`;
                   return (
-                    <li key={id}>
-                      <label
-                        htmlFor={id}
-                        className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-navy-300"
-                      >
-                        <input
-                          id={id}
-                          type="checkbox"
-                          required
-                          disabled={Boolean(saving) || recorded}
-                          checked={checked[index]}
-                          onChange={(event) => setAcknowledgment(index, event.target.checked)}
-                          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-navy-600"
-                        />
-                        <span className="text-sm leading-relaxed text-slate-700">{text}</span>
-                      </label>
-                    </li>
+                    <ResponsibilityAcknowledgment
+                      key={id}
+                      id={id}
+                      text={text}
+                      checked={checked[index]}
+                      disabled={Boolean(saving) || recorded}
+                      onCheckedChange={(value) => setAcknowledgment(index, value)}
+                    />
                   );
                 })}
               </ul>
