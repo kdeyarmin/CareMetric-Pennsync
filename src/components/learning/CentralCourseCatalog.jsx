@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { CENTRAL_MY_LEARNING_URL } from '@/lib/centralLearning';
 import { listCentralLearningCourses } from '@/functions/listCentralLearningCourses';
 import CentralCourseCard from '@/components/learning/CentralCourseCard';
+import StaffTrainingPlanSummary from '@/components/learning/StaffTrainingPlanSummary';
 
 export default function CentralCourseCatalog() {
   const [search, setSearch] = useState('');
@@ -25,6 +26,7 @@ export default function CentralCourseCatalog() {
   const data = catalog.data;
   return <PageContainer>
     <PageHeader icon={GraduationCap} title="Learning Center" eyebrow="Centralized education" description="Browse courses from the CareMetric Support Hub without leaving PennSync." favoritePage="LearningCenter" actions={<Button asChild variant="outline"><a href={CENTRAL_MY_LEARNING_URL} target="_blank" rel="noopener noreferrer">My Hub learning<ExternalLink className="ml-2 h-4 w-4" /></a></Button>} />
+    <StaffTrainingPlanSummary />
     <p className="text-sm text-muted-foreground">Course delivery and completion records stay with the Hub or the course’s existing CareBase provider. <Link className="text-primary underline" to="/LearningCenter?view=legacy">View existing PennSync training records</Link>.</p>
     <div className="flex flex-col gap-3 sm:flex-row">
       <Input aria-label="Search centralized courses" placeholder="Search courses and topics…" value={search} onChange={event => setSearch(event.target.value)} className="sm:flex-1" />

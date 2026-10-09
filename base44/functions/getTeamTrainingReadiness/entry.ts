@@ -1,4 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { staffPlanProgress } from '../../shared/staffPlanProgress.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -208,7 +209,7 @@ const BUSINESS_LINES = [
   { key: 'hospice', label: 'Hospice' },
 ];
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await withTrustedClaims(base44, await base44.auth.me().catch(rethrowAuthReadFailure));
@@ -224,6 +225,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const input = req.method === 'POST' ? await req.json() : {};
+    const planProgressOnly = input?.planProgressOnly === true;
+    const offset = input?.offset ?? 0;
+    if (planProgressOnly && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000)) {
+      return Response.json({ error: 'Invalid page.' }, { status: 400 });
+    }
     const svc = base44.asServiceRole.entities;
     // Only protected platform admins (super_admin, or bare role:admin with no agency_name
     // — platform-wide by design) see every tenant's staff. Everyone else,
@@ -241,6 +248,14 @@ Deno.serve(async (req) => {
     let scopedAssignments = [];
     let courses = [];
     if (isPlatformAdmin) {
+      if (planProgressOnly) {
+        const staff = await svc.User.list('-created_date', 2001);
+        if (!Array.isArray(staff) || staff.length > 2000) {
+          return Response.json({ error: 'Staff roster exceeds the reporting limit.' }, { status: 409 });
+        }
+        const emails = [...new Set(staff.filter(row => row.is_active !== false && row.disabled !== true && row.is_service !== true).flatMap(row => [row.email, normalizeClaimEmail(row.email)]).filter(Boolean))];
+        return Response.json(await staffPlanProgress(svc, emails, offset), { headers: { 'Cache-Control': 'no-store' } });
+      }
       // Platform-wide reporting keeps an explicit completeness bound. A tenant
       // report below must never inherit another agency's record-count limit.
       const sources = await Promise.all([
@@ -288,6 +303,9 @@ Deno.serve(async (req) => {
             queryEmails.add(employee.email);
           }
         }
+      }
+      if (planProgressOnly) {
+        return Response.json(await staffPlanProgress(svc, [...queryEmails], offset), { headers: { 'Cache-Control': 'no-store' } });
       }
       const seenAssignments = new Set();
       const emails = [...queryEmails];
@@ -387,4 +405,4 @@ Deno.serve(async (req) => {
     console.error('getTeamTrainingReadiness failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-});
+}
