@@ -56,6 +56,7 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
+import { isPlatformOwner } from '../../shared/securityAccess.ts';
 import { jsPDF } from 'npm:jspdf@4.0.0';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'npm:pdf-lib@1.17.1';
 
@@ -362,7 +363,7 @@ function renderFrontMatter(doc, adrCase, summary, offset, packetPageCount = Infi
   return doc.internal.getNumberOfPages();
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const user = await base44.auth.me().catch(() => null);
@@ -371,7 +372,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { case_id } = await req.json();
+    const { case_id, action = 'generate' } = await req.json();
+    if (typeof case_id !== 'string' || !['generate', 'download'].includes(action)) {
+      return Response.json({ error: 'Invalid request' }, { status: 400 });
+    }
     if (!case_id) {
       return Response.json({ error: 'Missing case_id' }, { status: 400 });
     }
@@ -383,6 +387,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'ADR case not found' }, { status: 404 });
     }
     const adrCase = cases[0];
+    if (adrCase.created_by_id !== user.id && !isPlatformOwner(user)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (action === 'download') {
+      // Persisted field retains its legacy name but now contains a private URI.
+      if (!/^(private\/|private:\/\/|mp\/private\/[a-f0-9]{24}\/)/.test(adrCase.final_packet_url || '') || !['packet_generated', 'submitted', 'closed'].includes(adrCase.status)) {
+        return Response.json({ error: 'Regenerate the final packet to create a private copy.' }, { status: 409 });
+      }
+      const link = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: adrCase.final_packet_url, expires_in: 300 });
+      return Response.json({ success: true, final_packet_url: link.signed_url, final_packet_pages: adrCase.final_packet_pages }, { headers: { 'Cache-Control': 'no-store' } });
+    }
 
     const summary = adrCase.verification_summary;
     if (!adrCase.packet_file_url || !summary || !Array.isArray(summary.items)) {
@@ -529,7 +544,7 @@ Deno.serve(async (req) => {
     // Non-identifying filename: no beneficiary name/MBI in file metadata.
     const blob = new Blob([finalBytes], { type: 'application/pdf' });
     const file = new File([blob], `adr_response_packet_${Date.now()}.pdf`, { type: 'application/pdf' });
-    const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file });
+    const uploadResult = await base44.asServiceRole.integrations.Core.UploadPrivateFile({ file });
 
     // Re-check the case before persisting: if a revised packet was uploaded
     // while this assembly ran, writing 'packet_generated' would make the stale
@@ -548,7 +563,7 @@ Deno.serve(async (req) => {
     }
 
     await base44.entities.AdrAuditCase.update(case_id, {
-      final_packet_url: uploadResult.file_url,
+      final_packet_url: uploadResult.file_uri,
       final_packet_pages: totalPages,
       status: 'packet_generated',
     });
@@ -568,9 +583,10 @@ Deno.serve(async (req) => {
       page: 'adr_center',
     });
 
+    const download = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: uploadResult.file_uri, expires_in: 300 });
     return Response.json({
       success: true,
-      final_packet_url: uploadResult.file_url,
+      final_packet_url: download.signed_url,
       final_packet_pages: totalPages,
       front_matter_pages: frontPages,
     });
@@ -578,4 +594,4 @@ Deno.serve(async (req) => {
     console.error('ADR packet generation error:', error);
     return Response.json({ error: 'Failed to generate ADR packet' }, { status: 500 });
   }
-});
+}

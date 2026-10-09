@@ -56,6 +56,7 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
+import { isPlatformOwner } from '../../shared/securityAccess.ts';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 
 // <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -308,14 +309,22 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await withTrustedClaims(base44, await base44.auth.me());
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.disabled === true || user.is_service === true) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+    }
+
+    const platformOwner = isPlatformOwner(user);
+    const tenant = platformOwner ? null : await loadTrustedTenantClaim(base44, user.id, normalizeClaimEmail(user.email));
+    if (!platformOwner && (!tenant || !['agency_admin', 'manager'].includes(tenant.tenantRole))) {
+      return Response.json({ error: 'Verified agency administrator membership required' }, { status: 403 });
     }
 
     const {
@@ -326,8 +335,8 @@ Deno.serve(async (req) => {
       metrics = ['all']
     } = await req.json();
 
-    if (!report_type) {
-      return Response.json({ error: 'report_type is required' }, { status: 400 });
+    if (typeof report_type !== 'string' || !/^[a-z_]{1,80}$/.test(report_type) || !Array.isArray(recipients) || recipients.length > 50) {
+      return Response.json({ error: 'Invalid report request' }, { status: 400 });
     }
     if (recipients.length > 0 && !outboundDeliveryReleased()) {
       return outboundDeliveryPausedResponse('email');
@@ -343,51 +352,27 @@ Deno.serve(async (req) => {
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - date_range_days);
 
-    // Fetch comprehensive data, then agency-scope for non-super_admin callers
-    // so an agency_admin cannot pull every tenant's PHI into a PDF/email.
-    let [visits, patients, incidents, users, audits, trainings, noteConversions, alerts, tasks] = await Promise.all([
-      base44.asServiceRole.entities.Visit.list('-visit_date', 1000),
-      base44.asServiceRole.entities.Patient.list('-created_date', 5000),
-      base44.asServiceRole.entities.Incident.list('-incident_date', 500),
-      base44.asServiceRole.entities.User.list('-created_date', 5000),
-      base44.asServiceRole.entities.ComplianceAudit.list('-created_date', 500),
-      base44.asServiceRole.entities.TrainingAssignment.list('-created_date', 5000),
-      base44.asServiceRole.entities.NoteConversion.list('-created_date', 5000),
-      base44.asServiceRole.entities.PatientAlert.list('-created_date', 5000),
-      base44.asServiceRole.entities.Task.list('-created_date', 5000)
+    // Only the protected platform owner may aggregate across agencies.
+    // All tenant reads are filtered at the datastore, never by mutable profiles.
+    const entities = base44.asServiceRole.entities;
+    const memberships = platformOwner ? [] : await entities.AgencyMembership.filter({ agency_id: tenant.agencyId, status: 'active' }, undefined, 1001);
+    if (!platformOwner && (memberships.length > 1000 || memberships.some(m => !canonicalClaimMembership(m, m.user_id, m.user_email_normalized)))) {
+      return Response.json({ error: 'Agency membership set is unavailable' }, { status: 403 });
+    }
+    const memberIds = memberships.map(m => m.user_id);
+    const memberEmails = memberships.map(m => m.user_email_normalized);
+    const patients = await entities.Patient.filter(platformOwner ? {} : { agency_id: tenant.agencyId }, '-created_date', 5000);
+    const patientQuery = platformOwner ? {} : { patient_id: { $in: patients.map(p => p.id) } };
+    const [visits, incidents, users, audits, trainings, noteConversions, alerts, tasks] = await Promise.all([
+      entities.Visit.filter(platformOwner ? {} : { ...patientQuery, agency_id: tenant.agencyId }, '-visit_date', 1000),
+      entities.Incident.filter(patientQuery, '-incident_date', 500),
+      entities.User.filter(platformOwner ? {} : { id: { $in: memberIds } }, '-created_date', 5000),
+      entities.ComplianceAudit.filter(patientQuery, '-created_date', 500),
+      entities.TrainingAssignment.filter(platformOwner ? {} : { assigned_to_user_id: { $in: memberEmails } }, '-created_date', 5000),
+      entities.NoteConversion.filter(patientQuery, '-created_date', 5000),
+      entities.PatientAlert.filter(patientQuery, '-created_date', 5000),
+      entities.Task.filter(patientQuery, '-created_date', 5000),
     ]);
-
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-    }
-    if (user.account_type !== 'super_admin' && user.agency_name) {
-      users = (Array.isArray(users) ? users : []).filter((u) =>
-        u.account_type === 'super_admin' || u.agency_name === user.agency_name
-      );
-      const agencyEmails = new Set(users.map((u) => u?.email).filter(Boolean));
-      patients = (Array.isArray(patients) ? patients : []).filter((p) =>
-        (p.created_by && agencyEmails.has(p.created_by))
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
-      );
-      const patientIds = new Set(patients.map((p) => p.id));
-      visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
-      incidents = (Array.isArray(incidents) ? incidents : []).filter((i) => patientIds.has(i.patient_id));
-      audits = (Array.isArray(audits) ? audits : []).filter((a) =>
-        !a.patient_id || patientIds.has(a.patient_id)
-      );
-      trainings = (Array.isArray(trainings) ? trainings : []).filter((t) =>
-        !t.assigned_to_user_id || agencyEmails.has(t.assigned_to_user_id)
-      );
-      noteConversions = (Array.isArray(noteConversions) ? noteConversions : []).filter((n) =>
-        !n.patient_id || patientIds.has(n.patient_id)
-      );
-      alerts = (Array.isArray(alerts) ? alerts : []).filter((a) =>
-        !a.patient_id || patientIds.has(a.patient_id)
-      );
-      tasks = (Array.isArray(tasks) ? tasks : []).filter((t) =>
-        !t.patient_id || patientIds.has(t.patient_id)
-      );
-    }
 
     // Filter by date range
     const filteredVisits = visits.filter(v => new Date(v.visit_date) >= startDate && new Date(v.visit_date) <= endDate);
@@ -443,8 +428,11 @@ Deno.serve(async (req) => {
         );
         const recipient = Array.isArray(recipientRows) && recipientRows.length === 1 ? recipientRows[0] : null;
         if (!recipient) continue;
-        if (user.account_type !== 'super_admin' && user.role !== 'admin'
-          && user.agency_name && recipient.agency_name !== user.agency_name) continue;
+        if (recipient.is_active === false || recipient.disabled === true || recipient.is_service === true) continue;
+        if (!platformOwner) {
+          const recipientTenant = await loadTrustedTenantClaim(base44, recipient.id, normalizeClaimEmail(recipient.email));
+          if (!recipientTenant || recipientTenant.agencyId !== tenant.agencyId) continue;
+        }
         verified.push(recipientEmail);
       }
       if (verified.length === 0) {
@@ -488,7 +476,7 @@ Deno.serve(async (req) => {
       error: 'Internal server error',
     }, { status: 500 });
   }
-});
+}
 
 function calculateMetrics(data) {
   const { visits, patients, incidents, audits, trainings, noteConversions, alerts, tasks, users, dailyEnhancementTrend } = data;

@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { isPlatformOwner } from '../../shared/securityAccess.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -157,7 +158,7 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 
 const isAdminUser = (user) =>
-  user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
+  user?.role === 'admin' && user.disabled !== true && user.is_service !== true;
 
 // Tolerant JSON extractor (mirrors generateTrainingCourse): the model is asked
 // for strict JSON but may wrap it in fences or prose.
@@ -255,10 +256,11 @@ const buildLessonContext = (modules) =>
     })
     .join('\n\n');
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await withTrustedClaims(base44, await base44.auth.me());
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!isAdminUser(user)) {
       return Response.json({ error: 'Unauthorized - admin access required' }, { status: 403 });
@@ -278,13 +280,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'course_id is required' }, { status: 400 });
     }
 
-    const courseList = await base44.asServiceRole.entities.TrainingCourse.filter({ id: course_id }, undefined, 5000);
+    const courseList = await base44.entities.TrainingCourse.filter({ id: course_id }, undefined, 2);
     const course = courseList[0];
     if (!course) {
       return Response.json({ error: 'Course not found' }, { status: 404 });
     }
 
-    const modules = await base44.asServiceRole.entities.TrainingModule.filter({ course_id }, 'order_index', 100);
+    if (!isPlatformOwner(user) && course.status !== 'published' && course.created_by_id !== user.id) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const modules = await base44.entities.TrainingModule.filter({ course_id }, 'order_index', 100);
     const lessonContext = buildLessonContext(modules).trim();
     if (!lessonContext) {
       return Response.json({ error: 'Add at least one lesson with content before generating a quiz.' }, { status: 400 });
@@ -345,4 +350,4 @@ Return ONLY valid JSON (no prose, no code fences) in EXACTLY this shape:
     console.error('generateCourseQuiz failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-});
+}

@@ -214,7 +214,7 @@ function validDate(value) {
   return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value ? null : value;
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   if (req.method !== 'POST') {
     return json({ success: false, error: 'Method not allowed' }, 405, { Allow: 'POST' });
   }
@@ -295,7 +295,7 @@ Generate a comprehensive discharge summary with the following sections:
 
 Format as a professional medical summary. Be detailed, objective, and Medicare-compliant.`;
 
-    const aiResponseRaw = await base44.integrations.Core.InvokeLLM({ prompt: aiPrompt, model: 'automatic' });
+    const aiResponseRaw = await base44.asServiceRole.integrations.Core.InvokeLLM({ prompt: aiPrompt, model: 'automatic' });
     const aiResponse = typeof aiResponseRaw === 'string'
       ? aiResponseRaw
       : typeof aiResponseRaw?.text === 'string' ? aiResponseRaw.text : '';
@@ -365,4 +365,4 @@ Format as a professional medical summary. Be detailed, objective, and Medicare-c
     console.error('Error generating discharge summary:', error?.message || error);
     return json({ error: 'Failed to generate discharge summary' }, 500);
   }
-});
+}

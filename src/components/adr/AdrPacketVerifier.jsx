@@ -206,6 +206,18 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
     }
   };
 
+  const downloadFinalPacket = async () => {
+    setIsGenerating(true);
+    try {
+      const response = await base44.functions.invoke('generateAdrPacket', { case_id: adrCase.id, action: 'download' });
+      const url = response?.data?.final_packet_url;
+      if (!url || !isSafeExternalUrl(url)) throw new Error('No secure download returned');
+      openAuthorityBoundWindow(url);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || 'Unable to download packet');
+    } finally { setIsGenerating(false); }
+  };
+
   const readiness = summary?.readiness || null;
 
   return (
@@ -411,11 +423,12 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
                 )}
                 {adrCase.final_packet_url && finalPacketIsCurrent ? "Regenerate final packet" : "Generate final packet"}
               </Button>
-              {adrCase.final_packet_url && finalPacketIsCurrent && isSafeExternalUrl(adrCase.final_packet_url) && (
+              {adrCase.final_packet_url && finalPacketIsCurrent && (
                 <Button
                   variant="outline"
                   className="min-h-[44px] w-full sm:w-auto"
-                  onClick={() => openAuthorityBoundWindow(adrCase.final_packet_url)}
+                  onClick={downloadFinalPacket}
+                  disabled={isGenerating}
                 >
                   <Download className="w-4 h-4 mr-2" />
                   Download final packet{adrCase.final_packet_pages ? ` (${adrCase.final_packet_pages} pages)` : ""}
