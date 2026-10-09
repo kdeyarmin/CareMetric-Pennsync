@@ -19,7 +19,9 @@ import {
   getTrustedTenantContext,
   getTenantAuthorityKey,
 } from "@/lib/roles";
-import { isPageAllowedForRole } from "@/lib/nav.manifest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { isPageAllowedForRole, NAV_MAP } from "@/lib/nav.manifest";
 
 // Representative users across the staff-discipline axis. `legacy` has no
 // staff_role (every pre-existing account) and must behave exactly like a nurse so
@@ -260,5 +262,23 @@ describe("isPageAllowedForRole — URL-level route guard", () => {
   it("admins reach every clinical page", () => {
     expect(isPageAllowedForRole("OASISCenter", "super_admin", admin)).toBe(true);
     expect(isPageAllowedForRole("Patients", "facility_admin", admin)).toBe(true);
+  });
+  // Every assertion above names a page by string, and `isPageAllowedForRole`
+  // answers `true` for a page the manifest does not carry — so retiring a page
+  // turns a `.toBe(true)` here into a pass for the wrong reason, silently. That
+  // happened on 2026-10-09: an editor commit retired the Care Plans screens and
+  // this block's `CarePlanManagement` assertion was a `.toBe(false)`, so it went
+  // red and was noticed. A `.toBe(true)` on the same page would have gone green.
+  //
+  // The names are read back out of this file rather than listed again here: a
+  // second copy of them can disagree with the assertions while this still
+  // passes.
+  it("asserts only on pages the nav manifest still carries", () => {
+    const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
+    const asserted = [
+      ...new Set([...source.matchAll(/isPageAllowedForRole\(\s*"([^"]+)"/g)].map((m) => m[1])),
+    ];
+    expect(asserted.length).toBeGreaterThan(5);
+    expect(asserted.filter((page) => !(page in NAV_MAP))).toEqual([]);
   });
 });
