@@ -44,6 +44,58 @@ export function planDelta({ landing, receipt }) {
   return { ...delta, counts };
 }
 
+const REFERENCE_PREFIXES = ['target_', 'related_', 'parent_', 'source_', 'linked_', 'primary_', 'referring_', 'original_'];
+
+/** The table a `*_id` column names, allowing the same prefixes the verifier strips; only tables in the receipt count. */
+function referencedTable(column, inReceipt) {
+  const m = /^([a-z][a-z0-9_]*)_id$/.exec(column);
+  if (!m) return null;
+  if (inReceipt.has(m[1])) return m[1];
+  for (const p of REFERENCE_PREFIXES) if (m[1].startsWith(p) && inReceipt.has(m[1].slice(p.length))) return m[1].slice(p.length);
+  return null;
+}
+
+/** Every `*_id` column of the allowed tables, by table. */
+async function referenceColumns(db, tables) {
+  const res = await db.query(`select table_name t, column_name c from information_schema.columns where table_schema = $1 and table_name = any($2::text[]) and column_name like '%\\_id' order by 1, 2`, [SCHEMA, [...tables]]);
+  const out = new Map();
+  for (const r of res.rows) (out.get(r.t) ?? out.set(r.t, []).get(r.t)).push(r.c);
+  return out;
+}
+
+/** Rows no receipt entry covers that point at a row this rollback is still going to delete. */
+async function newDependents({ db, refColumns, ordered, outcomes, byKey, inReceipt }) {
+  const doomed = new Map();
+  for (const e of ordered) if (outcomes.get(rowKey(e)) === 'deleted') {
+    const k = `${e.table}|${e.source_app_id}`;
+    (doomed.get(k) ?? doomed.set(k, []).get(k)).push(e.id);
+  }
+  const found = [];
+  const seen = new Set();
+  for (const [table, columns] of refColumns) {
+    for (const column of columns) {
+      const target = referencedTable(column, inReceipt);
+      if (!target) continue;
+      for (const [k, ids] of doomed) {
+        const [t, app] = k.split('|');
+        if (t !== target) continue;
+        const res = await db.query(`select to_jsonb(r) j from ${q(SCHEMA)}.${q(table)} r where r.source_app_id = $1 and r.${q(column)}::text = any($2::text[]) for update`, [app, ids]);
+        for (const r of res.rows) {
+          const row = typeof r.j === 'string' ? JSON.parse(r.j) : r.j;
+          const own = byKey.get(`${table}|${app}|${row.id}`);
+          if (own && outcomes.get(rowKey(own)) === 'deleted') continue; // goes with the run, children first
+          const parent = byKey.get(`${target}|${app}|${row[column]}`);
+          const sig = `${table}|${app}|${row.id}|${rowKey(parent)}`;
+          if (seen.has(sig)) continue;
+          seen.add(sig);
+          found.push({ source_app_id: app, row, parent });
+        }
+      }
+    }
+  }
+  return found;
+}
+
 /**
  * `tableWaves` is a Map of table to wave (from the plan's `loads`); `tables` is the
  * allowed table set. With `dryRun` nothing is deleted and the outcomes are what a
@@ -52,8 +104,9 @@ export function planDelta({ landing, receipt }) {
  * The whole rollback is one transaction. The record store has no foreign keys, so a
  * row that is kept (edited since the run) must also keep every row it points at, or
  * the kept row is left dangling: a parent is reported `kept_for_dependent` and not
- * deleted, and that holds transitively. A dependency is any `<table>_id` column that
- * names another table in the receipt.
+ * deleted, and that holds transitively. A dependency is any `<table>_id` column (with the
+ * verifier's reference prefixes allowed) that names another table in the receipt, on a
+ * receipt row or on a row created since the run: a new dependent keeps its parent too.
  */
 export async function rollbackRun({ db, receipt, tableWaves, tables, dryRun = false }) {
   if (receipt?.format !== 'pennsync-record-mover-receipt' || !Array.isArray(receipt.entries) || !(tables instanceof Set) || !(tableWaves instanceof Map)) {
@@ -83,21 +136,35 @@ export async function rollbackRun({ db, receipt, tableWaves, tables, dryRun = fa
       else outcome = held.rows[0].h === e.db_hash ? 'deleted' : 'edited_since';
       outcomes.set(rowKey(e), outcome);
     }
-    // Phase 2: whatever stays keeps what it points at, all the way up.
+    // Phase 2: whatever stays keeps what it points at, all the way up. Stayers are
+    // receipt rows that will not be deleted AND rows created since the run that point
+    // at a row about to be deleted (they are in no receipt, and nothing else stops them
+    // dangling).
     const byKey = new Map(ordered.map((e) => [rowKey(e), e]));
-    const queue = ordered.filter((e) => ['edited_since', 'not_restorable', 'left_alone'].includes(outcomes.get(rowKey(e))) && stored.get(rowKey(e)));
-    while (queue.length) {
-      const e = queue.pop();
-      const row = stored.get(rowKey(e));
-      for (const [column, value] of Object.entries(row)) {
-        const m = /^([a-z][a-z0-9_]*)_id$/.exec(column);
-        if (!m || !inReceipt.has(m[1]) || typeof value !== 'string' || value === '') continue;
-        const parent = byKey.get(`${m[1]}|${e.source_app_id}|${value}`);
-        if (parent && outcomes.get(rowKey(parent)) === 'deleted') {
-          outcomes.set(rowKey(parent), 'kept_for_dependent');
-          queue.push(parent);
+    const refColumns = await referenceColumns(db, tables);
+    const queue = ordered.filter((e) => ['edited_since', 'not_restorable', 'left_alone'].includes(outcomes.get(rowKey(e))) && stored.get(rowKey(e))).map((e) => ({ source_app_id: e.source_app_id, row: stored.get(rowKey(e)) }));
+    const settle = () => {
+      while (queue.length) {
+        const { source_app_id, row } = queue.pop();
+        for (const [column, value] of Object.entries(row)) {
+          const target = referencedTable(column, inReceipt);
+          if (!target || typeof value !== 'string' || value === '') continue;
+          const parent = byKey.get(`${target}|${source_app_id}|${value}`);
+          if (parent && outcomes.get(rowKey(parent)) === 'deleted') {
+            outcomes.set(rowKey(parent), 'kept_for_dependent');
+            queue.push({ source_app_id: parent.source_app_id, row: stored.get(rowKey(parent)) });
+          }
         }
       }
+    };
+    settle();
+    for (;;) {
+      const found = await newDependents({ db, refColumns, ordered, outcomes, byKey, inReceipt });
+      if (!found.length) break;
+      for (const d of found) { d.parent && outcomes.set(rowKey(d.parent), 'kept_for_dependent'); }
+      for (const d of found) queue.push({ source_app_id: d.source_app_id, row: d.row });
+      for (const d of found) queue.push({ source_app_id: d.parent.source_app_id, row: stored.get(rowKey(d.parent)) });
+      settle();
     }
     // Phase 3: delete what is still marked, children first.
     for (const e of ordered) {

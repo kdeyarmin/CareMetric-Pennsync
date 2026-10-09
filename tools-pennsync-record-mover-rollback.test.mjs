@@ -134,6 +134,23 @@ test('a kept child keeps the parent it points at, so nothing is left dangling', 
   assert.equal(by(unrelated.id), 'deleted');
 });
 
+test('a row created since the run keeps the parent it points at, including through a prefixed reference column', async () => {
+  await wipe();
+  const receipt = await load();
+  const visit = landing.find((r) => r.entity === 'Visit');
+  await db.query(`insert into pennsync_records.visit select (jsonb_populate_record(null::pennsync_records.visit, to_jsonb(v) || '{"id":"added-after-the-run"}'::jsonb)).* from pennsync_records.visit v where v.id = $1`, [visit.id]);
+  const other = landing.find((r) => r.entity === 'Patient' && r.id !== visit.row.patient_id);
+  await db.query(`insert into pennsync_records.patient_education_material (id, source_app_id, agency_id, target_patient_id) select 'material-after-the-run', source_app_id, agency_id, id from pennsync_records.patient where id = $1`, [other.id]);
+  const out = await rollbackRun({ db, receipt, tableWaves, tables });
+  const by = (id) => out.entries.find((e) => e.id === id).outcome;
+  assert.equal(by(visit.row.patient_id), 'kept_for_dependent');
+  assert.equal(by(other.id), 'kept_for_dependent');
+  const kept = (await db.query('select id from pennsync_records.patient order by id')).rows.map((r) => r.id).sort();
+  assert.deepEqual(kept, [visit.row.patient_id, other.id].sort());
+  assert.equal((await db.query(`select id from pennsync_records.visit where id = 'added-after-the-run'`)).rows.length, 1);
+  assert.equal((await db.query(`select id from pennsync_records.patient_education_material where id = 'material-after-the-run'`)).rows.length, 1);
+});
+
 test('a receipt from a dry run is refused, so planned hashes can never match rows another run wrote', async () => {
   await wipe();
   const dry = await load({ dryRun: true });
