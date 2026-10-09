@@ -28,7 +28,7 @@
  * the library return the shaped rows for the loader; the CLI never does.
  */
 import { createHash } from 'node:crypto';
-import { createReadStream, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +76,12 @@ export function loadTargetSpec(repository) {
     entities.set(plan.entity, {
       entity: plan.entity, table: plan.table, disposition: plan.disposition, columns, byProperty, enums,
       tenantKey: plan.tenant_key, systemNames,
+      // The unique indexes the target will enforce, kept as the store states them: partial, so a row
+      // missing any part of the key (null, or empty text) is not a duplicate of another such row.
+      uniqueKeys: [
+        ...(plan.unique_keys ?? []).map((column) => ({ index: `unique:${column}`, columns: [column], live: null })),
+        ...(plan.contract_unique_keys ?? []).map((k) => ({ index: k.index, columns: k.columns, live: k.live })),
+      ],
     });
   }
   const dispositions = JSON.parse(readFileSync(join(repository, 'tools-transition-disposition.json'), 'utf8')).entities;
@@ -89,13 +95,15 @@ export function loadTargetSpec(repository) {
 export function parseCsv(text) {
   need(typeof text === 'string', 'csv_invalid');
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-  const rows = []; let row = []; let cell = ''; let quoted = false; let i = 0; let seen = false;
+  const rows = []; let row = []; let cell = ''; let quoted = false; let i = 0; let seen = false; let closed = false;
   while (i < src.length) {
     const c = src[i];
     if (quoted) {
-      if (c === '"') { if (src[i + 1] === '"') { cell += '"'; i += 2; continue; } quoted = false; i += 1; continue; }
+      if (c === '"') { if (src[i + 1] === '"') { cell += '"'; i += 2; continue; } quoted = false; closed = true; i += 1; continue; }
       cell += c; i += 1; continue;
     }
+    // After a closing quote only a comma, a row end or the end of the file may follow.
+    if (closed) { need(c === ',' || c === '\r' || c === '\n', 'csv_invalid'); closed = false; }
     if (c === '"') { need(cell === '', 'csv_invalid'); quoted = true; seen = true; i += 1; continue; }
     if (c === ',') { row.push(cell); cell = ''; seen = true; i += 1; continue; }
     if (c === '\r' || c === '\n') {
@@ -128,13 +136,21 @@ export function typedCsvRow(raw, entitySpec) {
     if (type === 'jsonb') { try { out[field] = JSON.parse(text); } catch { out[field] = { __unparsed: true }; } continue; }
     if (type === 'boolean') { out[field] = text === 'true' ? true : text === 'false' ? false : text; continue; }
     if (type === 'bigint') { out[field] = /^-?\d+$/.test(text) ? Number(text) : text; continue; }
-    if (type === 'double precision') { out[field] = Number.isFinite(Number(text)) ? Number(text) : text; continue; }
+    if (type === 'double precision') { out[field] = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text) ? Number(text) : text; continue; }
     out[field] = text;
   }
   return out;
 }
 
 // ------------------------------------------------------------------ row checks
+
+/** A calendar date that survives a round trip: 2026-02-31 is not March 3. */
+function realDate(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!m || Number.isNaN(Date.parse(value))) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+}
 
 function typeRefused(type, value) {
   if (value === null || value === undefined) return false;
@@ -143,7 +159,7 @@ function typeRefused(type, value) {
     case 'bigint': return !Number.isSafeInteger(value);
     case 'double precision': return typeof value !== 'number' || !Number.isFinite(value);
     case 'boolean': return typeof value !== 'boolean';
-    case 'date': return typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(value) || Number.isNaN(Date.parse(value));
+    case 'date': return typeof value !== 'string' || !realDate(value);
     case 'timestamptz': return typeof value !== 'string' || Number.isNaN(Date.parse(value));
     case 'jsonb': return object(value) && value.__unparsed === true;
     default: return false;
@@ -255,8 +271,30 @@ export async function planRecords({ rawPlan, readRows, spec, enrolled = null, ke
       landed += 1;
       landing.push({ entity: d.entity, table: entitySpec.table, source_app_id: d.source_app_id, id: source.id, row: shaped.row, hash: sha(canonical({ table: entitySpec.table, row: shaped.row })) });
     }
-    need(landed + held === d.rows, 'row_count');
     loads.push({ entity: d.entity, table: entitySpec.table, source_app_id: d.source_app_id, rows: d.rows, load: landed, quarantined: held });
+  }
+
+  // Rows the target's unique indexes would reject. Nothing guesses which of two colliding rows is
+  // right, so every row in a colliding group is held.
+  for (const l of loads) {
+    const entitySpec = spec.entities.get(l.entity);
+    const mine = landing.filter((r) => r.entity === l.entity && r.source_app_id === l.source_app_id);
+    const colliding = new Set();
+    for (const key of entitySpec.uniqueKeys) {
+      const groups = new Map();
+      for (const r of mine) {
+        const parts = key.columns.map((c) => r.row[c]);
+        if (parts.some((v) => v === null || v === undefined || v === '')) continue;
+        if (key.live && r.row[key.live] === false) continue;
+        const k = canonical(parts);
+        groups.set(k, [...(groups.get(k) ?? []), r]);
+      }
+      for (const g of groups.values()) if (g.length > 1) for (const r of g) colliding.add(r);
+    }
+    for (const r of colliding) quarantine.push({ source_app_id: r.source_app_id, entity: r.entity, id: r.id, code: 'unique_key_collision' });
+    l.load -= colliding.size; l.quarantined += colliding.size;
+    need(l.load + l.quarantined === l.rows, 'row_count');
+    for (const r of colliding) landing.splice(landing.indexOf(r), 1);
   }
 
   const depth = waves(new Set(loads.map((l) => l.entity)), references);
@@ -314,19 +352,26 @@ export function directoryReader(inputDir, spec) {
   const root = resolve(inputDir);
   return async (d) => {
     need(typeof d.path === 'string' && !d.path.includes('..') && !d.path.startsWith('/'), 'path_invalid');
-    const full = join(root, d.path);
+    // The file must be the one the export declared: a changed or truncated file is refused, not planned.
+    const raw = await readFile(join(root, d.path));
+    need(d.sha256 === sha(raw) && d.bytes === raw.length, 'input_descriptor_mismatch');
     if (d.path.endsWith('.csv')) {
       const entitySpec = spec.entities.get(d.entity);
-      return parseCsv(await readFile(full, 'utf8')).map((r) => (entitySpec ? typedCsvRow(r, entitySpec) : r));
+      return parseCsv(raw.toString('utf8')).map((r) => (entitySpec ? typedCsvRow(r, entitySpec) : r));
     }
-    async function* chunks() { for await (const c of createReadStream(full)) yield c; }
+    async function* chunks() { yield raw; }
     return jsonLinesRows(chunks());
   };
 }
 
 export async function planFromDirectory({ inputDir, spec, enrolled = null, keepRows = false }) {
   const rawPlan = await readFile(join(resolve(inputDir), 'plan.json'));
-  return planRecords({ rawPlan, readRows: directoryReader(inputDir, spec), spec, enrolled, keepRows });
+  const plan = JSON.parse(rawPlan.toString('utf8'));
+  const readRows = directoryReader(inputDir, spec);
+  // Every declared file is checked, including those a plan would only report as sealed-only,
+  // so a missing or altered legacy collection is not silently counted.
+  for (const d of [plan.agencies, plan.identities, ...(plan.collections ?? [])]) await readRows(d);
+  return planRecords({ rawPlan, readRows, spec, enrolled, keepRows });
 }
 
 /** Sealed reader: the archive is verified end to end first, and holds JSON lines only. */

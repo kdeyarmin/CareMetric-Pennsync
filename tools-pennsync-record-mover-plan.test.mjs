@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { buildArchive } from './tools-pennsync-archive.mjs';
 import { LEGACY_APP, LIVE_APP, VARIANTS, buildFixture, patientsCsv } from './tools-pennsync-record-mover-fixtures.mjs';
-import { PlanError, loadTargetSpec, parseCsv, planFromArchive, planFromDirectory, runPlanCli } from './tools-pennsync-record-mover-plan.mjs';
+import { PlanError, loadTargetSpec, parseCsv, planFromArchive, planFromDirectory, runPlanCli, shapeRow, typedCsvRow } from './tools-pennsync-record-mover-plan.mjs';
 
 const spec = loadTargetSpec(process.cwd());
 async function scratch(t) {
@@ -19,6 +19,13 @@ async function listing(dir) {
   for (const name of (await readdir(dir)).sort()) h.update(name).update(await readFile(join(dir, name)));
   return h.digest('hex');
 }
+const describe = async (dir, entity, path) => {
+  const plan = JSON.parse(await readFile(join(dir, 'plan.json'), 'utf8'));
+  const c = plan.collections.find((x) => x.entity === entity && x.source_app_id === LIVE_APP);
+  const raw = await readFile(join(dir, path ?? c.path));
+  Object.assign(c, path ? { path } : {}, { bytes: raw.length, sha256: createHash('sha256').update(raw).digest('hex') });
+  await writeFile(join(dir, 'plan.json'), JSON.stringify(plan));
+};
 const enrolledOf = async (dir) => new Set(JSON.parse(await readFile(join(dir, 'enrolled.json'), 'utf8')));
 
 test('the clean fixture plans with nothing set aside and the legacy app only sealed', async (t) => {
@@ -72,11 +79,13 @@ test('csv needs the id column, and typed cells come back as the target types', a
   await writeFile(join(f.dir, '0-Patient.csv'), csvText);
   c.path = '0-Patient.csv'; c.fields = ['id', 'agency_id', 'first_name', 'last_name', 'status', 'secondary_diagnoses'];
   await writeFile(join(f.dir, 'plan.json'), JSON.stringify(plan));
+  await describe(f.dir, 'Patient');
   const csv = await planFromDirectory({ inputDir: f.dir, spec, keepRows: true });
   const pick = (r) => r.landing.filter((x) => x.entity === 'Patient').map((x) => x.row.secondary_diagnoses);
   assert.deepEqual(pick(csv).find((x) => x?.length), [{ code: 'Z00.0', note: 'invented' }]);
   // A collection file with no id column is refused outright.
   await writeFile(join(f.dir, '0-Patient.csv'), patientsCsv({ withId: false }));
+  await describe(f.dir, 'Patient');
   await assert.rejects(planFromDirectory({ inputDir: f.dir, spec }), (e) => e.code === 'id_column_missing');
 });
 
@@ -108,6 +117,8 @@ test('a changed value changes the rows digest', async (t) => {
   const b = await buildFixture({ dir: join(root, 'b') });
   const file = join(b.dir, '0-Patient.jsonl');
   await writeFile(file, (await readFile(file, 'utf8')).replace('Alpha0', 'Alpha9'));
+  await assert.rejects(planFromDirectory({ inputDir: b.dir, spec }), (e) => e.code === 'input_descriptor_mismatch', 'a file that no longer matches its descriptor is refused');
+  await describe(b.dir, 'Patient');
   assert.notEqual((await planFromDirectory({ inputDir: a.dir, spec })).report.rows_digest, (await planFromDirectory({ inputDir: b.dir, spec })).report.rows_digest);
 });
 
@@ -126,7 +137,7 @@ test('the archive key never reaches an output, an error, or a file', async (t) =
     assert.equal(code, wrong ? 1 : 0);
     assert.equal(env.PENNSYNC_ARCHIVE_KEY_BASE64, undefined, 'key variable is removed');
     const everything = [...out, ...err].join('\n');
-    for (const form of [...forms, material.toString('base64')]) assert.ok(!everything.includes(form));
+    for (const form of [...forms, material.toString('base64'), material.toString('hex'), material.toString('latin1')]) assert.ok(!everything.includes(form));
   }
   assert.equal(await listing(join(root, 'out')), rootBefore);
 });
@@ -145,4 +156,35 @@ test('expected platform fields are reported apart from real unknowns', async (t)
   const { report } = await planFromDirectory({ inputDir: f.dir, spec });
   assert.deepEqual(report.held_elsewhere, [{ source_app_id: LIVE_APP, entity: 'User', field: 'email', count: 3 }]);
   assert.deepEqual(report.findings, []);
+});
+
+test('csv: nothing may follow a closing quote, and numbers and dates are not repaired', async (t) => {
+  assert.throws(() => parseCsv('id,a\r\n1,"open"x\r\n'), /csv_invalid/);
+  assert.deepEqual(parseCsv('id,a\r\n1,"o""k"\r\n2,"b"'), [{ id: '1', a: 'o"k' }, { id: '2', a: 'b' }]);
+  const visit = spec.entities.get('Visit');
+  const typed = (field, text) => typedCsvRow({ id: '1', [field]: text }, visit)[field];
+  const numeric = [...visit.columns.values()].find((c) => c.type === 'double precision' && c.property);
+  if (numeric) for (const bad of [' ', '0x10', '1e', 'Infinity']) assert.equal(typed(numeric.property, bad), bad, `${bad} is left as text and refused later`);
+  const refused = (value) => shapeRow(visit, { id: '1', visit_date: value }, LIVE_APP, 'a').refused.map((r) => r.column);
+  assert.deepEqual(refused('2026-02-31'), ['visit_date']);
+  assert.deepEqual(refused('2026-02-28'), []);
+  assert.deepEqual(refused('2028-02-29'), []);
+});
+
+test('rows the target would refuse as duplicates are held, all of them', async (t) => {
+  const root = await scratch(t);
+  const f = await buildFixture({ dir: join(root, 'in') });
+  const file = join(f.dir, '0-Patient.jsonl');
+  const rows = (await readFile(file, 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  rows[0].patient_creation_key = 'same'; rows[1].patient_creation_key = 'same'; rows[2].patient_creation_key = 'other';
+  await writeFile(file, `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`);
+  const plan = JSON.parse(await readFile(join(f.dir, 'plan.json'), 'utf8'));
+  plan.collections.find((x) => x.entity === 'Patient' && x.source_app_id === LIVE_APP).fields.push('patient_creation_key');
+  await writeFile(join(f.dir, 'plan.json'), JSON.stringify(plan));
+  await describe(f.dir, 'Patient');
+  const { report } = await planFromDirectory({ inputDir: f.dir, spec });
+  const q = report.quarantine.filter((x) => x.code === 'unique_key_collision').map((x) => x.id).sort();
+  assert.deepEqual(q, [rows[0].id, rows[1].id].sort());
+  const load = report.loads.find((l) => l.entity === 'Patient' && l.source_app_id === LIVE_APP);
+  assert.equal(load.load + load.quarantined, load.rows);
 });
