@@ -105,7 +105,7 @@ export default function ClinicalDocumentation() {
               <TabsContent value="dictation">
                 <Card>
                   <CardContent className="p-6">
-                    <RealTimeDictationScribe currentUser={currentUser} />
+                    <RealTimeDictationScribe />
                   </CardContent>
                 </Card>
               </TabsContent>
