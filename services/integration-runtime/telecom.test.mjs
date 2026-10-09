@@ -246,6 +246,24 @@ test('an acceptance with no provider id is refused rather than reported as sent'
   assert.equal(answer.provider_id, 'prov-2');
 });
 
+test("a message's status is read from its recipient, as Telnyx's message payload carries it", async () => {
+  // The message payload has no top-level status; it is data.to[0].status
+  // (Telnyx OpenAPI spec, OutboundMessagePayload). A fax's stays top-level.
+  const seen = [];
+  const sms = await send('SendSms', SMS, {
+    fetcher: accepting(seen, { data: { id: 'prov-3', to: [{ phone_number: SMS.to, status: 'queued' }] } }),
+  });
+  assert.equal(sms.provider_status, 'queued');
+  const preferred = await send('SendSms', SMS, {
+    fetcher: accepting(seen, { data: { id: 'prov-4', status: 'stale', to: [{ status: 'sending' }] } }),
+  });
+  assert.equal(preferred.provider_status, 'sending', 'the recipient status wins over a top-level one');
+  const fax = await send('SendFax', FAX, {
+    fetcher: accepting(seen, { data: { id: 'fax-1', status: 'queued', to: [{ status: 'sending' }] } }),
+  });
+  assert.equal(fax.provider_status, 'queued', 'a fax keeps its top-level status');
+});
+
 test('no browser caller may be granted either operation, and the boot refuses it', () => {
   for (const operation of TELECOM_OPERATIONS) {
     assert.ok(OPERATIONS.includes(operation), `${operation} must be a service operation`);

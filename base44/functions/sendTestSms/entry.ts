@@ -442,6 +442,20 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       && row?.provider_event_id == null
       && row?.provider_message_id == null
       && row?.provider_event_occurred_at == null;
+    // provider_opt_out: Telnyx refused a send to this recipient with error
+    // 40300 ("Blocked due to STOP message"). From a delivery receipt it carries
+    // the receipt's event and message ids, exactly as a keyword row does; from a
+    // refused API request there is no provider event, so all three are null.
+    const providerOptOutMatches = source === 'provider_opt_out'
+      && status === 'opted_out'
+      && (row?.captured_by ?? null) === null
+      && ((!!providerEventId && row?.provider_event_id === providerEventId
+        && !!providerMessageId && row?.provider_message_id === providerMessageId
+        && Number.isFinite(occurredAtMs)
+        && row?.provider_event_occurred_at === row?.captured_at)
+        || (row?.provider_event_id == null
+          && row?.provider_message_id == null
+          && row?.provider_event_occurred_at == null));
     if (row?.consent_key !== consentKey
       || row?.provider !== 'telnyx'
       || row?.integration_secret_id !== authority.integrationSecretId
@@ -450,7 +464,7 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       || row?.phone_e164 !== phoneE164
       || !provenanceMatches
       || !Number.isFinite(capturedAtMs)
-      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      || (!keywordSourceMatches && !manualProvenanceMatches && !providerOptOutMatches)) {
       return { ok: false, reason: 'sms_consent_integrity_failed' };
     }
   }
@@ -463,9 +477,13 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
         : 'sms_consent_order_invalid' };
     }
   }
-  const newestKeyword = rows.find((row) =>
-    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
-  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  // A provider-classified STOP — the keyword itself, or Telnyx refusing a send
+  // because of it (provider_opt_out) — is lifted only by a provider START: a
+  // manual opt-in cannot override it, and Telnyx keeps blocking until then.
+  const newestKeyword = rows.find((row) => row.consent_source === 'keyword_stop'
+    || row.consent_source === 'keyword_start' || row.consent_source === 'provider_opt_out');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop'
+    || newestKeyword?.consent_source === 'provider_opt_out';
   return {
     ok: true,
     row: rows[0] || null,
@@ -527,13 +545,13 @@ function isProtectedSuperAdmin(user) {
 // <<<END SHARED HELPER: protectedUserAuthz>>>
 
 
-// ---- transient-failure retry policy ----
-// Telnyx has no client idempotency key. Therefore
-// we only retry on explicit retryable HTTP statuses (408/425/429/500/502/503/504).
-// We do NOT retry a THROWN network error for a send — a blind retry could
-// double-text. We no longer rely on provider dedupe; we avoid double-send by not
-// retrying ambiguous network failures.
-const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+// ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
+// Telnyx has no client idempotency key for a message-create request, so we retry only a
+// status that proves the send was not processed (408/425/429/503). 500/502/504
+// can follow an accepted message, and a THROWN error (a timeout above all) can
+// follow a request Telnyx received; neither is retried — a blind retry could
+// double-text. Held to telnyxRetry.js by telnyxRetryInlineParity.test.js.
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 503]);
 function isRetryableStatus(status) {
   return RETRYABLE_STATUSES.has(Number(status));
 }
@@ -660,7 +678,11 @@ Deno.serve(async (req) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 15000);
         try {
-          const payload = { from: boundFromNumber, to: destination, text: TEST_BODY };
+          // A test text writes no SmsMessage row, so a delivery receipt for it
+          // would 404 at handleTelnyxStatusWebhook and be redelivered by Telnyx.
+          // use_profile_webhooks: false and no webhook_url ask for none
+          // (CreateMessageRequest.use_profile_webhooks, default true).
+          const payload = { from: boundFromNumber, to: destination, text: TEST_BODY, use_profile_webhooks: false };
           if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
           const resp = await fetch(telnyxUrl, {
             method: 'POST',

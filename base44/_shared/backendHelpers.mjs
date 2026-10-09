@@ -19,6 +19,15 @@ import { isAllowedDestination, PREMIUM_AREA_CODES } from '../../src/components/v
 import { OASIS_AUDIT_THRESHOLDS, buildOasisAuditRecord } from '../../src/components/oasis/oasisAuditFlag.js';
 import { OASIS_EXTRACTED_ITEM_MAP, buildExtractedReviewItems } from '../../src/components/oasis/oasisExtractedItems.js';
 import { deriveActionTypes, evaluateRuleTrigger } from '../../src/components/oasis/workflowEngineUtils.js';
+import { CONNECT_PHASE_FAILURE, connectionNeverOpened } from '../../src/components/voice/telnyxRetry.js';
+import {
+  TELNYX_OPT_OUT_ERROR_CODE, telnyxErrorCode, telnyxErrorsInclude, telnyxApiFailureReason,
+  telnyxTransportFailureReason, telnyxDeliveryFailureReason, telnyxSendStatus,
+} from '../../src/components/messaging/smsRedrive.js';
+import {
+  SMS_MEDIA_LIMIT, SMS_MEDIA_MAX_BYTES, SMS_MEDIA_CONTENT_TYPE, SMS_MEDIA_LAYOUT_TYPE, smsMediaContentType, smsMediaFetchUrl,
+  inboundSmsMediaPlaceholders, isPrivateSmsFileUri, smsMediaFileName,
+} from '../../src/components/messaging/smsMedia.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -48,6 +57,41 @@ function isAllowedDestinationSource() {
 // src/components/voice/costControls.js — this copy is generated from it verbatim.
 const PREMIUM_AREA_CODES = new Set([${codes}]);
 ${isAllowedDestination.toString()}`;
+}
+
+// SMS send outcome — single source of truth is src/components/messaging/smsRedrive.js
+// (and telnyxRetry.js for the connect-phase test). Every writer of
+// SmsMessage.failure_reason uses these, and the redrive policy reads the HTTP
+// status and Telnyx error code they put first, so the writers and the reader
+// cannot drift into the prose-matching that rarely recognised a 429.
+function telnyxSmsOutcomeSource() {
+  return `// Generated verbatim from src/components/messaging/smsRedrive.js and
+// src/components/voice/telnyxRetry.js.
+const TELNYX_OPT_OUT_ERROR_CODE = ${JSON.stringify(TELNYX_OPT_OUT_ERROR_CODE)};
+const CONNECT_PHASE_FAILURE = ${CONNECT_PHASE_FAILURE.toString()};
+${connectionNeverOpened.toString()}
+${telnyxErrorCode.toString()}
+${telnyxErrorsInclude.toString()}
+${telnyxApiFailureReason.toString()}
+${telnyxTransportFailureReason.toString()}
+${telnyxDeliveryFailureReason.toString()}
+${telnyxSendStatus.toString()}`;
+}
+
+// MMS attachment rules — single source of truth is src/components/messaging/smsMedia.js.
+// The webhook that records an inbound attachment, the cron that copies it and
+// the broker that serves it must agree on what is fetchable and what is private.
+function smsMediaSource() {
+  return `// Generated verbatim from src/components/messaging/smsMedia.js.
+const SMS_MEDIA_LIMIT = ${SMS_MEDIA_LIMIT};
+const SMS_MEDIA_MAX_BYTES = ${SMS_MEDIA_MAX_BYTES};
+const SMS_MEDIA_CONTENT_TYPE = ${SMS_MEDIA_CONTENT_TYPE.toString()};
+const SMS_MEDIA_LAYOUT_TYPE = ${SMS_MEDIA_LAYOUT_TYPE.toString()};
+${smsMediaContentType.toString()}
+${smsMediaFetchUrl.toString()}
+${inboundSmsMediaPlaceholders.toString()}
+${isPrivateSmsFileUri.toString()}
+${smsMediaFileName.toString()}`;
 }
 
 // OASIS audit flag — single source of truth is src/components/oasis/oasisAuditFlag.js.
@@ -966,6 +1010,8 @@ function validateOasisResponseWrite(payload) {
   areaCodeTimezone: areaCodeTimezoneSource(),
   urgentKeywords: urgentKeywordsSource(),
   isAllowedDestination: isAllowedDestinationSource(),
+  telnyxSmsOutcome: telnyxSmsOutcomeSource(),
+  smsMedia: smsMediaSource(),
 
   // SSRF guard used by every function that fetches or hands a user-supplied URL to
   // a provider integration. Keep in step with src/components/utils/security.
@@ -1861,6 +1907,20 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       && row?.provider_event_id == null
       && row?.provider_message_id == null
       && row?.provider_event_occurred_at == null;
+    // provider_opt_out: Telnyx refused a send to this recipient with error
+    // 40300 ("Blocked due to STOP message"). From a delivery receipt it carries
+    // the receipt's event and message ids, exactly as a keyword row does; from a
+    // refused API request there is no provider event, so all three are null.
+    const providerOptOutMatches = source === 'provider_opt_out'
+      && status === 'opted_out'
+      && (row?.captured_by ?? null) === null
+      && ((!!providerEventId && row?.provider_event_id === providerEventId
+        && !!providerMessageId && row?.provider_message_id === providerMessageId
+        && Number.isFinite(occurredAtMs)
+        && row?.provider_event_occurred_at === row?.captured_at)
+        || (row?.provider_event_id == null
+          && row?.provider_message_id == null
+          && row?.provider_event_occurred_at == null));
     if (row?.consent_key !== consentKey
       || row?.provider !== 'telnyx'
       || row?.integration_secret_id !== authority.integrationSecretId
@@ -1869,7 +1929,7 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       || row?.phone_e164 !== phoneE164
       || !provenanceMatches
       || !Number.isFinite(capturedAtMs)
-      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      || (!keywordSourceMatches && !manualProvenanceMatches && !providerOptOutMatches)) {
       return { ok: false, reason: 'sms_consent_integrity_failed' };
     }
   }
@@ -1882,9 +1942,13 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
         : 'sms_consent_order_invalid' };
     }
   }
-  const newestKeyword = rows.find((row) =>
-    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
-  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  // A provider-classified STOP — the keyword itself, or Telnyx refusing a send
+  // because of it (provider_opt_out) — is lifted only by a provider START: a
+  // manual opt-in cannot override it, and Telnyx keeps blocking until then.
+  const newestKeyword = rows.find((row) => row.consent_source === 'keyword_stop'
+    || row.consent_source === 'keyword_start' || row.consent_source === 'provider_opt_out');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop'
+    || newestKeyword?.consent_source === 'provider_opt_out';
   return {
     ok: true,
     row: rows[0] || null,
@@ -1893,6 +1957,127 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
     phoneE164,
     consentKey,
   };
+}`,
+
+  // Provider-evidenced rows in the scoped SmsConsent ledger: a Telnyx-classified
+  // STOP/START keyword (handleTelnyxStatusWebhook) and a Telnyx refusal with
+  // error 40300, "blocked due to STOP" (the senders and the delivery receipt).
+  // One writer for both, so the opt-out feedback cannot drift from the keyword
+  // path it imitates. Requires telnyxSmsAuthority and telnyxSmsOutcome.
+  telnyxProviderConsent: `function providerConsentRowMatches(row, expected) {
+  return !!row
+    && row.consent_key === expected.consent_key
+    && row.agency_id === expected.agency_id
+    && row.provider === expected.provider
+    && row.integration_secret_id === expected.integration_secret_id
+    && row.messaging_profile_id === expected.messaging_profile_id
+    && row.destination_binding_id === expected.destination_binding_id
+    && row.destination_binding_key === expected.destination_binding_key
+    && row.destination_e164 === expected.destination_e164
+    && (row.patient_id ?? null) === expected.patient_id
+    && row.phone_e164 === expected.phone_e164
+    && row.consent_status === expected.consent_status
+    && row.consent_source === expected.consent_source
+    && (row.provider_event_id ?? null) === expected.provider_event_id
+    && (row.provider_message_id ?? null) === expected.provider_message_id
+    && (row.provider_event_occurred_at ?? null) === expected.provider_event_occurred_at
+    && row.captured_at === expected.captured_at
+    && (row.captured_by ?? null) === expected.captured_by
+    && row.notes === expected.notes;
+}
+
+// Append one provider-evidenced consent row, replay-safe on its Telnyx webhook
+// event id: a replay of the same event with the same content is a no-op, the
+// same event id with different content fails closed, and the write is confirmed
+// by reading it back. A store that cannot be read or written is reported as
+// such, so a webhook can ask Telnyx to redeliver.
+async function appendProviderConsentEvent(base44, expected) {
+  const entities = base44.asServiceRole.entities;
+  let prior;
+  try {
+    prior = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(prior) || prior.length > 1) return { ok: false, reason: 'sms_consent_event_ambiguous' };
+  if (prior.length === 1) {
+    return providerConsentRowMatches(prior[0], expected)
+      ? { ok: true, deduped: true }
+      : { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  try {
+    await entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  let committed;
+  try {
+    committed = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(committed) || committed.length !== 1
+    || !providerConsentRowMatches(committed[0], expected)) {
+    return { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  return { ok: true, deduped: false };
+}
+
+const TELNYX_PROVIDER_OPT_OUT_NOTES = 'Telnyx refused a send to this recipient with error 40300 (blocked due to STOP)';
+
+// Telnyx refused a send because the recipient texted STOP (error 40300) while
+// this ledger still read opted in: record it in the binding's consent scope, so
+// every sender refuses before Telnyx does and a manual opt-in cannot override it
+// (only a provider START lifts it). \`authority\` must be the exact line authority
+// the send was made under — never a guess; a caller that cannot establish it
+// skips the write. Evidence from a delivery receipt (event and message ids) is
+// replay-safe on the event id; a refused API request has no provider event, so
+// its row carries none and is written only while the scope is not already
+// provider-opted-out.
+async function recordTelnyxProviderOptOut(base44, authority, rawRecipient, evidence) {
+  if (!authority?.ok) return { ok: false, reason: 'sms_binding_required' };
+  const phoneE164 = normalizeTelnyxSmsE164(rawRecipient);
+  const hasEvent = evidence?.eventId != null || evidence?.messageId != null;
+  const eventId = hasEvent ? boundedTelnyxAuthorityId(evidence?.eventId) : null;
+  const messageId = hasEvent ? boundedTelnyxAuthorityId(evidence?.messageId) : null;
+  const occurredAtMs = Date.parse(evidence?.occurredAt || '');
+  if (!phoneE164 || !Number.isFinite(occurredAtMs) || (hasEvent && (!eventId || !messageId))
+    || occurredAtMs > Date.now() + 24 * 60 * 60 * 1000) {
+    return { ok: false, reason: 'invalid_provider_opt_out' };
+  }
+  const occurredAt = new Date(occurredAtMs).toISOString();
+  const expected = {
+    consent_key: telnyxSmsConsentKey(authority, phoneE164),
+    agency_id: authority.agencyId,
+    provider: 'telnyx',
+    integration_secret_id: authority.integrationSecretId,
+    messaging_profile_id: authority.messagingProfileId,
+    destination_binding_id: authority.bindingId,
+    destination_binding_key: authority.bindingKey,
+    destination_e164: authority.destinationE164,
+    patient_id: null,
+    phone_e164: phoneE164,
+    consent_status: 'opted_out',
+    consent_source: 'provider_opt_out',
+    captured_by: null,
+    captured_at: occurredAt,
+    provider_event_id: eventId,
+    provider_message_id: messageId,
+    provider_event_occurred_at: hasEvent ? occurredAt : null,
+    notes: TELNYX_PROVIDER_OPT_OUT_NOTES,
+  };
+  const latest = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  if (latest.ok && latest.keywordStopActive) return { ok: true, deduped: true };
+  if (hasEvent) return appendProviderConsentEvent(base44, expected);
+  try {
+    await base44.asServiceRole.entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  const after = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  return after.ok && after.keywordStopActive
+    ? { ok: true, deduped: false }
+    : { ok: false, reason: after.ok ? 'sms_consent_not_recorded' : after.reason };
 }`,
 
   // Data-quality scoring shared by calculateDataQualityScores (per agency, also

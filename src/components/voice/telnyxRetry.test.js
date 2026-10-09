@@ -4,18 +4,30 @@ import {
   RETRYABLE_STATUSES,
   isRetryableStatus,
   isRetryableError,
+  connectionNeverOpened,
   parseRetryAfter,
   backoffDelayMs,
   nextRetryDelayMs,
   sendWithRetry,
 } from "./telnyxRetry.js";
 
-test("isRetryableStatus flags transient gateway/rate-limit statuses", () => {
-  for (const s of [408, 425, 429, 500, 502, 503, 504]) {
+test("isRetryableStatus retries only the statuses that prove the request was not processed", () => {
+  // 408 (request never complete), 425 (refused as replayable), 429 (rate
+  // limited before handling), 503 (server unable to handle it).
+  for (const s of [408, 425, 429, 503]) {
     assert.equal(isRetryableStatus(s), true, `expected ${s} retryable`);
   }
+  assert.deepEqual([...RETRYABLE_STATUSES].sort(), [408, 425, 429, 503]);
   // String form (headers/JSON can arrive as strings) still resolves.
   assert.equal(isRetryableStatus("503"), true);
+});
+
+test("an outcome-unknown 5xx is never retried: POST /v2/messages has no idempotency key", () => {
+  // A gateway can fail or time out after the upstream accepted the message,
+  // so a retry of 500/502/504 can text the patient twice.
+  for (const s of [500, 502, 504]) {
+    assert.equal(isRetryableStatus(s), false, `expected ${s} non-retryable`);
+  }
 });
 
 test("isRetryableStatus never retries permanent client/success statuses", () => {
@@ -25,12 +37,25 @@ test("isRetryableStatus never retries permanent client/success statuses", () => 
   assert.equal(RETRYABLE_STATUSES.has(400), false);
 });
 
-test("isRetryableError retries timeouts and transport failures only", () => {
-  assert.equal(isRetryableError({ name: "AbortError", message: "aborted" }), true);
-  assert.equal(isRetryableError(new TypeError("fetch failed")), true);
-  assert.equal(isRetryableError(new Error("network error reaching host")), true);
-  assert.equal(isRetryableError(new Error("ECONNRESET")), true);
-  assert.equal(isRetryableError(new Error("getaddrinfo EAI_AGAIN")), true);
+test("isRetryableError admits only a connection that never opened", () => {
+  // Connect-phase failures: nothing reached Telnyx.
+  assert.equal(isRetryableError(new Error("getaddrinfo EAI_AGAIN api.telnyx.com")), true);
+  assert.equal(isRetryableError(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } })), true);
+  assert.equal(isRetryableError(Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } })), true);
+  assert.equal(isRetryableError(new TypeError(
+    "error sending request for url (https://api.telnyx.com/v2/messages): client error (Connect): tcp connect error: Connection refused (os error 111)",
+  )), true);
+  assert.equal(connectionNeverOpened(new TypeError("error sending request: client error (Connect): dns error: failed to lookup address")), true);
+
+  // A timeout or abort fired while the request was in flight: outcome unknown.
+  assert.equal(isRetryableError({ name: "AbortError", message: "The signal has been aborted" }), false);
+  assert.equal(isRetryableError({ name: "TimeoutError", message: "getaddrinfo timed out" }), false);
+  // A reset or hang-up can follow a request the server received.
+  assert.equal(isRetryableError(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } })), false);
+  assert.equal(isRetryableError(new TypeError("error sending request: connection closed before message completed")), false);
+  assert.equal(isRetryableError(new TypeError("fetch failed")), false);
+  assert.equal(isRetryableError(new Error("network error reaching host")), false);
+  assert.equal(isRetryableError(new Error("socket hang up")), false);
   // A plain application error is not a transport failure.
   assert.equal(isRetryableError(new Error("invalid destination")), false);
   assert.equal(isRetryableError(null), false);
@@ -114,7 +139,7 @@ test("sendWithRetry returns immediately on first success", async () => {
 
 test("sendWithRetry retries a transient status then succeeds", async () => {
   const { delays, sleep } = recorder();
-  const statuses = [503, 502, 200];
+  const statuses = [503, 429, 200];
   let i = 0;
   const result = await sendWithRetry(
     async () => {
@@ -177,19 +202,72 @@ test("sendWithRetry never retries a permanent status", async () => {
   assert.deepEqual(delays, []);
 });
 
-test("sendWithRetry retries a transient thrown error then succeeds", async () => {
+test("sendWithRetry never retries an outcome-unknown 5xx", async () => {
+  const { delays, sleep } = recorder();
+  for (const status of [500, 502, 504]) {
+    let calls = 0;
+    const result = await sendWithRetry(
+      async () => {
+        calls++;
+        return { ok: false, status };
+      },
+      { sleep, maxAttempts: 3 },
+    );
+    assert.equal(result.attempts, 1, `${status} is final`);
+    assert.equal(calls, 1, `${status} is sent once`);
+  }
+  assert.deepEqual(delays, []);
+});
+
+test("sendWithRetry retries a never-opened connection only when the caller opts in", async () => {
   const { delays, sleep } = recorder();
   let i = 0;
   const result = await sendWithRetry(
     async () => {
-      if (i++ === 0) throw new Error("network timeout");
+      if (i++ === 0) throw new Error("getaddrinfo EAI_AGAIN api.telnyx.com");
       return { ok: true, status: 200 };
     },
-    { sleep, jitter: false, baseMs: 300 },
+    { sleep, jitter: false, baseMs: 300, retryNetworkErrors: true },
   );
   assert.equal(result.ok, true);
   assert.equal(result.attempts, 2);
   assert.deepEqual(delays, [300]);
+});
+
+test("sendWithRetry never retries a timeout, even with network retries enabled", async () => {
+  const { delays, sleep } = recorder();
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      sendWithRetry(
+        async () => {
+          calls++;
+          throw Object.assign(new Error("The signal has been aborted"), { name: "AbortError" });
+        },
+        { sleep, retryNetworkErrors: true, maxAttempts: 3 },
+      ),
+    /aborted/,
+  );
+  assert.equal(calls, 1, "a timed-out request may have been accepted");
+  assert.deepEqual(delays, []);
+});
+
+test("sendWithRetry does not retry thrown errors by default", async () => {
+  const { delays, sleep } = recorder();
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      sendWithRetry(
+        async () => {
+          calls++;
+          throw new Error("getaddrinfo EAI_AGAIN api.telnyx.com");
+        },
+        { sleep, maxAttempts: 3 },
+      ),
+    /EAI_AGAIN/,
+  );
+  assert.equal(calls, 1);
+  assert.deepEqual(delays, []);
 });
 
 test("sendWithRetry re-throws a non-retryable error without sleeping", async () => {
@@ -253,11 +331,11 @@ test("sendWithRetry re-throws a transient error once attempts are exhausted", as
       sendWithRetry(
         async () => {
           calls++;
-          throw new Error("network error reaching Telnyx");
+          throw new Error("tcp connect error: Connection refused (os error 111)");
         },
-        { sleep, jitter: false, baseMs: 300, maxAttempts: 2 },
+        { sleep, jitter: false, baseMs: 300, maxAttempts: 2, retryNetworkErrors: true },
       ),
-    /network error reaching Telnyx/,
+    /Connection refused/,
   );
   assert.equal(calls, 2);
   assert.deepEqual(delays, [300]); // slept once between the two tries
