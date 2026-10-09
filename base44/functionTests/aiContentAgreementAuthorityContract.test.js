@@ -148,52 +148,52 @@ test('valid historical authority re-prompts instead of failing verification', as
     accepted: false,
     agreement_version: AI_CONTENT_AGREEMENT_VERSION,
   });
+});
 
-  test('signed bypass policy applies only to a previously attested actor and its own environment', async () => {
-    const historical = { ...currentAttestation, agreement_version: '0.9', acknowledgments: ['Prior acknowledgment'] };
-    const environment = { SIGNATURE_HMAC_SECRET: 'synthetic-policy-test-key', SUPER_ADMIN_EMAIL: 'owner@example.test' };
-    let policyRows = [];
-    const owner = { ...actor, email: 'owner@example.test', role: 'admin' };
-    const manager = await loadStatusBroker({
-      auth: { me: async () => owner },
-      asServiceRole: { entities: { AIResponsibilityPolicy: {
-        filter: async () => policyRows,
-        create: async (row) => { policyRows = [{ id: 'policy-1', ...row }]; },
-      } } },
-    }, { functionName: 'manageAiResponsibilityPolicy', environment });
-    const saved = await manager(statusRequest({ bypass_previously_acknowledged: true }));
-    assert.equal(saved.status, 200);
-    assert.deepEqual(await saved.json(), { bypass_previously_acknowledged: true });
+test('signed bypass policy applies only to a previously attested actor and its own environment', async () => {
+  const historical = { ...currentAttestation, agreement_version: '0.9', acknowledgments: ['Prior acknowledgment'] };
+  const environment = { SIGNATURE_HMAC_SECRET: 'synthetic-policy-test-key', SUPER_ADMIN_EMAIL: 'owner@example.test' };
+  let policyRows = [];
+  const owner = { ...actor, email: 'owner@example.test', role: 'admin' };
+  const manager = await loadStatusBroker({
+    auth: { me: async () => owner },
+    asServiceRole: { entities: { AIResponsibilityPolicy: {
+      filter: async () => policyRows,
+      create: async (row) => { policyRows = [{ id: 'policy-1', ...row }]; },
+    } } },
+  }, { functionName: 'manageAiResponsibilityPolicy', environment });
+  const saved = await manager(statusRequest({ bypass_previously_acknowledged: true }));
+  assert.equal(saved.status, 200);
+  assert.deepEqual(await saved.json(), { bypass_previously_acknowledged: true });
 
-    const verify = async (rows, policies = policyRows, env = environment, dataEnv) => {
-      const handler = await loadStatusBroker(statusClient({ rows, policyRows: policies }), { environment: env });
-      const request = statusRequest();
-      if (dataEnv) request.headers.set('X-Data-Env', dataEnv);
-      return handler(request);
-    };
-    assert.deepEqual(await (await verify([historical])).json(), {
-      accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION, bypassed: true,
-    });
-    assert.deepEqual(await (await verify([])).json(), {
-      accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION,
-    });
-    assert.equal((await verify([historical], policyRows, environment, 'dev')).status, 500);
-    assert.equal((await verify([historical], policyRows, {})).status, 500);
-    assert.equal((await verify([historical], [...policyRows, ...policyRows])).status, 500);
-    assert.equal((await verify([historical], [{ ...policyRows[0], bypass_previously_acknowledged: false }])).status, 500);
-    assert.equal((await verify([historical], [{ ...policyRows[0], policy_key: 'foreign-policy' }])).status, 500);
+  const verify = async (rows, policies = policyRows, env = environment, dataEnv) => {
+    const handler = await loadStatusBroker(statusClient({ rows, policyRows: policies }), { environment: env });
+    const request = statusRequest();
+    if (dataEnv) request.headers.set('X-Data-Env', dataEnv);
+    return handler(request);
+  };
+  assert.deepEqual(await (await verify([historical])).json(), {
+    accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION, bypassed: true,
   });
-
-  test('policy management denies anonymous and non-owner administrators before service access', async () => {
-    for (const user of [null, actor, { ...actor, role: 'admin' }]) {
-      const handler = await loadStatusBroker({
-        auth: { me: async () => user },
-        asServiceRole: { get entities() { throw new Error('service access must not occur'); } },
-      }, { functionName: 'manageAiResponsibilityPolicy', environment: { SUPER_ADMIN_EMAIL: 'owner@example.test' } });
-      assert.equal((await handler(statusRequest())).status, user ? 403 : 401);
-      assert.equal((await handler(statusRequest(undefined, 'GET'))).status, 405);
-    }
+  assert.deepEqual(await (await verify([])).json(), {
+    accepted: false, agreement_version: AI_CONTENT_AGREEMENT_VERSION,
   });
+  assert.equal((await verify([historical], policyRows, environment, 'dev')).status, 500);
+  assert.equal((await verify([historical], policyRows, {})).status, 500);
+  assert.equal((await verify([historical], [...policyRows, ...policyRows])).status, 500);
+  assert.equal((await verify([historical], [{ ...policyRows[0], bypass_previously_acknowledged: false }])).status, 500);
+  assert.equal((await verify([historical], [{ ...policyRows[0], policy_key: 'foreign-policy' }])).status, 500);
+});
+
+test('policy management denies anonymous and non-owner administrators before service access', async () => {
+  for (const user of [null, actor, { ...actor, role: 'admin' }]) {
+    const handler = await loadStatusBroker({
+      auth: { me: async () => user },
+      asServiceRole: { get entities() { throw new Error('service access must not occur'); } },
+    }, { functionName: 'manageAiResponsibilityPolicy', environment: { SUPER_ADMIN_EMAIL: 'owner@example.test' } });
+    assert.equal((await handler(statusRequest())).status, user ? 403 : 401);
+    assert.equal((await handler(statusRequest(undefined, 'GET'))).status, 405);
+  }
 });
 
 test('status broker rejects wrong transport, caller-shaped input, and blocked actors', async () => {

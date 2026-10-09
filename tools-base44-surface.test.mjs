@@ -30,6 +30,19 @@ test('the frontend stays within its committed Base44 coupling baseline', () => {
   assert.equal(report.within_baseline, true);
 });
 
+test('the consent-setting allowance is one named wrapper, not orchestration or test config', () => {
+  const wrapper = readFileSync(resolve(repository, 'src/functions/manageAiResponsibilityPolicy.js'), 'utf8');
+  assert.equal((wrapper.match(/from\s+['"]@\/api\/base44Client['"]/g) ?? []).length, 1);
+  assert.deepEqual([...wrapper.matchAll(/base44\.functions\.invoke\(\s*['"]([^'"]+)['"]/g)].map(match => match[1]),
+    ['manageAiResponsibilityPolicy']);
+  const helper = readFileSync(resolve(repository, 'src/lib/verifyAiContentAgreementAcceptance.js'), 'utf8');
+  assert.doesNotMatch(helper, /api\/base44Client|base44\.functions/);
+  assert.equal(readdirSync(resolve(repository, 'src/functions')).includes('verifyAiContentAgreementAcceptance.js'), false);
+  assert.equal(readdirSync(resolve(repository, 'src/functions')).includes('aiAgreementChecks.config.js'), false);
+  assert.deepEqual([...sourceFiles(resolve(repository, 'src'))].filter(file =>
+    readFileSync(file, 'utf8').includes('aiAgreementChecks')), [], 'the removed ad-hoc runner config has no production consumer');
+});
+
 test('the measurement reflects the real repository and is not yet zero', () => {
   const { counts, entity_types: entityTypes } = measureSurface(repository);
   assert.ok(counts.entity_call_sites > 0);
