@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { canManageUserInAgency } from '../../shared/userTargetAuthorization.ts';
 
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -66,14 +67,7 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
-}
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
 
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -91,8 +85,9 @@ function isProtectedSuperAdmin(user) {
 }
 // <<<END SHARED HELPER: protectedUserAuthz>>>
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
+    if (!req.headers.get('Authorization')?.trim()) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
 
     // Privileged operation: only an admin / super-admin may mutate User records.
@@ -100,18 +95,16 @@ Deno.serve(async (req) => {
     // { userId: <self>, updates: { role: 'admin', account_type: 'super_admin' } }.
     // Custom User fields are self-mutable, so only Base44's protected role is
     // accepted here.
-    const currentUser = await base44.auth.me();
+    const currentUser = await base44.auth.me().catch(() => null);
+    if (!currentUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (currentUser.disabled === true || currentUser.is_service === true) return Response.json({ error: 'Forbidden' }, { status: 403 });
     if (!isProtectedAdmin(currentUser)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
-    {
-      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
-      if (_agencyAdminGate) return _agencyAdminGate;
-    }
 
     const { userId, updates } = await req.json();
-    if (!userId || !updates || typeof updates !== 'object') {
+    if (typeof userId !== 'string' || !userId.trim() || !updates || typeof updates !== 'object' || Array.isArray(updates)) {
       return Response.json({ error: 'userId and updates are required' }, { status: 400 });
     }
 
@@ -136,21 +129,19 @@ Deno.serve(async (req) => {
     // facility admin must not be able to tamper with a super_admin's other
     // fields (is_approved:false to lock them out, email/phone changes, …). Only
     // a super admin may edit another privileged account.
-    const targetList = await base44.asServiceRole.entities.User.filter({ id: userId }, undefined, 5000).catch(() => []);
-    const targetUser = Array.isArray(targetList) ? targetList[0] : null;
+    const targetList = await base44.entities.User.filter({ id: userId }, undefined, 2);
+    const targetUser = Array.isArray(targetList) && targetList.length === 1 ? targetList[0] : null;
+    if (!targetUser) return Response.json({ error: 'User not found' }, { status: 404 });
     const targetIsPrivileged = targetUser?.role === 'admin';
     if (targetIsPrivileged && !isSuperAdmin && targetUser.id !== currentUser.id) {
       return Response.json({ error: 'Only a super admin can modify another administrator account.' }, { status: 403 });
     }
 
-    // Agency admins may only mutate staff in their own agency.
-    if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
-      if (!currentUser.agency_name || !targetUser || targetUser.agency_name !== currentUser.agency_name) {
-        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
-      }
+    // Resolve entitlement from server-owned membership identities, not profile claims.
+    if (!await canManageUserInAgency(base44, currentUser, targetUser, { platformOwner: isSuperAdmin })) {
+      return Response.json({ error: 'Forbidden: target user is outside your verified agency.' }, { status: 403 });
     }
-
-    const result = await base44.asServiceRole.entities.User.update(userId, safeUpdates);
+    const result = await base44.entities.User.update(targetUser.id, safeUpdates);
 
     return Response.json({ success: true, result });
   } catch (error) {
@@ -158,4 +149,4 @@ Deno.serve(async (req) => {
     // Generic message — don't leak internals to the client.
     return Response.json({ error: 'Failed to update user account' }, { status: 500 });
   }
-});
+}

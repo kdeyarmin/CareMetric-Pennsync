@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { canManageUserInAgency } from '../../shared/userTargetAuthorization.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -66,7 +67,6 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
-const normalizeAgency = (value) => String(value || '').trim().toLowerCase();
 
 // `role` is protected by Base44; account_type and the other custom User fields
 // are not. Cross-agency badge processing therefore requires BOTH the protected
@@ -78,7 +78,7 @@ function isProtectedSuperAdmin(user, configuredEmail = Deno.env.get('SUPER_ADMIN
     && normalizeEmail(user?.email) === expected;
 }
 
-function canProcessAttemptBadges({ caller, ownerEmail, ownerUser, configuredSuperAdminEmail }) {
+function canProcessAttemptBadges({ caller, ownerEmail, configuredSuperAdminEmail, sameAgencyAuthorized = false }) {
   const normalizedOwner = normalizeEmail(ownerEmail);
   if (!normalizedOwner || !caller) return false;
 
@@ -86,16 +86,16 @@ function canProcessAttemptBadges({ caller, ownerEmail, ownerUser, configuredSupe
   if (caller.role !== 'admin') return false;
   if (isProtectedSuperAdmin(caller, configuredSuperAdminEmail)) return true;
 
-  const callerAgency = normalizeAgency(caller.agency_name);
-  const ownerAgency = normalizeAgency(ownerUser?.agency_name);
-  return !!callerAgency && !!ownerAgency && callerAgency === ownerAgency;
+  return sameAgencyAuthorized === true;
 }
 
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
+    if (!req.headers.get('Authorization')?.trim()) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
+    if (user?.disabled === true || user?.is_service === true) return Response.json({ error: 'Forbidden' }, { status: 403 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     
     if (!user) {
@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
     }
 
     const { attempt_id } = await req.json();
+    if (typeof attempt_id !== 'string' || !attempt_id.trim()) return Response.json({ error: 'attempt_id is required' }, { status: 400 });
 
     // Get the attempt
     const attempt = await base44.entities.TrainingAttempt.filter({ id: attempt_id }, undefined, 5000);
@@ -122,22 +123,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Attempt has no owner (user_id)' }, { status: 400 });
     }
 
-    // Authorization is completed before any service-role access. The built-in
-    // admin role may read User rows under entity RLS, which lets us establish
-    // same-agency scope without bypassing policies. A non-admin never gets to
-    // use this lookup for another user.
+    // User-context reads preserve attempt visibility. Cross-user awards require
+    // protected owner identity or verified server-owned agency membership.
     const ownsAttempt = normalizeEmail(ownerEmail) === normalizeEmail(user.email);
     let ownerUser = ownsAttempt ? user : null;
+    const platformOwner = user.role === 'admin' && isProtectedSuperAdmin(user);
     if (!ownsAttempt && user.role === 'admin') {
-      const owners = await base44.entities.User
-        .filter({ email: ownerEmail }, '-created_date', 1)
-        .catch(() => []);
-      ownerUser = owners?.[0] || null;
+      const owners = await base44.entities.User.filter({ email: ownerEmail }, undefined, 2);
+      ownerUser = Array.isArray(owners) && owners.length === 1 ? owners[0] : null;
     }
-    if (!canProcessAttemptBadges({ caller: user, ownerEmail, ownerUser })) {
+    if (!ownerUser) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    const sameAgencyAuthorized = !ownsAttempt && !platformOwner && user.role === 'admin'
+      && await canManageUserInAgency(base44, user, ownerUser, { requireActiveTarget: true });
+    if (!canProcessAttemptBadges({ caller: user, ownerEmail, sameAgencyAuthorized })) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const ownerName = ownerUser?.full_name || ownerEmail;
+    const ownerName = ownerUser.full_name || ownerEmail;
 
     // Idempotency (complete): once an attempt has been processed, re-running is a
     // no-op — this covers attempts that earn NO badge too, which would otherwise
@@ -389,4 +390,4 @@ Deno.serve(async (req) => {
     console.error('Badge awarding failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-});
+}
