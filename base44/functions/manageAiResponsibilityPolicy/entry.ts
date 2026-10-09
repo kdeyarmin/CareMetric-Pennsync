@@ -14,7 +14,7 @@ export default async function(req) {
     pinnedHeaders.set('Base44-App-Id', appId);
     pinnedHeaders.delete('Base44-Api-Url');
     stage = 'authentication';
-    const client = createClientFromRequest(new Request(req, { headers: pinnedHeaders }));
+    const client = createClientFromRequest(new Request(req.clone(), { headers: pinnedHeaders }));
     const user = await client.auth.me().catch(() => null);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
     stage = 'administrator configuration';
