@@ -96,17 +96,59 @@ events arrive at `handleTelnyxStatusWebhook` and are driven there as a small sta
 machine via `client_state`.
 
 - **Outbound masked click-to-call** (`startMaskedCall`): rings the nurse's cell
-  first (caller id = work number); on `call.answered` the webhook issues a Call
-  Control `transfer` to bridge the patient, presenting the work number.
+  first (caller id = work number) with **answering-machine detection**
+  (`answering_machine_detection: 'detect'`). The bridge waits for
+  `call.machine.detection.ended`: `human` or `not_sure` → a Call Control
+  `transfer` to the patient, presenting the work number; `machine` (the nurse's
+  own voicemail picked up) → the nurse leg is hung up and the `CallLog` marked
+  `failed` ("Reached voicemail"), so a patient is never transferred into a
+  nurse's personal voicemail. `answering_machine_detection_config.total_analysis_time_millis`
+  is 5000, which bounds the analysis: the verdict (`not_sure` when Telnyx cannot
+  decide) arrives within five seconds of the answer, so the nurse never waits on
+  an answered leg for one, and the bridge is sent well inside the Voice API
+  app's 30 s first-command timeout. A call placed before detection existed (its state
+  has no `amd` flag) still bridges on `call.answered`.
+- The patient leg gets a state of its own (`masked_patient_leg`, written as both
+  `client_state` and `target_leg_client_state`), so its events can never re-run
+  the bridge. If the patient does not answer, the transfer leaves the nurse leg
+  up ("the original call will remain active"), so the webhook tells the nurse,
+  hangs up their leg and logs "Patient did not answer".
 - **Inbound** (patient → work number): on `call.initiated` the webhook resolves
   the nurse, applies the agency-hours → off-duty → masked-bridge routing, and
   **answers first** (consistent with the outbound path), carrying the decision in
   `client_state`. On `call.answered` it `speak`s the greeting (if any) then
   `transfer`s / `hangup`s / starts voicemail. If `call.initiated` is ever dropped
   (webhooks are at-least-once), `call.answered` re-derives the route so the call
-  is never stranded on a silent leg.
+  is never stranded on a silent leg. A caller who hangs up during the greeting
+  (`call.speak.ended` status `call_hangup`) is logged missed rather than
+  transferred, and a fallback apology carries its own state so its
+  `call.speak.ended` never re-runs the greeting's transfer.
+- Onward legs of an inbound call present the **number the patient dialed**
+  (the work number), never the destination. If a state ever lost it, the
+  caller leg's logged `displayed_number` is used, and failing that `from` is
+  omitted, which Telnyx defaults to the original call's `to` — the same number.
+- **Ringdown legs to a nurse's cell are screened too** (never the office line,
+  whose phone tree or office voicemail is a legitimate answer). A `machine`
+  verdict transfers the caller on to the next target — which unbridges the
+  voicemail leg, and Telnyx hangs that up — so the patient does not leave a
+  message in a nurse's personal voicemail. The trade-off is standard AMD: a
+  nurse who answers with a long greeting can be read as a machine, and the
+  caller then moves to the next target.
 
 Resilience built in:
+- **Every call event that acts is claimed first.** Telnyx delivers webhooks at
+  least once; a call event that sends a Call Control command (or stores a
+  voicemail) first records its envelope id (`data.id`) as a `UserActivity` row
+  (`action: telnyx_call_event_claimed`, `entity_type: TelnyxCallEvent`, the
+  event id and type only), and a redelivery is acknowledged without acting.
+  Concurrent deliveries both append and the earliest row wins. An event whose
+  claim cannot be proven answers 503 and sends nothing; one without an id sends
+  nothing.
+- **Every command carries a deterministic `command_id`** (derived from the event
+  id, the command and its position in that event), so Telnyx ignores a resend.
+  The spec does not say what a duplicate `command_id` is answered with, so the
+  claim — not the provider's answer — is what keeps a repeated command from ever
+  reaching a fallback.
 - `callCommand` returns `{ ok, status }`; a **failed transfer falls back** to a
   spoken apology + `hangup` (and, for the outbound bridge, marks the `CallLog`
   failed) rather than leaving the caller/nurse on dead air.
@@ -116,19 +158,33 @@ Resilience built in:
   `transcription_engine_config.language` → `call.transcription` events append
   to the `CallLog`, setting `has_voicemail` and surfacing a transcript preview
   in the notification). The voicemail duration is derived from the
-  recording's `recording_started_at`/`recording_ended_at`.
-- **Known gap:** `call.recording.saved`'s `recording_urls` are valid for 10
-  minutes (Telnyx API reference), and that link is what is stored as
-  `CallLog.voicemail_url`, so a voicemail link opened later has expired.
-  Fixing it means either copying the audio into private storage or enabling
-  Telnyx's non-expiring `public_recording_urls` — a PHI decision, not a code
-  default.
+  recording's `recording_started_at`/`recording_ended_at`. `call.recording.saved`
+  carries no `call_control_id`, so `record_start` names the caller leg in its
+  `client_state`.
+- **Voicemail storage and playback.** `recording_urls` are valid for 10 minutes,
+  so on `call.recording.saved` the webhook downloads the mp3 (https only, hosts
+  `s3.amazonaws.com` / `api.telnyx.com`, no redirects, 10 MiB, audio content
+  checked) and stores it with `Core.UploadPrivateFile`, download and upload
+  sharing one 5 s budget so the webhook still answers inside the Voice API
+  app's 10 s webhook timeout (past it the provider link is kept and
+  `budget_exhausted` logged; a Telnyx retry of the event is a claimed no-op);
+  `CallLog.voicemail_url` then holds the **private** file reference.
+  `public_recording_urls` (unauthenticated, permanent) are never used. To play
+  one, the Phone Center asks `getVoicemailPlaybackUrl` when the nurse presses
+  play: it reads the `CallLog` row **as the caller** (CallLog RLS decides) and
+  only then signs a 5-minute link with `Core.CreateFileSignedUrl`. If the copy
+  fails, the provider link is kept as before (a category is logged, never the
+  URL), and such legacy rows still play directly.
 - A call leg that hangs up before it is answered (`no_answer`, `user_busy`,
   `call_rejected`, `timeout`, `not_found`, `originator_cancel`) is logged
   `failed` ("Not answered"), not `completed`.
 - Ringdown advances on Telnyx `hangup_cause` values verified against the Call
   Control HangupCause enum: `no_answer`, `user_busy`, `call_rejected`,
   `timeout`, `not_found`, `originator_cancel` (see `src/components/voice/onCall.js`).
+  **Except when the caller has gone:** a ringing leg cancelled with
+  `originator_cancel` and `hangup_source: caller`, or a caller leg already
+  ended, stops the ringdown and logs the call missed ("Caller hung up before
+  anyone answered") instead of transferring a dead leg to every remaining target.
 
 > Call Control *action path* URLs should still be smoke-tested against your live
 > Telnyx account during rollout; hangup_cause / record_start / transcription_start
@@ -244,9 +300,9 @@ user can override their own message (`off_duty_message`).
 
 **Find-me-follow-me (on-call rotation).** An inbound call to an on-duty nurse now
 rings a **ringdown** in order: the nurse's cell → any other on-duty nurse → the
-office. If a leg goes unanswered, the webhook rolls the original caller to the
-next target (carried in `client_state`), so a patient call is never silently
-missed. Ordering logic is the unit-tested `src/components/voice/onCall.js`; the
+office. If a leg goes unanswered — or a nurse's voicemail answers it — the
+webhook rolls the original caller to the next target (carried in
+`client_state`), so a patient call is never silently missed. Ordering logic is the unit-tested `src/components/voice/onCall.js`; the
 ring timeout is ~20s. (`AgencySettings.ringdown_max` caps the number of targets.)
 
 **Cost controls** (set in Super Admin → Nurse Work Numbers → Cost controls):

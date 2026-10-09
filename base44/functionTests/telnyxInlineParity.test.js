@@ -91,6 +91,42 @@ test("an unanswered hangup on a never-answered leg is a missed call, not complet
   assert.equal(unansweredHangupStatus("call.answered", "ringing", "no_answer"), null);
 });
 
+test("the webhook, the voicemail signer and the browser read a private recording reference alike", async () => {
+  // The webhook stores the private reference; getVoicemailPlaybackUrl signs it;
+  // the browser decides from it whether to ask for a signed link at all.
+  const { isStoredVoicemailRef } = await import("../../src/components/voice/voicemailPlayback.js");
+  const webhook = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts", ["isPrivateFileUri"]);
+  const signer = await loadInline("../functions/getVoicemailPlaybackUrl/entry.ts", ["isPrivateFileUri"]);
+  for (const value of [
+    "private/voicemail/1.mp3", "private://bucket/x.mp3", "mp/private/0123456789abcdef01234567/v.mp3",
+    "mp/private/0123456789abcdef0123456/v.mp3", "mp/private/0123456789abcdef01234567/v.mp3?x=1",
+    "https://s3.amazonaws.com/rec.mp3", "/private/voicemail/1.mp3", "private/ voice.mp3", "private/\u0007",
+    "privatevoicemail.mp3", "private:/voicemail.mp3", "PRIVATE/voicemail.mp3", "mp/private/0123456789ABCDEF01234567/v.mp3",
+    "", null, undefined, 42, `private/${"x".repeat(4100)}`,
+  ]) {
+    const label = String(value).slice(0, 40);
+    assert.equal(webhook.isPrivateFileUri(value), signer.isPrivateFileUri(value), label);
+    assert.equal(isStoredVoicemailRef(value), webhook.isPrivateFileUri(value), label);
+  }
+});
+
+test("the webhook's ringdown abandon and screening rules match onCall.js", async () => {
+  const onCall = await import("../../src/components/voice/onCall.js");
+  const inlined = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts",
+    ["isCallerAbandonedHangup", "screensRingdownTarget", "isUnansweredHangup"]);
+  const causes = [...onCall.UNANSWERED_HANGUP_CAUSES, "normal_clearing", "time_limit", "unspecified", "", undefined, "ORIGINATOR_CANCEL"];
+  for (const cause of causes) {
+    assert.equal(inlined.isUnansweredHangup(cause), onCall.isUnansweredHangup(cause), `isUnansweredHangup(${cause})`);
+    for (const source of ["caller", "callee", "unknown", "CALLER", "", undefined]) {
+      assert.equal(inlined.isCallerAbandonedHangup(cause, source), onCall.isCallerAbandonedHangup(cause, source),
+        `isCallerAbandonedHangup(${cause}, ${source})`);
+    }
+  }
+  for (const target of [{ kind: "primary" }, { kind: "backup" }, { kind: "office" }, { kind: "PRIMARY" }, {}, null, undefined]) {
+    assert.equal(inlined.screensRingdownTarget(target), onCall.screensRingdownTarget(target), `screensRingdownTarget(${JSON.stringify(target)})`);
+  }
+});
+
 test("a revocation in any of its FCC/CTIA forms never draws an auto-reply", async () => {
   const { isStopLikeText } = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts", ["isStopLikeText"]);
   for (const t of ["STOP", "stop", "Stop.", " stop! ", "STOPALL", "Stop all", "unsubscribe", "Cancel", "END", "quit",

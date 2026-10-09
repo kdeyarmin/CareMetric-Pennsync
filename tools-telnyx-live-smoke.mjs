@@ -24,7 +24,7 @@ const API = "https://api.telnyx.com/v2";
 // when placing a test call. Keeping the list here makes the manual step concrete.
 export const EXPECTED_CALL_CONTROL_EVENTS = [
   "call.initiated", "call.answered", "call.hangup", "call.speak.ended",
-  "call.recording.saved", "call.transcription",
+  "call.machine.detection.ended", "call.recording.saved", "call.transcription",
   "message.received", "message.sent", "message.finalized",
   "fax.queued", "fax.sending.started", "fax.delivered", "fax.failed",
 ];

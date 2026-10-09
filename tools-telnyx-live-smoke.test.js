@@ -87,7 +87,7 @@ test("a real send is skipped unless --confirm is given", async () => {
 });
 
 test("EXPECTED_CALL_CONTROL_EVENTS covers the events the webhook state machine uses", () => {
-  for (const e of ["call.initiated", "call.answered", "call.speak.ended", "call.recording.saved", "call.transcription", "message.received"]) {
+  for (const e of ["call.initiated", "call.answered", "call.speak.ended", "call.machine.detection.ended", "call.recording.saved", "call.transcription", "message.received"]) {
     assert.ok(EXPECTED_CALL_CONTROL_EVENTS.includes(e), `missing ${e}`);
   }
 });

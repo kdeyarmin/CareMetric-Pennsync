@@ -200,6 +200,7 @@
     "getTeamTrainingReadiness": "hub",
     "getTelnyxSecretStatus": "preserved_paused",
     "getUserActivityLog": "preserved_paused",
+    "getVoicemailPlaybackUrl": "preserved_paused",
     "gradeMemoryBooster": "hub",
     "gradeTrainingAttempt": "hub",
     "handleTelnyxStatusWebhook": "preserved_paused",
