@@ -47,6 +47,45 @@ describe('AIContentResponsibilityAgreement', () => {
     expect(screen.getByText(/sent to the providers named above/i)).toBeInTheDocument();
   });
 
+  it('keeps every acknowledgment inside a natively scrollable, keyboard-accessible region', () => {
+    render(<AIContentResponsibilityAgreement />);
+    const region = screen.getByRole('region', { name: /required ai responsibility acknowledgments/i });
+    expect(region).toHaveClass('overflow-y-auto');
+    expect(region).toHaveAttribute('tabindex', '0');
+    expect(region.querySelectorAll('[role="checkbox"]')).toHaveLength(AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.length);
+    expect(screen.getByRole('status')).toHaveTextContent('0 of 3 selected');
+  });
+
+  it('updates the visible checkmark and progress when a checkbox is clicked', () => {
+    render(<AIContentResponsibilityAgreement />);
+    const boxes = screen.getAllByRole('checkbox');
+    fireEvent.click(boxes[0]);
+    expect(boxes[0]).toBeChecked();
+    expect(boxes[0]).toHaveAttribute('data-state', 'checked');
+    expect(screen.getByRole('status')).toHaveTextContent('1 of 3 selected');
+    expect(boxes[1]).not.toBeChecked();
+    fireEvent.click(boxes[0]);
+    expect(boxes[0]).not.toBeChecked();
+    expect(screen.getByRole('status')).toHaveTextContent('0 of 3 selected');
+  });
+
+  it('accepts acknowledgment clicks on the associated text labels', () => {
+    render(<AIContentResponsibilityAgreement />);
+    AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.forEach((text) => fireEvent.click(screen.getByText(text)));
+    screen.getAllByRole('checkbox').forEach((box) => expect(box).toBeChecked());
+    expect(screen.getByRole('button', { name: /i agree & continue/i })).toBeEnabled();
+  });
+
+  it('shows a persistent error and allows retry when recording fails', async () => {
+    acceptAgreement.mockRejectedValueOnce(new Error('audit down'));
+    render(<AIContentResponsibilityAgreement />);
+    screen.getAllByRole('checkbox').forEach((b) => fireEvent.click(b));
+    const agree = screen.getByRole('button', { name: /i agree & continue/i });
+    fireEvent.click(agree);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/access remains closed/i);
+    expect(agree).toBeEnabled();
+  });
+
   it('keeps "I Agree & Continue" disabled until every acknowledgment is checked', () => {
     render(<AIContentResponsibilityAgreement />);
     const agree = screen.getByRole('button', { name: /i agree & continue/i });
@@ -75,7 +114,7 @@ describe('AIContentResponsibilityAgreement', () => {
     });
 
     await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
-    expect(invalidateQueries).toHaveBeenCalled();
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it('does not set the acceptance flag when the attestation write fails', async () => {
@@ -97,6 +136,13 @@ describe('AIContentResponsibilityAgreement', () => {
 
     await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(agree).toBeEnabled());
+    expect(agree).toHaveTextContent('Retry verification');
+    expect(screen.getByRole('alert')).toHaveTextContent(/acknowledgment was recorded/i);
+    screen.getAllByRole('checkbox').forEach((box) => expect(box).toBeDisabled());
+    onAccepted.mockResolvedValueOnce();
+    fireEvent.click(agree);
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(2));
+    expect(acceptAgreement).toHaveBeenCalledTimes(1);
   });
 
   it('does not persist when the user chooses to sign out instead', () => {

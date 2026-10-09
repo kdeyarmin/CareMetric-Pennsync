@@ -135,9 +135,22 @@ How a release reaches production, as measured that day:
 **Deploy production backend functions**
 (`.github/workflows/deploy-production-functions.yml`) does all three: it deploys,
 publishes, verifies, then dispatches **Publish production frontend (site only)**.
-Both need a `BASE44_API_KEY` repository or `production` environment secret, a
-Base44 workspace key starting `b44k_`. None was set on 2026-10-09, so every
-earlier dispatch of either workflow stopped at its preflight.
+Both need a `BASE44_API_KEY` repository or `production` environment secret.
+Either kind of persistent credential works:
+
+- a workspace API key (`b44k_`), which the CLI reads itself and sends as
+  `api_key`;
+- a personal access token (`b44u_`), which Base44 accepts only as
+  `Authorization: Bearer`. `tools-base44-cli-credential.mjs` hands it to the
+  CLI, and the publish call sends it as Bearer.
+
+Account API keys stop working on 2026-10-15.
+
+None was set before 2026-10-09, so every earlier dispatch of either workflow
+stopped at its preflight. The secret set that day is a personal access token.
+**Base44 publishing access** reported it at 05:49Z: prefix `b44u`, 200 as
+Bearer and 401 as `api_key`. That is why both workflows accept the token
+kind.
 
 ### B3. Name, icon and brand (Guideline 2.3.8)
 

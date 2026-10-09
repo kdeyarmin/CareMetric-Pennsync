@@ -82,7 +82,7 @@ jobs:
           pnpm run check:backend-transpile
           pnpm run typecheck:signal
 
-      - name: Deploy only the backend functions with workspace-key authentication
+      - name: Deploy only the backend functions with the persistent publishing credential
         env:
           BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
           CI: 'true'
@@ -92,6 +92,11 @@ jobs:
           umask 077
           # Check again directly before the CLI; no absent-key fallback to login.
           node tools-production-publish-preflight.mjs
+          # A workspace key (b44k_) is read by the CLI itself; a personal access
+          # token (b44u_) is handed to it as an owner-only session file, removed
+          # when this step ends.
+          trap 'rm -f "$HOME/.base44/auth/auth.json"' EXIT
+          node tools-base44-cli-credential.mjs
           cli_dir="$RUNNER_TEMP/base44-functions-cli"
           mkdir -p "$cli_dir"
           printf '{"private":true}\n' > "$cli_dir/package.json"
@@ -123,10 +128,20 @@ jobs:
           set -euo pipefail
           umask 077
           node tools-production-publish-preflight.mjs
-          # The same endpoint and api_key header the CLI uses for a workspace
-          # key. The response is not printed: it is the whole app document.
+          # Trimmed as the preflight, the CLI helper and the CLI trim it, so a
+          # padded secret cannot pass the preflight and fail only here, after
+          # the functions are already deployed to preview.
+          key="$(node -e 'process.stdout.write(String(process.env.BASE44_API_KEY || "").trim())')"
+          # A workspace key goes in the api_key header, as the CLI sends it; a
+          # personal access token must be a Bearer token (Base44 rejects it in
+          # api_key: measured 2026-10-09). The response is not printed: it is
+          # the whole app document.
+          case "$key" in
+            b44k_*) auth_header="api_key: ${key}" ;;
+            *) auth_header="Authorization: Bearer ${key}" ;;
+          esac
           if ! curl --silent --show-error --fail --max-time 900 \
-            -X POST -H "api_key: ${BASE44_API_KEY}" -H 'Content-Type: application/json' \
+            -X POST -H "$auth_header" -H 'Content-Type: application/json' \
             --data '{}' \
             -o "$RUNNER_TEMP/base44-publish-receipt.json" \
             https://app.base44.com/api/apps/694ec16e72e01b60d22f7cbf/deploy \

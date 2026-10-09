@@ -86,7 +86,7 @@ jobs:
           BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
         run: node tools-production-publish-preflight.mjs --artifact
 
-      - name: Publish only the prepared static frontend with workspace-key authentication
+      - name: Publish only the prepared static frontend with the persistent publishing credential
         id: publication
         env:
           BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
@@ -97,6 +97,11 @@ jobs:
           umask 077
           # Check again directly before the CLI; no absent-key fallback to login.
           node tools-production-publish-preflight.mjs --artifact
+          # A workspace key (b44k_) is read by the CLI itself; a personal access
+          # token (b44u_) is handed to it as an owner-only session file, removed
+          # when this step ends.
+          trap 'rm -f "$HOME/.base44/auth/auth.json"' EXIT
+          node tools-base44-cli-credential.mjs
           cli_dir="$RUNNER_TEMP/base44-publish-cli"
           mkdir -p "$cli_dir"
           printf '{"private":true}\n' > "$cli_dir/package.json"

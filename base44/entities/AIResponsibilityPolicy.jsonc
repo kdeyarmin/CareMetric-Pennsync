@@ -1,0 +1,53 @@
+{
+  "name": "AIResponsibilityPolicy",
+  "type": "object",
+  "description": "Platform consent policy. Only a server-signed policy issued by the configured platform administrator is trusted by the consent gate.",
+  "properties": {
+    "policy_key": {
+      "type": "string"
+    },
+    "bypass_previously_acknowledged": {
+      "type": "boolean",
+      "default": false
+    },
+    "changed_by_user_id": {
+      "type": "string"
+    },
+    "changed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "policy_signature": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "policy_key",
+    "bypass_previously_acknowledged",
+    "changed_by_user_id",
+    "changed_at",
+    "policy_signature"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

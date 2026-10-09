@@ -1,7 +1,10 @@
 // Local-only preflight: NEVER invokes Base44, fetch, a browser, or device login.
-// A workspace publishing key is required; expiring user sessions are not used.
+// A persistent publishing credential is required: a workspace API key (`b44k_`)
+// or a personal access token (`b44u_`, see tools-base44-cli-credential.mjs).
+// Expiring user sessions are not used.
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { credentialKind } from './tools-base44-cli-credential.mjs';
 import { createBuildInventory } from './tools-live-frontend-sync.mjs';
 
 export const PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -13,11 +16,11 @@ export function checkPublishingAccess(env) {
     || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '')) {
     return { allowed: false, code: 'MANUAL_PRODUCTION_WORKFLOW_REQUIRED' };
   }
-  const key = env.BASE44_API_KEY?.trim();
-  if (!key || !key.startsWith('b44k_') || key.length <= 5 || /\s/.test(key)) {
+  const kind = credentialKind(env.BASE44_API_KEY);
+  if (!kind) {
     return { allowed: false, code: 'BASE44_PUBLISH_KEY_REQUIRED' };
   }
-  return { allowed: true, code: 'CREDENTIAL_INPUT_PRESENT_NOT_YET_VALIDATED' };
+  return { allowed: true, code: 'CREDENTIAL_INPUT_PRESENT_NOT_YET_VALIDATED', credential_kind: kind };
 }
 
 export function main(args = process.argv.slice(2), { env = process.env, log = console.log, inventory = createBuildInventory } = {}) {
