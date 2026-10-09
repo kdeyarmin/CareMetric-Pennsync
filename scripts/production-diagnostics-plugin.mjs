@@ -1,4 +1,20 @@
-import { transform } from 'esbuild';
+// esbuild is preferred; if it isn't installed, fall back to the bundled Oxc
+// minifier. Either way the inspection below fails closed on any leftovers.
+const transform = async (code, options) => {
+  try {
+    return await (await import('esbuild')).transform(code, options);
+  } catch (error) {
+    if (error?.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    const { minify } = await import('rolldown/utils');
+    const result = await minify('chunk.js', code, {
+      compress: { dropConsole: true, dropDebugger: true },
+      mangle: false,
+      codegen: { removeWhitespace: false },
+    });
+    if (result.errors?.length) throw new Error('PRODUCTION_DIAGNOSTIC_REMOVAL_FAILED');
+    return { code: result.code };
+  }
+};
 import { inspectJavaScript } from '../tools-check-production-diagnostics.mjs';
 
 // Invoke the supported transform explicitly: Vite 8's deprecated esbuild
