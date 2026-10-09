@@ -188,7 +188,7 @@ function redriveFixture(rowOverrides = {}, seed = {}) {
       provider_event_id: null, provider_message_id: null, provider_event_occurred_at: null,
     }],
     SmsMessage: [{
-      id: 'sms_1', direction: 'outbound', status: 'failed', failure_reason: 'Timed out reaching Telnyx',
+      id: 'sms_1', direction: 'outbound', status: 'failed', failure_reason: 'Telnyx API error (503)',
       created_date: new Date(Date.now() - 10 * 60_000).toISOString(), retry_count: 0,
       from_number: '+12155550100', to_number: '+13125550182', body: 'Visit at 10',
       nurse_email: 'nurse@example.test', sent_by: 'nurse@example.test',
@@ -248,6 +248,9 @@ test('redriveFailedSms re-sends only rows whose provenance, line, sender and con
     ['a sender no longer in the agency', {}, { AgencyMembership: [] }],
     ['a recipient without consent in scope', {}, { SmsConsent: [] }],
     ['a permanent failure', { failure_reason: 'Recipient opted out' }],
+    // Telnyx may have accepted a send that timed out; re-sending double-texts.
+    ['a timed-out send whose outcome is unknown', { failure_reason: 'Outcome unknown: Telnyx did not answer within 15000 ms, so the text may have been sent. Not retried automatically.' }],
+    ['a timed-out send recorded before the outcome-unknown wording', { failure_reason: 'Timed out reaching Telnyx' }],
   ]) {
     const result = await run(rowOverrides, seed);
     assert.equal(result.status, 200, label);

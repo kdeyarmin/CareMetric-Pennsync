@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { isTransientFailureReason, shouldRedriveSms } from "./smsRedrive.js";
 
 test("isTransientFailureReason flags retryable reasons", () => {
-  assert.equal(isTransientFailureReason("Timed out after 15000 ms reaching Telnyx"), true);
+  assert.equal(isTransientFailureReason("Telnyx API error (504): gateway timeout"), true);
   assert.equal(isTransientFailureReason("Network error reaching Telnyx: fetch failed"), true);
   assert.equal(isTransientFailureReason("Telnyx API error (503)"), true);
   assert.equal(isTransientFailureReason("rate limit exceeded"), true);
@@ -33,7 +33,7 @@ test("a transient 5xx described as an 'invalid response' is still retryable", ()
 const baseRow = {
   status: "failed",
   direction: "outbound",
-  failure_reason: "Timed out reaching Telnyx",
+  failure_reason: "Network error reaching Telnyx: dns error",
   retry_count: 0,
   created_date: new Date("2026-06-04T12:00:00Z").toISOString(),
   last_retry_at: null,
@@ -74,4 +74,18 @@ test("shouldRedriveSms gives up on rows past the age ceiling", () => {
 test("shouldRedriveSms refuses rows with missing or invalid creation timestamps", () => {
   assert.equal(shouldRedriveSms({ ...baseRow, created_date: "not-a-date" }, NOW), false);
   assert.equal(shouldRedriveSms({ ...baseRow, created_date: null }, NOW), false);
+});
+
+test("a timed-out send is outcome-unknown and never redriven (no double text)", () => {
+  // The request reached Telnyx and got no answer, so it may have been accepted.
+  for (const reason of [
+    "Outcome unknown: Telnyx did not answer within 15000 ms, so the text may have been sent. Not retried automatically.",
+    "Outcome unknown: Telnyx did not answer the redrive in time, so the text may have been sent. Not retried automatically.",
+    // Rows written before the reason said so explicitly.
+    "Timed out after 15000 ms reaching Telnyx",
+    "Timed out reaching Telnyx (redrive)",
+  ]) {
+    assert.equal(isTransientFailureReason(reason), false, reason);
+    assert.equal(shouldRedriveSms({ ...baseRow, failure_reason: reason }, NOW), false, reason);
+  }
 });

@@ -65,7 +65,7 @@ function serviceRoleClientRequest(req, expectedAppId) {
  * call, or fax:
  *
  *  - Telnyx API key present in in-app config — presence only.
- *  - a live, read-only probe of the Telnyx REST API (`/v2/whoami`) confirming the
+ *  - a live, read-only probe of the Telnyx REST API (`/v2/balance`) confirming the
  *    key authenticates and the account is reachable.
  *  - webhook Ed25519 public key present (required to verify inbound webhooks).
  *  - resource ids (messaging profile / voice + fax connections) for each channel.
@@ -199,8 +199,13 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 
 /**
- * Read-only probe of the Telnyx `/v2/whoami` endpoint, bounded by an
+ * Read-only probe of the Telnyx `/v2/balance` endpoint, bounded by an
  * AbortController timeout so a slow/blackholed host can't hang the diagnostic.
+ * `/v2/balance` is a documented, authenticated, side-effect-free read; the
+ * former `/v2/whoami` probe target is absent from Telnyx's current API
+ * reference (OpenAPI spec checked 2026-10-09), so it could disappear without a
+ * deprecation notice and turn every probe into a misleading "unexpected".
+ * Only the status code is used — the balance figures are never read.
  *   - network error / timeout → host unreachable or no egress (fail)
  *   - 3xx redirect            → refused, never followed (fail)
  *   - 401 / 403               → credentials rejected — definitive (fail)
@@ -208,7 +213,7 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
  *   - other                   → reached Telnyx but unexpected response (warn)
  */
 async function probeTelnyxApi(apiKey) {
-  const url = 'https://api.telnyx.com/v2/whoami';
+  const url = 'https://api.telnyx.com/v2/balance';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   const startedAt = Date.now();
@@ -276,8 +281,9 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    // Same admin surface as the panels that invoke this (isAdminLike) — an
-    // agency_admin can reach the "Test live connection" button, so accept them.
+    // Built-in admin only (isAdminLike). An earlier comment here said an
+    // agency_admin was accepted; the code never did, and a comment is not a
+    // permission, so the comment changed rather than the gate.
     const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can test the Telnyx connection' }, { status: 403 });

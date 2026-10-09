@@ -29,7 +29,7 @@ test("runSmoke requires an api key and a fetch impl", async () => {
 
 test("runSmoke reports ok when auth + all resources resolve", async () => {
   const { impl, calls } = mockFetch([
-    { match: "/whoami", status: 200 },
+    { match: "/balance", status: 200 },
     { match: "/messaging_profiles/", status: 200 },
     { match: "/call_control_applications/", status: 200 },
     { match: "/fax_applications/", status: 200 },
@@ -50,7 +50,7 @@ test("runSmoke reports ok when auth + all resources resolve", async () => {
 
 test("runSmoke fails on bad credentials and warns on a missing resource", async () => {
   const { impl } = mockFetch([
-    { match: "/whoami", status: 401 },
+    { match: "/balance", status: 401 },
     { match: "/messaging_profiles/", status: 404 },
   ]);
   const { checks, failed } = await runSmoke({
@@ -69,18 +69,18 @@ test("an unreachable API (network error) is a hard failure so CI can gate on it"
 });
 
 test("missing public key is a warning, not a hard failure", async () => {
-  const { impl } = mockFetch([{ match: "/whoami", status: 200 }]);
+  const { impl } = mockFetch([{ match: "/balance", status: 200 }]);
   const { checks } = await runSmoke({ apiKey: "KEY", publicKey: null, fetchImpl: impl });
   assert.equal(checks.find((c) => c.id === "public_key").status, "warn");
 });
 
 test("a real send is skipped unless --confirm is given", async () => {
-  const { impl, calls } = mockFetch([{ match: "/whoami", status: 200 }, { match: "/messages", status: 200 }]);
+  const { impl, calls } = mockFetch([{ match: "/balance", status: 200 }, { match: "/messages", status: 200 }]);
   const noConfirm = await runSmoke({ apiKey: "KEY", sendTo: "+12155550100", confirm: false, fetchImpl: impl });
   assert.equal(noConfirm.checks.find((c) => c.id === "test_sms").status, "warn");
   assert.ok(!calls.some((c) => c.url.includes("/messages")), "no message POST without --confirm");
 
-  const { impl: impl2, calls: calls2 } = mockFetch([{ match: "/whoami", status: 200 }, { match: "/messages", status: 200 }]);
+  const { impl: impl2, calls: calls2 } = mockFetch([{ match: "/balance", status: 200 }, { match: "/messages", status: 200 }]);
   const confirmed = await runSmoke({ apiKey: "KEY", sendTo: "+12155550100", confirm: true, fetchImpl: impl2 });
   assert.equal(confirmed.checks.find((c) => c.id === "test_sms").status, "ok");
   assert.ok(calls2.some((c) => c.url.includes("/messages") && c.method === "POST"));

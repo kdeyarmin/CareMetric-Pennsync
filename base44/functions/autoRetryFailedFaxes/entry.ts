@@ -493,12 +493,24 @@ const PERMANENT_FAILURE_PATTERNS = [
   /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
+  // Telnyx Fax `failure_reason` codes (OpenAPI spec, checked 2026-10-09) that
+  // need a person — a cancellation, a declining receiver, or an account, profile
+  // or document problem — and would only fail again on retry. Snake_case, so
+  // the prose patterns above never matched them and they fell through to
+  // transient, burning the whole backoff schedule.
+  /sender_cancel/i, /declin/i, /not_in_service/i, /account_disabled/i,
+  /no_outbound_profile/i, /not_in_countries_whitelist/i, /spend_limit_exceeded/i,
+  /unverified_(origination|destination)/i, /file_size_limit_exceeded/i,
+  /page_count_limit_exceeded/i,
 ];
 // Transient signals win over a coincidental permanent word ("rejected - line
 // busy" is retryable). Checked first. Mirrors src/components/fax/faxRetry.js.
 const TRANSIENT_FAILURE_PATTERNS = [
   /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
   /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+  // Telnyx `invalid_ecm_response_from_receiver` is a transmission glitch, not a
+  // bad number; without this the bare /invalid/ above gives up on it.
+  /ecm_response/i,
 ];
 function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();

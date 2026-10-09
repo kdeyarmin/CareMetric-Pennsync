@@ -32,6 +32,53 @@ test("isFaxRetryDue allows retry_count === maxRetries (last attempt) then stops"
   assert.equal(isFaxRetryDue(fax(2), now, { max_retries: 1 }), false);
 });
 
+// Telnyx's documented `failure_reason` values (Fax schema, OpenAPI spec checked
+// 2026-10-09), each with the decision it should get. Every documented value is
+// listed so a new one added to the spec is a conscious choice, not a default.
+const TELNYX_FAX_FAILURE_REASONS = {
+  receiver_call_dropped: "transient",
+  sender_call_dropped: "transient",
+  sender_canceled: "permanent",
+  carrier_lost: "transient",
+  service_unavailable: "transient",
+  fax_signaling_error: "transient",
+  receiver_communication_error: "transient",
+  sender_communication_error: "transient",
+  receiver_decline: "permanent",
+  receiver_recovery_on_timer_expire: "transient",
+  receiver_no_response: "transient",
+  receiver_invalid_number_format: "permanent",
+  receiver_no_answer: "transient",
+  receiver_incompatible_destination: "permanent",
+  receiver_unallocated_number: "permanent",
+  destination_unreachable: "transient",
+  user_busy: "transient",
+  invalid_ecm_response_from_receiver: "transient",
+  fax_initial_communication_timeout: "transient",
+  destination_not_in_service_plan: "permanent",
+  account_disabled: "permanent",
+  destination_invalid: "permanent",
+  no_outbound_profile: "permanent",
+  destination_not_in_countries_whitelist: "permanent",
+  user_channel_limit_exceeded: "transient",
+  outbound_profile_channel_limit_exceeded: "transient",
+  connection_channel_limit_exceeded: "transient",
+  outbound_profile_daily_spend_limit_exceeded: "permanent",
+  unverified_origination_number: "permanent",
+  unverified_destination_not_allowed: "permanent",
+  file_format_invalid: "permanent",
+  file_download_failed: "transient",
+  file_size_limit_exceeded: "permanent",
+  page_count_limit_exceeded: "permanent",
+  media_processing_exception: "transient",
+};
+
+test("classifyFaxFailure decides every documented Telnyx failure_reason", () => {
+  for (const [reason, expected] of Object.entries(TELNYX_FAX_FAILURE_REASONS)) {
+    assert.equal(classifyFaxFailure(null, reason), expected, reason);
+  }
+});
+
 test("classifyFaxFailure treats busy/no-answer/unknown as transient", () => {
   assert.equal(classifyFaxFailure("7207", "The receiving machine was busy"), "transient");
   assert.equal(classifyFaxFailure("7208", "No answer from remote"), "transient");

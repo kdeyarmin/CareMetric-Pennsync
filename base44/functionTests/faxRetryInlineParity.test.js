@@ -42,10 +42,15 @@ const CONFIGS = [
   { max_retries: 0, retry_delay_minutes: 0 },
   { priority_multiplier: { urgent: 0.5, low: 2 } },
 ];
-const FAILURES = [["7211", "not a fax machine"], [null, "busy"], ["", ""], [null, "Invalid To number"], ["x", "temporary network error"], [null, "rejected - line busy"], [null, "rejected - no answer"]];
+const FAILURES = [["7211", "not a fax machine"], [null, "busy"], ["", ""], [null, "Invalid To number"], ["x", "temporary network error"], [null, "rejected - line busy"], [null, "rejected - no answer"], [null, "account_disabled"], [null, "invalid_ecm_response_from_receiver"], [null, "receiver_decline"], [null, "receiver_no_answer"], [null, "file_size_limit_exceeded"]];
 
 test("inline classifyFaxFailure matches faxRetry across both functions", async () => {
-  for (const f of ["../functions/handleTelnyxStatusWebhook/entry.ts", "../functions/autoRetryFailedFaxes/entry.ts"]) {
+  for (const f of [
+    "../functions/handleTelnyxStatusWebhook/entry.ts",
+    "../functions/autoRetryFailedFaxes/entry.ts",
+    "../functions/pollFaxStatuses/entry.ts",
+    "../functions/syncFaxStatuses/entry.ts",
+  ]) {
     const { mod } = await loadInline(f, ["classifyFaxFailure"]);
     for (const [code, msg] of FAILURES) {
       assert.equal(mod.classifyFaxFailure(code, msg), faxRetry.classifyFaxFailure(code, msg), `classifyFaxFailure drift in ${f}`);

@@ -615,8 +615,9 @@ async function resolveFaxRetryConfig(base44, agencyName) {
 function mapMessageStatus(status) {
   switch (String(status || '').toLowerCase()) {
     case 'queued': case 'sending': return 'queued';
-    case 'sent': return 'sent';
-    case 'delivered': case 'webhook_delivered': return 'delivered';
+    // delivery_unconfirmed is terminal with no carrier receipt: last-known 'sent'.
+    case 'sent': case 'delivery_unconfirmed': return 'sent';
+    case 'delivered': case 'webhook_delivered': case 'read': return 'delivered';
     case 'sending_failed': case 'delivery_failed': case 'expired': case 'failed': return 'failed';
     default: return null;
   }
@@ -689,12 +690,24 @@ const PERMANENT_FAILURE_PATTERNS = [
   /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
+  // Telnyx Fax `failure_reason` codes (OpenAPI spec, checked 2026-10-09) that
+  // need a person — a cancellation, a declining receiver, or an account, profile
+  // or document problem — and would only fail again on retry. Snake_case, so
+  // the prose patterns above never matched them and they fell through to
+  // transient, burning the whole backoff schedule.
+  /sender_cancel/i, /declin/i, /not_in_service/i, /account_disabled/i,
+  /no_outbound_profile/i, /not_in_countries_whitelist/i, /spend_limit_exceeded/i,
+  /unverified_(origination|destination)/i, /file_size_limit_exceeded/i,
+  /page_count_limit_exceeded/i,
 ];
 // Transient signals win over a coincidental permanent word ("rejected - line
 // busy" is retryable). Checked first. Mirrors src/components/fax/faxRetry.js.
 const TRANSIENT_FAILURE_PATTERNS = [
   /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
   /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+  // Telnyx `invalid_ecm_response_from_receiver` is a transmission glitch, not a
+  // bad number; without this the bare /invalid/ above gives up on it.
+  /ecm_response/i,
 ];
 function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();
@@ -1090,8 +1103,17 @@ async function resolveAgencySettingsByNumber(base44, e164) {
 // Text alone never changes consent (only a provider-classified STOP/START
 // does, through handleInboundConsentKeyword). These lists only decide which
 // texts get no automatic reply (STOP-like) and which get the CTIA HELP answer.
-const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
+// The FCC's revocation rule (47 CFR 64.1200(a)(10), in force April 2025) names
+// stop, quit, end, revoke, opt out, cancel and unsubscribe as revocations; CTIA
+// adds STOPALL. A text that says one of them must never draw an after-hours or
+// off-duty auto-reply, so match it the way a person types it — "Stop.",
+// "opt-out", "Stop all" — not only the bare upper-case word.
+const STOP_WORDS = ['STOP', 'STOPALL', 'STOP ALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'REVOKE', 'OPTOUT', 'OPT OUT'];
 const HELP_WORDS = ['HELP', 'INFO'];
+function isStopLikeText(text) {
+  const words = String(text || '').toUpperCase().replace(/[^A-Z]+/g, ' ').trim();
+  return STOP_WORDS.includes(words);
+}
 
 function providerConsentKeyword(payload) {
   if (String(payload?.direction || '').toLowerCase() !== 'inbound') return null;
@@ -1456,7 +1478,7 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
   // text never gets a reply from us either way.
   const providerAnswered = !!String(payload?.autoresponse_type || '').trim();
   const isHelp = HELP_WORDS.includes(keyword);
-  const canReply = !optedOut && smsEnabled && !providerAnswered && !STOP_WORDS.includes(keyword) && !isHelp;
+  const canReply = !optedOut && smsEnabled && !providerAnswered && !isStopLikeText(text) && !isHelp;
 
   if (isHelp && smsEnabled && !providerAnswered) {
     // CTIA requires a HELP response regardless of opt-out state; it is
@@ -2669,6 +2691,12 @@ const UNANSWERED_CAUSES = new Set([
 function isUnansweredHangup(cause) {
   return UNANSWERED_CAUSES.has(String(cause || '').toLowerCase());
 }
+// 'failed' when a call.hangup ends a leg that never reached in_progress for an
+// unanswered cause; null otherwise (an answered call stays 'completed').
+function unansweredHangupStatus(eventType, currentStatus, cause) {
+  if (eventType !== 'call.hangup' || !isUnansweredHangup(cause)) return null;
+  return (CALL_RANK[currentStatus] || 0) < CALL_RANK.in_progress ? 'failed' : null;
+}
 
 // Other on-duty nurses' cells (for the ringdown backup list), excluding the
 // primary nurse and anyone without a cell. Scoped to the primary nurse's agency:
@@ -2938,6 +2966,14 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       const patch = {};
       // Forward-only so an out-of-order event can't regress a terminal call.
       if ((CALL_RANK[mapped] || 0) > (CALL_RANK[cur.status] || 0)) patch.status = mapped;
+      // A leg that hung up before it was ever answered is a missed call, not a
+      // completed one (e.g. the nurse's cell on a masked call rang out or was
+      // busy). call.hangup alone maps to 'completed'; the cause decides.
+      const missed = unansweredHangupStatus(eventType, cur.status, payload?.hangup_cause);
+      if (missed) {
+        patch.status = missed;
+        if (!cur.failure_reason) patch.failure_reason = `Not answered (${String(payload.hangup_cause).toLowerCase()})`;
+      }
       // Capture the call duration on hangup (from the Call Control timestamps)
       // so call logs and any length-based reporting aren't blank.
       if (eventType === 'call.hangup') {
@@ -3006,15 +3042,18 @@ async function continueAfterGreeting(base44, apiKey, callControlId, action, to, 
     // Bound the recording so a silent/abandoned line can't leave a billed leg
     // open indefinitely (matches the old 120s voicemail cap). Telnyx field is
     // max_length (seconds), not max_length_secs.
+    // play_beep cues the caller that the voicemail is recording.
     await callCommand(apiKey, callControlId, 'record_start', {
-      format: 'mp3', channels: 'single', max_length: 120,
+      format: 'mp3', channels: 'single', max_length: 120, play_beep: true,
       client_state: encodeClientState({ t: 'voicemail' }),
     });
     // Real-time transcription: language lives under transcription_engine_config
     // (top-level `language` is not a valid TranscriptionStartRequest field).
+    // 'Google' is the current name of the engine the legacy alias 'A' selected
+    // (Telnyx keeps 'A'/'B' only for backward compatibility).
     await callCommand(apiKey, callControlId, 'transcription_start', {
-      transcription_engine: 'A',
-      transcription_engine_config: { language: 'en', transcription_engine: 'A' },
+      transcription_engine: 'Google',
+      transcription_engine_config: { language: 'en', transcription_engine: 'Google' },
       client_state: encodeClientState({ t: 'voicemail' }),
     });
   } else {
@@ -3033,10 +3072,20 @@ async function appendVoicemailTranscript(base44, callControlId, text) {
   }).catch(() => {});
 }
 
+function recordingDurationSecs(payload) {
+  if (Number.isFinite(payload?.recording_duration_secs)) return payload.recording_duration_secs;
+  const start = Date.parse(payload?.recording_started_at || '');
+  const end = Date.parse(payload?.recording_ended_at || '');
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+  return Math.round((end - start) / 1000);
+}
+
 async function saveVoicemail(base44, payload) {
   const callControlId = payload?.call_control_id;
   const recordingUrl = payload?.recording_urls?.mp3 || payload?.recording_urls?.wav || payload?.public_recording_urls?.mp3 || null;
-  const durationSecs = Number.isFinite(payload?.recording_duration_secs) ? payload.recording_duration_secs : null;
+  // call.recording.saved carries no duration field; derive it from the
+  // recording's own start/end timestamps (the legacy name is kept as a fallback).
+  const durationSecs = recordingDurationSecs(payload);
   if (!callControlId) return;
   const rows = await base44.asServiceRole.entities.CallLog.filter({ provider_call_id: callControlId }, '-created_date', 1).catch(() => []);
   if (!rows.length) return;

@@ -339,7 +339,7 @@ test('testTelnyxConnection probes with a supported no-follow redirect mode and r
   }
   assert.equal(seen.length, outcomes.length);
   for (const { url, options } of seen) {
-    assert.equal(url, 'https://api.telnyx.com/v2/whoami');
+    assert.equal(url, 'https://api.telnyx.com/v2/balance');
     assert.equal(options.redirect, 'manual');
     assert.ok(options.signal, 'the probe must stay bounded by its abort signal');
   }
@@ -425,4 +425,30 @@ test("every inlined resolveTelnyxCreds copy is covered by this guard and generat
     [],
     "a function defines resolveTelnyxCreds but is missing from this test's FILES map",
   );
+});
+
+// The webhook imports the stored public key as a RAW 32-byte Ed25519 key from
+// standard base64. A PEM block, hex or a truncated paste used to be saved and
+// then fail every webhook with a bare 401; the save now refuses it.
+test("saveTelnyxSecret accepts only the raw base64 Ed25519 public key the webhook can import", async () => {
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { publicKey } = generateKeyPairSync("ed25519");
+  const spki = publicKey.export({ format: "der", type: "spki" });
+  const raw = spki.subarray(spki.length - 32);
+  const rawB64 = raw.toString("base64");
+  const { isTelnyxPublicKey } = await loadInline("../functions/saveTelnyxSecret/entry.ts", ["isTelnyxPublicKey"]);
+
+  assert.equal(rawB64.length, 44);
+  assert.equal(isTelnyxPublicKey(rawB64), true, "the Mission Control form");
+  assert.equal(isTelnyxPublicKey(`  ${rawB64}\n`), true, "surrounding whitespace is trimmed");
+  assert.equal(isTelnyxPublicKey(spki.toString("base64")), false, "SPKI DER is not the raw key");
+  assert.equal(isTelnyxPublicKey(publicKey.export({ format: "pem", type: "spki" })), false, "PEM");
+  assert.equal(isTelnyxPublicKey(raw.toString("hex")), false, "hex");
+  assert.equal(isTelnyxPublicKey(raw.toString("base64url")), false, "base64url");
+  assert.equal(isTelnyxPublicKey(rawB64.slice(0, 40)), false, "truncated");
+  assert.equal(isTelnyxPublicKey("KEY0123456789abcdef"), false, "the API key");
+
+  // And the accepted form is exactly what WebCrypto's raw import takes.
+  const key = await crypto.subtle.importKey("raw", Buffer.from(rawB64, "base64"), { name: "Ed25519" }, false, ["verify"]);
+  assert.equal(key.type, "public");
 });

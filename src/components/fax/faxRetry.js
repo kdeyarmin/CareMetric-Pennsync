@@ -13,16 +13,26 @@
  *                            signed-provider failure authority for a new send
  *
  * The single-file Deno functions keep inline copies of these; a drift guard
- * (base44/functions/faxRetryInlineParity.test.js) asserts they stay identical.
+ * (base44/functionTests/faxRetryInlineParity.test.js) asserts they stay identical.
  */
 
 // Failure reasons/codes that won't succeed on retry — give up immediately
-// instead of burning the whole backoff schedule. Validate against your Telnyx
-// account's fax error codes; matched against "code + message".
+// instead of burning the whole backoff schedule. Matched against "code +
+// message"; the snake_case entries are Telnyx's documented `failure_reason`
+// values, and faxRetry.test.js walks the whole documented list.
 export const PERMANENT_FAILURE_PATTERNS = [
   /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
+  // Telnyx Fax `failure_reason` codes (OpenAPI spec, checked 2026-10-09) that
+  // need a person — a cancellation, a declining receiver, or an account, profile
+  // or document problem — and would only fail again on retry. Snake_case, so
+  // the prose patterns above never matched them and they fell through to
+  // transient, burning the whole backoff schedule.
+  /sender_cancel/i, /declin/i, /not_in_service/i, /account_disabled/i,
+  /no_outbound_profile/i, /not_in_countries_whitelist/i, /spend_limit_exceeded/i,
+  /unverified_(origination|destination)/i, /file_size_limit_exceeded/i,
+  /page_count_limit_exceeded/i,
 ];
 
 // Transient signals that WIN over a coincidental permanent-looking word. Telnyx
@@ -32,6 +42,9 @@ export const PERMANENT_FAILURE_PATTERNS = [
 export const TRANSIENT_FAILURE_PATTERNS = [
   /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
   /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+  // Telnyx `invalid_ecm_response_from_receiver` is a transmission glitch, not a
+  // bad number; without this the bare /invalid/ above gives up on it.
+  /ecm_response/i,
 ];
 
 /** 'permanent' when the failure clearly won't recover; 'transient' otherwise. */

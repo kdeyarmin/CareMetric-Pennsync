@@ -140,7 +140,8 @@ function getSchedulerAuthError(req, user) {
  * Redrive only fires on rows Telnyx reported as failed, so re-sending is
  * appropriate. Telnyx has no client idempotency key, so we can't rely on
  * provider dedupe — double-send is prevented by the claim+re-read and by only
- * redriving rows Telnyx explicitly reported failed (not ambiguous network errors).
+ * redriving rows Telnyx explicitly reported failed or that never connected — a
+ * TIMED-OUT send is "outcome unknown" and is never redriven.
  * An attempt cap, an escalating backoff between attempts, and an age ceiling
  * guarantee a stuck message eventually settles into a terminal 'failed' state
  * instead of looping.
@@ -162,6 +163,12 @@ const TRANSIENT_FAILURE_PATTERNS = [
 const PERMANENT_FAILURE_PATTERNS = [
   // "invalid" scoped to a number/destination context so transient gateway
   // errors like "Invalid response from Telnyx API (502)" still re-drive.
+  // A send that TIMED OUT reached Telnyx and got no answer, so it may well have
+  // been accepted: re-sending risks texting the patient twice, and Telnyx has
+  // no idempotency key for POST /v2/messages to dedupe it. Only a failure Telnyx
+  // reported, or a connection that never opened, is safe to redrive. The second
+  // pattern covers rows written before the reason said so explicitly.
+  /outcome unknown/i, /timed out (after \d+ ms )?reaching telnyx/i,
   /opted out/i, /opt.?out/i, /unsubscrib/i,
   /invalid\W*(to\b|number|destination|phone|recipient|address|msisdn)/i,
   /\b(400|401|403|404|422)\b/,
@@ -1126,7 +1133,11 @@ Deno.serve(async (req) => {
         result.failed++;
         await base44.asServiceRole.entities.SmsMessage.update(row.id, {
           status: 'failed', redrive_claimed_by: null,
-          failure_reason: aborted ? 'Timed out reaching Telnyx (redrive)' : `Network error reaching Telnyx (redrive): ${netErr.message}`,
+          // A timed-out redrive may have been accepted too: "outcome unknown"
+          // is permanent in the policy above, so it is never sent a third time.
+          failure_reason: aborted
+            ? 'Outcome unknown: Telnyx did not answer the redrive in time, so the text may have been sent. Not retried automatically.'
+            : `Network error reaching Telnyx (redrive): ${netErr.message}`,
         }).catch(() => {});
         continue;
       }

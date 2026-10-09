@@ -103,6 +103,23 @@ function isProtectedSuperAdmin(user) {
 
 const lastFour = (s) => (s.length <= 4 ? s : s.slice(-4));
 
+// The webhook verifies Telnyx's Ed25519 signature by importing this value as a
+// RAW 32-byte key from standard base64 — exactly how Mission Control shows it
+// (Keys & Credentials › Public Key, 44 characters). Anything else (a PEM/SPKI
+// block, hex, base64url, a truncated paste) used to be stored as-is, and then
+// every inbound webhook failed verification with a bare 401 and nothing pointed
+// at the key. Refuse it here instead, where the admin can see why.
+function isTelnyxPublicKey(value) {
+  const v = String(value ?? '').trim();
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(v)) return false;
+  try {
+    return atob(v).length === 32;
+  } catch {
+    return false;
+  }
+}
+const PUBLIC_KEY_FORMAT_ERROR = "That doesn't look like a Telnyx public key. Paste the 44-character value from Mission Control › Keys & Credentials › Public Key (base64, ending in \"=\") — not a PEM block or the API key.";
+
 // Optional string field: present-and-blank/null → clear (''), present → trimmed.
 function optionalField(body, key) {
   if (!(key in body)) return undefined;
@@ -150,6 +167,9 @@ Deno.serve(async (req) => {
         const v = optionalField(body, k);
         if (v !== undefined) update[k] = v;
       }
+      if (update.public_key && !isTelnyxPublicKey(update.public_key)) {
+        return Response.json({ error: PUBLIC_KEY_FORMAT_ERROR }, { status: 400 });
+      }
       const saved = await base44.asServiceRole.entities.IntegrationSecret.update(target.id, update);
       await base44.asServiceRole.entities.SecurityLog.create({
         timestamp: new Date().toISOString(),
@@ -161,7 +181,7 @@ Deno.serve(async (req) => {
       return Response.json({
         success: true,
         provider: 'telnyx',
-        configured: Boolean(existing[0].api_key),
+        configured: Boolean(target.api_key),
         public_key_set: Boolean(saved?.public_key),
         messaging_profile_set: Boolean(saved?.messaging_profile_id),
         voice_connection_set: Boolean(saved?.voice_connection_id),
@@ -189,6 +209,9 @@ Deno.serve(async (req) => {
     for (const k of optionalKeys) {
       const v = optionalField(body, k);
       if (v !== undefined) update[k] = v;
+    }
+    if (update.public_key && !isTelnyxPublicKey(update.public_key)) {
+      return Response.json({ error: PUBLIC_KEY_FORMAT_ERROR }, { status: 400 });
     }
 
     // Read the row the SENDERS will read. This used to be an unsorted query whose

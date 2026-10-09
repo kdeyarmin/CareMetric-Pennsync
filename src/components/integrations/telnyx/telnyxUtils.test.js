@@ -37,6 +37,9 @@ test("mapMessageStatus collapses Telnyx statuses to the internal vocabulary", ()
   assert.equal(mapMessageStatus("sending_failed"), "failed");
   assert.equal(mapMessageStatus("delivery_failed"), "failed");
   assert.equal(mapMessageStatus("expired"), "failed");
+  // Terminal with no carrier receipt: neither delivered nor failed.
+  assert.equal(mapMessageStatus("delivery_unconfirmed"), "sent");
+  assert.equal(mapMessageStatus("read"), "delivered");
   // Unknown → null so the webhook acks without regressing a terminal row.
   assert.equal(mapMessageStatus("bogus"), null);
   assert.equal(mapMessageStatus(undefined), null);

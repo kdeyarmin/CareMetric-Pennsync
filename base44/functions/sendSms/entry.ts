@@ -1377,7 +1377,9 @@ Deno.serve(async (req) => {
     } catch (netErr) {
       const aborted = netErr?.name === 'AbortError';
       const reason = aborted
-        ? `Timed out after ${SEND_TIMEOUT_MS} ms reaching Telnyx`
+        // Not a retryable failure: Telnyx may have accepted it. smsRedrive's
+        // policy refuses "outcome unknown" so the cron cannot double-text.
+        ? `Outcome unknown: Telnyx did not answer within ${SEND_TIMEOUT_MS} ms, so the text may have been sent. Not retried automatically.`
         : `Network error reaching Telnyx: ${netErr.message}`;
       await base44.asServiceRole.entities.SmsMessage
         .update(smsRow.id, { status: 'failed', failure_reason: reason }).catch(() => {});

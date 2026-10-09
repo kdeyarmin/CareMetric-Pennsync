@@ -7,7 +7,7 @@
  *
  * Nothing here touches the network or any framework — it can be exercised in
  * isolation with `node --test`. Drift between this file and the inlined copies in
- * the Telnyx backend functions is guarded by base44/functions/telnyxInlineParity.test.js.
+ * the Telnyx backend functions is guarded by base44/functionTests/telnyxInlineParity.test.js.
  */
 
 /**
@@ -46,7 +46,16 @@ export function getThreadId(a, b) {
  * per-recipient status inside `data.payload.to[].status` on `message.*` webhooks.
  * Unknown statuses return null so callers can ack-without-write (never regress a
  * terminal row to a non-terminal state). handleTelnyxStatusWebhook inlines an
- * identical copy, drift-guarded by base44/functions/telnyxInlineParity.test.js.
+ * identical copy, drift-guarded by base44/functionTests/telnyxInlineParity.test.js.
+ *
+ * The vocabulary is Telnyx's `to[].status` enum from its OpenAPI spec (checked
+ * 2026-10-09): queued, sending, sent, expired, sending_failed,
+ * delivery_unconfirmed, delivered, delivery_failed, read.
+ * - `delivery_unconfirmed` is a TERMINAL state on `message.finalized`: the
+ *   carrier accepted the message and never returned a receipt. It is neither a
+ *   delivery nor a failure, so it maps to `sent` — the honest last-known state —
+ *   rather than to null, which would report a documented status as unknown.
+ * - `read` (RCS/WhatsApp read receipts) implies delivery.
  */
 export function mapMessageStatus(status) {
   switch (String(status || "").toLowerCase()) {
@@ -54,9 +63,11 @@ export function mapMessageStatus(status) {
     case "sending":
       return "queued";
     case "sent":
+    case "delivery_unconfirmed":
       return "sent";
     case "delivered":
     case "webhook_delivered":
+    case "read":
       return "delivered";
     case "sending_failed":
     case "delivery_failed":
@@ -75,7 +86,7 @@ export function mapMessageStatus(status) {
  * statuses return null (ack without write) — the same ack-without-write contract
  * mapMessageStatus uses for SMS. handleTelnyxStatusWebhook inlines an identical
  * copy of this function (single-file Deno deploy); the two are drift-guarded by
- * base44/functions/telnyxInlineParity.test.js.
+ * base44/functionTests/telnyxInlineParity.test.js.
  */
 export function mapFaxStatus(status) {
   switch (String(status || "").toLowerCase()) {

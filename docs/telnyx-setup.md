@@ -43,7 +43,7 @@ only presence + the last 4 characters are shown. Functions:
 
 - `saveTelnyxSecret` — store the API key / public key / connection ids (super-admin only).
 - `getTelnyxSecretStatus` — read whether each value is configured (no secrets returned).
-- `testTelnyxConnection` — read-only readiness report + a live `/v2/whoami` probe.
+- `testTelnyxConnection` — read-only readiness report + a live `/v2/balance` probe.
 
 ### Dashboard-env overrides — retired
 
@@ -99,10 +99,22 @@ Resilience built in:
 - `callCommand` returns `{ ok, status }`; a **failed transfer falls back** to a
   spoken apology + `hangup` (and, for the outbound bridge, marks the `CallLog`
   failed) rather than leaving the caller/nurse on dead air.
-- Voicemail recording is bounded (`max_length`) and **transcribed**
-  (`transcription_start` with `transcription_engine_config.language` →
-  `call.transcription` events append to the `CallLog`, setting `has_voicemail`
-  and surfacing a transcript preview in the notification).
+- Voicemail recording is bounded (`max_length`), plays a beep (`play_beep`)
+  and is **transcribed** (`transcription_start` with the `Google` engine —
+  the current name of the legacy `A` alias — and
+  `transcription_engine_config.language` → `call.transcription` events append
+  to the `CallLog`, setting `has_voicemail` and surfacing a transcript preview
+  in the notification). The voicemail duration is derived from the
+  recording's `recording_started_at`/`recording_ended_at`.
+- **Known gap:** `call.recording.saved`'s `recording_urls` are valid for 10
+  minutes (Telnyx API reference), and that link is what is stored as
+  `CallLog.voicemail_url`, so a voicemail link opened later has expired.
+  Fixing it means either copying the audio into private storage or enabling
+  Telnyx's non-expiring `public_recording_urls` — a PHI decision, not a code
+  default.
+- A call leg that hangs up before it is answered (`no_answer`, `user_busy`,
+  `call_rejected`, `timeout`, `not_found`, `originator_cancel`) is logged
+  `failed` ("Not answered"), not `completed`.
 - Ringdown advances on Telnyx `hangup_cause` values verified against the Call
   Control HangupCause enum: `no_answer`, `user_busy`, `call_rejected`,
   `timeout`, `not_found`, `originator_cancel` (see `src/components/voice/onCall.js`).

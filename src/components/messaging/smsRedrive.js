@@ -26,6 +26,12 @@ export const PERMANENT_FAILURE_PATTERNS = [
   // (502)", which then never re-drove even though the 5xx is retryable. Genuine
   // "invalid number / invalid 'To'" stays permanent; the 400/422 codes below
   // still cover generic client-side rejects.
+  // A send that TIMED OUT reached Telnyx and got no answer, so it may well have
+  // been accepted: re-sending risks texting the patient twice, and Telnyx has
+  // no idempotency key for POST /v2/messages to dedupe it. Only a failure Telnyx
+  // reported, or a connection that never opened, is safe to redrive. The second
+  // pattern covers rows written before the reason said so explicitly.
+  /outcome unknown/i, /timed out (after \d+ ms )?reaching telnyx/i,
   /opted out/i, /opt.?out/i, /unsubscrib/i,
   /invalid\W*(to\b|number|destination|phone|recipient|address|msisdn)/i,
   /\b(400|401|403|404|422)\b/,

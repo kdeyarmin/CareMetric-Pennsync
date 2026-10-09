@@ -34,7 +34,7 @@ const NAMES = ["mapMessageStatus", "mapFaxStatus", "mapCallStatus", "buildSigned
 test("handleTelnyxStatusWebhook inlines value-mappers identical to telnyxUtils", async () => {
   const inlined = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts", NAMES);
 
-  const msgStatuses = ["queued", "sending", "sent", "delivered", "webhook_delivered", "sending_failed", "delivery_failed", "expired", "failed", "bogus", undefined];
+  const msgStatuses = ["queued", "sending", "sent", "delivered", "webhook_delivered", "delivery_unconfirmed", "read", "gw_timeout", "sending_failed", "delivery_failed", "expired", "failed", "bogus", undefined];
   for (const s of msgStatuses) {
     assert.equal(inlined.mapMessageStatus(s), util.mapMessageStatus(s), `mapMessageStatus(${s})`);
   }
@@ -60,4 +60,45 @@ test("handleTelnyxStatusWebhook inlines value-mappers identical to telnyxUtils",
   const env = { data: { event_type: "message.finalized", payload: { id: "m1", status: "delivered" } } };
   assert.deepEqual(inlined.extractTelnyxEvent(env), util.extractTelnyxEvent(env));
   assert.equal(inlined.extractTelnyxEvent(null).eventType, util.extractTelnyxEvent(null).eventType);
+});
+
+test("voicemail duration comes from the recording's own timestamps", async () => {
+  // call.recording.saved has no duration field (Telnyx OpenAPI spec, 2026-10-09);
+  // reading one left every stored voicemail duration null.
+  const { recordingDurationSecs } = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts", ["recordingDurationSecs"]);
+  assert.equal(recordingDurationSecs({
+    recording_started_at: "2026-10-09T12:00:00.000Z",
+    recording_ended_at: "2026-10-09T12:00:42.400Z",
+  }), 42);
+  assert.equal(recordingDurationSecs({ recording_duration_secs: 7 }), 7);
+  assert.equal(recordingDurationSecs({ recording_started_at: "x", recording_ended_at: "y" }), null);
+  assert.equal(recordingDurationSecs({
+    recording_started_at: "2026-10-09T12:01:00Z", recording_ended_at: "2026-10-09T12:00:00Z",
+  }), null);
+  assert.equal(recordingDurationSecs(undefined), null);
+});
+
+test("an unanswered hangup on a never-answered leg is a missed call, not completed", async () => {
+  const { unansweredHangupStatus } = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts", ["unansweredHangupStatus"]);
+  // The nurse's cell on a masked call rang out / was busy.
+  assert.equal(unansweredHangupStatus("call.hangup", "initiated", "no_answer"), "failed");
+  assert.equal(unansweredHangupStatus("call.hangup", "ringing", "USER_BUSY"), "failed");
+  assert.equal(unansweredHangupStatus("call.hangup", undefined, "timeout"), "failed");
+  // Answered calls end normally whatever the cause; normal clearing is not a miss.
+  assert.equal(unansweredHangupStatus("call.hangup", "in_progress", "no_answer"), null);
+  assert.equal(unansweredHangupStatus("call.hangup", "ringing", "normal_clearing"), null);
+  assert.equal(unansweredHangupStatus("call.hangup", "failed", "no_answer"), null);
+  assert.equal(unansweredHangupStatus("call.answered", "ringing", "no_answer"), null);
+});
+
+test("a revocation in any of its FCC/CTIA forms never draws an auto-reply", async () => {
+  const { isStopLikeText } = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts", ["isStopLikeText"]);
+  for (const t of ["STOP", "stop", "Stop.", " stop! ", "STOPALL", "Stop all", "unsubscribe", "Cancel", "END", "quit",
+    "REVOKE", "revoke.", "OPTOUT", "opt out", "Opt-Out"]) {
+    assert.equal(isStopLikeText(t), true, t);
+  }
+  // Ordinary messages that merely contain a word still get the normal handling.
+  for (const t of ["Please don't stop my visits", "When does my visit end?", "help", "", null]) {
+    assert.equal(isStopLikeText(t), false, String(t));
+  }
 });

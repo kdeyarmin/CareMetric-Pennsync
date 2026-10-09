@@ -84,9 +84,11 @@ export async function runSmoke({
   const add = (id, label, status, detail) => { checks.push({ id, label, status, detail }); log(`[${status}] ${label} — ${detail}`); };
 
   // 1) Auth.
-  const who = await probe(fetchImpl, `${API}/whoami`, apiKey);
+  // /v2/balance: a documented, side-effect-free authenticated read (/v2/whoami
+  // is absent from the current API reference).
+  const who = await probe(fetchImpl, `${API}/balance`, apiKey);
   add("auth", "API key authenticates", classify(who.status),
-    who.status === 200 ? "Authenticated (/v2/whoami 200)."
+    who.status === 200 ? "Authenticated (/v2/balance 200)."
       : who.status === 0 ? `Could not reach api.telnyx.com (${who.error}).`
         : `Telnyx returned HTTP ${who.status}.`);
 
