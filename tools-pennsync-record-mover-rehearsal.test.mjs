@@ -30,6 +30,12 @@ let db; let root; let landing; let report; let waves; let tableWaves;
 function rebind(rows) {
   const next = rows.map((r) => ({ ...r, hash: sha(canonical({ table: r.table, row: r.row })) }));
   const { digest: _d, ...body } = report;
+  // A changed row set changes the plan's own arithmetic too, so re-state it the way a re-plan would.
+  body.loads = report.loads.map((l) => {
+    const n = next.filter((r) => r.entity === l.entity).length;
+    return { ...l, rows: n + l.quarantined, load: n };
+  });
+  body.totals = { ...report.totals, to_load: next.length };
   body.rows_digest = sha(next.map((r) => `${r.table}|${r.source_app_id}|${r.id}|${r.hash}`).sort().join('\n'));
   return { landing: next, report: { ...body, digest: sha(canonical(body)) } };
 }
@@ -96,6 +102,8 @@ test('the whole rehearsal, in order', async () => {
   // The verifier sees the one row we deliberately left to the new side, and nothing else.
   const v2 = await check(next.landing, next.report);
   assert.deepEqual(v2.content.mismatched.map((m) => [m.id, m.columns]), [[edited.id, ['last_name']]]);
+  assert.deepEqual([v2.counts_ok, v2.links.ok, v2.quarantine.ok], [true, true, true], 'the one edited row is the only problem the verifier finds');
+  assert.deepEqual(v2.quarantine.problems, []);
 
   // 6. Rollback of the catch-up run: only what it inserted goes; an updated row is reported.
   const back = await rollbackRun({ db, receipt: catchUp, tableWaves, tables });
