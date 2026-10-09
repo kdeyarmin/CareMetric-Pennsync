@@ -826,7 +826,7 @@ export function renderEntity(plan) {
 }
 
 /** Plan every carried entity exactly once; both callers below reuse the result. */
-function planAll(repository) {
+export function planAll(repository) {
   const dispositions = JSON.parse(readFileSync(join(repository, DISPOSITION_FILE), 'utf8')).entities;
   const decisions = JSON.parse(readFileSync(join(repository, TENANT_DECISION_FILE), 'utf8')).entities ?? {};
   const directory = join(repository, ENTITY_DIRECTORY);
