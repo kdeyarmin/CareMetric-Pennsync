@@ -61,3 +61,15 @@ export function localDatePlusDays(days, now = new Date()) {
   const day = String(date.getDate()).padStart(2, '0');
   return `${date.getFullYear()}-${month}-${day}`;
 }
+
+/**
+ * When a request's automatic reminder goes out: 9:00 local time, `daysBefore`
+ * days before the due date. Null when that moment is less than an hour away
+ * or already past, so a short-fuse request is not reminded immediately.
+ */
+export function reminderSendAt(dueDate, daysBefore, now = new Date()) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dueDate || ''));
+  if (!match || !Number.isSafeInteger(daysBefore) || daysBefore < 1) return null;
+  const at = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) - daysBefore, 9, 0, 0, 0);
+  return at.getTime() > now.getTime() + 60 * 60 * 1000 ? at.toISOString() : null;
+}

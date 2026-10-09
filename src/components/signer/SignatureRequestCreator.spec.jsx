@@ -7,6 +7,7 @@ import SignatureRequestCreator from './SignatureRequestCreator';
 const mocks = vi.hoisted(() => ({
   createSignatureRequest: vi.fn(),
   sendSigningLink: vi.fn(),
+  scheduleSignatureReminder: vi.fn(),
   tenant: { loading: false, agencyId: 'agency-1', canRequest: true, canManage: false, tenantRole: 'clinician' },
 }));
 
@@ -60,6 +61,7 @@ vi.mock('@/lib/esignClient', async (importOriginal) => ({
   ...(await importOriginal()),
   createSignatureRequest: mocks.createSignatureRequest,
   sendSigningLink: mocks.sendSigningLink,
+  scheduleSignatureReminder: mocks.scheduleSignatureReminder,
 }));
 
 beforeEach(() => {
@@ -70,14 +72,17 @@ beforeEach(() => {
   };
   mocks.createSignatureRequest.mockReset();
   mocks.sendSigningLink.mockReset();
+  mocks.scheduleSignatureReminder.mockReset();
   mocks.createSignatureRequest.mockResolvedValue({
     success: true,
     request: {
       package_name: 'Admission consents', due_date: '2026-10-20',
+      documents: [{ id: 'signature-1', document_id: 'doc-1', title: 'Consent for care', status: 'pending' }],
       packages: [{ id: 'package-1', signer_id: 'signer-1', signer_name: 'Pat Example' }],
     },
   });
   mocks.sendSigningLink.mockResolvedValue({ success: true });
+  mocks.scheduleSignatureReminder.mockResolvedValue({ success: true });
 });
 
 describe('SignatureRequestCreator', () => {
@@ -109,7 +114,12 @@ describe('SignatureRequestCreator', () => {
     await waitFor(() => expect(mocks.sendSigningLink).toHaveBeenCalledWith({
       agencyId: 'agency-1', packageId: 'package-1', signerId: 'signer-1',
     }));
-    expect(await screen.findByText('Signing link emailed to Pat Example')).toBeInTheDocument();
+    // The default seven-day due date leaves room for the two-days-before reminder.
+    await waitFor(() => expect(mocks.scheduleSignatureReminder).toHaveBeenCalledWith(expect.objectContaining({
+      agencyId: 'agency-1', packageId: 'package-1', signerId: 'signer-1', documentId: 'signature-1',
+    })));
+    expect(Date.parse(mocks.scheduleSignatureReminder.mock.calls[0][0].sendAt)).toBeGreaterThan(Date.now());
+    expect(await screen.findByText(/Signing link emailed to Pat Example/)).toBeInTheDocument();
   });
 
   it('explains the requirements instead of sending an incomplete request', async () => {

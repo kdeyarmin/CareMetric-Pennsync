@@ -13,13 +13,15 @@ import { Textarea } from '@/components/ui/textarea';
 import SignatureFieldEditor from '@/components/signature/SignatureFieldEditor';
 import { creationFields } from '@/components/signature/signatureFieldPlacement';
 import {
-  DOCUMENT_TYPES, SIGNER_ROLES, localDatePlusDays, signerRoleLabel,
+  DOCUMENT_TYPES, SIGNER_ROLES, localDatePlusDays, reminderSendAt, signerRoleLabel,
 } from '@/components/signature/signatureRequestLabels';
 import { createAuthorizedDocument, createDocumentRequestId } from '@/functions/createAuthorizedDocument';
 import { useAuthorizedDocuments } from '@/hooks/useAuthorizedDocuments';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { signatureRequestsKey, useSigningTenant } from '@/hooks/useSignatureRequests';
-import { createSignatureRequest, newEsignRequestId, sendSigningLink } from '@/lib/esignClient';
+import {
+  createSignatureRequest, newEsignRequestId, scheduleSignatureReminder, sendSigningLink,
+} from '@/lib/esignClient';
 
 const SIGNABLE_TYPES = new Set(['application/pdf', 'image/png', 'image/jpeg']);
 const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._ ()-]*$/;
@@ -162,11 +164,23 @@ export default function SignatureRequestCreator({ onCreated }) {
         client_request_id: requestIdRef.current,
       });
       const deliveries = [];
+      // The automatic reminder is a scheduled rotation of the signer's link,
+      // so it is booked once that link exists, through the same broker staff
+      // use by hand (which re-checks chart access).
+      const remindAt = autoReminders ? reminderSendAt(dueDate, reminderDays) : null;
+      const firstDocumentId = created.request.documents?.[0]?.id;
       if (sendNow) {
         for (const pkg of created.request.packages || []) {
           try {
             await sendSigningLink({ agencyId: tenant.agencyId, packageId: pkg.id, signerId: pkg.signer_id });
-            deliveries.push({ name: pkg.signer_name, ok: true });
+            let reminder = null;
+            if (remindAt && firstDocumentId) {
+              reminder = await scheduleSignatureReminder({
+                agencyId: tenant.agencyId, packageId: pkg.id, signerId: pkg.signer_id,
+                documentId: firstDocumentId, sendAt: remindAt,
+              }).then(() => remindAt, () => false);
+            }
+            deliveries.push({ name: pkg.signer_name, ok: true, reminder });
           } catch (sendError) {
             deliveries.push({ name: pkg.signer_name, ok: false, message: sendError.message });
           }
@@ -209,6 +223,8 @@ export default function SignatureRequestCreator({ onCreated }) {
               {result.deliveries.map((delivery) => (
                 <li key={delivery.name} className={delivery.ok ? 'text-green-800' : 'text-red-700'}>
                   {delivery.ok ? `Signing link emailed to ${delivery.name}` : `${delivery.name}: ${delivery.message}`}
+                  {delivery.reminder ? ` · reminder scheduled for ${new Date(delivery.reminder).toLocaleString()}` : ''}
+                  {delivery.reminder === false ? ' · the reminder could not be scheduled; schedule it from the request' : ''}
                 </li>
               ))}
             </ul>

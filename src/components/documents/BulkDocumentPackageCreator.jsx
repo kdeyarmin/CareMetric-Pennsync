@@ -9,12 +9,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { localDatePlusDays } from '@/components/signature/signatureRequestLabels';
+import { localDatePlusDays, reminderSendAt } from '@/components/signature/signatureRequestLabels';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { signatureRequestsKey, useSigningTenant } from '@/hooks/useSignatureRequests';
 import {
-  createSignatureRequestFromTemplate, listSignatureTemplates, newEsignRequestId, sendSigningLink,
+  createSignatureRequestFromTemplate, listSignatureTemplates, newEsignRequestId, scheduleSignatureReminder, sendSigningLink,
 } from '@/lib/esignClient';
+
+// Template requests take the broker's default reminder: two days before due.
+const REMINDER_DAYS_BEFORE = 2;
 
 const MAX_PATIENTS_PER_RUN = 50;
 
@@ -97,6 +100,13 @@ export default function BulkDocumentPackageCreator() {
           try {
             await sendSigningLink({ agencyId: tenant.agencyId, packageId: pkg.id, signerId: pkg.signer_id });
             sent = true;
+            const remindAt = reminderSendAt(dueDate, REMINDER_DAYS_BEFORE);
+            const documentId = created.request.documents?.[0]?.id;
+            if (remindAt && documentId) {
+              await scheduleSignatureReminder({
+                agencyId: tenant.agencyId, packageId: pkg.id, signerId: pkg.signer_id, documentId, sendAt: remindAt,
+              }).catch(() => null);
+            }
           } catch (sendError) {
             sent = sendError.message;
           }
