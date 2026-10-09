@@ -5,8 +5,7 @@ import AdrLetterAnalyzer from './AdrLetterAnalyzer';
 
 const { upload, analyze } = vi.hoisted(() => ({ upload: vi.fn(), analyze: vi.fn() }));
 vi.mock('@/api/base44Client', () => ({ base44: { integrations: { Core: { UploadFile: upload } } } }));
-vi.mock('@/lib/invokeLLM', () => ({ invokeLLM: vi.fn() }));
-vi.mock('./adrAnalysis', () => ({ runAdrLetterAnalysis: analyze }));
+vi.mock('@/functions/analyzeAdrLetter', () => ({ analyzeAdrLetter: analyze }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const file = () => new File(['%PDF-1.7 synthetic'], 'synthetic.pdf', { type: 'application/pdf' });
 beforeEach(() => {

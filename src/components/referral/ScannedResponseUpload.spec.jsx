@@ -17,6 +17,9 @@ vi.mock('@/api/base44Client', () => ({
 vi.mock('@/functions/manageAuthorizedReferral', () => ({
   updateAuthorizedReferral: (input) => referralUpdate(input),
 }));
+vi.mock('@/functions/extractReferralResponseScan', () => ({
+  extractReferralResponseScan: (input) => invokeLLM(input),
+}));
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
@@ -62,11 +65,12 @@ describe('ScannedResponseUpload', () => {
     expect(screen.getByText(/Completed information request form/)).toBeInTheDocument();
     // The already-answered item is never offered for application.
     expect(screen.queryByText(/must not apply/)).not.toBeInTheDocument();
-    // The extraction prompt only requested the open items.
-    const prompt = invokeLLM.mock.calls[0][0].prompt;
-    expect(prompt).toContain('id: f2f_missing');
-    expect(prompt).not.toContain('id: insurance_missing');
-    expect(invokeLLM.mock.calls[0][0].file_urls).toEqual(['https://files.example/scan.pdf']);
+    // The server, not the browser, loads authorized open items and owns the prompt.
+    expect(invokeLLM).toHaveBeenCalledWith({
+      fileUrl: 'https://files.example/scan.pdf', referralId: 'ref1',
+      agencyId: 'agency-a', isImage: false,
+    });
+    expect(invokeLLM.mock.calls[0][0]).not.toHaveProperty('prompt');
   });
 
   it('applies only the ACCEPTED answers as source "scan" and records the response_scan block', async () => {

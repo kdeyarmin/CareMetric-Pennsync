@@ -55,6 +55,7 @@ import CertificateDownloadButton from '@/components/training/CertificateDownload
 import LearnerPolicyAcknowledgments from '@/components/training/LearnerPolicyAcknowledgments';
 import LearnerMemoryBoosters from '@/components/training/LearnerMemoryBoosters';
 import EducatorReadinessPanel from '@/components/learning/EducatorReadinessPanel';
+import StaffTrainingPlanSummary from '@/components/learning/StaffTrainingPlanSummary';
 import CourseCatalogDetail from '@/components/learning/CourseCatalogDetail';
 import CeCreditSummary from '@/components/learning/CeCreditSummary';
 import { buildCeTranscript } from '@/components/learning/ceTranscript';
@@ -729,6 +730,7 @@ function LegacyLearningCenter() {
       )}
 
       {/* Educator / admin team readiness */}
+      <StaffTrainingPlanSummary />
       {isEducatorOrAdmin && <EducatorReadinessPanel />}
 
       {/* Overdue Alert Banner */}

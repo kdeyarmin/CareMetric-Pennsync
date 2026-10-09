@@ -5,9 +5,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import ProgressFeedback from "@/components/ui/progress-feedback";
 import { base44 } from "@/api/base44Client";
-import { invokeLLM } from "@/lib/invokeLLM";
+import { analyzeAdrLetter } from '@/functions/analyzeAdrLetter';
 import { validateReferralFile, formatBytes, REFERRAL_ACCEPT_ATTR } from "../referral/referralUploadUtils";
-import { runAdrLetterAnalysis } from "./adrAnalysis";
 import { buildAdrChecklist } from "./adrRequirements";
 
 const processingStages = [
@@ -70,7 +69,7 @@ export default function AdrLetterAnalyzer({ onComplete, onProcessingChange, disa
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       setProcessingStage(1);
-      const analysis = await runAdrLetterAnalysis(invokeLLM, { fileUrl: file_url });
+      const analysis = await analyzeAdrLetter({ fileUrl: file_url });
       if (!analysis || !Array.isArray(analysis.requested_items)) {
         throw new Error("The letter analysis returned no usable result");
       }

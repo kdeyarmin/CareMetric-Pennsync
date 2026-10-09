@@ -18,8 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ProgressFeedback from "@/components/ui/progress-feedback";
 import AICaveat from "@/components/ui/AICaveat";
 import { base44 } from "@/api/base44Client";
-import { invokeLLMWithFile } from "@/lib/invokeLLM";
-import { runAdrPacketVerification } from "./adrAnalysis";
+import { verifyAdrResponsePacket } from '@/functions/verifyAdrResponsePacket';
 import { summarizePacketVerification, toPersistedVerification } from "./adrPacketReview";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
@@ -129,10 +128,7 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
       onUpdated?.();
 
       setProcessingStage(2);
-      const verification = await runAdrPacketVerification(invokeLLMWithFile, {
-        fileUrl: file_url,
-        checklist,
-      });
+      const verification = await verifyAdrResponsePacket({ caseId: adrCase.id });
       if (!verification || !Array.isArray(verification.items)) {
         throw new Error("The packet verification returned no usable result");
       }

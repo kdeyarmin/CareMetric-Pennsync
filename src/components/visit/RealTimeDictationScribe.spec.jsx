@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 
-vi.mock('@/lib/invokeLLM', () => ({ invokeLLM: vi.fn() }));
+vi.mock('@/functions/structureDictatedVisit', () => ({ structureDictatedVisit: vi.fn() }));
 
 /**
  * A recognizer that refuses to start is the case this panel could not survive.

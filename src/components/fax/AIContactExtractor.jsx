@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { invokeLLMWithFile } from "@/lib/invokeLLM";
+import { extractFaxContact } from '@/functions/extractFaxContact';
 import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,29 +21,7 @@ export default function AIContactExtractor({ onExtracted }) {
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
 
-      const result = await invokeLLMWithFile({
-        model: "automatic",
-        prompt: `Analyze this document and extract any recipient fax/contact information.
-Return ONLY a JSON object with these keys (use empty string if not found):
-- name: the recipient person's full name
-- organization: the organization, facility, or company name
-- fax_number: the fax number in E.164 format (e.g. +12125551234), empty string if none found
-- subject: a brief 1-line subject for a cover sheet based on the document content
-- notes: any other useful notes about the recipient or document context
-
-Document URL: ${file_url}`,
-        file_urls: [file_url],
-        response_json_schema: {
-          type: "object",
-          properties: {
-            name:         { type: "string" },
-            organization: { type: "string" },
-            fax_number:   { type: "string" },
-            subject:      { type: "string" },
-            notes:        { type: "string" }
-          }
-        }
-      });
+      const result = await extractFaxContact({ fileUrl: file_url });
 
       const hasAny = result.name || result.organization || result.fax_number;
       if (!hasAny) {
