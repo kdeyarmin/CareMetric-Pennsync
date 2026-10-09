@@ -545,15 +545,18 @@ test('roster import commit creates charts through createAuthorizedPatient as the
     assert.equal(payload.assigned_nurses, undefined);
     assert.equal(payload.created_by, undefined);
   }
-  assert.deepEqual(calls.invokes.map((call) => call.payload.medical_record_number), ['MRN-2', 'MRN-4']);
+  // Creations run concurrently within a batch and each awaits a digest before
+  // invoking, so the call order is not fixed: compare the sets, sorted.
+  const sorted = (values) => [...values].sort();
+  assert.deepEqual(sorted(calls.invokes.map((call) => call.payload.medical_record_number)), ['MRN-2', 'MRN-4']);
 
   // The request id is derived from the agency and the row, so a retry repeats it.
   const again = makeImportClient({ patients: IMPORT_PATIENTS });
   const handlerAgain = await loadHandler('processPatientFileUpdate', again.client);
   await invokeImport(handlerAgain, again.calls, { file_content: CENSUS, dry_run: false, agency_id: 'agency-a' });
   assert.deepEqual(
-    again.calls.invokes.map((call) => call.payload.client_request_id),
-    calls.invokes.map((call) => call.payload.client_request_id),
+    sorted(again.calls.invokes.map((call) => call.payload.client_request_id)),
+    sorted(calls.invokes.map((call) => call.payload.client_request_id)),
   );
 });
 
