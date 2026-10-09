@@ -37,7 +37,7 @@ export default function AIContentResponsibilityAgreement({ onAccepted }) {
   const [checked, setChecked] = useState(() =>
     AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS.map(() => false),
   );
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(/** @type {false | "recording" | "verifying"} */ (false));
   const [error, setError] = useState("");
 
   const allChecked = useMemo(() => checked.every(Boolean), [checked]);
