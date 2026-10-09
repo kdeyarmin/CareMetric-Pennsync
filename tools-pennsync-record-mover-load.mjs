@@ -18,6 +18,11 @@
  *   changed it on the new side it is reported as a `conflict` and never touched.
  *   Equality is decided INSIDE the database, over the row it actually holds, so
  *   no JavaScript type conversion can make two different rows look alike.
+ * - **The payload is the plan.** The landing rows must reproduce the plan's own `rows_digest`
+ *   and the plan's `digest`, row by row, before anything else happens; an approval therefore
+ *   names exactly these rows and no others.
+ * - **Rows are locked while compared.** The stored row is read `for update`, so an edit made
+ *   on the new side between the comparison and the write cannot be overwritten.
  * - **Real names are gated.** Unless every patient is obviously invented, the
  *   run needs an approval naming this exact plan's digest. That is a tripwire on
  *   the patient table, not proof about every name-bearing column.
@@ -27,6 +32,7 @@
  * The receipt can be sealed with a key Kevin holds (AES-256-GCM); the key is
  * used and zeroed here and appears in no output.
  */
+import { canonical } from './tools-pennsync-record-mover-plan.mjs';
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto';
 
 export const SCHEMA = 'pennsync_records';
@@ -38,12 +44,28 @@ const SYNTHETIC_NAME = /^(Fixture|Synthetic)\b/;
 const q = (name) => `"${name}"`;
 const HASH_SQL = "encode(sha256(convert_to(to_jsonb(r)::text, 'UTF8')), 'hex')";
 
-function checkInputs({ landing, tables, planDigest, approval }) {
-  if (!Array.isArray(landing) || !(tables instanceof Set) || typeof planDigest !== 'string') throw new LoadError('load_configuration_invalid');
+const sha = (v) => createHash('sha256').update(v).digest('hex');
+
+/** The landing rows are the ones the plan describes, byte for byte. */
+export function verifyPlan({ report, landing }) {
+  const { digest, ...body } = report ?? {};
+  if (typeof digest !== 'string' || typeof report.rows_digest !== 'string' || sha(canonical(body)) !== digest) throw new LoadError('plan_digest_invalid');
+  const lines = [];
+  for (const r of landing) {
+    if (r.hash !== sha(canonical({ table: r.table, row: r.row }))) throw new LoadError('plan_does_not_match_payload', { table: r.table });
+    lines.push(`${r.table}|${r.source_app_id}|${r.id}|${r.hash}`);
+  }
+  if (sha(lines.sort().join('\n')) !== report.rows_digest) throw new LoadError('plan_does_not_match_payload');
+}
+
+function checkInputs({ landing, tables, report, approval }) {
+  if (!Array.isArray(landing) || !(tables instanceof Set) || typeof report?.digest !== 'string') throw new LoadError('load_configuration_invalid');
+  const planDigest = report.digest;
   for (const r of landing) {
     if (!IDENT.test(r.table) || !tables.has(r.table)) throw new LoadError('table_not_allowed', { table: String(r.table).slice(0, 63).replace(/[^a-z0-9_]/g, '?') });
     if (typeof r.id !== 'string' || typeof r.source_app_id !== 'string' || r.row?.id !== r.id) throw new LoadError('row_invalid', { table: r.table });
   }
+  verifyPlan({ report, landing });
   const names = landing.filter((r) => r.table === 'patient');
   const invented = names.every((r) => SYNTHETIC_NAME.test(r.row.first_name ?? ''));
   if (!invented && approval?.real_names_plan_digest !== planDigest) throw new LoadError('real_names_not_approved');
@@ -64,8 +86,9 @@ async function columnsOf(db, table, cache) {
  * planner's `loads`); `previous` is a Map of `table|app|id` to the db hash the
  * last run recorded. Returns a receipt of ids, hashes and outcomes only.
  */
-export async function applyLanding({ db, landing, waves, tables, planDigest, previous = new Map(), approval = null, dryRun = false }) {
-  checkInputs({ landing, tables, planDigest, approval });
+export async function applyLanding({ db, landing, waves, tables, report, previous = new Map(), approval = null, dryRun = false }) {
+  checkInputs({ landing, tables, report, approval });
+  const planDigest = report.digest;
   const byWave = new Map();
   for (const r of landing) {
     const w = waves.get(r.entity);
@@ -85,7 +108,7 @@ export async function applyLanding({ db, landing, waves, tables, planDigest, pre
         current = r;
         const T = `${q(SCHEMA)}.${q(r.table)}`; const payload = JSON.stringify(r.row);
         const planned = (await db.query(`select ${HASH_SQL} h from jsonb_populate_record(null::${T}, $1::jsonb) r`, [payload])).rows[0].h;
-        const held = await db.query(`select ${HASH_SQL} h from ${T} r where r.source_app_id = $1 and r.id = $2`, [r.source_app_id, r.id]);
+        const held = await db.query(`select ${HASH_SQL} h from ${T} r where r.source_app_id = $1 and r.id = $2 for update`, [r.source_app_id, r.id]);
         let outcome; let dbHash = planned;
         if (!held.rows.length) {
           await db.query(`insert into ${T} select * from jsonb_populate_record(null::${T}, $1::jsonb)`, [payload]);
@@ -148,4 +171,4 @@ export function openReceipt(sealed, key) {
   } catch { throw new LoadError('receipt_unreadable'); } finally { k.fill(0); }
 }
 
-export const sha256 = (v) => createHash('sha256').update(v).digest('hex');
+export const sha256 = sha;
