@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { readAiPolicy } from '../../shared/aiResponsibilityPolicy.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -158,7 +159,7 @@ function isCurrentAttestation(row) {
     && JSON.stringify(row?.acknowledgments) === JSON.stringify(AGREEMENT_ACKNOWLEDGMENTS);
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, {
       status: 405,
@@ -208,9 +209,13 @@ Deno.serve(async (req) => {
     // concurrent disable cannot race into a successful gate response.
     await readExactActor(entities, actorId, actorEmail);
 
+    const policy = await readAiPolicy(entities, req.headers.get('X-Data-Env'));
+    const accepted = rows.some(isCurrentAttestation);
+    const bypassed = !accepted && rows.length > 0 && policy?.bypass_previously_acknowledged === true;
     return Response.json({
-      accepted: rows.some(isCurrentAttestation),
+      accepted,
       agreement_version: AGREEMENT_VERSION,
+      ...(bypassed ? { bypassed: true } : {}),
     }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     if (error instanceof PublicError) {
@@ -225,4 +230,4 @@ Deno.serve(async (req) => {
       headers: NO_STORE_HEADERS,
     });
   }
-});
+}

@@ -13,9 +13,10 @@ export async function getAiContentAgreementStatus() {
   }
   const keys = Object.keys(status).sort();
   if (
-    keys.length !== 2
+    ![2, 3].includes(keys.length)
     || keys[0] !== 'accepted'
     || keys[1] !== 'agreement_version'
+    || (keys.length === 3 && (keys[2] !== 'bypassed' || typeof status.bypassed !== 'boolean'))
     || typeof status.accepted !== 'boolean'
     || typeof status.agreement_version !== 'string'
   ) {

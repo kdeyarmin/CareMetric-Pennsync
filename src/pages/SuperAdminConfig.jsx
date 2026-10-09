@@ -16,6 +16,7 @@ import IntegrationsHealthPanel from "@/components/admin/IntegrationsHealthPanel"
 import PhoneProvisioningPanel from "@/components/admin/PhoneProvisioningPanel";
 import A2PCompliancePanel from "@/components/admin/A2PCompliancePanel";
 import ConsentLedgerPanel from "@/components/admin/ConsentLedgerPanel";
+import AIResponsibilityPolicyPanel from "@/components/admin/AIResponsibilityPolicyPanel";
 import SetupStage from "@/components/admin/SetupStage";
 import { SETUP_STAGES, stageStatus, stageIdForAnchor, defaultExpandedStageIds } from "@/components/admin/setupStages";
 import { isSuperAdmin, isSuperAdminEmail, SUPER_ADMIN_EMAIL } from "@/lib/superAdmin";
@@ -193,6 +194,8 @@ export default function SuperAdminConfig() {
             )}
           </CardContent>
         </Card>
+
+        <AIResponsibilityPolicyPanel />
 
         {/* Live health board for every integration (AI, email, telephony, …) */}
         <IntegrationsHealthPanel />
