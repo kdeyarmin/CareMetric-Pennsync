@@ -173,6 +173,13 @@
       "depth": 2
     },
     {
+      "entity": "CallLog",
+      "kind": "actor",
+      "via": "sent_by",
+      "target": null,
+      "depth": null
+    },
+    {
       "entity": "CareCoordinationAlert",
       "kind": "reference",
       "via": "patient_id",
@@ -379,6 +386,34 @@
       "entity": "FacilityDocumentationRule",
       "kind": "actor",
       "via": "created_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "FaxContact",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FaxLog",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FaxRetryConfig",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FaxTemplate",
+      "kind": "unresolved",
+      "via": null,
       "target": null,
       "depth": null
     },
@@ -838,6 +873,13 @@
       "depth": null
     },
     {
+      "entity": "PhoneNumber",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
       "entity": "Physician",
       "kind": "unresolved",
       "via": null,
@@ -1154,15 +1196,15 @@
     }
   ],
   "totals": {
-    "carried": 164,
+    "carried": 170,
     "root": 1,
-    "direct": 16,
+    "direct": 19,
     "reference": 42,
     "binding": 1,
-    "actor": 40,
+    "actor": 41,
     "profile_claim": 1,
-    "unresolved": 63,
+    "unresolved": 65,
     "max_depth": 3,
-    "blocking": 104
+    "blocking": 107
   }
 }

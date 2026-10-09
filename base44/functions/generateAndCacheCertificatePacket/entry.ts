@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
         });
 
         // Generate signed URL for the cached PDF
-        const signedUrl = await base44.integrations.Core.CreateFileSignedUrl({
+        const signedUrl = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({
           file_uri: cache.file_uri,
           expires_in: 3600
         });
@@ -317,7 +317,7 @@ Deno.serve(async (req) => {
     }
 
     // Generate signed URL
-    const signedUrl = await base44.integrations.Core.CreateFileSignedUrl({
+    const signedUrl = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({
       file_uri: uploadResponse.file_uri,
       expires_in: 3600
     });

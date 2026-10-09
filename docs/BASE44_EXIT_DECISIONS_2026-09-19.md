@@ -710,7 +710,7 @@ certificates and credits must be preserved by that cutover, not by this one.
 **Contributed by the plan thread, 2026-09-30, in the same message as the D7
 amendment above.** It widens this entry and corrects nothing already filed.
 
-**119 of the 193 `no_table` sites are the training and learning domain**, twelve entities, all `hub`. D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` already decided their destination: `kdeyarmin/caremetric-support-hub`, with both controls (`VITE_CENTRAL_LEARNING_ENABLED`, `CENTRAL_LEARNING_RELEASE=hub-runtime-v1`) unset and a five-step pre-cutover checklist.
+**119 of the 193 `no_table` sites are the training and learning domain**, twelve entities, all `hub`. D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` already decided their destination: `kdeyarmin/caremetric-support-hub`, with both controls (`VITE_CENTRAL_LEARNING_ENABLED`, `CENTRAL_LEARNING_RELEASE=hub-runtime-v1`) unset and a seven-step pre-cutover checklist.
 
 **So they are neither the owner's to decide nor ours to port**, and porting their tables into the owned store would build precisely what D8 decided not to build. The plan at `:3907` states the Hub destination and then puts all 194 under "each needs a product answer" in the next sentence — the correction is one clause, and it makes the owner's pile smaller rather than larger.
 
@@ -14391,7 +14391,8 @@ direction of progress is the one nobody re-measures.
 
 `port queue: entity_authorization=5 files=12 external_secret=2 none=79`, from
 `node tools-transition-disposition.mjs --summary` at the head this change was
-written on. The bucket falls by one and the five that remain are pinned BY
+written on. Re-read on `6995e5a74f4abf7111f62d357e35aa896360ceb3` (2026-10-02), beside
+that one: `port queue: entity_authorization=5 files=8 external_secret=2 none=82`. Re-read on `c7d6940` (#408), beside both: the same line, unchanged. The bucket falls by one and the five that remain are pinned BY
 NAME in `tools-transition-disposition.test.mjs`, because a count alone passes
 a swap — and because the thing this decision is most likely to be misread as
 is a promise that the five are coming. They are not coming until somebody

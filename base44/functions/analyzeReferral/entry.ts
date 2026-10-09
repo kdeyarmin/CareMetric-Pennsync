@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
 async function analyzePriority(base44, params) {
     const { extractedData, analysisResults } = params;
 
-    const priorityAnalysis = await base44.integrations.Core.InvokeLLM({
+    const priorityAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: "automatic",
         prompt: `You are a clinical triage AI specializing in home health referral prioritization with advanced Natural Language Processing (NLP) capabilities.
 
@@ -168,7 +168,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 async function generateTasks(base44, params) {
     const { referralData, priorityAnalysis } = params;
 
-    const tasks = await base44.integrations.Core.InvokeLLM({
+    const tasks = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: "automatic",
         prompt: `You are an expert home health intake coordinator. Based on the referral data and priority analysis, generate actionable tasks for office and clinical staff.
 
@@ -206,7 +206,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 async function matchPatient(base44, params) {
     const { extractedData, existingPatients } = params;
 
-    const matchAnalysis = await base44.integrations.Core.InvokeLLM({
+    const matchAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: "automatic",
         prompt: `You are an expert patient matching system for healthcare records with advanced fuzzy matching capabilities.
 

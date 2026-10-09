@@ -731,7 +731,7 @@ Deno.serve(async (req) => {
 
     if (notifyEmail) {
       try {
-        await base44.integrations.Core.SendEmail({
+        await base44.asServiceRole.integrations.Core.SendEmail({
           to: notifyEmail,
           subject: subject,
           body: emailBody,

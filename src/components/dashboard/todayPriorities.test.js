@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import process from 'node:process';
 import { buildTodayPriorities } from './todayPriorities.js';
 
 const NOW = new Date('2026-07-22T12:00:00Z');
@@ -79,8 +82,13 @@ test('buildTodayPriorities does not mutate Date values carried on records', () =
 // Both read columns that exist in neither store: `visit.note_id`, so the
 // negation `!visit.note_id` was always true and the tile counted EVERY
 // completed visit; and `patient.risk_level` / `patient.hospitalization_risk`,
-// so the high-risk tile could never fire at all. These cases pin what each one
-// counts now. Each was watched to fail against the old implementation first.
+// so the high-risk tile could never fire at all.
+//
+// The first was fixed and the cases below pin what it counts now; it was
+// watched to fail against the old implementation first. The SECOND no longer
+// exists: the high-risk-patients tile was removed from the product along with
+// the two dashboard widgets it shared its read with, so what is pinned for it
+// is its ABSENCE, at the end of this file.
 
 test('a completed visit that carries a nurse note is not counted as needing one', () => {
   const priorities = buildTodayPriorities({
@@ -114,94 +122,48 @@ test('the owned store\'s has_documentation decides when it is present', () => {
   assert.match(missing.title, /^1 completed visit needs? notes?$/);
 });
 
-test('high-risk patients come from active high and critical alerts', () => {
-  const priorities = buildTodayPriorities({
-    now: NOW,
-    currentUser: { email: 'nurse@example.com', role: 'user' },
-    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace' }, { id: 'p2', first_name: 'Grace', last_name: 'Hopper' }],
-    patientAlerts: [
-      { id: 'a1', patient_id: 'p1', status: 'active', severity: 'high' },
-      { id: 'a2', patient_id: 'p2', status: 'active', severity: 'critical' },
-      { id: 'a3', patient_id: 'p2', status: 'active', severity: 'high' },
-    ],
-  });
-
-  const highRisk = priorities.find((priority) => priority.id === 'high-risk-patients');
-  assert.ok(highRisk, 'the priority fires');
-  assert.match(highRisk.title, /^2 high-risk patients to review$/, 'one row per patient, not per alert');
-  assert.match(highRisk.description, /Grace Hopper/, 'the critical alert leads');
-});
-
-test('resolved and low-severity alerts raise no high-risk priority', () => {
-  const priorities = buildTodayPriorities({
-    now: NOW,
-    currentUser: { email: 'nurse@example.com', role: 'user' },
-    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace' }],
-    patientAlerts: [
-      { id: 'a1', patient_id: 'p1', status: 'resolved', resolved_at: '2026-07-21T10:00:00Z', severity: 'critical' },
-      { id: 'a2', patient_id: 'p1', status: 'active', severity: 'medium' },
-    ],
-  });
-
-  assert.equal(priorities.some((priority) => priority.id === 'high-risk-patients'), false);
-});
-
-test('status decides, so an active alert is counted whatever else it carries', () => {
-  // This case replaces a third row the first draft of the test above carried:
-  // `{ status: 'active', severity: 'high', resolved_date: ... }`, excluded by a
-  // guard on `resolved_date`. That field is on no alert — the entity and the
-  // contract both declare `resolved_at` — so the guard never fired on a real
-  // row, and because that row was the only one in the case that would otherwise
-  // have raised the priority, the assertion passed while proving nothing.
+test('the high-risk-patients tile is gone, and no input brings it back', () => {
+  // The tile and the two dashboard widgets it shared a read with
+  // (HospitalizationRiskWidget, HighRiskPatientsWidget) were removed from the
+  // product. `patientAlerts` and `patientAlertsTruncated` are no longer
+  // parameters of this builder, and the three patient spellings the tile
+  // originally read — risk_level, riskLevel, hospitalization_risk — are on no
+  // patient table and in no entity schema, as they always were.
   //
-  // `resolved_at` has one writer on each path and both set `status = 'resolved'`
-  // in the same statement, so the honest check is the status one, and a row that
-  // disagreed is counted. That is what this pins.
+  // So this passes an input of every shape that used to raise it. It is here to
+  // bite if the tile is reintroduced, which is the only way it can fail.
   const priorities = buildTodayPriorities({
     now: NOW,
     currentUser: { email: 'nurse@example.com', role: 'user' },
-    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace' }],
-    patientAlerts: [
-      { id: 'a1', patient_id: 'p1', status: 'active', severity: 'high', resolved_at: '2026-07-21T10:00:00Z' },
+    patients: [
+      { id: 'p1', first_name: 'Ada', last_name: 'Lovelace', risk_level: 'critical', hospitalization_risk: 'high' },
+      { id: 'p2', first_name: 'Grace', last_name: 'Hopper', riskLevel: 'critical' },
     ],
-  });
-
-  const highRisk = priorities.find((priority) => priority.id === 'high-risk-patients');
-  assert.ok(highRisk, 'the active row is counted');
-  assert.match(highRisk.title, /^1 high-risk patient to review$/);
-});
-
-test('a truncated alert read says "at least", because the count is a floor', () => {
-  // The alert page is capped at 500 rows before anything reduces them to one
-  // per patient, so a full page may hide matching patients. A bare number would
-  // be the same kind of claim this tile was fixed for making.
-  const base = {
-    now: NOW,
-    currentUser: { email: 'nurse@example.com', role: 'user' },
-    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace' }, { id: 'p2', first_name: 'Grace', last_name: 'Hopper' }],
     patientAlerts: [
       { id: 'a1', patient_id: 'p1', status: 'active', severity: 'high' },
       { id: 'a2', patient_id: 'p2', status: 'active', severity: 'critical' },
     ],
-  };
-
-  const whole = buildTodayPriorities(base).find((priority) => priority.id === 'high-risk-patients');
-  assert.match(whole.title, /^2 high-risk patients to review$/, 'a whole read states the count');
-
-  const truncated = buildTodayPriorities({ ...base, patientAlertsTruncated: true })
-    .find((priority) => priority.id === 'high-risk-patients');
-  assert.match(truncated.title, /^at least 2 high-risk patients to review$/);
-});
-
-test('a patient row claiming a risk level raises nothing, because no such column exists', () => {
-  // The three spellings this used to read — risk_level, riskLevel and
-  // hospitalization_risk — are on no patient table and in no entity schema, so
-  // reading them was dead code that made the tile look implemented.
-  const priorities = buildTodayPriorities({
-    now: NOW,
-    currentUser: { email: 'nurse@example.com', role: 'user' },
-    patients: [{ id: 'p1', first_name: 'Ada', last_name: 'Lovelace', risk_level: 'critical', hospitalization_risk: 'high' }],
+    patientAlertsTruncated: true,
   });
 
   assert.equal(priorities.some((priority) => priority.id === 'high-risk-patients'), false);
+  assert.equal(priorities.some((priority) => /high-risk/i.test(priority.title)), false);
+});
+
+// The builder's own signature is the other half: a caller that still passed the
+// alert props would otherwise look wired while changing nothing. Reading the
+// parameter list is what makes the absence above a property of the module
+// rather than of the inputs this file happens to choose.
+test('the builder no longer takes the alert inputs that fed the tile', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/components/dashboard/todayPriorities.js'), 'utf8');
+  const signature = source.slice(
+    source.indexOf('export function buildTodayPriorities({'),
+    source.indexOf('} = {}) {'),
+  );
+  assert.ok(signature.length > 0, 'the builder signature was found');
+  assert.equal(/patientAlerts/.test(signature), false);
+  assert.equal(/patientAlertsTruncated/.test(signature), false);
+  // And nothing in the module reaches for them under another name.
+  assert.equal(/highRiskPatientIds|ALERT_SEVERITY_RANK/.test(source), false);
 });

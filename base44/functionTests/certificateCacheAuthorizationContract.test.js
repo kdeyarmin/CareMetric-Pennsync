@@ -174,10 +174,10 @@ test('self-service cache lookup rejects leaked foreign rows and updates only the
       },
       User: { filter: async () => { throw new Error('self-service must not list users'); } },
       TrainingCertificate: { filter: async () => { throw new Error('cache hit must not list certificates'); } },
-    } },
+    },
     integrations: { Core: {
       CreateFileSignedUrl: async ({ file_uri }) => ({ signed_url: `signed:${file_uri}` }),
-    } },
+    } } },
   };
   const handler = await loadFunction('generateAndCacheCertificatePacket', { client });
   const response = await handler(request({ employeeId: 'NURSE@example.test' }));

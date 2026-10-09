@@ -1,0 +1,424 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
+// <<<END SHARED HELPER: pennsyncProductionAppId>>>
+// <<<BEGIN SHARED HELPER: base44ClientRequest — generated, edit base44/_shared/backendHelpers.mjs>>>
+function pinnedBase44Request(req, expectedAppId, forwardUserCredential) {
+  if (typeof expectedAppId !== 'string' || expectedAppId === '') {
+    throw new Error('pinned Base44 request requires an expected Base44-App-Id');
+  }
+  // Read the inbound headers without ever throwing on the SHAPE of req. A production
+  // request is always a real Request with a Headers bag; a bare object with no usable
+  // headers (a test fixture, a malformed direct call) carries no inbound header, which
+  // is the absent case handled below. Only a PRESENT, different app id throws, and that
+  // requires a real header an attacker would have to set — so a real Request always
+  // reaches this read and the refusal is never skipped by the tolerance.
+  const inbound =
+    req && req.headers && typeof req.headers.get === 'function' ? req.headers : null;
+  const read = (name) => (inbound ? inbound.get(name) : null);
+  const received = read('Base44-App-Id');
+  // Refuse only an ACTIVE mismatch: a caller presenting a DIFFERENT app id is the
+  // tenant-redirect attack, and that is the case the refusal exists for. An ABSENT
+  // header is not a mismatch and selects no other tenant — it only means the request
+  // did not arrive through the platform, which always injects this header. We SET the
+  // pinned constant below either way, so absent falls back to the correct app exactly
+  // as the dropped Base44-Api-Url falls back to the default serverUrl. Throwing on
+  // absent would turn every anonymous denial into a 500 instead of a clean 403.
+  if (received !== null && received !== expectedAppId) {
+    throw new Error(
+      'Base44-App-Id mismatch: expected ' + expectedAppId + ', received ' + received
+    );
+  }
+  const headers = new Headers();
+  // Load-bearing: SET the constant (never forward the inbound value). The SDK reads
+  // appId from this header and throws of its own accord when it is absent, so pinning
+  // requires setting it here — dropping the inbound header alone would not suffice.
+  headers.set('Base44-App-Id', expectedAppId);
+  const serviceAuth = read('Base44-Service-Authorization');
+  if (serviceAuth !== null) headers.set('Base44-Service-Authorization', serviceAuth);
+  if (forwardUserCredential) {
+    const authorization = read('Authorization');
+    if (authorization !== null) headers.set('Authorization', authorization);
+    const dataEnv = read('X-Data-Env');
+    if (dataEnv === 'dev' || dataEnv === 'prod') headers.set('X-Data-Env', dataEnv);
+  }
+  // Cosmetic URL: serverUrl comes from the dropped Base44-Api-Url, not from here.
+  // No method: the SDK request factory reads only headers.get(...), never the
+  // method, so the request defaults to GET. An explicit POST would be inert for the
+  // SDK and would read as an outbound delivery primitive to the inventory scanner
+  // once this block is inlined into the fax status pollers.
+  return new Request('https://base44.app', { headers });
+}
+function userScopedClientRequest(req, expectedAppId) {
+  return pinnedBase44Request(req, expectedAppId, true);
+}
+function serviceRoleClientRequest(req, expectedAppId) {
+  return pinnedBase44Request(req, expectedAppId, false);
+}
+// <<<END SHARED HELPER: base44ClientRequest>>>
+// <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
+}
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
+  try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId }, undefined, 101,
+    );
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
+    }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
+  } catch {
+    // No lookup failure may be interpreted as membership approval.
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
+  if (profile.role === 'admin') return profile;
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
+}
+// <<<END SHARED HELPER: trustedCallerClaims>>>
+
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+// <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
+const BRAND_EMAIL = {
+  navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
+  ink: '#111a2b', slate: '#334155', muted: '#5b6a7f', line: '#e4e9f1',
+  wash: '#eef3fc', panel: '#f5f8fd',
+  logo: 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png',
+};
+// Callout tones. 'info' is on-brand navy; success/warn/urgent reuse the manual
+// theme's green/amber/red and are used ONLY for genuine status (never decoration).
+const EMAIL_TONES = {
+  info:    { bg: '#eef3fc', border: '#88a5e0', text: '#213a76' },
+  success: { bg: '#effdf4', border: '#86efac', text: '#15803d' },
+  warn:    { bg: '#fff8ec', border: '#fcd68a', text: '#b45309' },
+  urgent:  { bg: '#fef2f2', border: '#fca5a5', text: '#b91c1c' },
+};
+function escapeEmailHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Allow only absolute http(s)/mailto links in email buttons, then HTML-escape the
+// whole attribute value. Rejects dangerous/unusable schemes (javascript:, data:,
+// protocol-relative //host, app-relative paths that don't resolve in an inbox) so
+// a user-controlled URL can never inject a scheme or break out of the attribute.
+// Returns '' for a rejected URL, and the caller then renders no button.
+function safeEmailHref(raw) {
+  const url = String(raw ?? '').trim();
+  const lower = url.toLowerCase();
+  const ok = lower.startsWith('https://') || lower.startsWith('http://') || lower.startsWith('mailto:');
+  return ok ? escapeEmailHtml(url) : '';
+}
+function emailParagraph(text) {
+  return `<p style="margin:0 0 14px;font-size:15px;line-height:1.62;color:${BRAND_EMAIL.slate};">${escapeEmailHtml(text)}</p>`;
+}
+function renderEmailSection(section) {
+  const s = section || {};
+  const parts = [];
+  if (s.heading) {
+    parts.push(`<h2 style="margin:20px 0 8px;font-size:16px;font-weight:800;color:${BRAND_EMAIL.ink};">${escapeEmailHtml(s.heading)}</h2>`);
+  }
+  for (const p of (Array.isArray(s.paragraphs) ? s.paragraphs : [])) parts.push(emailParagraph(p));
+  if (s.pre) {
+    parts.push(`<pre style="margin:4px 0 16px;padding:14px 16px;background:${BRAND_EMAIL.panel};border:1px solid ${BRAND_EMAIL.line};border-radius:10px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:12.5px;line-height:1.5;color:${BRAND_EMAIL.ink};white-space:pre-wrap;word-break:break-word;">${escapeEmailHtml(s.pre)}</pre>`);
+  }
+  if (Array.isArray(s.rows) && s.rows.length) {
+    const rows = s.rows.map((r) =>
+      `<tr><td style="padding:5px 0;font-size:13.5px;color:${BRAND_EMAIL.muted};vertical-align:top;white-space:nowrap;">${escapeEmailHtml(r[0])}</td>` +
+      `<td style="padding:5px 0 5px 16px;font-size:14px;color:${BRAND_EMAIL.ink};font-weight:600;vertical-align:top;">${escapeEmailHtml(r[1])}</td></tr>`
+    ).join('');
+    parts.push(`<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:4px 0 16px;background:${BRAND_EMAIL.panel};border:1px solid ${BRAND_EMAIL.line};border-radius:10px;"><tr><td style="padding:8px 16px;"><table role="presentation" cellpadding="0" cellspacing="0" width="100%">${rows}</table></td></tr></table>`);
+  }
+  if (Array.isArray(s.bullets) && s.bullets.length) {
+    const items = s.bullets.map((b) =>
+      `<li style="margin:0 0 7px;font-size:14.5px;line-height:1.55;color:${BRAND_EMAIL.slate};">${escapeEmailHtml(b)}</li>`
+    ).join('');
+    parts.push(`<ul style="margin:0 0 16px;padding-left:20px;">${items}</ul>`);
+  }
+  if (s.callout && s.callout.text) {
+    const t = EMAIL_TONES[s.callout.tone] || EMAIL_TONES.info;
+    parts.push(`<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:4px 0 16px;"><tr><td style="padding:13px 16px;background:${t.bg};border-left:4px solid ${t.border};border-radius:8px;font-size:14px;line-height:1.55;color:${t.text};font-weight:600;">${escapeEmailHtml(s.callout.text)}</td></tr></table>`);
+  }
+  if (s.button && s.button.href) {
+    const href = safeEmailHref(s.button.href);
+    if (href) {
+      parts.push(`<div style="margin:6px 0 18px;"><a href="${href}" target="_blank" rel="noopener" style="display:inline-block;padding:13px 26px;border-radius:8px;background:${BRAND_EMAIL.navy};color:#ffffff;font-weight:700;font-size:15px;line-height:1;text-decoration:none;">${escapeEmailHtml(s.button.label || 'Open PennSync')}</a></div>`);
+    }
+  }
+  if (s.note) {
+    parts.push(`<p style="margin:0 0 14px;font-size:12.5px;line-height:1.55;color:${BRAND_EMAIL.muted};">${escapeEmailHtml(s.note)}</p>`);
+  }
+  return parts.join('');
+}
+/**
+ * Build a branded PennSync email. Returns an HTML string for SendEmail's body.
+ * opts: { preheader, eyebrow, tone('brand'|'urgent'), title, intro(string|string[]),
+ *         sections[{ heading, paragraphs[], pre, rows[[k,v]], bullets[], callout{text,tone},
+ *         button{href,label}, note }], signoffName, footerNote }
+ */
+function renderBrandedEmail(opts) {
+  const o = opts || {};
+  const rule = o.tone === 'urgent' ? '#dc2626' : BRAND_EMAIL.gold;
+  const intro = Array.isArray(o.intro) ? o.intro : (o.intro ? [o.intro] : []);
+  const sections = Array.isArray(o.sections) ? o.sections : [];
+  const signoff = o.signoffName === null ? '' : (o.signoffName || 'The PennSync by CareMetric Team');
+  const preheader = o.preheader ? escapeEmailHtml(o.preheader) : '';
+  const eyebrow = o.eyebrow
+    ? `<p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:${BRAND_EMAIL.gold};">${escapeEmailHtml(o.eyebrow)}</p>`
+    : '';
+  const introHtml = intro.map(emailParagraph).join('');
+  const sectionsHtml = sections.map(renderEmailSection).join('');
+  const signoffHtml = signoff
+    ? `<p style="margin:22px 0 2px;font-size:15px;line-height:1.6;color:${BRAND_EMAIL.slate};">Warm regards,<br /><strong style="color:${BRAND_EMAIL.navy};">${escapeEmailHtml(signoff)}</strong></p>`
+    : '';
+  const footerNote = o.footerNote
+    ? `<p style="margin:0 0 8px;font-size:11.5px;line-height:1.5;color:${BRAND_EMAIL.muted};">${escapeEmailHtml(o.footerNote)}</p>`
+    : '';
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="color-scheme" content="light only" /><title>${escapeEmailHtml(o.title || 'PennSync by CareMetric')}</title></head>
+<body style="margin:0;padding:0;background:${BRAND_EMAIL.wash};">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;color:${BRAND_EMAIL.wash};">${preheader}</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND_EMAIL.wash};"><tr><td align="center" style="padding:28px 14px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border:1px solid ${BRAND_EMAIL.line};border-radius:16px;overflow:hidden;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <tr><td style="background:linear-gradient(180deg,#25407e 0%,${BRAND_EMAIL.navyDeep} 100%);padding:28px 28px 24px;text-align:center;">
+    <img src="${BRAND_EMAIL.logo}" width="54" height="54" alt="PennSync" style="display:inline-block;width:54px;height:54px;border-radius:13px;border:0;" />
+    <div style="margin-top:11px;font-size:23px;font-weight:800;letter-spacing:-.3px;color:#ffffff;">Penn<span style="color:${BRAND_EMAIL.gold};">Sync</span></div>
+    <div style="margin-top:4px;font-size:10.5px;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:#b6c9ee;">by CareMetric</div>
+    <div style="width:58px;height:4px;border-radius:3px;background:${rule};margin:14px auto 0;"></div>
+  </td></tr>
+  <tr><td style="padding:30px 32px 6px;">
+    ${eyebrow}<h1 style="margin:0;font-size:22px;font-weight:800;color:${BRAND_EMAIL.navy};">${escapeEmailHtml(o.title || '')}</h1>
+  </td></tr>
+  <tr><td style="padding:14px 32px 4px;">${introHtml}${sectionsHtml}${signoffHtml}</td></tr>
+  <tr><td style="padding:24px 32px 30px;text-align:center;">
+    <div style="height:1px;background:${BRAND_EMAIL.line};margin-bottom:16px;"></div>
+    <div style="font-size:13px;font-weight:800;color:${BRAND_EMAIL.navy};">Penn<span style="color:${BRAND_EMAIL.gold};">Sync</span> <span style="font-weight:600;color:${BRAND_EMAIL.muted};">by CareMetric</span></div>
+    ${footerNote}<p style="margin:8px 0 0;font-size:11.5px;line-height:1.5;color:${BRAND_EMAIL.muted};">This is an automated message from PennSync by CareMetric — please do not reply to this email.</p>
+  </td></tr>
+</table></td></tr></table>
+</body></html>`;
+}
+// <<<END SHARED HELPER: brandedEmail>>>
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+/**
+ * submitAppFeedback — the server half of the sidebar "Send Feedback" dialog.
+ *
+ * The browser used to call Core.SendEmail itself with a hard-coded recipient.
+ * The send now happens here so it can sit behind the shared outbound-delivery
+ * release gate, the recipient is configuration rather than a literal in the
+ * bundle, and the caller cannot choose where the message goes.
+ *
+ * Only the platform owner receives it: FEEDBACK_RECIPIENT_EMAIL when that is a
+ * valid address, otherwise the configured SUPER_ADMIN_EMAIL. When neither is
+ * set the capability refuses rather than guessing.
+ *
+ * Callers must be signed in, active, and either the built-in admin or hold one
+ * active service-owned agency membership (withTrustedClaims). Feedback is
+ * product feedback, not a clinical channel: the dialog tells the user not to
+ * include patient information, and nothing is written to any audit or record
+ * table, so a message body is never persisted here.
+ */
+
+const MAX_SUBJECT_LENGTH = 200;
+const MAX_FEEDBACK_LENGTH = 5000;
+
+const normalizeRecipient = (value) => String(value || '').trim().toLowerCase();
+const isPlainEmail = (value) => typeof value === 'string'
+  && value.length > 3 && value.length <= 254
+  && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
+
+function feedbackRecipient() {
+  for (const key of ['FEEDBACK_RECIPIENT_EMAIL', 'SUPER_ADMIN_EMAIL']) {
+    const candidate = normalizeRecipient(Deno.env.get(key));
+    if (isPlainEmail(candidate)) return candidate;
+  }
+  return '';
+}
+
+// Strip control characters other than tab and newline so a header-like line
+// cannot be smuggled into the subject and the body renders predictably.
+const cleanText = (value) => String(value).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
+
+Deno.serve(async (req) => {
+  try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405 });
+    }
+    const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
+    const user = await withTrustedClaims(base44, await base44.auth.me());
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.disabled === true || user.is_service === true) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Staff only: the built-in admin, or exactly one active agency membership
+    // (withTrustedClaims blanks agency_id for anyone without one).
+    if (user.role !== 'admin' && !String(user.agency_id || '').trim()) {
+      return Response.json({ error: 'An active agency membership is required to send feedback.' }, { status: 403 });
+    }
+
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const unknown = Object.keys(body).filter((key) => key !== 'subject' && key !== 'feedback');
+    if (unknown.length > 0) {
+      return Response.json({ error: 'Unsupported fields', fields: unknown }, { status: 400 });
+    }
+    if (body.subject != null && typeof body.subject !== 'string') {
+      return Response.json({ error: 'subject must be a string' }, { status: 400 });
+    }
+    if (typeof body.feedback !== 'string') {
+      return Response.json({ error: 'feedback is required' }, { status: 400 });
+    }
+    const subject = cleanText(body.subject || '').replace(/[\r\n\t]+/g, ' ').trim();
+    const feedback = cleanText(body.feedback).trim();
+    if (!feedback) {
+      return Response.json({ error: 'feedback is required' }, { status: 400 });
+    }
+    if (subject.length > MAX_SUBJECT_LENGTH) {
+      return Response.json({ error: `Subject is too long (max ${MAX_SUBJECT_LENGTH} characters).` }, { status: 400 });
+    }
+    if (feedback.length > MAX_FEEDBACK_LENGTH) {
+      return Response.json({ error: `Feedback is too long (max ${MAX_FEEDBACK_LENGTH} characters).` }, { status: 400 });
+    }
+
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
+
+    const recipient = feedbackRecipient();
+    if (!recipient) {
+      return Response.json({
+        error: 'Feedback delivery is not configured.',
+        code: 'FEEDBACK_RECIPIENT_NOT_CONFIGURED',
+      }, { status: 503 });
+    }
+
+    const senderName = String(user.full_name || '').trim() || 'Unknown';
+    const senderEmail = String(user.email || '').trim() || 'No email';
+    await base44.asServiceRole.integrations.Core.SendEmail({
+      to: recipient,
+      from_name: 'PennSync by CareMetric',
+      subject: `PennSync feedback: ${subject || 'General feedback'}`.slice(0, 250),
+      body: renderBrandedEmail({
+        preheader: 'New feedback from a PennSync user.',
+        eyebrow: 'User feedback',
+        title: subject || 'General feedback',
+        intro: 'A PennSync user sent feedback from the in-app Send Feedback dialog.',
+        sections: [
+          {
+            rows: [
+              ['From', `${senderName} (${senderEmail})`],
+              ['Role', String(user.role || 'user')],
+              ['Agency', String(user.agency_name || '') || '—'],
+            ],
+          },
+          { heading: 'Feedback', pre: feedback },
+        ],
+        signoffName: null,
+      }),
+    });
+
+    return Response.json({ success: true });
+  } catch {
+    // The body may contain anything a user typed; never log it.
+    console.error('submitAppFeedback failed');
+    return Response.json({ error: 'Failed to send feedback' }, { status: 500 });
+  }
+});

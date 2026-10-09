@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
     }
 
     // Use AI to extract structured patient data from the document
-    const extractionResult = await base44.integrations.Core.ExtractDataFromUploadedFile({
+    const extractionResult = await base44.asServiceRole.integrations.Core.ExtractDataFromUploadedFile({
       file_url: file_url,
       json_schema: PATIENT_SCHEMA
     });

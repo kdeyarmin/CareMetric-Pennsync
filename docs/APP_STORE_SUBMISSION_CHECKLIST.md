@@ -1,6 +1,12 @@
 # Apple App Store Submission Checklist — PennSync iOS
 
 Companion to `docs/BASE44_APPSTORE_COMPAT_REVIEW_2026-07-22.md` (§5) and `ios/README.md`.
+
+> **Start with `docs/APP_STORE_RELEASE_AUDIT_2026-10-08.md`.** It records what was
+> measured on that date (the live listing, the stale published frontend, the
+> broken sign-out and hosted sign-in URLs) and lists the release blockers B1–B9
+> in the order they have to be cleared. Where it and this checklist disagree,
+> the dated audit is the newer reading.
 Some code-side foundations are present; the items below include the repository gaps and App
 Store Connect/process steps that must be resolved before another native submission.
 
@@ -19,10 +25,40 @@ Store Connect/process steps that must be resolved before another native submissi
 - [ ] **Apple and Google privacy disclosures.** Reconcile App Store privacy
       labels, Google Play Data safety, and `ios/PennSync/PrivacyInfo.xcprivacy`
       with the app's actual web and native data handling.
-- [ ] **Signing/distribution continuity.** Recover and verify the original Apple
-      signing/provisioning assets for `com.caremetric.ai` and Google signing/Play
-      App Signing continuity for `com.caremetic.ai`; do not substitute a new
-      identity or signing key.
+- [ ] **Signing/distribution continuity.** These are two different problems and
+      they were one bullet until 2026-10-01, which had a reader chasing the wrong
+      thing on iOS.
+
+      **iOS: nothing cryptographic needs recovering.** The App Store re-signs
+      every upload for distribution, so a distribution certificate is reissued
+      rather than recovered, and `ios/project.yml` already uses
+      `CODE_SIGN_STYLE: Automatic`. What makes an upload an UPDATE rather than a
+      new app is an identity, not a key: the Apple team plus the bundle id
+      `com.caremetric.ai`, which `ios/project.yml` pins and
+      `tools-app-store-migration.test.mjs` asserts. Apple's public record for
+      ID 6757097720 gives the seller as the repository owner (read 2026-10-01
+      from `itunes.apple.com/lookup`), so the record is on his own account and no
+      App Store Connect app transfer is involved. What that reading does NOT
+      establish, and one sign-in would: whether the Developer Program membership
+      is current and the account credentials are to hand.
+
+      **Android: the original wording holds, and only here.** Google signing /
+      Play App Signing continuity for `com.caremetic.ai` must be recovered, not
+      substituted — with no Play App Signing enrolment, a lost app signing key
+      ends the listing's update path and users would have to reinstall. Whether
+      that enrolment exists is **unmeasured from this repository**: there is no
+      `android/` directory here at all, so nothing in the tree can answer it.
+
+      `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` **contradicts itself about this,
+      two hundred lines apart**, which is a different defect from carrying the
+      error. The sentence beginning "App Signing for `com.caremetic.ai` must be
+      RECOVERED, not regenerated" puts both platforms under Android's
+      consequence, while the Stage L row beginning "Recover Android signing, and
+      Apple **account** access" already carries the correction, dated 2026-09-22
+      and citing `docs/MOBILE_RECOVERY_RUNBOOK_2026-09-22.md`. So the fix there is
+      to narrow the earlier sentence and point it at the dated row — not to state
+      the correction a third time. That belongs to that document's next change;
+      read it by those two anchors rather than by line number, which moves.
 - [ ] **IAP/billing continuity.** Reconcile the existing Apple in-app purchases
       and any Google billing configuration with product IDs, purchase/receipt
       validation, restore behavior, entitlements, and server state.
@@ -64,9 +100,11 @@ Store Connect/process steps that must be resolved before another native submissi
       implementation is present in this repository.
 - [ ] **Privacy nutrition labels.** Declare (all "linked to identity", none used for tracking):
   - Health & Fitness → Health (patient clinical data processed in-app)
-  - Contact Info → Name, Email Address
-  - Identifiers → User ID
-  - Usage Data → Product Interaction (audit trails)
+  - Contact Info → Name, Email Address, Phone Number, Physical Address, Other User Contact Info
+  - User Content → Audio Data (visit recordings sent for transcription), Photos or Videos
+    (incident photos, Camera Fax)
+  - Identifiers → User ID, Device ID
+  - Usage Data → Product Interaction (audit trails), Other Usage Data
   - Sensitive Info (if patient SSN/insurance data is entered by your agency)
       The bundled `ios/PennSync/PrivacyInfo.xcprivacy` mirrors these; keep both in sync.
 - [ ] **App Review notes.** Provide:
@@ -81,15 +119,20 @@ Store Connect/process steps that must be resolved before another native submissi
     enforces an acknowledgment gate) — relevant to medical-app review (1.4.1).
 - [ ] **Export compliance**: `ITSAppUsesNonExemptEncryption = false` is already set (HTTPS
       only) — answer the App Store Connect questions accordingly.
-- [ ] **Age rating**: 17+/medical is typical for clinical tools; complete the questionnaire.
+- [ ] **Age rating**: complete Apple's REVISED questionnaire (13+/16+/18+ bands, due
+      2026-01-31; submissions are blocked until it is answered). The live 17+ is an
+      old-system rating; the medical-information answers carry over.
 - [ ] **App icon**: `ios/PennSync/Assets.xcassets` ships a generated 1024px icon. Replace with
       the official brand icon before submission if a higher-fidelity source than
       `public/icons/icon-512.png` exists.
 
 ## Build-time (see ios/README.md for the full flow)
 
+- [ ] Use **Xcode 26 or newer** — App Store Connect refuses older builds since 2026-04-28.
 - [ ] `xcodegen generate` in `ios/`, open the project, set the signing team.
-- [ ] Bump `CFBundleShortVersionString`/build number.
+- [ ] `MARKETING_VERSION` must be HIGHER than the live version (`1.0` on 2026-10-08;
+      `1.0.0` counts as equal and is refused). It is `1.1.0`; bump it for each later
+      submission. `tools-app-store-migration.test.mjs` enforces this.
 - [ ] Archive → distribute via App Store Connect.
 
 ## After any submission

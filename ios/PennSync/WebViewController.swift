@@ -35,7 +35,16 @@ final class WebViewController: UIViewController {
     /// match the origin the shell actually loads. Keep any hosted subpath here:
     /// all same-origin `target=_blank` links, signer links, and telehealth links
     /// are resolved relative to this app base.
-    private let appURL = URL(string: "https://caremetricai.base44.app/")!
+    ///
+    /// This is the CUSTOM domain, not `caremetricai.base44.app`, and the reason
+    /// is sequencing rather than preference. Both addresses serve the same build
+    /// today (measured 2026-10-01: byte-identical but for three injected
+    /// `og:url`/`canonical` tags), so a binary bound to the custom domain works
+    /// right now, while Base44 is still the host. Once installed apps load this
+    /// address, moving the hosting is a DNS change and needs no second App Store
+    /// release — which is the only thing that keeps a hosting move from
+    /// stranding every installed app (D3, `docs/HOSTING_EXIT_RUNBOOK.md`).
+    private let appURL = URL(string: "https://app.caremetricai.com/")!
 
     private var webView: WKWebView!
     private lazy var downloadHandler = BlobDownloadHandler(presenter: self)
@@ -58,7 +67,9 @@ final class WebViewController: UIViewController {
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         // Keep main-frame navigation within the declared App-Bound Domains
-        // (WKAppBoundDomains in Info.plist lists base44.app / base44.com).
+        // (WKAppBoundDomains in Info.plist lists caremetricai.com for the origin
+        // above, and still lists base44.app / base44.com because sign-in is
+        // Base44's until the backend exit completes).
         // The web frontend intentionally registers no service worker; this
         // setting is retained as a navigation-containment boundary.
         // `decidePolicyFor` sends external main-frame URLs to Safari, while

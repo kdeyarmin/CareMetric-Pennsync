@@ -234,69 +234,6 @@ async function invokeBroker(handler, body = visitInput(), options = {}) {
   return { response, json: await response.json() };
 }
 
-async function loadTrigger({
-  visit = {
-    id: 'visit-a',
-    patient_id: 'patient-a',
-    agency_id: 'agency-a',
-    created_by_user_id: 'user-1',
-    created_by: 'clinician@agency.test',
-  },
-  patientRow = patient(),
-  users = [USER],
-  memberships = [membership()],
-  ignoreFilters = false,
-} = {}) {
-  const calls = { userFilters: [], membershipFilters: [], updates: [] };
-  const filter = (rows, query, limit) => {
-    const matches = ignoreFilters
-      ? rows
-      : rows.filter((row) => Object.entries(query || {}).every(([key, value]) => row?.[key] === value));
-    return Number.isFinite(limit) ? matches.slice(0, limit) : matches;
-  };
-  const client = {
-    asServiceRole: {
-      entities: {
-        Visit: { get: async () => visit },
-        Patient: {
-          get: async () => patientRow,
-          update: async (id, payload) => {
-            calls.updates.push({ id, payload });
-            return { ...patientRow, ...payload };
-          },
-        },
-        User: {
-          filter: async (query, sort, limit) => {
-            calls.userFilters.push({ query, sort, limit });
-            return filter(users, query, limit);
-          },
-        },
-        AgencyMembership: {
-          filter: async (query, sort, limit) => {
-            calls.membershipFilters.push({ query, sort, limit });
-            return filter(memberships, query, limit);
-          },
-        },
-      },
-    },
-  };
-  const handler = await importHandler(
-    triggerUrl,
-    '__visitTriggerMakeClient',
-    () => client,
-  );
-  return { handler, calls };
-}
-
-async function invokeTrigger(handler, id = 'visit-a') {
-  const response = await handler(new Request('http://local/autoAssignNurseToPatient', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ data: { id, patient_id: 'attacker-chosen-patient' } }),
-  }));
-  return { response, json: await response.json() };
-}
-
 async function sourceFiles(directoryUrl) {
   const root = directoryUrl.pathname;
   const output = [];
@@ -348,7 +285,10 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
     new URL('../../src/components/telehealth/PatientTelehealthPanel.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(telehealth, /TELEHEALTH_UNAVAILABLE_MESSAGE/);
+  // The chart's telehealth panel (released 2026-10-08) schedules telehealth
+  // sessions through the shared workspace and manageTelehealthSession; it
+  // never creates a Visit and never touches a session row itself.
+  assert.match(telehealth, /<TelehealthWorkspace patientId=\{patientId\}/);
   assert.doesNotMatch(telehealth, /createAuthorizedVisit|base44\.entities\.TelehealthSession|useMutation|base44\./);
 });
 
@@ -667,18 +607,143 @@ test('a care-team revocation after create removes the newly created Visit', asyn
   assert.equal(runtime.state.visits.length, 0);
 });
 
-test('the legacy auto-assignment trigger is an unconditional no-op before privileged reads or writes', async () => {
-  const source = await readFile(triggerUrl, 'utf8');
-  assert.doesNotMatch(source, /createClientFromRequest|asServiceRole|\.entities\.|Patient\.(?:get|filter|update)/);
+// Released by the owner on 2026-10-08. It is no longer a trigger: an agency
+// lead asks for one visit, and the grant goes through the care-team broker
+// with the caller's own credential. Patient.assigned_nurses is never touched.
+const MANAGER = { id: 'user-manager', email: 'manager@agency.test', role: 'user', is_active: true, is_verified: true };
 
-  for (const id of ['visit-a', 'guessed-foreign-id', '', { $ne: null }]) {
-    const { handler, calls } = await loadTrigger();
-    const { response, json } = await invokeTrigger(handler, id);
-    assert.equal(response.status, 200);
-    assert.deepEqual(json, {
-      success: true,
-      skipped: 'automatic patient assignment disabled',
+async function loadAutoAssign({
+  caller = MANAGER,
+  memberships = [
+    membership(),
+    membership({
+      id: 'membership-m', membership_key: 'agency-a:user-manager', user_id: 'user-manager',
+      user_email_normalized: 'manager@agency.test', tenant_role: 'manager',
+    }),
+  ],
+  visits = [{
+    id: 'visit-a', patient_id: 'patient-a', agency_id: 'agency-a',
+    created_by_user_id: 'user-1', visit_date: '2026-09-03',
+  }],
+  inspect = async () => {
+    const error = new Error('Not found');
+    error.status = 404;
+    error.data = { error: 'Care-team assignment not found' };
+    throw error;
+  },
+  grant = async (payload) => ({ data: { success: true, action: 'grant', idempotent: false, assignment: { id: 'assignment-new', status: 'active', patient_id: payload.patient_id, user_id: payload.target_user_id } } }),
+} = {}) {
+  const calls = { invocations: [], visitReads: 0, patientCalls: 0, bodyReads: 0 };
+  const filter = (rows, query, limit) => rows
+    .filter((row) => Object.entries(query || {}).every(([key, value]) => row?.[key] === value))
+    .slice(0, Number.isFinite(limit) ? limit : undefined);
+  const client = {
+    auth: { me: async () => caller },
+    functions: {
+      invoke: async (name, payload) => {
+        calls.invocations.push({ name, payload: structuredClone(payload) });
+        assert.equal(name, 'managePatientCareTeamAssignment');
+        return payload.action === 'inspect' ? inspect(payload) : grant(payload);
+      },
+    },
+    asServiceRole: {
+      entities: {
+        Agency: { filter: async (query, sort, limit) => filter([agency()], query, limit) },
+        AgencyMembership: { filter: async (query, sort, limit) => filter(memberships, query, limit) },
+        Visit: { filter: async (query, sort, limit) => { calls.visitReads += 1; return filter(visits, query, limit); } },
+        Patient: new Proxy({}, { get: () => async () => { calls.patientCalls += 1; throw new Error('Patient must not be touched'); } }),
+      },
+    },
+  };
+  const handler = await importHandler(triggerUrl, '__autoAssignMakeClient', () => client);
+  const call = async (body) => {
+    const request = new Request('http://local/autoAssignNurseToPatient', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
     });
-    assert.deepEqual(calls, { userFilters: [], membershipFilters: [], updates: [] });
-  }
+    const text = request.text.bind(request);
+    request.text = async () => { calls.bodyReads += 1; return text(); };
+    const response = await handler(request);
+    return { response, json: await response.json() };
+  };
+  return { call, calls };
+}
+
+test('auto-assignment refuses the legacy trigger payload, anonymous callers and non-leads before any read', async () => {
+  let loaded = await loadAutoAssign({ caller: null });
+  let result = await loaded.call({ data: { id: 'visit-a', patient_id: 'attacker-chosen-patient' } });
+  assert.equal(result.response.status, 401);
+  assert.equal(loaded.calls.bodyReads, 0);
+  assert.equal(loaded.calls.visitReads, 0);
+
+  // A clinician, even one claiming agency_admin on their editable profile.
+  loaded = await loadAutoAssign({ caller: { ...USER, account_type: 'agency_admin', is_manager: true, agency_id: 'agency-a' } });
+  result = await loaded.call({ agency_id: 'agency-a', visit_id: 'visit-a' });
+  assert.equal(result.response.status, 403);
+  assert.equal(loaded.calls.bodyReads, 0);
+  assert.equal(loaded.calls.visitReads, 0);
+  assert.deepEqual(loaded.calls.invocations, []);
+
+  // The legacy shape from a manager is refused as a malformed request.
+  loaded = await loadAutoAssign();
+  result = await loaded.call({ data: { id: 'visit-a' } });
+  assert.equal(result.response.status, 400);
+  assert.equal(loaded.calls.visitReads, 0);
+});
+
+test('a manager grants the visit clinician through the care-team broker, never through the chart', async () => {
+  const loaded = await loadAutoAssign();
+  const result = await loaded.call({ agency_id: 'agency-a', visit_id: 'visit-a' });
+  assert.equal(result.response.status, 200, JSON.stringify(result.json));
+  assert.equal(result.json.success, true);
+  assert.equal(result.json.already_assigned, false);
+  assert.deepEqual(loaded.calls.invocations.map((call) => call.payload.action), ['inspect', 'grant']);
+  assert.deepEqual(loaded.calls.invocations[1].payload, {
+    action: 'grant',
+    agency_id: 'agency-a',
+    patient_id: 'patient-a',
+    target_user_id: 'user-1',
+    client_request_id: 'auto-assign-visit:visit-a',
+    reason: 'Assigned to the care team from visit 2026-09-03',
+  });
+  assert.equal(loaded.calls.patientCalls, 0, 'Patient.assigned_nurses is never read or written');
+});
+
+test('auto-assignment stays inside the named agency and never re-grants a suspended assignment', async () => {
+  let loaded = await loadAutoAssign();
+  let result = await loaded.call({ agency_id: 'agency-b', visit_id: 'visit-a' });
+  assert.equal(result.response.status, 403, 'a manager cannot name another agency');
+  assert.equal(loaded.calls.visitReads, 0);
+
+  loaded = await loadAutoAssign({ visits: [{ id: 'visit-a', patient_id: 'patient-a', agency_id: 'agency-b', created_by_user_id: 'user-1' }] });
+  result = await loaded.call({ agency_id: 'agency-a', visit_id: 'visit-a' });
+  assert.equal(result.response.status, 404, 'a visit in another agency is not found');
+  assert.deepEqual(loaded.calls.invocations, []);
+
+  loaded = await loadAutoAssign({ inspect: async () => ({ data: { assignment: { id: 'a1', status: 'active' } } }) });
+  result = await loaded.call({ agency_id: 'agency-a', visit_id: 'visit-a' });
+  assert.equal(result.json.already_assigned, true);
+  assert.deepEqual(loaded.calls.invocations.map((call) => call.payload.action), ['inspect']);
+
+  loaded = await loadAutoAssign({ inspect: async () => ({ data: { assignment: { id: 'a1', status: 'suspended' } } }) });
+  result = await loaded.call({ agency_id: 'agency-a', visit_id: 'visit-a' });
+  assert.equal(result.response.status, 409);
+  assert.deepEqual(loaded.calls.invocations.map((call) => call.payload.action), ['inspect']);
+
+  // The broker's own refusal (for example a target with no membership) is passed through.
+  loaded = await loadAutoAssign({
+    inspect: async () => { const error = new Error('Forbidden'); error.status = 403; error.data = { error: 'Target is not an active member' }; throw error; },
+  });
+  result = await loaded.call({ agency_id: 'agency-a', visit_id: 'visit-a' });
+  assert.equal(result.response.status, 403);
+  assert.equal(result.json.error, 'Target is not an active member');
+});
+
+test('the auto-assignment source owns no chart write and no editable-profile scope', async () => {
+  const source = await readFile(triggerUrl, 'utf8');
+  const own = source.slice(source.lastIndexOf('// <<<END SHARED HELPER'));
+  assert.doesNotMatch(own.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''),
+    /assigned_nurses|Patient\.|\.update\(|\.create\(|agency_name|account_type/);
+  assert.match(own, /functions\.invoke\('managePatientCareTeamAssignment'/);
 });

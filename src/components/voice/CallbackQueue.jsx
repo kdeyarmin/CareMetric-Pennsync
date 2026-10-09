@@ -14,6 +14,7 @@ import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import AuthorityBoundAudio from '@/components/ui/AuthorityBoundAudio';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useNurseCallLogs, nurseCallLogsQueryKey } from "@/components/voice/useNurseCallLogs";
 
 const REASON_STYLES = {
   "Callback requested": "bg-navy-100 text-navy-800",
@@ -37,13 +38,7 @@ export default function CallbackQueue() {
   const queryClient = useQueryClient();
   const { data: user } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
 
-  const { data: calls = [], isLoading } = useQuery({
-    queryKey: ["call-logs", user?.email],
-    queryFn: () => base44.entities.CallLog.filter({ nurse_email: user.email }, "-created_date", 200),
-    enabled: !!user?.email,
-    refetchInterval: 30000,
-    initialData: [],
-  });
+  const { data: calls = [], isLoading } = useNurseCallLogs(user);
 
   const { data: patients = [] } = useScopedPatients({
     purpose: 'contact',
@@ -77,7 +72,7 @@ export default function CallbackQueue() {
   const resolve = useMutation({
     mutationFn: (id) => base44.entities.CallLog.update(id, { disposition: "resolved" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["call-logs", user?.email] });
+      queryClient.invalidateQueries({ queryKey: nurseCallLogsQueryKey(user?.email) });
       toast.success("Marked resolved");
     },
     onError: (err) => toast.error(err?.message || "Failed to update"),

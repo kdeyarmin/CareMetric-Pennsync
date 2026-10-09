@@ -1604,8 +1604,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 55 | 29 |
-  | `mutating` (derived) | 59 | 42 |
+  | `read-only` (derived) | 61 | 34 |
+  | `mutating` (derived) | 68 | 45 |
   | `integration` (derived) | 27 | 25 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
@@ -3201,16 +3201,40 @@ conflicts.
 This is the stage the status tables consistently understate. Nothing has moved:
 453 entity call sites across 69 entity types, 366 files importing the Base44
 client, 198 function invocations through 83 wrappers, 41 Core integration sites,
-4 SDK importers — all at ratchet baseline. **445 became 453 on 2026-09-29 with
-no call site added**: the shared matcher could not read a namespace bound into
-an object literal, and eight sites in `src/lib/retiredOfflineQueue.js` were
-invisible to this ratchet and the destination census at once. An instrument
-gained sight; the coupling did not grow.
+4 SDK importers — all at ratchet BASELINE, which is what those figures are.
+**445 became 453 on 2026-09-29 with no call site added**: the shared matcher
+could not read a namespace bound into an object literal, and eight sites in
+`src/lib/retiredOfflineQueue.js` were invisible to this ratchet and the
+destination census at once. An instrument gained sight; the coupling did not
+grow.
+
+**The baseline is a CEILING and the tree now sits one under it, which is the
+distinction to keep.** `pnpm run check:base44-surface` reads
+`entity_call_sites=452/453` on 2026-10-08: `src/pages/ReferralFollowUp.jsx` was
+deleted and its route became a redirect, taking one site with it. A ratchet
+baseline is deliberately not lowered by a deletion — it is the line coupling may
+not cross — so the two figures are a ceiling and a reading, and every count
+below that crosses call sites against something else is over the reading. Do not
+difference the two: they answer different questions.
+
+**Re-read on the tree that removed the clinical risk-prediction and PDGM payment
+features, beside that one rather than through it:** `entity_call_sites=430/430`,
+and this time the baseline moved WITH the reading. That removal was an owner
+decision to delete whole features, and it deleted twenty-two entity call sites;
+the same change lowered every frontend maximum it moved (`client_importers`,
+`entity_call_sites`, `entity_types`, `function_invocations`,
+`function_wrappers`) to what the tree reads, which locks in the follow-up page's
+site by the same write. The tool's own header calls a count under the baseline a
+gain to be locked in by lowering it, and a deliberate removal is that case where
+a page that merely went was not: leaving the headroom would let a later change
+re-add coupling up to the old line without the ratchet saying anything. The two
+figures still answer different questions; on that tree they are equal.
 
 **And the count understates it a second way (D80).** "Replace call sites tier
 by tier" reads as a refactor whose size is the count. Crossing all 453 against
 their entity dispositions — `pnpm run check:frontend-destination`, added
-2026-09-22 — says otherwise:
+2026-09-22 — says otherwise. **This table is the reading at `8bc9d214`, kept as
+a dated record**; the current one is below it:
 
 | | Call sites | |
 | --- | ---: | --- |
@@ -3249,6 +3273,56 @@ tool deliberately does not answer, because answering it by inference is how a
 bucket comes to claim more than it measured." So the 242 is a statement about
 TABLES. Whether anything serves the call is a second question, and this tool is
 built not to answer it.
+
+**Re-read 2026-10-08, beside the table above rather than through it:** 452 call
+sites, 244 with somewhere to land (`record_store` 234, `broker_family` 7,
+`activity_trail` 3), 208 without. Two independent movements since that head, and
+keeping them apart is the point of recording both:
+
+- **`no_table` 193 became `no_table` 119 plus `no_access_contract` 74** without
+  a single site changing its verdict. The eight OASIS entities (#401) and the
+  fax and phone entities (#408) gained SCHEMA-ONLY tables under D7's amendment,
+  so those sites have a table and still no capability over it — a more accurate
+  REASON for the same refusal. The 208 did not move, which is how you can tell
+  this was a relabelling and not progress.
+- **`record_store` fell by one and the total with it**, because
+  `src/pages/ReferralFollowUp.jsx` was deleted and its route became a redirect.
+  That is a site leaving the population, not a destination being lost.
+
+So the four refusal buckets that were NOT relabelled — 9, 5, 1 and the 208 they
+sum into with the other two — are unchanged across all three readings, and that
+is the stable fact.
+
+**Re-read on the tree that removed the clinical risk-prediction and PDGM payment
+features, beside both:** 430 call sites, 237 with somewhere to land
+(`record_store` 227, `broker_family` 7, `activity_trail` 3), 193 without —
+`no_table` 119 and `no_access_contract` 59, with the other three buckets
+unchanged at 9, 5 and 1. Twenty-two sites left the population and BOTH sides of
+it moved, which no earlier reading here records: seven `record_store` reads went
+with the deleted screens, and fifteen sites on paused OASIS entities went with
+them, every one of those from `no_access_contract`. So the 208 fell for the
+first time, and it fell because screens were deleted rather than because
+anything gained a destination — `hub` is untouched at 119 and nothing was
+ported. The percentage moved too, to 45%, and it is still the least informative
+figure in the reading.
+
+**Do not take the by-disposition split off this table, and note that the known
+by-one disagreement has MOVED buckets.** The per-ENTITY rollup reports one
+destination per entity, so it disagrees with the per-SITE tally by one by
+construction — `FaxLog` carries six sites in one bucket and its one `subscribe`
+site in another, and the rollup folds both into whichever destination it reports
+for the entity. At `8bc9d214` that put the rollup one HIGH on `no_table`
+(194 against 193). On 2026-10-08 the rollup reads `no_access_contract` 75
+against the per-site 74, with `FaxLog` reporting seven sites and
+`no_realtime_seam` absent from the rollup altogether, because #408's
+schema-only table moved FaxLog's six off `no_table`. Both readings describe one
+measurement and one construction; neither bucket name is the durable part, and
+summing the rollup against the per-site tally is wrong in both.
+
+A first draft of this very paragraph carried the `8bc9d214` bucket names into a
+sentence about the 2026-10-08 reading — the page's own subject arriving inside
+the paragraph written to record it. The remedy was to run the tool, not to read
+more carefully.
 
 **That second question now has its own instrument, and the first version of it
 got the answer wrong in a way worth keeping on the page.**
@@ -3892,10 +3966,8 @@ the Base44 entity write had no role gate at all.
 **That block, and every one above it, is a DATED record. What follows is this
 tree again after the duty toggle was WITHDRAWN — superseded by the contract
 `main` already carries — and after the reference writes landed. It is another
-printer run, not an adjustment of anything above it.** This is the PINNED
-block: `tools-entity-routes.test.mjs` fails unless the page carries it byte for
-byte, so paste what `pnpm run check:entity-routes` prints and never retype,
-rewrap or re-indent it.
+printer run, not an adjustment of anything above it.** It was the PINNED block
+until the reading below it was taken, and is now a dated record like the rest.
 
 ```
 entity routes: 100 declared, 164/245 landable call sites SERVED, 81 still to adopt
@@ -3916,6 +3988,211 @@ What this head contributes to the move is the roster's telecom projection and th
 repair of three admin screens that had been asking the roster for an order it
 cannot serve, so those sites moved into SERVED rather than out of the audit. The
 totals it produced are the block's to state.
+
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
+
+```
+entity routes: 100 declared, 163/244 landable call sites SERVED, 81 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 81, across 29 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 80 need a named capability
+```
+
+**Nothing was adopted or declared between these two blocks, and the move is a
+POPULATION change rather than progress.** `src/pages/ReferralFollowUp.jsx` was
+deleted and its route became a redirect, taking one served read of the physician
+directory with it. So the landable denominator and the served numerator each
+fell by one, the declared route count did not move, and the remainder is
+untouched — the one shape in this stage where a falling served count is neither
+a regression nor a reclassification. Difference it against the block above only
+with that in mind, which is why the cause is written here and the totals are
+left to the block.
+
+**And it is the worked example of why the audit bullet below is re-derived
+whole.** Its served read ratio moved because that same site left the served
+pool, while its three other ratios did not move at all — so a reader adjusting
+the figure that obviously changed would have been right by accident, and wrong
+the next time the denominator was what moved.
+
+**That block is a dated record too. What follows is this tree after the owner's
+agency-access panel landed** — another printer run, not an adjustment of
+anything above it.
+
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
+
+```
+entity routes: 100 declared, 163/245 landable call sites SERVED, 82 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 60 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 82, across 30 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 81 need a named capability
+```
+
+**Nothing was adopted or declared between these two blocks either, and the move
+is again a POPULATION change — in the opposite direction from the one above.**
+`src/components/admin/AgencyAccessPanel.jsx` gained one call site: it lists the
+agencies so the platform owner can grant a staff member a membership in one of
+them, and no route is declared over that read. The site is landable, so the
+landable denominator and the remainder each rose by one while the served count
+and the declared route count held still, and the new key added one entity to
+the remainder as well. Read it as one more site to adopt, not as a regression
+in anything already served; the totals are the block's to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner released the care-plan screens on 2026-10-08** — another printer run, not
+an adjustment of anything above it.
+
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
+
+```
+entity routes: 100 declared, 166/263 landable call sites SERVED, 97 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 68 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 97, across 32 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 96 need a named capability
+```
+
+**No route was declared between these two blocks, and most of the move is the
+population growing rather than anything being adopted.** Restoring the care-plan
+management, builder and automatic-trigger screens brought their Base44 entity
+calls back into `src/`, and every one of them lands in the record store. Three
+of the new sites happen to call a read or create a route was already declared
+over, with arguments it accepts, so they arrived SERVED; eight build their
+predicate or payload in a variable and joined the population the scan cannot
+read; the remaining seven, over six new keys (the trigger table's four
+operations, and the care plan's list and delete), joined the unrouted
+remainder. So the served count rose without anyone adopting a route, and the
+remainder rose because screens came back — read neither as progress nor as a
+regression. The totals are the block's to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner's decision to remove the clinical risk-prediction and PDGM payment
+features from the frontend** — another printer run, not an adjustment of
+anything above it.
+
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
+
+```
+entity routes: 99 declared, 159/256 landable call sites SERVED, 97 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 68 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 97, across 32 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 96 need a named capability
+```
+
+**Nothing was adopted between these two blocks, and the move is again a
+POPULATION change rather than progress or a regression.** The deleted screens
+took seven served reads with them — two of `Incident.filter`, two of
+`PatientAlert.filter`, and one each of `Incident.list`, `Task.filter` and
+`PatientRecommendation.filter`. That last one was its key's only call site, and a
+declared route nothing calls fails this gate, so the route was WITHDRAWN in the
+same change: the declared count fell by one without anything being refused or
+reclassified. The landable denominator and the served numerator each fell by
+seven, and the refusals, the unreadable sites and the remainder did not move.
+The fifteen other entity call sites the removal deleted were on paused OASIS
+entities that this gate never counted as landable; they belong to the
+destination gate, below.
+
+**That block is a dated record as well. What follows is this tree after the
+owner turned the phone, PDF, feedback and activity-report features back on** —
+another printer run, not an adjustment of anything above it.
+
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
+
+```
+entity routes: 99 declared, 160/263 landable call sites SERVED, 103 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 68 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 103, across 34 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 102 need a named capability
+```
+
+**Nothing was declared between these two blocks, and the move is again a
+POPULATION change rather than progress.** The screens that came back brought
+their own entity calls with them. The provider follow-up page's
+physician-directory read returned, so the served read that left with it four
+blocks above is back. The rest arrived UNROUTED: the dashboard's Time Saved
+card reads the caller's own note conversions again, the restored nurse
+performance page reads and writes nurse goals, and the activity logger appends a
+user-activity row again — six sites, five of them over keys the remainder did
+not hold before. The restored texts tab and scheduled-text queue read entities
+with no owned-store table at all, so they never reach this pool and move the
+destination gate instead. So the remainder rose without anybody's adoption work
+going backwards, and the totals are the block's to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner turned the admin, AI, security, education and discharge screens back on**
+— another printer run, not an adjustment of anything above it.
+
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
+
+```
+entity routes: 99 declared, 167/292 landable call sites SERVED, 125 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 75 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, PatientRecommendation.create, Physician.create
+  of those 125, across 37 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 124 need a named capability
+```
+
+**No route was declared between these two blocks, and the move is again a
+POPULATION change and not adoption.** The restored screens brought new landable
+call sites into the tree: seven are reads a declared route already serves, seven
+more build their arguments in a variable and joined the population the scan
+cannot read, and fifteen joined the unrouted remainder over eight keys it did
+not hold before — the security and activity logs, discharge summaries, education
+deliveries and the job log. One restored site, the system health monitor's
+incident count, was written to list the agency's incidents and narrow them on
+the screen rather than filter on a field the incident route refuses, so it
+landed in SERVED instead of adding a refused site. The totals are the block's
+to state.
+
+**That block is a dated record as well. What follows is this tree after the
+owner turned the OASIS Center back on** — another printer run, not an
+adjustment of anything above it.
+
+It was the PINNED block until the reading at the end of this section was
+taken, and is now a dated record like the rest.
+
+```
+entity routes: 97 declared, 161/283 landable call sites SERVED, 122 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 73 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, Physician.create
+  of those 122, across 36 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 121 need a named capability
+```
+
+**No route was adopted between these two blocks, and the move is a POPULATION
+change.** The OASIS Center's screens stopped calling entities and reach OASIS
+records through the OASIS record broker and the scoped upload list instead, and
+nine never-mounted duplicate OASIS components were deleted. Nine landable call
+sites left with them: six that a declared route served (among them the two
+pathway-library reads, the audit queue's staff read and the compliance report's
+audit read), two that passed arguments the scan cannot read, and one unrouted
+write — the automation engine's patient-alert create, which the broker now makes
+on the server. Two of those were their key's only call site, the pathway
+library's filtered read and the chart pusher's recommendation create, and a
+declared route nothing calls fails this gate, so both routes were WITHDRAWN in
+the same change: the declared count fell by two without anything being refused
+or reclassified. The compliance-audit create moved onto the unproved list,
+because its one call site that passed a literal payload was in a deleted
+component; it is the same route over the same contract. The OASIS entities'
+own call sites were never landable here and move the destination gate instead.
+The totals are the block's to state.
+
+**That block is a dated record as well. What follows is this tree after the telecom and activity screens were turned on** — another printer run, not an adjustment of anything above it.
+
+**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
+page carries it byte for byte, so paste what `pnpm run check:entity-routes`
+prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 97 declared, 161/284 landable call sites SERVED, 123 still to adopt
+  4 of those are sites a declared route REFUSES (ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 73 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, Physician.create
+  of those 123, across 36 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 122 need a named capability
+```
+
+**No route was declared between these two blocks, and the move is one landable site.** The restored audit trail viewer reads the security log directly for the built-in administrator, over a key the remainder already held, so the landable denominator and the remainder each rose by one and nothing else in this pool moved. Two other sites changed outside it: marking a text read now goes through its own server function, taking one unserved site away, and the training hub saves a finished lesson, adding one, so the unserved count is unchanged. The totals are the block's to state.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4052,35 +4329,37 @@ different kinds of work:
   confidently showing nobody. The approver dropdown in the same file was repaired
   and asks only for `tenant_role`, which the roster does project. That contrast
   is the reason a refusal is read per SITE and not per file.
-- **Sixty pass arguments the scan cannot read**, because the call builds
+- **Seventy-three pass arguments the scan cannot read**, because the call builds
   its predicate in a variable. A route may serve them or may refuse them and
   nothing here can say which; the contract's own refusals are what check them.
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Seventeen have no route declared at all**, over fourteen entity and
-  operation keys: fourteen reads over eleven keys, and three writes over three.
+- **Forty-six have no route declared at all**, over thirty-three entity and
+  operation keys: thirty-three reads over twenty-one keys, and thirteen writes over
+  twelve.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
   adding two branches' deltas is wrong in both directions. **The write half fell
-  furthest, and not because anyone worked on it** — the reference writes took
-  eight sites out of this pool and the withdrawn duty toggle put nothing back,
-  so a bucket nobody touched moved twice. That is what a remainder does: it is a
-  property of what is LEFT. The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.66 call sites and a write
-  key 1.24, so a read port has historically served many screens per route while
+  furthest once, and not because anyone worked on it** — the reference writes
+  took eight sites out of this pool and the withdrawn duty toggle put nothing
+  back — and has since grown again as restored screens brought their own writes
+  back, so a bucket nobody adopted from has moved in both directions. That is
+  what a remainder does: it is a property of what is LEFT, and of what ARRIVES.
+  The reason the shape keeps moving is measurable on
+  the sites already served: a read key there carries 2.71 call sites and a write
+  key 1.29, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.27 sites and a
-  write key 1.00, which is nothing like the served spread — a write key there
-  now covers exactly one site each, so the ratio has no spread left to read.
+  the remainder, though**: inside this pool a read key covers 1.57 sites and a
+  write key 1.08, which is nothing like the served spread.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder
   costs more per site than the served count suggests, and a wave drawn from it
   will look slow against the same effort spent earlier.
 
-  **This bullet has now been re-derived at eight consecutive heads. Across the
+  **This bullet has now been re-derived at ten consecutive heads. Across the
   first five every one of its six figures moved, reversing a finding stated in
-  its own prose three times; at the sixth, seventh and eighth only the served
+  its own prose three times; at the sixth through the tenth only the served
   read pair did, which are the first heads where re-deriving the whole bullet
   changed one figure.** One head ago the two halves were level at fifteen sites each
   and the write key was the THINNER, at 1.15 against 1.25; the head before that
@@ -4158,6 +4437,77 @@ different kinds of work:
   all. So the four pairs are not only a guard against a quotient sitting still
   while both halves move — they are also the only thing here that can tell a
   repaired site from a new route, since both raise the served count by one.
+
+  **And it moved on this branch for the plainest cause of all: a new read with
+  a key nobody had declared.** The agency-access panel's agency list arrived in
+  the remainder as one site over one new key, so the remainder's read pair went
+  from fourteen sites over eleven keys to fifteen over twelve and its read ratio
+  FELL, from 1.27 to 1.25, because the newcomer was thinner than what was already
+  there. The served pool did not move in any of its four figures. That is the
+  remainder mechanism once more, from the side of an arrival rather than a
+  departure.
+
+  **And again when the care-plan screens were restored, which moved both pools
+  at once.** Three restored sites landed on keys the served pool already held —
+  two reads and a create — so its read pair went from 132 sites over 50 keys to
+  134 over the same 50 and its write pair from 31 over 25 to 32 over 25, raising
+  both served ratios with no route declared. The remainder took seven sites over
+  six new keys, so its read pair went to seventeen over fourteen and its write
+  pair from three over three to eight over seven; the write ratio left 1.00 for
+  the first time in several heads, because the trigger table's update is called
+  from two places.
+
+  **It moved again when the clinical risk-prediction and PDGM payment features
+  were removed, and for a cause the bullet had not seen: a served KEY left.**
+  The deleted screens took seven served read sites with them, and one was the
+  only caller of `PatientRecommendation.filter`, whose route was withdrawn — so
+  the served read pair goes from 134 sites over 50 keys to 127 over 49, and its
+  ratio from 2.68 to 2.59. The other six sites were on keys the pool keeps. Every
+  earlier move of this pair came from a key being declared, a site being
+  repaired or a single site leaving; here a key left with its last site, and the
+  served write pair and all four of the remainder's figures stayed exactly where
+  they were. A served ratio falling for that reason is screens deleted on
+  purpose, not routes going thinner.
+
+  **And again when the phone, PDF, feedback and activity-report features came
+  back, which moved both pools.** The provider follow-up page's directory read
+  rejoined a key the served pool already held, so its read pair went from 127
+  sites over 49 keys to 128 over the same 49. The remainder took six sites:
+  the goal read and a second note-conversion read moved its read pair from
+  seventeen over fourteen to nineteen over fifteen, and the goal create, update
+  and delete with the activity append moved its write pair from eight over seven
+  to twelve over eleven — four writes over four new keys, which is why the write
+  ratio fell back toward one.
+
+  **And again when the admin, AI, security, education and discharge screens
+  were turned back on — the reverse of every earlier cause: screens came back
+  ON.** They put fifteen new sites into the no-route pool over eight new keys,
+  so its read pair went from nineteen sites over fifteen keys to thirty-two over
+  twenty-one and its write pair from twelve over eleven to fourteen over
+  thirteen, and seven new reads into the served pool over keys it already held,
+  so the served read pair went from 128 sites over 49 keys to 135 over the same
+  49 and its ratio rose with no route declared. Nothing was declared and nothing
+  was repaired; both pools grew because the population did.
+
+  **And again when the OASIS Center was turned back on, which is the first
+  head where a remainder QUOTIENT held while both of its terms moved.** The
+  automation engine's patient-alert create left the no-route pool with its key —
+  the OASIS record broker now makes that write on the server — so the
+  remainder's write pair went from fourteen sites over thirteen keys to thirteen
+  over twelve, and its ratio printed 1.08 both times. That is the failure this
+  bullet's pins were written for: a pin on the quotient alone would have seen no
+  change in a head where the population moved, and only the integer pair shows
+  it. The remainder's read pair did not move. The served pool lost six sites as
+  the OASIS screens stopped calling entities — five reads, two of them the
+  pathway library's filtered read, whose key left with its last site and whose
+  route was withdrawn, and one write, the deleted assistant's compliance-audit
+  create, which was that key's only served site: every remaining caller passes
+  a variable, so the key left the served pool for the unproved list rather than
+  the remainder. So its read pair went from 135 sites over 49 keys to 130 over
+  48 and its write pair from 32 over 25 to 31 over 24. Nothing was declared and nothing
+  was repaired; screens moved onto a server broker the route gate does not see.
+
+  **And by one site when the audit trail viewer came back**: its security-log read joined a key the remainder already held, so the remainder's read pair gained a site and kept its keys, and the served pool did not move.
 
 **So "how many sites remain" is three questions with three answers, and the
 middle one is not a number of tasks at all.** A plan that sizes Stage J off the
@@ -4355,8 +4705,11 @@ SERVED line by ZERO.** `AIConfiguration.create` and `.update` are both served by
 All four sites — two in `src/components/admin/AIConfigurationManager.jsx`, two in
 `src/pages/UserSettings.jsx` — pass a payload object and an id held in a
 variable, so every one of them would be declared and then counted UNPROVED.
-Measured here rather than taken: the resolver reads 331 of the 453 sites and
-refuses 122, so it is not answering uniformly, and it refuses all four of these.
+Measured here rather than taken: the resolver read 331 of the 453 sites and
+refused 122 at the head this row was written on, so it is not answering
+uniformly, and it refuses all four of these. (Re-read 2026-10-08: 331 of 452
+and 121 refused. Beside that one, not through it — the population moved between
+the two heads, so the pair is two readings and not a delta.)
 **"A route to declare" and "a served site gained" are different quantities**, and
 on this row the second is zero.
 
@@ -4390,9 +4743,13 @@ and refuses a payload naming one, so a browser cannot append to it — that is
 where the screen shows them to whoever opens it today.
 
 **The unreadable population is not a tooling limit waiting to be lifted, and the
-obvious next idea buys a third of what it looks like.** Repo-wide there are 453
-entity call sites, of which 331 are readable and 122 are not. Only seven of the
-122 fail because they name a module-level constant the resolver does not carry,
+obvious next idea buys a third of what it looks like.** Repo-wide there were 453
+entity call sites when this was measured, of which 331 were readable and 122
+were not; on 2026-10-08 the same instrument reads 452, 331 and 121. The
+proportions below are of the first reading and are not re-derived, because what
+the paragraph is about is the SHAPE of the unreadable pool rather than its size.
+Only seven of the 122 fail because they name a module-level constant the
+resolver does not carry,
 over six distinct names: `tools-entity-call-arguments.mjs` resolves what
 `src/lib/queryLimits.js` exports and nothing else, while `ADR_CASE_READ_LIMIT`,
 `ROSTER_PAGE_SIZE`, `PAGE_SIZE`, `ACTION_ITEM_SCAN_LIMIT`,
@@ -4451,8 +4808,26 @@ about 33 hollowed-out pages — comes from a filename scan rather than that tool
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
+(Re-read on the tree that removed the clinical risk-prediction and PDGM payment
+features: **193 call sites across 77 files and 31 entities; 52 files lose
+everything they read** (reads 112, writes 80, subscriptions 1), leaving 25
+partially affected, and the generated page was rewritten in the same change.
+`OASISScenario` left the entity count because every one of its call sites was on
+a deleted screen. The population is still the destination gate's whole
+cannot-land side, so it moved exactly as that side did.)
+
 **208 of 453 — 46% — have no destination in the owned store, and 194 of those
-reach a domain the migration has decided not to carry.** The other fourteen are
+reach a domain the migration has decided not to carry.** (Re-read 2026-10-08:
+208 of **452**, the deleted follow-up page's site having left the population.
+**The 46% and the 194 both came out the same**, which is the hazard this
+paragraph is already about, one layer down: an operand moved and the figure
+derived from it did not, so nothing looked stale. Measure, do not re-check.)
+(Re-read again on the tree that removed the clinical risk-prediction and PDGM
+payment features: 193 of **430**, and 179 of those uncarried — 119 `hub`,
+unchanged, and 60 `preserved_paused`, fifteen fewer because those OASIS sites
+were on deleted screens. This time the numerator moved with the denominator and
+the percentage moved with them, to 45%; it is still the figure least worth
+quoting.) The other fourteen are
 writes to entities it DOES carry, read-only — nine refused by the broker
 family's D2 ceiling and five by a D83 reference table's GRANT: what has no
 destination there is the OPERATION rather than the domain, and conflating the
@@ -4465,8 +4840,11 @@ the inventory, derived from `CARRIED_DISPOSITIONS`, and the tell was sitting in
 the next sentence the whole time — 119 plus 75 is 194, and 203 was never a
 number this paragraph could reach. 119 of the 194 are the training domain,
 whose destination is the Hub; 75 are `preserved_paused`. **That 75 is not an
-off-by-one against the table's 74**, which counts `preserved_paused` inside
-`no_table` only — the 75th is the `no_realtime_seam` site, whose entity is also
+off-by-one against the table's 74**, which counts `preserved_paused` inside one
+destination bucket only — `no_table` at the head above, `no_access_contract`
+since #408 gave those entities schema-only tables, which is why the bucket NAME
+is not the durable half of this sentence — the 75th is the `no_realtime_seam`
+site, whose entity is also
 `preserved_paused`, so it is on the uncarried side too although its bucket is
 the one bucket that could fall either way. A plan that sizes this stage by the
 call-site count is sizing the wrong thing.
@@ -4485,7 +4863,7 @@ them.**
 
 - **Training and learning — `hub`, twelve entities.** Their product answer was
   already given: D8 and `docs/CENTRAL_LEARNING_CUTOVER.md` send them to
-  `kdeyarmin/caremetric-support-hub`, both controls unset behind a five-step
+  `kdeyarmin/caremetric-support-hub`, both controls unset behind a seven-step
   pre-cutover checklist. **They are neither his to decide nor ours to port**,
   and porting their tables into the owned store would build precisely what D8
   decided not to build. They also pass a restoration test outright — F19 in
@@ -4501,6 +4879,47 @@ them.**
   can hold a file — so each call site needs a hand-written contract with its own
   gate and refusals. **A domain with no backing Base44 function is MORE work
   here, not less, because there is no capability to port.**
+
+  **Read that D7 quote as a mechanism and not as a count.** The reason its
+  sentence was unimplementable is that one field was answering two questions:
+  the disposition decided both whether an entity's data is carried and whether
+  its execution is on, so "schemas and data still migrate" had nowhere to be
+  true. Separating the two is what makes it implementable, and that is the claim
+  to carry — it holds whether or not any particular change has landed, where a
+  sentence of the form "none of them has a table" goes stale the moment one
+  does.
+
+  **And do not write "the fourteen paused entities."** The `preserved_paused`
+  population is **54**, measured from `tools-transition-disposition.json` on this
+  tree. Eight plus six is the subject of this bullet and the fax-and-voice bullet
+  below it, not a population — the two happen to sum to fourteen, and "fourteen"
+  is also in use nearby for a count of FILES reached only through a paused
+  ancestor, which is a different thing again. Name the bullet's own entities, or
+  re-measure.
+
+  **The restoration test the training bullet runs, run here: it fails.**
+  Verified by hand on this tree, because this is the kind of claim that should
+  not be relayed. `src/components/hub-tabs/OASISAnalyzer.jsx:110` is `const
+  OASIS_ANALYZER_ENABLED = false;`. The file's **only** export is `export default
+  function OASISAnalyzer` at `:2756`, whose first statement is `if
+  (!OASIS_ANALYZER_ENABLED)` returning the "OASIS AI Analyzer Paused" card.
+  `<OASISToPatientChartPusher` at `:1771` sits inside `function
+  EnabledOASISAnalyzer`, declared at `:130` and **not exported**. So the call site
+  is unreachable at runtime with no alternative path — the opposite of the
+  training domain, where nine pages are in the nav manifest and one backing
+  function is paused.
+
+  **Why it is off is recorded, and it is a safety decision rather than neglect.**
+  Eleven of the twelve source flags in this domain arrive in one commit,
+  `67d9d5ee` of 2026-09-02, "Fail closed on unverified OASIS, PDGM, and
+  tenant-sensitive paths" — AI correctness and PDGM payment safety: a verified
+  CMS grouper, protected assessment provenance, and an explicit warning that an
+  unavailable grouping is not a $0 result. That is seventeen days before this
+  migration's first decision document, so it is not something the migration
+  switched off and not something the migration may switch back on. **Whether
+  OASIS comes back at all is the owner's**, which is the activation half D7
+  already leaves to him. This bullet records the failed test; it does not propose
+  restoring it.
 - **Fax and voice — `preserved_paused`, six entities.** Whether these function
   today is **not answerable from this tree.** D7's pauses are attested by
   receipts rather than source flags, and the Telnyx credentials live in-app as
@@ -4571,6 +4990,31 @@ a colleague is in is already served.
 
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
+
+  **That mode now exists, under that exact name.** `VITE_PENNSYNC_BACKEND=independent`
+  is the app's own branded sign-in, sign-out, session lease and tenant resolution
+  against a configured Supabase project and the owned business API, for a real
+  staff account. The staging mode's four-actor pin is lifted for this mode only;
+  its app id, project reference and URL, publishable key and service origin are
+  read from build configuration and checked for shape and mutual agreement rather
+  than pinned, with the staging app and the staging project refused by name. The
+  synthetic workspace, the `staging_*` referral actions and the `Synthetic %`
+  projection are **absent** from it rather than widened. **THE SWITCH IS OFF:**
+  nothing is configured and no build points anywhere. Still owed before a staff
+  account can be used — invitation acceptance and password set, both of which
+  deliver mail to a real person and so are the owner's to release, and an
+  end-to-end acceptance job driving the COMPILED app in this mode against a local
+  store pinned to the production app id.
+
+  Two things about the bullet above, since this is the kind of line that invites a
+  wrong correction. The first clause is **partly done already**:
+  `src/api/base44Client.js` takes the owned adapter for either owned mode, and
+  what is left is removing the Base44 client construction, which waits on the
+  entity call sites rather than on the mode. And the bullet itself is **accurate
+  and needs no edit** — it was read as carrying a stale value, on the grounds that
+  the configuration reader accepted only `base44` and `independent-staging`, which
+  was a correct measurement and the wrong conclusion. A Stage J bullet describes
+  work to do, so it is not stale for naming something the code has not done yet.
 - Replace call sites tier by tier — **but not by the count, and not by the
   entity.** What is left is three populations and only one of them is work;
   the waves, and the column that cannot be derived, are above. A lint rule
@@ -4631,29 +5075,76 @@ is the small part:
 | --- | --- |
 | `ios/PennSync/WebViewController.swift:38` | `appURL` hard-bound to `https://caremetricai.base44.app/` |
 | `ios/PennSync/Info.plist:52-56` | `WKAppBoundDomains` is `base44.app`, `base44.com`. It takes up to 10, so the transitional build lists OLD and NEW and one binary works either side of the DNS move |
-| `base44/functions/createUserWithTempPassword/entry.ts:36-37` | store URLs in the invitation email |
+| `base44/functions/createUserWithTempPassword/entry.ts` | The two store URLs in the invitation email, `DEFAULT_IOS_APP_URL` and `DEFAULT_ANDROID_APP_URL` — **and a second reason this file is on the list**: it consumes `APP_PUBLIC_URL` as an ORIGIN through `getAppBaseUrl`, and derives every user-visible link in that mail from it. `base44ClientRequest`'s hard-coded `https://base44.app` is the SDK's BACKEND and does **not** move with the domain; do not conflate the two. Named by constant and carrying no line number on purpose: an earlier revision of this row said `:36-37`, which are the `Base44-App-Id` header and nothing to do with a URL, and two readers on two heads disagreed by sixty lines about where the URLs actually were. **The two `ios/` rows above keep theirs for a reason that does not apply here:** `tools-app-store-migration.test.mjs` byte-pins those files to a baseline commit, so a line in them cannot move without failing that suite, while this Deno function is edited freely. `docs/HOSTING_EXIT_RUNBOOK.md` step 7 is the operational half — point `APP_PUBLIC_URL` at the new origin in the Base44 function environment, owner the repository owner, reversible |
 | `tools-app-store-migration.test.mjs` | byte-pins all 25 `ios/` and `public/` files to baseline `1ff6018` and asserts the Base44 URL is still present, so any of the above FAILS the suite by design. Updating it is a reviewed act, not a fix |
 
-`caremetricai.base44.app` must stay reachable until adoption of the new build is
-high: an installed app on the old binary points there permanently.
+`caremetricai.base44.app` must stay reachable while any installed copy of the old
+binary is in use: `appURL` is hard-bound, so such a copy points there permanently
+and no change in this repository can redirect it. **How long that is, nothing here
+can say.** An earlier revision of this sentence ended "until adoption of the new
+build is high", which offers an end date the mechanism does not supply — nothing in
+this tree observes how many installed copies exist or what share has moved. The
+condition is measured and its threshold is not; both halves belong in the sentence.
 
 **What actually blocks a native release has little to do with Railway.**
 `docs/APP_STORE_SUBMISSION_CHECKLIST.md` opens with a hard STOP — no IPA or AAB
 may be uploaded, *including to TestFlight or Play testing tracks* — and the
 reasons are recovery problems rather than engineering ones:
 
-1. **Signing continuity.** Apple provisioning for `com.caremetric.ai` and Play
-   App Signing for `com.caremetic.ai` must be RECOVERED, not regenerated. A new
-   signing key means existing users cannot update; they would have to uninstall
-   and reinstall.
+1. **Signing continuity — Android only.** Play App Signing for
+   `com.caremetic.ai` must be RECOVERED, not substituted: a new signing key means
+   existing users cannot update, and would have to uninstall and reinstall.
+   Whether the enrolment exists is **unmeasured from this repository**, for the
+   reason item 2 gives — say unmeasured rather than absent.
+
+   **iOS is not in this clause, and an earlier revision of this list put it
+   here.** Nothing cryptographic needs recovering on that side. The App Store
+   re-signs every upload, so a distribution certificate is reissued rather than
+   recovered, and `ios/project.yml` already sets `CODE_SIGN_STYLE: Automatic`.
+   What makes an upload an UPDATE is an identity and not a key: the Apple team
+   plus the bundle id `com.caremetric.ai`, which `ios/project.yml` pins and
+   `tools-app-store-migration.test.mjs` asserts. Apple's public record for app
+   `6757097720` gives the seller as this repository's owner (read 2026-10-01 from
+   `itunes.apple.com/lookup`), so the record is on his own account and no App
+   Store Connect transfer is involved. **What that reading does not establish**,
+   and one sign-in would: whether the Developer Program membership is current and
+   the credentials are to hand. The Stage L row "Recover Android signing, and
+   Apple **account** access" has carried the dated correction since 2026-09-22;
+   this list was contradicting it two hundred lines away, which is why the
+   narrowing happens here rather than there.
+
+   **The two bundle ids differ, and the difference is deliberate** — Apple
+   `com.caremetric.ai`, Play `com.caremetic.ai`, with no `r`. Why is recorded
+   once, in the comment directly above the two constants in
+   `base44/functions/createUserWithTempPassword/entry.ts`, along with the note
+   that both were verified to resolve. This plan points at that comment rather
+   than keeping a second copy of the reason, because a second copy is a second
+   thing to go stale.
 2. **There is no `android/` directory in this repository.** Blocker 6 is not an
    Android update, it is a project that does not exist here.
-3. **Four live in-app purchases** — Monthly $29.99, Quarterly $79.99,
-   Semi-Annual $149.99, Annual $264.99 — and **none of the native IAP
-   implementation is in this repository**: no StoreKit, no receipt validation,
-   no entitlement code, and no server-side subscription state in either store.
-   This is a standing risk today, independent of the migration, and nothing in
-   the migration plan carries subscription state across.
+3. **Four in-app purchase products are configured in the App Store record** —
+   Monthly $29.99, Quarterly $79.99, Semi-Annual $149.99, Annual $264.99 — and
+   **none of the native IAP implementation is in this repository**: no StoreKit,
+   no receipt validation, no entitlement code, and no server-side subscription
+   state in either store. This is a standing risk today, independent of the
+   migration, and nothing in the migration plan carries subscription state
+   across.
+
+   **An earlier revision called them "four live in-app purchases", which claims
+   more than the evidence carries.** What is measured is an App Store listing
+   showing four subscription products with prices, and that proves they are SET
+   UP in the record. It does not prove the app can sell them, and Base44's own
+   documentation on store billing says it cannot — its answer is that the
+   purchase has to happen on the web for now, with an explicit instruction not to
+   use Stripe for payments inside a mobile app. Read from this repository,
+   subscriptions are Stripe (`stripe_customer_id`, `stripe_subscription_id`,
+   `stripe_price_id`), and a search of the whole tree for Apple receipt
+   verification, the App Store server API or StoreKit returns nothing at all.
+
+   **Do not read that as "there are no in-app purchases."** Whether anyone has
+   ever been charged is invisible from here, and what to do about four configured
+   products is the owner's decision. This stays a STOP item; what changed is its
+   reason, from a thing known to be working to a thing nobody has measured.
 4. **Guideline 4.2.** It is a web wrapper before and after, so the move changes
    nothing here. The checklist's own recommendation is Apple Business Manager
    distribution (unlisted or custom app) rather than public listing, since the
@@ -4798,9 +5289,10 @@ account, and nobody can be admitted as one.**
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
 | Base44 owner-signed export permits | Stage I | Production and legacy apps |
-| Recover Android signing, and Apple **account** access | Stage L — and **before the frontend moves** | Corrected 2026-09-22 ([runbook](MOBILE_RECOVERY_RUNBOOK_2026-09-22.md)). *Android:* whether it can ever be updated turns on one setting — Play Console → App integrity → is Play App Signing enabled? If yes, a lost upload key can be reset; if no, the only copy of the key is the PWABuilder output zip, and without it the app cannot be updated. *iOS:* "never regenerated" was wrong here — iOS certificates and profiles are reissued routinely without breaking updates; continuity is the app record `6757097720` staying in the same team, so recovery is signing into that account (lead: team `JC83GT8MG8`). Both apps load `caremetricai.base44.app`, so both must be recoverable before Stage J moves the origin |
+| Recover Android signing, and Apple **account** access | Stage L — and **before the frontend moves** | Corrected 2026-09-22 ([runbook](MOBILE_RECOVERY_RUNBOOK_2026-09-22.md)). *Android:* whether it can ever be updated turns on one setting — Play Console → App integrity → is Play App Signing enabled? If yes, a lost upload key can be reset; if no, the only copy of the key is the PWABuilder output zip, and without it the app cannot be updated. *iOS:* "never regenerated" was wrong here — iOS certificates and profiles are reissued routinely without breaking updates; continuity is the app record `6757097720` staying in the same team, so recovery is signing into that account (lead: team `JC83GT8MG8`). **What the LIVE binaries load is unmeasured**, and an earlier revision of this row asserted that both apps load `caremetricai.base44.app`. §7 of that runbook says the live binaries' own configuration is unknown because their source was not found, and every public surface tried on 2026-10-01 leaves it unknown: both app origins serve deliberately empty association files (distinguishable from the SPA shell an invented path returns), the web manifest is origin-relative with `id`, `start_url` and `scope` all `"."`, and the marketing site references the custom domain and no Base44 host. What IS measured is **this repository's** `ios/`, pinned in the table above: `appURL` hard-bound to that host and `WKAppBoundDomains` listing only `base44.app` and `base44.com`, so that binary could not load the custom domain even if the URL changed. The owner said on 2026-10-01 that the iPhone app was *built only with Base44* — which answers how it was MADE, not what it LOADS, and says nothing whatever about Android, so the Android half keeps both unknowns and no part of that answer may be carried across to it. Either way both must be recoverable before Stage J moves the origin, which is why this row sits before the frontend move rather than inside Stage L |
 | Find the Android build's origin | Stage L | Searched 2026-09-22: no Android file in this repository's full history (4,338 commits, 175 branches), nor in `CM-Go`, `CMbackup` or `App-Studio` — and all three were created after the live build's Jan 15, 2026 update, so none could have produced it. Per the July audit it is a PWABuilder TWA, which has no source to find; the artefact is the output zip holding the key |
-| Recover or reimplement the IAP entitlement path | Stage L, and today | Four live products; no StoreKit, receipt validation or subscription state in this repository. **This repository's `ios/` is not the live app** — it has no StoreKit and targets iOS 15.0 where the live app requires 15.6 — so submitting it as an update would remove purchase and restore for paying subscribers |
+| Recover or reimplement the IAP entitlement path | Stage L, and today | Four products **configured in the App Store record**; no StoreKit, receipt validation or subscription state in this repository, and nothing under `ios/` references `StoreKit`, `SKProduct` or `Transaction`. **This repository's `ios/` is not the live app** — it has no StoreKit and targets iOS 15.0 where the live app requires 15.6 — so it must not be submitted as an update to it. That conclusion stands on the target and the absent framework alone. An earlier revision ended "would remove purchase and restore for paying subscribers", which assumes the live app sells subscriptions; the STOP list above records why that is unmeasured, and whether anyone has ever been charged is invisible from here |
+| **Repoint the App Store listing's own URLs** | Stage L, **and today** | Read off the live product page on 2026-10-01: the listing's privacy-policy, Support and EULA URLs are all `https://caremetricai.base44.app/…`. Apple requires a working privacy-policy URL, so retiring that hostname breaks the **listing** and not only the app — a failure mode the rest of this section does not cover, since every other row is about a binary. Fixing it is App Store Connect **metadata**: no upload, no signing, no StoreKit, so it is the one piece of this that is not behind the upload STOP and can be done before anything is recovered |
 | Store-side privacy declarations, EULA approval, physical-device tests | Stage L | Blockers 5 and 7; the bundled privacy manifest is already correct |
 | Distribution route decision (public listing vs Apple Business Manager) | Stage L | Guideline 4.2 applies to a web wrapper either way |
 

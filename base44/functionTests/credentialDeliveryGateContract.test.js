@@ -129,7 +129,6 @@ function request(body, authorization = 'Bearer test-only-admin-session') {
 
 async function loadHandler(name, runtime, {
   release,
-  enableSignerSource = false,
   stubSignerAuthority = false,
 } = {}) {
   let source = await readFile(new URL(`functions/${name}/entry.ts`, ROOT), 'utf8');
@@ -137,12 +136,6 @@ async function loadHandler(name, runtime, {
     /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';?/,
     'const createClientFromRequest = globalThis.__credentialGateCreateClient;',
   );
-  if (enableSignerSource) {
-    source = source.replace(
-      'const PUBLIC_SIGNATURE_RELEASE_ENABLED = false;',
-      'const PUBLIC_SIGNATURE_RELEASE_ENABLED = true;',
-    );
-  }
   if (stubSignerAuthority) {
     source = source.replace(
       'const initialAuthority = await loadAuthority(base44, input.agencyId);',
@@ -508,7 +501,10 @@ function signerRuntime({ user = adminUser() } = {}) {
       create: async () => { runtime.bump('SignatureAuditEvent.create'); return { id: 'audit-1' }; },
     },
   };
-  runtime.signerAuthority = { entities, userId: user?.id || null, membership: null, snapshot: {} };
+  // The built-in administrator issues as the platform tier, so the chart
+  // check admits it and the test isolates the delivery-gate ordering.
+  runtime.signerAuthority = { entities, userId: user?.id || null, membership: null,
+    snapshot: { tenant_role: 'platform_owner' } };
   runtime.signerPackage = {
     package: {
       token_issue_claimed_by: null,
@@ -526,10 +522,9 @@ const SIGNER_REQUEST = {
   request_id: 'request-1',
 };
 
-test('source-enabled signer issuance gates before token/provider mutation', async () => {
+test('released signer issuance gates before token/provider mutation', async () => {
   const closed = signerRuntime();
   const closedHandler = await loadHandler('generateSignerToken', closed, {
-    enableSignerSource: true,
     stubSignerAuthority: true,
   });
   const closedResponse = await closedHandler(request(SIGNER_REQUEST));
@@ -540,7 +535,6 @@ test('source-enabled signer issuance gates before token/provider mutation', asyn
   const open = signerRuntime();
   const openHandler = await loadHandler('generateSignerToken', open, {
     release: 'enabled-v1',
-    enableSignerSource: true,
     stubSignerAuthority: true,
   });
   const openResponse = await openHandler(request(SIGNER_REQUEST));
@@ -551,9 +545,9 @@ test('source-enabled signer issuance gates before token/provider mutation', asyn
   assert.equal(callCount(open, 'sendEmail'), 0);
 });
 
-test('source-enabled signer issuance preserves unauthenticated 401 before the delivery gate', async () => {
+test('released signer issuance preserves unauthenticated 401 before the delivery gate', async () => {
   const runtime = signerRuntime({ user: null });
-  const handler = await loadHandler('generateSignerToken', runtime, { enableSignerSource: true });
+  const handler = await loadHandler('generateSignerToken', runtime);
   const response = await handler(request(SIGNER_REQUEST));
   assert.equal(response.status, 401);
   assertNoDeliveryMutations(runtime, 'generateSignerToken unauthorized');

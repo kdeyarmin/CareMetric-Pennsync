@@ -84,6 +84,10 @@
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
     },
+    "CallLog": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). Its other signal is `nurse_email`, which records who acted rather than whose row it is. The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
     "CareSetting": {
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
@@ -163,6 +167,10 @@
     "FacilityDocumentationRule": {
       "kind": "agency",
       "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "FaxTemplate": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is the platform `created_by`, which records who authored a cover sheet rather than whose row it is, and a template outlives its author's membership. Takes a real key instead, at the cost that the original's per-creator read becomes agency-wide tenancy \u2014 the per-person narrowing moves into the contract over it, which is D36's rule that tenancy is not ownership."
     },
     "FeaturePackage": {
       "kind": "agency",
@@ -302,6 +310,10 @@
       "kind": "agency",
       "because": "Its only tenancy signal is approved_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
     },
+    "PhoneNumber": {
+      "kind": "agency",
+      "because": "Keyed by `assigned_to_email`, a person who works for an agency. The person is not the tenant, and a work number outlives whoever currently holds it, so it takes `agency_id` before load. `global` is a POSITIVE refusal and not a forced one: the gate's own re-checks pass for this entity -- `assigned_to_email` names the record's subject rather than who acted, so `isActorColumn` does not match it, and a first draft of this entry wrongly said D83 refused it on that ground. What refuses it is the meaning: a global table is read by every agency and written by migration and never at run time (D83), while a number pool is operational state staff provision and reassign, so `global` would publish one agency's work numbers to all of them."
+    },
     "Physician": {
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
@@ -418,7 +430,7 @@
     },
     "User": {
       "kind": "roster",
-      "because": "D23. Its agency_id, agency_name and account_type are self-editable profile labels — each field's own schema description says so and says never to authorize from it — so no predicate written against this row can decide who may read it. The authority store's membership already models the roster, cannot be edited by its subject, and pennsync_private.context authorizes against it today; caller_roster_ids() asks it. Read only: with no write policy, forced RLS refuses every write from everyone including the record owner, which keeps D23's open profile-write question from quietly resolving itself as allowed."
+      "because": "D23. Its agency_id, agency_name and account_type are self-editable profile labels \u2014 each field's own schema description says so and says never to authorize from it \u2014 so no predicate written against this row can decide who may read it. The authority store's membership already models the roster, cannot be edited by its subject, and pennsync_private.context authorizes against it today; caller_roster_ids() asks it. Read only: with no write policy, forced RLS refuses every write from everyone including the record owner, which keeps D23's open profile-write question from quietly resolving itself as allowed."
     },
     "UserFavorite": {
       "kind": "self",

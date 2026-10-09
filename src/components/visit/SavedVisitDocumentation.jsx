@@ -1,4 +1,5 @@
 import { VITAL_FIELDS } from './VitalSignsForm';
+import PostVisitProcessingPanel from './PostVisitProcessingPanel';
 
 const RECORDED_VITALS = [...VITAL_FIELDS, { key: 'weight', label: 'Weight (unit not recorded)', unit: '' }];
 
@@ -31,6 +32,7 @@ export default function SavedVisitDocumentation({ visit, patient, editingAvailab
           </dl>
         ) : <p className="mt-2 text-sm text-slate-600">No vital signs were stored for this visit.</p>}
       </section>
+      {editingAvailable && visit.status === 'completed' && <PostVisitProcessingPanel visitId={visit.id} />}
     </section>
   );
 }

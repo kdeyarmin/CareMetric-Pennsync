@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { manageOASISRecords, oasisClientKey } from "@/functions/manageOASISRecords";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,19 +12,32 @@ import {
   AlertTriangle,
   Bell,
   Target,
-  Shield
+  Shield,
+  CheckCircle2,
+  Loader2
 } from "lucide-react";
 
-const TASK_CREATION_BLOCKER =
-  "AI-suggested OASIS task creation is paused pending an atomic, idempotent, patient-authorized broker. No tasks have been created.";
-
-export default function OASISTaskGenerator({ 
-  analysisResults, 
-  _pdgmData, 
+/**
+ * Suggests follow-up tasks from an OASIS analysis and, on the clinician's click,
+ * creates the selected ones on the patient's chart. Creation goes through the
+ * OASIS record broker, which first confirms this clinician may open the chart
+ * (agency lead, recorded creator, or an active care-team seat), assigns each
+ * task to the clinician, and keys every task per finding so a repeat click or a
+ * retry after a dropped response files nothing twice.
+ */
+export default function OASISTaskGenerator({
+  analysisResults,
+  _pdgmData,
+  patientId,
   patientName,
+  analysisId,
+  onTasksCreated,
 }) {
   const [suggestedTasks, setSuggestedTasks] = useState([]);
   const [selectedTasks, setSelectedTasks] = useState([]);
+  const [creating, setCreating] = useState(false);
+  const [createdIds, setCreatedIds] = useState([]);
+  const queryClient = useQueryClient();
 
   // Generate suggested tasks based on analysis
   useEffect(() => {
@@ -125,11 +141,48 @@ export default function OASISTaskGenerator({
 
     setSuggestedTasks(tasks);
     setSelectedTasks(tasks.filter(t => t.priority === 'high').map(t => t.id));
+    setCreatedIds([]);
   }, [analysisResults, patientName]);
 
+  const createSelectedTasks = async () => {
+    if (!patientId || selectedTasks.length === 0) return;
+    const chosen = suggestedTasks.filter((task) => selectedTasks.includes(task.id) && !createdIds.includes(task.id));
+    if (chosen.length === 0) return;
+    setCreating(true);
+    try {
+      const { results = [] } = await manageOASISRecords('create_tasks', {
+        patient_id: patientId,
+        tasks: chosen.map((task) => ({
+          key: oasisClientKey('oasis-task', patientId, analysisId, task.id),
+          title: task.title,
+          description: task.description,
+          type: task.type,
+          priority: task.priority,
+          due_date: task.due_date,
+          ai_reason: task.ai_reason,
+        })),
+      });
+      const done = chosen.filter((task, index) => ['created', 'existing'].includes(results[index]?.status));
+      setCreatedIds((prev) => [...new Set([...prev, ...done.map((task) => task.id)])]);
+      if (done.length) {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        onTasksCreated?.(done.length);
+      }
+      if (done.length === chosen.length) {
+        toast.success(`${done.length} task${done.length === 1 ? '' : 's'} added to this patient.`);
+      } else {
+        toast.error(`${done.length} of ${chosen.length} tasks were added. Try the rest again.`);
+      }
+    } catch (error) {
+      toast.error(error?.message || "The tasks could not be created. Please try again.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const toggleTask = (taskId) => {
-    setSelectedTasks(prev => 
-      prev.includes(taskId) 
+    setSelectedTasks(prev =>
+      prev.includes(taskId)
         ? prev.filter(id => id !== taskId)
         : [...prev, taskId]
     );
@@ -160,25 +213,27 @@ export default function OASISTaskGenerator({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
-        <Alert className="border-amber-300 bg-amber-50">
-          <AlertTriangle className="h-4 w-4 text-amber-700" />
-          <AlertDescription className="text-amber-900">
-            {TASK_CREATION_BLOCKER}
-          </AlertDescription>
-        </Alert>
+        {!patientId && (
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="text-amber-900">
+              Link this analysis to a patient to add these tasks to their chart.
+            </AlertDescription>
+          </Alert>
+        )}
             <p className="text-sm text-slate-600">
-              Based on the OASIS analysis, the following recommendations are available for review only:
+              Based on the OASIS analysis, select the follow-up tasks to add for this patient:
             </p>
 
             <div className="space-y-3">
               {suggestedTasks.map((task) => {
                 const Icon = task.icon;
                 return (
-                  <div 
+                  <div
                     key={task.id}
                     className={`p-3 rounded-lg border-2 transition-colors ${
-                      selectedTasks.includes(task.id) 
-                        ? 'bg-amber-50 border-amber-300' 
+                      selectedTasks.includes(task.id)
+                        ? 'bg-amber-50 border-amber-300'
                         : 'bg-slate-50 border-slate-200'
                     }`}
                   >
@@ -186,6 +241,7 @@ export default function OASISTaskGenerator({
                       <Checkbox
                         checked={selectedTasks.includes(task.id)}
                         onCheckedChange={() => toggleTask(task.id)}
+                        disabled={createdIds.includes(task.id)}
                         className="mt-1"
                       />
                       <div className="flex-1">
@@ -201,6 +257,11 @@ export default function OASISTaskGenerator({
                         </div>
                         <p className="text-xs text-slate-600 mb-1">{task.description}</p>
                         <p className="text-xs text-blue-600">Due: {task.due_date}</p>
+                        {createdIds.includes(task.id) && (
+                          <p className="text-xs text-green-700 flex items-center gap-1 mt-1">
+                            <CheckCircle2 className="w-3 h-3" /> Added to tasks
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -209,10 +270,13 @@ export default function OASISTaskGenerator({
             </div>
 
             <Button
-              disabled
+              onClick={createSelectedTasks}
+              disabled={creating || !patientId || selectedTasks.every((id) => createdIds.includes(id))}
               className="w-full"
             >
-              <ClipboardList className="mr-2 h-4 w-4" /> Task creation paused
+              {creating
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding tasks…</>
+                : <><ClipboardList className="mr-2 h-4 w-4" /> Add {selectedTasks.filter((id) => !createdIds.includes(id)).length} selected task(s)</>}
             </Button>
       </CardContent>
     </Card>

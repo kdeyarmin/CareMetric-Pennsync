@@ -67,9 +67,35 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// Fail closed until document extraction and quality scoring have tenant-bound
-// authorization, verified OASIS definitions, and a human-review contract.
-const OASIS_BATCH_AI_ENABLED = false;
+// Released by the owner on 2026-10-08 ("approve everything"). The caller must
+// be the built-in admin or hold an active agency_admin/manager membership, and
+// may only submit files from the app's own storage hosts; the AI output is a
+// review aid a clinician checks, written to no record.
+const OASIS_BATCH_AI_ENABLED = true;
+
+// The same hosts as the shared FILE_URL_ALLOWED_HOSTS: the app's own storage
+// project and Base44's file hosts, never any other Supabase project.
+const BATCH_FILE_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
+function isAppStorageUrl(value) {
+  let url;
+  try {
+    url = new URL(String(value || ''));
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) return false;
+  const host = url.hostname.toLowerCase();
+  return BATCH_FILE_HOSTS.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
+
+async function holdsAgencyLeadMembership(base44, user) {
+  if (typeof user?.id !== 'string' || !user.id) return false;
+  const rows = await base44.asServiceRole.entities.AgencyMembership
+    .filter({ user_id: user.id, status: 'active' }, undefined, 20)
+    .catch(() => []);
+  return (Array.isArray(rows) ? rows : []).some((row) => row?.user_id === user.id
+    && row?.status === 'active' && (row.tenant_role === 'agency_admin' || row.tenant_role === 'manager'));
+}
 
 
 Deno.serve(async (req) => {
@@ -94,7 +120,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (user.role !== 'admin') {
+    if (user.role !== 'admin' && !(await holdsAgencyLeadMembership(base44, user))) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -102,6 +128,9 @@ Deno.serve(async (req) => {
 
     if (!fileUrls || !Array.isArray(fileUrls) || fileUrls.length === 0) {
       return Response.json({ error: 'No files provided' }, { status: 400 });
+    }
+    if (fileUrls.length > 50 || !fileUrls.every(isAppStorageUrl)) {
+      return Response.json({ error: 'Files must be uploaded to PennSync first (up to 50 per batch)' }, { status: 400 });
     }
 
     const results = [];
@@ -117,7 +146,7 @@ Deno.serve(async (req) => {
     const processOne = async (fileUrl, fileName) => {
       try {
         // Extract text from PDF
-        const extractedData = await base44.integrations.Core.ExtractDataFromUploadedFile({
+        const extractedData = await base44.asServiceRole.integrations.Core.ExtractDataFromUploadedFile({
           file_url: fileUrl,
           json_schema: {
             type: "object",
@@ -159,7 +188,7 @@ Deno.serve(async (req) => {
         }
 
         // Analyze with AI
-        const analysisResult = await base44.integrations.Core.InvokeLLM({
+        const analysisResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
           model: "automatic",
           prompt: `You are an expert OASIS analyst. Analyze this OASIS assessment document:
 

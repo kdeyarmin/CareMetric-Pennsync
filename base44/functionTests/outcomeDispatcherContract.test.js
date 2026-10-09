@@ -35,7 +35,8 @@ async function loadHandler({
     serve: (candidate) => { handler = candidate; },
     env: {
       get: (key) => {
-        if (key === 'OUTCOME_PIPELINE_RELEASE') return enabled ? 'enabled-v1' : undefined;
+        // Released 2026-10-08: unset runs; only an explicit operator pause stops it.
+        if (key === 'OUTCOME_PIPELINE_RELEASE') return enabled ? undefined : 'paused';
         if (key === 'INTERNAL_FN_SECRET') return secret;
         return undefined;
       },
@@ -152,12 +153,12 @@ test('tenant dispatch runs concurrently with at most eight active workers', { ti
   assert.equal(new Set(fixture.calls.invocations.map(call => call.payload.agency_id)).size, 16);
 });
 
-test('outcome dispatcher is disabled before SDK construction by default', async () => {
+test('an operator pause stops the outcome dispatcher before SDK construction', async () => {
   const fixture = await loadHandler({ enabled: false });
   const response = await fixture.handler(schedulerRequest());
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), {
-    error: 'Nightly outcome dispatch is disabled pending hosted validation',
+    error: 'Nightly outcome dispatch is paused by the operator (OUTCOME_PIPELINE_RELEASE=paused)',
   });
   assert.equal(fixture.calls.clients, 0);
   assert.deepEqual(fixture.calls.agencyFilters, []);

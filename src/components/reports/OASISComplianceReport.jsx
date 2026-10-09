@@ -1,5 +1,4 @@
-import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,21 +7,27 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { exportToPDF } from "../utils/pdfExporter";
 import { format } from "date-fns";
 
-const OASIS_COMPLIANCE_REPORT_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). The report reads
+// one tenant-bound answer from the OASIS record broker: the platform owner sees
+// every agency, an agency_admin or manager (from an active AgencyMembership,
+// never the editable profile) their own agency's assessments and audits, and
+// anyone else the assessments on charts they created or are assigned to plus
+// their own audits. Only counts, dates, statuses and percentages come back —
+// no patient name and no response value.
+const OASIS_COMPLIANCE_REPORT_ENABLED = true;
+
+const EMPTY_REPORT = Object.freeze({ assessments: [], compliance_audits: [] });
 
 function EnabledOASISComplianceReport({ dateRange }) {
-  // Without a limit Base44 caps at 50, truncating the compliance rates below.
-  const { data: oasisAssessments = [] } = useAgencyScopedQuery({
-    queryKey: ['allOASISAssessments'],
-    fetch: () => base44.entities.OASISAssessment.list('-created_date', 10000),
-    initialData: [],
+  const { data: report = EMPTY_REPORT, isLoading, error } = useQuery({
+    queryKey: ['oasisComplianceReport', dateRange.start, dateRange.end],
+    queryFn: async () => (await manageOASISRecords('assessment_report', {
+      date_from: dateRange.start,
+      date_to: dateRange.end,
+    })) || EMPTY_REPORT,
   });
-
-  const { data: complianceAudits = [] } = useQuery({
-    queryKey: ['allComplianceAudits'],
-    queryFn: () => base44.entities.ComplianceAudit.list('-created_date', 10000),
-    initialData: [],
-  });
+  const oasisAssessments = report.assessments || [];
+  const complianceAudits = report.compliance_audits || [];
 
   // assessment_date is a date-only field; anchor it to LOCAL midnight, but a
   // non-date-only stored value (legacy/ISO timestamp) parses as-is so a bad
@@ -49,7 +54,7 @@ function EnabledOASISComplianceReport({ dateRange }) {
   const totalOASIS = filteredOASIS.length;
   const completedOASIS = filteredOASIS.filter(o => o.status === 'completed').length;
   const completionRate = totalOASIS > 0 ? ((completedOASIS / totalOASIS) * 100).toFixed(1) : 0;
-  
+
   const avgCompletionPercentage = filteredOASIS.length > 0
     ? (filteredOASIS.reduce((sum, o) => sum + (o.completion_percentage || 0), 0) / filteredOASIS.length).toFixed(1)
     : 0;
@@ -63,7 +68,8 @@ function EnabledOASISComplianceReport({ dateRange }) {
     { type: 'Start of Care', count: filteredOASIS.filter(o => o.visit_type === 'Start of Care').length },
     { type: 'Resumption', count: filteredOASIS.filter(o => o.visit_type === 'Resumption of Care').length },
     { type: 'Recertification', count: filteredOASIS.filter(o => o.visit_type === 'Recertification').length },
-    { type: 'Discharge', count: filteredOASIS.filter(o => o.visit_type === 'Discharge').length }
+    { type: 'Discharge', count: filteredOASIS.filter(o => o.visit_type === 'Discharge').length },
+    { type: 'Transfer', count: filteredOASIS.filter(o => o.visit_type === 'Transfer').length }
   ];
 
   // Monthly trend
@@ -75,7 +81,7 @@ function EnabledOASISComplianceReport({ dateRange }) {
     date.setDate(1);
     date.setMonth(date.getMonth() - (5 - i));
     const monthName = date.toLocaleString('default', { month: 'short' });
-    
+
     const monthOASIS = oasisAssessments.filter(o => {
       const oasisDate = parseAssessmentDate(o.assessment_date);
       return oasisDate && oasisDate.getMonth() === date.getMonth() && oasisDate.getFullYear() === date.getFullYear();
@@ -107,6 +113,19 @@ function EnabledOASISComplianceReport({ dateRange }) {
       ]
     });
   };
+
+  if (isLoading) {
+    return <p className="py-8 text-center text-sm text-slate-600">Loading the OASIS compliance report…</p>;
+  }
+  if (error) {
+    return (
+      <Card className="border-2 border-red-200 bg-red-50">
+        <CardContent className="flex items-center gap-2 p-6 text-sm text-red-900">
+          <AlertTriangle className="h-5 w-5" /> {error.message || 'The OASIS compliance report could not be loaded.'}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -227,10 +246,9 @@ export default function OASISComplianceReport({ dateRange }) {
       <Card className="border-2 border-amber-300 bg-amber-50">
         <CardContent className="space-y-2 p-6 text-sm text-amber-950">
           <div className="flex items-center gap-2 font-semibold">
-            <AlertTriangle className="h-5 w-5" /> OASIS Compliance Report Paused
+            <AlertTriangle className="h-5 w-5" /> OASIS Compliance Report Off
           </div>
-          <p>This report is unavailable pending a tenant-bound reporting broker and a verified OASIS compliance-measure contract.</p>
-          <p>No OASIS assessment, compliance audit, score, chart, or PDF export is loaded from this tab.</p>
+          <p>The OASIS compliance report is switched off for this deployment.</p>
         </CardContent>
       </Card>
     );

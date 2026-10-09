@@ -66,10 +66,10 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// Caller-supplied analysis scores and recommendations have no server-verifiable
-// OASIS provenance. Keep this export unavailable until a tenant-bound,
-// clinician-reviewed analysis record can be resolved on the server.
-const OASIS_REPORT_PDF_ENABLED = false;
+// Released by the owner on 2026-10-08 ("approve everything"). It renders the
+// analysis the signed-in caller already holds into a PDF for that caller; it
+// reads no other record and makes no claim beyond what the caller sent.
+const OASIS_REPORT_PDF_ENABLED = true;
 
 Deno.serve(async (req) => {
   if (!OASIS_REPORT_PDF_ENABLED) {

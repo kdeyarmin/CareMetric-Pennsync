@@ -57,11 +57,13 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-// Source deployment is harmless by default. The native workflow owns the
-// schedule, but staging must explicitly set OUTCOME_PIPELINE_RELEASE=enabled-v1
-// only after the hosted datastore/tenant evidence is reviewed.
+// Released by the owner on 2026-10-08 ("turn everything on"). The native
+// workflow owns the schedule and the dispatcher runs by default; an operator
+// can stop it without a deploy by setting OUTCOME_PIPELINE_RELEASE=paused.
+// Each agency is dispatched separately with its own signed one-agency
+// capability, so the unattended run never acts across tenants in one request.
 const OUTCOME_DISPATCH_ENABLED = () =>
-  String(Deno.env.get('OUTCOME_PIPELINE_RELEASE') || '').trim() === 'enabled-v1';
+  String(Deno.env.get('OUTCOME_PIPELINE_RELEASE') || '').trim() !== 'paused';
 
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
@@ -349,7 +351,7 @@ async function invokeOneAgency(
 Deno.serve(async (req) => {
   if (!OUTCOME_DISPATCH_ENABLED()) {
     return Response.json(
-      { error: 'Nightly outcome dispatch is disabled pending hosted validation' },
+      { error: 'Nightly outcome dispatch is paused by the operator (OUTCOME_PIPELINE_RELEASE=paused)' },
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
     );
   }

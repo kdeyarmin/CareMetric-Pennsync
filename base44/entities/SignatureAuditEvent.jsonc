@@ -22,6 +22,10 @@
     "token_id": {
       "type": "string"
     },
+    "discharge_summary_id": {
+      "type": "string",
+      "description": "DischargeSummary signed by its clinician (action discharge_summary_signed)."
+    },
     "action": {
       "type": "string",
       "enum": [
@@ -40,7 +44,16 @@
         "reminder_claimed",
         "reminder_accepted",
         "reminder_indeterminate",
-        "reminder_canceled"
+        "reminder_canceled",
+        "request_created",
+        "request_canceled",
+        "request_expired",
+        "token_revoked",
+        "fields_updated",
+        "document_finalized",
+        "creator_notified",
+        "integrity_verified",
+        "discharge_summary_signed"
       ]
     },
     "actor_type": {

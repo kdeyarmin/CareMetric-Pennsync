@@ -100,7 +100,10 @@ async function invokeEmailFunction(name, envValue, user) {
   const client = {
     auth: { me: async () => user },
     integrations: { Core: { SendEmail: sendEmail } },
-    asServiceRole: { integrations: { Core: { SendEmail: sendEmail } } },
+    asServiceRole: {
+      integrations: { Core: { SendEmail: sendEmail } },
+      entities: { User: { filter: async (query) => [{ id: 'u-1', email: query.email, account_type: 'user', agency_name: '' }] } },
+    },
   };
   const previousDeno = globalThis.Deno;
   const previousFactory = globalThis.__deliveryGateCreateClient;

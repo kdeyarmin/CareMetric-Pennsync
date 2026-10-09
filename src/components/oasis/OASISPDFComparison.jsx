@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { manageOASISRecords } from "@/functions/manageOASISRecords";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,12 @@ import { isSafeExternalUrl } from "@/components/utils/security";
 const isSafePreviewUrl = (url) =>
   typeof url === "string" && (url.startsWith("blob:") || isSafeExternalUrl(url));
 
-export default function OASISPDFComparison({ 
-  uploadedFileUrl, 
-  extractedData, 
+export default function OASISPDFComparison({
+  uploadedFileUrl,
+  extractedData,
   pdgmData,
   oasisUploadId,
-  onDataCorrected 
+  onDataCorrected
 }) {
   const safeUploadedFileUrl = isSafePreviewUrl(uploadedFileUrl) ? uploadedFileUrl : null;
   const [editingField, setEditingField] = useState(null);
@@ -49,15 +49,15 @@ export default function OASISPDFComparison({
         patient_dob: pdgmData?.patient_info?.dob || '',
         patient_gender: pdgmData?.patient_info?.gender || '',
         patient_address: pdgmData?.patient_info?.address || '',
-        
+
         // Assessment Info
         assessment_date: pdgmData?.patient_info?.assessment_date || '',
         assessment_type: pdgmData?.patient_info?.assessment_type || '',
-        
+
         // Diagnoses
         primary_diagnosis_code: pdgmData?.primary_diagnosis_code || '',
         primary_diagnosis_description: pdgmData?.primary_diagnosis_description || '',
-        
+
         // Functional Scores
         m1800_grooming: pdgmData?.functional_scores?.m1800_grooming ?? '',
         m1810_dress_upper: pdgmData?.functional_scores?.m1810_dress_upper ?? '',
@@ -66,11 +66,11 @@ export default function OASISPDFComparison({
         m1840_toilet_transfer: pdgmData?.functional_scores?.m1840_toilet_transfer ?? '',
         m1850_transferring: pdgmData?.functional_scores?.m1850_transferring ?? '',
         m1860_ambulation: pdgmData?.functional_scores?.m1860_ambulation ?? '',
-        
+
         // Episode Timing
         episode_timing: pdgmData?.episode_timing || '',
         m0110_episode_timing: pdgmData?.m0110_episode_timing || '',
-        
+
         // Clinical Items
         m1400_dyspnea: pdgmData?.clinical_items?.dyspnea ?? '',
         m1242_pain_freq: pdgmData?.clinical_items?.pain_frequency ?? '',
@@ -85,7 +85,8 @@ export default function OASISPDFComparison({
   // Save discrepancy flag
   const flagDiscrepancyMutation = useMutation({
     mutationFn: async (discrepancy) => {
-      return await base44.entities.OASISFeedback.create({
+      // Recorded through the OASIS record broker, which stamps the author.
+      return await manageOASISRecords('record_feedback', { feedback: {
         oasis_upload_id: oasisUploadId,
         feedback_type: 'incorrect_match',
         extracted_name: pdgmData?.patient_info?.name,
@@ -93,7 +94,7 @@ export default function OASISPDFComparison({
         extracted_dob: pdgmData?.patient_info?.dob,
         user_notes: discrepancy.notes,
         match_factors_used: [discrepancy.field]
-      });
+      } });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisFeedback'] });
@@ -108,7 +109,7 @@ export default function OASISPDFComparison({
       timestamp: new Date().toISOString(),
       notes: `Field ${field} was incorrect. Original: "${originalValue}", Corrected: "${correctedValue}"`
     };
-    
+
     setDiscrepancies(prev => [...prev, discrepancy]);
     flagDiscrepancyMutation.mutate(discrepancy);
   };
@@ -239,7 +240,7 @@ export default function OASISPDFComparison({
           <AlertDescription className="text-navy-900">
             <p className="font-semibold mb-1">Interactive Data Validation</p>
             <p className="text-sm">
-              Review the extracted data against the original PDF. Click <Edit className="w-3 h-3 inline" /> to edit any field, 
+              Review the extracted data against the original PDF. Click <Edit className="w-3 h-3 inline" /> to edit any field,
               then <Save className="w-3 h-3 inline" /> to save corrections. All changes are automatically flagged for quality improvement.
             </p>
           </AlertDescription>
@@ -303,7 +304,7 @@ export default function OASISPDFComparison({
                 AI Extracted
               </Badge>
             </div>
-            
+
             <Tabs defaultValue="demographics" className="w-full">
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="demographics">Patient</TabsTrigger>
@@ -329,7 +330,7 @@ export default function OASISPDFComparison({
                 <div className="bg-white p-4 rounded-lg border">
                   {renderEditableField('Primary Diagnosis Code (M1021)', 'primary_diagnosis_code')}
                   {renderEditableField('Primary Diagnosis Description', 'primary_diagnosis_description')}
-                  
+
                   {/* Comorbidities List */}
                   <div className="mt-4">
                     <Label className="text-sm font-medium text-slate-700 mb-2 block">
@@ -363,7 +364,7 @@ export default function OASISPDFComparison({
                     {renderEditableField('M1850 Transferring', 'm1850_transferring', 'number')}
                     {renderEditableField('M1860 Ambulation', 'm1860_ambulation', 'number')}
                   </div>
-                  
+
                   {/* Functional Score Summary */}
                   <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
                     <p className="text-xs font-semibold text-blue-900 mb-2">Functional Impairment Level</p>
@@ -398,7 +399,7 @@ export default function OASISPDFComparison({
                   {renderEditableField('M0110 Episode Timing', 'm0110_episode_timing')}
                   {renderEditableField('M1400 Dyspnea', 'm1400_dyspnea', 'number')}
                   {renderEditableField('M1242 Pain Frequency', 'm1242_pain_freq', 'number')}
-                  
+
                   {/* Wound Status */}
                   <div className="mt-4 p-3 bg-slate-50 rounded border">
                     <p className="text-xs font-semibold text-slate-700 mb-2">Wound Status</p>

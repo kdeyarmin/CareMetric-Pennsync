@@ -11,7 +11,7 @@ export default function PersonalizedTrainingRecommender({ skillGaps, onStartTrai
           <Target className="w-12 h-12 mx-auto mb-3 text-green-500" />
           <h3 className="text-lg font-semibold text-slate-900 mb-2">No Skill Gaps Detected</h3>
           <p className="text-slate-600">
-            Great work! Our AI analysis hasn't identified any significant skill gaps. Keep up the excellent performance!
+            Great work! Your recent documentation, audit and efficiency data show no significant skill gaps. Keep up the excellent performance!
           </p>
         </CardContent>
       </Card>

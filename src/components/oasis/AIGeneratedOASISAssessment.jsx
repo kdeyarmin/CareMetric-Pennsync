@@ -12,7 +12,6 @@ import {
   ClipboardList,
   CheckCircle2,
   AlertTriangle,
-  TrendingUp,
   MessageSquare,
   ChevronDown,
   ChevronUp,
@@ -22,7 +21,15 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 
-const AI_OASIS_ASSESSMENT_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). Guidance only:
+// generateOASISAssessment opens a chart through the shared OASIS chart-access
+// rule (platform owner; otherwise an active membership in the patient's agency
+// AND agency_admin/manager, the chart's creator, or an exact active care-team
+// assignment) and takes referral text only from the platform owner or a caller
+// with one active membership. Every item passes the AI-response sanitiser
+// below, so no model-chosen response can be displayed, copied or saved — the
+// clinician answers each item in the official assessment.
+const AI_OASIS_ASSESSMENT_ENABLED = true;
 
 function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Care", referralData }) {
   const [assessment, setAssessment] = useState(null);
@@ -68,7 +75,7 @@ function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Ca
       }
 
       const { data } = await base44.functions.invoke('generateOASISAssessment', payload);
-      
+
       // Filter out administrative items
       if (data.oasis_items) {
         data.oasis_items = data.oasis_items.filter(item => {
@@ -85,7 +92,7 @@ function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Ca
           return true;
         });
       }
-      
+
       // Defensive sanitisation at the boundary. Even with the prompt changed,
       // a model can still emit a code — through a field nobody planned for, or
       // inside prose. Stripping it here is what makes it inert: nothing below
@@ -242,16 +249,6 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
           </Alert>
         )}
 
-        {/* PDGM Estimate */}
-        {assessment.estimated_pdgm_group && (
-          <Alert className="bg-navy-50 border-navy-300">
-            <TrendingUp className="w-4 h-4 text-navy-600" />
-            <AlertDescription className="text-xs text-navy-900">
-              <strong>Estimated PDGM Group:</strong> {assessment.estimated_pdgm_group}
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Assessment Priorities */}
         {assessment.assessment_priorities?.length > 0 && (
           <Card className="bg-white">
@@ -397,12 +394,6 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
                         </div>
                       )}
 
-                      {item.pdgm_impact && (
-                        <div className="bg-navy-100 border border-navy-300 rounded p-2">
-                          <p className="text-xs font-semibold text-navy-900 mb-1">PDGM Impact:</p>
-                          <p className="text-xs text-navy-800">{item.pdgm_impact}</p>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -459,9 +450,10 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
           </TabsContent>
         </Tabs>
 
-        {/* The "PDGM Optimization" panel is REMOVED. It surfaced model notes on
-            how to raise the PDGM result, which is an instruction to code for
-            payment rather than for the patient. */}
+        {/* No PDGM estimate, per-item PDGM impact, or PDGM optimization notes
+            are shown: they surfaced model notes on how to raise the PDGM
+            result, which is an instruction to code for payment rather than for
+            the patient. */}
 
         <Alert>
           <AlertTriangle className="w-4 h-4" />
@@ -478,10 +470,9 @@ export default function AIGeneratedOASISAssessment(props) {
     return (
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="p-6">
-          <p className="font-semibold text-amber-900">AI OASIS Assessment Guidance Paused</p>
+          <p className="font-semibold text-amber-900">AI OASIS Assessment Guidance Off</p>
           <p className="mt-2 text-sm text-amber-800">
-            Automated OASIS item guidance is unavailable pending verified CMS definitions,
-            tenant-scoped authorization, and clinician review. Use the official assessment workflow.
+            Automated OASIS item guidance is switched off for this deployment. Use the official assessment workflow.
           </p>
         </CardContent>
       </Card>

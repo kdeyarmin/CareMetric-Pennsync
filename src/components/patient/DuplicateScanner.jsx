@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,12 +26,14 @@ import {
   digitsOnly,
 } from "@/components/patient/patientDuplicateUtils";
 import {
-  mergePatientInto,
+  mergePatientGroup,
+  PatientMergeIncompleteError,
   PATIENT_MERGES_PAUSED,
   PATIENT_MERGE_PAUSED_MESSAGE,
+  scanDuplicatePatients,
 } from "@/components/patient/mergePatients";
 
-const PATIENT_DEDUPE_UI_ENABLED = false;
+const PATIENT_DEDUPE_UI_ENABLED = true;
 
 // Demographic fields on Patient that count toward "how complete is this chart".
 // Used to pick the survivor of a duplicate group by completeness (not by newest),
@@ -185,40 +186,41 @@ function EnabledDuplicateScanner() {
   const queryClient = useQueryClient();
 
 
-  // Fetch all patients for advanced scanning (agency-scoped for facility admins)
-  const { data: allPatients = [] } = useScopedPatients({ purpose: 'deduplication', sort: '-created_date', limit: 10000, enabled: scanMode === 'advanced' });
+  // Advanced scanning reads the roster through the authorized, agency-bound
+  // Patient list broker. The 'deduplication' purpose projects exactly the
+  // identifiers the matcher compares (name, DOB, MRN, phone, email, address).
+  const allPatientsQuery = useScopedPatients({ purpose: 'deduplication', sort: '-created_date', limit: 10000, enabled: scanMode === 'advanced' });
+  const allPatients = allPatientsQuery.isSuccess ? allPatientsQuery.data : [];
+  const advancedAgencyId = allPatientsQuery.tenantScope?.agency_id || null;
 
-  const scanAndRemoveDuplicates = async () => {
-    // Both modes are paused. Standard mode called a service-role dry-run whose
-    // tenant scope depended on mutable user claims; advanced mode could mutate
-    // survivor fields before a later merge failed. Stop before either path.
+  // Both modes only PREVIEW. Nothing is merged until the admin reviews the
+  // proposed groups and confirms (applyReviewedMerge), and then exactly the
+  // reviewed groups are sent to the server merge broker by id.
+  const scanForDuplicates = async () => {
     if (PATIENT_MERGES_PAUSED) {
       toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
       return;
     }
     setIsScanning(true);
     toast.info('Starting comprehensive duplicate scan...');
-    
+
     try {
       if (scanMode === 'standard') {
-        // Standard scan = DRY-RUN preview only. The backend defaults to a preview
-        // (no deletion) unless called with confirm:true; the admin reviews the
-        // proposed merges and then clicks "Confirm & merge" (applyStandardMerge).
-        const response = await base44.functions.invoke('deduplicatePatients');
-        const data = response.data || response;
-        setResults(data);
+        // Server dry-run preview scoped to the caller's agency.
+        const data = await scanDuplicatePatients();
+        setResults({ ...data, scan_mode: 'standard' });
       } else {
-        // Advanced client-side scanning using the shared matching engine.
-        const duplicateGroups = [];
-
+        if (!allPatientsQuery.isSuccess) {
+          toast.error('Patient access is still being verified. Try again in a moment.');
+          setIsScanning(false);
+          return;
+        }
         // Phase 1: Identify duplicate groups (no API calls). allPatients is
         // ordered by -created_date; grouping is order-independent — the survivor is
         // chosen by completeness in Phase 2, not by position in the list.
         // Exclude already-archived/merged records from the scan. A previously
         // merged duplicate keeps its MRN and would otherwise re-match (MRN=100) on
-        // every rescan — inflating "Records Merged", back-filling the survivor from
-        // stale data, and (via pickSurvivor) potentially being chosen as survivor,
-        // merging a live chart into an archived, roster-invisible record.
+        // every rescan, and (via pickSurvivor) could even be chosen as survivor.
         const scanRoster = allPatients.filter(p => !p.is_archived && p.status !== 'merged');
         const processedIds = new Set();
         const groups = [];
@@ -243,108 +245,51 @@ function EnabledDuplicateScanner() {
           }
         }
 
-        // Phase 2: choose the survivor by completeness and MERGE each duplicate
-        // into it through the shared safe path (mergePatientInto): it reassigns
-        // every patient_id-linked record (visits, OASIS, incidents, documents, …)
-        // to the survivor and soft-archives the duplicate (is_archived + status
-        // 'merged' + merged_into_id) so it leaves the roster and its clinical
-        // history follows the kept chart — instead of the old status-only close,
-        // which orphaned history on a still-visible 'discharged' record.
-        const plans = groups.map(group => {
+        // Phase 2: choose the survivor by completeness. The merge itself happens
+        // only after review, through the server broker, which moves every linked
+        // record onto the survivor and archives the duplicate last.
+        const details = groups.map(group => {
           const members = [group.primary, ...group.duplicates.map(d => d.patient)];
           const survivor = pickSurvivor(members);
           const scoreById = new Map(group.duplicates.map(d => [d.patient.id, d]));
-          const dupInfos = members
+          const removed = members
             .filter(m => m.id !== survivor.id)
             // Honor "only close inactive duplicates": leave an active duplicate be.
             .filter(m => !advancedOptions.closeInactiveOnly || m.status !== 'active')
             .map(m => ({
-              patient: m,
-              score: scoreById.get(m.id)?.score ?? 100,
-              reasons: scoreById.get(m.id)?.reasons ?? ['reselected as duplicate (survivor chosen by completeness)'],
+              id: m.id,
+              name: `${m.first_name} ${m.last_name}`,
+              mrn: m.medical_record_number,
+              match_score: Math.min(100, scoreById.get(m.id)?.score ?? 100),
+              match_reasons: scoreById.get(m.id)?.reasons ?? ['reselected as duplicate (survivor chosen by completeness)'],
             }));
-          return { survivor, dupInfos };
-        });
-
-        const totalToMerge = plans.reduce((n, p) => n + p.dupInfos.length, 0);
-        let processedCount = 0;
-        let failedCount = 0;
-        toast.info(`Merging ${totalToMerge} duplicate record(s) into the most complete chart...`);
-
-        for (const { survivor, dupInfos } of plans) {
-          if (dupInfos.length === 0) continue;
-
-          // Report only what actually merged. A thrown mergePatientInto (RLS
-          // denial, archived survivor, failed archive write) leaves the duplicate
-          // live on the roster, so counting it as "removed" told the admin a
-          // record was merged when it still needs attention.
-          const mergedInfos = [];
-          const failedInfos = [];
-          for (const info of dupInfos) {
-            let ok = true;
-            try {
-              await mergePatientInto(survivor.id, info.patient.id);
-            } catch (err) {
-              // Best-effort per duplicate: log and continue so one failure doesn't
-              // abort the whole scan (mergePatientInto is itself best-effort per record).
-              ok = false;
-              console.error(`Merge failed for duplicate ${info.patient.id}:`, err?.message);
-            }
-            if (ok) {
-              mergedInfos.push(info);
-            } else {
-              failedInfos.push(info);
-              failedCount += 1;
-            }
-            // Progress counts attempts so the bar still advances past failures.
-            processedCount += 1;
-            const progress = totalToMerge ? Math.min(100, Math.round((processedCount / totalToMerge) * 100)) : 100;
-            toast.info(`Progress: ${progress}% (${processedCount}/${totalToMerge})`);
-          }
-
-          if (mergedInfos.length === 0 && failedInfos.length === 0) continue;
-
-          duplicateGroups.push({
+          return {
             kept: {
+              id: survivor.id,
               name: `${survivor.first_name} ${survivor.last_name}`,
               mrn: survivor.medical_record_number,
-              id: survivor.id
             },
-            removed: mergedInfos.map(d => ({
-              name: `${d.patient.first_name} ${d.patient.last_name}`,
-              mrn: d.patient.medical_record_number,
-              match_score: Math.min(100, d.score),
-              match_reasons: d.reasons
-            })),
-            failed: failedInfos.map(d => ({
-              name: `${d.patient.first_name} ${d.patient.last_name}`,
-              mrn: d.patient.medical_record_number,
-              id: d.patient.id
-            })),
-            average_match_score: mergedInfos.length
-              ? Math.round(mergedInfos.reduce((sum, d) => sum + Math.min(100, d.score), 0) / mergedInfos.length)
-              : 0
-          });
-        }
+            removed,
+            average_match_score: removed.length
+              ? Math.round(removed.reduce((sum, d) => sum + d.match_score, 0) / removed.length)
+              : 0,
+          };
+        }).filter(detail => detail.removed.length > 0);
 
         setResults({
-          duplicate_groups_found: duplicateGroups.length,
-          patients_removed: duplicateGroups.reduce((sum, g) => sum + g.removed.length, 0),
-          merge_failures: failedCount,
-          details: duplicateGroups,
+          dry_run: true,
+          duplicate_groups_found: details.length,
+          patients_to_remove: details.reduce((sum, d) => sum + d.removed.length, 0),
+          patients_removed: 0,
+          details,
           scan_mode: 'advanced',
+          agency_id: advancedAgencyId,
           algorithms_used: Object.entries(advancedOptions)
             .filter(([k, v]) => v && k.startsWith('match'))
             .map(([k]) => k.replace('matchBy', ''))
         });
-
-        if (failedCount > 0) {
-          toast.warning(`${failedCount} duplicate record(s) could not be merged and are still active.`);
-        }
-        toast.success('Advanced scan complete!');
+        toast.success('Advanced scan complete. Review the groups below before merging.');
       }
-      
-      queryClient.invalidateQueries({ queryKey: ['patients'] });
     } catch (error) {
       // Keep backend/internal detail in logs only — this is an admin tool calling
       // privileged functions; show a generic message in the UI.
@@ -354,25 +299,52 @@ function EnabledDuplicateScanner() {
     setIsScanning(false);
   };
 
-  // Apply remains wired only to surface the explicit pause state. Both this
-  // client guard and the backend confirm:true guard reject before mutations.
-  const applyStandardMerge = async () => {
+  // Apply exactly the reviewed groups. Each group is one broker call naming the
+  // survivor and its duplicates; a group that cannot finish leaves its
+  // duplicates active and is reported (re-running the merge resumes it).
+  const applyReviewedMerge = async () => {
     if (PATIENT_MERGES_PAUSED) {
       toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
       return;
     }
+    if (!results?.dry_run || !Array.isArray(results.details)) return;
     setIsApplying(true);
     toast.info('Merging the reviewed duplicates...');
-    try {
-      const response = await base44.functions.invoke('deduplicatePatients', { confirm: true });
-      const data = response.data || response;
-      setResults(data);
-      queryClient.invalidateQueries({ queryKey: ['patients'] });
-      toast.success(`Merged ${data.patients_removed || 0} duplicate record(s).`);
-    } catch (error) {
-      console.error('Merge error:', error);
-      toast.error('Failed to merge duplicates. Please try again.');
+    const agencyId = results.agency_id || null;
+    let mergedCount = 0;
+    let failedCount = 0;
+    const mergedDetails = [];
+    for (const detail of results.details) {
+      const duplicateIds = (detail.removed || []).map(r => r.id).filter(Boolean);
+      if (!detail.kept?.id || duplicateIds.length === 0) continue;
+      let mergedIds = [];
+      try {
+        const { result } = await mergePatientGroup(detail.kept.id, duplicateIds, { agencyId });
+        mergedIds = result?.merged_ids || duplicateIds;
+      } catch (error) {
+        mergedIds = error instanceof PatientMergeIncompleteError ? (error.result?.merged_ids || []) : [];
+        console.error('Merge failed for a duplicate group:', error?.message);
+      }
+      const merged = new Set(mergedIds);
+      const removed = detail.removed.filter(r => merged.has(r.id));
+      const failed = detail.removed.filter(r => !merged.has(r.id)).map(({ id, name, mrn }) => ({ id, name, mrn }));
+      mergedCount += removed.length;
+      failedCount += failed.length;
+      mergedDetails.push({ ...detail, removed, failed });
     }
+    setResults({
+      ...results,
+      dry_run: false,
+      patients_removed: mergedCount,
+      patients_to_remove: 0,
+      merge_failures: failedCount,
+      details: mergedDetails,
+    });
+    queryClient.invalidateQueries({ queryKey: ['patients'] });
+    if (failedCount > 0) {
+      toast.warning(`${failedCount} duplicate record(s) could not be merged and are still active.`);
+    }
+    toast.success(`Merged ${mergedCount} duplicate record(s).`);
     setIsApplying(false);
   };
 
@@ -429,9 +401,9 @@ function EnabledDuplicateScanner() {
               </div>
               
               <p className="text-xs text-slate-600">
-                {scanMode === 'standard' 
-                  ? 'Fast server-side scan using name and DOB matching'
-                  : 'Comprehensive multi-algorithm scan with fuzzy matching and auto-merge'}
+                {scanMode === 'standard'
+                  ? 'Fast server-side scan using MRN, name and DOB matching'
+                  : 'Comprehensive multi-algorithm scan with fuzzy matching. You review every group before anything is merged.'}
               </p>
             </div>
 
@@ -544,15 +516,15 @@ function EnabledDuplicateScanner() {
               <Alert className="border-amber-300 bg-amber-50">
                 <AlertTriangle className="h-4 w-4 text-amber-700" />
                 <AlertDescription className="text-amber-900">
-                  {PATIENT_MERGE_PAUSED_MESSAGE} This scanner will not query the
-                  service-role preview or reassign, backfill, or archive charts.
+                  {PATIENT_MERGE_PAUSED_MESSAGE} This scanner will not run a scan
+                  or merge any chart.
                 </AlertDescription>
               </Alert>
             )}
 
             <Button
-              onClick={scanAndRemoveDuplicates}
-              disabled={isScanning || PATIENT_MERGES_PAUSED}
+              onClick={scanForDuplicates}
+              disabled={isScanning || PATIENT_MERGES_PAUSED || (scanMode === 'advanced' && !allPatientsQuery.isSuccess)}
               className={`w-full ${scanMode === 'advanced' ? 'bg-navy-600 hover:bg-navy-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
               size="lg"
             >
@@ -571,11 +543,11 @@ function EnabledDuplicateScanner() {
           </>
         ) : (
           <>
-            {/* merge_failures counts too: when every mergePatientInto in an
-                advanced scan fails, patients_removed is 0 and the advanced path
-                never sets patients_to_remove, so this fell through to the
-                "No duplicates found" card — hiding the failed rows and leaving
-                still-active duplicates with no visible way to retry them. */}
+            {/* merge_failures counts too: when every merge in a confirmed run
+                fails, patients_removed is 0 and patients_to_remove is reset, so
+                without it this fell through to the "No duplicates found" card —
+                hiding the failed rows and leaving still-active duplicates with
+                no visible way to retry them. */}
             {(results.patients_removed > 0 || results.patients_to_remove > 0 || results.merge_failures > 0) ? (
               <>
                 {results.dry_run ? (
@@ -584,7 +556,7 @@ function EnabledDuplicateScanner() {
                     <AlertDescription className="text-amber-900">
                       <strong>Review required — nothing has been changed yet</strong>
                       <div className="mt-2 text-sm">
-                        Found {results.duplicate_groups_found} duplicate group(s); {results.patients_to_remove} record(s) would be merged. Merging archives the duplicate (it is hidden from lists but recoverable), keeping the most complete record. Review below, then confirm.
+                        Found {results.duplicate_groups_found} duplicate group(s); {results.patients_to_remove} record(s) would be merged. Merging moves every linked record (visits, OASIS, documents, care team, notes) onto the kept record and archives the duplicate (it is hidden from lists but recoverable). Review below, then confirm.
                       </div>
                     </AlertDescription>
                   </Alert>
@@ -668,7 +640,7 @@ function EnabledDuplicateScanner() {
                                   <div key={rIdx} className="space-y-1">
                                     <div className="flex items-center gap-2 text-xs text-slate-600">
                                       <Trash2 className="w-3 h-3 text-red-600" />
-                                      <span>Removed: {removed.name}</span>
+                                      <span>{results.dry_run ? 'Will merge' : 'Merged'}: {removed.name}</span>
                                       <Badge variant="outline" className="text-xs">
                                         MRN: {removed.mrn}
                                       </Badge>
@@ -690,7 +662,7 @@ function EnabledDuplicateScanner() {
                                 {detail.failed?.map((failed, fIdx) => (
                                   <div key={`f-${fIdx}`} className="flex items-center gap-2 text-xs text-amber-800">
                                     <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                    <span>Merge failed (still active): {failed.name}</span>
+                                    <span>Merge did not finish (still active — confirm again to retry): {failed.name}</span>
                                     <Badge variant="outline" className="text-xs">
                                       MRN: {failed.mrn}
                                     </Badge>
@@ -711,8 +683,8 @@ function EnabledDuplicateScanner() {
                       <p className="text-sm text-amber-800">{PATIENT_MERGE_PAUSED_MESSAGE}</p>
                     )}
                     <Button
-                      onClick={applyStandardMerge}
-                      disabled={isApplying || PATIENT_MERGES_PAUSED}
+                      onClick={applyReviewedMerge}
+                      disabled={isApplying || PATIENT_MERGES_PAUSED || !results.patients_to_remove}
                       className="w-full"
                     >
                       {isApplying ? 'Merging…' : `Confirm & merge ${results.patients_to_remove} duplicate(s)`}

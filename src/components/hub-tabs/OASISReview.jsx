@@ -15,11 +15,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
-import { isAdminView } from "@/lib/roles";
+import { isOasisLeadView } from "@/lib/oasisRoles";
 import OASISComparisonView from "@/components/oasis/OASISComparisonView";
 import OASISApprovalWorkflow from "@/components/oasis/OASISApprovalWorkflow";
 
-const OASIS_AI_REVIEW_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). This tab reviews
+// the OASIS values the analyzer READ OUT OF each uploaded PDF — what the agency's
+// own document says, not an AI-chosen response: a clinician confirms each value
+// against the PDF, rejects a misread, or corrects it, and an agency lead signs
+// the review off. Saved analyses list through listOASISUploads and every
+// decision is written through the OASIS record broker, which scopes both from
+// trusted membership and the chart rule.
+const OASIS_AI_REVIEW_ENABLED = true;
+
+// The extraction sources a review row may carry. `ai_automation` is the legacy
+// name for the same thing on older saved uploads.
+const REVIEWABLE_SOURCES = ['pdf_extraction', 'ai_automation'];
+const isReviewable = (item) => REVIEWABLE_SOURCES.some((source) => String(item?.source || '').includes(source));
 
 function EnabledOASISReview() {
   const queryClient = useQueryClient();
@@ -33,7 +45,9 @@ function EnabledOASISReview() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = isAdminView(currentUser);
+  // Supervisor sign-off is an agency lead's (agency_admin or manager membership);
+  // the broker enforces the same rule server-side.
+  const isAdmin = isOasisLeadView(currentUser);
 
   // Fetch patients with pending OASIS reviews
   const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
@@ -44,9 +58,9 @@ function EnabledOASISReview() {
     queryFn: async () => {
       // Routed through listOASISUploads so financial fields are stripped server-side for non-financial users.
       const records = (await base44.functions.invoke('listOASISUploads', { limit: 200 }))?.data?.uploads || [];
-      // Filter records that have AI-generated suggestions needing review
+      // Uploads that carry extracted values to verify.
       return records.filter(r => r.extracted_data && Object.keys(r.extracted_data).some(
-        key => r.extracted_data[key]?.source?.includes('ai_automation')
+        key => isReviewable(r.extracted_data[key])
       ));
     },
   });
@@ -62,13 +76,13 @@ function EnabledOASISReview() {
   const reviewItems = Object.entries(patientOASISMap).map(([patientId, oasis]) => {
     const patient = patients.find(p => p.id === patientId);
     const aiSuggestions = Object.entries(oasis.extracted_data || {}).filter(
-      ([_key, data]) => data?.source?.includes('ai_automation')
+      ([_key, data]) => isReviewable(data)
     );
-    
+
     const pendingCount = aiSuggestions.filter(([_k, d]) => !d.reviewed).length;
     const approvedCount = aiSuggestions.filter(([_k, d]) => d.approved).length;
     const rejectedCount = aiSuggestions.filter(([_k, d]) => d.rejected).length;
-    
+
     return {
       patientId,
       patient,
@@ -85,12 +99,12 @@ function EnabledOASISReview() {
 
   // Apply filters
   const filteredItems = reviewItems.filter(item => {
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       item.patient?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.patient?.last_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -187,7 +201,7 @@ function EnabledOASISReview() {
       {/* Main Content */}
       <Tabs defaultValue="review" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="review">Review Suggestions</TabsTrigger>
+          <TabsTrigger value="review">Verify Extracted Values</TabsTrigger>
           {isAdmin && <TabsTrigger value="approval">Supervisor Approval</TabsTrigger>}
         </TabsList>
 
@@ -211,7 +225,7 @@ function EnabledOASISReview() {
               <CardContent className="p-12 text-center">
                 <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-slate-900 mb-2">All caught up!</h3>
-                <p className="text-slate-600">No OASIS suggestions pending review.</p>
+                <p className="text-slate-600">No extracted OASIS values are waiting for review. Save an analyzed OASIS PDF in the Analyze tab to start one.</p>
               </CardContent>
             </Card>
           ) : (
@@ -232,7 +246,7 @@ function EnabledOASISReview() {
                           {item.status}
                         </Badge>
                       </div>
-                      
+
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
                           <p className="text-slate-600">Total Suggestions</p>
@@ -285,10 +299,9 @@ export default function OASISReview() {
       <Card className="border-2 border-amber-300">
         <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
           <div className="flex items-center gap-2 font-semibold text-amber-950">
-            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Suggestion Review Paused
+            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS Extraction Review Off
           </div>
-          <p>This surface is unavailable while tenant-scoped access and the clinical provenance of legacy AI suggestions are being verified.</p>
-          <p>No patient roster, OASIS upload, AI suggestion, approval workflow, or record mutation is loaded from this tab.</p>
+          <p>Extraction review is switched off for this deployment.</p>
         </CardContent>
       </Card>
     );

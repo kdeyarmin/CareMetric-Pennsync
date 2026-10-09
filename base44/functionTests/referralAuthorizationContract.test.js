@@ -287,6 +287,7 @@ test('reachable browser source contains no direct Referral entity read or mutati
 test('Referral broker failures cannot masquerade as verified empty queues, documents, or reports', async () => {
   const expectedFailureStates = new Map([
     ['../../src/pages/ReferralIntake.jsx', /isError: referralsUnavailable[\s\S]*No empty queue is being inferred/],
+    // Restored 2026-10-08 (owner decision) with the follow-up page.
     ['../../src/pages/ReferralFollowUp.jsx', /isError: referralsUnavailable[\s\S]*No follow-up queue is being shown/],
     ['../../src/components/documents/ReferralDocumentViewer.jsx', /isError: referralsUnavailable[\s\S]*No referral documents are being shown/],
     ['../../src/components/hub-tabs/ReferralAdmissionNote.jsx', /isError: referralUnavailable[\s\S]*No referral data is being shown/],

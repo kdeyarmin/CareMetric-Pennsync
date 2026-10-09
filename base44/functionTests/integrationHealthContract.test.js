@@ -117,6 +117,59 @@ for (const name of retiredLearningFunctions) {
   });
 }
 
+// Scheduled learning automation. These write assignments and reminders against
+// Base44 course data, so they stand down after cutover, and do nothing different
+// before it: the guard is the same unset-by-default release variable.
+const retiredLearningAutomation = [
+  'autoEnrollAnnualPlans', 'sendRenewalReminders', 'processTrainingRenewals', 'processAnnualEducationRenewals',
+];
+
+for (const name of retiredLearningAutomation) {
+  test(`${name} skips after the central cutover without touching course data`, async () => {
+    const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const client = {
+      auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+      get asServiceRole() { throw new Error('Retired automation accessed service-owned data'); },
+    };
+    const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(data.skipped, true);
+    assert.equal(data.reason, 'central_learning');
+  });
+
+  for (const env of [{}, { CENTRAL_LEARNING_RELEASE: '' }, { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v2' }]) {
+    test(`${name} is unchanged while the release variable is ${JSON.stringify(env.CENTRAL_LEARNING_RELEASE ?? null)}`, async () => {
+      const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+      let reachedCourseData = false;
+      const client = {
+        auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+        get asServiceRole() { reachedCourseData = true; throw new Error('reached service-owned data'); },
+      };
+      const handler = await loadHandler({ entrySource, client, env });
+      const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+      const data = await response.json().catch(() => ({}));
+      assert.equal(reachedCourseData, true, 'with the guard off the job must proceed to its data');
+      assert.notEqual(data.reason, 'central_learning');
+    });
+  }
+}
+
+test('autoEnrollAnnualPlans leaves the person-clicked scope all action alone after the central cutover', async () => {
+  const entrySource = await readFile(new URL('../functions/autoEnrollAnnualPlans/entry.ts', import.meta.url), 'utf8');
+  let reachedCourseData = false;
+  const client = {
+    auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+    get asServiceRole() { reachedCourseData = true; throw new Error('reached service-owned data'); },
+  };
+  const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+  const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: JSON.stringify({ scope: 'all' }) }));
+  const data = await response.json().catch(() => ({}));
+  assert.equal(reachedCourseData, true, 'scope all must proceed to its data');
+  assert.notEqual(data.reason, 'central_learning');
+});
+
 test('central learning cutover removes HeyGen from provider requirements and probes', async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];

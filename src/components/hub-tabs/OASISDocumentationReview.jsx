@@ -5,10 +5,14 @@ import AIDocumentationGenerator from "@/components/oasis/AIDocumentationGenerato
 import AIDocumentationAssistant from "@/components/oasis/AIDocumentationAssistant";
 import InlineDocumentationAssistant from "@/components/oasis/InlineDocumentationAssistant";
 
-const OASIS_DOCUMENTATION_REVIEW_ENABLED = false;
+// Released by the owner on 2026-10-08 ("turn everything on"). Every panel here
+// reviews DOCUMENTATION from the analysis already on screen: it reads no record
+// and writes none, and its prompts forbid choosing an OASIS response or
+// reasoning about payment.
+const OASIS_DOCUMENTATION_REVIEW_ENABLED = true;
 
 function EnabledOASISDocumentationReview({ analysisHandoff }) {
-  const { analysisResults, pdgmData, navigationData } = analysisHandoff || {};
+  const { analysisResults, pdgmData } = analysisHandoff || {};
 
   if (!analysisResults) {
     return <OASISNoAnalysisCard />;
@@ -34,7 +38,6 @@ function EnabledOASISDocumentationReview({ analysisHandoff }) {
       <AIDocumentationGenerator
         analysisResults={analysisResults}
         pdgmData={pdgmData}
-        navigationData={navigationData}
       />
 
       {/* AI Documentation Assistant */}
@@ -56,10 +59,9 @@ export default function OASISDocumentationReview({ analysisHandoff }) {
   if (!OASIS_DOCUMENTATION_REVIEW_ENABLED) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
-        <p className="font-semibold text-amber-900">OASIS Documentation AI Review Paused</p>
+        <p className="font-semibold text-amber-900">OASIS Documentation Review Off</p>
         <p className="mt-2 text-sm text-amber-800">
-          Automated OASIS scoring and documentation guidance are unavailable pending verified CMS
-          content, tenant-scoped authorization, and clinician review.
+          Documentation review is switched off for this deployment.
         </p>
       </div>
     );

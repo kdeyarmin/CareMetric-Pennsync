@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, matchesGlob } from 'node:path';
 import process from 'node:process';
 
 /**
@@ -198,4 +198,94 @@ test('a step handed an account-wide management token is gated on main', () => {
     'every step receiving SUPABASE_ACCESS_TOKEN must be gated on '
     + "if: ${{ github.ref == 'refs/heads/main' }} — excluding pull_request is not enough, "
     + 'because workflow_dispatch can select any ref');
+});
+
+/**
+ * The CLOSURE: every test-looking file has at least one home.
+ *
+ * The three tests above check three populations under two rules, and the gap
+ * between them is not a file anybody would notice. `collectNodeTests` defaults
+ * to `/\.test\.js$/` for `src` and `base44`, and the services test asks only
+ * for `/\.test\.mjs$/`, so a whole grid of (root × extension) pairs is in NO
+ * population at all. Some of them, as examples rather than an enumeration:
+ *
+ *   src/**\/*.test.mjs        base44/**\/*.test.mjs      src/**\/*.spec.mjs
+ *   services/**\/*.test.js    services/**\/*.spec.js     base44/**\/*.spec.js
+ *
+ * No count is written here on purpose: the grid grows with every extension and
+ * directory the project gains, so a figure would be stale before it was useful,
+ * and the ones above were the cells somebody happened to probe. There are no
+ * such files today, which is exactly why a reading in a document could not hold
+ * this: the hole is invisible until somebody lands the first one, and then it
+ * looks wired. Widening one pattern would close one cell and leave the grid, so
+ * this asserts the PROPERTY instead — a file is bound, or it is named here as
+ * unbound. A new runner, extension or directory lands in
+ * neither bucket and fails BY NAME, which is what survives a change where a
+ * widened regex would not. The same shape tools-record-migration-coverage.mjs
+ * uses: publish no figure, assert that nothing falls outside the known set.
+ *
+ * Each home is DERIVED from the thing that owns it — the script bodies, and the
+ * runner configs IMPORTED rather than retyped — because a second copy of a glob
+ * here is a copy that can disagree with the runner while this still passes.
+ */
+test('every test file has a home: a script, a runner glob, or a workflow step', async () => {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+  const scripts = Object.entries(pkg.scripts)
+    .filter(([name]) => name.startsWith('test:'))
+    .map(([, body]) => body)
+    .join(' ');
+  const workflows = readdirSync(join(process.cwd(), WORKFLOWS))
+    .filter((entry) => /\.ya?ml$/.test(entry))
+    .map((entry) => readFileSync(join(process.cwd(), WORKFLOWS, entry), 'utf8'))
+    .join('\n');
+
+  // The runners' own globs, read off the configs. `path.matchesGlob` is used
+  // rather than a hand-rolled matcher because a `*` that is allowed to cross a
+  // `/` silently swallows a nested directory — the error that once reported the
+  // four `browser/` suites as covered.
+  const vitest = (await import('../vitest.config.js')).default?.test ?? {};
+  const playwright = (await import('../playwright.config.js')).default ?? {};
+  const playwrightDir = String(playwright.testDir ?? '').replace(/^\.\//, '');
+
+  const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'dist', 'dist-ssr', 'coverage', 'vendor', 'ios', 'public', 'docs', '.pnpm-store']);
+  // Every module extension Node and TypeScript recognise, not a sample of them.
+  // The first version listed js/mjs/cjs/jsx/ts/tsx and omitted `.mts` and
+  // `.cts`, so an unregistered `src/x.spec.mts` never entered the candidate
+  // list and this closure passed while no runner collected it — the staleness
+  // this test exists to catch, arriving in the test's own allowlist. The set is
+  // closed because these are all of them, so it cannot go stale the way a
+  // subset does.
+  const TEST_FILE = /\.(?:test|spec)\.(?:js|mjs|cjs|jsx|ts|mts|cts|tsx)$/;
+  const walk = (dir, out = []) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (EXCLUDED_DIRS.has(entry.name)) continue;
+      const p = join(dir, entry.name);
+      if (entry.isDirectory()) walk(p, out);
+      else if (TEST_FILE.test(entry.name)) out.push(p.slice(process.cwd().length + 1).replace(/\\/g, '/'));
+    }
+    return out;
+  };
+
+  const homeless = [];
+  for (const rel of walk(process.cwd()).sort()) {
+    // A script names the file outright, or covers its directory with a glob.
+    if (scripts.includes(rel)) continue;
+    if (scripts.includes(`${rel.replace(/\/[^/]+$/, '')}/*${rel.replace(/^.*(\.(?:test|spec)\.[a-z]+)$/, '$1')}`)) continue;
+    // Vitest collects it by glob (its own include, minus its own exclude).
+    const vitestExcluded = (vitest.exclude ?? []).some((bad) => rel === bad || rel.startsWith(`${bad}/`));
+    if (!vitestExcluded && (vitest.include ?? []).some((glob) => matchesGlob(rel, glob))) continue;
+    // Playwright collects it by testDir + testMatch.
+    if (playwrightDir && (rel === playwrightDir || rel.startsWith(`${playwrightDir}/`))
+      && (playwright.testMatch instanceof RegExp ? playwright.testMatch.test(rel) : true)) continue;
+    // A services suite may live in a workflow step instead; that rule is the
+    // second test's and is not widened here.
+    if (rel.startsWith(`${SERVICE_ROOT}/`) && workflows.includes(rel)) continue;
+    homeless.push(rel);
+  }
+
+  assert.deepEqual(homeless, [],
+    'These test files are collected by NOTHING — no test:* script names them, no '
+    + 'runner glob matches them, no workflow step runs them. They pass when invoked '
+    + 'by hand and never run again. Register each one, or widen the runner that '
+    + 'should own it (and prove the widening bites):\n  ' + homeless.join('\n  '));
 });

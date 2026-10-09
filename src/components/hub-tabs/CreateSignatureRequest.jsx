@@ -1,5 +1,5 @@
-import SigningUnavailable from '@/components/signature/SigningUnavailable';
+import SignatureRequestCreator from '@/components/signer/SignatureRequestCreator';
 
 export default function CreateSignatureRequest() {
-  return <SigningUnavailable title="Signature request creation unavailable" />;
+  return <SignatureRequestCreator />;
 }

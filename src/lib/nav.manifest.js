@@ -32,7 +32,7 @@ import {
   Mail, BookUser, Video, HelpCircle, AlertTriangle,
   Phone, Send, Heart, Database, Lock, Award,
   Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
-  Monitor, PieChart, Radio, Search, Target, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
+  Monitor, Radio, Search, Target, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
 import { canAccessLevel } from "@/lib/roles";
 
@@ -47,7 +47,7 @@ import { canAccessLevel } from "@/lib/roles";
 let _routedPages = null;
 function getRoutedPages() {
   if (_routedPages) return _routedPages;
-  const pageModules = import.meta.glob('../pages/*.jsx', { eager: false });
+  const pageModules = import.meta.glob(['../pages/*.jsx', '!../pages/*.spec.jsx', '!../pages/*.test.jsx'], { eager: false });
   _routedPages = new Set(
     Object.keys(pageModules).map(k => k.replace('../pages/', '').replace('.jsx', ''))
   );
@@ -156,7 +156,7 @@ export const NAV_MANIFEST = [
   {
     // Hub combining OASIS assessment entry (SmartOASISAssessment, the default
     // "Assessment" tab) with the former OASIS Analyzer / Review / Clinical /
-    // Compliance / Documentation / Revenue / Analytics / Audit pages as tabs
+    // Compliance / Documentation / Analytics / Audit pages as tabs
     // (?tab=…). SmartOASISAssessment has no standalone manifest entry — it is the
     // Assessment tab here, and /SmartOASISAssessment redirects in (see routes.jsx).
     page: "OASISCenter",
@@ -166,7 +166,7 @@ export const NAV_MANIFEST = [
     adminOnly: false,
     access: "nursing",
     breadcrumbParent: null,
-    keywords: ["oasis", "assessment", "hha", "complete", "review", "analyze", "compliance", "documentation", "revenue", "audit", "analytics", "pdgm"],
+    keywords: ["oasis", "assessment", "hha", "complete", "review", "analyze", "compliance", "documentation", "audit", "analytics"],
   },
   {
     page: "Incidents",
@@ -212,15 +212,15 @@ export const NAV_MANIFEST = [
   },
   {
     // Coder/QA follow-up worklist: what each processed referral still needs
-    // from the provider (CMS compliance + PDGM reimbursement) and the
-    // printable provider information-request form.
+    // from the provider for CMS compliance, the printable provider
+    // information-request form, and the online provider response link.
     page: "ReferralFollowUp",
     label: "Referral Follow-Up",
     icon: ClipboardCheck,
     category: "Office",
     adminOnly: true,
     breadcrumbParent: "ReferralIntake",
-    keywords: ["referral", "follow up", "provider", "request", "compliance", "pdgm", "reimbursement", "coder", "qa"],
+    keywords: ["referral", "follow up", "provider", "request", "compliance", "coder", "qa"],
   },
   {
     // ADR / audit response workspace: analyze the contractor's ADR or audit
@@ -302,8 +302,9 @@ export const NAV_MANIFEST = [
   {
     page: "ReferralTriage",
     label: "Referral Triage",
+    navLabel: "Referral Analyzer",
     icon: Filter,
-    category: null,
+    category: "Office",
     adminOnly: false,
     access: "patient",
     breadcrumbParent: "ReferralIntake",
@@ -700,28 +701,10 @@ export const NAV_MANIFEST = [
     breadcrumbParent: "ReportsAnalytics",
     keywords: ["agency", "analytics", "metrics"],
   },
-  {
-    page: "PredictiveAnalytics",
-    label: "Predictive Analytics",
-    icon: TrendingUp,
-    category: null,
-    adminOnly: true,
-    breadcrumbParent: "ReportsAnalytics",
-    keywords: ["predictive", "analytics", "ai", "forecast"],
-  },
-  {
-    // Admin-only documentation-impact / ROI comparison: how stronger documentation
-    // moves the PDGM case-mix weight + estimated reimbursement (before vs after).
-    // Financial figures are gated to admins via FinancialGate — nurses never see
-    // dollars. Reached via Admin Console / palette (category: null).
-    page: "DocumentationImpact",
-    label: "Documentation Impact",
-    icon: TrendingUp,
-    category: null,
-    adminOnly: true,
-    breadcrumbParent: "ReportsAnalytics",
-    keywords: ["documentation impact", "roi", "value", "reimbursement", "pdgm", "case mix", "revenue uplift", "before after"],
-  },
+  // NOTE: Predictive Analytics (AI risk scoring) and Documentation Impact (PDGM
+  // case-mix / reimbursement before-vs-after) were removed with the clinical
+  // risk-prediction and PDGM payment features; their paths redirect (see
+  // REDIRECTS in src/routes.jsx).
 
   // ─── Compliance Center (Admin Analytics) ─────────────────────────────────────
   {
@@ -770,16 +753,6 @@ export const NAV_MANIFEST = [
     adminOnly: true,
     breadcrumbParent: "AdminOperations",
     keywords: ["agency", "settings", "configuration"],
-  },
-  {
-    page: "PDGMRateSettings",
-    label: "PDGM Rate Settings",
-    icon: PieChart,
-    // Reached via Admin Console → System & Configuration.
-    category: null,
-    adminOnly: true,
-    breadcrumbParent: "AdminOperations",
-    keywords: ["pdgm", "case mix", "case-mix", "weights", "rates", "reimbursement", "billing", "cms"],
   },
   {
     page: "AIToolsCenter",

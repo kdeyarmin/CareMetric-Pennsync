@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   isIcdCode,
   extractIcdCodesFromText,
@@ -12,7 +15,35 @@ import {
   codeLabel,
   toPersistedCoding,
 } from "./diagnosisCodeGenerator.js";
-import { DEFAULT_ICD10_CLINICAL_GROUPS } from "../pdgm/pdgmRates.js";
+
+// The ICD-10 prefix → PDGM clinical-group table. The frontend copy of it lived
+// in the retired PDGM rate-settings module (removed with the PDGM payment
+// features), so the lookup is exercised against the table the deployed
+// calculatePDGM backend still defines. That keeps the "I6x is Neuro, not
+// Cardiac" assertions pinned to real data rather than to a fixture written to
+// pass them.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const backendSrc = fs.readFileSync(
+  path.resolve(here, "../../../base44/functions/calculatePDGM/entry.ts"),
+  "utf8"
+);
+function extractObject(name) {
+  const m = new RegExp(`const\\s+${name}\\s*=\\s*`).exec(backendSrc);
+  if (!m) throw new Error(`const ${name} not found in calculatePDGM/entry.ts`);
+  let i = m.index + m[0].length;
+  while (backendSrc[i] !== "{") i++;
+  const start = i;
+  let depth = 0;
+  for (; i < backendSrc.length; i++) {
+    if (backendSrc[i] === "{") depth++;
+    else if (backendSrc[i] === "}") {
+      depth--;
+      if (depth === 0) { i++; break; }
+    }
+  }
+  return Function(`"use strict"; return (${backendSrc.slice(start, i)});`)();
+}
+const ICD10_CLINICAL_GROUPS = extractObject("ICD10_CLINICAL_GROUPS");
 
 // ── code recognition ──
 
@@ -140,21 +171,21 @@ test("empty/absent referral data yields no candidates and no crash", () => {
 // ── clinical-group lookup (longest prefix wins, mirrors calculatePDGM) ──
 
 test("lookupClinicalGroup prefers the most specific prefix", () => {
-  assert.equal(lookupClinicalGroup("I63.9", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
-  assert.equal(lookupClinicalGroup("I50.9", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
-  assert.equal(lookupClinicalGroup("L89.153", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Wounds");
-  assert.equal(lookupClinicalGroup("S72.001A", DEFAULT_ICD10_CLINICAL_GROUPS), null); // no S entry on purpose
+  assert.equal(lookupClinicalGroup("I63.9", ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
+  assert.equal(lookupClinicalGroup("I50.9", ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
+  assert.equal(lookupClinicalGroup("L89.153", ICD10_CLINICAL_GROUPS), "MMTA_Wounds");
+  assert.equal(lookupClinicalGroup("S72.001A", ICD10_CLINICAL_GROUPS), null); // no S entry on purpose
 });
 
 test("cerebrovascular sequelae (I6x) sequence as Neuro, not Cardiac", () => {
   // Post-stroke sequelae and hemorrhage codes must match the intake preview
   // (all I6* → Neuro) rather than falling through the "I" chapter to Cardiac.
-  assert.equal(lookupClinicalGroup("I69.351", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
-  assert.equal(lookupClinicalGroup("I61.9", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
-  assert.equal(lookupClinicalGroup("I60.0", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
+  assert.equal(lookupClinicalGroup("I69.351", ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
+  assert.equal(lookupClinicalGroup("I61.9", ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
+  assert.equal(lookupClinicalGroup("I60.0", ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
   // Non-cerebrovascular I codes are unchanged.
-  assert.equal(lookupClinicalGroup("I10", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
-  assert.equal(lookupClinicalGroup("I25.10", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
+  assert.equal(lookupClinicalGroup("I10", ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
+  assert.equal(lookupClinicalGroup("I25.10", ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
 });
 
 test("formatClinicalGroup humanizes group keys", () => {

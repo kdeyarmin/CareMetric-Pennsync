@@ -78,18 +78,27 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
 /**
- * Dormant, authority-bound signer-token issuer.
+ * Authority-bound signer-token issuer (released 2026-10-08, owner decision).
  *
- * The implementation is intentionally retained behind a source release gate.
- * Turning the gate on requires the legal/product approval and hosted negative
- * tests listed in docs/audits/SIGNATURE_RESTORATION_AUDIT_2026-09-06.md.
+ * Mints one single-purpose bearer link for one signer of one package, stores
+ * only its SHA-256, caps its lifetime at 168 hours and at every package and
+ * document deadline, and emails it to the signer address recorded when the
+ * request was created — never to a caller-supplied address. The plaintext
+ * link is never returned to the requester.
+ *
+ * Who may issue: the built-in administrator, or an exact active
+ * AgencyMembership in the package's agency WITH chart access to the package's
+ * patient (agency_admin/manager there, the chart's creator, or an active
+ * PatientCareTeamAssignment) — the same rule that admitted the request's
+ * creation. `rotate: true` revokes the signer's current unexpired link first
+ * (a reminder that supersedes the old link); a link that is mid-submission or
+ * whose delivery is unreconciled still blocks a new one.
  */
-const PUBLIC_SIGNATURE_RELEASE_ENABLED = false;
 const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;
 const MAX_PACKAGE_DOCUMENTS = 25;
-const ALLOWED_ROLES = new Set(['agency_admin', 'manager']);
+const CHART_WIDE_ROLES = new Set(['agency_admin', 'manager']);
 const TENANT_ROLES = new Set([
   'agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care',
 ]);
@@ -194,7 +203,7 @@ async function parseRequest(req: Request) {
   try { body = JSON.parse(raw); } catch { throw new PublicError(400, 'Invalid JSON body'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new PublicError(400, 'Request body must be an object');
   const record = body as Record<string, unknown>;
-  const allowed = new Set(['agency_id', 'package_id', 'signer_id', 'expires_in_hours', 'request_id']);
+  const allowed = new Set(['agency_id', 'package_id', 'signer_id', 'expires_in_hours', 'request_id', 'rotate']);
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new PublicError(400, 'Request contains unsupported fields');
   const agencyId = exactIdentifier(record.agency_id);
   const packageId = exactIdentifier(record.package_id);
@@ -203,12 +212,40 @@ async function parseRequest(req: Request) {
   const hours = record.expires_in_hours == null ? 72 : Number(record.expires_in_hours);
   if (!agencyId || !packageId || !signerId || !requestId) throw new PublicError(400, 'Exact agency, package, signer, and request ids are required');
   if (!Number.isSafeInteger(hours) || hours < 1 || hours > 168) throw new PublicError(400, 'expires_in_hours must be an integer from 1 through 168');
-  return { agencyId, packageId, signerId, requestId, hours };
+  if (record.rotate != null && typeof record.rotate !== 'boolean') throw new PublicError(400, 'rotate must be a boolean');
+  return { agencyId, packageId, signerId, requestId, hours, rotate: record.rotate === true };
 }
 
+// The built-in administrator (the platform tier) may issue for any agency;
+// it is recorded as `platform_owner` and never borrows a tenant membership.
 function isProtectedPlatformOwner(user: Record<string, any>) {
-  const configured = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
-  return user?.role === 'admin' && !!configured && canonicalEmail(user.email) === configured;
+  return user?.role === 'admin';
+}
+
+// Chart access to the package's patient, decided from the membership and the
+// care-team assignment — never from a self-editable profile field.
+async function assertIssuerChartAccess(
+  entities: Record<string, any>,
+  authority: Record<string, any>,
+  agencyId: string,
+  patientId: string,
+) {
+  if (authority.snapshot.tenant_role === 'platform_owner') return;
+  if (CHART_WIDE_ROLES.has(String(authority.membership?.tenant_role || ''))) return;
+  const patients = requireRows(await entities.Patient.filter(
+    { id: patientId, agency_id: agencyId, is_sample: false, is_archived: false }, undefined, EXACT_ROW_LIMIT,
+  ), 'Patient.filter');
+  if (patients.length !== 1 || patients[0]?.id !== patientId || patients[0]?.agency_id !== agencyId) {
+    throw new PublicError(404, 'Signature package unavailable');
+  }
+  if (exactIdentifier(patients[0].created_by_user_id) && patients[0].created_by_user_id === authority.userId) return;
+  const assignments = requireRows(await entities.PatientCareTeamAssignment.filter(
+    { agency_id: agencyId, patient_id: patientId, user_id: authority.userId, status: 'active' }, undefined, 2,
+  ), 'PatientCareTeamAssignment.filter');
+  if (assignments.some((row) => row?.agency_id === agencyId && row?.patient_id === patientId
+    && row?.user_id === authority.userId && row?.status === 'active')) return;
+  // Same answer as a missing package: never confirm a chart the caller cannot open.
+  throw new PublicError(404, 'Signature package unavailable');
 }
 
 function validateMembership(row: Record<string, any>, actor: Record<string, any>, agencyId: string) {
@@ -248,7 +285,6 @@ async function loadAuthority(base44: Record<string, any>, agencyId: string, expe
     }
     if (rows.length !== 1) throw new PublicError(403, 'No active membership for agency');
     membership = validateMembership(rows[0], { userId, email }, agencyId);
-    if (!ALLOWED_ROLES.has(membership.tenant_role)) throw new PublicError(403, 'Tenant role cannot issue signer links');
   }
   const agencies = requireRows(await entities.Agency.filter({ id: agencyId }, undefined, EXACT_ROW_LIMIT), 'Agency.filter');
   if (agencies.length !== 1 || agencies.some((row) => row?.id !== agencyId)
@@ -333,7 +369,11 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
   }
   const signatures: Array<Record<string, any>> = [];
   let pendingForSigner = 0;
-  let maxTokenExpiry = Date.now() + 168 * 60 * 60 * 1000;
+  // Only stored deadlines enter the snapshot: a clock-relative cap here would
+  // differ between the initial and the re-proved snapshot and refuse every
+  // issuance whose deadline is more than 168 hours away. The 168-hour cap is
+  // applied once, at mint time.
+  let maxTokenExpiry = Number.POSITIVE_INFINITY;
   if (pkg.due_date != null) {
     const packageDue = dueDateEnd(pkg.due_date);
     if (packageDue === null) throw new PublicError(409, 'Signature package deadline is invalid');
@@ -357,6 +397,10 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
       throw new PublicError(409, 'Signature signer roster is invalid');
     }
     const signer = signers.find((candidate) => candidate.signer_id === input.signerId);
+    // A document already sealed for every signer stays in the package; the
+    // signer's link simply has nothing left to do on it.
+    const sealed = signature.status === 'completed' && signature.workflow_status === 'completed'
+      && signer?.status === 'completed' && exactIdentifier(signature.signed_document_id) !== null;
     if (!signer || signer.email !== canonicalEmail(pkg.signer_email)
         || signer.signer_name !== pkg.signer_name
         || signature.patient_id !== patientId || signature.created_by_user_id !== creatorId
@@ -366,9 +410,9 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
         || !exactIdentifier(signature.document_id) || !exactIdentifier(signature.document_binding_id)
         || signature.document_binding_version !== 2 || !exactDigest(signature.document_content_sha256)
         || !Number.isSafeInteger(signature.authority_version) || signature.authority_version < 1
-        || !['pending', 'in_progress'].includes(signature.status)
-        || !['pending', 'partial', 'signatures_collected'].includes(signature.workflow_status)
-        || signature.completed_date != null || signature.completed_at != null
+        || (!sealed && (!['pending', 'in_progress'].includes(signature.status)
+          || !['pending', 'partial', 'signatures_collected'].includes(signature.workflow_status)
+          || signature.completed_date != null || signature.completed_at != null))
         || signature.document_url != null || signature.document_content != null || signature.signed_pdf_url != null) {
       throw new PublicError(409, 'Signature document integrity check failed');
     }
@@ -420,7 +464,7 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
       creator_membership_version: pkg.creator_membership_version,
       due_date: pkg.due_date ?? null,
       expires_at: pkg.expires_at ?? null, expiration_date: pkg.expiration_date ?? null,
-      max_token_expires_at: new Date(maxTokenExpiry).toISOString(),
+      max_token_expires_at: Number.isFinite(maxTokenExpiry) ? new Date(maxTokenExpiry).toISOString() : null,
       token_issue_claimed_by: pkg.token_issue_claimed_by ?? null,
       token_issue_claimed_at: pkg.token_issue_claimed_at ?? null,
       token_issue_request_id: pkg.token_issue_request_id ?? null,
@@ -438,31 +482,30 @@ function generateToken() {
 function signerPortalOrigin() {
   const raw = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
   let url: URL;
-  try { url = new URL(raw); } catch { throw new PublicError(500, 'Signer portal is not configured'); }
+  try { url = new URL(raw); } catch { throw new PublicError(503, 'Signer portal is not configured (APP_PUBLIC_URL must be an https origin)'); }
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
-    throw new PublicError(500, 'Signer portal is not configured');
+    throw new PublicError(503, 'Signer portal is not configured (APP_PUBLIC_URL must be an https origin)');
   }
   return url.origin;
 }
 
 Deno.serve(async (req) => {
-  if (!PUBLIC_SIGNATURE_RELEASE_ENABLED) {
-    return Response.json(
-      { error: 'Secure document review and signing are temporarily unavailable.', code: 'signer_token_issuance_unavailable' },
-      { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
-    );
-  }
   let cleanupEntities: Record<string, any> | null = null;
   let packageClaim: Record<string, any> | null = null;
   let createdToken: Record<string, any> | null = null;
   let externalStarted = false;
   try {
+    if (req.method !== 'POST') throw new PublicError(405, 'Method not allowed');
+    const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
+    // Authenticate before the body names any agency, package or signer.
+    const caller = await base44.auth.me().catch(() => null);
+    if (!caller) throw new PublicError(401, 'Unauthorized');
     const input = await parseRequest(req);
     const portalOrigin = signerPortalOrigin();
-    const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
     const initialAuthority = await loadAuthority(base44, input.agencyId);
     cleanupEntities = initialAuthority.entities;
     const initialPackage = await loadPackageSnapshot(initialAuthority.entities, input);
+    await assertIssuerChartAccess(initialAuthority.entities, initialAuthority, input.agencyId, initialPackage.package.patient_id);
     if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
     const duplicate = requireRows(await initialAuthority.entities.DocumentPackageToken.filter(
       { agency_id: input.agencyId, package_id: input.packageId, signer_id: input.signerId, token_request_id: input.requestId },
@@ -494,8 +537,32 @@ Deno.serve(async (req) => {
           || !Number.isSafeInteger(candidate.authority_version) || candidate.authority_version < 1) {
         throw new PublicError(409, 'Signer-token identity is invalid');
       }
-      if (candidate.status !== 'active' || Date.now() < Date.parse(candidate.expires_at)) {
-        throw new PublicError(409, 'A signer capability is already active or requires reconciliation');
+      if (candidate.status === 'active' && Date.now() < Date.parse(candidate.expires_at) && input.rotate) {
+        // A reminder supersedes the signer's current link: revoke it first so
+        // two live bearer links never exist for one signer.
+        const revokedAt = new Date().toISOString();
+        const revoked = await initialAuthority.entities.DocumentPackageToken.updateMany(
+          { id: candidate.id, status: 'active', authority_version: candidate.authority_version },
+          { $set: { status: 'revoked', is_active: false, revoked_at: revokedAt,
+            authority_version: candidate.authority_version + 1 } },
+        );
+        if (!successfulSingleUpdate(revoked)) throw new PublicError(409, 'Active signer link changed during rotation');
+        await initialAuthority.entities.SignatureAuditEvent.create({
+          event_key: await sha256(`token_revoked\0${candidate.id}\0${input.requestId}`),
+          agency_id: input.agencyId, package_id: input.packageId, signer_id: input.signerId,
+          token_id: candidate.id, action: 'token_revoked', actor_type: 'authenticated_user',
+          actor_user_id: initialAuthority.userId,
+          membership_id: initialAuthority.membership?.id ?? null,
+          membership_version: initialAuthority.membership?.version ?? null,
+          request_id: input.requestId, authority_version: candidate.authority_version + 1, occurred_at: revokedAt,
+        });
+        continue;
+      }
+      if (candidate.status === 'active' && Date.now() < Date.parse(candidate.expires_at)) {
+        throw new PublicError(409, 'This signer already has an active link; send a reminder to replace it');
+      }
+      if (candidate.status !== 'active') {
+        throw new PublicError(409, 'A signer link is mid-submission or its delivery requires reconciliation');
       }
       const expired = await initialAuthority.entities.DocumentPackageToken.updateMany(
         { id: candidate.id, status: 'active', authority_version: candidate.authority_version },
@@ -547,7 +614,9 @@ Deno.serve(async (req) => {
     const now = new Date();
     const expiresAt = new Date(Math.min(
       now.getTime() + input.hours * 60 * 60 * 1000,
-      Date.parse(finalPackage.package.max_token_expires_at),
+      finalPackage.package.max_token_expires_at == null
+        ? Number.POSITIVE_INFINITY
+        : Date.parse(finalPackage.package.max_token_expires_at),
     )).toISOString();
     const deliveryAttemptId = crypto.randomUUID();
     const tokenRow = await finalAuthority.entities.DocumentPackageToken.create({
@@ -605,6 +674,7 @@ Deno.serve(async (req) => {
       body: `<!doctype html><html><body><p>Hello ${htmlEscape(finalPackage.package.signer_name)},</p>`
         + '<p>A document package is ready for your review and signature.</p>'
         + `<p><a href="${htmlEscape(signerLink)}">Review and sign securely</a></p>`
+        + `<p>This private link works only for you and expires ${htmlEscape(new Date(expiresAt).toUTCString())}.</p>`
         + '<p>Do not forward this private link. If you did not expect it, contact your care team.</p></body></html>',
     });
     const acceptedAt = new Date().toISOString();

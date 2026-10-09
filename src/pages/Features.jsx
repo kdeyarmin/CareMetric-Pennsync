@@ -24,10 +24,8 @@ import {
   Stethoscope,
   Download,
   GraduationCap,
-  DollarSign,
   FileCheck,
   Users,
-  LineChart,
   Layers,
   BookOpen,
   CheckCircle2,
@@ -174,7 +172,7 @@ export default function FeaturesPage() {
         {
           name: "Clinical Decision Support",
           icon: Stethoscope,
-          description: "Real-time clinical analysis with drug interactions, risk detection, and evidence-based recommendations",
+          description: "Real-time clinical analysis with drug interactions, safety checks, and evidence-based recommendations",
           timeSaved: "5-10 min/visit",
           impact: "critical",
           details: "Drug safety alerts, vital sign analysis, diagnosis-specific guidance",
@@ -225,16 +223,6 @@ export default function FeaturesPage() {
           paused: true
         },
         {
-          name: "PDGM Revenue Analysis",
-          icon: DollarSign,
-          description: "Paused: PDGM grouping, case-mix, payment, and optimization guidance are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
-          timeSaved: "Unavailable",
-          impact: "critical",
-          details: "No PDGM group, case-mix result, payment estimate, or optimization tip is produced",
-          howToUse: "Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.",
-          paused: true
-        },
-        {
           name: "Documentation Quality Scoring",
           icon: Target,
           description: "Paused: automated OASIS accuracy, completeness, compliance scoring, and response guidance are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
@@ -245,16 +233,6 @@ export default function FeaturesPage() {
           paused: true
         },
         {
-          name: "Revenue Optimization Recommendations",
-          icon: TrendingUp,
-          description: "Paused: M-item correction, PDGM impact, and reimbursement recommendations are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
-          timeSaved: "Unavailable",
-          impact: "critical",
-          details: "No M-item change, rescore opportunity, or projected payment increase is generated",
-          howToUse: "Record clinician-observed responses and use the official EMR/CMS-approved grouper.",
-          paused: true
-        },
-        {
           name: "Clinical Pathway Triggering",
           icon: Layers,
           description: "Paused: OASIS-derived pathway triggering is unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
@@ -262,16 +240,6 @@ export default function FeaturesPage() {
           impact: "high",
           details: "No OASIS-derived pathway, rescore prompt, or follow-up task is generated",
           howToUse: "Use clinician-approved agency pathways outside the paused OASIS workflow.",
-          paused: true
-        },
-        {
-          name: "Predictive Revenue Forecasting",
-          icon: LineChart,
-          description: "Paused: AI financial-impact and PDGM reimbursement forecasting are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
-          timeSaved: "Unavailable",
-          impact: "high",
-          details: "No baseline, optimized-payment, trajectory, or breakeven scenario is generated",
-          howToUse: "Use verified financial systems and the official EMR/CMS-approved grouper.",
           paused: true
         }
       ]
@@ -363,22 +331,13 @@ export default function FeaturesPage() {
       color: "orange",
       items: [
         {
-          name: "Proactive Risk Detection",
+          name: "Rule-Based Patient Alerts",
           icon: Bell,
-          description: "AI monitors patient data for deterioration patterns and generates predictive alerts",
-          timeSaved: "Prevents hospitalizations",
+          description: "Dashboard alerts for overdue visits, care-plan goal deadlines, recent incidents, and high-acuity diagnoses without a recent visit, built from fixed rules over your patients' records",
+          timeSaved: "Fewer missed follow-ups",
           impact: "critical",
-          details: "Vital trend analysis, clinical pattern recognition, risk scoring, recommended interventions",
-          howToUse: "Review Patient Alerts dashboard daily. Click alerts for detailed risk analysis and action items."
-        },
-        {
-          name: "Multi-Factor Risk Scoring",
-          icon: Activity,
-          description: "Comprehensive risk assessment based on vitals, functional status, medications, and comorbidities",
-          timeSaved: "Early intervention",
-          impact: "critical",
-          details: "Fall risk, readmission risk, infection risk, medication risk, symptom escalation",
-          howToUse: "System auto-calculates risk scores. Review contributing factors and recommended actions for high-risk patients."
+          details: "Fixed rules over visits, care plans, incidents, and diagnoses; alerts are not AI predictions",
+          howToUse: "Review the dashboard alerts and the Patient Alerts list daily; filter by patient, severity, and type."
         },
         {
           name: "Alert Workflow Management",
@@ -397,22 +356,22 @@ export default function FeaturesPage() {
       color: "green",
       items: [
         {
-          name: "AI Personalized Training Engine (Paused)",
+          name: "AI Personalized Training Engine",
           icon: Brain,
-          description: "Personalized skill-gap analysis is unavailable until performance inputs have immutable tenant provenance",
-          timeSaved: "Unavailable",
+          description: "Skill gaps found in your own audit, documentation and efficiency data, with AI-generated lessons, scenarios and quizzes for each",
+          timeSaved: "Targeted learning",
           impact: "critical",
-          details: "Required training, the course library, progress tracking, and documentation education remain available",
-          howToUse: "Use the non-personalized Training Hub tabs while performance-derived recommendations are paused."
+          details: "Gaps cover documentation compliance, AI-assisted documentation, efficiency and time management. Nothing predicts burnout or clinical risk",
+          howToUse: "Open Training Hub → AI Personalized, then Start Training or Generate Training on a skill gap."
         },
         {
-          name: "Personalized Training Plans (Paused)",
+          name: "Personalized Training Plans",
           icon: Target,
-          description: "Performance-derived learning paths are unavailable pending a tenant-authorized analysis broker",
-          timeSaved: "Unavailable",
+          description: "Each skill gap becomes an interactive lesson whose completion is recorded in your progress",
+          timeSaved: "Builds competency",
           impact: "high",
-          details: "The app does not infer zero skill gaps when the source cohort cannot be verified",
-          howToUse: "Use required and library training modules until personalized analysis is restored."
+          details: "When the analysis cannot be loaded the hub says so, rather than showing that you have no gaps",
+          howToUse: "Complete the generated lesson and quiz; it appears under My Progress."
         },
         {
           name: "Interactive Scenarios",
@@ -458,13 +417,13 @@ export default function FeaturesPage() {
           howToUse: "Navigate to Compliance Dashboard to review audit results and address flagged issues."
         },
         {
-          name: "User Activity History (Paused)",
+          name: "User Activity Tracking",
           icon: Users,
-          description: "User activity history is unavailable until audit rows have immutable tenant provenance",
-          timeSaved: "Unavailable",
+          description: "Review recorded user activity for audit and performance context",
+          timeSaved: "Regulatory compliance",
           impact: "critical",
-          details: "The app does not load or summarize global UserActivity rows and does not treat unavailable history as zero events",
-          howToUse: "Wait for a hosted and verified tenant-authorized server broker before using in-app activity history."
+          details: "Per-user summaries, an action log with filters, and CSV/PDF export. Agency administrators see their own agency's staff; recorded details never include patient names or contact numbers",
+          howToUse: "Admins: open User Activity Report (Report and Activity Log tabs), or a user's activity panel in User Management."
         },
         {
           name: "Regulatory Updates",
@@ -478,11 +437,11 @@ export default function FeaturesPage() {
         {
           name: "Performance Analytics",
           icon: BarChart3,
-          description: "Documentation and quality trends remain visible; activity-derived AI utilization and nurse performance conclusions are paused",
+          description: "Documentation and quality trends, plus AI utilization read from the recorded activity trail for your agency",
           timeSaved: "Strategic insight",
           impact: "high",
           details: "Quality metrics, time savings, compliance rates, trend analysis",
-          howToUse: "Admins: Use the available Analytics Dashboard measures and treat paused measures as unavailable, not zero."
+          howToUse: "Admins: Open the Analytics Dashboard. A measure that cannot be read shows as unavailable, never as zero."
         }
       ]
     },
@@ -564,7 +523,7 @@ export default function FeaturesPage() {
   <div class="logo-header">
   </div>
   <h1>PennSync Features Guide</h1>
-  <p class="header-info">AI-Powered Home Health Documentation<br>OASIS/PDGM clinical guidance is currently paused<br>Generated: ${new Date().toLocaleDateString()}</p>
+  <p class="header-info">AI-Powered Home Health Documentation<br>OASIS clinical guidance is currently paused<br>Generated: ${new Date().toLocaleDateString()}</p>
   
   <div class="impact-summary">
     <h2 style="color: white; margin-top: 0;">The PennSync Impact</h2>
@@ -686,7 +645,7 @@ export default function FeaturesPage() {
     <div class="toc-section">Part 1: Nurse User Guide</div>
     <div class="toc-item">1. Getting Started</div>
     <div class="toc-item">2. Smart Note Assistant</div>
-    <div class="toc-item">3. OASIS/PDGM Feature Status</div>
+    <div class="toc-item">3. OASIS Feature Status</div>
     <div class="toc-item">4. Patient Care Management</div>
     <div class="toc-item">5. Incident Reporting</div>
     <div class="toc-item">6. Training & Development</div>
@@ -718,7 +677,7 @@ export default function FeaturesPage() {
       <span class="step-number">3</span>Click "Sign In"
     </div>
     <div class="tip">
-      <span class="tip-icon">💡 TIP:</span> PennSync's in-app login-event collection is currently paused. Use identity-provider audit logs for current login monitoring; PennSync activity reports show only previously stored login records.
+      <span class="tip-icon">💡 TIP:</span> PennSync records each sign-in on your activity trail (once per half hour, stamped by the server). Administrators see sign-ins in User Activity Tracking.
     </div>
 
     <h3>1.2 Dashboard Overview</h3>
@@ -837,7 +796,7 @@ export default function FeaturesPage() {
   </div>
 
   <div class="section">
-    <h2>3. OASIS/PDGM Feature Status</h2>
+    <h2>3. OASIS Feature Status</h2>
     <p><span class="role-badge nurse-badge">NURSE</span>For SOC, ROC, and Discharge OASIS assessments</p>
 
     <h3>3.1 Smart OASIS and PDF Analysis</h3>
@@ -845,20 +804,12 @@ export default function FeaturesPage() {
       <span class="warning-icon">⚠️ PAUSED:</span> Smart OASIS AI suggestions, PDF upload and extraction, patient matching, automated response selection, and OASIS quality scoring are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review.
     </div>
 
-    <h3>3.2 PDGM Grouping and Payment</h3>
-    <div class="warning">
-      <span class="warning-icon">⚠️ PAUSED:</span> PDGM grouping, case-mix guidance, payment optimization, M-item financial-impact recommendations, and reimbursement calculations are unavailable under the same safeguards.
-    </div>
-
-    <h3>3.3 Approved Workflow</h3>
+    <h3>3.2 Approved Workflow</h3>
     <div class="step">
       <span class="step-number">1</span>Record and review OASIS responses in the official clinician-led workflow.
     </div>
-    <div class="step">
-      <span class="step-number">2</span>Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.
-    </div>
     <div class="warning">
-      <span class="warning-icon">⚠️ IMPORTANT:</span> Do not use PennSync to select OASIS responses or estimate reimbursement while this functionality is paused.
+      <span class="warning-icon">⚠️ IMPORTANT:</span> Do not use PennSync to select OASIS responses while this functionality is paused.
     </div>
   </div>
 
@@ -926,7 +877,7 @@ export default function FeaturesPage() {
       <span class="step-number">1</span>Click <strong>"Training Hub"</strong> in navigation
     </div>
     <div class="step">
-      <span class="step-number">2</span>Choose Required, Library, Progress, or Documentation Training; personalized skill-gap analysis is currently unavailable
+      <span class="step-number">2</span>Choose AI Personalized for your skill gaps, or Required, Library, Progress, or Documentation Training
     </div>
     <div class="step">
       <span class="step-number">3</span>Complete assigned or selected modules and review recorded progress
@@ -975,8 +926,7 @@ export default function FeaturesPage() {
       <span class="step-number">2</span>Configure agency information:
       <ul>
         <li>Agency name and contact information</li>
-        <li>OASIS/PDGM forecasting settings (paused)</li>
-        <li>Payment calculation settings (paused)</li>
+        <li>Office address and ZIP code</li>
         <li>Default visit types and care types</li>
       </ul>
     </div>
@@ -1044,9 +994,18 @@ export default function FeaturesPage() {
     <h2>9. Compliance & Monitoring</h2>
     <p><span class="role-badge admin-badge">ADMIN</span>Monitor compliance and audit documentation quality</p>
 
-    <h3>9.1 User Activity History (Paused)</h3>
+    <h3>9.1 Reviewing User Activity</h3>
     <div class="step">
-      <span class="step-number">1</span>In-app activity history, filters, summaries, and exports are unavailable until a tenant-authorized server broker can verify immutable agency provenance.
+      <span class="step-number">1</span>Navigate to <strong>"User Activity Report"</strong>
+    </div>
+    <div class="step">
+      <span class="step-number">2</span>Review per-user summaries, or open the Activity Log tab for the detailed action history
+    </div>
+    <div class="step">
+      <span class="step-number">3</span>Use filters to focus on specific users, actions, or date ranges
+    </div>
+    <div class="step">
+      <span class="step-number">4</span>Export activity reports for audits
     </div>
 
     <h3>9.2 Compliance Auditing</h3>
@@ -1093,9 +1052,18 @@ export default function FeaturesPage() {
       <span class="step-number">4</span>Export reports for leadership
     </div>
 
-    <h3>10.2 Nurse Performance Dashboard (Paused)</h3>
+    <h3>10.2 Nurse Performance Dashboard</h3>
     <div class="step">
-      <span class="step-number">1</span>Derived nurse scores and recommendations are unavailable until every source record has immutable tenant provenance and a tenant-authorized analysis broker is verified.
+      <span class="step-number">1</span>Navigate to <strong>"Nurse Performance Dashboard"</strong>
+    </div>
+    <div class="step">
+      <span class="step-number">2</span>Nurses see their own metrics; agency administrators can pick any active member of their agency
+    </div>
+    <div class="step">
+      <span class="step-number">3</span>Identify strengths and training needs from the AI insights
+    </div>
+    <div class="step">
+      <span class="step-number">4</span>Set and track personal goals over time
     </div>
   </div>
 
@@ -1163,7 +1131,7 @@ export default function FeaturesPage() {
     <p>• System not responding or errors</p>
     <p>• Cannot access patient records</p>
     <p>• AI enhancement producing inaccurate results</p>
-    <p>• Questions about paused OASIS/PDGM workflows</p>
+    <p>• Questions about paused OASIS workflows</p>
     <p>• Questions about features or functionality</p>
   </div>
 
@@ -1248,7 +1216,7 @@ export default function FeaturesPage() {
         icon={Zap}
         eyebrow="PennSync by CareMetric"
         title="PennSync Features"
-        description="AI-powered home health documentation and clinical decision support; OASIS/PDGM clinical guidance is currently paused"
+        description="AI-powered home health documentation and clinical decision support; OASIS clinical guidance is currently paused"
         favoritePage="Features"
         actions={
           <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
@@ -1324,7 +1292,7 @@ export default function FeaturesPage() {
               <Badge variant="info" className="mb-2">Research-backed roadmap</Badge>
               <CardTitle className="text-xl sm:text-2xl text-slate-900">Top 25 end-user improvement implementation plan</CardTitle>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                This implementation plan turns the comprehensive app audit into 25 tracked, user-facing enhancement initiatives with owners, target workflows, acceptance criteria, and launch signals across clinician workflow, OASIS/PDGM quality, AI trust, mobile reliability, patient self-service, analytics, and administration.
+                This implementation plan turns the comprehensive app audit into 25 tracked, user-facing enhancement initiatives with owners, target workflows, acceptance criteria, and launch signals across clinician workflow, OASIS quality, AI trust, mobile reliability, patient self-service, analytics, and administration.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center lg:min-w-[320px]">

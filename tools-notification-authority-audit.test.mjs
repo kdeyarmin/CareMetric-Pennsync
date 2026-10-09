@@ -85,18 +85,23 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
   const result = await inventoryNotificationProducers(FUNCTIONS_ROOT);
   assert.deepEqual(result.summary, {
     files_scanned: result.summary.files_scanned,
-    producer_files: 30,
-    call_sites: 40,
-    authority_v1: 6,
-    legacy_unmigrated: 34,
+    // 2026-10-08: processCompletedVisit and monitorClinicalDataForCarePlanUpdates
+    // were released with authority-v1 notices (no longer source-disabled
+    // legacy), and notifyUrgentMessage gained its first, authority-v1, notice.
+    // +6 the same day: the six e-signature functions that can seal a document
+    // each mint one authority-v1 completion notice (shared esignFinalization).
+    producer_files: 37,
+    call_sites: 47,
+    authority_v1: 15,
+    legacy_unmigrated: 32,
     explicitly_quarantined: 0,
     workflow_schedule_quarantined: 12,
     browser_reachable_legacy_unmigrated: 7,
-    source_disabled: 2,
-    runtime_gated: 6,
+    source_disabled: 0,
+    runtime_gated: 3,
     runtime_gated_authority_v1: 3,
-    runtime_gated_legacy_unmigrated: 3,
-    reachable_legacy_unmigrated: 29,
+    runtime_gated_legacy_unmigrated: 0,
+    reachable_legacy_unmigrated: 32,
     unclassified: 0,
     invalid_authority_evidence: 0,
     missing_expected: 0,
@@ -112,10 +117,14 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
   ]);
   assert.deepEqual(mixed.map((call) => call.classification), [
     PRODUCER_CLASSIFICATIONS.LEGACY_UNMIGRATED,
-    PRODUCER_CLASSIFICATIONS.RUNTIME_GATED,
-    PRODUCER_CLASSIFICATIONS.RUNTIME_GATED,
+    // The urgent-text and new-text notices: reachable since inbound SMS
+    // routing was released on 2026-10-08.
+    PRODUCER_CLASSIFICATIONS.LEGACY_UNMIGRATED,
+    PRODUCER_CLASSIFICATIONS.LEGACY_UNMIGRATED,
     PRODUCER_CLASSIFICATIONS.AUTHORITY_V1,
-    PRODUCER_CLASSIFICATIONS.RUNTIME_GATED,
+    // The new-voicemail notice: reachable since inbound call routing was
+    // released on 2026-10-08.
+    PRODUCER_CLASSIFICATIONS.LEGACY_UNMIGRATED,
   ]);
 });
 
@@ -173,8 +182,13 @@ test('source-disable and runtime-gate classifications have repository evidence',
     new URL('./base44/functions/monitorClinicalDataForCarePlanUpdates/entry.ts', import.meta.url),
     'utf8',
   );
-  assert.match(completedVisit, /const PROCESS_COMPLETED_VISIT_PAUSED = true;[\s\S]*if \(PROCESS_COMPLETED_VISIT_PAUSED\)[\s\S]*status: 503/);
-  assert.match(monitor, /Deno\.serve[\s\S]*legacy_patient_service_writer_paused[\s\S]*status: 503[\s\S]*Notification\.create/);
+  // Both were released on 2026-10-08; their notices are authority-v1 now, so
+  // the evidence is the open gate plus an envelope on the one create call.
+  assert.match(completedVisit, /const PROCESS_COMPLETED_VISIT_PAUSED = false;/);
+  assert.match(completedVisit, /Notification\.create\(\{[\s\S]*?recipient_membership_id: membership\.id/);
+  assert.match(monitor, /const CARE_PLAN_MONITOR_ENABLED = true;/);
+  assert.doesNotMatch(monitor, /legacy_patient_service_writer_paused/);
+  assert.match(monitor, /Notification\.create\(\{[\s\S]*?recipient_membership_id: nurseMembership\.id/);
 
   for (const [name, releaseConstant] of [
     ['checkStaleFollowUpRequests', 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS'],
@@ -188,10 +202,13 @@ test('source-disable and runtime-gate classifications have repository evidence',
     new URL('./base44/functions/handleTelnyxStatusWebhook/entry.ts', import.meta.url),
     'utf8',
   );
-  assert.match(telnyx, /const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;/);
-  assert.match(telnyx, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;/);
-  assert.match(telnyx, /message\.received[^]*INBOUND_PATIENT_SMS_ROUTING_PAUSED[^]*inboundRoutingPausedResponse/);
-  assert.match(telnyx, /INBOUND_PATIENT_CALL_ROUTING_PAUSED[^]*isInboundPatientCallEvent[^]*inboundRoutingPausedResponse/);
+  // Inbound call routing (and with it the voicemail notice) and inbound SMS
+  // routing (and with it the two text notices) were released on 2026-10-08,
+  // so their flags are the evidence that they are NOT gated any more. The SMS
+  // notices reach only the reader the receiving binding's agency names.
+  assert.match(telnyx, /const INBOUND_PATIENT_SMS_ROUTING_PAUSED = false;/);
+  assert.match(telnyx, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = false;/);
+  assert.match(telnyx, /if \(reader && urgency\.urgent\) \{[\s\S]*?user_email: reader\.email/);
 });
 
 test('source inventory covers mixed JS/TS extensions, aliases, bracket access, and bulkCreate', async () => {

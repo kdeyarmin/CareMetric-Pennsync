@@ -253,72 +253,100 @@ const agreementRequest = (body, method = 'POST') => new Request('http://local/ac
   ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
 });
 
-test('UserActivity denies every direct browser operation until tenant provenance exists', async () => {
+test('UserActivity is append-only: callers append their own events, and the creator or an admin reads', async () => {
+  // Owner decision 2026-10-08: browser activity is recorded again. A caller may
+  // create only a row naming themselves, nobody may update or delete a row,
+  // and the direct read is the row's creator or the built-in admin (the
+  // reviewed security views). An agency administrator reads through
+  // getUserActivityLog, which scopes to their own agency's members.
   const schema = JSON5.parse(await readFile(
     new URL('../entities/UserActivity.jsonc', import.meta.url),
     'utf8',
   ));
 
   assert.deepEqual(schema.rls, {
-    read: false,
-    create: false,
+    read: {
+      $or: [
+        { created_by: '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
+    create: { 'data.user_email': '{{user.email}}' },
     update: false,
     delete: false,
   });
 });
 
-test('browser source cannot obtain UserActivity history or invoke the paused broker', async () => {
+test('browser source reads UserActivity history through the scoped broker or the reviewed admin views', async () => {
+  // The only write handle is the append in activityLogger.jsx. The full-log
+  // reads are the four reviewed security views, each gated on the built-in
+  // administrator account; every other read goes through getUserActivityLog.
+  const ACTIVITY_LOGGER = '/src/components/utils/activityLogger.jsx';
+  const ADMIN_READERS = [
+    'src/components/security/AIAuditAnalyzer.jsx',
+    'src/components/security/BreachDetectionSystem.jsx',
+    'src/components/security/SecurityAnomalyDetector.jsx',
+    'src/components/security/SecurityLogTabs.jsx',
+  ];
+  const readers = new Set();
   const violations = [];
   for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
     const source = await readFile(url, 'utf8');
     const handles = entityHandleFindings(source, 'UserActivity');
-    if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
-    if (/\b(?:functions\.)?invoke\s*\(\s*['"]getUserActivityLog['"]/.test(source)) {
-      violations.push(`${url.pathname}: getUserActivityLog invocation`);
+    if (url.pathname.endsWith(ACTIVITY_LOGGER)) {
+      const normalized = normalizeMemberAccess(source);
+      const uses = normalized.match(/\bentities\.UserActivity\.[A-Za-z]+/g) || [];
+      if (uses.length !== 1 || uses[0] !== 'entities.UserActivity.create') {
+        violations.push(`${url.pathname}: ${uses.join(', ')}`);
+      }
+      continue;
     }
-    if (/\b(?:functions\.)?invoke\s*\(\s*['"](?:analyzeNursePerformance|runSecurityAudit)['"]/.test(source)) {
-      violations.push(`${url.pathname}: provenance-derived analysis invocation`);
-    }
+    const relative = url.pathname.slice(url.pathname.indexOf('/src/') + 1);
+    if (handles.length && ADMIN_READERS.includes(relative)) readers.add(relative);
+    else if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
   }
   assert.deepEqual(violations, []);
+  assert.deepEqual([...readers].sort(), ADMIN_READERS);
+  for (const reader of readers) {
+    const source = await readFile(new URL(`../../${reader}`, import.meta.url), 'utf8');
+    assert.match(source, /isAdminLike\(/, `${reader} must gate the full-log read on the administrator account`);
+  }
 
-  const broker = await readFile(
-    new URL('../functions/getUserActivityLog/entry.ts', import.meta.url),
-    'utf8',
-  );
-  assert.match(broker, /code:\s*'USER_ACTIVITY_LOG_PAUSED'/);
-  assert.match(broker, /status:\s*503/);
-  assert.match(broker, /'Cache-Control':\s*'no-store'/);
-  assert.doesNotMatch(
-    broker,
-    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
-  );
+  // Both restored readers build a pinned client, rebuild the caller's claims
+  // from the service-owned membership, and never read the self-editable
+  // agency_name as authority.
+  for (const name of ['getUserActivityLog', 'analyzeNursePerformance']) {
+    const source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const handler = source.slice(source.indexOf('Deno.serve('));
+    assert.match(handler, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/, name);
+    assert.match(handler, /await withTrustedClaims\(base44, await base44\.auth\.me\(\)\)/, name);
+    assert.doesNotMatch(source.replace(/\/\/ <<<BEGIN SHARED HELPER: trustedCallerClaims[\s\S]*?<<<END SHARED HELPER: trustedCallerClaims>>>/, ''),
+      /\bagency_name\b/, `${name} never scopes by agency_name`);
+    assert.match(source, /user\.role === 'user' && user\.account_type === 'agency_admin'/, name);
+  }
 
   const unavailable = await readFile(
     new URL('../../src/components/security/UserActivityUnavailable.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(unavailable, /immutable agency provenance/);
-  assert.match(unavailable, /tenant-authorized server broker/);
   assert.match(unavailable, /must not be interpreted as zero events or an all-clear result/);
 
-  for (const [name, code] of [
-    ['analyzeNursePerformance', 'NURSE_PERFORMANCE_ANALYSIS_PAUSED'],
-    ['runSecurityAudit', 'SECURITY_AUDIT_PAUSED'],
-  ]) {
-    const source = await readFile(
-      new URL(`../functions/${name}/entry.ts`, import.meta.url),
-      'utf8',
-    );
-    assert.match(source, new RegExp(`code:\\s*'${code}'`));
-    assert.match(source, /status:\s*503/);
-    assert.match(source, /'Cache-Control':\s*'no-store'/);
-    assert.doesNotMatch(
-      source,
-      /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|InvokeLLM|account_type|agency_name/,
-      `${name} must fail before every authority, input, data, or AI operation`,
-    );
-  }
+  // runSecurityAudit runs again (owner decision, 2026-10-08): it authorizes the
+  // built-in administrator or a service-owned agency_admin membership before
+  // any cohort read, and scopes an agency administrator to their agency.
+  const audit = await readFile(
+    new URL('../functions/runSecurityAudit/entry.ts', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(audit, /SECURITY_AUDIT_PAUSED/);
+  assert.match(audit, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.ok(
+    audit.indexOf('const authority = await auditAuthority(base44, user)')
+      < audit.indexOf('cohort = await loadCohort(base44, authority)'),
+    'runSecurityAudit must authorize before reading its cohort',
+  );
+  assert.match(audit, /claims\.account_type === 'agency_admin' && claimIdentifier\(claims\.agency_id\)/);
+  assert.match(audit, /entities\.Patient\.filter\(\{ agency_id: authority\.agencyId \}/);
 
   const personalized = await readFile(
     new URL('../functions/generatePersonalizedTraining/entry.ts', import.meta.url),
@@ -349,7 +377,7 @@ test('UserActivity handle scanner covers aliases, destructuring, optional chains
   `, 'UserActivity'), []);
 });
 
-test('frontend cannot append UserActivity and backend appends use service role', async () => {
+test('the browser appends UserActivity only from activityLogger and backend appends use service role', async () => {
   const frontend = await sourceFiles(new URL('../../src/', import.meta.url));
   const backend = await sourceFiles(new URL('../functions/', import.meta.url));
   const browserCreates = [];
@@ -357,7 +385,8 @@ test('frontend cannot append UserActivity and backend appends use service role',
 
   for (const url of frontend) {
     const source = normalizeMemberAccess(await readFile(url, 'utf8'));
-    if (/\bentities\.UserActivity\.create\s*\(/.test(source)) browserCreates.push(url.pathname);
+    if (/\bentities\.UserActivity\.create\s*\(/.test(source)
+      && !url.pathname.endsWith('/src/components/utils/activityLogger.jsx')) browserCreates.push(url.pathname);
   }
   for (const url of backend) {
     const source = normalizeMemberAccess(await readFile(url, 'utf8'));
@@ -370,7 +399,7 @@ test('frontend cannot append UserActivity and backend appends use service role',
   assert.deepEqual(unprivilegedBackendCreates, []);
 });
 
-test('browser telemetry helpers are no-ops and meaningful events use purpose brokers', async () => {
+test('browser telemetry appends only the caller\'s own minimized events; meaningful events use purpose brokers', async () => {
   const activity = await readFile(
     new URL('../../src/components/utils/activityLogger.jsx', import.meta.url),
     'utf8',
@@ -392,12 +421,38 @@ test('browser telemetry helpers are no-ops and meaningful events use purpose bro
     'utf8',
   );
 
-  assert.doesNotMatch(activity, /@\/api\/base44Client|base44\.|entities\./);
+  // activityLogger appends one row per event, naming the caller from
+  // auth (which the RLS create rule also requires), with minimized details.
+  const append = activity.slice(activity.indexOf('base44.entities.UserActivity.create('));
+  assert.match(append, /^base44\.entities\.UserActivity\.create\(\{\s*user_email: email,/);
+  assert.match(activity, /const caller = await loadCurrentCaller\(\);/);
+  assert.match(append, /details: minimizeActivityDetails\(source\)/);
+  assert.equal((activity.match(/entities\./g) || []).length, 1);
+  assert.match(activity, /export const logError = async \(_errorMessage, _errorDetails = \{\}\) => undefined;/);
   assert.doesNotMatch(audit, /@\/api\/base44Client|base44\.|entities\./);
+  // Login tracking is back (owner decision, 2026-10-08), as a server-stamped
+  // record of the caller's own sign-in. The shell asks once per tab session
+  // through loginTelemetry.js, the only browser caller; trackUserLogin names
+  // the person from the session and stores no user agent or address.
   assert.doesNotMatch(layout, /trackUserLogin/);
+  assert.match(layout, /recordLoginOnce\(\{ id: loginTelemetryUserId \}\)/);
   assert.doesNotMatch(layout, /entities\.UserActivity\.create/);
-  assert.match(trackLogin, /status:\s*503/);
-  assert.doesNotMatch(trackLogin, /createClientFromRequest|auth\.me|UserActivity|user-agent/i);
+  const loginTelemetry = await readFile(new URL('../../src/lib/loginTelemetry.js', import.meta.url), 'utf8');
+  assert.match(loginTelemetry, /invoke\('trackUserLogin', device \? \{ device_type: device \} : \{\}\)/);
+  for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
+    if (url.pathname.endsWith('/src/lib/loginTelemetry.js')) continue;
+    assert.doesNotMatch(await readFile(url, 'utf8'), /['"]trackUserLogin['"]/, `${url.pathname} must not invoke trackUserLogin`);
+  }
+  const loginHandler = trackLogin.slice(trackLogin.indexOf('Deno.serve('));
+  assert.match(loginHandler, /createClientFromRequest\(userScopedClientRequest\(req, PENNSYNC_PRODUCTION_APP_ID\)\)/);
+  assert.match(loginHandler, /if \(isDeactivatedUser\(user\)\) return DEACTIVATED_USER_RESPONSE\(\);/);
+  assert.match(loginHandler, /user_email: email,/);
+  assert.match(loginHandler, /login_time: loginTime,/);
+  assert.doesNotMatch(trackLogin, /user-agent|user_agent|ip_address|x-forwarded-for/i);
+  assert.ok(
+    loginHandler.indexOf('base44.auth.me()') < loginHandler.indexOf('req.json()'),
+    'trackUserLogin identifies the caller before it reads the body',
+  );
   assert.match(agreement, /acceptAiContentAgreement\(\{[\s\S]*accepted:\s*true/);
   assert.doesNotMatch(agreement, /base44|entities\.UserActivity|auth\.updateMe/);
 });
@@ -658,5 +713,123 @@ test('AI agreement broker requires exact audit, authority, and actor readbacks',
     }));
     assert.equal(response.status, scenario.expectedStatus, scenario.name);
     assert.equal(authorityWrites, scenario.expectedAuthorityWrites, scenario.name);
+  }
+});
+
+async function loadLoginTracker(client) {
+  let source = await readFile(new URL('../functions/trackUserLogin/entry.ts', import.meta.url), 'utf8');
+  source = source.replace(
+    /import\s+\{[^}]*\}\s+from\s+'npm:@base44\/sdk@[^']*';?/,
+    'const createClientFromRequest = globalThis.__loginTrackerClient;',
+  );
+  const file = join(tmpdir(), `login_tracker_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(source).outputText);
+  let handler;
+  const previousDeno = globalThis.Deno;
+  globalThis.__loginTrackerClient = () => client;
+  globalThis.Deno = { serve: (candidate) => { handler = candidate; }, env: { get: () => undefined } };
+  try {
+    await import(pathToFileURL(file).href);
+  } finally {
+    await unlink(file).catch(() => {});
+    delete globalThis.__loginTrackerClient;
+    if (previousDeno === undefined) delete globalThis.Deno;
+    else globalThis.Deno = previousDeno;
+  }
+  return handler;
+}
+
+function loginClient({ me, priorLogins = [], readFails = false } = {}) {
+  const calls = [];
+  const writes = [];
+  const client = {
+    auth: { me: async () => { calls.push('auth.me'); return me; } },
+    asServiceRole: { entities: { UserActivity: {
+      filter: async (query) => {
+        calls.push(['filter', query]);
+        if (readFails) throw new Error('store unavailable');
+        return priorLogins;
+      },
+      create: async (row) => { calls.push('create'); writes.push(row); return { id: 'activity-1', ...row }; },
+    } } },
+  };
+  return { client, calls, writes };
+}
+
+const loginRequest = (body, method = 'POST') => new Request('http://local/track-user-login', {
+  method,
+  headers: {
+    'content-type': 'application/json',
+    'user-agent': 'Mozilla/5.0 (fingerprint)',
+    'x-forwarded-for': '203.0.113.9',
+  },
+  ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
+});
+
+test('trackUserLogin records only the caller\'s own sign-in, server-stamped, without a fingerprint', async () => {
+  const nurse = { id: 'u1', email: 'Nurse@Example.test', full_name: 'Nurse One', role: 'user', is_active: true };
+
+  const recorded = loginClient({ me: nurse });
+  const response = await (await loadLoginTracker(recorded.client))(loginRequest({ device_type: 'mobile' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { success: true, recorded: true, activity_id: 'activity-1' });
+  assert.equal(recorded.writes.length, 1);
+  const [row] = recorded.writes;
+  assert.equal(row.user_email, 'nurse@example.test', 'the person comes from the session, normalized');
+  assert.equal(row.action, 'login');
+  assert.equal(row.device_type, 'mobile');
+  assert.match(row.details.login_time, /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(Math.abs(Date.parse(row.details.login_time) - Date.now()) < 60_000, 'the time is the server clock');
+  assert.equal(row.details.user_role, 'user');
+  for (const forbidden of ['user_agent', 'ip_address']) {
+    assert.equal(Object.hasOwn(row, forbidden), false, `${forbidden} is never stored`);
+  }
+  assert.doesNotMatch(JSON.stringify(row), /Mozilla|fingerprint|203\.0\.113/);
+
+  // A body naming someone else (or carrying any other key) is refused before
+  // any read or write.
+  for (const body of [
+    { user_email: 'victim@example.test' },
+    { device_type: 'desktop', login_time: '2020-01-01T00:00:00.000Z' },
+    { device_type: 'Mozilla/5.0' },
+  ]) {
+    const refused = loginClient({ me: nurse });
+    const result = await (await loadLoginTracker(refused.client))(loginRequest(body));
+    assert.equal(result.status, 400, JSON.stringify(body));
+    assert.equal(refused.writes.length, 0);
+    assert.equal(refused.calls.some((call) => Array.isArray(call)), false, 'no history read for a refused body');
+  }
+
+  // Replay inside the half hour records nothing.
+  const recent = loginClient({ me: nurse, priorLogins: [{ id: 'old', created_date: new Date(Date.now() - 60_000).toISOString() }] });
+  const replay = await (await loadLoginTracker(recent.client))(loginRequest({}));
+  assert.equal(replay.status, 200);
+  assert.deepEqual(await replay.json(), { success: true, recorded: false });
+  assert.equal(recent.writes.length, 0);
+  assert.deepEqual(recent.calls[1], ['filter', { user_email: 'nurse@example.test', action: 'login' }]);
+
+  // An older sign-in does not suppress a new one.
+  const stale = loginClient({ me: nurse, priorLogins: [{ id: 'old', created_date: new Date(Date.now() - 2 * 60 * 60_000).toISOString() }] });
+  assert.equal((await (await loadLoginTracker(stale.client))(loginRequest({}))).status, 200);
+  assert.equal(stale.writes.length, 1);
+
+  // History that cannot be read writes nothing rather than flooding the trail.
+  const unreadable = loginClient({ me: nurse, readFails: true });
+  assert.equal((await (await loadLoginTracker(unreadable.client))(loginRequest({}))).status, 503);
+  assert.equal(unreadable.writes.length, 0);
+
+  // No session, a deactivated account, a service identity and a GET all stop
+  // before any service-role access.
+  for (const [me, status, method] of [
+    [null, 401, 'POST'],
+    [{ ...nurse, is_active: false }, 403, 'POST'],
+    [{ ...nurse, is_service: true }, 403, 'POST'],
+    [nurse, 405, 'GET'],
+  ]) {
+    const denied = loginClient({ me });
+    const result = await (await loadLoginTracker(denied.client))(loginRequest({}, method));
+    assert.equal(result.status, status);
+    assert.equal(denied.writes.length, 0);
+    assert.equal(denied.calls.some((call) => Array.isArray(call)), false);
   }
 });
