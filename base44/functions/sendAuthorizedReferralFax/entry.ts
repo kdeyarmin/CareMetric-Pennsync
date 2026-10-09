@@ -135,6 +135,61 @@ function faxStatusWebhookUrl(requestUrl, selfName) {
   return `${url.origin}${segments.join("/")}`;
 }
 // <<<END SHARED HELPER: faxProviderCorrelation>>>
+// <<<BEGIN SHARED HELPER: faxOrigination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated from src/components/fax/faxOrigination.js.
+const FAX_ORIGINATION_UNVERIFIED = "office_fax_number_unverified";
+const FAX_ORIGINATION_UNAVAILABLE = "office_fax_verification_unavailable";
+function faxOriginationPlan(officeE164, blindE164) {
+  const office = typeof officeE164 === "string" && officeE164 ? officeE164 : null;
+  const blind = typeof blindE164 === "string" && blindE164 ? blindE164 : null;
+  if (!blind) return { from: office, office: null, lookup: false };
+  if (!office || office === blind) return { from: blind, office: null, lookup: false };
+  return { from: blind, office, lookup: true };
+}
+function isVerifiedOriginationRecord(body, officeE164) {
+  const data = body && typeof body === "object" && !Array.isArray(body) ? body.data : null;
+  return !!data && typeof data === "object" && !Array.isArray(data)
+    && typeof officeE164 === "string" && !!officeE164
+    && data.phone_number === officeE164
+    && typeof data.verified_at === "string"
+    && Number.isFinite(Date.parse(data.verified_at));
+}
+const FAX_ORIGINATION_LOOKUP_TIMEOUT_MS = 5000;
+const faxOriginationLookups = new WeakMap();
+async function resolveFaxOrigination(req, apiKey, officeE164, blindE164) {
+  const plan = faxOriginationPlan(officeE164, blindE164);
+  if (!plan.lookup) return { from: plan.from, officeVerified: null, warning: null };
+  const key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) return { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  const cache = req && typeof req === 'object' ? (faxOriginationLookups.get(req) || new Map()) : new Map();
+  if (req && typeof req === 'object') faxOriginationLookups.set(req, cache);
+  const cacheKey = key + '|' + plan.office;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  let result;
+  try {
+    const response = await fetch(
+      'https://api.telnyx.com/v2/verified_numbers/' + encodeURIComponent(plan.office),
+      {
+        headers: { Authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(FAX_ORIGINATION_LOOKUP_TIMEOUT_MS),
+      },
+    );
+    const body = response.ok ? await response.json().catch(() => null) : null;
+    if (!response.ok) await response.text().catch(() => '');
+    if (response.ok && isVerifiedOriginationRecord(body, plan.office)) {
+      result = { from: plan.office, officeVerified: true, warning: null };
+    } else if (response.ok || response.status === 404) {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNVERIFIED };
+    } else {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+    }
+  } catch {
+    result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  }
+  cache.set(cacheKey, result);
+  return result;
+}
+// <<<END SHARED HELPER: faxOrigination>>>
 
 const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
@@ -999,13 +1054,20 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Send FROM the office fax number when Telnyx has it as a Verified Number,
+    // so a receiving machine's redial reaches the office; otherwise exactly
+    // fromNumber (the blind line), as before. The manual retry path
+    // (retryFailedFax / FaxLogsDashboard) reaches this same call.
+    const origination = await resolveFaxOrigination(req, finalCredentials.apiKey, officeFax, outboundFax);
+    const sendFrom = origination.from || fromNumber;
+
     const submissionAttemptId = crypto.randomUUID();
     const retryAttempt = retryContext ? retryContext.retryGeneration + 1 : 0;
     const faxLog = await entities.FaxLog.create({
       agency_id: input.agencyId,
       referral_id: input.referralId,
       document_id: input.documentId,
-      from_number: fromNumber,
+      from_number: sendFrom,
       to_number: input.toNumber,
       to_name: input.toName || null,
       document_name: input.documentName || finalDocument.document.file_name,
@@ -1088,7 +1150,7 @@ Deno.serve(async (req) => {
     const statusWebhookUrl = faxStatusWebhookUrl(req.url, 'sendAuthorizedReferralFax');
     const providerPayload: Record<string, any> = {
       connection_id: credentials.connectionId,
-      from: fromNumber,
+      from: sendFrom,
       to: input.toNumber,
       media_url: finalDocument.delivery.download_url,
       quality: 'high',
@@ -1318,6 +1380,9 @@ Deno.serve(async (req) => {
         status: acceptedFaxLog.status,
         ...(retryContext ? { retry_of_fax_log_id: retryContext.row.id } : {}),
         ...(!retrySettled ? { warning: 'The fax was accepted, but its prior attempt needs reconciliation.' } : {}),
+        // Non-PHI: sent from the blind line because the office number is not
+        // (or could not be confirmed as) a Telnyx Verified Number.
+        ...(origination.warning ? { origination_warning: origination.warning } : {}),
       },
       { headers: NO_STORE_HEADERS },
     );

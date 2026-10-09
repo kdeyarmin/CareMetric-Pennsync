@@ -278,6 +278,62 @@ function faxStatusWebhookUrl(requestUrl, selfName) {
 }
 // <<<END SHARED HELPER: faxProviderCorrelation>>>
 
+// <<<BEGIN SHARED HELPER: faxOrigination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated from src/components/fax/faxOrigination.js.
+const FAX_ORIGINATION_UNVERIFIED = "office_fax_number_unverified";
+const FAX_ORIGINATION_UNAVAILABLE = "office_fax_verification_unavailable";
+function faxOriginationPlan(officeE164, blindE164) {
+  const office = typeof officeE164 === "string" && officeE164 ? officeE164 : null;
+  const blind = typeof blindE164 === "string" && blindE164 ? blindE164 : null;
+  if (!blind) return { from: office, office: null, lookup: false };
+  if (!office || office === blind) return { from: blind, office: null, lookup: false };
+  return { from: blind, office, lookup: true };
+}
+function isVerifiedOriginationRecord(body, officeE164) {
+  const data = body && typeof body === "object" && !Array.isArray(body) ? body.data : null;
+  return !!data && typeof data === "object" && !Array.isArray(data)
+    && typeof officeE164 === "string" && !!officeE164
+    && data.phone_number === officeE164
+    && typeof data.verified_at === "string"
+    && Number.isFinite(Date.parse(data.verified_at));
+}
+const FAX_ORIGINATION_LOOKUP_TIMEOUT_MS = 5000;
+const faxOriginationLookups = new WeakMap();
+async function resolveFaxOrigination(req, apiKey, officeE164, blindE164) {
+  const plan = faxOriginationPlan(officeE164, blindE164);
+  if (!plan.lookup) return { from: plan.from, officeVerified: null, warning: null };
+  const key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) return { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  const cache = req && typeof req === 'object' ? (faxOriginationLookups.get(req) || new Map()) : new Map();
+  if (req && typeof req === 'object') faxOriginationLookups.set(req, cache);
+  const cacheKey = key + '|' + plan.office;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  let result;
+  try {
+    const response = await fetch(
+      'https://api.telnyx.com/v2/verified_numbers/' + encodeURIComponent(plan.office),
+      {
+        headers: { Authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(FAX_ORIGINATION_LOOKUP_TIMEOUT_MS),
+      },
+    );
+    const body = response.ok ? await response.json().catch(() => null) : null;
+    if (!response.ok) await response.text().catch(() => '');
+    if (response.ok && isVerifiedOriginationRecord(body, plan.office)) {
+      result = { from: plan.office, officeVerified: true, warning: null };
+    } else if (response.ok || response.status === 404) {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNVERIFIED };
+    } else {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+    }
+  } catch {
+    result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  }
+  cache.set(cacheKey, result);
+  return result;
+}
+// <<<END SHARED HELPER: faxOrigination>>>
+
 // ---- destination normalization + cost controls (mirrors sendFax) ----
 function normalizeFaxDest(raw) {
   if (!raw) return '';
@@ -1312,6 +1368,17 @@ async function submitOneFax(
     return priorAttemptResult(prior[0], toNumber);
   }
 
+  // Send FROM the office fax number when Telnyx has it as a Verified Number, so
+  // a receiving machine's redial reaches the office; otherwise exactly the bound
+  // blind line, as before. authority.fromNumber stays the bound Telnyx sender
+  // line the sender binding authorizes; only the presented `from` changes. The
+  // automatic-retry path (dispatch_retry) reaches this same call.
+  const origination = await resolveFaxOrigination(
+    req, credentials.apiKey, authority.officeFax, authority.fromNumber,
+  );
+  const originationNumber = origination.from || authority.fromNumber;
+  const originationWarning = origination.warning ? { origination_warning: origination.warning } : {};
+
   const submissionAttemptId = crypto.randomUUID();
   const retryGeneration = Number.isSafeInteger(opts.retryGeneration) ? opts.retryGeneration : 0;
   const createPayload = {
@@ -1321,7 +1388,7 @@ async function submitOneFax(
     document_binding_id: authority.binding.id,
     document_binding_version: authority.binding.version,
     document_content_sha256: authority.binding.content_sha256,
-    from_number: authority.fromNumber,
+    from_number: originationNumber,
     to_number: toNumber,
     document_name: opts.documentName || authority.document?.file_name || authority.binding?.file_name || 'Batch Fax',
     status: 'queued',
@@ -1435,7 +1502,7 @@ async function submitOneFax(
   const statusWebhookUrl = faxStatusWebhookUrl(req.url, 'sendBatchFax');
   const payload: Record<string, any> = {
     connection_id: finalCredentials.connectionId,
-    from: finalAuthority.fromNumber,
+    from: originationNumber,
     to: toNumber,
     media_url: finalAuthority.downloadUrl,
     quality: 'high',
@@ -1464,7 +1531,7 @@ async function submitOneFax(
       provider_submission_state: 'indeterminate',
       failure_reason: 'Provider submission outcome is unknown; reconcile before any resend',
     });
-    return { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId, local_state_verified: !!stored };
+    return { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId, local_state_verified: !!stored, ...originationWarning };
   }
 
   const rawProvider = await response.text().catch(() => '');
@@ -1480,14 +1547,14 @@ async function submitOneFax(
       provider_accepted_at: acceptedAt,
       failure_reason: null,
     });
-    if (stored) return { to_number: toNumber, success: true, accepted: true, log_id: faxLogId };
+    if (stored) return { to_number: toNumber, success: true, accepted: true, log_id: faxLogId, ...originationWarning };
     await transitionAttempt(entities, durable, {
       telnyx_fax_id: providerFaxId,
       status: 'submission_unknown',
       provider_submission_state: 'indeterminate',
       failure_reason: 'Provider accepted the fax but local confirmation failed; reconcile before resend',
     });
-    return { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId };
+    return { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId, ...originationWarning };
   }
   if (providerSubmissionDefinitelyRejected(response)) {
     const stored = await transitionAttempt(entities, durable, {
@@ -1500,8 +1567,8 @@ async function submitOneFax(
         || 'Fax provider rejected the request',
     });
     return stored
-      ? { to_number: toNumber, success: false, rejected: true, log_id: faxLogId }
-      : { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId };
+      ? { to_number: toNumber, success: false, rejected: true, log_id: faxLogId, ...originationWarning }
+      : { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId, ...originationWarning };
   }
   const stored = await transitionAttempt(entities, durable, {
     ...(providerFaxId ? { telnyx_fax_id: providerFaxId } : {}),
@@ -1509,7 +1576,7 @@ async function submitOneFax(
     provider_submission_state: 'indeterminate',
     failure_reason: 'Provider submission outcome is unknown; reconcile before any resend',
   });
-  return { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId, local_state_verified: !!stored };
+  return { to_number: toNumber, success: true, requires_reconciliation: true, log_id: faxLogId, local_state_verified: !!stored, ...originationWarning };
 }
 
 async function findExactSchedule(entities: Record<string, any>, id: string) {
@@ -1934,6 +2001,11 @@ function summarizeResults(results: Array<Record<string, any>>, total: number, ex
     } : {}),
     requires_reconciliation: unknown > 0,
     results,
+    // Non-PHI: at least one fax went from the blind line because the office
+    // number is not (or could not be confirmed as) a Telnyx Verified Number.
+    ...(results.find((result) => result.origination_warning)
+      ? { origination_warning: results.find((result) => result.origination_warning).origination_warning }
+      : {}),
     ...extra,
   };
 }

@@ -190,6 +190,62 @@ function faxStatusWebhookUrl(requestUrl, selfName) {
 }
 // <<<END SHARED HELPER: faxProviderCorrelation>>>
 
+// <<<BEGIN SHARED HELPER: faxOrigination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated from src/components/fax/faxOrigination.js.
+const FAX_ORIGINATION_UNVERIFIED = "office_fax_number_unverified";
+const FAX_ORIGINATION_UNAVAILABLE = "office_fax_verification_unavailable";
+function faxOriginationPlan(officeE164, blindE164) {
+  const office = typeof officeE164 === "string" && officeE164 ? officeE164 : null;
+  const blind = typeof blindE164 === "string" && blindE164 ? blindE164 : null;
+  if (!blind) return { from: office, office: null, lookup: false };
+  if (!office || office === blind) return { from: blind, office: null, lookup: false };
+  return { from: blind, office, lookup: true };
+}
+function isVerifiedOriginationRecord(body, officeE164) {
+  const data = body && typeof body === "object" && !Array.isArray(body) ? body.data : null;
+  return !!data && typeof data === "object" && !Array.isArray(data)
+    && typeof officeE164 === "string" && !!officeE164
+    && data.phone_number === officeE164
+    && typeof data.verified_at === "string"
+    && Number.isFinite(Date.parse(data.verified_at));
+}
+const FAX_ORIGINATION_LOOKUP_TIMEOUT_MS = 5000;
+const faxOriginationLookups = new WeakMap();
+async function resolveFaxOrigination(req, apiKey, officeE164, blindE164) {
+  const plan = faxOriginationPlan(officeE164, blindE164);
+  if (!plan.lookup) return { from: plan.from, officeVerified: null, warning: null };
+  const key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) return { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  const cache = req && typeof req === 'object' ? (faxOriginationLookups.get(req) || new Map()) : new Map();
+  if (req && typeof req === 'object') faxOriginationLookups.set(req, cache);
+  const cacheKey = key + '|' + plan.office;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  let result;
+  try {
+    const response = await fetch(
+      'https://api.telnyx.com/v2/verified_numbers/' + encodeURIComponent(plan.office),
+      {
+        headers: { Authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(FAX_ORIGINATION_LOOKUP_TIMEOUT_MS),
+      },
+    );
+    const body = response.ok ? await response.json().catch(() => null) : null;
+    if (!response.ok) await response.text().catch(() => '');
+    if (response.ok && isVerifiedOriginationRecord(body, plan.office)) {
+      result = { from: plan.office, officeVerified: true, warning: null };
+    } else if (response.ok || response.status === 404) {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNVERIFIED };
+    } else {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+    }
+  } catch {
+    result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  }
+  cache.set(cacheKey, result);
+  return result;
+}
+// <<<END SHARED HELPER: faxOrigination>>>
+
 function normalizeFaxDest(raw) {
   if (!raw) return '';
   const digits = String(raw).replace(/[^\d]/g, '');
@@ -409,12 +465,13 @@ Deno.serve(async (req) => {
     const telnyxCreds = await resolveTelnyxCreds(base44);
 
     const { apiKey, faxConnectionId } = telnyxCreds;
-    // Outbound faxes TRANSMIT from the single "blind" Telnyx fax line
-    // (AgencySettings.outbound_fax_number_e164) but are PRESENTED as the office
-    // fax machine (office_fax_number_e164, e.g. +17244650444): the office
-    // number rides on the caller-id display name and the cover sheet, so
-    // fax-backs are dialed straight to the physical office machine — the app
-    // expects no inbound faxes. Legacy fallback: with no outbound line set, the
+    // Outbound faxes are sent FROM the office fax machine's number
+    // (office_fax_number_e164, e.g. +17244650444) when Telnyx has it as a
+    // Verified Number (resolveFaxOrigination, below), so a receiving machine's
+    // redial reaches the office. Until it is verified they TRANSMIT from the
+    // single "blind" Telnyx fax line (AgencySettings.outbound_fax_number_e164)
+    // and are PRESENTED as the office machine only through the caller-id display
+    // name and the cover sheet. Legacy fallback: with no outbound line set, the
     // office number itself is the technical from (pre-split behavior).
     const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
     const officeFaxRaw = (agencySettings?.office_fax_number_e164 || '').toString().trim();
@@ -460,11 +517,15 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, deduped: true, fax_id: dupe.id, status: dupe.status });
     }
 
+    // The office number when Telnyx has verified it, else exactly fromNumber.
+    const origination = await resolveFaxOrigination(req, apiKey, officeFax, outboundFax);
+    const sendFrom = origination.from || fromNumber;
+
     // All caller-controlled inputs and tenant-sensitive patient/destination
     // checks have passed above. Use the service role only for the authorized
     // FaxLog write so entity RLS cannot strand a valid outbound transmission.
     const faxLog = await base44.asServiceRole.entities.FaxLog.create({
-      from_number: fromNumber,
+      from_number: sendFrom,
       // Store and send the NORMALIZED E.164 destination (what was validated),
       // not the raw user input — Telnyx rejects/misroutes non-E164 numbers and a
       // raw-vs-normalized mismatch weakened the dedupe key. Mirrors sendBatchFax.
@@ -485,12 +546,13 @@ Deno.serve(async (req) => {
     const statusWebhookUrl = faxStatusWebhookUrl(req.url, 'sendFax');
     const payload = {
       connection_id: faxConnectionId,
-      from: fromNumber,
+      from: sendFrom,
       to: faxDest,
       media_url: file_url,
       quality: 'high',
     };
-    // Mask the blind line: present the office fax number as the caller-id name.
+    // Present the office fax number as the caller-id name (masks the blind line
+    // when the office number is not verified yet; harmless when it is the from).
     const displayName = officeFaxDisplayName(officeFax);
     if (displayName) payload.from_display_name = displayName;
     if (statusWebhookUrl) payload.webhook_url = statusWebhookUrl;
@@ -567,6 +629,9 @@ Deno.serve(async (req) => {
       log_id: faxLog.id,
       status: telnyxData?.data?.status || 'sending',
       message: 'Fax sent successfully',
+      // Non-PHI: the office number is not (or could not be confirmed as) a
+      // Telnyx Verified Number, so this fax went from the blind line.
+      ...(origination.warning ? { origination_warning: origination.warning } : {}),
     });
   } catch (error) {
     console.error('sendTelnyxFax error:', error?.message);

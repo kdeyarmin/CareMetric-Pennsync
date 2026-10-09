@@ -163,22 +163,41 @@ using the same guest-token / staff authorization model as before. The client
 available number from the pool. (Or set them individually.) Add numbers to the
 pool with the in-app search/buy (`searchPurchaseTelnyxNumbers`).
 
-**Fax: one blind outbound line, masked as the office machine.** All outbound
-faxes TRANSMIT from a single Telnyx fax-capable number
-(`AgencySettings.outbound_fax_number_e164`) but are PRESENTED to recipients
-under the office fax machine's number (`AgencySettings.office_fax_number_e164`,
-e.g. `+17244650444`): the office number rides on the Telnyx
-`from_display_name` caller-id name and on every cover sheet, so **fax replies
-are dialed straight to the physical office machine** — the app expects no
-inbound faxes. The office number does not need to be a Telnyx number.
+**Fax: sent from the office number; the app receives no faxes.** Every return
+fax should reach the physical office machine (`AgencySettings.office_fax_number_e164`,
+e.g. `+17244650444`). A receiving machine redials the calling NUMBER, not the
+caller-id name, so outbound faxes are sent **from** the office number whenever
+Telnyx allows it:
 
-- Any stray fax dialed to the blind outbound line (e.g. a machine auto-redialing
-  the transmitting number) is **passed straight through to the office machine**
-  by `handleTelnyxStatusWebhook`, with an at-most-once `IncomingFax` record as
-  the audit/idempotency anchor. In-app ingestion (OCR + referral matching) is
-  opt-in via `AgencySettings.fax_receiving_enabled` and off by default.
+- **Verify the office fax number in Telnyx** — Telnyx Portal › Numbers ›
+  Verified Numbers, verification method **Call** (a fax line takes no SMS).
+  Per the API reference Telnyx places a brief call to the number with the code
+  in the caller ID, so the code is read from the office line's caller-ID
+  display; the `extension` field accepts DTMF digits and `w`/`W` pauses when
+  the line sits behind an IVR. Once `GET /v2/verified_numbers/{office number}`
+  reports a `verified_at`, `sendFax`, `sendBatchFax` (including automatic
+  retries) and `sendAuthorizedReferralFax` (including manual retries) send
+  `from` the office number. Each send checks, read-only, with a 5-second
+  bound and once per request.
+- **Until it is verified** (or if Telnyx cannot be asked), faxes keep the
+  previous behaviour exactly: they TRANSMIT from the single Telnyx fax line
+  (`AgencySettings.outbound_fax_number_e164`, the "blind" line) and present
+  the office number only as the `from_display_name` caller-id name and on the
+  cover sheet. The send answer then carries a non-PHI `origination_warning`
+  (`office_fax_number_unverified` or `office_fax_verification_unavailable`).
+  If a verification is revoked between the check and the send, Telnyx fails
+  the fax `unverified_origination_number`, which is classified permanent (no
+  automatic resend); the next send falls back to the blind line.
+- **Inbound faxes are always forwarded to the office machine.** Any fax dialed
+  to the Telnyx line is passed straight through to the office fax number by
+  `handleTelnyxStatusWebhook`, with an at-most-once `IncomingFax` record as the
+  idempotency anchor. There is no in-app fax inbox: `AgencySettings.fax_receiving_enabled`
+  is no longer honoured and its admin switch was removed (2026-10-09). The
+  Telnyx Fax Application may also email inbound faxes (a portal setting,
+  outside this app).
 - Legacy fallback: with no outbound line configured, faxes transmit from the
-  office fax number itself (which must then be a Telnyx number).
+  office fax number itself (which must then be a Telnyx number), and no
+  verification lookup is made.
 
 **Provisioning the outbound fax line** (requires the Programmable Fax
 connection id in the Telnyx Credentials panel):

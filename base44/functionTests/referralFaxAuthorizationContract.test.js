@@ -216,7 +216,22 @@ function runtime({
     state.fetches.push([url, clone(options)]);
     return Response.json({ data: { id: 'telnyx-fax-a', status: 'queued' } });
   };
+  // GET /v2/verified_numbers/{office} is answered here (default: not verified,
+  // so the fax keeps the blind line) and kept out of state.fetches, which every
+  // test below reads as "the fax submissions".
+  state.verification = { status: 404, json: { errors: [{ title: 'Not found' }] } };
+  state.verificationLookups = [];
   return { client, state, fetch };
+}
+
+function providerFetch(fixture) {
+  return async (url, options = {}) => {
+    if (String(url).startsWith('https://api.telnyx.com/v2/verified_numbers/')) {
+      fixture.state.verificationLookups.push([String(url), clone(options.headers || {})]);
+      return Response.json(fixture.state.verification.json, { status: fixture.state.verification.status });
+    }
+    return fixture.fetch(url, options);
+  };
 }
 
 function faxRequest(overrides = {}) {
@@ -277,7 +292,7 @@ test('referral fax re-proves both brokers, sends a signed private document, and 
   const fixture = runtime();
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -290,7 +305,12 @@ test('referral fax re-proves both brokers, sends a signed private document, and 
     success: true,
     log_id: 'fax-1',
     status: 'sending',
+    origination_warning: 'office_fax_number_unverified',
   });
+  // One read-only verification lookup of the OFFICE number, with the exact key.
+  assert.deepEqual(fixture.state.verificationLookups.map(([url]) => url), [
+    'https://api.telnyx.com/v2/verified_numbers/%2B17244650444',
+  ]);
   assert.deepEqual(fixture.state.functionCalls.map(([name]) => name), [
     'manageAuthorizedReferral',
     'getAuthorizedDocument',
@@ -346,6 +366,36 @@ test('referral fax re-proves both brokers, sends a signed private document, and 
   );
 });
 
+test('a referral fax is sent FROM the office number once Telnyx has it verified', async () => {
+  for (const [verification, expectedFrom, warning] of [
+    [{ status: 200, json: { data: { phone_number: '+17244650444', record_type: 'verified_number', verified_at: '2026-10-09T12:00:00.000000' } } },
+      '+17244650444', undefined],
+    // Started but never completed: no verified_at, so the blind line stays.
+    [{ status: 200, json: { data: { phone_number: '+17244650444', record_type: 'verified_number' } } },
+      '+17244650441', 'office_fax_number_unverified'],
+    [{ status: 401, json: { errors: [{ title: 'Unauthorized' }] } }, '+17244650441', 'office_fax_verification_unavailable'],
+  ]) {
+    const fixture = runtime();
+    fixture.state.verification = verification;
+    const handler = await loadHandler(() => fixture.client);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = providerFetch(fixture);
+    let response;
+    try {
+      response = await handler(faxRequest());
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).origination_warning, warning);
+    assert.equal(fixture.state.fetches.length, 1);
+    const providerPayload = JSON.parse(fixture.state.fetches[0][1].body);
+    assert.equal(providerPayload.from, expectedFrom);
+    assert.equal(fixture.state.faxCreates[0].from_number, expectedFrom, 'the FaxLog records the number actually sent');
+    assert.equal(providerPayload.from_display_name, 'Office Fax 724-465-0444');
+  }
+});
+
 test('network ambiguity is quarantined and a repeated click cannot submit the fax twice', async () => {
   const fixture = runtime();
   fixture.fetch = async (url, options) => {
@@ -354,7 +404,7 @@ test('network ambiguity is quarantined and a repeated click cannot submit the fa
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   try {
     const first = await handler(faxRequest());
     assert.equal(first.status, 202);
@@ -397,7 +447,7 @@ test('an old unresolved submission blocks a new document send for the same refer
   });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -432,7 +482,7 @@ test('an unresolved submission blocks duplicate sends across authorized users in
   });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -462,7 +512,7 @@ test('a contender created in the preflight race is suppressed before either late
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -504,7 +554,7 @@ test('a retry contender cannot dispatch beside a concurrent authorized submissio
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRetryRequest());
@@ -545,7 +595,7 @@ test('an already-bound provider fax id is quarantined instead of crossing FaxLog
   });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -585,7 +635,7 @@ test('a provider id collision appearing after acceptance quarantines the accepte
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -620,7 +670,7 @@ test('provider dispatch never starts until the created FaxLog is durably readabl
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -645,7 +695,7 @@ test('a lost ambiguity-state update remains blocked by the durable pending attem
   });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   try {
     const first = await handler(faxRequest());
     assert.equal(first.status, 202);
@@ -675,7 +725,7 @@ test('an accepted provider response is recovered from readback when the CAS resp
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -697,7 +747,7 @@ test('an ambiguous provider HTTP response is quarantined instead of reported as 
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -721,7 +771,7 @@ test('a definite provider rejection is recorded as rejected and remains ineligib
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -741,7 +791,7 @@ test('manual retry re-authorizes the private document, atomically claims the sou
   const fixture = runtime({ seededFaxes: [retryableFax] });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRetryRequest());
@@ -754,6 +804,9 @@ test('manual retry re-authorizes the private document, atomically claims the sou
     log_id: 'fax-2',
     status: 'sending',
     retry_of_fax_log_id: 'fax-source',
+    // The office number is not verified in this fixture, so the retry keeps the
+    // blind line and says why.
+    origination_warning: 'office_fax_number_unverified',
   });
   assert.deepEqual(fixture.state.functionCalls.map(([name]) => name), [
     'manageAuthorizedReferral',
@@ -785,7 +838,7 @@ test('a definitely rejected retry consumes exactly one retry generation', async 
   };
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   try {
     const first = await handler(faxRetryRequest());
     assert.equal(first.status, 502);
@@ -817,7 +870,7 @@ test('manual retry rejects indeterminate, legacy, and concurrently claimed sourc
     const fixture = runtime({ seededFaxes: [source] });
     const handler = await loadHandler(() => fixture.client);
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = fixture.fetch;
+    globalThis.fetch = providerFetch(fixture);
     let response;
     try {
       response = await handler(faxRetryRequest());
@@ -837,7 +890,7 @@ test('manual retry rejects indeterminate, legacy, and concurrently claimed sourc
   });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRetryRequest());
@@ -853,7 +906,7 @@ test('referral fax rejects cross-tenant document scope before configuration, log
   const fixture = runtime({ documentScopeAgency: 'agency-b' });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -870,7 +923,7 @@ test('referral fax enforces agency destination controls before creating a FaxLog
   const fixture = runtime({ blockedAreaCodes: ['724'] });
   const handler = await loadHandler(() => fixture.client);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = fixture.fetch;
+  globalThis.fetch = providerFetch(fixture);
   let response;
   try {
     response = await handler(faxRequest());
@@ -918,7 +971,7 @@ test('referral fax requires exactly one active, exact Telnyx integration', async
     const fixture = runtime({ integrationSecrets });
     const handler = await loadHandler(() => fixture.client);
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = fixture.fetch;
+    globalThis.fetch = providerFetch(fixture);
     let response;
     try {
       response = await handler(faxRequest());
