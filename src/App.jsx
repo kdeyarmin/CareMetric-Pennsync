@@ -374,7 +374,13 @@ const TenantReadyApp = () => {
   // protected verification is in flight. This matters when returning from a
   // public token route or re-enabling the query for the same authenticated
   // user: React Query may retain old data while it performs the new request.
-  if (!user || agreementStatus.isPending || agreementStatus.isFetching) {
+  // Keep an unaccepted agreement mounted during its protected recheck.
+  // Replacing it with the loader discarded checked boxes and pending feedback
+  // during acceptance or a background refresh. Cached acceptance still never
+  // opens clinical routes while a fresh verification is in flight.
+  if (!user || agreementStatus.isPending || (
+    agreementStatus.isFetching && hasAcceptedAiContentAgreement(agreementStatus.data)
+  )) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <PageLoader />
