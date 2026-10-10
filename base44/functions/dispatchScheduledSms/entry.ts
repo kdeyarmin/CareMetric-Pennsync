@@ -156,14 +156,16 @@ async function getAgencyConfig(base44, agencyHint) {
   };
 }
 
-// ---- transient-failure retry policy ----
-// Telnyx has no client idempotency key. Therefore
-// we only retry on explicit retryable HTTP statuses (408/425/429/500/502/503/504).
-// We do NOT retry thrown network errors — a blind retry could double-text.
+// ---- transient-failure retry policy (mirrors src/components/voice/telnyxRetry.js) ----
+// Telnyx has no client idempotency key for a message-create request, so we retry only a
+// status that proves the send was not processed (408/425/429/503). 500/502/504
+// can follow an accepted message, and a THROWN error (a timeout above all) can
+// follow a request Telnyx received; neither is retried — a blind retry could
+// double-text. Held to telnyxRetry.js by telnyxRetryInlineParity.test.js.
 // Capped at 2 attempts here so a batch of up to BATCH_LIMIT rows stays bounded;
 // a row that still fails is retried on the next cron tick only if re-queued.
 const MAX_SEND_ATTEMPTS = 2;
-const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 503]);
 function isRetryableStatus(status) {
   return RETRYABLE_STATUSES.has(Number(status));
 }
@@ -224,6 +226,177 @@ async function sendTelnyx(apiKey, messagingProfileId, from, to, body, webhookUrl
   }
   throw new Error('sendTelnyx exhausted attempts');
 }
+
+// ---- send outcome: failure_reason format + accepted status (smsRedrive.js) ----
+// <<<BEGIN SHARED HELPER: telnyxSmsOutcome — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/messaging/smsRedrive.js and
+// src/components/voice/telnyxRetry.js.
+const TELNYX_OPT_OUT_ERROR_CODE = "40300";
+const CONNECT_PHASE_FAILURE = /\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)\b|getaddrinfo|dns error|failed to lookup address|tcp connect error|client error \(Connect\)|connection refused/i;
+function connectionNeverOpened(err) {
+  if (!err || err.name === "AbortError" || err.name === "TimeoutError") return false;
+  const cause = err.cause && typeof err.cause === "object" ? err.cause : {};
+  return [err.code, err.message, cause.code, cause.message]
+    .some((part) => typeof part === "string" && CONNECT_PHASE_FAILURE.test(part));
+}
+function telnyxErrorCode(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const raw = first && (typeof first.code === "string" || typeof first.code === "number")
+    ? String(first.code).trim() : "";
+  return /^\d{1,10}$/.test(raw) ? raw : null;
+}
+function telnyxErrorsInclude(errors, code) {
+  return Array.isArray(errors) && errors.some((error) => !!error
+    && (typeof error.code === "string" || typeof error.code === "number")
+    && String(error.code).trim() === code);
+}
+function telnyxApiFailureReason(httpStatus, errors) {
+  const status = Number(httpStatus);
+  const shown = Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0;
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx API error: HTTP ${shown}, code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxTransportFailureReason(err, timeoutMs) {
+  if (err && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    return `Outcome unknown: Telnyx did not answer within ${timeoutMs} ms, so the text may have been sent. Not retried automatically.`;
+  }
+  if (connectionNeverOpened(err)) {
+    return "Connection never opened: Telnyx could not be reached, so the text was not sent.";
+  }
+  return "Outcome unknown: the connection to Telnyx failed after the request may have been sent. Not retried automatically.";
+}
+function telnyxDeliveryFailureReason(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx delivery failed: code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxSendStatus(responseBody) {
+  const to = responseBody && responseBody.data && Array.isArray(responseBody.data.to)
+    ? responseBody.data.to[0] : null;
+  const status = String((to && to.status) || "").toLowerCase();
+  return status === "queued" || status === "sending" || status === "" ? "queued" : "sent";
+}
+// <<<END SHARED HELPER: telnyxSmsOutcome>>>
+// <<<BEGIN SHARED HELPER: telnyxProviderConsent — generated, edit base44/_shared/backendHelpers.mjs>>>
+function providerConsentRowMatches(row, expected) {
+  return !!row
+    && row.consent_key === expected.consent_key
+    && row.agency_id === expected.agency_id
+    && row.provider === expected.provider
+    && row.integration_secret_id === expected.integration_secret_id
+    && row.messaging_profile_id === expected.messaging_profile_id
+    && row.destination_binding_id === expected.destination_binding_id
+    && row.destination_binding_key === expected.destination_binding_key
+    && row.destination_e164 === expected.destination_e164
+    && (row.patient_id ?? null) === expected.patient_id
+    && row.phone_e164 === expected.phone_e164
+    && row.consent_status === expected.consent_status
+    && row.consent_source === expected.consent_source
+    && (row.provider_event_id ?? null) === expected.provider_event_id
+    && (row.provider_message_id ?? null) === expected.provider_message_id
+    && (row.provider_event_occurred_at ?? null) === expected.provider_event_occurred_at
+    && row.captured_at === expected.captured_at
+    && (row.captured_by ?? null) === expected.captured_by
+    && row.notes === expected.notes;
+}
+
+// Append one provider-evidenced consent row, replay-safe on its Telnyx webhook
+// event id: a replay of the same event with the same content is a no-op, the
+// same event id with different content fails closed, and the write is confirmed
+// by reading it back. A store that cannot be read or written is reported as
+// such, so a webhook can ask Telnyx to redeliver.
+async function appendProviderConsentEvent(base44, expected) {
+  const entities = base44.asServiceRole.entities;
+  let prior;
+  try {
+    prior = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(prior) || prior.length > 1) return { ok: false, reason: 'sms_consent_event_ambiguous' };
+  if (prior.length === 1) {
+    return providerConsentRowMatches(prior[0], expected)
+      ? { ok: true, deduped: true }
+      : { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  try {
+    await entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  let committed;
+  try {
+    committed = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(committed) || committed.length !== 1
+    || !providerConsentRowMatches(committed[0], expected)) {
+    return { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  return { ok: true, deduped: false };
+}
+
+const TELNYX_PROVIDER_OPT_OUT_NOTES = 'Telnyx refused a send to this recipient with error 40300 (blocked due to STOP)';
+
+// Telnyx refused a send because the recipient texted STOP (error 40300) while
+// this ledger still read opted in: record it in the binding's consent scope, so
+// every sender refuses before Telnyx does and a manual opt-in cannot override it
+// (only a provider START lifts it). `authority` must be the exact line authority
+// the send was made under — never a guess; a caller that cannot establish it
+// skips the write. Evidence from a delivery receipt (event and message ids) is
+// replay-safe on the event id; a refused API request has no provider event, so
+// its row carries none and is written only while the scope is not already
+// provider-opted-out.
+async function recordTelnyxProviderOptOut(base44, authority, rawRecipient, evidence) {
+  if (!authority?.ok) return { ok: false, reason: 'sms_binding_required' };
+  const phoneE164 = normalizeTelnyxSmsE164(rawRecipient);
+  const hasEvent = evidence?.eventId != null || evidence?.messageId != null;
+  const eventId = hasEvent ? boundedTelnyxAuthorityId(evidence?.eventId) : null;
+  const messageId = hasEvent ? boundedTelnyxAuthorityId(evidence?.messageId) : null;
+  const occurredAtMs = Date.parse(evidence?.occurredAt || '');
+  if (!phoneE164 || !Number.isFinite(occurredAtMs) || (hasEvent && (!eventId || !messageId))
+    || occurredAtMs > Date.now() + 24 * 60 * 60 * 1000) {
+    return { ok: false, reason: 'invalid_provider_opt_out' };
+  }
+  const occurredAt = new Date(occurredAtMs).toISOString();
+  const expected = {
+    consent_key: telnyxSmsConsentKey(authority, phoneE164),
+    agency_id: authority.agencyId,
+    provider: 'telnyx',
+    integration_secret_id: authority.integrationSecretId,
+    messaging_profile_id: authority.messagingProfileId,
+    destination_binding_id: authority.bindingId,
+    destination_binding_key: authority.bindingKey,
+    destination_e164: authority.destinationE164,
+    patient_id: null,
+    phone_e164: phoneE164,
+    consent_status: 'opted_out',
+    consent_source: 'provider_opt_out',
+    captured_by: null,
+    captured_at: occurredAt,
+    provider_event_id: eventId,
+    provider_message_id: messageId,
+    provider_event_occurred_at: hasEvent ? occurredAt : null,
+    notes: TELNYX_PROVIDER_OPT_OUT_NOTES,
+  };
+  const latest = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  if (latest.ok && latest.keywordStopActive) return { ok: true, deduped: true };
+  if (hasEvent) return appendProviderConsentEvent(base44, expected);
+  try {
+    await base44.asServiceRole.entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  const after = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  return after.ok && after.keywordStopActive
+    ? { ok: true, deduped: false }
+    : { ok: false, reason: after.ok ? 'sms_consent_not_recorded' : after.reason };
+}
+// <<<END SHARED HELPER: telnyxProviderConsent>>>
 
 // <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
@@ -561,6 +734,20 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       && row?.provider_event_id == null
       && row?.provider_message_id == null
       && row?.provider_event_occurred_at == null;
+    // provider_opt_out: Telnyx refused a send to this recipient with error
+    // 40300 ("Blocked due to STOP message"). From a delivery receipt it carries
+    // the receipt's event and message ids, exactly as a keyword row does; from a
+    // refused API request there is no provider event, so all three are null.
+    const providerOptOutMatches = source === 'provider_opt_out'
+      && status === 'opted_out'
+      && (row?.captured_by ?? null) === null
+      && ((!!providerEventId && row?.provider_event_id === providerEventId
+        && !!providerMessageId && row?.provider_message_id === providerMessageId
+        && Number.isFinite(occurredAtMs)
+        && row?.provider_event_occurred_at === row?.captured_at)
+        || (row?.provider_event_id == null
+          && row?.provider_message_id == null
+          && row?.provider_event_occurred_at == null));
     if (row?.consent_key !== consentKey
       || row?.provider !== 'telnyx'
       || row?.integration_secret_id !== authority.integrationSecretId
@@ -569,7 +756,7 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       || row?.phone_e164 !== phoneE164
       || !provenanceMatches
       || !Number.isFinite(capturedAtMs)
-      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      || (!keywordSourceMatches && !manualProvenanceMatches && !providerOptOutMatches)) {
       return { ok: false, reason: 'sms_consent_integrity_failed' };
     }
   }
@@ -582,9 +769,13 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
         : 'sms_consent_order_invalid' };
     }
   }
-  const newestKeyword = rows.find((row) =>
-    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
-  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  // A provider-classified STOP — the keyword itself, or Telnyx refusing a send
+  // because of it (provider_opt_out) — is lifted only by a provider START: a
+  // manual opt-in cannot override it, and Telnyx keeps blocking until then.
+  const newestKeyword = rows.find((row) => row.consent_source === 'keyword_stop'
+    || row.consent_source === 'keyword_start' || row.consent_source === 'provider_opt_out');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop'
+    || newestKeyword?.consent_source === 'provider_opt_out';
   return {
     ok: true,
     row: rows[0] || null,
@@ -1001,21 +1192,29 @@ Deno.serve(async (req) => {
       }
       return agencyConfigCache.get(agencyName);
     };
-    // Agency email cohort for scoping the monthly SMS cap (mirrors sendSms).
-    // Cached per agency; null when the row's nurse has no agency (legacy
-    // single-tenant → count unscoped, as sendSms does for an agency-less caller).
+    // The monthly-cap cohort is sendSms's: the sending LINE's agency, counted as
+    // rows stamped with that agency_id plus rows written by its active members
+    // (AgencyMembership, service-owned). It used to be every User whose
+    // self-editable agency_name matched the nurse's, so one edited profile could
+    // move a nurse's texts into another agency's count. Null when the
+    // memberships cannot be read (the row is released, not sent uncapped).
     const agencyCohortCache = new Map();
-    const resolveAgencyCohort = async (agencyName) => {
-      const key = String(agencyName || '').trim();
-      if (!key) return null;
-      if (agencyCohortCache.has(key)) return agencyCohortCache.get(key);
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .filter({ agency_name: key }, '-created_date', 5000)
-        .catch(() => []);
-      const cohort = new Set(
-        (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
-      );
-      agencyCohortCache.set(key, cohort);
+    const resolveAgencyCohort = async (agencyId) => {
+      if (agencyCohortCache.has(agencyId)) return agencyCohortCache.get(agencyId);
+      let rows;
+      try {
+        rows = await base44.asServiceRole.entities.AgencyMembership
+          .filter({ agency_id: agencyId, status: 'active' }, undefined, 5001);
+      } catch {
+        rows = null;
+      }
+      const cohort = Array.isArray(rows) && rows.length <= 5000
+        ? new Set(rows
+          .filter((member) => member?.agency_id === agencyId && member?.status === 'active')
+          .map((member) => normalizeDispatchEmail(member?.user_email_normalized))
+          .filter(Boolean))
+        : null;
+      agencyCohortCache.set(agencyId, cohort);
       return cohort;
     };
     // A unique id for THIS cron run, used to claim rows (see the claim below).
@@ -1148,39 +1347,6 @@ Deno.serve(async (req) => {
       const destAllowed = isAllowedDestination(row.to_number, settings);
       if (!destAllowed.allowed) { await fail(`Destination blocked at send time: ${destAllowed.reason}`); continue; }
 
-      // Cost control: enforce the optional monthly outbound-SMS cap, scoped to
-      // THIS row's agency cohort (mirrors sendSms). Counting every tenant's
-      // outbound rows made one busy agency trip every other agency's cap. When
-      // the cap is already reached, leave the row pending so a later run (next
-      // month / after the cap is raised) can pick it up rather than failing a
-      // scheduled reminder outright.
-      const monthlyCap = Number(settings?.monthly_sms_cap);
-      if (Number.isFinite(monthlyCap) && monthlyCap > 0) {
-        const since = monthStartISO();
-        // nurseAgencyCache was populated by resolveRowConfig() above for this row.
-        const rowAgency = nurseAgencyCache.get(String(row.nurse_email || '')) || '';
-        const agencyNurseEmails = await resolveAgencyCohort(rowAgency);
-        const fetchLimit = agencyNurseEmails
-          ? Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000)
-          : monthlyCap;
-        const recentOutbound = await base44.asServiceRole.entities.SmsMessage
-          .filter({ direction: 'outbound' }, '-created_date', fetchLimit)
-          .catch(() => []);
-        const sentThisMonth = (Array.isArray(recentOutbound) ? recentOutbound : [])
-          .filter((m) => m.created_date && m.created_date >= since)
-          .filter((m) => !agencyNurseEmails
-            || (m.nurse_email && agencyNurseEmails.has(m.nurse_email))
-            || m.sent_by === row.nurse_email)
-          .length;
-        if (sentThisMonth >= monthlyCap) {
-          await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
-            status: 'pending', claimed_by: '', claimed_at: null,
-          }).catch(() => {});
-          result.skipped++;
-          continue;
-        }
-      }
-
       // The sending number must still be an active, outbound-enabled agency
       // line, and the nurse who scheduled the text must still belong to it.
       const lineAuthority = await resolveLineAuthority(row.from_number);
@@ -1196,6 +1362,38 @@ Deno.serve(async (req) => {
         continue;
       }
       if (!stillMember) { await fail('The scheduling user no longer has an active agency membership'); continue; }
+
+      // Cost control: enforce the optional monthly outbound-SMS cap for the
+      // LINE's agency, counted exactly as sendSms counts it (rows stamped with
+      // the agency, or written by its active members). Counting every tenant's
+      // outbound rows made one busy agency trip every other agency's cap. When
+      // the cap is already reached — or the cohort cannot be read — leave the row
+      // pending so a later run (next month / after the cap is raised) can pick
+      // it up rather than failing a scheduled reminder outright.
+      const monthlyCap = Number(settings?.monthly_sms_cap);
+      if (Number.isFinite(monthlyCap) && monthlyCap > 0) {
+        const since = monthStartISO();
+        const agencyId = lineAuthority.agencyId;
+        const cohort = await resolveAgencyCohort(agencyId);
+        const agencyNurseEmails = cohort ? new Set(cohort).add(normalizeDispatchEmail(row.nurse_email)) : null;
+        const recentOutbound = agencyNurseEmails
+          ? await base44.asServiceRole.entities.SmsMessage
+            .filter({ direction: 'outbound' }, '-created_date', Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000))
+            .catch(() => [])
+          : [];
+        const sentThisMonth = (Array.isArray(recentOutbound) ? recentOutbound : [])
+          .filter((m) => m.created_date && m.created_date >= since)
+          .filter((m) => m.agency_id === agencyId
+            || agencyNurseEmails.has(normalizeDispatchEmail(m.nurse_email)))
+          .length;
+        if (!agencyNurseEmails || sentThisMonth >= monthlyCap) {
+          await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
+            status: 'pending', claimed_by: '', claimed_at: null,
+          }).catch(() => {});
+          result.skipped++;
+          continue;
+        }
+      }
 
       // Re-check consent at send time in the bound scope. Require explicit
       // opted_in — unknown/missing is not sufficient for TCPA. A consent read
@@ -1236,18 +1434,33 @@ Deno.serve(async (req) => {
       try {
         resp = await sendTelnyx(apiKey, messagingProfileId, lineAuthority.destinationE164, row.to_number, row.body, statusCallback);
       } catch (netErr) {
-        const aborted = netErr?.name === 'AbortError';
-        await fail(aborted ? 'Timed out reaching Telnyx' : `Network error reaching Telnyx: ${netErr.message}`);
+        // A timeout may have been accepted ("Outcome unknown"); only a
+        // connection that never opened says the text was not sent.
+        await fail(telnyxTransportFailureReason(netErr, SEND_TIMEOUT_MS));
         continue;
       }
 
       if (!resp.ok) {
-        await fail(resp.data?.errors?.[0]?.detail || resp.data?.errors?.[0]?.title || `Telnyx API error (${resp.status})`);
+        if (telnyxErrorsInclude(resp.data?.errors, TELNYX_OPT_OUT_ERROR_CODE)) {
+          // Telnyx holds a STOP the ledger did not: record it in this line's
+          // consent scope so no later send reaches Telnyx.
+          const recorded = await recordTelnyxProviderOptOut(base44, lineAuthority, row.to_number, {
+            occurredAt: new Date().toISOString(),
+          }).catch(() => ({ ok: false, reason: 'error' }));
+          if (!recorded.ok) console.error('dispatchScheduledSms: provider opt-out not recorded', { reason: recorded.reason });
+        }
+        await fail(telnyxApiFailureReason(resp.status, resp.data?.errors));
         continue;
       }
 
       const providerMessageId = resp.data?.data?.id || null;
-      // Record the sent message in the nurse's thread so it shows in their inbox.
+      // Record the sent message in the nurse's thread so it shows in their inbox,
+      // with the same fields sendSms writes: the status Telnyx answered
+      // (accepted is 'queued' until the delivery receipt says more, never a
+      // blanket 'sent'), and the provenance redriveFailedSms requires and
+      // re-proves — the line's agency and the exact binding it was sent from.
+      // Without them a scheduled text was invisible to the redrive, to the
+      // agency's monthly cap and to inbound reply attribution.
       const smsRow = await base44.asServiceRole.entities.SmsMessage.create({
         direction: 'outbound',
         from_number: lineAuthority.destinationE164,
@@ -1256,17 +1469,20 @@ Deno.serve(async (req) => {
         nurse_email: row.nurse_email,
         patient_id: row.patient_id || null,
         thread_id: row.thread_id,
-        status: 'sent',
+        status: telnyxSendStatus(resp.data),
         provider_message_id: providerMessageId,
         client_message_id: clientMessageId,
         is_read: true,
         sent_by: row.nurse_email,
         consent_checked: true,
+        agency_id: lineAuthority.agencyId,
+        destination_binding_id: lineAuthority.bindingId,
       }).catch(() => { console.error('dispatchScheduledSms: inbox copy write failed'); return null; });
 
-      // The text WAS delivered, so the row is 'sent' regardless; but if we
-      // couldn't write the inbox copy, note it so the gap is visible rather than
-      // silently losing the conversation record.
+      // Telnyx ACCEPTED the text (accepted, not delivered — the receipt on the
+      // SmsMessage says that), so the scheduled row is 'sent' regardless; but if
+      // we couldn't write the inbox copy, note it so the gap is visible rather
+      // than silently losing the conversation record.
       await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
         status: 'sent',
         provider_message_id: providerMessageId,

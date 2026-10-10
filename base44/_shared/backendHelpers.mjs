@@ -19,6 +19,30 @@ import { isAllowedDestination, PREMIUM_AREA_CODES } from '../../src/components/v
 import { OASIS_AUDIT_THRESHOLDS, buildOasisAuditRecord } from '../../src/components/oasis/oasisAuditFlag.js';
 import { OASIS_EXTRACTED_ITEM_MAP, buildExtractedReviewItems } from '../../src/components/oasis/oasisExtractedItems.js';
 import { deriveActionTypes, evaluateRuleTrigger } from '../../src/components/oasis/workflowEngineUtils.js';
+import { CONNECT_PHASE_FAILURE, connectionNeverOpened } from '../../src/components/voice/telnyxRetry.js';
+import {
+  TELNYX_OPT_OUT_ERROR_CODE, telnyxErrorCode, telnyxErrorsInclude, telnyxApiFailureReason,
+  telnyxTransportFailureReason, telnyxDeliveryFailureReason, telnyxSendStatus,
+} from '../../src/components/messaging/smsRedrive.js';
+import {
+  SMS_MEDIA_LIMIT, SMS_MEDIA_MAX_BYTES, SMS_MEDIA_CONTENT_TYPE, SMS_MEDIA_LAYOUT_TYPE, smsMediaContentType, smsMediaFetchUrl,
+  inboundSmsMediaPlaceholders, isPrivateSmsFileUri, smsMediaFileName,
+} from '../../src/components/messaging/smsMedia.js';
+import {
+  FAX_CLIENT_STATE_KINDS,
+  FAX_CLIENT_STATE_VERSION,
+  decodeFaxClientState,
+  encodeFaxClientState,
+  exactFaxCorrelationId,
+  faxEventProviderId,
+  faxStatusWebhookUrl,
+} from '../../src/components/fax/faxProviderCorrelation.js';
+import {
+  FAX_ORIGINATION_UNAVAILABLE,
+  FAX_ORIGINATION_UNVERIFIED,
+  faxOriginationPlan,
+  isVerifiedOriginationRecord,
+} from '../../src/components/fax/faxOrigination.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -50,6 +74,41 @@ const PREMIUM_AREA_CODES = new Set([${codes}]);
 ${isAllowedDestination.toString()}`;
 }
 
+// SMS send outcome — single source of truth is src/components/messaging/smsRedrive.js
+// (and telnyxRetry.js for the connect-phase test). Every writer of
+// SmsMessage.failure_reason uses these, and the redrive policy reads the HTTP
+// status and Telnyx error code they put first, so the writers and the reader
+// cannot drift into the prose-matching that rarely recognised a 429.
+function telnyxSmsOutcomeSource() {
+  return `// Generated verbatim from src/components/messaging/smsRedrive.js and
+// src/components/voice/telnyxRetry.js.
+const TELNYX_OPT_OUT_ERROR_CODE = ${JSON.stringify(TELNYX_OPT_OUT_ERROR_CODE)};
+const CONNECT_PHASE_FAILURE = ${CONNECT_PHASE_FAILURE.toString()};
+${connectionNeverOpened.toString()}
+${telnyxErrorCode.toString()}
+${telnyxErrorsInclude.toString()}
+${telnyxApiFailureReason.toString()}
+${telnyxTransportFailureReason.toString()}
+${telnyxDeliveryFailureReason.toString()}
+${telnyxSendStatus.toString()}`;
+}
+
+// MMS attachment rules — single source of truth is src/components/messaging/smsMedia.js.
+// The webhook that records an inbound attachment, the cron that copies it and
+// the broker that serves it must agree on what is fetchable and what is private.
+function smsMediaSource() {
+  return `// Generated verbatim from src/components/messaging/smsMedia.js.
+const SMS_MEDIA_LIMIT = ${SMS_MEDIA_LIMIT};
+const SMS_MEDIA_MAX_BYTES = ${SMS_MEDIA_MAX_BYTES};
+const SMS_MEDIA_CONTENT_TYPE = ${SMS_MEDIA_CONTENT_TYPE.toString()};
+const SMS_MEDIA_LAYOUT_TYPE = ${SMS_MEDIA_LAYOUT_TYPE.toString()};
+${smsMediaContentType.toString()}
+${smsMediaFetchUrl.toString()}
+${inboundSmsMediaPlaceholders.toString()}
+${isPrivateSmsFileUri.toString()}
+${smsMediaFileName.toString()}`;
+}
+
 // OASIS audit flag — single source of truth is src/components/oasis/oasisAuditFlag.js.
 // The broker that saves an upload decides the audit flag from the analysis it is
 // saving; generating its copy from the module the browser tests run against means
@@ -78,6 +137,71 @@ const deriveActionTypes = ${deriveActionTypes.toString()};
 const evaluateRuleTrigger = ${evaluateRuleTrigger.toString()};`;
 }
 
+// Fax provider correlation — single source of truth is
+// src/components/fax/faxProviderCorrelation.js. The senders write a
+// client_state and derive their per-fax webhook_url with these; the status
+// webhook decodes the same client_state. Generating every copy from the module
+// the unit tests run against is what keeps the writer and the reader agreeing.
+function faxProviderCorrelationSource() {
+  return `// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = ${JSON.stringify(FAX_CLIENT_STATE_VERSION)};
+const FAX_CLIENT_STATE_KINDS = ${JSON.stringify(FAX_CLIENT_STATE_KINDS)};
+${exactFaxCorrelationId.toString()}
+${encodeFaxClientState.toString()}
+${decodeFaxClientState.toString()}
+${faxEventProviderId.toString()}
+${faxStatusWebhookUrl.toString()}`;
+}
+
+// Outbound fax origination — the pure decision is generated from
+// src/components/fax/faxOrigination.js; the one provider call around it is
+// written here. All three senders inline this block so they cannot disagree
+// about which number a fax is sent from. The lookup is a read-only GET with a
+// hard timeout, cached per request so a batch asks once; ANY failure keeps the
+// blind line (today's behaviour) and reports a non-PHI warning category.
+function faxOriginationSource() {
+  return `// Generated from src/components/fax/faxOrigination.js.
+const FAX_ORIGINATION_UNVERIFIED = ${JSON.stringify(FAX_ORIGINATION_UNVERIFIED)};
+const FAX_ORIGINATION_UNAVAILABLE = ${JSON.stringify(FAX_ORIGINATION_UNAVAILABLE)};
+${faxOriginationPlan.toString()}
+${isVerifiedOriginationRecord.toString()}
+const FAX_ORIGINATION_LOOKUP_TIMEOUT_MS = 5000;
+const faxOriginationLookups = new WeakMap();
+async function resolveFaxOrigination(req, apiKey, officeE164, blindE164) {
+  const plan = faxOriginationPlan(officeE164, blindE164);
+  if (!plan.lookup) return { from: plan.from, officeVerified: null, warning: null };
+  const key = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!key) return { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  const cache = req && typeof req === 'object' ? (faxOriginationLookups.get(req) || new Map()) : new Map();
+  if (req && typeof req === 'object') faxOriginationLookups.set(req, cache);
+  const cacheKey = key + '|' + plan.office;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  let result;
+  try {
+    const response = await fetch(
+      'https://api.telnyx.com/v2/verified_numbers/' + encodeURIComponent(plan.office),
+      {
+        headers: { Authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(FAX_ORIGINATION_LOOKUP_TIMEOUT_MS),
+      },
+    );
+    const body = response.ok ? await response.json().catch(() => null) : null;
+    if (!response.ok) await response.text().catch(() => '');
+    if (response.ok && isVerifiedOriginationRecord(body, plan.office)) {
+      result = { from: plan.office, officeVerified: true, warning: null };
+    } else if (response.ok || response.status === 404) {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNVERIFIED };
+    } else {
+      result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+    }
+  } catch {
+    result = { from: plan.from, officeVerified: false, warning: FAX_ORIGINATION_UNAVAILABLE };
+  }
+  cache.set(cacheKey, result);
+  return result;
+}`;
+}
+
 // The e-signature helpers are long enough that a template literal would hide
 // escaping mistakes, so each lives as plain source under ./esign/ and is
 // inlined verbatim. Dependencies (consumers inline them together):
@@ -90,6 +214,18 @@ const evaluateRuleTrigger = ${evaluateRuleTrigger.toString()};`;
 function esignHelperSource(name) {
   return readFileSync(new URL(`./esign/${name}.js`, import.meta.url), 'utf8').trimEnd();
 }
+
+// The reference shape Core.UploadPrivateFile returns (and CreateFileSignedUrl
+// accepts). One definition, inlined on its own as privateFileUri or as the head
+// of signatureFileAndDeadline; a function inlines one block or the other, never
+// both. src/components/voice/voicemailPlayback.js mirrors it for the browser and
+// is drift-guarded against this source.
+const PRIVATE_FILE_URI_SOURCE = `function isPrivateFileUri(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
+    && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\\/private\\/[a-f0-9]{24}\\/[^?#]+$/.test(value));
+}`;
 
 export const SHARED_HELPERS = {
 
@@ -398,12 +534,8 @@ function retainedSignatureAuditKey(keyring, id) {
     throw error;
   }
 }`,
-  signatureFileAndDeadline: `function isPrivateFileUri(value) {
-  return typeof value === 'string' && value.length > 0 && value.length <= 4096
-    && !/\\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
-    && (value.startsWith('private/') || value.startsWith('private://')
-      || /^mp\\/private\\/[a-f0-9]{24}\\/[^?#]+$/.test(value));
-}
+  privateFileUri: PRIVATE_FILE_URI_SOURCE,
+  signatureFileAndDeadline: `${PRIVATE_FILE_URI_SOURCE}
 
 function dueDateEnd(value) {
   if (typeof value !== 'string') return null;
@@ -459,6 +591,164 @@ function dueDateEnd(value) {
     }
     throw new Error('Work-number assignment was not confirmed');
   }
+}`,
+  // Read-only Telnyx checks for a number the app is about to record or hand to
+  // a nurse. Grounded in the Telnyx v2 OpenAPI spec (read 2026-10-09):
+  //   - GET /v2/phone_numbers?filter[phone_number]= is the account's own number
+  //     resource — its id is the one PATCH /v2/phone_numbers/{id} takes, and is
+  //     NOT the number-ORDER line id POST /v2/number_orders returns.
+  //   - filter[phone_number] "Requires at least three digits. Non-numerical
+  //     characters will result in no values being returned", so the E.164 '+'
+  //     is stripped rather than URL-encoded (an encoded '+' answers "no rows",
+  //     which reads as "not in your account").
+  //   - status is one of purchase-pending, provision-pending, active, ... and
+  //     only 'active' carries traffic; messaging_profile_id is the literal
+  //     'UNAVAILABLE' when Telnyx could not load it, which is unknown, not a
+  //     mismatch.
+  // A read that could not be made is { ok: false } and never "not found": a
+  // nurse line must not be refused because Telnyx was slow, and an unrelated
+  // number must not be reported missing because the request was malformed.
+  telnyxWorkLine: `const TELNYX_NUMBER_LOOKUP_TIMEOUT_MS = 8000;
+async function lookupTelnyxNumber(apiKey, e164) {
+  const target = String(e164 || '');
+  const digits = target.slice(1);
+  if (!apiKey || target[0] !== '+' || !/^[0-9]{8,15}$/.test(digits)) return { ok: false, reason: 'invalid_request', status: 0 };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=' + digits, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    const body = await resp.json().catch(() => null);
+    if (!resp.ok) return { ok: false, reason: 'http_' + resp.status, status: resp.status, body };
+    if (!body || !Array.isArray(body.data)) return { ok: false, reason: 'malformed_response', status: resp.status };
+    const matches = body.data.filter((row) => row && row.phone_number === target);
+    if (matches.length > 1) return { ok: false, reason: 'ambiguous_response', status: resp.status };
+    return { ok: true, status: resp.status, number: matches[0] || null };
+  } catch {
+    return { ok: false, reason: 'unreachable', status: 0 };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Decide whether a looked-up number is a working nurse line for these
+// credentials. A PROBLEM is a line that would not carry the nurse's calls or
+// texts, so it must not be handed out silently; a WARNING is something that
+// could not be checked, which never blocks an assignment.
+function assessTelnyxWorkLine(lookup, creds, e164) {
+  const problems = [];
+  const warnings = [];
+  const result = (checked, number) => ({
+    checked, problems, warnings,
+    telnyxNumberId: number && typeof number.id === 'string' && number.id ? number.id : null,
+    telnyxStatus: number && typeof number.status === 'string' ? number.status : null,
+  });
+  if (!lookup || lookup.ok !== true) {
+    warnings.push(e164 + ' could not be checked with Telnyx (' + ((lookup && lookup.reason) || 'no response')
+      + '), so its voice connection and messaging profile were not confirmed.');
+    return result(false, null);
+  }
+  const number = lookup.number;
+  if (!number) {
+    problems.push(e164 + ' is not in your Telnyx account yet (or its number order has not completed).');
+    return result(true, null);
+  }
+  const status = typeof number.status === 'string' ? number.status : 'unknown';
+  if (status !== 'active') {
+    problems.push(e164 + ' is "' + status + '" in Telnyx, not active, so it cannot carry calls or texts yet.');
+  }
+  const voice = creds && creds.voiceConnectionId;
+  if (!voice) {
+    warnings.push('No Voice connection id is saved in Telnyx Credentials, so ' + e164 + "'s call routing was not checked.");
+  } else if (String(number.connection_id || '') !== voice) {
+    problems.push(e164 + ' is on Telnyx connection "' + String(number.connection_id || 'none')
+      + '", not the configured Voice connection "' + voice + '", so its calls will not reach PennSync.');
+  }
+  const profile = creds && creds.messagingProfileId;
+  // A number on NO messaging profile cannot send a text at all: Telnyx refuses
+  // the send as "not on a messaging profile". Said in those words, because
+  // "profile none, not X" reads like a mismatch the admin can ignore.
+  const noProfile = !number.messaging_profile_id;
+  if (noProfile && profile) {
+    problems.push(e164 + " is not on any messaging profile, so every text from it fails (Telnyx: 'not on a messaging profile')."
+      + ' Add it to the configured Messaging Profile "' + profile + '" in Telnyx first.');
+  } else if (noProfile) {
+    warnings.push(e164 + " is not on any messaging profile, so every text from it will fail (Telnyx: 'not on a messaging profile'),"
+      + ' and no Messaging Profile id is saved in Telnyx Credentials.');
+  } else if (!profile) {
+    warnings.push('No Messaging Profile id is saved in Telnyx Credentials, so ' + e164 + "'s texting was not checked.");
+  } else if (number.messaging_profile_id === 'UNAVAILABLE') {
+    warnings.push('Telnyx could not report ' + e164 + "'s messaging profile right now, so its texting was not checked.");
+  } else if (String(number.messaging_profile_id || '') !== profile) {
+    problems.push(e164 + ' is on messaging profile "' + String(number.messaging_profile_id || 'none')
+      + '", not the configured Messaging Profile "' + profile + '", so its texts will not reach PennSync.');
+  }
+  return result(true, number);
+}
+
+// Is this US number on a 10DLC campaign (GET /v2/10dlc/phone_number_campaigns/
+// {phoneNumber}; the spec answers a bare PhoneNumberCampaign with campaignId,
+// tcrCampaignId, telnyxCampaignId and assignmentStatus)? Only ever WARNINGS:
+// an unregistered number still carries calls, its texts are just likely to be
+// carrier-filtered. Read-only; enrolment stays an explicit admin action.
+async function telnyx10dlcWarnings(apiKey, e164, savedCampaignId) {
+  const saved = String(savedCampaignId || '').trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/10dlc/phone_number_campaigns/' + encodeURIComponent(e164), {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    if (resp.status === 404) {
+      return [e164 + ' is not on any A2P 10DLC campaign' + (saved ? ' (the saved campaign is ' + saved + ')' : '')
+        + ', so US carriers may filter its texts. Enroll it in the Telnyx portal.'];
+    }
+    const body = await resp.json().catch(() => null);
+    const row = body && typeof body === 'object' && body.data && typeof body.data === 'object' ? body.data : body;
+    if (!resp.ok || !row || typeof row !== 'object' || typeof row.campaignId !== 'string') {
+      return [e164 + "'s A2P 10DLC campaign could not be checked (HTTP " + resp.status + ').'];
+    }
+    const ids = [row.campaignId, row.tcrCampaignId, row.telnyxCampaignId].filter((id) => typeof id === 'string' && id);
+    if (saved && !ids.includes(saved)) {
+      return [e164 + ' is on A2P 10DLC campaign ' + (row.tcrCampaignId || row.campaignId) + ', not the saved campaign '
+        + saved + ', so its texts may be filtered under the wrong registration.'];
+    }
+    if (row.assignmentStatus && row.assignmentStatus !== 'ASSIGNED') {
+      // PENDING_ASSIGNMENT is normal for a few days after enrolment: a warning, never a refusal.
+      return [e164 + "'s A2P 10DLC assignment to campaign " + (row.tcrCampaignId || row.campaignId) + ' is '
+        + row.assignmentStatus + ', so US carriers may filter its texts until it is ASSIGNED.'];
+    }
+    return [];
+  } catch {
+    return [e164 + "'s A2P 10DLC campaign could not be checked (Telnyx did not answer)."];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// options.campaignId is the agency's saved A2P campaign (AgencySettings.a2p_campaign_id).
+async function verifyTelnyxWorkLine(creds, e164, options = {}) {
+  if (!creds || !creds.apiKey) {
+    const why = creds && creds.readError ? 'the Telnyx credential store could not be read' : 'no Telnyx API key is configured';
+    return { checked: false, problems: [], telnyxNumberId: null, telnyxStatus: null,
+      warnings: [e164 + ' was not checked with Telnyx because ' + why + '.'] };
+  }
+  const lookup = await lookupTelnyxNumber(creds.apiKey, e164);
+  const result = assessTelnyxWorkLine(lookup, creds, e164);
+  // 10DLC registers US local long codes: only a +1, non-toll-free line that is
+  // otherwise good is worth the extra read (toll-free has its own verification).
+  const type = lookup.ok && lookup.number ? String(lookup.number.phone_number_type || '') : '';
+  const tollFree = type === 'toll_free' || type === 'tollfree'
+    || ['800', '833', '844', '855', '866', '877', '888'].includes(e164.slice(2, 5));
+  if (result.checked && result.problems.length === 0 && e164.slice(0, 2) === '+1' && !tollFree) {
+    result.warnings.push(...await telnyx10dlcWarnings(creds.apiKey, e164, options && options.campaignId));
+  }
+  return result;
 }`,
   // Application-wide human-delivery release gate. This is intentionally
   // fail-closed: deploying code or copying an environment's existing secrets
@@ -574,6 +864,10 @@ async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resour
     agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
   });
 }`,
+
+  faxProviderCorrelation: faxProviderCorrelationSource(),
+
+  faxOrigination: faxOriginationSource(),
 
   // Global reimbursement kill switch. This deliberately remains false until
   // PennSync uses the official CMS HHGS 432-group grouper, server-resolves
@@ -808,6 +1102,8 @@ function validateOasisResponseWrite(payload) {
   areaCodeTimezone: areaCodeTimezoneSource(),
   urgentKeywords: urgentKeywordsSource(),
   isAllowedDestination: isAllowedDestinationSource(),
+  telnyxSmsOutcome: telnyxSmsOutcomeSource(),
+  smsMedia: smsMediaSource(),
 
   // SSRF guard used by every function that fetches or hands a user-supplied URL to
   // a provider integration. Keep in step with src/components/utils/security.
@@ -883,6 +1179,56 @@ async function hasExactActiveAgencyMembership(base44, user) {
     && normalizeMembershipEmail(row.user_email_normalized) === userEmail
     && typeof row.agency_id === 'string'
     && !!row.agency_id.trim();
+}`,
+
+  // Compare-and-set over an SmsMessage row exactly as the caller OBSERVED it.
+  // Telnyx takes no idempotency key, so every worker that may text a patient or
+  // copy an attachment (redriveFailedSms, sendSms's Resend, copyInboundSmsMedia)
+  // claims a row with ONE conditional updateMany whose predicate is the prior
+  // state it read (updated_date included) and proceeds only when exactly that
+  // one row was updated. Update-then-read-back is not a claim: two overlapping
+  // writers each read back their own token in turn and both proceed. An
+  // optional field the hosted store may hold as null or omit entirely is
+  // matched by observedSmsField; a present value is matched exactly.
+  smsRowCas: `const successfulSmsCas = (value) => !!value
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && value.success === true
+  && value.updated === 1
+  && value.has_more === false;
+function observedSmsField(field, value) {
+  return value == null
+    ? { $or: [{ [field]: { $exists: false } }, { [field]: null }] }
+    : { [field]: value };
+}`,
+
+  // The same proof, scoped to ONE agency a record was stamped with (an SMS row,
+  // an attachment). AgencyMembership's identity is the immutable User id; the
+  // built-in email is only an integrity check on the row, never the key, so a
+  // membership row that merely carries the caller's address authorizes nothing.
+  // Exactly one active (agency, user) row is required; an ambiguous, malformed
+  // or unreadable result fails closed.
+  activeAgencyMembershipAuthz: `async function hasExactActiveMembershipInAgency(base44, user, agencyId) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = String(user?.email || '').trim().toLowerCase();
+  if (!userId || !userEmail || typeof agencyId !== 'string' || !agencyId || agencyId.trim() !== agencyId) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { agency_id: agencyId, user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && row.agency_id === agencyId
+    && String(row.user_id || '').trim() === userId
+    && row.status === 'active'
+    && String(row.user_email_normalized || '').trim().toLowerCase() === userEmail;
 }`,
 
   // Boundary hardening for legacy handlers that still branch on caller profile
@@ -1703,6 +2049,20 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       && row?.provider_event_id == null
       && row?.provider_message_id == null
       && row?.provider_event_occurred_at == null;
+    // provider_opt_out: Telnyx refused a send to this recipient with error
+    // 40300 ("Blocked due to STOP message"). From a delivery receipt it carries
+    // the receipt's event and message ids, exactly as a keyword row does; from a
+    // refused API request there is no provider event, so all three are null.
+    const providerOptOutMatches = source === 'provider_opt_out'
+      && status === 'opted_out'
+      && (row?.captured_by ?? null) === null
+      && ((!!providerEventId && row?.provider_event_id === providerEventId
+        && !!providerMessageId && row?.provider_message_id === providerMessageId
+        && Number.isFinite(occurredAtMs)
+        && row?.provider_event_occurred_at === row?.captured_at)
+        || (row?.provider_event_id == null
+          && row?.provider_message_id == null
+          && row?.provider_event_occurred_at == null));
     if (row?.consent_key !== consentKey
       || row?.provider !== 'telnyx'
       || row?.integration_secret_id !== authority.integrationSecretId
@@ -1711,7 +2071,7 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       || row?.phone_e164 !== phoneE164
       || !provenanceMatches
       || !Number.isFinite(capturedAtMs)
-      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      || (!keywordSourceMatches && !manualProvenanceMatches && !providerOptOutMatches)) {
       return { ok: false, reason: 'sms_consent_integrity_failed' };
     }
   }
@@ -1724,9 +2084,13 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
         : 'sms_consent_order_invalid' };
     }
   }
-  const newestKeyword = rows.find((row) =>
-    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
-  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  // A provider-classified STOP — the keyword itself, or Telnyx refusing a send
+  // because of it (provider_opt_out) — is lifted only by a provider START: a
+  // manual opt-in cannot override it, and Telnyx keeps blocking until then.
+  const newestKeyword = rows.find((row) => row.consent_source === 'keyword_stop'
+    || row.consent_source === 'keyword_start' || row.consent_source === 'provider_opt_out');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop'
+    || newestKeyword?.consent_source === 'provider_opt_out';
   return {
     ok: true,
     row: rows[0] || null,
@@ -1735,6 +2099,127 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
     phoneE164,
     consentKey,
   };
+}`,
+
+  // Provider-evidenced rows in the scoped SmsConsent ledger: a Telnyx-classified
+  // STOP/START keyword (handleTelnyxStatusWebhook) and a Telnyx refusal with
+  // error 40300, "blocked due to STOP" (the senders and the delivery receipt).
+  // One writer for both, so the opt-out feedback cannot drift from the keyword
+  // path it imitates. Requires telnyxSmsAuthority and telnyxSmsOutcome.
+  telnyxProviderConsent: `function providerConsentRowMatches(row, expected) {
+  return !!row
+    && row.consent_key === expected.consent_key
+    && row.agency_id === expected.agency_id
+    && row.provider === expected.provider
+    && row.integration_secret_id === expected.integration_secret_id
+    && row.messaging_profile_id === expected.messaging_profile_id
+    && row.destination_binding_id === expected.destination_binding_id
+    && row.destination_binding_key === expected.destination_binding_key
+    && row.destination_e164 === expected.destination_e164
+    && (row.patient_id ?? null) === expected.patient_id
+    && row.phone_e164 === expected.phone_e164
+    && row.consent_status === expected.consent_status
+    && row.consent_source === expected.consent_source
+    && (row.provider_event_id ?? null) === expected.provider_event_id
+    && (row.provider_message_id ?? null) === expected.provider_message_id
+    && (row.provider_event_occurred_at ?? null) === expected.provider_event_occurred_at
+    && row.captured_at === expected.captured_at
+    && (row.captured_by ?? null) === expected.captured_by
+    && row.notes === expected.notes;
+}
+
+// Append one provider-evidenced consent row, replay-safe on its Telnyx webhook
+// event id: a replay of the same event with the same content is a no-op, the
+// same event id with different content fails closed, and the write is confirmed
+// by reading it back. A store that cannot be read or written is reported as
+// such, so a webhook can ask Telnyx to redeliver.
+async function appendProviderConsentEvent(base44, expected) {
+  const entities = base44.asServiceRole.entities;
+  let prior;
+  try {
+    prior = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(prior) || prior.length > 1) return { ok: false, reason: 'sms_consent_event_ambiguous' };
+  if (prior.length === 1) {
+    return providerConsentRowMatches(prior[0], expected)
+      ? { ok: true, deduped: true }
+      : { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  try {
+    await entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  let committed;
+  try {
+    committed = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(committed) || committed.length !== 1
+    || !providerConsentRowMatches(committed[0], expected)) {
+    return { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  return { ok: true, deduped: false };
+}
+
+const TELNYX_PROVIDER_OPT_OUT_NOTES = 'Telnyx refused a send to this recipient with error 40300 (blocked due to STOP)';
+
+// Telnyx refused a send because the recipient texted STOP (error 40300) while
+// this ledger still read opted in: record it in the binding's consent scope, so
+// every sender refuses before Telnyx does and a manual opt-in cannot override it
+// (only a provider START lifts it). \`authority\` must be the exact line authority
+// the send was made under — never a guess; a caller that cannot establish it
+// skips the write. Evidence from a delivery receipt (event and message ids) is
+// replay-safe on the event id; a refused API request has no provider event, so
+// its row carries none and is written only while the scope is not already
+// provider-opted-out.
+async function recordTelnyxProviderOptOut(base44, authority, rawRecipient, evidence) {
+  if (!authority?.ok) return { ok: false, reason: 'sms_binding_required' };
+  const phoneE164 = normalizeTelnyxSmsE164(rawRecipient);
+  const hasEvent = evidence?.eventId != null || evidence?.messageId != null;
+  const eventId = hasEvent ? boundedTelnyxAuthorityId(evidence?.eventId) : null;
+  const messageId = hasEvent ? boundedTelnyxAuthorityId(evidence?.messageId) : null;
+  const occurredAtMs = Date.parse(evidence?.occurredAt || '');
+  if (!phoneE164 || !Number.isFinite(occurredAtMs) || (hasEvent && (!eventId || !messageId))
+    || occurredAtMs > Date.now() + 24 * 60 * 60 * 1000) {
+    return { ok: false, reason: 'invalid_provider_opt_out' };
+  }
+  const occurredAt = new Date(occurredAtMs).toISOString();
+  const expected = {
+    consent_key: telnyxSmsConsentKey(authority, phoneE164),
+    agency_id: authority.agencyId,
+    provider: 'telnyx',
+    integration_secret_id: authority.integrationSecretId,
+    messaging_profile_id: authority.messagingProfileId,
+    destination_binding_id: authority.bindingId,
+    destination_binding_key: authority.bindingKey,
+    destination_e164: authority.destinationE164,
+    patient_id: null,
+    phone_e164: phoneE164,
+    consent_status: 'opted_out',
+    consent_source: 'provider_opt_out',
+    captured_by: null,
+    captured_at: occurredAt,
+    provider_event_id: eventId,
+    provider_message_id: messageId,
+    provider_event_occurred_at: hasEvent ? occurredAt : null,
+    notes: TELNYX_PROVIDER_OPT_OUT_NOTES,
+  };
+  const latest = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  if (latest.ok && latest.keywordStopActive) return { ok: true, deduped: true };
+  if (hasEvent) return appendProviderConsentEvent(base44, expected);
+  try {
+    await base44.asServiceRole.entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  const after = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  return after.ok && after.keywordStopActive
+    ? { ok: true, deduped: false }
+    : { ok: false, reason: after.ok ? 'sms_consent_not_recorded' : after.reason };
 }`,
 
   // Data-quality scoring shared by calculateDataQualityScores (per agency, also

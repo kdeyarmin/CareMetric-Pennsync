@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { assignPayload, cellOnFile, cellTail } from "./numberPoolAssign.js";
+import { assignPayload, cellOnFile, cellTail, searchResultDetail } from "./numberPoolAssign.js";
 
 /**
  * The bridge-cell half of the number pool.
@@ -128,4 +128,16 @@ test("the panel's assign input is never pre-filled, and the payload is this buil
     new URL("../../../base44/functions/managePhoneNumberPool/entry.ts", import.meta.url), "utf8");
   assert.match(handler, /if \(cellNum\) update\.personal_cell_e164 = cellNum;/,
     "an absent personal_cell_e164 must leave the stored value alone");
+});
+
+test("a number-search result is described by place and cost, and by nothing it lacks", () => {
+  assert.equal(
+    searchResultDetail({ e164: "+12155550101", locality: "Philadelphia", region: "PA", monthly_cost: "1.00", upfront_cost: "1.00", currency: "USD" }),
+    "Philadelphia, PA · $1.00/mo + $1.00 upfront",
+  );
+  assert.equal(searchResultDetail({ rate_center: "PHILADELPHIA", region: "PA", monthly_cost: "1.00", upfront_cost: "0.00", currency: "USD" }),
+    "PHILADELPHIA, PA · $1.00/mo", "a zero upfront cost is not shown");
+  assert.equal(searchResultDetail({ region: "ON", monthly_cost: "2.50", currency: "CAD" }), "ON · 2.50 CAD/mo");
+  // An older backend answered with the number alone: nothing extra is shown.
+  assert.equal(searchResultDetail({ e164: "+12155550101" }), "");
 });

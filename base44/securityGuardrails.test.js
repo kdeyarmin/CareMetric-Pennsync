@@ -225,6 +225,7 @@ const SCHEDULER_AUTH_FILES = [
   'base44/functions/checkAdrDeadlines/entry.ts',
   'base44/functions/checkExpiredInvitations/entry.ts',
   'base44/functions/checkStaleFollowUpRequests/entry.ts',
+  'base44/functions/copyInboundSmsMedia/entry.ts',
   'base44/functions/dispatchScheduledSms/entry.ts',
   'base44/functions/enforceStaffRoleIntegrity/entry.ts',
   'base44/functions/monitorComplianceRisks/entry.ts',

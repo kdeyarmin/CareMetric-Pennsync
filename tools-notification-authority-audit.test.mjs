@@ -90,10 +90,13 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
     // legacy), and notifyUrgentMessage gained its first, authority-v1, notice.
     // +6 the same day: the six e-signature functions that can seal a document
     // each mint one authority-v1 completion notice (shared esignFinalization).
-    producer_files: 37,
-    call_sites: 47,
+    // -1 on 2026-10-09: syncFaxStatuses was retired in source, taking its one
+    // legacy fax-failure Notification.create (outside the publication claim
+    // the webhook and pollFaxStatuses share) with it.
+    producer_files: 36,
+    call_sites: 46,
     authority_v1: 15,
-    legacy_unmigrated: 32,
+    legacy_unmigrated: 31,
     explicitly_quarantined: 0,
     workflow_schedule_quarantined: 12,
     browser_reachable_legacy_unmigrated: 7,
@@ -101,7 +104,7 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
     runtime_gated: 3,
     runtime_gated_authority_v1: 3,
     runtime_gated_legacy_unmigrated: 0,
-    reachable_legacy_unmigrated: 32,
+    reachable_legacy_unmigrated: 31,
     unclassified: 0,
     invalid_authority_evidence: 0,
     missing_expected: 0,

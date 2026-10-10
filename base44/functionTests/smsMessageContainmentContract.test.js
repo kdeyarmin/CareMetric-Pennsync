@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { copyRows, createStamp, stampSmsRows, updateManyRows } from './smsStoreFake.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const readEntry = (name) => readFileSync(join(here, '..', 'functions', name, 'entry.ts'), 'utf8');
@@ -188,7 +189,7 @@ function redriveFixture(rowOverrides = {}, seed = {}) {
       provider_event_id: null, provider_message_id: null, provider_event_occurred_at: null,
     }],
     SmsMessage: [{
-      id: 'sms_1', direction: 'outbound', status: 'failed', failure_reason: 'Timed out reaching Telnyx',
+      id: 'sms_1', direction: 'outbound', status: 'failed', failure_reason: 'Telnyx API error (503)',
       created_date: new Date(Date.now() - 10 * 60_000).toISOString(), retry_count: 0,
       from_number: '+12155550100', to_number: '+13125550182', body: 'Visit at 10',
       nurse_email: 'nurse@example.test', sent_by: 'nurse@example.test',
@@ -197,19 +198,28 @@ function redriveFixture(rowOverrides = {}, seed = {}) {
     UserActivity: [],
     ...seed,
   };
+  // SmsMessage behaves as the hosted store does (smsStoreFake.js): reads are
+  // copies, every write moves updated_date, updateMany honours its predicate.
+  const stamp = createStamp();
+  stampSmsRows(data, stamp);
+  const sms = (name) => name === 'SmsMessage';
   const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => row?.[key] === value);
   const entities = new Proxy({}, {
     get: (_target, nameValue) => {
       const name = String(nameValue);
       return {
-        filter: async (query = {}, _sort, limit = 5000) => (data[name] || []).filter((row) => matches(row, query)).slice(0, limit),
+        filter: async (query = {}, _sort, limit = 5000) => {
+          const rows = (data[name] || []).filter((row) => matches(row, query)).slice(0, limit);
+          return sms(name) ? copyRows(rows) : rows;
+        },
         list: async () => data[name] || [],
         create: async (row) => { (data[name] ||= []).push(row); return { id: `${name}_new`, ...row }; },
         update: async (id, patch) => {
           const row = (data[name] || []).find((candidate) => candidate.id === id);
-          if (row) Object.assign(row, patch);
+          if (row) Object.assign(row, patch, sms(name) ? { updated_date: stamp() } : {});
           return { id, ...patch };
         },
+        updateMany: async (query, operations) => updateManyRows(data[name], query, operations, stamp),
       };
     },
   });
@@ -248,12 +258,34 @@ test('redriveFailedSms re-sends only rows whose provenance, line, sender and con
     ['a sender no longer in the agency', {}, { AgencyMembership: [] }],
     ['a recipient without consent in scope', {}, { SmsConsent: [] }],
     ['a permanent failure', { failure_reason: 'Recipient opted out' }],
+    // Telnyx may have accepted a send that timed out; re-sending double-texts.
+    ['a timed-out send whose outcome is unknown', { failure_reason: 'Outcome unknown: Telnyx did not answer within 15000 ms, so the text may have been sent. Not retried automatically.' }],
+    ['a timed-out send recorded before the outcome-unknown wording', { failure_reason: 'Timed out reaching Telnyx' }],
+    // A 5xx can follow an accepted message: outcome unknown, never re-sent.
+    ['an outcome-unknown 502', { failure_reason: 'Telnyx API error: HTTP 502, code none' }],
+    ['an outcome-unknown 504 described as temporary', { failure_reason: 'Telnyx API error: HTTP 504, code 10007: Temporary network timeout' }],
+    // Prose is no longer what admits a row: only the status prefix.
+    ['a rate limit recorded only as prose', { failure_reason: 'Too many requests' }],
+    ['a delivery receipt failure (Telnyx accepted the message)', { failure_reason: 'Telnyx delivery failed: code 40006: Carrier temporarily unavailable' }],
   ]) {
     const result = await run(rowOverrides, seed);
     assert.equal(result.status, 200, label);
     assert.equal(result.sends.length, 0, `${label}: nothing is re-sent`);
     assert.equal(result.fixture.data.SmsMessage[0].redrive_claimed_by, undefined, `${label}: the row is not claimed`);
   }
+
+  // A structured 429 (Telnyx refused it unprocessed) is redriven.
+  const rateLimited = await run({ failure_reason: 'Telnyx API error: HTTP 429, code 10011: Too many requests' });
+  assert.equal(rateLimited.sends.length, 1);
+  const neverConnected = await run({ failure_reason: 'Connection never opened: Telnyx could not be reached, so the text was not sent.' });
+  assert.equal(neverConnected.sends.length, 1);
+
+  // A redrive Telnyx refuses records the status and Telnyx's code first.
+  const refusedFixture = redriveFixture();
+  const refusedHandler = await loadFunction('redriveFailedSms', refusedFixture.client, env, async () =>
+    Response.json({ errors: [{ code: '10011', title: 'Too many requests', detail: 'Too many requests' }] }, { status: 429 }));
+  assert.equal((await refusedHandler(cron())).status, 200);
+  assert.equal(refusedFixture.data.SmsMessage[0].failure_reason, 'Telnyx API error: HTTP 429, code 10011: Too many requests');
 
   // A signed-in non-admin can never trigger the cron.
   const fixture = redriveFixture();

@@ -2,51 +2,82 @@
  * telnyxRetry — retry/backoff policy for outbound Telnyx API calls.
  *
  * Every outbound Telnyx path (sendSms, startMaskedCall, dispatchScheduledSms,
- * sendTestSms) makes a single bounded fetch to Telnyx. A transient hiccup — a
- * 429 rate-limit, a 502/503/504 from a Telnyx edge, or a dropped connection —
- * would otherwise fail the whole send and strand the patient, when a second
- * attempt a fraction of a second later would have gone through. This module is
- * the unit-tested source of truth for *whether* to retry and *how long* to wait
- * between attempts; the single-file backend functions keep an inline copy of
- * this policy (the Base44 deploy model forbids cross-file imports).
+ * sendTestSms) makes a single bounded request to Telnyx. A rate limit or an
+ * edge that is shedding load would otherwise fail the whole send and strand the
+ * patient, when a second attempt a fraction of a second later would have gone
+ * through. This module is the unit-tested source of truth for *whether* to
+ * retry and *how long* to wait between attempts; the single-file backend
+ * functions keep an inline copy of this policy (the Base44 deploy model forbids
+ * cross-file imports), held to it by
+ * base44/functionTests/telnyxRetryInlineParity.test.js.
  *
- * Why retries are safe (no double-send): an explicit retryable HTTP status
- * (429/5xx) means Telnyx told us the request failed, so re-sending cannot
- * deliver twice. A *thrown* network error is ambiguous (the request may have
- * landed). Because Telnyx's REST API has no client idempotency key, the
- * non-idempotent send paths set `retryNetworkErrors: false` so an ambiguous
- * transport failure is surfaced rather than blindly re-sent — a later redrive
- * pass handles anything Telnyx actually reported as failed.
+ * None of these requests is idempotent. POST /v2/messages and POST /v2/calls
+ * take no idempotency key (Telnyx OpenAPI spec, read 2026-10-09), so a request
+ * Telnyx processed and a retry of it are two texts, or two calls. A retry is
+ * therefore safe ONLY when the failure proves the request was not processed:
+ *   - 408 Request Timeout: the server did not receive a complete request
+ *     message (RFC 9110 §15.5.9), so there was nothing to process;
+ *   - 425 Too Early: the server declined to process a request that might be
+ *     replayed (RFC 8470 §5.2);
+ *   - 429 Too Many Requests: refused by rate limiting before it was handled
+ *     (RFC 6585 §4);
+ *   - 503 Service Unavailable: the server was unable to handle the request
+ *     (RFC 9110 §15.6.4).
+ * 500, 502 and 504 prove nothing of the kind: a gateway can fail or time out
+ * AFTER the upstream accepted the message, so their outcome is unknown and a
+ * retry can text the patient twice. They are not retried.
+ *
+ * A *thrown* error is the same question. A timeout/abort fires while the
+ * request is in flight, and a reset can follow a request the server received,
+ * so neither is ever retried. Only a failure in the connect phase — DNS could
+ * not resolve, the TCP connection was refused, the TLS handshake failed —
+ * proves no byte of the request reached Telnyx (connectionNeverOpened), and
+ * even that is retried only when a caller opts in (`retryNetworkErrors`, off by
+ * default; every production path leaves it off).
  *
  * What is NOT retried: permanent client errors (400/401/403/404/422). Those
  * mean the request itself is wrong (bad number, bad credentials, opted-out) and
  * will fail identically on every attempt — retrying only wastes time and money.
  */
 
-// HTTP statuses worth retrying: an explicit rate-limit, plus transient
-// gateway/server errors that commonly clear on their own. Everything else
-// (including all other 4xx) is treated as permanent.
-export const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+// HTTP statuses that prove Telnyx did not process the request (see above).
+// Everything else — 500, 502 and 504 included — is final for this request.
+export const RETRYABLE_STATUSES = new Set([408, 425, 429, 503]);
 
 /** True when an HTTP status is a transient failure worth retrying. */
 export function isRetryableStatus(status) {
   return RETRYABLE_STATUSES.has(Number(status));
 }
 
+// Signatures of a failure in the CONNECT phase, before any byte of the request
+// was written: Node's fetch carries the errno on err.cause.code, and Deno's
+// message names hyper's Connect error kind, the refused TCP connection or the
+// failed DNS lookup.
+export const CONNECT_PHASE_FAILURE =
+  /\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)\b|getaddrinfo|dns error|failed to lookup address|tcp connect error|client error \(Connect\)|connection refused/i;
+
 /**
- * True when a thrown fetch error is transient (a timeout abort or a transport
- * failure) and therefore worth retrying. A programming error (e.g. a TypeError
- * from bad code rather than a dropped connection) is hard to tell apart from a
- * transport TypeError, so we lean on the message as well — but because retries
- * are idempotent (same clientMessageId) a false-positive retry is harmless.
+ * True when a thrown fetch error proves the connection to the provider never
+ * opened, so the request cannot have been received. A timeout or abort is never
+ * such a proof (the request was in flight when it fired), and neither is a
+ * reset, a hang-up or a bare "fetch failed".
+ */
+export function connectionNeverOpened(err) {
+  if (!err || err.name === "AbortError" || err.name === "TimeoutError") return false;
+  const cause = err.cause && typeof err.cause === "object" ? err.cause : {};
+  return [err.code, err.message, cause.code, cause.message]
+    .some((part) => typeof part === "string" && CONNECT_PHASE_FAILURE.test(part));
+}
+
+/**
+ * True when a thrown fetch error may be retried: only a connection that never
+ * opened. (This used to retry every timeout and transport TypeError on the
+ * belief that retries were deduplicated by a clientMessageId. They are not —
+ * Telnyx takes no idempotency key and none is sent — so that rule could
+ * double-text.)
  */
 export function isRetryableError(err) {
-  if (!err) return false;
-  const name = err.name || "";
-  if (name === "AbortError" || name === "TimeoutError" || name === "TypeError") return true;
-  return /network|timeout|timed out|fetch failed|socket|ECONN|ETIMEDOUT|EAI_AGAIN|dns/i.test(
-    err.message || "",
-  );
+  return connectionNeverOpened(err);
 }
 
 /**
@@ -110,11 +141,12 @@ export function nextRetryDelayMs(
  * that exhausts the budget returns the last failing result (so the caller still
  * sees the real status/body); a non-retryable thrown error is re-thrown.
  *
- * `retryNetworkErrors` (default true) controls whether a *thrown* transport
- * failure is retried. Set it false for a non-idempotent operation such as voice
- * call origination — there a dropped connection might mean the call was already
- * placed, so a blind retry could double-dial. Retryable HTTP *statuses*
- * (where the server explicitly told us it failed) are always safe to retry.
+ * `retryNetworkErrors` (default false) controls whether a *thrown* transport
+ * failure is retried at all, and even when it is enabled only a connection that
+ * never opened is retried (isRetryableError). Every Telnyx request is
+ * non-idempotent, so the production paths leave it off. The retryable HTTP
+ * *statuses* are retried because each of them proves the request was not
+ * processed.
  *
  * `sleep`/`now`/`rand` are injectable so the policy is fully unit-testable
  * without real timers or randomness.
@@ -126,7 +158,7 @@ export async function sendWithRetry(
     baseMs = 300,
     maxMs = 4000,
     jitter = true,
-    retryNetworkErrors = true,
+    retryNetworkErrors = false,
     rand = Math.random,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now = () => Date.now(),

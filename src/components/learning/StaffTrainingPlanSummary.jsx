@@ -32,7 +32,7 @@ export default function StaffTrainingPlanSummary() {
     <CardContent className="space-y-3">
       {summary.isPending ? <LoadingState className="py-6" /> : summary.isError ?
         <div role="alert"><p className="mb-3 text-sm text-muted-foreground">Staff plan progress could not be loaded.</p><Button variant="outline" onClick={() => summary.refetch()}>Try again</Button></div> :
-        summary.data?.items.length ? summary.data.items.map(plan => <StaffPlanProgressRow key={plan.id} plan={plan} />) :
+        summary.data?.items?.length ? summary.data.items.map(plan => <StaffPlanProgressRow key={plan.id} plan={plan} />) :
         <p className="py-4 text-center text-sm text-muted-foreground">No training plans are assigned to your current staff.</p>}
       {!summary.isError && (offset > 0 || summary.data?.next_offset != null) && <div className="flex justify-end gap-2">
         <Button variant="outline" disabled={offset === 0 || summary.isFetching} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</Button>

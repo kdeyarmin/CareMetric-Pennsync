@@ -28,7 +28,7 @@ const VISIT_TYPES = [
 
 
 
-export default function RealTimeDictationScribe({ currentUser }) {
+export default function RealTimeDictationScribe() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");

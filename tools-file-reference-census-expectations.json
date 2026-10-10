@@ -2,11 +2,11 @@
   "format": "pennsync-file-reference-census",
   "schema_version": 1,
   "totals": {
-    "entities": 253,
+    "entities": 254,
     "unreadable": 0,
-    "entities_with_file_fields": 58,
-    "locator_fields": 67,
-    "descriptor_fields": 61
+    "entities_with_file_fields": 59,
+    "locator_fields": 68,
+    "descriptor_fields": 63
   },
   "entities": {
     "AdrAuditCase": [
@@ -666,6 +666,23 @@
       {
         "path": "signer_roster_sha256",
         "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "SmsMessage": [
+      {
+        "path": "media[].byte_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "media[].content_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "media[].file_uri",
+        "kind": "locator",
         "type": "string"
       }
     ],

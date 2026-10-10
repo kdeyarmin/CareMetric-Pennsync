@@ -4,7 +4,8 @@ import {
   TWENTY_FOUR_HOURS_MS,
   filterRecentFaxLogs,
   getStatusCounts,
-  getRelativeTimeLabel
+  getRelativeTimeLabel,
+  normalizeStatus
 } from './faxTrackerUtils.js';
 
 test('filterRecentFaxLogs keeps only logs within configured time range', () => {
@@ -36,6 +37,26 @@ test('getStatusCounts normalizes unknown status to pending', () => {
     queued: 1,
     needs_review: 1
   });
+});
+
+test('normalizeStatus never counts an unconfirmed sent fax as delivered', () => {
+  assert.equal(normalizeStatus('sent'), 'queued');
+  assert.equal(normalizeStatus('sending'), 'queued');
+  assert.equal(normalizeStatus('retrying'), 'queued');
+  assert.equal(normalizeStatus('retried'), 'failed');
+  assert.equal(normalizeStatus('delivered'), 'delivered');
+  assert.equal(normalizeStatus('submission_unknown'), 'needs_review');
+  assert.deepEqual(getStatusCounts([
+    { status: 'sent' }, { status: 'delivered' }, { status: 'retrying' }, { status: 'retried' },
+  ]), { delivered: 1, failed: 1, pending: 0, queued: 2, needs_review: 0 });
+});
+
+test('the fax logs dashboard groups statuses with the same buckets', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const dashboard = await readFile(new URL('../hub-tabs/FaxLogsDashboard.jsx', import.meta.url), 'utf8');
+  assert.match(dashboard, /import \{ normalizeStatus \} from "@\/components\/fax\/faxTrackerUtils"/);
+  assert.doesNotMatch(dashboard, /const STATUS_GROUPS = \{/);
+  assert.doesNotMatch(dashboard, /f\.status === 'sent'/);
 });
 
 test('getRelativeTimeLabel returns human readable labels', () => {

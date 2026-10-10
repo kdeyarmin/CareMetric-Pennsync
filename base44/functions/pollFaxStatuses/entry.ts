@@ -575,12 +575,24 @@ const PERMANENT_FAILURE_PATTERNS = [
   /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
+  // Telnyx Fax `failure_reason` codes (OpenAPI spec, checked 2026-10-09) that
+  // need a person — a cancellation, a declining receiver, or an account, profile
+  // or document problem — and would only fail again on retry. Snake_case, so
+  // the prose patterns above never matched them and they fell through to
+  // transient, burning the whole backoff schedule.
+  /sender_cancel/i, /declin/i, /not_in_service/i, /account_disabled/i,
+  /no_outbound_profile/i, /not_in_countries_whitelist/i, /spend_limit_exceeded/i,
+  /unverified_(origination|destination)/i, /file_size_limit_exceeded/i,
+  /page_count_limit_exceeded/i,
 ];
 // Transient signals win over a coincidental permanent word ("rejected - line
 // busy" is retryable). Checked first. Mirrors src/components/fax/faxRetry.js.
 const TRANSIENT_FAILURE_PATTERNS = [
   /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
   /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+  // Telnyx `invalid_ecm_response_from_receiver` is a transmission glitch, not a
+  // bad number; without this the bare /invalid/ above gives up on it.
+  /ecm_response/i,
 ];
 function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();
@@ -1568,7 +1580,9 @@ Deno.serve(async (req) => {
             const plan = retryAuthority && retryPolicy.ok && boundedPolicy.valid
               ? planFaxRetry({
                 retryCount: fax.retry_count || 0,
-                errorCode: faxData?.data?.failure_code || faxData?.data?.error_code,
+                // The Fax resource has no failure_code/error_code; its granular
+                // cause is internal_failure_reason (Telnyx OpenAPI, 2026-10-09).
+                errorCode: faxData?.data?.internal_failure_reason,
                 errorMessage: failureReason,
                 priority: fax.priority || 'normal',
                 config: cfg,
@@ -1665,19 +1679,20 @@ Deno.serve(async (req) => {
   }
 });
 
-function mapFaxStatus(telnyxStatus) {
-  const statusMap = {
-    'queued': 'queued',
-    'media.processed': 'sending',
-    'originated': 'sending',
-    'sending': 'sending',
-    'sent': 'sent',
-    'delivered': 'delivered',
-    'failed': 'failed',
-    'cancelled': 'failed',
-    'canceled': 'failed'
-  };
-  return statusMap[telnyxStatus] || null;
+// Mirrors src/components/integrations/telnyx/telnyxUtils.js mapFaxStatus and
+// the webhook's copy exactly (drift-guarded by
+// base44/functionTests/faxStatusInlineParity.test.js). The lookup table this
+// replaced was case-sensitive, so a poll and a webhook could disagree about the
+// same provider status; an unknown status stays null and is never written.
+function mapFaxStatus(status) {
+  switch (String(status || '').toLowerCase()) {
+    case 'queued': case 'media.processing': return 'queued';
+    case 'media.processed': case 'originated': case 'sending': return 'sending';
+    case 'sent': return 'sent';
+    case 'delivered': return 'delivered';
+    case 'failed': case 'cancelled': case 'canceled': return 'failed';
+    default: return null;
+  }
 }
 
 function getNotificationMessage(status, fax) {

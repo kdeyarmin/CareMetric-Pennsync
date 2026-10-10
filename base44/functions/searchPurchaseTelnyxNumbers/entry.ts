@@ -106,7 +106,22 @@ function isProtectedSuperAdmin(user) {
  *
  * The purchased Telnyx phone-number id is stored in the existing
  * PhoneNumber.twilio_phone_number_sid field (kept as a provider-neutral
- * identifier column to avoid a live-data migration).
+ * identifier column to avoid a live-data migration). That is the id of the
+ * /v2/phone_numbers RESOURCE, looked up after the order — never the
+ * number-order line id (phone_numbers[].id in the order) or the order id, which
+ * PATCH /v2/phone_numbers/{id} rejects. It is left blank when the resource does
+ * not exist yet; nothing reads it back for an API call (provision_fax and the
+ * assignment checks look the number up by E.164).
+ *
+ * A Telnyx number order is ASYNCHRONOUS ("Track fulfillment through the order's
+ * status"): status is pending|success|failure, and requirements_met is false
+ * when Telnyx still needs regulatory documents. A purchase whose order is not
+ * settled is recorded, because the number is being bought either way, but it
+ * is reported as pending: the 10DLC campaign enrollment is skipped (with a
+ * warning to enroll once active), a fax line is not made the outbound fax line
+ * (that would replace a working line with one that cannot send), and the
+ * assignment paths refuse the number until Telnyx reports it active. A failed
+ * order records nothing.
  */
 
 const REQUEST_TIMEOUT_MS = 15000;
@@ -180,6 +195,151 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// <<<BEGIN SHARED HELPER: telnyxWorkLine — generated, edit base44/_shared/backendHelpers.mjs>>>
+const TELNYX_NUMBER_LOOKUP_TIMEOUT_MS = 8000;
+async function lookupTelnyxNumber(apiKey, e164) {
+  const target = String(e164 || '');
+  const digits = target.slice(1);
+  if (!apiKey || target[0] !== '+' || !/^[0-9]{8,15}$/.test(digits)) return { ok: false, reason: 'invalid_request', status: 0 };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=' + digits, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    const body = await resp.json().catch(() => null);
+    if (!resp.ok) return { ok: false, reason: 'http_' + resp.status, status: resp.status, body };
+    if (!body || !Array.isArray(body.data)) return { ok: false, reason: 'malformed_response', status: resp.status };
+    const matches = body.data.filter((row) => row && row.phone_number === target);
+    if (matches.length > 1) return { ok: false, reason: 'ambiguous_response', status: resp.status };
+    return { ok: true, status: resp.status, number: matches[0] || null };
+  } catch {
+    return { ok: false, reason: 'unreachable', status: 0 };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Decide whether a looked-up number is a working nurse line for these
+// credentials. A PROBLEM is a line that would not carry the nurse's calls or
+// texts, so it must not be handed out silently; a WARNING is something that
+// could not be checked, which never blocks an assignment.
+function assessTelnyxWorkLine(lookup, creds, e164) {
+  const problems = [];
+  const warnings = [];
+  const result = (checked, number) => ({
+    checked, problems, warnings,
+    telnyxNumberId: number && typeof number.id === 'string' && number.id ? number.id : null,
+    telnyxStatus: number && typeof number.status === 'string' ? number.status : null,
+  });
+  if (!lookup || lookup.ok !== true) {
+    warnings.push(e164 + ' could not be checked with Telnyx (' + ((lookup && lookup.reason) || 'no response')
+      + '), so its voice connection and messaging profile were not confirmed.');
+    return result(false, null);
+  }
+  const number = lookup.number;
+  if (!number) {
+    problems.push(e164 + ' is not in your Telnyx account yet (or its number order has not completed).');
+    return result(true, null);
+  }
+  const status = typeof number.status === 'string' ? number.status : 'unknown';
+  if (status !== 'active') {
+    problems.push(e164 + ' is "' + status + '" in Telnyx, not active, so it cannot carry calls or texts yet.');
+  }
+  const voice = creds && creds.voiceConnectionId;
+  if (!voice) {
+    warnings.push('No Voice connection id is saved in Telnyx Credentials, so ' + e164 + "'s call routing was not checked.");
+  } else if (String(number.connection_id || '') !== voice) {
+    problems.push(e164 + ' is on Telnyx connection "' + String(number.connection_id || 'none')
+      + '", not the configured Voice connection "' + voice + '", so its calls will not reach PennSync.');
+  }
+  const profile = creds && creds.messagingProfileId;
+  // A number on NO messaging profile cannot send a text at all: Telnyx refuses
+  // the send as "not on a messaging profile". Said in those words, because
+  // "profile none, not X" reads like a mismatch the admin can ignore.
+  const noProfile = !number.messaging_profile_id;
+  if (noProfile && profile) {
+    problems.push(e164 + " is not on any messaging profile, so every text from it fails (Telnyx: 'not on a messaging profile')."
+      + ' Add it to the configured Messaging Profile "' + profile + '" in Telnyx first.');
+  } else if (noProfile) {
+    warnings.push(e164 + " is not on any messaging profile, so every text from it will fail (Telnyx: 'not on a messaging profile'),"
+      + ' and no Messaging Profile id is saved in Telnyx Credentials.');
+  } else if (!profile) {
+    warnings.push('No Messaging Profile id is saved in Telnyx Credentials, so ' + e164 + "'s texting was not checked.");
+  } else if (number.messaging_profile_id === 'UNAVAILABLE') {
+    warnings.push('Telnyx could not report ' + e164 + "'s messaging profile right now, so its texting was not checked.");
+  } else if (String(number.messaging_profile_id || '') !== profile) {
+    problems.push(e164 + ' is on messaging profile "' + String(number.messaging_profile_id || 'none')
+      + '", not the configured Messaging Profile "' + profile + '", so its texts will not reach PennSync.');
+  }
+  return result(true, number);
+}
+
+// Is this US number on a 10DLC campaign (GET /v2/10dlc/phone_number_campaigns/
+// {phoneNumber}; the spec answers a bare PhoneNumberCampaign with campaignId,
+// tcrCampaignId, telnyxCampaignId and assignmentStatus)? Only ever WARNINGS:
+// an unregistered number still carries calls, its texts are just likely to be
+// carrier-filtered. Read-only; enrolment stays an explicit admin action.
+async function telnyx10dlcWarnings(apiKey, e164, savedCampaignId) {
+  const saved = String(savedCampaignId || '').trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELNYX_NUMBER_LOOKUP_TIMEOUT_MS);
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/10dlc/phone_number_campaigns/' + encodeURIComponent(e164), {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    if (resp.status === 404) {
+      return [e164 + ' is not on any A2P 10DLC campaign' + (saved ? ' (the saved campaign is ' + saved + ')' : '')
+        + ', so US carriers may filter its texts. Enroll it in the Telnyx portal.'];
+    }
+    const body = await resp.json().catch(() => null);
+    const row = body && typeof body === 'object' && body.data && typeof body.data === 'object' ? body.data : body;
+    if (!resp.ok || !row || typeof row !== 'object' || typeof row.campaignId !== 'string') {
+      return [e164 + "'s A2P 10DLC campaign could not be checked (HTTP " + resp.status + ').'];
+    }
+    const ids = [row.campaignId, row.tcrCampaignId, row.telnyxCampaignId].filter((id) => typeof id === 'string' && id);
+    if (saved && !ids.includes(saved)) {
+      return [e164 + ' is on A2P 10DLC campaign ' + (row.tcrCampaignId || row.campaignId) + ', not the saved campaign '
+        + saved + ', so its texts may be filtered under the wrong registration.'];
+    }
+    if (row.assignmentStatus && row.assignmentStatus !== 'ASSIGNED') {
+      // PENDING_ASSIGNMENT is normal for a few days after enrolment: a warning, never a refusal.
+      return [e164 + "'s A2P 10DLC assignment to campaign " + (row.tcrCampaignId || row.campaignId) + ' is '
+        + row.assignmentStatus + ', so US carriers may filter its texts until it is ASSIGNED.'];
+    }
+    return [];
+  } catch {
+    return [e164 + "'s A2P 10DLC campaign could not be checked (Telnyx did not answer)."];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// options.campaignId is the agency's saved A2P campaign (AgencySettings.a2p_campaign_id).
+async function verifyTelnyxWorkLine(creds, e164, options = {}) {
+  if (!creds || !creds.apiKey) {
+    const why = creds && creds.readError ? 'the Telnyx credential store could not be read' : 'no Telnyx API key is configured';
+    return { checked: false, problems: [], telnyxNumberId: null, telnyxStatus: null,
+      warnings: [e164 + ' was not checked with Telnyx because ' + why + '.'] };
+  }
+  const lookup = await lookupTelnyxNumber(creds.apiKey, e164);
+  const result = assessTelnyxWorkLine(lookup, creds, e164);
+  // 10DLC registers US local long codes: only a +1, non-toll-free line that is
+  // otherwise good is worth the extra read (toll-free has its own verification).
+  const type = lookup.ok && lookup.number ? String(lookup.number.phone_number_type || '') : '';
+  const tollFree = type === 'toll_free' || type === 'tollfree'
+    || ['800', '833', '844', '855', '866', '877', '888'].includes(e164.slice(2, 5));
+  if (result.checked && result.problems.length === 0 && e164.slice(0, 2) === '+1' && !tollFree) {
+    result.warnings.push(...await telnyx10dlcWarnings(creds.apiKey, e164, options && options.campaignId));
+  }
+  return result;
+}
+// <<<END SHARED HELPER: telnyxWorkLine>>>
+
 
 // <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveAgencySettings(base44, agencyName) {
@@ -223,6 +383,55 @@ async function fetchJson(url, init) {
 }
 
 const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
+
+// Where a Telnyx number order stands for the one number this function orders.
+// 'complete' needs BOTH the order and its line for this number to say success
+// and no requirement left unmet; an order that does not report a status is not
+// assumed complete. 'failed' is a definitive provider answer (nothing bought).
+function numberOrderState(order, e164) {
+  const lines = Array.isArray(order?.phone_numbers) ? order.phone_numbers : [];
+  const line = lines.find((entry) => entry && entry.phone_number === e164) || null;
+  const statuses = [order?.status, line?.status].filter((value) => typeof value === 'string' && value);
+  const requirementsMet = !(order?.requirements_met === false || line?.requirements_met === false);
+  const orderId = typeof order?.id === 'string' && order.id ? order.id : null;
+  let state = 'pending';
+  if (statuses.includes('failure')) state = 'failed';
+  else if (statuses.length > 0 && statuses.every((value) => value === 'success') && requirementsMet) state = 'complete';
+  return { state, orderId, requirementsMet, orderStatus: typeof order?.status === 'string' ? order.status : null };
+}
+
+// Most US local orders settle within seconds, so a pending order is re-read a
+// bounded number of times (GET /v2/number_orders/{id}) before it is reported
+// pending. Unmet requirements need documents, not time, so they are not polled.
+const NUMBER_ORDER_SETTLE_DELAYS_MS = [750, 1500];
+
+// Bounded, documented search-result details the admin UI can show. Every value
+// is a short plain string from the provider; anything else is dropped.
+function availableNumberDetails(raw) {
+  const e164 = normalizeE164(raw?.phone_number);
+  if (!e164) return null;
+  const short = (value) => (typeof value === 'string' && value.trim() && value.length <= 120 ? value.trim() : null);
+  const money = (value) => (typeof value === 'string' && /^\d{1,7}(\.\d{1,6})?$/.test(value.trim()) ? value.trim() : null);
+  const regions = Array.isArray(raw?.region_information) ? raw.region_information : [];
+  const region = (type) => short(regions.find((entry) => entry?.region_type === type)?.region_name);
+  const cost = raw?.cost_information && typeof raw.cost_information === 'object' ? raw.cost_information : {};
+  const features = Array.isArray(raw?.features)
+    ? [...new Set(raw.features.map((feature) => short(feature?.name)).filter(Boolean))].slice(0, 12)
+    : [];
+  return {
+    e164,
+    locality: region('location'),
+    rate_center: region('rate_center'),
+    region: region('state'),
+    monthly_cost: money(cost.monthly_cost),
+    upfront_cost: money(cost.upfront_cost),
+    currency: typeof cost.currency === 'string' && /^[A-Z]{3}$/.test(cost.currency) ? cost.currency : null,
+    features,
+    // Telnyx marks a result that is NOT an exact match for the search (e.g. a
+    // neighbouring area code). Surfaced so the admin is not surprised by it.
+    best_effort: raw?.best_effort === true,
+  };
+}
 
 // Store `e164` as the outbound fax line on the caller's agency settings row
 // (not newest-row-wins — multi-tenant must not overwrite another agency's line).
@@ -351,15 +560,14 @@ Deno.serve(async (req) => {
       if (!Array.isArray(holders) || holders.length !== 0) {
         return Response.json({ error: 'This number is assigned to a work-number user.' }, { status: 409 });
       }
-      const lookup = await fetchJson(
-        `${TELNYX_API_BASE}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
-        { method: 'GET', headers: authHeaders },
-      ).catch((err) => ({ ok: false, status: 0, data: { message: String(err?.message || err) } }));
+      // The shared lookup sends the digits Telnyx's filter accepts; the old
+      // inline copy URL-encoded the '+', which the filter answers with no rows.
+      const lookup = await lookupTelnyxNumber(apiKey, e164);
       if (!lookup.ok) {
-        return Response.json({ error: 'Could not look the number up in Telnyx.', status: lookup.status, details: lookup.data }, { status: 502 });
+        const firstErr = Array.isArray(lookup.body?.errors) ? lookup.body.errors[0] : null;
+        return Response.json({ error: 'Could not look the number up in Telnyx.', status: lookup.status, details: firstErr || lookup.reason }, { status: 502 });
       }
-      const owned = Array.isArray(lookup.data?.data) ? lookup.data.data : [];
-      const numberId = owned.length === 1 && owned[0]?.phone_number === e164 ? owned[0]?.id : null;
+      const numberId = typeof lookup.number?.id === 'string' && lookup.number.id ? lookup.number.id : null;
       if (!numberId) {
         return Response.json({ error: `${e164} isn't in your Telnyx account. Purchase it first, then provision fax on it.` }, { status: 404 });
       }
@@ -420,6 +628,15 @@ Deno.serve(async (req) => {
       // Telnyx available-numbers search: filter on country + features + (optional)
       // national destination code (US area code). Feature set follows `purpose`:
       // fax lines need fax capability; nurse lines need SMS + voice.
+      //
+      // `filter` is a deepObject (explode) parameter whose `features` member is
+      // an ARRAY. OpenAPI leaves an array inside a deepObject unspecified, and
+      // the spec's own explicitly documented array filters use the repeated
+      // bracket form ("Use repeated `filter[status][]` parameters"), so each
+      // feature is sent as `filter[features][]=<name>`. filter[best_effort] is
+      // deliberately left at Telnyx's default: its default is undocumented, and
+      // a best-effort (non-exact) result is instead flagged per number below so
+      // the admin can see it is outside the requested area code.
       const qs = new URLSearchParams();
       qs.set('filter[country_code]', country);
       qs.set('filter[phone_number_type]', 'local');
@@ -438,7 +655,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Telnyx number search failed.', status: res.status, details: res.data }, { status: 502 });
       }
       const list = Array.isArray(res.data?.data) ? res.data.data : [];
-      const numbers = list.map((n) => ({ e164: normalizeE164(n.phone_number) })).filter((n) => n.e164);
+      const numbers = list.map(availableNumberDetails).filter(Boolean);
       return Response.json({ success: true, count: numbers.length, numbers, purpose });
     }
 
@@ -481,6 +698,9 @@ Deno.serve(async (req) => {
         else warnings.push('No Voice (Call Control) connection is set, so this number can\'t route calls yet — add the Voice connection ID in Telnyx Credentials.');
       }
       let telnyxNumberId = null;
+      let order = { state: 'pending', orderId: null, requirementsMet: true, orderStatus: null };
+      // The /v2/phone_numbers resource status, when the resource could be read.
+      let numberStatus = null;
       const row = await createPhoneInventoryOnce(base44.asServiceRole.entities, { e164 }, async () => {
         const res = await fetchJson(`${TELNYX_API_BASE}/number_orders`, {
           method: 'POST',
@@ -496,10 +716,43 @@ Deno.serve(async (req) => {
           throw error;
         }
 
-        // The ordered number's Telnyx id (phone_numbers[0].id) is the durable
-        // identifier; fall back to the order id.
-        const orderedNumber = Array.isArray(res.data?.data?.phone_numbers) ? res.data.data.phone_numbers[0] : null;
-        telnyxNumberId = orderedNumber?.id || res.data?.data?.id || null;
+        order = numberOrderState(res.data?.data, e164);
+        for (const delay of NUMBER_ORDER_SETTLE_DELAYS_MS) {
+          if (order.state !== 'pending' || !order.requirementsMet || !order.orderId) break;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          const reread = await fetchJson(`${TELNYX_API_BASE}/number_orders/${encodeURIComponent(order.orderId)}`, {
+            method: 'GET', headers: authHeaders,
+          }).catch(() => null);
+          if (reread?.ok && reread.data?.data && typeof reread.data.data === 'object') {
+            order = { ...numberOrderState(reread.data.data, e164), orderId: order.orderId };
+          }
+        }
+        if (order.state === 'failed') {
+          // A definitive provider answer: nothing was bought, so nothing is recorded.
+          const error = new Error('Telnyx could not fulfil the number order.');
+          error.inventoryCreationRejected = true;
+          error.publicResponse = Response.json({
+            error: `Telnyx could not fulfil the order for ${e164}, so nothing was purchased. Search again and pick another number.`,
+            telnyx_order_id: order.orderId,
+          }, { status: 502 });
+          throw error;
+        }
+
+        // Resolve the phone-number RESOURCE id. The order's phone_numbers[].id is
+        // a number-order line id and the order id is an order; neither is the id
+        // PATCH /v2/phone_numbers/{id} takes. While the order is pending the
+        // resource may not exist yet, which is not an error.
+        const lookup = await lookupTelnyxNumber(apiKey, e164);
+        if (lookup.ok && lookup.number) {
+          telnyxNumberId = typeof lookup.number.id === 'string' && lookup.number.id ? lookup.number.id : null;
+          numberStatus = typeof lookup.number.status === 'string' ? lookup.number.status : null;
+        } else if (!lookup.ok) {
+          warnings.push(`Purchased, but its Telnyx phone-number id could not be read (${lookup.reason}). It is left blank; the app looks the number up by its digits when it needs it.`);
+        }
+        const active = order.state === 'complete' && (numberStatus === null || numberStatus === 'active');
+        const baseNote = purpose === 'fax'
+          ? 'Purchased in-app via Telnyx numbers API (fax line — attached to the Programmable Fax connection)'
+          : 'Purchased in-app via Telnyx numbers API';
         return {
           e164,
           label: typeof body.label === 'string' && body.label.trim()
@@ -507,25 +760,40 @@ Deno.serve(async (req) => {
             : (purpose === 'fax' ? 'Outbound fax line' : ''),
           status: purpose === 'fax' ? 'reserved' : 'available',
           twilio_phone_number_sid: telnyxNumberId || '',
-          notes: purpose === 'fax'
-            ? 'Purchased in-app via Telnyx numbers API (fax line — attached to the Programmable Fax connection)'
-            : 'Purchased in-app via Telnyx numbers API',
+          notes: active ? baseNote
+            : `${baseNote}. Not active at purchase (Telnyx order ${order.orderId || 'id unknown'}: ${numberStatus || order.orderStatus || 'status unknown'}${order.requirementsMet ? '' : ', requirements not met'}); it cannot be assigned until Telnyx activates it.`,
         };
-        });
-      if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164, user?.agency_name);
+      });
+      const pending = !(order.state === 'complete' && (numberStatus === null || numberStatus === 'active'));
+      if (pending) {
+        warnings.push(order.requirementsMet
+          ? `Telnyx is still activating ${e164} (order ${order.orderId || 'id unknown'}, status ${numberStatus || order.orderStatus || 'unknown'}). It is in the pool, but it can't be assigned until Telnyx reports it active — retry the assignment in a few minutes.`
+          : `Telnyx needs regulatory requirements before it activates ${e164} (order ${order.orderId || 'id unknown'}) — complete them in the Telnyx portal. It can't be assigned until Telnyx reports it active.`);
+      }
+
+      // Never point the agency's outbound fax line at a number that cannot send
+      // yet: that would replace a working line with a dead one.
+      const outboundFaxSet = setAsOutboundFax && !pending;
+      if (outboundFaxSet) await setOutboundFaxNumber(base44, e164, user?.agency_name);
+      else if (setAsOutboundFax) {
+        warnings.push(`${e164} was NOT made the outbound fax line yet, so faxes keep sending from the current line. Once Telnyx shows it Active, use "Provision fax" on it to switch.`);
+      }
 
       // Auto-enroll a new SMS-capable line in the agency's approved A2P 10DLC
       // campaign (AgencySettings.a2p_campaign_id) so its texts are carrier-
       // registered from day one — an unregistered US 10DLC number is heavily
-      // filtered. Fax lines don't text, so they skip this. A failure here is a
-      // WARNING, not a failed purchase: the number is owned either way and can
-      // be enrolled manually in the Telnyx portal.
+      // filtered. Fax lines don't text, so they skip this. A number Telnyx has
+      // not activated is not enrolled yet. A failure here is a WARNING, not a
+      // failed purchase: the number is owned either way and can be enrolled
+      // manually in the Telnyx portal.
       let campaignAssigned = false;
       if (purpose !== 'fax') {
         const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
         const campaignId = String(agencySettings?.a2p_campaign_id || '').trim();
         if (!campaignId) {
           warnings.push('No A2P 10DLC campaign id is saved in Agency Settings, so this number was NOT campaign-registered — US carriers may filter its texts until you register it.');
+        } else if (pending) {
+          warnings.push(`${e164} was NOT enrolled in A2P campaign ${campaignId} yet because Telnyx has not activated it — enroll it in the Telnyx portal once it shows Active, or its texts may be carrier-filtered.`);
         } else {
           const assign = await fetchJson(`${TELNYX_API_BASE}/10dlc/phone_number_campaigns`, {
             method: 'POST',
@@ -544,9 +812,13 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
         action: 'phone_number_purchased', entity_type: 'PhoneNumber', entity_id: row.id,
-        details: { purpose, set_as_outbound_fax: setAsOutboundFax, campaign_assigned: campaignAssigned }, status: 'success',
+        details: { purpose, set_as_outbound_fax: outboundFaxSet, campaign_assigned: campaignAssigned, order_pending: pending }, status: 'success',
       }).catch(() => {});
-      return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax, campaign_assigned: campaignAssigned, warnings });
+      return Response.json({
+        success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, telnyx_order_id: order.orderId,
+        order_status: pending ? 'pending' : 'complete', telnyx_number_status: numberStatus, purpose,
+        outbound_fax_set: outboundFaxSet, campaign_assigned: campaignAssigned, warnings,
+      });
     }
 
     if (action === 'provision_fax') {

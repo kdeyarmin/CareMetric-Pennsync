@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArrowUp, AlertTriangle, RotateCw, FileText } from "lucide-react";
+import { ArrowUp, AlertTriangle, RotateCw, FileText, Paperclip } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { toast } from "sonner";
 import { formatPhoneDisplay } from "@/components/voice/phoneUtils";
@@ -16,6 +16,71 @@ import { getTemplates, renderTemplate, buildTemplateContext } from "@/components
 import ScheduleSendDialog from "@/components/messaging/ScheduleSendDialog";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
+import { requestAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
+import AuthorityBoundImage from "@/components/ui/AuthorityBoundImage";
+
+// sendSms refuses a body longer than this many UTF-16 code units, which is
+// also what a textarea's maxLength counts.
+const SMS_MAX_LENGTH = 1600;
+
+/**
+ * A 60-second link to one copied MMS attachment. The bytes live in private
+ * storage; getSmsMediaUrl mints the link only for the text's own nurse.
+ */
+async function fetchSmsMediaUrl(messageId, index) {
+  const res = await base44.functions.invoke("getSmsMediaUrl", { message_id: messageId, index });
+  const data = res?.data ?? res;
+  if (!data?.url) throw new Error(data?.error || "Attachment unavailable");
+  return data;
+}
+
+/** One MMS attachment inside a bubble, in whatever state its copy is in. */
+function SmsAttachment({ messageId, index, item }) {
+  const stored = item?.status === "stored";
+  const isImage = stored && /^image\//.test(item?.content_type || "");
+  // A picture's 60-second link is asked for under the tenant authority current
+  // when it is shown, and AuthorityBoundImage detaches it from the element the
+  // moment that authority closes; a link arriving after it closed is dropped.
+  const resolvePicture = useCallback(
+    async () => (await fetchSmsMediaUrl(messageId, index)).url,
+    [messageId, index],
+  );
+  const note = (text) => (
+    <span className="flex items-center gap-1 text-[12px] italic opacity-80">
+      <Paperclip className="h-3 w-3" aria-hidden="true" /> {text}
+    </span>
+  );
+  if (item?.status === "sent") return note("Attachment sent");
+  if (item?.status === "pending") return note("Attachment arriving…");
+  if (!stored) return note("Attachment could not be retrieved");
+  if (isImage) {
+    return (
+      <AuthorityBoundImage
+        resolveSrc={resolvePicture}
+        alt="Picture from the patient"
+        className="max-h-60 max-w-full rounded-xl"
+        renderStatus={(status) => note(status === "loading" ? "Loading picture…" : "Picture unavailable")}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-1 text-[12px] font-medium underline"
+      onClick={async () => {
+        try {
+          const { url } = await fetchSmsMediaUrl(messageId, index);
+          // Through the tenant-bound opener, never window.open directly.
+          if (!requestAuthorityBoundWindow(url).opened) throw new Error("The attachment could not be opened");
+        } catch (err) {
+          toast.error(err?.message || "Attachment unavailable");
+        }
+      }}
+    >
+      <Paperclip className="h-3 w-3" aria-hidden="true" /> Open attachment
+    </button>
+  );
+}
 
 /** A faint day divider between message groups, like a real texting app. */
 function DayDivider({ date }) {
@@ -51,15 +116,18 @@ export default function SmsThreadView({
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
 
+  // One path to sendSms for a new text and for a Resend.
+  const invokeSendSms = async (body, extra = {}) => {
+    const res = await base44.functions.invoke("sendSms", {
+      to_number: otherPartyNumber, body, patient_id: patientId || undefined, ...extra,
+    });
+    const data = res?.data ?? res;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
   const sendMutation = useMutation({
-    mutationFn: async (body) => {
-      const res = await base44.functions.invoke("sendSms", {
-        to_number: otherPartyNumber, body, patient_id: patientId || undefined,
-      });
-      const data = res?.data ?? res;
-      if (data?.error) throw new Error(data.error);
-      return data;
-    },
+    mutationFn: (body) => invokeSendSms(body),
     onSuccess: () => {
       setDraft("");
       toast.success("Message sent");
@@ -72,16 +140,11 @@ export default function SmsThreadView({
 
   // Resend a previously failed outbound message (re-sends the same body; the
   // backend creates a fresh SmsMessage row, so the original failure stays in
-  // the thread as a record).
+  // the thread as a record). `resend_of` names the original so the backend
+  // retires it from the automatic redrive first — otherwise the cron could
+  // re-send it as well and the patient would get the text twice.
   const resendMutation = useMutation({
-    mutationFn: async (body) => {
-      const res = await base44.functions.invoke("sendSms", {
-        to_number: otherPartyNumber, body, patient_id: patientId || undefined,
-      });
-      const data = res?.data ?? res;
-      if (data?.error) throw new Error(data.error);
-      return data;
-    },
+    mutationFn: (msg) => invokeSendSms(msg.body, { resend_of: msg.id }),
     onSuccess: () => {
       toast.success("Message resent");
       onSent?.();
@@ -95,7 +158,7 @@ export default function SmsThreadView({
     // is still driven by resendingId).
     if (resendMutation.isPending || sendMutation.isPending) return;
     setResendingId(msg.id);
-    resendMutation.mutate(msg.body);
+    resendMutation.mutate(msg);
   };
 
   const { data: agencySettingsRow = null } = useQuery({
@@ -165,6 +228,13 @@ export default function SmsThreadView({
                   }`}
                 >
                   {msg.body}
+                  {Array.isArray(msg.media) && msg.media.length > 0 && (
+                    <div className={`flex flex-col gap-1.5 ${msg.body ? "mt-1.5" : ""}`}>
+                      {msg.media.map((item, index) => (
+                        <SmsAttachment key={index} messageId={msg.id} index={index} item={item} />
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className={`mt-0.5 flex items-center gap-1.5 px-1 text-[10px] text-slate-400 ${outbound ? "flex-row-reverse" : ""}`}>
                   <span>{format(date, "h:mm a")}</span>
@@ -173,7 +243,10 @@ export default function SmsThreadView({
                     <span className="capitalize">{msg.status.replace(/_/g, " ")}</span>
                   )}
                 </div>
-                {outbound && failed && canText && (
+                {outbound && failed && msg.superseded_by && (
+                  <span className="mt-0.5 px-1 text-[11px] text-slate-400">Resent</span>
+                )}
+                {outbound && failed && !msg.superseded_by && canText && (
                   <button
                     type="button"
                     onClick={() => handleResend(msg)}
@@ -263,6 +336,7 @@ export default function SmsThreadView({
             <div className="flex flex-1 items-center rounded-3xl border border-slate-300 bg-white px-3">
               <textarea
                 rows={1}
+                maxLength={SMS_MAX_LENGTH}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -288,8 +362,13 @@ export default function SmsThreadView({
             </Button>
           </div>
           {meta.chars > 0 && (
-            <p className={`px-4 pb-1.5 text-right text-[10px] ${meta.segments > 1 ? "text-amber-600" : "text-slate-400"}`}>
-              {meta.chars} chars · {meta.segments} SMS{meta.segments > 1 ? ` (${meta.encoding})` : ""}
+            // An estimate: the messaging profile's Smart Encoding can send fewer
+            // segments than this counts. The length cap is exact.
+            <p
+              className={`px-4 pb-1.5 text-right text-[10px] ${meta.segments > 1 ? "text-amber-600" : "text-slate-400"}`}
+              title="Estimated: the carrier's encoding can use fewer segments"
+            >
+              {draft.length}/{SMS_MAX_LENGTH} · ~{meta.segments} SMS{meta.segments > 1 ? ` (${meta.encoding})` : ""}
             </p>
           )}
         </div>

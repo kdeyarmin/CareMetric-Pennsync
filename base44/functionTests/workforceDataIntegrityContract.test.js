@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import { loadFunctionEntry } from './functionEntryLoader.js';
+
+// An entry that imports base44/shared/ modules cannot be evaluated as one
+// Function body, so it goes through the shared loader, which resolves each
+// relative import. Loads are serialized because the loader swaps process
+// globals (Deno, the injected client) while a module evaluates.
+const RELATIVE_TS_IMPORT = /from\s+'\.{1,2}\/[^']+\.ts'/;
+let entryLoads = Promise.resolve();
 
 const employee = { id: 'employee-1', email: 'staff@example.test', full_name: 'Test Employee', role: 'user', is_active: true };
 const membership = { id: 'membership-1', user_id: employee.id, user_email_normalized: employee.email,
@@ -10,7 +18,7 @@ const membership = { id: 'membership-1', user_id: employee.id, user_email_normal
   last_transition_at: '2026-01-01T00:00:00.000Z', last_transition_reason: 'Initial assignment', activated_at: '2026-01-01T00:00:00.000Z' };
 const baseBody = { pay_period_start: '2026-06-14', pay_period_end: '2026-06-27', status: 'draft', regular_hours: 80 };
 const deepCopy = value => JSON.parse(JSON.stringify(value));
-function harness(name, { failures = [], rows = {}, caller = employee, authError = null } = {}) {
+function harness(name, { failures = [], rows = {}, caller = employee, authError = null, userEntities = {} } = {}) {
   const writes = [];
   const reads = [];
   const data = { AgencyMembership: [membership], Agency: [{ id: 'agency-a', agency_name: 'Agency A', status: 'active' }],
@@ -28,12 +36,22 @@ function harness(name, { failures = [], rows = {}, caller = employee, authError 
     async update(id, value) { const row = { id, ...deepCopy(value) }; writes.push({ entity, action: 'update', row }); return row; },
     async delete(id) { writes.push({ entity, action: 'delete', id }); },
   }; } });
-  const client = { auth: { me: async () => { if (authError) throw authError; return caller; } }, asServiceRole: { entities, integrations: { Core: { SendEmail: async () => { throw new Error('Unexpected delivery'); } } } } };
+  const client = { auth: { me: async () => { if (authError) throw authError; return caller; } }, entities: userEntities, asServiceRole: { entities, integrations: { Core: { SendEmail: async () => { throw new Error('Unexpected delivery'); } } } } };
   let handler;
-  const source = readFileSync(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8').replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/, '');
-  new Function('createClientFromRequest', 'Deno', transpileTs(source).outputText)(() => client, { serve(callback) { handler = callback; }, env: { get() { return undefined; } } });
+  const entryUrl = new URL(`../functions/${name}/entry.ts`, import.meta.url);
+  const entrySource = readFileSync(entryUrl, 'utf8');
+  if (RELATIVE_TS_IMPORT.test(entrySource)) {
+    const loaded = entryLoads.then(() => loadFunctionEntry(entryUrl, { client }));
+    entryLoads = loaded.catch(() => {});
+    handler = loaded;
+  } else {
+    const source = entrySource.replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/, '');
+    new Function('createClientFromRequest', 'Deno', transpileTs(source).outputText)(() => client, { serve(callback) { handler = callback; }, env: { get() { return undefined; } } });
+  }
   return { writes, reads, data, async call(body) {
-    const response = await handler(new Request('https://example.test/' + name, { method: 'POST', body: JSON.stringify(body) }));
+    const serve = await handler;
+    assert.equal(typeof serve, 'function', `${name} registered no request handler`);
+    const response = await serve(new Request('https://example.test/' + name, { method: 'POST', body: JSON.stringify(body) }));
     return { status: response.status, cacheControl: response.headers.get('cache-control'), body: await response.json() };
   } };
 }
@@ -209,6 +227,24 @@ test('unrelated tenants cannot exhaust an agency readiness report limits', async
   const r = await h.call({}); assert.equal(r.status, 200); assert.equal(r.body.overall.total, 1); assert.equal(r.body.overall.pct, 100);
   assert.equal(h.reads.some(read => read.action === 'list'), false);
   assert.equal(r.body.rows[0].employee, own.email);
+});
+test('a caller without a team role lists only their own assignments, through the caller-scoped client', async () => {
+  const queries = [];
+  // The caller-scoped registry holds TrainingAssignment alone, so reaching any
+  // other entity through it fails the request rather than passing quietly.
+  const userEntities = { TrainingAssignment: { async filter(query, options) {
+    queries.push(query);
+    return options?.distinct ? { items: ['Wound care'], has_more: false }
+      : { items: [{ id: 'mine', assigned_to_user_id: employee.email, course_title: 'Infection control', status: 'assigned' }], next_cursor: null, has_more: false };
+  } } };
+  const h = harness('getTeamTrainingReadiness', { userEntities });
+  const r = await h.call({ assignmentsOnly: true });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.deepEqual(r.body.items.map(row => row.id), ['mine']);
+  assert.deepEqual(r.body.departments, ['Wound care']);
+  assert.equal(queries.length, 2);
+  for (const query of queries) assert.deepEqual(query.assigned_to_user_id, { $in: [employee.email] });
+  assert.equal(h.reads.some(read => read.entity === 'TrainingAssignment' || read.entity === 'User'), false);
 });
 test('agency course lookups must be complete rather than silently removing requirements', async () => {
   const h = harness('getTeamTrainingReadiness', { rows: {

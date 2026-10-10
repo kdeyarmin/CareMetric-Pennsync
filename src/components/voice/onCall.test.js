@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRingdown, nextRingdownTarget, isUnansweredHangup } from "./onCall.js";
+import {
+  buildRingdown, nextRingdownTarget, isUnansweredHangup, isCallerAbandonedHangup, screensRingdownTarget,
+} from "./onCall.js";
 
 test("buildRingdown orders primary → backups → office and dedupes", () => {
   const r = buildRingdown({
@@ -67,4 +69,25 @@ test("isUnansweredHangup advances only on Telnyx callee-no-answer causes", () =>
   assert.equal(isUnansweredHangup("no_user_response"), false);
   assert.equal(isUnansweredHangup("recovery_on_timer_expire"), false);
   assert.equal(isUnansweredHangup(undefined), false);
+});
+
+test("isCallerAbandonedHangup is only a caller-side cancel of a ringing leg", () => {
+  // The caller hung up while the leg was ringing: stop the ringdown.
+  assert.equal(isCallerAbandonedHangup("originator_cancel", "caller"), true);
+  assert.equal(isCallerAbandonedHangup("ORIGINATOR_CANCEL", "Caller"), true);
+  // Anything else keeps ringing: a callee or unknown source, a no-answer, or a
+  // caller hanging up an answered call.
+  assert.equal(isCallerAbandonedHangup("originator_cancel", "callee"), false);
+  assert.equal(isCallerAbandonedHangup("originator_cancel", "unknown"), false);
+  assert.equal(isCallerAbandonedHangup("originator_cancel", undefined), false);
+  assert.equal(isCallerAbandonedHangup("no_answer", "caller"), false);
+  assert.equal(isCallerAbandonedHangup("normal_clearing", "caller"), false);
+});
+
+test("screensRingdownTarget screens personal cells and never the office line", () => {
+  assert.equal(screensRingdownTarget({ to: "+12155550111", kind: "primary" }), true);
+  assert.equal(screensRingdownTarget({ to: "+12155550122", kind: "backup" }), true);
+  assert.equal(screensRingdownTarget({ to: "+17244650440", kind: "office" }), false);
+  assert.equal(screensRingdownTarget({ to: "+17244650440" }), false);
+  assert.equal(screensRingdownTarget(null), false);
 });

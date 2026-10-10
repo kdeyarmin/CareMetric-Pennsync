@@ -8,11 +8,15 @@ import { toast } from "sonner";
 import NetworkMonitor from "./NetworkMonitor";
 import EnhancedVideoControls from "./EnhancedVideoControls";
 import TelehealthChat from "./TelehealthChat";
+import { createTokenRefresher } from "./telehealthUtils";
 
 // VideoRoom — Telnyx Video room client (@telnyx/video v1).
 //
 // createTelehealthToken returns a Telnyx token:
-//   { token, room_id, room_name, identity, host_name, refresh_token }
+//   { token, token_expires_at, token_ttl_secs, room_id, room_name, identity, host_name }
+// The token lives at most an hour, so a connected room renews it shortly before
+// it expires: the same requestToken call with action 'refresh' (the backend
+// re-runs the visit's authorization) and room.updateClientToken(newToken).
 //
 // Validated against the installed @telnyx/video type surface (see
 // src/components/telehealth/telnyxVideoApi.test.js, which asserts every SDK
@@ -65,6 +69,7 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
   const screenStreamRef = useRef(null);  // active screen-share MediaStream
   const endedRef = useRef(false);
   const wasConnectedRef = useRef(false);
+  const tokenRefresherRef = useRef(null); // renews the room's client token in place
 
   // Keep the latest onDisconnect in a ref so the connect effect doesn't depend on
   // it. A parent that re-creates onDisconnect every render (e.g. an inline or
@@ -127,9 +132,9 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
       // invite link, through the public capability lease their page passes as
       // `requestToken` (the tenant SDK is closed on public routes); staff
       // authenticate with their app session through the default.
-      const res = await requestToken(
-        joinToken ? { room_name: roomName, join_token: joinToken } : { room_name: roomName, identity }
-      );
+      const tokenRequest = joinToken ? { room_name: roomName, join_token: joinToken } : { room_name: roomName, identity };
+      const res = await requestToken(tokenRequest);
+      const tokenReceivedAt = Date.now();
       const { token, room_id } = res.data || {};
       if (!token) throw new Error(res.data?.error || "We couldn't start the visit. Please try again.");
       if (joinToken && res.data.host_name) setProviderName(res.data.host_name);
@@ -161,6 +166,7 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
         syncParticipants(room);
       });
       room.on("disconnected", () => {
+        tokenRefresherRef.current?.stop();
         setStatus("disconnected");
         if (!endedRef.current) {
           endedRef.current = true;
@@ -235,7 +241,24 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
         setSessionStartTime((t) => t || new Date());
       }
       syncParticipants(room);
+
+      // Keep the client token fresh for a visit that outlasts it. The renewal
+      // goes through the same backend call (re-authorized there) and is applied
+      // to this room in place; a refusal (visit ended, link expired) stops it.
+      tokenRefresherRef.current?.stop();
+      const refresher = createTokenRefresher({
+        refresh: async () => (await requestToken({ ...tokenRequest, action: "refresh" }))?.data,
+        apply: (next) => (roomRef.current === room ? room.updateClientToken(next) : undefined),
+        onGiveUp: () => {
+          if (roomRef.current !== room || endedRef.current) return;
+          toast.warning("This visit's video access couldn't be renewed. If the call drops, rejoin the visit.");
+        },
+      });
+      tokenRefresherRef.current = refresher;
+      refresher.track(res.data, tokenReceivedAt);
     } catch (err) {
+      tokenRefresherRef.current?.stop();
+      tokenRefresherRef.current = null;
       // Disconnect the room we may have already joined before the failure so a
       // later Retry can't orphan this connection.
       try { roomRef.current?.disconnect(); } catch { /* already gone */ }
@@ -257,6 +280,8 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
   useEffect(() => {
     connectToRoom();
     return () => {
+      tokenRefresherRef.current?.stop();
+      tokenRefresherRef.current = null;
       try { roomRef.current?.disconnect(); } catch { /* already gone */ }
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());

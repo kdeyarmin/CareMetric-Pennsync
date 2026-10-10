@@ -517,6 +517,20 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       && row?.provider_event_id == null
       && row?.provider_message_id == null
       && row?.provider_event_occurred_at == null;
+    // provider_opt_out: Telnyx refused a send to this recipient with error
+    // 40300 ("Blocked due to STOP message"). From a delivery receipt it carries
+    // the receipt's event and message ids, exactly as a keyword row does; from a
+    // refused API request there is no provider event, so all three are null.
+    const providerOptOutMatches = source === 'provider_opt_out'
+      && status === 'opted_out'
+      && (row?.captured_by ?? null) === null
+      && ((!!providerEventId && row?.provider_event_id === providerEventId
+        && !!providerMessageId && row?.provider_message_id === providerMessageId
+        && Number.isFinite(occurredAtMs)
+        && row?.provider_event_occurred_at === row?.captured_at)
+        || (row?.provider_event_id == null
+          && row?.provider_message_id == null
+          && row?.provider_event_occurred_at == null));
     if (row?.consent_key !== consentKey
       || row?.provider !== 'telnyx'
       || row?.integration_secret_id !== authority.integrationSecretId
@@ -525,7 +539,7 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
       || row?.phone_e164 !== phoneE164
       || !provenanceMatches
       || !Number.isFinite(capturedAtMs)
-      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      || (!keywordSourceMatches && !manualProvenanceMatches && !providerOptOutMatches)) {
       return { ok: false, reason: 'sms_consent_integrity_failed' };
     }
   }
@@ -538,9 +552,13 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
         : 'sms_consent_order_invalid' };
     }
   }
-  const newestKeyword = rows.find((row) =>
-    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
-  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  // A provider-classified STOP — the keyword itself, or Telnyx refusing a send
+  // because of it (provider_opt_out) — is lifted only by a provider START: a
+  // manual opt-in cannot override it, and Telnyx keeps blocking until then.
+  const newestKeyword = rows.find((row) => row.consent_source === 'keyword_stop'
+    || row.consent_source === 'keyword_start' || row.consent_source === 'provider_opt_out');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop'
+    || newestKeyword?.consent_source === 'provider_opt_out';
   return {
     ok: true,
     row: rows[0] || null,
@@ -615,15 +633,16 @@ async function resolveFaxRetryConfig(base44, agencyName) {
 function mapMessageStatus(status) {
   switch (String(status || '').toLowerCase()) {
     case 'queued': case 'sending': return 'queued';
-    case 'sent': return 'sent';
-    case 'delivered': case 'webhook_delivered': return 'delivered';
+    // delivery_unconfirmed is terminal with no carrier receipt: last-known 'sent'.
+    case 'sent': case 'delivery_unconfirmed': return 'sent';
+    case 'delivered': case 'webhook_delivered': case 'read': return 'delivered';
     case 'sending_failed': case 'delivery_failed': case 'expired': case 'failed': return 'failed';
     default: return null;
   }
 }
 function mapFaxStatus(status) {
   switch (String(status || '').toLowerCase()) {
-    case 'queued': return 'queued';
+    case 'queued': case 'media.processing': return 'queued';
     case 'media.processed': case 'originated': case 'sending': return 'sending';
     case 'sent': return 'sent';
     case 'delivered': return 'delivered';
@@ -689,12 +708,24 @@ const PERMANENT_FAILURE_PATTERNS = [
   /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
+  // Telnyx Fax `failure_reason` codes (OpenAPI spec, checked 2026-10-09) that
+  // need a person — a cancellation, a declining receiver, or an account, profile
+  // or document problem — and would only fail again on retry. Snake_case, so
+  // the prose patterns above never matched them and they fell through to
+  // transient, burning the whole backoff schedule.
+  /sender_cancel/i, /declin/i, /not_in_service/i, /account_disabled/i,
+  /no_outbound_profile/i, /not_in_countries_whitelist/i, /spend_limit_exceeded/i,
+  /unverified_(origination|destination)/i, /file_size_limit_exceeded/i,
+  /page_count_limit_exceeded/i,
 ];
 // Transient signals win over a coincidental permanent word ("rejected - line
 // busy" is retryable). Checked first. Mirrors src/components/fax/faxRetry.js.
 const TRANSIENT_FAILURE_PATTERNS = [
   /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
   /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+  // Telnyx `invalid_ecm_response_from_receiver` is a transmission glitch, not a
+  // bad number; without this the bare /invalid/ above gives up on it.
+  /ecm_response/i,
 ];
 function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();
@@ -994,21 +1025,37 @@ async function callCommand(apiKey, callControlId, command, payload = {}) {
 const SPEAK_DEFAULTS = { voice: 'female', language: 'en-US' };
 
 // ---- Telnyx outbound SMS (auto-reply) ----
+// An auto-reply writes no SmsMessage row, so its delivery receipt would find
+// nothing to update: handleOutboundMessageStatus answers 404 for an unknown
+// provider id (so a receipt that races sendSms's own write is redelivered), and
+// Telnyx would keep redelivering this one. use_profile_webhooks: false with no
+// webhook_url asks Telnyx for no receipt at all (message-create request,
+// CreateMessageRequest.use_profile_webhooks, default true).
 async function sendAutoReply(apiKey, messagingProfileId, from, to, text) {
   if (!outboundDeliveryReleased()) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const payload = { from, to, text };
+    const payload = { from, to, text, use_profile_webhooks: false };
     if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
-    return await fetch('https://api.telnyx.com/v2/messages', {
+    const resp = await fetch('https://api.telnyx.com/v2/messages', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
+    if (!resp.ok) {
+      // The error body can echo the patient's number; log the status and
+      // Telnyx's code only.
+      const data = await resp.json().catch(() => ({}));
+      console.error('auto-reply not accepted', { status: resp.status, code: telnyxErrorCode(data?.errors) });
+    } else {
+      await resp.body?.cancel?.().catch(() => {});
+    }
+    return resp;
   } catch (err) {
-    console.error('auto-reply send failed:', err?.message);
+    // The message of a fetch error can carry the request URL; the name is enough.
+    console.error('auto-reply send failed', { error: err?.name || 'Error' });
     return null;
   } finally {
     clearTimeout(timer);
@@ -1090,8 +1137,17 @@ async function resolveAgencySettingsByNumber(base44, e164) {
 // Text alone never changes consent (only a provider-classified STOP/START
 // does, through handleInboundConsentKeyword). These lists only decide which
 // texts get no automatic reply (STOP-like) and which get the CTIA HELP answer.
-const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
+// The FCC's revocation rule (47 CFR 64.1200(a)(10), in force April 2025) names
+// stop, quit, end, revoke, opt out, cancel and unsubscribe as revocations; CTIA
+// adds STOPALL. A text that says one of them must never draw an after-hours or
+// off-duty auto-reply, so match it the way a person types it — "Stop.",
+// "opt-out", "Stop all" — not only the bare upper-case word.
+const STOP_WORDS = ['STOP', 'STOPALL', 'STOP ALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'REVOKE', 'OPTOUT', 'OPT OUT'];
 const HELP_WORDS = ['HELP', 'INFO'];
+function isStopLikeText(text) {
+  const words = String(text || '').toUpperCase().replace(/[^A-Z]+/g, ' ').trim();
+  return STOP_WORDS.includes(words);
+}
 
 function providerConsentKeyword(payload) {
   if (String(payload?.direction || '').toLowerCase() !== 'inbound') return null;
@@ -1099,7 +1155,9 @@ function providerConsentKeyword(payload) {
   return keyword === 'STOP' || keyword === 'START' ? keyword : null;
 }
 
-function keywordConsentMatches(row, expected) {
+// The replay-safe writer the keyword path and the 40300 opt-out feedback share.
+// <<<BEGIN SHARED HELPER: telnyxProviderConsent — generated, edit base44/_shared/backendHelpers.mjs>>>
+function providerConsentRowMatches(row, expected) {
   return !!row
     && row.consent_key === expected.consent_key
     && row.agency_id === expected.agency_id
@@ -1113,13 +1171,108 @@ function keywordConsentMatches(row, expected) {
     && row.phone_e164 === expected.phone_e164
     && row.consent_status === expected.consent_status
     && row.consent_source === expected.consent_source
-    && row.provider_event_id === expected.provider_event_id
-    && row.provider_message_id === expected.provider_message_id
-    && row.provider_event_occurred_at === expected.provider_event_occurred_at
+    && (row.provider_event_id ?? null) === expected.provider_event_id
+    && (row.provider_message_id ?? null) === expected.provider_message_id
+    && (row.provider_event_occurred_at ?? null) === expected.provider_event_occurred_at
     && row.captured_at === expected.captured_at
     && (row.captured_by ?? null) === expected.captured_by
     && row.notes === expected.notes;
 }
+
+// Append one provider-evidenced consent row, replay-safe on its Telnyx webhook
+// event id: a replay of the same event with the same content is a no-op, the
+// same event id with different content fails closed, and the write is confirmed
+// by reading it back. A store that cannot be read or written is reported as
+// such, so a webhook can ask Telnyx to redeliver.
+async function appendProviderConsentEvent(base44, expected) {
+  const entities = base44.asServiceRole.entities;
+  let prior;
+  try {
+    prior = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(prior) || prior.length > 1) return { ok: false, reason: 'sms_consent_event_ambiguous' };
+  if (prior.length === 1) {
+    return providerConsentRowMatches(prior[0], expected)
+      ? { ok: true, deduped: true }
+      : { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  try {
+    await entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  let committed;
+  try {
+    committed = await entities.SmsConsent.filter({ provider_event_id: expected.provider_event_id }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  if (!Array.isArray(committed) || committed.length !== 1
+    || !providerConsentRowMatches(committed[0], expected)) {
+    return { ok: false, reason: 'sms_consent_event_conflict' };
+  }
+  return { ok: true, deduped: false };
+}
+
+const TELNYX_PROVIDER_OPT_OUT_NOTES = 'Telnyx refused a send to this recipient with error 40300 (blocked due to STOP)';
+
+// Telnyx refused a send because the recipient texted STOP (error 40300) while
+// this ledger still read opted in: record it in the binding's consent scope, so
+// every sender refuses before Telnyx does and a manual opt-in cannot override it
+// (only a provider START lifts it). `authority` must be the exact line authority
+// the send was made under — never a guess; a caller that cannot establish it
+// skips the write. Evidence from a delivery receipt (event and message ids) is
+// replay-safe on the event id; a refused API request has no provider event, so
+// its row carries none and is written only while the scope is not already
+// provider-opted-out.
+async function recordTelnyxProviderOptOut(base44, authority, rawRecipient, evidence) {
+  if (!authority?.ok) return { ok: false, reason: 'sms_binding_required' };
+  const phoneE164 = normalizeTelnyxSmsE164(rawRecipient);
+  const hasEvent = evidence?.eventId != null || evidence?.messageId != null;
+  const eventId = hasEvent ? boundedTelnyxAuthorityId(evidence?.eventId) : null;
+  const messageId = hasEvent ? boundedTelnyxAuthorityId(evidence?.messageId) : null;
+  const occurredAtMs = Date.parse(evidence?.occurredAt || '');
+  if (!phoneE164 || !Number.isFinite(occurredAtMs) || (hasEvent && (!eventId || !messageId))
+    || occurredAtMs > Date.now() + 24 * 60 * 60 * 1000) {
+    return { ok: false, reason: 'invalid_provider_opt_out' };
+  }
+  const occurredAt = new Date(occurredAtMs).toISOString();
+  const expected = {
+    consent_key: telnyxSmsConsentKey(authority, phoneE164),
+    agency_id: authority.agencyId,
+    provider: 'telnyx',
+    integration_secret_id: authority.integrationSecretId,
+    messaging_profile_id: authority.messagingProfileId,
+    destination_binding_id: authority.bindingId,
+    destination_binding_key: authority.bindingKey,
+    destination_e164: authority.destinationE164,
+    patient_id: null,
+    phone_e164: phoneE164,
+    consent_status: 'opted_out',
+    consent_source: 'provider_opt_out',
+    captured_by: null,
+    captured_at: occurredAt,
+    provider_event_id: eventId,
+    provider_message_id: messageId,
+    provider_event_occurred_at: hasEvent ? occurredAt : null,
+    notes: TELNYX_PROVIDER_OPT_OUT_NOTES,
+  };
+  const latest = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  if (latest.ok && latest.keywordStopActive) return { ok: true, deduped: true };
+  if (hasEvent) return appendProviderConsentEvent(base44, expected);
+  try {
+    await base44.asServiceRole.entities.SmsConsent.create(expected);
+  } catch {
+    return { ok: false, reason: 'sms_consent_store_unavailable' };
+  }
+  const after = await loadLatestScopedSmsConsent(base44, authority, phoneE164);
+  return after.ok && after.keywordStopActive
+    ? { ok: true, deduped: false }
+    : { ok: false, reason: after.ok ? 'sms_consent_not_recorded' : after.reason };
+}
+// <<<END SHARED HELPER: telnyxProviderConsent>>>
 
 async function handleInboundConsentKeyword(base44, telnyxCreds, event, payload) {
   const keyword = providerConsentKeyword(payload);
@@ -1170,43 +1323,16 @@ async function handleInboundConsentKeyword(base44, telnyxCreds, event, payload) 
     notes: 'Provider-classified Telnyx consent keyword',
   };
 
-  let prior;
-  try {
-    prior = await base44.asServiceRole.entities.SmsConsent
-      .filter({ provider_event_id: eventId }, undefined, 2);
-  } catch {
-    return inboundRoutingPausedResponse('SMS consent');
-  }
-  if (!Array.isArray(prior) || prior.length > 1) {
-    return inboundRoutingPausedResponse('SMS consent');
-  }
-  if (prior.length === 1) {
-    if (!keywordConsentMatches(prior[0], expected)) {
-      return inboundRoutingPausedResponse('SMS consent');
-    }
+  // Replay-safe on the event id: a replay with the same content is a no-op,
+  // conflicting content or an unreadable store fails closed (503, redelivered).
+  const appended = await appendProviderConsentEvent(base44, expected);
+  if (!appended.ok) return inboundRoutingPausedResponse('SMS consent');
+  if (appended.deduped) {
     return Response.json({
       success: true,
       consent_status: expected.consent_status,
       deduped: true,
     });
-  }
-
-  try {
-    await base44.asServiceRole.entities.SmsConsent.create(expected);
-  } catch {
-    return inboundRoutingPausedResponse('SMS consent');
-  }
-
-  let committed;
-  try {
-    committed = await base44.asServiceRole.entities.SmsConsent
-      .filter({ provider_event_id: eventId }, undefined, 2);
-  } catch {
-    return inboundRoutingPausedResponse('SMS consent');
-  }
-  if (!Array.isArray(committed) || committed.length !== 1
-    || !keywordConsentMatches(committed[0], expected)) {
-    return inboundRoutingPausedResponse('SMS consent');
   }
 
   // Telnyx sends the carrier-compliant keyword autoresponse. Sending another
@@ -1215,12 +1341,147 @@ async function handleInboundConsentKeyword(base44, telnyxCreds, event, payload) 
 }
 
 // ============================ MESSAGING ============================
+// <<<BEGIN SHARED HELPER: smsMedia — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/messaging/smsMedia.js.
+const SMS_MEDIA_LIMIT = 10;
+const SMS_MEDIA_MAX_BYTES = 5242880;
+const SMS_MEDIA_CONTENT_TYPE = /^(?:image\/(?:jpeg|jpg|png|gif|webp|heic|heif|bmp)|audio\/(?:amr|mpeg|mp3|mp4|aac|ogg|wav|x-wav|3gpp)|video\/(?:mp4|3gpp|3gpp2|quicktime|mpeg|webm)|application\/pdf|text\/(?:plain|vcard|x-vcard|calendar|directory))$/;
+const SMS_MEDIA_LAYOUT_TYPE = /^application\/smil$/;
+function smsMediaContentType(value) {
+  if (typeof value !== "string") return null;
+  const type = value.split(";")[0].trim().toLowerCase();
+  return SMS_MEDIA_CONTENT_TYPE.test(type) ? type : null;
+}
+function smsMediaFetchUrl(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== "https:" || url.username || url.password || url.hash) return null;
+  if (!host.includes(".") || host.endsWith(".local") || host.endsWith(".internal") || host === "localhost"
+    || /^[\d.]+$/.test(host) || host.startsWith("[") || host.includes(":")) return null;
+  return url.toString();
+}
+function inboundSmsMediaPlaceholders(rawMedia) {
+  const items = Array.isArray(rawMedia) ? rawMedia : [];
+  const placeholders = [];
+  for (const item of items) {
+    if (placeholders.length >= SMS_MEDIA_LIMIT) break;
+    const declared = typeof item?.content_type === "string" ? item.content_type.split(";")[0].trim().toLowerCase() : "";
+    if (SMS_MEDIA_LAYOUT_TYPE.test(declared)) continue;
+    const contentType = smsMediaContentType(declared);
+    const size = Number.isSafeInteger(item?.size) && item.size >= 0 ? item.size : null;
+    const url = smsMediaFetchUrl(item?.url);
+    if (!contentType || !url || (size != null && size > SMS_MEDIA_MAX_BYTES)) {
+      placeholders.push({ status: "unavailable", content_type: contentType, byte_size: size });
+    } else {
+      placeholders.push({ status: "pending", content_type: contentType, byte_size: size, external_url: url, attempts: 0 });
+    }
+  }
+  return placeholders;
+}
+function isPrivateSmsFileUri(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 4096
+    && ![...value].some((character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127)
+    && (value.startsWith("private/") || value.startsWith("private://")
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+function smsMediaFileName(rowId, index, contentType) {
+  const subtype = String(contentType || "").split("/")[1] || "bin";
+  const extension = subtype.replace(/^x-/, "").replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const id = String(rowId || "message").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "message";
+  return `mms-${id}-${Number(index) || 0}.${extension}`;
+}
+// <<<END SHARED HELPER: smsMedia>>>
+// <<<BEGIN SHARED HELPER: telnyxSmsOutcome — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/messaging/smsRedrive.js and
+// src/components/voice/telnyxRetry.js.
+const TELNYX_OPT_OUT_ERROR_CODE = "40300";
+const CONNECT_PHASE_FAILURE = /\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)\b|getaddrinfo|dns error|failed to lookup address|tcp connect error|client error \(Connect\)|connection refused/i;
+function connectionNeverOpened(err) {
+  if (!err || err.name === "AbortError" || err.name === "TimeoutError") return false;
+  const cause = err.cause && typeof err.cause === "object" ? err.cause : {};
+  return [err.code, err.message, cause.code, cause.message]
+    .some((part) => typeof part === "string" && CONNECT_PHASE_FAILURE.test(part));
+}
+function telnyxErrorCode(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const raw = first && (typeof first.code === "string" || typeof first.code === "number")
+    ? String(first.code).trim() : "";
+  return /^\d{1,10}$/.test(raw) ? raw : null;
+}
+function telnyxErrorsInclude(errors, code) {
+  return Array.isArray(errors) && errors.some((error) => !!error
+    && (typeof error.code === "string" || typeof error.code === "number")
+    && String(error.code).trim() === code);
+}
+function telnyxApiFailureReason(httpStatus, errors) {
+  const status = Number(httpStatus);
+  const shown = Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0;
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx API error: HTTP ${shown}, code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxTransportFailureReason(err, timeoutMs) {
+  if (err && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    return `Outcome unknown: Telnyx did not answer within ${timeoutMs} ms, so the text may have been sent. Not retried automatically.`;
+  }
+  if (connectionNeverOpened(err)) {
+    return "Connection never opened: Telnyx could not be reached, so the text was not sent.";
+  }
+  return "Outcome unknown: the connection to Telnyx failed after the request may have been sent. Not retried automatically.";
+}
+function telnyxDeliveryFailureReason(errors) {
+  const first = Array.isArray(errors) ? errors[0] : null;
+  const detail = String((first && (first.detail || first.title)) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 300);
+  return `Telnyx delivery failed: code ${telnyxErrorCode(errors) || "none"}${detail ? `: ${detail}` : ""}`;
+}
+function telnyxSendStatus(responseBody) {
+  const to = responseBody && responseBody.data && Array.isArray(responseBody.data.to)
+    ? responseBody.data.to[0] : null;
+  const status = String((to && to.status) || "").toLowerCase();
+  return status === "queued" || status === "sending" || status === "" ? "queued" : "sent";
+}
+// <<<END SHARED HELPER: telnyxSmsOutcome>>>
+
 // Monotonic rank so a late/out-of-order delivery webhook can't downgrade a
 // terminal state (e.g. a re-delivered 'sending' arriving after 'sent'). Mirrors
 // the SMS_RANK guard the former handleTwilioSmsStatus enforced.
 const SMS_RANK = { queued: 1, sent: 2, delivered: 3, failed: 3 };
 
-async function handleOutboundMessageStatus(base44, payload) {
+// A receipt with Telnyx error 40300 ("blocked due to STOP") says the recipient
+// opted out while our ledger still read opted in. Record it in the consent scope
+// of the exact line that sent the message — the binding in the SIGNED messaging
+// profile, the row's own agency and recipient — or not at all.
+async function recordReceiptOptOut(base44, telnyxCreds, event, payload, row) {
+  const from = payload?.from?.phone_number || payload?.from;
+  const recipient = Array.isArray(payload?.to) ? payload.to[0]?.phone_number : payload?.to;
+  const authority = await resolveActiveTelnyxSmsBinding(base44, {
+    integrationSecretId: telnyxCreds?.record?.id,
+    integrationProvider: telnyxCreds?.record?.provider,
+    integrationIsActive: telnyxCreds?.record?.is_active === true,
+    messagingProfileId: telnyxCreds?.messagingProfileId,
+    claimedMessagingProfileId: payload?.messaging_profile_id,
+    requireClaimedProfile: true,
+    requireOutbound: true,
+    destinationE164: from,
+  });
+  const recipientE164 = normalizeTelnyxSmsE164(recipient);
+  if (!authority.ok || !recipientE164
+    || normalizeTelnyxSmsE164(row.from_number) !== authority.destinationE164
+    || normalizeTelnyxSmsE164(row.to_number) !== recipientE164
+    || (row.agency_id != null && row.agency_id !== authority.agencyId)
+    || (row.destination_binding_id != null && row.destination_binding_id !== authority.bindingId)) {
+    return { ok: false, reason: 'sms_binding_required' };
+  }
+  return recordTelnyxProviderOptOut(base44, authority, recipientE164, {
+    eventId: event?.eventId, messageId: payload?.id, occurredAt: event?.occurredAt,
+  });
+}
+
+async function handleOutboundMessageStatus(base44, telnyxCreds, event, payload) {
   const providerId = payload?.id;
   const recipientStatus = payload?.to?.[0]?.status || payload?.status;
   const mapped = mapMessageStatus(recipientStatus);
@@ -1230,17 +1491,35 @@ async function handleOutboundMessageStatus(base44, payload) {
   const rows = await base44.asServiceRole.entities.SmsMessage.filter({ provider_message_id: providerId }, '-created_date', 1).catch(() => []);
   // 404 (not 200) so Telnyx redelivers: sendSms persists provider_message_id
   // only AFTER the API round-trip, so a fast DLR can race the write. Acking it
-  // would lose the status forever — SMS has no poller to reconcile later.
+  // would lose the status forever — SMS has no poller to reconcile later. The
+  // sends that write no row at all (sendAutoReply, sendTestSms) ask Telnyx for
+  // no receipt (use_profile_webhooks: false), so they never loop here.
   if (!rows.length) return Response.json({ success: false, message: 'SmsMessage not found' }, { status: 404 });
   const row = rows[0];
+  // Before the forward-only check, so a redelivered receipt retries a consent
+  // write that failed the first time even though the status is already set.
+  if (mapped === 'failed' && telnyxErrorsInclude(payload?.errors, TELNYX_OPT_OUT_ERROR_CODE)) {
+    const optOut = await recordReceiptOptOut(base44, telnyxCreds, event, payload, row);
+    if (!optOut.ok) {
+      console.error('provider opt-out not recorded', { reason: optOut.reason || 'unknown' });
+      if (optOut.reason === 'sms_consent_store_unavailable') {
+        return Response.json(
+          { error: 'Opt-out could not be recorded right now', retryable: true },
+          { status: 503, headers: { 'Retry-After': '60' } },
+        );
+      }
+    }
+  }
   // Forward-only: ignore an unchanged or out-of-order (lower-rank) transition.
   if ((SMS_RANK[mapped] || 0) <= (SMS_RANK[row.status] || 0)) {
     return Response.json({ success: true, status: row.status, deduped: true });
   }
   const update = { status: mapped };
+  const firstError = Array.isArray(payload?.errors) ? payload.errors[0] : null;
   if (mapped === 'failed') {
-    const err = Array.isArray(payload?.errors) ? payload.errors[0] : null;
-    update.failure_reason = err?.detail || err?.title || 'Delivery failed';
+    // Telnyx's own code leads the reason (smsRedrive.js format). A receipt's
+    // failure is never redriven: Telnyx accepted the message.
+    update.failure_reason = telnyxDeliveryFailureReason(payload?.errors);
   }
   await base44.asServiceRole.entities.SmsMessage.update(row.id, update);
 
@@ -1251,7 +1530,7 @@ async function handleOutboundMessageStatus(base44, payload) {
     await base44.asServiceRole.entities.Notification.create({
       user_email: row.nurse_email,
       title: '⚠️ Text not delivered',
-      message: `Your text to ${row.to_number} could not be delivered (${update.failure_reason}). Verify the number and try again.`,
+      message: `Your text to ${row.to_number} could not be delivered (${firstError?.detail || firstError?.title || 'delivery failed'}). Verify the number and try again.`,
       type: 'sms_failed', priority: 'high', metadata: { related_entity: 'SmsMessage', related_entity_id: row.id }, is_read: false,
     }).catch((err) => console.error('Failed to send sms failure notification:', err));
   }
@@ -1390,7 +1669,10 @@ async function bindingAgencyName(entities, agencyId) {
   return typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
 }
 
-async function handleInboundMessage(base44, telnyxCreds, event, payload) {
+// `consentKeyword` is set when the consent path has already recorded this text
+// as a provider-classified STOP/START: it is filed like any other inbound text
+// so the nurse sees it, and nothing is ever sent back (Telnyx answered it).
+async function handleInboundMessage(base44, telnyxCreds, event, payload, { consentKeyword = null } = {}) {
   const entities = base44.asServiceRole.entities;
   const source = payload?.from?.phone_number || payload?.from;
   const destination = Array.isArray(payload?.to) ? payload.to[0]?.phone_number : payload?.to;
@@ -1437,12 +1719,19 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
   const patientId = await resolveInboundSmsPatient(entities, authority, patientNum, scopedConsent.ok ? scopedConsent.row : null);
   const { user: reader, basis } = await resolveInboundSmsReader(entities, authority, threadId);
 
+  // MMS attachments are recorded, not fetched: Telnyx retries a webhook not
+  // answered within about two seconds, so a download here could double-store
+  // the text. Each supported item is 'pending' with Telnyx's URL until the
+  // copyInboundSmsMedia cron copies it into private storage (smsMedia.js).
+  const media = inboundSmsMediaPlaceholders(payload?.media);
+
   // Always store the inbound message, in this agency's thread.
   const inboundRow = await entities.SmsMessage.create({
     direction: 'inbound', from_number: patientNum, to_number: workNum, body: text,
     nurse_email: reader ? reader.email : null, patient_id: patientId, thread_id: threadId,
     status: 'received', provider_message_id: providerMessageId, is_read: false, consent_checked: false,
     agency_id: authority.agencyId, destination_binding_id: authority.bindingId,
+    ...(media.length ? { media, media_pending: media.some((item) => item.status === 'pending') } : {}),
   });
 
   const config = await getAgencyConfig(base44, await bindingAgencyName(entities, authority.agencyId));
@@ -1453,10 +1742,11 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
     ? sendAutoReply(apiKey, telnyxCreds?.messagingProfileId, workNum, patientNum, msg)
     : Promise.resolve(null));
   // Telnyx answers a keyword itself when it set autoresponse_type; a STOP-like
-  // text never gets a reply from us either way.
-  const providerAnswered = !!String(payload?.autoresponse_type || '').trim();
+  // text never gets a reply from us either way, and neither does a text the
+  // consent path recorded.
+  const providerAnswered = !!String(payload?.autoresponse_type || '').trim() || !!consentKeyword;
   const isHelp = HELP_WORDS.includes(keyword);
-  const canReply = !optedOut && smsEnabled && !providerAnswered && !STOP_WORDS.includes(keyword) && !isHelp;
+  const canReply = !optedOut && smsEnabled && !providerAnswered && !isStopLikeText(text) && !isHelp;
 
   if (isHelp && smsEnabled && !providerAnswered) {
     // CTIA requires a HELP response regardless of opt-out state; it is
@@ -1494,8 +1784,13 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
     }).catch(() => console.error('urgent notification failed'));
   }
   if (reader) {
+    // A STOP is the one inbound text that changes what the nurse may do next,
+    // so it says so instead of reading like any other message.
+    const notice = consentKeyword === 'STOP'
+      ? { title: '🚫 Patient opted out of texts', message: `${patientNum} replied STOP. They will not receive texts until they reply START.` }
+      : { title: '💬 New text message', message: `You have a new text from ${patientNum}.` };
     await entities.Notification.create({
-      user_email: reader.email, title: '💬 New text message', message: `You have a new text from ${patientNum}.`,
+      user_email: reader.email, ...notice,
       type: 'sms_received', priority: 'medium', metadata: { related_entity: 'SmsMessage', related_entity_id: inboundRow.id }, is_read: false,
     }).catch(() => console.error('notification failed'));
   }
@@ -1513,7 +1808,85 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
   return Response.json({ success: true, received: true, routed: basis });
 }
 
+// The consent keyword was recorded (or deduped) first; now the text itself goes
+// to the thread. If it cannot be filed yet (binding or store unavailable) the
+// 503 reaches Telnyx, the redelivery dedupes the consent write, and filing is
+// retried. The answer keeps the consent path's fields.
+async function fileConsentKeywordText(base44, telnyxCreds, event, payload, keywordResponse) {
+  const consent = await keywordResponse.json();
+  const filed = await handleInboundMessage(base44, telnyxCreds, event, payload, {
+    consentKeyword: providerConsentKeyword(payload),
+  });
+  if (!filed.ok) return filed;
+  const stored = await filed.json();
+  return Response.json({
+    ...consent,
+    message_stored: stored.received === true || stored.deduped === true,
+    ...(stored.routed ? { routed: stored.routed } : {}),
+  });
+}
+
 // ============================ FAX ============================
+// <<<BEGIN SHARED HELPER: faxProviderCorrelation — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Generated verbatim from src/components/fax/faxProviderCorrelation.js.
+const FAX_CLIENT_STATE_VERSION = "pennsync.fax.v1";
+const FAX_CLIENT_STATE_KINDS = ["outbound","office_forward"];
+function exactFaxCorrelationId(value) {
+  if (typeof value !== "string" || !value || value.length > 200
+    || value.trim() !== value || value.startsWith("$")) return null;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return null;
+  }
+  return value;
+}
+function encodeFaxClientState(kind, id) {
+  const exact = exactFaxCorrelationId(id);
+  if (!FAX_CLIENT_STATE_KINDS.includes(kind) || !exact) return null;
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: FAX_CLIENT_STATE_VERSION, k: kind, id: exact }));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function decodeFaxClientState(value) {
+  if (typeof value !== "string" || !value || value.length > 2048) return null;
+  let parsed;
+  try {
+    const binary = atob(value.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || parsed.v !== FAX_CLIENT_STATE_VERSION || !FAX_CLIENT_STATE_KINDS.includes(parsed.k)) return null;
+  const id = exactFaxCorrelationId(parsed.id);
+  return id ? { kind: parsed.k, id } : null;
+}
+function faxEventProviderId(payload) {
+  const faxId = payload && typeof payload === "object" ? payload.fax_id : undefined;
+  const legacyId = payload && typeof payload === "object" ? payload.id : undefined;
+  if (faxId == null && legacyId == null) return { present: false, id: null };
+  if (faxId != null && legacyId != null && faxId !== legacyId) return { present: true, id: null };
+  return { present: true, id: exactFaxCorrelationId(faxId != null ? faxId : legacyId) };
+}
+function faxStatusWebhookUrl(requestUrl, selfName) {
+  if (typeof selfName !== "string" || !/^[A-Za-z][A-Za-z0-9]*$/.test(selfName)) return null;
+  let url;
+  try {
+    url = new URL(String(requestUrl));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const segments = url.pathname.replace(/\/+$/, "").split("/");
+  if (segments.length < 2 || segments[segments.length - 1] !== selfName) return null;
+  segments[segments.length - 1] = "handleTelnyxStatusWebhook";
+  return `${url.origin}${segments.join("/")}`;
+}
+// <<<END SHARED HELPER: faxProviderCorrelation>>>
+
 // Monotonic rank so a late/out-of-order or re-delivered fax webhook can't regress
 // a terminal state (e.g. a stale 'sending' from media.processed arriving after
 // 'delivered', which would re-open the fax and re-poll/re-send a delivered PHI
@@ -1526,6 +1899,7 @@ async function handleInboundMessage(base44, telnyxCreds, event, payload) {
 const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4, retrying: 4, retried: 5 };
 
 const INBOUND_FAX_EXACT_ROW_LIMIT = 10;
+const INBOUND_FAX_FORWARD_TIMEOUT_MS = 7000;
 const OUTBOUND_FAX_EXACT_ROW_LIMIT = 10;
 const INBOUND_FAX_NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
@@ -1599,6 +1973,79 @@ function outboundFaxHasRetryAuthority(row) {
     && Number.isSafeInteger(row.retry_generation)
     && row.retry_generation >= 0
     && row.retry_generation <= row.retry_count;
+}
+
+// A legacy URL row — written by sendFax, the platform-owner path that is held
+// pending the document-binding migration. It stores a caller-supplied document
+// URL and records no provider submission attempt, so outboundFaxHasStatusAuthority
+// refuses it forever and neither this webhook nor pollFaxStatuses may write it.
+// Refusing its events with a 409 only made Telnyx redeliver them; no redelivery
+// can make them acceptable, so they are acknowledged without any write. Every
+// row the authority senders create has document_url == null and a submission
+// attempt id from the moment it exists, so this never matches one of theirs.
+function outboundFaxIsUntrackedLegacyRow(row) {
+  return !!row
+    && (row.document_url != null || !boundedTelnyxAuthorityId(row.provider_submission_attempt_id));
+}
+
+// No FaxLog carries this provider id yet. Without a client_state that is the
+// sender race (telnyx_fax_id is recorded only after POST /v2/faxes returns), so
+// it stays a 404 and Telnyx redelivers. With our client_state the named row
+// decides — but only to choose an acknowledgement or a redelivery: a status is
+// never written here, because the row's provider identity is not yet recorded
+// and outboundFaxHasStatusAuthority requires it.
+async function correlateUnrecordedOutboundFaxEvent(base44, providerId, correlation) {
+  if (correlation?.kind !== 'outbound') {
+    return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  }
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.FaxLog.filter(
+      { id: correlation.id },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
+  if (!Array.isArray(rows)) {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
+  if (rows.length !== 1 || rows[0]?.id !== correlation.id) {
+    return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  }
+  const row = rows[0];
+  if (row.telnyx_fax_id != null && row.telnyx_fax_id !== providerId) {
+    return Response.json({
+      success: false,
+      message: 'Fax identity conflicts with its client state',
+      code: 'FAX_CLIENT_STATE_CONFLICT',
+    }, { status: 409 });
+  }
+  if (row.telnyx_fax_id === providerId) {
+    // The id was recorded between the two reads; the redelivery takes the
+    // ordinary authorized path.
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
+  if (outboundFaxIsUntrackedLegacyRow(row)) {
+    return Response.json({ success: true, skipped: 'untracked_fax_row' });
+  }
+  if (row.provider_submission_state === 'pending') {
+    return Response.json({
+      success: false,
+      message: 'Fax provider id is not recorded yet',
+      code: 'FAX_PROVIDER_ID_NOT_RECORDED',
+    }, { status: 404 });
+  }
+  // The sender gave up on this submission (indeterminate or rejected) while
+  // Telnyx reports it. Binding the provider id here would race the retry
+  // reconciliation that owns such rows, so leave it to operator reconciliation;
+  // the failed delivery stays visible in Telnyx's webhook log.
+  return Response.json({
+    success: false,
+    message: 'Fax submission requires reconciliation',
+    code: 'FAX_SUBMISSION_REQUIRES_RECONCILIATION',
+  }, { status: 409 });
 }
 
 const OUTBOUND_FAX_MAX_RETRY_ATTEMPTS = 10;
@@ -2267,13 +2714,16 @@ async function releaseInboundFaxForwardClaim(base44, authority, record) {
 
 // Signed Telnyx fax ingress. The exact dialed destination is resolved through
 // TelecomDestinationBinding before any tenant setting, media row, or forward
-// command is touched. `fax_receiving_enabled` selects in-app OCR versus office
-// forwarding only after that immutable tenant boundary is established.
+// command is touched. Every inbound fax is then passed through to the office
+// fax machine: the app receives no faxes (product owner, 2026-10-09). The
+// IncomingFax row it writes is only the at-most-once forward record.
 async function handleInboundFax(base44, telnyxCreds, payload) {
-  const providerId = boundedTelnyxAuthorityId(payload?.id);
+  // Telnyx names the fax in fax.* payloads as fax_id; payload.id is still read
+  // (both must agree when both are present), as handleFaxEvent does.
+  const providerId = faxEventProviderId(payload).id;
   const mediaUrl = exactInboundFaxHttpsUrl(payload?.media_url || payload?.original_media_url);
   const receivedOn = normalizeE164(payload?.to);
-  if (!providerId || payload?.id !== providerId || payload?.direction !== 'inbound'
+  if (!providerId || payload?.direction !== 'inbound'
     || !mediaUrl || !receivedOn) {
     return inboundFaxUnavailable(400, 'INVALID_INBOUND_FAX_EVENT');
   }
@@ -2296,27 +2746,11 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
       return inboundFaxUnavailable(503, 'INBOUND_FAX_RESERVATION_UNCONFIRMED');
     }
   }
-  if (authority.settings.fax_receiving_enabled === true) {
-    if (existing.rows.length === 1) {
-      return Response.json(
-        { success: true, deduped: true, incoming_fax_id: existing.rows[0].id },
-        { headers: INBOUND_FAX_NO_STORE_HEADERS },
-      );
-    }
-    const record = await createInboundFax(
-      base44,
-      authority,
-      payload,
-      providerId,
-      mediaUrl,
-      'pending',
-    );
-    return Response.json(
-      { success: true, incoming_fax_id: record.id },
-      { headers: INBOUND_FAX_NO_STORE_HEADERS },
-    );
-  }
-
+  // AgencySettings.fax_receiving_enabled is NO LONGER HONOURED. It used to
+  // select in-app ingestion (an IncomingFax row left 'pending' for the
+  // processInboundFaxes OCR worker); the product owner wants no incoming faxes
+  // in the app (2026-10-09), so every inbound fax takes the office forward
+  // below. The field stays in the schema; nothing reads it.
   const officeFax = normalizeE164(authority.settings.office_fax_number_e164);
   if (!telnyxCreds.apiKey || !officeFax || officeFax === receivedOn) {
     return inboundFaxUnavailable(409, 'INBOUND_FAX_FORWARDING_UNAVAILABLE');
@@ -2365,18 +2799,29 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
   }
   authority = preSendAuthority;
 
+  // The forward is a new outbound fax with no FaxLog. Its client_state names the
+  // IncomingFax so handleFaxEvent can recognize and acknowledge its fax.* events
+  // instead of answering them 404 (no FaxLog) and drawing redeliveries. No
+  // webhook_url: those events reach the Fax Application's webhook_event_url,
+  // which is this function — the same route the fax.received just took.
+  const forwardRequest = {
+    connection_id: authority.binding.fax_connection_id,
+    from: receivedOn,
+    to: officeFax,
+    media_url: mediaUrl,
+    quality: 'high',
+  };
+  const forwardClientState = encodeFaxClientState('office_forward', record.id);
+  if (forwardClientState) forwardRequest.client_state = forwardClientState;
   let response;
   try {
     response = await fetch('https://api.telnyx.com/v2/faxes', {
       method: 'POST',
       headers: { Authorization: `Bearer ${telnyxCreds.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        connection_id: authority.binding.fax_connection_id,
-        from: receivedOn,
-        to: officeFax,
-        media_url: mediaUrl,
-        quality: 'high',
-      }),
+      body: JSON.stringify(forwardRequest),
+      // Telnyx times a webhook out after about ten seconds; answer inside it.
+      // An abort is an unknown outcome and keeps the claim, like a network error.
+      signal: AbortSignal.timeout(INBOUND_FAX_FORWARD_TIMEOUT_MS),
     });
   } catch {
     // The provider may have accepted a request even when the client never saw a
@@ -2393,6 +2838,13 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
       ? inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED')
       : inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
   }
+  // A 2xx is the provider's acceptance either way; the id is read so the answer
+  // (visible in Telnyx's webhook delivery log) names the forward its later
+  // fax.* events will carry. No IncomingFax field holds it, so it is not stored,
+  // and a missing one is logged without identifiers.
+  const forwardBody = await response.json().catch(() => null);
+  const forwardFaxId = exactFaxCorrelationId(forwardBody?.data?.id);
+  if (!forwardFaxId) console.error('Inbound fax office forward was accepted without a provider fax id');
   const recordVersion = record.version;
   const update = await base44.asServiceRole.entities.IncomingFax.updateMany(
     {
@@ -2427,18 +2879,37 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
     return inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
   }
   return Response.json(
-    { success: true, forwarded_to_office: true, incoming_fax_id: record.id },
+    {
+      success: true,
+      forwarded_to_office: true,
+      incoming_fax_id: record.id,
+      ...(forwardFaxId ? { forward_fax_id: forwardFaxId } : {}),
+    },
     { headers: INBOUND_FAX_NO_STORE_HEADERS },
   );
 }
 
 async function handleFaxEvent(base44, telnyxCreds, payload) {
-  const rawProviderId = payload?.id;
-  const providerId = boundedTelnyxAuthorityId(rawProviderId);
+  // Telnyx names the fax in a fax.* webhook as payload.fax_id (OpenAPI spec,
+  // 2026-10-09); this read only payload.id, so every documented status event
+  // was acknowledged as 'no fax id' and never reached a row.
+  const providerRef = faxEventProviderId(payload);
+  const providerId = providerRef.id;
   const mapped = mapFaxStatus(payload?.status);
-  if (!rawProviderId) return Response.json({ success: true, skipped: 'no fax id' });
-  if (!providerId || providerId !== rawProviderId) {
+  if (!providerRef.present) return Response.json({ success: true, skipped: 'no fax id' });
+  if (!providerId) {
     return Response.json({ success: false, message: 'Invalid fax id' }, { status: 400 });
+  }
+  // client_state is set by this app's own POST /v2/faxes and arrives inside the
+  // signature-verified body. It identifies a row; it never authorizes a write.
+  const correlation = decodeFaxClientState(payload?.client_state);
+  if (correlation?.kind === 'office_forward') {
+    // The pass-through of a stray inbound fax to the office machine
+    // (handleInboundFax). It has no FaxLog and nothing here tracks its outcome,
+    // so acknowledge every event instead of answering 404 and having Telnyx
+    // redeliver it. A provider failure is logged without identifiers.
+    if (mapped === 'failed') console.error('Inbound fax office forward failed at the provider');
+    return Response.json({ success: true, skipped: 'office_forward' });
   }
   if (!mapped) return Response.json({ success: true, skipped: 'unknown status', status: payload?.status });
 
@@ -2452,16 +2923,27 @@ async function handleFaxEvent(base44, telnyxCreds, payload) {
   } catch {
     return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
   }
-  // 404 so Telnyx redelivers after the sender persists telnyx_fax_id (senders
-  // write the id only after the API call, so a fast status callback can race it).
   if (!Array.isArray(rows)) {
     return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
   }
-  if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  // Senders write the provider id only after the API call, so a fast status
+  // callback can race it; correlateUnrecordedOutboundFaxEvent answers 404 (so
+  // Telnyx redelivers) unless the client_state names a row that settles it.
+  if (!rows.length) return correlateUnrecordedOutboundFaxEvent(base44, providerId, correlation);
   if (rows.length !== 1 || rows.some((row) => row?.telnyx_fax_id !== providerId)) {
     return Response.json({ success: false, message: 'Fax identity is ambiguous' }, { status: 409 });
   }
   const faxLog = rows[0];
+  if (correlation?.kind === 'outbound' && correlation.id !== faxLog.id) {
+    return Response.json({
+      success: false,
+      message: 'Fax identity conflicts with its client state',
+      code: 'FAX_CLIENT_STATE_CONFLICT',
+    }, { status: 409 });
+  }
+  if (outboundFaxIsUntrackedLegacyRow(faxLog)) {
+    return Response.json({ success: true, skipped: 'untracked_fax_row' });
+  }
   if (!outboundFaxHasStatusAuthority(faxLog)
     || !Number.isFinite(Date.parse(faxLog?.updated_date || ''))) {
     return Response.json({ success: false, message: 'Fax identity is incomplete' }, { status: 409 });
@@ -2528,7 +3010,9 @@ async function handleFaxEvent(base44, telnyxCreds, payload) {
     const plan = retryAuthority && retryPolicy.ok && boundedPolicy.valid
       ? planFaxRetry({
         retryCount: faxLog.retry_count || 0,
-        errorCode: payload?.failure_code || payload?.error_code,
+        // fax.failed carries failure_reason and the more granular
+        // internal_failure_reason; there is no failure_code/error_code.
+        errorCode: payload?.internal_failure_reason,
         errorMessage: failureReason,
         priority: faxLog.priority || 'normal',
         config: cfg,
@@ -2669,6 +3153,152 @@ const UNANSWERED_CAUSES = new Set([
 function isUnansweredHangup(cause) {
   return UNANSWERED_CAUSES.has(String(cause || '').toLowerCase());
 }
+// 'failed' when a call.hangup ends a leg that never reached in_progress for an
+// unanswered cause; null otherwise (an answered call stays 'completed').
+function unansweredHangupStatus(eventType, currentStatus, cause) {
+  if (eventType !== 'call.hangup' || !isUnansweredHangup(cause)) return null;
+  return (CALL_RANK[currentStatus] || 0) < CALL_RANK.in_progress ? 'failed' : null;
+}
+// A still-ringing leg ended because the CALLER hung up: Telnyx cancels it
+// (originator_cancel) and hangup_source names the side that ended it
+// (call.hangup: caller | callee | unknown). Only the caller side is an
+// abandonment; anything else keeps a ringdown moving, because stopping it on a
+// live caller strands them on a silent answered leg, while advancing on a caller
+// who has gone only costs a transfer Telnyx refuses. Mirrors onCall.js.
+function isCallerAbandonedHangup(cause, source) {
+  return String(cause || '').toLowerCase() === 'originator_cancel'
+    && String(source || '').toLowerCase() === 'caller';
+}
+// Only a nurse's personal cell is screened for voicemail; the office line is a
+// legitimate destination even when its phone tree or office voicemail answers.
+// Mirrors onCall.js.
+function screensRingdownTarget(target) {
+  return !!target && (target.kind === 'primary' || target.kind === 'backup');
+}
+
+// ---- answering-machine detection ----
+// Standard detection (answering_machine_detection on CallRequest and
+// TransferCallRequest, Telnyx OpenAPI spec read 2026-10-09): Telnyx analyses the
+// answered leg and sends call.machine.detection.ended with result human |
+// machine | not_sure. total_analysis_time_millis bounds that analysis, so the
+// verdict (not_sure when it cannot decide) follows an answer within five
+// seconds instead of leaving a nurse on an answered leg waiting for one — and
+// the bridge, the first command after that answer, goes out well inside the
+// Voice API app's 30 s first-command timeout (portal, 2026-10-09). Only
+// `machine` diverts a call; not_sure is treated as a person, because diverting
+// a live nurse is worse than reaching a voicemail. startMaskedCall dials the
+// nurse leg with this same configuration.
+const ANSWERING_MACHINE_DETECTION = 'detect';
+const ANSWERING_MACHINE_DETECTION_CONFIG = { total_analysis_time_millis: 5000 };
+function amdFoundMachine(result) {
+  return String(result || '').toLowerCase() === 'machine';
+}
+
+// ---- call event idempotency ----
+// Telnyx delivers webhooks at least once. A redelivered call.answered used to
+// run its handler again: the repeated transfer could be refused for a leg that
+// was already connecting, and the refusal fallback then spoke an apology and
+// hung up a live call. So every call event that sends a Call Control command
+// (or stores a voicemail) first CLAIMS its envelope id (data.id), and a repeat
+// is acknowledged without acting.
+//
+// The claim is a UserActivity row: append-only (no client update or delete),
+// already written by this webhook as user_email 'system', and the one store
+// with an opaque correlation field that needs no schema change — CallLog has a
+// record-store table and no field that could hold an event id. A claim carries
+// the event id and type only. Base44 has no conditional create, so concurrent
+// deliveries both append and the EARLIEST row wins; every reader sees the same
+// order, so exactly one delivery acts. Anything that cannot prove the claim
+// answers 503 and acts on nothing. Telnyx also retries a webhook it did not
+// get an answer to within the app's 10 s timeout; that retry finds the first
+// delivery's claim and is acknowledged, while the first finishes the work.
+const CALL_EVENT_CLAIM_ACTION = 'telnyx_call_event_claimed';
+const CALL_EVENT_CLAIM_ENTITY = 'TelnyxCallEvent';
+const CALL_EVENT_CLAIM_SCAN_LIMIT = 20;
+
+function callEventStoreUnavailable() {
+  return Response.json({
+    success: false,
+    error: 'Call event store is temporarily unavailable',
+    code: 'CALL_EVENT_STORE_UNAVAILABLE',
+    retryable: true,
+  }, { status: 503 });
+}
+async function loadCallEventClaims(base44, eventId) {
+  const rows = await base44.asServiceRole.entities.UserActivity.filter(
+    { entity_type: CALL_EVENT_CLAIM_ENTITY, entity_id: eventId }, 'created_date', CALL_EVENT_CLAIM_SCAN_LIMIT,
+  );
+  if (!Array.isArray(rows)) throw new Error('call event claim read failed');
+  return rows.filter((row) => row?.entity_type === CALL_EVENT_CLAIM_ENTITY
+    && row?.entity_id === eventId && row?.action === CALL_EVENT_CLAIM_ACTION);
+}
+function callEventClaimOrder(a, b) {
+  const at = Date.parse(a?.created_date || '');
+  const bt = Date.parse(b?.created_date || '');
+  const av = Number.isFinite(at) ? at : Number.POSITIVE_INFINITY;
+  const bv = Number.isFinite(bt) ? bt : Number.POSITIVE_INFINITY;
+  if (av !== bv) return av < bv ? -1 : 1;
+  return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+}
+async function claimCallEvent(base44, event) {
+  const eventId = boundedTelnyxAuthorityId(event?.eventId);
+  // Telnyx stamps every envelope with data.id. Without one a repeat cannot be
+  // told from a first delivery, so nothing is sent.
+  if (!eventId) return { ok: false, response: Response.json({ success: true, skipped: 'no event id' }) };
+  const deduped = () => ({ ok: false, response: Response.json({ success: true, deduped: true, event: event?.eventType || null }) });
+  let prior;
+  try {
+    prior = await loadCallEventClaims(base44, eventId);
+  } catch {
+    return { ok: false, response: callEventStoreUnavailable() };
+  }
+  if (prior.length > 0) return deduped();
+  const claim = crypto.randomUUID();
+  // A lost create acknowledgement is recovered by the read below.
+  await base44.asServiceRole.entities.UserActivity.create({
+    user_email: 'system',
+    action: CALL_EVENT_CLAIM_ACTION,
+    entity_type: CALL_EVENT_CLAIM_ENTITY,
+    entity_id: eventId,
+    details: { event_type: String(event?.eventType || '').slice(0, 64), claim },
+    status: 'success',
+  }).catch(() => null);
+  let committed;
+  try {
+    committed = await loadCallEventClaims(base44, eventId);
+  } catch {
+    return { ok: false, response: callEventStoreUnavailable() };
+  }
+  const winner = [...committed].sort(callEventClaimOrder)[0];
+  if (winner?.details?.claim === claim) return { ok: true };
+  if (committed.some((row) => row?.details?.claim === claim)) return deduped();
+  return { ok: false, response: callEventStoreUnavailable() };
+}
+
+// Every Call Control command an event sends carries a command_id derived from
+// the event id, its position among that event's commands, and the command, so
+// Telnyx ignores a resend ("Telnyx will ignore any command with the same
+// command_id for the same call_control_id"). The spec does not say what a
+// duplicate is ANSWERED with, so nothing relies on it: the claim above is what
+// keeps a refused repeat away from every apology-and-hangup fallback. A
+// repeated event never runs, and within one event every command has its own
+// sequence number, so no command_id is ever sent twice from here.
+async function callCommandId(eventId, sequence, command) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(`pennsync-call-command:v1|${eventId}|${sequence}|${command}`)));
+  const hex = Array.from(digest.subarray(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+// The ONLY caller of callCommand: an event's commands, numbered in send order.
+function eventCallCommands(apiKey, eventId) {
+  let sequence = 0;
+  return async (callControlId, command, payload = {}) => {
+    sequence += 1;
+    const body = { ...payload };
+    if (eventId) body.command_id = await callCommandId(eventId, sequence, command);
+    return callCommand(apiKey, callControlId, command, body);
+  };
+}
 
 // Other on-duty nurses' cells (for the ringdown backup list), excluding the
 // primary nurse and anyone without a cell. Scoped to the primary nurse's agency:
@@ -2771,24 +3401,112 @@ async function logInboundCall(base44, callControlId, callerNum, workNum, route) 
   }).catch(() => {});
 }
 
-async function handleCallEvent(base44, apiKey, eventType, payload) {
+// The inbound (caller) leg's CallLog row, keyed by its call_control_id.
+async function loadInboundCallLog(base44, callerLegId) {
+  if (!callerLegId) return null;
+  const rows = await base44.asServiceRole.entities.CallLog
+    .filter({ provider_call_id: callerLegId }, '-created_date', 1).catch(() => []);
+  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+}
+const RINGDOWN_EXHAUSTED_REASON = 'No answer — all on-call targets were unavailable';
+const CALLER_ABANDONED_REASON = 'Caller hung up before anyone answered';
+// The CallLog status enum has no 'no_answer', so a missed call is 'failed' —
+// every missed-call consumer (callbackQueue, comms dashboard, phone analytics,
+// call history) already treats 'failed' as missed. Without this the trailing
+// call.hangup maps to 'completed' and the call vanishes from the callback queue.
+async function markInboundMissed(base44, inboundLog, reason) {
+  if (!inboundLog?.id || inboundLog.status === 'failed') return;
+  await base44.asServiceRole.entities.CallLog.update(inboundLog.id, { status: 'failed', failure_reason: reason }).catch(() => {});
+}
+// 'completed' on the caller leg only ever comes from that leg's own hangup, and
+// 'failed' from a ringdown that already ended: either way nobody is left to ring.
+function callerLegEnded(inboundLog) {
+  return inboundLog?.status === 'completed' || inboundLog?.status === 'failed';
+}
+// An apology spoken just before a hangup replaces the caller leg's state, so
+// its own call.speak.ended can never be read as the greeting's and run the
+// failed transfer or ringdown again.
+function callEndingState() {
+  return encodeClientState({ t: 'call_ending' });
+}
+// Caller id for an inbound call's onward legs: the number the patient dialed
+// (decideInboundRouting's workNum), never the destination. A state that lost it
+// falls back to the caller leg's logged displayed_number, which is that same
+// dialed number; failing that `from` is omitted, and TransferCallRequest then
+// "default[s] to the `to` number of the original call" — again the dialed line.
+async function inboundPresentedCallerId(base44, callerLegId, callerId) {
+  const carried = normalizeE164(callerId);
+  if (carried) return carried;
+  const inboundLog = await loadInboundCallLog(base44, callerLegId);
+  return normalizeE164(inboundLog?.displayed_number) || null;
+}
+
+async function handleCallEvent(base44, apiKey, eventType, payload, event = null) {
+  const receivedAt = Date.now();
   const callControlId = payload?.call_control_id;
   const state = decodeClientState(payload?.client_state);
   const direction = String(payload?.direction || '').toLowerCase(); // 'incoming' | 'outgoing'
+  const cmd = eventCallCommands(apiKey, boundedTelnyxAuthorityId(event?.eventId));
+  const claim = () => claimCallEvent(base44, event);
 
-  // --- OUTBOUND masked bridge: nurse leg answered → dial the patient (caller id = work number). ---
-  if (eventType === 'call.answered' && state?.t === 'masked_bridge' && callControlId && apiKey) {
-    const r = await callCommand(apiKey, callControlId, 'transfer', { to: state.bridge_to, from: state.caller_id });
-    if (!r.ok) {
-      // Don't leave the nurse connected to dead air: tell them, hang up, and mark
-      // the call failed so the log reflects that the patient was never reached.
-      await callCommand(apiKey, callControlId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We could not connect your call. Please try again later.' });
-      await callCommand(apiKey, callControlId, 'hangup', {});
-      if (state.call_log_id) {
-        await base44.asServiceRole.entities.CallLog.update(state.call_log_id, { status: 'failed', failure_reason: 'Bridge transfer to the patient failed' }).catch(() => {});
+  // --- OUTBOUND masked bridge: the nurse's cell answered → screen it, then dial the patient. ---
+  // startMaskedCall dials with answering-machine detection and sets amd:true, so
+  // the bridge waits for call.machine.detection.ended: a person (or not_sure) is
+  // transferred to the patient; a machine — the nurse's own voicemail — is hung
+  // up and the call logged failed, so a patient is never transferred into a
+  // nurse's personal voicemail. A state without amd was dialed before detection
+  // existed and still bridges on call.answered, so a call in flight across a
+  // deploy never waits for a verdict nobody requested.
+  if (state?.t === 'masked_bridge' && callControlId && apiKey) {
+    const screened = state.amd === true;
+    const verdict = eventType === 'call.machine.detection.ended';
+    if ((screened && verdict) || (!screened && eventType === 'call.answered')) {
+      const gate = await claim();
+      if (!gate.ok) return gate.response;
+      if (verdict && amdFoundMachine(payload?.result)) {
+        await cmd(callControlId, 'hangup', {});
+        if (state.call_log_id) {
+          await base44.asServiceRole.entities.CallLog.update(state.call_log_id, {
+            status: 'failed', failure_reason: 'Reached voicemail — the patient was not called',
+          }).catch(() => {});
+        }
+        return Response.json({ success: true, bridged: false, machine: true });
       }
+      return bridgeMaskedCall(base44, cmd, callControlId, state);
     }
-    return Response.json({ success: true, bridged: r.ok });
+  }
+
+  // --- The patient leg of a masked call (see bridgeMaskedCall). It can never
+  // re-enter the bridge above. Unanswered, it leaves the nurse's leg up on dead
+  // air (transfer: "The original call will remain active"), so tell the nurse
+  // and end it; any other patient-leg event only reaches the status update. ---
+  if (state?.t === 'masked_patient_leg' && callControlId && callControlId !== state.nurse_leg
+    && eventType === 'call.hangup' && apiKey && isUnansweredHangup(payload?.hangup_cause)) {
+    const gate = await claim();
+    if (!gate.ok) return gate.response;
+    const cause = String(payload.hangup_cause).toLowerCase();
+    const nurseHungUp = isCallerAbandonedHangup(cause, payload?.hangup_source);
+    if (state.call_log_id) {
+      await base44.asServiceRole.entities.CallLog.update(state.call_log_id, {
+        status: 'failed',
+        failure_reason: nurseHungUp ? 'Cancelled before the patient answered' : `Patient did not answer (${cause})`,
+      }).catch(() => {});
+    }
+    if (!nurseHungUp && state.nurse_leg) {
+      await cmd(state.nurse_leg, 'speak', { ...SPEAK_DEFAULTS, payload: 'The patient did not answer. Please try again later.' });
+      await cmd(state.nurse_leg, 'hangup', {});
+    }
+    return Response.json({ success: true, patient_answered: false });
+  }
+
+  // Voicemail recording finished → persist it (port of handleTwilioVoicemail).
+  // call.recording.saved carries no call_control_id (CallRecordingSaved schema),
+  // so the caller leg comes from the record_start client_state.
+  if (eventType === 'call.recording.saved') {
+    const gate = await claim();
+    if (!gate.ok) return gate.response;
+    await saveVoicemail(base44, payload, state, receivedAt + VOICEMAIL_COPY_BUDGET_MS);
+    return Response.json({ success: true, voicemail_saved: true });
   }
 
   // --- INBOUND IVR state machine (Call Control) ---
@@ -2796,6 +3514,8 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // Step 1: a fresh inbound call rings in. Answer it first (consistent with the
     // outbound path), carrying the routing decision forward in client_state.
     if (eventType === 'call.initiated' && direction === 'incoming' && !state) {
+      const gate = await claim();
+      if (!gate.ok) return gate.response;
       const callerNum = normalizeE164(payload?.from) || payload?.from || '';
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
       // Resolve agency from the dialed work number's nurse (or matching settings
@@ -2813,54 +3533,68 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       const config = await getAgencyConfig(base44, agencyHint);
       const route = await decideInboundRouting(base44, config, workNum);
       await logInboundCall(base44, callControlId, callerNum, workNum, route);
-      await callCommand(apiKey, callControlId, 'answer', {
+      await cmd(callControlId, 'answer', {
         client_state: encodeClientState({ t: 'inbound_ivr', action: route.action, greeting: route.greeting || '', to: route.to || null, callerId: route.callerId || null, targets: route.targets || null }),
       });
       return Response.json({ success: true, inbound: route.action });
     }
 
-    // --- RINGDOWN advance: a dialed leg went unanswered → roll to the next
-    // target on the original caller leg (a_leg). A plain caller hangup carries a
-    // different client_state, so this only fires on a callee no-answer. ---
-    if (eventType === 'call.hangup' && state?.t === 'ringdown' && state.a_leg && isUnansweredHangup(payload?.hangup_cause)) {
-      const next = (Number(state.idx) || 0) + 1;
-      const hasNext = Array.isArray(state.targets) && state.targets[next];
-      if (hasNext) {
-        await startRingdown(base44, apiKey, state.a_leg, state.targets, state.callerId, next);
-      } else {
-        // Ringdown exhausted: nobody answered. Mark the inbound call as missed
-        // BEFORE hanging up the caller leg. The CallLog status enum has no
-        // 'no_answer', so use 'failed' — every missed-call consumer (callbackQueue,
-        // comms dashboard, phone analytics, call history) already treats 'failed'
-        // as a missed call. Without this the trailing call.hangup maps to
-        // 'completed' and the missed call silently vanishes from the callback queue.
-        const inboundLogs = await base44.asServiceRole.entities.CallLog
-          .filter({ provider_call_id: state.a_leg }, '-created_date', 1).catch(() => []);
-        if (inboundLogs.length && inboundLogs[0].status !== 'failed') {
-          await base44.asServiceRole.entities.CallLog.update(inboundLogs[0].id, {
-            status: 'failed',
-            failure_reason: 'No answer — all on-call targets were unavailable',
-          }).catch(() => {});
-        }
-        await callCommand(apiKey, state.a_leg, 'hangup', {});
+    // --- RINGDOWN legs. Every transfer writes the ringdown state as both
+    // client_state and target_leg_client_state, so it may arrive on the caller
+    // leg too; a_leg tells the two apart, and only the dialed leg acts here. ---
+    const ringdownLeg = state?.t === 'ringdown' && !!state.a_leg && callControlId !== state.a_leg;
+
+    // A dialed leg ended unanswered → roll to the next target on the caller leg,
+    // unless the caller has gone: a caller-side cancel of the ringing leg, or a
+    // caller leg already ended, stops the ringdown and logs a missed call instead
+    // of transferring a dead leg to every remaining target.
+    if (ringdownLeg && eventType === 'call.hangup' && isUnansweredHangup(payload?.hangup_cause)) {
+      const gate = await claim();
+      if (!gate.ok) return gate.response;
+      const inboundLog = await loadInboundCallLog(base44, state.a_leg);
+      if (isCallerAbandonedHangup(payload?.hangup_cause, payload?.hangup_source) || callerLegEnded(inboundLog)) {
+        await markInboundMissed(base44, inboundLog, CALLER_ABANDONED_REASON);
+        return Response.json({ success: true, ringdown_abandoned: true });
       }
-      return Response.json({ success: true, ringdown_advance: next, exhausted: !hasNext });
+      return advanceRingdown(base44, cmd, state, inboundLog);
+    }
+
+    // A screened personal cell answered and detection says it was a machine —
+    // the nurse's voicemail. Transfer the caller leg on to the next target: that
+    // unbridges the voicemail leg, which Telnyx then hangs up by default
+    // (park_after_unbridge unset), so the patient never leaves a message in a
+    // nurse's personal voicemail. A person or not_sure stays connected.
+    if (ringdownLeg && eventType === 'call.machine.detection.ended') {
+      const screened = screensRingdownTarget(Array.isArray(state.targets) ? state.targets[Number(state.idx) || 0] : null);
+      if (!screened || !amdFoundMachine(payload?.result)) {
+        return Response.json({ success: true, ringdown_screened: screened, machine: false });
+      }
+      const gate = await claim();
+      if (!gate.ok) return gate.response;
+      const inboundLog = await loadInboundCallLog(base44, state.a_leg);
+      if (callerLegEnded(inboundLog)) {
+        await markInboundMissed(base44, inboundLog, CALLER_ABANDONED_REASON);
+        return Response.json({ success: true, ringdown_abandoned: true });
+      }
+      return advanceRingdown(base44, cmd, state, inboundLog, { fromVoicemail: true });
     }
 
     // Step 2: the inbound call we answered is now live → ring the targets
     // (find-me-follow-me), or speak the greeting then continue once it finishes.
     if (eventType === 'call.answered' && state?.t === 'inbound_ivr') {
+      const gate = await claim();
+      if (!gate.ok) return gate.response;
       if (state.action === 'ringdown') {
-        await startRingdown(base44, apiKey, callControlId, state.targets || [], state.callerId, 0);
+        await startRingdown(base44, cmd, callControlId, state.targets || [], state.callerId, 0);
         return Response.json({ success: true, inbound_ivr: 'ringdown' });
       }
       const greeting = String(state.greeting || '').slice(0, 320);
       const next = encodeClientState({ t: 'inbound_after_greet', action: state.action, to: state.to || null, callerId: state.callerId || null, targets: state.targets || null });
       if (greeting) {
-        await callCommand(apiKey, callControlId, 'speak', { ...SPEAK_DEFAULTS, payload: greeting, client_state: next });
+        await cmd(callControlId, 'speak', { ...SPEAK_DEFAULTS, payload: greeting, client_state: next });
       } else {
         // No greeting (e.g. a plain transfer) → act immediately.
-        await continueAfterGreeting(base44, apiKey, callControlId, state.action, state.to, state.callerId, state.targets);
+        await continueAfterGreeting(base44, cmd, callControlId, state.action, state.to, state.callerId, state.targets);
       }
       return Response.json({ success: true, inbound_ivr: state.action });
     }
@@ -2870,6 +3604,8 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // no routing state. Re-derive the route and act so the call is never stranded
     // on a silent answered leg.
     if (eventType === 'call.answered' && direction === 'incoming' && !state) {
+      const gate = await claim();
+      if (!gate.ok) return gate.response;
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
       let agencyHint = '';
       for (const variant of phoneVariants(workNum)) {
@@ -2889,39 +3625,45 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       // no-ops when a row already exists, so a delayed call.initiated can't double-write.
       await logInboundCall(base44, callControlId, normalizeE164(payload?.from) || payload?.from || '', workNum, route);
       if (route.action === 'ringdown') {
-        await startRingdown(base44, apiKey, callControlId, route.targets || [], route.callerId, 0);
+        await startRingdown(base44, cmd, callControlId, route.targets || [], route.callerId, 0);
         return Response.json({ success: true, inbound_recovered: 'ringdown' });
       }
       const greeting = String(route.greeting || '').slice(0, 320);
       if (greeting) {
         const next = encodeClientState({ t: 'inbound_after_greet', action: route.action, to: route.to || null, callerId: route.callerId || null, targets: route.targets || null });
-        await callCommand(apiKey, callControlId, 'speak', { ...SPEAK_DEFAULTS, payload: greeting, client_state: next });
+        await cmd(callControlId, 'speak', { ...SPEAK_DEFAULTS, payload: greeting, client_state: next });
       } else {
-        await continueAfterGreeting(base44, apiKey, callControlId, route.action, route.to, route.callerId, route.targets);
+        await continueAfterGreeting(base44, cmd, callControlId, route.action, route.to, route.callerId, route.targets);
       }
       return Response.json({ success: true, inbound_recovered: route.action });
     }
 
     // Step 3: greeting finished → execute the deferred action.
     if (eventType === 'call.speak.ended' && state?.t === 'inbound_after_greet') {
-      await continueAfterGreeting(base44, apiKey, callControlId, state.action, state.to, state.callerId, state.targets);
+      const gate = await claim();
+      if (!gate.ok) return gate.response;
+      // The caller hung up during the greeting (CallSpeakEnded status
+      // call_hangup): nobody is left to transfer, ring or record. A call that
+      // was going to reach someone is logged missed.
+      if (String(payload?.status || '').toLowerCase() === 'call_hangup') {
+        if (state.action !== 'hangup') {
+          await markInboundMissed(base44, await loadInboundCallLog(base44, callControlId), CALLER_ABANDONED_REASON);
+        }
+        return Response.json({ success: true, after_greet: 'caller_hung_up' });
+      }
+      await continueAfterGreeting(base44, cmd, callControlId, state.action, state.to, state.callerId, state.targets);
       return Response.json({ success: true, after_greet: state.action });
     }
+  }
 
-    // Live voicemail transcription (final segments) → append to the CallLog.
-    if (eventType === 'call.transcription') {
-      const td = payload?.transcription_data || {};
-      const isFinal = td.is_final === true || td.status === 'completed';
-      const text = td.transcript || td.text;
-      if (isFinal && text) await appendVoicemailTranscript(base44, callControlId, text);
-      return Response.json({ success: true, transcription: Boolean(isFinal && text) });
-    }
-
-    // Voicemail recording finished → persist it (port of handleTwilioVoicemail).
-    if (eventType === 'call.recording.saved') {
-      await saveVoicemail(base44, payload);
-      return Response.json({ success: true, voicemail_saved: true });
-    }
+  // Live voicemail transcription (final segments) → append to the CallLog.
+  if (eventType === 'call.transcription') {
+    const td = payload?.transcription_data || {};
+    const isFinal = td.is_final === true || td.status === 'completed';
+    const text = td.transcript || td.text;
+    const callerLeg = callControlId || (state?.t === 'voicemail' ? state.a_leg : null);
+    if (isFinal && text) await appendVoicemailTranscript(base44, callerLeg, text);
+    return Response.json({ success: true, transcription: Boolean(isFinal && text) });
   }
 
   // --- Best-effort CallLog status update for any call event. ---
@@ -2938,6 +3680,14 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       const patch = {};
       // Forward-only so an out-of-order event can't regress a terminal call.
       if ((CALL_RANK[mapped] || 0) > (CALL_RANK[cur.status] || 0)) patch.status = mapped;
+      // A leg that hung up before it was ever answered is a missed call, not a
+      // completed one (e.g. the nurse's cell on a masked call rang out or was
+      // busy). call.hangup alone maps to 'completed'; the cause decides.
+      const missed = unansweredHangupStatus(eventType, cur.status, payload?.hangup_cause);
+      if (missed) {
+        patch.status = missed;
+        if (!cur.failure_reason) patch.failure_reason = `Not answered (${String(payload.hangup_cause).toLowerCase()})`;
+      }
       // Capture the call duration on hangup (from the Call Control timestamps)
       // so call logs and any length-based reporting aren't blank.
       if (eventType === 'call.hangup') {
@@ -2952,73 +3702,128 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
   return Response.json({ success: true, event: eventType, status: mapped });
 }
 
+// Bridge an answered (and, when screened, human) nurse leg to the patient,
+// presenting the work number. The patient leg gets a state of its own, written
+// as both client_state and target_leg_client_state (the spec gives the new leg
+// the second, and the first to "every subsequent webhook"): its events can then
+// never be read as the nurse leg's masked_bridge, and nurse_leg tells the two
+// legs apart whichever one carries it.
+async function bridgeMaskedCall(base44, cmd, nurseLeg, state) {
+  const patientLeg = encodeClientState({ t: 'masked_patient_leg', call_log_id: state.call_log_id || null, nurse_leg: nurseLeg });
+  // The patient must only ever see the work number. With no caller id Telnyx
+  // would default `from` to the nurse leg's own `to` — the nurse's cell.
+  const presented = normalizeE164(state.caller_id);
+  const r = presented && state.bridge_to
+    ? await cmd(nurseLeg, 'transfer', { to: state.bridge_to, from: presented, client_state: patientLeg, target_leg_client_state: patientLeg })
+    : { ok: false, status: 0 };
+  if (!r.ok) {
+    // Don't leave the nurse connected to dead air: tell them, hang up, and mark
+    // the call failed so the log reflects that the patient was never reached.
+    await cmd(nurseLeg, 'speak', { ...SPEAK_DEFAULTS, payload: 'We could not connect your call. Please try again later.' });
+    await cmd(nurseLeg, 'hangup', {});
+    if (state.call_log_id) {
+      await base44.asServiceRole.entities.CallLog.update(state.call_log_id, { status: 'failed', failure_reason: 'Bridge transfer to the patient failed' }).catch(() => {});
+    }
+  }
+  return Response.json({ success: true, bridged: r.ok });
+}
+
+// Move a ringdown on from the dialed leg in `state` to the next target, or end
+// it when there is none.
+async function advanceRingdown(base44, cmd, state, inboundLog, { fromVoicemail = false } = {}) {
+  const next = (Number(state.idx) || 0) + 1;
+  const hasNext = Array.isArray(state.targets) && !!state.targets[next];
+  if (hasNext) {
+    // From a voicemail, a refused transfer leaves the caller where they are
+    // rather than hanging them up — no worse than before screening existed.
+    await startRingdown(base44, cmd, state.a_leg, state.targets, state.callerId, next, { hangUpWhenRefused: !fromVoicemail });
+  } else {
+    // Ringdown exhausted: nobody answered. Mark the inbound call missed BEFORE
+    // hanging up the caller leg.
+    await markInboundMissed(base44, inboundLog, RINGDOWN_EXHAUSTED_REASON);
+    await cmd(state.a_leg, 'hangup', {});
+  }
+  return Response.json({ success: true, ringdown_advance: next, exhausted: !hasNext });
+}
+
 // Ring the next find-me-follow-me target on the original caller leg. The dialed
 // leg carries the ringdown client_state so an unanswered hangup can advance.
 // A transfer command can be REJECTED outright (e.g. a malformed stored office
 // number) with no hangup event to advance on — so on failure, try each
 // remaining target in order, and if every one is rejected apologize and hang up
 // rather than stranding the caller on a silent answered (billed) leg.
-async function startRingdown(base44, apiKey, aLegId, targets, callerId, idx = 0) {
+async function startRingdown(base44, cmd, aLegId, targets, callerId, idx = 0, { hangUpWhenRefused = true } = {}) {
   const list = Array.isArray(targets) ? targets : [];
+  const from = await inboundPresentedCallerId(base44, aLegId, callerId);
   for (let i = Math.max(0, Number(idx) || 0); i < list.length; i++) {
     const target = list[i];
     if (!target || !target.to) continue;
-    const r = await callCommand(apiKey, aLegId, 'transfer', {
+    const legState = encodeClientState({ t: 'ringdown', targets: list, idx: i, callerId: from, a_leg: aLegId });
+    const transfer = {
       to: target.to,
-      from: callerId || target.to,
       timeout_secs: RING_TIMEOUT_SECS_DEFAULT,
-      client_state: encodeClientState({ t: 'ringdown', targets: list, idx: i, callerId, a_leg: aLegId }),
-    });
-    if (r.ok) return;
+      client_state: legState,
+      target_leg_client_state: legState,
+    };
+    if (from) transfer.from = from;
+    if (screensRingdownTarget(target)) {
+      transfer.answering_machine_detection = ANSWERING_MACHINE_DETECTION;
+      transfer.answering_machine_detection_config = { ...ANSWERING_MACHINE_DETECTION_CONFIG };
+    }
+    const r = await cmd(aLegId, 'transfer', transfer);
+    if (r.ok) return true;
   }
+  if (!hangUpWhenRefused) return false;
   // Every target was rejected, so no dialed leg exists to carry the ringdown
   // client_state and the exhaustion branch above can never fire for this call.
   // Mark the inbound log missed here too, otherwise the trailing call.hangup maps
   // to 'completed' and the call disappears from the callback queue.
-  const inboundLogs = await base44.asServiceRole.entities.CallLog
-    .filter({ provider_call_id: aLegId }, '-created_date', 1).catch(() => []);
-  if (inboundLogs.length && inboundLogs[0].status !== 'failed') {
-    await base44.asServiceRole.entities.CallLog.update(inboundLogs[0].id, {
-      status: 'failed',
-      failure_reason: 'No answer — all on-call targets were unavailable',
-    }).catch(() => {});
-  }
-  await callCommand(apiKey, aLegId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We are unable to connect your call at this time. Please try again later.' });
-  await callCommand(apiKey, aLegId, 'hangup', {});
+  await markInboundMissed(base44, await loadInboundCallLog(base44, aLegId), RINGDOWN_EXHAUSTED_REASON);
+  await cmd(aLegId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We are unable to connect your call at this time. Please try again later.', client_state: callEndingState() });
+  await cmd(aLegId, 'hangup', {});
+  return false;
 }
 
-async function continueAfterGreeting(base44, apiKey, callControlId, action, to, callerId, targets = null) {
+async function continueAfterGreeting(base44, cmd, callControlId, action, to, callerId, targets = null) {
   // Find-me-follow-me: ring the targets in order on the caller leg.
   if (action === 'ringdown') {
-    await startRingdown(base44, apiKey, callControlId, targets || (to ? [{ to, kind: 'primary' }] : []), callerId, 0);
+    await startRingdown(base44, cmd, callControlId, targets || (to ? [{ to, kind: 'primary' }] : []), callerId, 0);
     return;
   }
   // A plain bridge and a greet-then-transfer both end in a transfer; unify them
   // and fall back gracefully if the transfer fails so the caller is never left on
   // a silent, open (billed) leg.
   if ((action === 'greet_transfer' || action === 'bridge') && to) {
-    const r = await callCommand(apiKey, callControlId, 'transfer', { to, from: callerId || to });
+    const from = await inboundPresentedCallerId(base44, callControlId, callerId);
+    const transfer = { to };
+    if (from) transfer.from = from;
+    const r = await cmd(callControlId, 'transfer', transfer);
     if (!r.ok) {
-      await callCommand(apiKey, callControlId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We are unable to connect your call at this time. Please try again later.' });
-      await callCommand(apiKey, callControlId, 'hangup', {});
+      await cmd(callControlId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We are unable to connect your call at this time. Please try again later.', client_state: callEndingState() });
+      await cmd(callControlId, 'hangup', {});
     }
   } else if (action === 'voicemail') {
     // Bound the recording so a silent/abandoned line can't leave a billed leg
     // open indefinitely (matches the old 120s voicemail cap). Telnyx field is
     // max_length (seconds), not max_length_secs.
-    await callCommand(apiKey, callControlId, 'record_start', {
-      format: 'mp3', channels: 'single', max_length: 120,
-      client_state: encodeClientState({ t: 'voicemail' }),
+    // play_beep cues the caller that the voicemail is recording. The state names
+    // the caller leg because call.recording.saved carries no call_control_id.
+    const voicemailState = encodeClientState({ t: 'voicemail', a_leg: callControlId });
+    await cmd(callControlId, 'record_start', {
+      format: 'mp3', channels: 'single', max_length: 120, play_beep: true,
+      client_state: voicemailState,
     });
     // Real-time transcription: language lives under transcription_engine_config
     // (top-level `language` is not a valid TranscriptionStartRequest field).
-    await callCommand(apiKey, callControlId, 'transcription_start', {
-      transcription_engine: 'A',
-      transcription_engine_config: { language: 'en', transcription_engine: 'A' },
-      client_state: encodeClientState({ t: 'voicemail' }),
+    // 'Google' is the current name of the engine the legacy alias 'A' selected
+    // (Telnyx keeps 'A'/'B' only for backward compatibility).
+    await cmd(callControlId, 'transcription_start', {
+      transcription_engine: 'Google',
+      transcription_engine_config: { language: 'en', transcription_engine: 'Google' },
+      client_state: voicemailState,
     });
   } else {
-    await callCommand(apiKey, callControlId, 'hangup', {});
+    await cmd(callControlId, 'hangup', {});
   }
 }
 
@@ -3033,16 +3838,169 @@ async function appendVoicemailTranscript(base44, callControlId, text) {
   }).catch(() => {});
 }
 
-async function saveVoicemail(base44, payload) {
-  const callControlId = payload?.call_control_id;
-  const recordingUrl = payload?.recording_urls?.mp3 || payload?.recording_urls?.wav || payload?.public_recording_urls?.mp3 || null;
-  const durationSecs = Number.isFinite(payload?.recording_duration_secs) ? payload.recording_duration_secs : null;
+function recordingDurationSecs(payload) {
+  if (Number.isFinite(payload?.recording_duration_secs)) return payload.recording_duration_secs;
+  const start = Date.parse(payload?.recording_started_at || '');
+  const end = Date.parse(payload?.recording_ended_at || '');
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+  return Math.round((end - start) / 1000);
+}
+
+// ---- voicemail storage ----
+// call.recording.saved's recording_urls "are valid for 10 minutes", so a link
+// stored as-is is dead by the time anyone plays it. The recording is copied
+// into PRIVATE app storage instead and CallLog.voicemail_url holds that
+// private reference; getVoicemailPlaybackUrl signs a short-lived link for a
+// caller who can read the row. public_recording_urls are never used: they are
+// unauthenticated and permanent, which is the wrong shape for a patient's voice.
+//
+// Only an https URL on a host the spec shows Telnyx serving media from is
+// fetched — s3.amazonaws.com (its stored-media examples) and api.telnyx.com
+// (its recording-URL example) — with no redirects and a size bound. When the
+// copy cannot be made the provider link is kept, as before, and only a
+// category is logged.
+//
+// Time: the Voice API app answers a slow webhook by retrying it after 10 s
+// (portal, 2026-10-09), so download AND upload share one hard budget, counted
+// from the moment the event reached handleCallEvent, that leaves the claim,
+// the row writes and the notification well inside it. Past the budget the
+// provider link is kept ('budget_exhausted'); an upload still running is
+// abandoned, which can leave an unreferenced private object but never a row
+// pointing at a half-stored one. A retry of the same event is a no-op (it was
+// claimed). The copy is not deferred: the provider link dies ten minutes after
+// the event, and nothing in this app runs a queue that could be trusted to
+// reach it first.
+const VOICEMAIL_RECORDING_HOSTS = new Set(['s3.amazonaws.com', 'api.telnyx.com']);
+const VOICEMAIL_MAX_BYTES = 10 * 1024 * 1024;
+const VOICEMAIL_COPY_BUDGET_MS = 5000;
+const VOICEMAIL_BUDGET_SPENT = Symbol('voicemail budget spent');
+const VOICEMAIL_FORMATS = [
+  { format: 'mp3', type: 'audio/mpeg' },
+  { format: 'wav', type: 'audio/wav' },
+];
+
+// <<<BEGIN SHARED HELPER: privateFileUri — generated, edit base44/_shared/backendHelpers.mjs>>>
+function isPrivateFileUri(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
+    && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+// <<<END SHARED HELPER: privateFileUri>>>
+
+function voicemailRecordingSource(payload) {
+  const urls = payload?.recording_urls;
+  if (!urls || typeof urls !== 'object') return null;
+  for (const { format, type } of VOICEMAIL_FORMATS) {
+    if (typeof urls[format] === 'string' && urls[format]) return { url: urls[format], format, type };
+  }
+  return null;
+}
+function voicemailDownloadUrl(value) {
+  if (typeof value !== 'string' || value.length > 8192 || value.trim() !== value) return null;
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return null;
+  return VOICEMAIL_RECORDING_HOSTS.has(url.hostname.toLowerCase()) ? url.toString() : null;
+}
+function looksLikeRecording(bytes, format) {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 4) return false;
+  if (format === 'wav') return bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+  // An ID3 tag or an MPEG audio frame sync.
+  return (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33)
+    || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0);
+}
+async function downloadVoicemailRecording(url, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return { reason: 'budget_exhausted' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), remaining);
+  try {
+    const resp = await fetch(url, { method: 'GET', redirect: 'error', signal: controller.signal });
+    if (!resp.ok) {
+      await resp.body?.cancel?.().catch(() => {});
+      return { reason: 'download_rejected' };
+    }
+    const declared = Number(resp.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > VOICEMAIL_MAX_BYTES) {
+      await resp.body?.cancel?.().catch(() => {});
+      return { reason: 'download_too_large' };
+    }
+    const reader = resp.body?.getReader?.();
+    if (!reader) return { reason: 'download_failed' };
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > VOICEMAIL_MAX_BYTES) {
+        await reader.cancel().catch(() => {});
+        return { reason: 'download_too_large' };
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return { bytes };
+  } catch (error) {
+    return { reason: error?.name === 'AbortError' ? 'budget_exhausted' : 'download_failed' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function storeVoicemailRecording(base44, source, deadline) {
+  const url = voicemailDownloadUrl(source.url);
+  if (!url) return { reason: 'host_refused' };
+  const download = await downloadVoicemailRecording(url, deadline);
+  if (!download.bytes) return { reason: download.reason };
+  if (!looksLikeRecording(download.bytes, source.format)) return { reason: 'not_audio' };
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return { reason: 'budget_exhausted' };
+  let timer;
+  let upload;
+  try {
+    const uploading = Promise.resolve(base44.asServiceRole.integrations.Core.UploadPrivateFile({
+      file: new File([download.bytes], `voicemail.${source.format}`, { type: source.type }),
+    }));
+    uploading.catch(() => {}); // an abandoned upload must not surface later as an unhandled rejection
+    upload = await Promise.race([
+      uploading,
+      new Promise((resolve) => { timer = setTimeout(() => resolve(VOICEMAIL_BUDGET_SPENT), remaining); }),
+    ]);
+  } catch {
+    return { reason: 'upload_failed' };
+  } finally {
+    clearTimeout(timer);
+  }
+  if (upload === VOICEMAIL_BUDGET_SPENT) return { reason: 'budget_exhausted' };
+  const fileUri = typeof upload?.file_uri === 'string' ? upload.file_uri : '';
+  return isPrivateFileUri(fileUri) ? { fileUri } : { reason: 'upload_invalid_reference' };
+}
+
+async function saveVoicemail(base44, payload, state = null, deadline = Date.now() + VOICEMAIL_COPY_BUDGET_MS) {
+  const callControlId = payload?.call_control_id || (state?.t === 'voicemail' ? state.a_leg : null);
+  // call.recording.saved carries no duration field; derive it from the
+  // recording's own start/end timestamps (the legacy name is kept as a fallback).
+  const durationSecs = recordingDurationSecs(payload);
   if (!callControlId) return;
   const rows = await base44.asServiceRole.entities.CallLog.filter({ provider_call_id: callControlId }, '-created_date', 1).catch(() => []);
   if (!rows.length) return;
   const row = rows[0];
+  const source = voicemailRecordingSource(payload);
+  let voicemailUrl = row.voicemail_url || null;
+  if (source) {
+    const stored = await storeVoicemailRecording(base44, source, deadline);
+    if (stored.fileUri) {
+      voicemailUrl = stored.fileUri;
+    } else {
+      voicemailUrl = source.url;
+      console.error(`Voicemail recording kept at the provider link: ${stored.reason}`);
+    }
+  }
   await base44.asServiceRole.entities.CallLog.update(row.id, {
-    voicemail_url: recordingUrl || row.voicemail_url || null,
+    voicemail_url: voicemailUrl,
     voicemail_duration_seconds: durationSecs ?? row.voicemail_duration_seconds ?? null,
     has_voicemail: true,
     status: 'completed',
@@ -3101,7 +4059,14 @@ Deno.serve(async (req) => {
     // Every other inbound text is then routed by its exact binding alone.
     if (eventType === 'message.received') {
       const keywordResponse = await handleInboundConsentKeyword(base44, telnyxCreds, event, payload);
-      if (keywordResponse) return keywordResponse;
+      if (keywordResponse) {
+        // A STOP/START is also a text the patient sent. Once the ledger holds it
+        // (or the consent path failed closed, which returns as it always did),
+        // file it in the nurse's thread like any inbound text — deduped by
+        // provider id, never answered.
+        if (!keywordResponse.ok || INBOUND_PATIENT_SMS_ROUTING_PAUSED) return keywordResponse;
+        return await fileConsentKeywordText(base44, telnyxCreds, event, payload, keywordResponse);
+      }
       if (INBOUND_PATIENT_SMS_ROUTING_PAUSED) return inboundRoutingPausedResponse('SMS');
     }
     if (INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent(eventType, payload)) {
@@ -3109,10 +4074,10 @@ Deno.serve(async (req) => {
     }
 
     if (eventType === 'message.received') return await handleInboundMessage(base44, telnyxCreds, event, payload);
-    if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, payload);
+    if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, telnyxCreds, event, payload);
     if (eventType === 'fax.received') return await handleInboundFax(base44, telnyxCreds, payload);
     if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, telnyxCreds, payload);
-    if (eventType.startsWith('call.')) return await handleCallEvent(base44, apiKey, eventType, payload);
+    if (eventType.startsWith('call.')) return await handleCallEvent(base44, apiKey, eventType, payload, event);
 
     return Response.json({ success: true, skipped: 'unhandled event', event: eventType });
   } catch {

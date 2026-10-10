@@ -7,7 +7,7 @@
  *
  * Nothing here touches the network or any framework — it can be exercised in
  * isolation with `node --test`. Drift between this file and the inlined copies in
- * the Telnyx backend functions is guarded by base44/functions/telnyxInlineParity.test.js.
+ * the Telnyx backend functions is guarded by base44/functionTests/telnyxInlineParity.test.js.
  */
 
 /**
@@ -46,7 +46,16 @@ export function getThreadId(a, b) {
  * per-recipient status inside `data.payload.to[].status` on `message.*` webhooks.
  * Unknown statuses return null so callers can ack-without-write (never regress a
  * terminal row to a non-terminal state). handleTelnyxStatusWebhook inlines an
- * identical copy, drift-guarded by base44/functions/telnyxInlineParity.test.js.
+ * identical copy, drift-guarded by base44/functionTests/telnyxInlineParity.test.js.
+ *
+ * The vocabulary is Telnyx's `to[].status` enum from its OpenAPI spec (checked
+ * 2026-10-09): queued, sending, sent, expired, sending_failed,
+ * delivery_unconfirmed, delivered, delivery_failed, read.
+ * - `delivery_unconfirmed` is a TERMINAL state on `message.finalized`: the
+ *   carrier accepted the message and never returned a receipt. It is neither a
+ *   delivery nor a failure, so it maps to `sent` — the honest last-known state —
+ *   rather than to null, which would report a documented status as unknown.
+ * - `read` (RCS/WhatsApp read receipts) implies delivery.
  */
 export function mapMessageStatus(status) {
   switch (String(status || "").toLowerCase()) {
@@ -54,9 +63,11 @@ export function mapMessageStatus(status) {
     case "sending":
       return "queued";
     case "sent":
+    case "delivery_unconfirmed":
       return "sent";
     case "delivered":
     case "webhook_delivered":
+    case "read":
       return "delivered";
     case "sending_failed":
     case "delivery_failed":
@@ -73,13 +84,23 @@ export function mapMessageStatus(status) {
  * ('queued' | 'sending' | 'sent' | 'delivered' | 'failed'). Telnyx fax webhooks
  * carry `data.payload.status` plus an event type like `fax.delivered`. Unknown
  * statuses return null (ack without write) — the same ack-without-write contract
- * mapMessageStatus uses for SMS. handleTelnyxStatusWebhook inlines an identical
- * copy of this function (single-file Deno deploy); the two are drift-guarded by
- * base44/functions/telnyxInlineParity.test.js.
+ * mapMessageStatus uses for SMS. handleTelnyxStatusWebhook and pollFaxStatuses
+ * inline identical copies of this function (single-file Deno deploy), drift-
+ * guarded by base44/functionTests/faxStatusInlineParity.test.js.
+ *
+ * Telnyx's Fax `status` enum (OpenAPI spec, checked 2026-10-09) is queued,
+ * media.processing, media.processed, originated, sending, delivered, failed,
+ * initiated, receiving, received. `media.processing` is an outbound fax still
+ * being prepared, so it is pre-transmission 'queued' (a poller that read it as
+ * unknown reported a degraded run for a healthy fax). initiated / receiving /
+ * received describe INBOUND faxes and stay null for these outbound readers.
+ * `sent`, `cancelled` and `canceled` are not in Telnyx's fax enum; they remain
+ * as harmless aliases (legacy rows and the earlier provider used them).
  */
 export function mapFaxStatus(status) {
   switch (String(status || "").toLowerCase()) {
     case "queued":
+    case "media.processing":
       return "queued";
     case "media.processed":
     case "originated":

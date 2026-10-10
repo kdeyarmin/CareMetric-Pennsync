@@ -32,6 +32,14 @@ test("GSM-7 extension characters cost two units", () => {
   assert.equal(r.chars, 2);
 });
 
+test("a form feed is a GSM-7 extension character, not a reason for UCS-2", () => {
+  // 3GPP TS 23.038's extension table maps 0x1B 0x0A to form feed (page break).
+  const r = smsSegments("Page one\fPage two");
+  assert.equal(r.encoding, "GSM-7");
+  assert.equal(r.chars, 18); // 16 basic + the 2-unit escape pair
+  assert.equal(r.perSegment, 160);
+});
+
 test("a single emoji forces UCS-2 at 70 per segment", () => {
   const r = smsSegments("Hi 😀");
   assert.equal(r.encoding, "UCS-2");

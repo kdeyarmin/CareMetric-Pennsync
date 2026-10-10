@@ -357,6 +357,12 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reason: "D223's own reading at the head it was written on, which this port's `files` 12 → 11 "
       + 'turns into history without touching what D223 measured',
   },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=8 external_secret=2 none=82',
+    reason: 'the re-reads on `6995e5a7` and `c7d6940`, dated in their own words, which the eight '
+      + 'Base44-builder ports dispositioned on 2026-10-09 turned into history',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {
@@ -892,6 +898,20 @@ test('what blocks a port is read from the module, not from a status note', () =>
   assert.equal(classifyPortBlocker("base44.asServiceRole.entities.Visit.list()"), 'records_schema');
   // Dynamic access reads rows exactly as the dotted form does.
   assert.equal(classifyPortBlocker("await base44.entities[name].filter({})"), 'records_schema');
+  // A service-role Core call reads no row. Counting it held four entity-free
+  // SmartNote capabilities in `records_schema` (2026-10-09). Any other service-role
+  // handle still counts, because it can reach entities through a name the regex
+  // never sees.
+  assert.equal(classifyPortBlocker("await base44.asServiceRole.integrations.Core.InvokeLLM({})"),
+    'core_integration');
+  assert.equal(classifyPortBlocker("base44.asServiceRole.integrations.Core.InvokeLLM({ file_urls: [u] })"),
+    'files');
+  assert.equal(classifyPortBlocker("const { entities } = base44.asServiceRole;\nentities.Patient.get(id)"),
+    'records_schema');
+  assert.equal(classifyPortBlocker("const sr = base44.asServiceRole;\nsr.integrations.Core.InvokeLLM({})"),
+    'records_schema');
+  assert.equal(classifyPortBlocker("base44.asServiceRole.integrations.Core.InvokeLLM({});\n"
+    + "base44.asServiceRole.entities.Visit.list()"), 'records_schema');
   // A Core integration is NOT a record blocker. This asserted 'records_schema'
   // until the functions were read: all twelve of them touch no entity at all,
   // so the queue was holding them behind a store they never use. Their blocker
@@ -1224,9 +1244,15 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // reader counting four departures from `files` into `none` would write down.
   // The arithmetic only closes once the paused one is read as leaving the
   // population instead of crossing it.
+  //
+  // Then `files` 8 → 12 and `core_integration` 0 → 4 with `none` unmoved
+  // (2026-10-09): eight capabilities the Base44 builder added were dispositioned
+  // `port`, and nothing was written. They first read as `records_schema`,
+  // because any `asServiceRole` counted as a record reach. Their only service-role
+  // use is `asServiceRole.integrations.Core.InvokeLLM`, which reads no row.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 0, files: 8, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    records_schema: 0, files: 12, ported_function: 0, core_integration: 4, pdf_rendering: 0,
     external_secret: 2, none: 82 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -1402,7 +1428,12 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // `BROKERED_OPERATIONS` does not carry the operation. An empty bucket here
   // does NOT mean D56 was decided; it means nothing is waiting on that
   // decision to be written.
-  assert.deepEqual(report.port_blockers.core_integration, []);
+  //
+  // Four arrived on 2026-10-09: SmartNote capabilities the Base44 builder added,
+  // whose whole reach is `Core.InvokeLLM`. That operation IS brokered, so they
+  // wait on being written, not on an owner decision about delivery.
+  assert.deepEqual(report.port_blockers.core_integration, ['checkSmartNoteCoverage',
+    'checkSmartNoteGrounding', 'draftSmartNote', 'structureDictatedVisit']);
   for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is written`);
   }
@@ -1437,10 +1468,13 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // That is the shape D153 and D83 record from the other bucket: a blocked port
   // and a capability that is not being carried are not the same thing, however
   // alike they look in a count.
-  assert.deepEqual(report.port_blockers.files, ['createAuthorizedDocument',
-    'generateAdrPacket',
+  //
+  // Four more arrived on 2026-10-09 with the Base44 builder's ADR, fax and
+  // referral-scan capabilities: each hands a stored file to `InvokeLLM`.
+  assert.deepEqual(report.port_blockers.files, ['analyzeAdrLetter', 'createAuthorizedDocument',
+    'extractFaxContact', 'extractReferralResponseScan', 'generateAdrPacket',
     'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
-    'preparePDFWithPatientInfo', 'reorderDeletePDFPages']);
+    'preparePDFWithPatientInfo', 'reorderDeletePDFPages', 'verifyAdrResponsePacket']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
       'analyzeClinicalEvents', 'analyzeClinicalTrends',
@@ -1915,8 +1949,8 @@ test('a function set nothing can enumerate claims nothing', () => {
 });
 
 test('the callee is read from the call, never from the module that holds it', () => {
-  // `asServiceRole` never reaches this bucket — `classifyPortBlocker` answers
-  // `records_schema` for it first — and the same regex is what counts reaches
+  // `asServiceRole.functions` never reaches this bucket — `classifyPortBlocker`
+  // answers `records_schema` for it first — and the same regex is what counts reaches
   // here, so the two agree about what a reach is.
   assert.equal(classifyPortBlocker("await base44.functions.invoke('x', {});"), 'ported_function');
   assert.equal(classifyPortBlocker("await base44.asServiceRole.functions.invoke('x', {});"),

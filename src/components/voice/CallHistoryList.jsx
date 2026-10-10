@@ -16,10 +16,9 @@ import { formatPhoneDisplay, last10 } from "@/components/voice/phoneUtils";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
-import { isSafeExternalUrl } from "@/components/utils/security";
-import AuthorityBoundAudio from '@/components/ui/AuthorityBoundAudio';
+import VoicemailPlayer from "@/components/voice/VoicemailPlayer";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useNurseCallLogs, nurseCallLogsQueryKey } from "@/components/voice/useNurseCallLogs";
+import { useNurseCallLogs, nurseCallLogsQueryKey, startMaskedCallback } from "@/components/voice/useNurseCallLogs";
 
 const MODE_LABEL = {
   masked_bridge: "Incoming",
@@ -87,8 +86,7 @@ export default function CallHistoryList() {
   const [disposition, setDisposition] = useState("");
 
   const callBack = useMutation({
-    mutationFn: ({ patient_id, to_number }) =>
-      base44.functions.invoke("startMaskedCall", { patient_id: patient_id || undefined, to_number: to_number || undefined }),
+    mutationFn: startMaskedCallback,
     onSuccess: () => toast.success("Connecting… your phone will ring shortly, then we'll dial the patient."),
     onError: (err) => toast.error(err?.message || "Failed to start call"),
   });
@@ -181,9 +179,7 @@ export default function CallHistoryList() {
                       </Button>
                     </div>
                   </div>
-                  {call.has_voicemail && call.voicemail_url && isSafeExternalUrl(call.voicemail_url) && (
-                    <AuthorityBoundAudio controls preload="none" src={call.voicemail_url} className="mb-2 h-8 w-[calc(100%-1.5rem)] px-3" />
-                  )}
+                  <VoicemailPlayer call={call} className="mb-2 h-8 w-[calc(100%-1.5rem)] px-3" />
                   {call.voicemail_transcription && (
                     <p className="mb-2 px-3 pl-[4.25rem] text-[13px] italic text-slate-600">
                       “{call.voicemail_transcription}”

@@ -41,9 +41,9 @@ connection id. The office fax number and main office number live on
 `AgencySettings` (Admin → Super Admin). Outbound sends/calls derive the status
 webhook URL from their own request URL — no `FUNCTIONS_BASE_URL` needed.
 
-**Verify (read-only, no traffic):** run `testTelnyxConnection` (live `/v2/whoami`
+**Verify (read-only, no traffic):** run `testTelnyxConnection` (live `/v2/balance`
 probe + readiness report) and/or `getTelnyxSecretStatus`. Both should report the keys
-present and the whoami probe OK.
+present and the balance probe OK.
 
 ### Step 2b — point the webhooks
 There is **one** inbound webhook for the entire integration:
