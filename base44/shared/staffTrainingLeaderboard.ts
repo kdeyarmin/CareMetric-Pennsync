@@ -1,7 +1,16 @@
 import { staffTrainingCertificates } from './staffTrainingCertificates.ts';
 
-export async function staffTrainingLeaderboard(entities, emails, offset = 0, staff = []) {
+export async function staffTrainingLeaderboard(entities, emails, offset = 0, staff = [], input = {}) {
   if (!emails.length) return { items: [], next_offset: null };
+  if (input.trainingStatus === 'overdue') {
+    const overdue = await entities.PlanEnrollment.aggregate({
+      query: { user_id: { $in: emails }, status: 'overdue' }, groupBy: 'user_id', limit: 1000,
+    });
+    if (overdue.truncated) throw new Error('Overdue staff summary exceeds the reporting limit.');
+    const overdueEmails = new Set(overdue.rows.map(row => String(row.user_id || '').trim().toLowerCase()));
+    emails = emails.filter(email => overdueEmails.has(String(email).trim().toLowerCase()));
+    if (!emails.length) return { items: [], next_offset: null };
+  }
   const summary = await entities.PlanEnrollment.aggregate({
     query: { user_id: { $in: emails }, status: { $ne: 'cancelled' } },
     groupBy: ['user_id', 'status'], sum: ['progress_percentage', 'courses_completed'], limit: 1000,

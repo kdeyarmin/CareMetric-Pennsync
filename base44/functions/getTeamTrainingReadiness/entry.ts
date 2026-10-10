@@ -247,6 +247,9 @@ Deno.serve(async (req) => {
     const planProgressOnly = input?.planProgressOnly === true;
     const departmentProgressOnly = input?.departmentProgressOnly === true;
     const leaderboardOnly = input?.leaderboardOnly === true;
+    if (leaderboardOnly && input.trainingStatus != null && !['all', 'overdue'].includes(input.trainingStatus)) {
+      return Response.json({ error: 'Invalid staff training filter.' }, { status: 400 });
+    }
     const heatmapOnly = input?.departmentHeatmapOnly === true;
     const summaryOnly = planProgressOnly || departmentProgressOnly || leaderboardOnly || assignmentsOnly || heatmapOnly;
     const loadSummary = heatmapOnly ? departmentTrainingHeatmap : assignmentsOnly ? filteredTrainingAssignments : leaderboardOnly ? staffTrainingLeaderboard : departmentProgressOnly ? departmentTrainingProgress : staffPlanProgress;
