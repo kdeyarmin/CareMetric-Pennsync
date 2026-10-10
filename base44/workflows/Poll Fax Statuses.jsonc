@@ -1,6 +1,6 @@
 {
   "name": "Poll Fax Statuses",
-  "description": "Polls Telnyx for status updates on pending faxes every 5 minutes to catch missed webhook updates",
+  "description": "Polls Telnyx for status updates on pending faxes every 15 minutes to catch missed webhook updates",
   "trigger": {
     "condition": null,
     "config": {
@@ -10,7 +10,7 @@
       "cron_expression": null,
       "one_time_date": null,
       "timezone": "UTC",
-      "interval_value": 5,
+      "interval_value": 15,
       "interval_unit": "minutes",
       "interval_anchor": "2026-07-28T18:28:02.206000",
       "ends_type": "never",

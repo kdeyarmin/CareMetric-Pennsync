@@ -718,7 +718,12 @@ async function conditionalFaxUpdate(
   return successfulSingleUpdate(result);
 }
 
-async function releaseFailedOcr(entities: Record<string, any>, fax: Record<string, any>) {
+async function releaseCountedOcrAttempt(
+  entities: Record<string, any>,
+  fax: Record<string, any>,
+  deferredCode: string,
+  exhaustedCode: string,
+) {
   const attempts = (Number.isSafeInteger(fax.ocr_attempts) ? fax.ocr_attempts : 0) + 1;
   return conditionalFaxUpdate(entities, fax, {
     processing_status: attempts >= MAX_OCR_ATTEMPTS ? 'failed' : 'pending',
@@ -728,10 +733,25 @@ async function releaseFailedOcr(entities: Record<string, any>, fax: Record<strin
     processing_next_attempt_at: attempts >= MAX_OCR_ATTEMPTS
       ? null
       : new Date(Date.now() + ROW_RETRY_LEASE_MS).toISOString(),
-    processing_last_error_code: attempts >= MAX_OCR_ATTEMPTS
-      ? 'ocr_retry_exhausted'
-      : 'ocr_retry_deferred',
+    processing_last_error_code: attempts >= MAX_OCR_ATTEMPTS ? exhaustedCode : deferredCode,
   });
+}
+
+async function releaseFailedOcr(entities: Record<string, any>, fax: Record<string, any>) {
+  return releaseCountedOcrAttempt(entities, fax, 'ocr_retry_deferred', 'ocr_retry_exhausted');
+}
+
+// A failure after a successful read keeps nothing of that read, so the retry
+// pays for OCR again. Counting it under the same cap as a failed read stops a
+// failure that repeats every run (a legacy row that always needs
+// reconciliation, say) from re-reading the fax every ten minutes forever.
+async function releaseAfterBilledOcr(entities: Record<string, any>, fax: Record<string, any>) {
+  return releaseCountedOcrAttempt(
+    entities,
+    fax,
+    'transient_processing_error',
+    'processing_retry_exhausted',
+  );
 }
 
 async function releaseClaimForRetry(entities: Record<string, any>, fax: Record<string, any>) {
@@ -1181,6 +1201,7 @@ async function processClaimedFax(
   faxSnapshot: Record<string, any>,
   referrals: Array<Record<string, any>>,
   candidates: Array<Record<string, any>>,
+  progress: { ocrCompleted: boolean } = { ocrCompleted: false },
 ) {
   const entities = base44.asServiceRole.entities;
   if (faxSnapshot.processing_notification_state === 'started') {
@@ -1208,6 +1229,7 @@ async function processClaimedFax(
     await releaseFailedOcr(base44.asServiceRole.entities, faxSnapshot);
     return { processed: 0, matched: 0, suggested: 0, failed: 1 };
   }
+  progress.ocrCompleted = true;
   const ocrText = typeof ocr?.full_text === 'string' ? ocr.full_text : '';
   const fax = await loadExactIncomingFax(entities, faxSnapshot.agency_id, faxSnapshot.id);
   if (
@@ -1357,8 +1379,9 @@ async function processAgency(
       continue;
     }
     if (!claimed) continue;
+    const progress = { ocrCompleted: false };
     try {
-      const outcome = await processClaimedFax(base44, claimed, referrals, candidates);
+      const outcome = await processClaimedFax(base44, claimed, referrals, candidates, progress);
       totals.processed += outcome.processed;
       totals.matched += outcome.matched;
       totals.suggested += outcome.suggested;
@@ -1370,6 +1393,8 @@ async function processAgency(
           claimed,
           'inbound_fax_authority_changed',
         ).catch(() => false);
+      } else if (progress.ocrCompleted) {
+        await releaseAfterBilledOcr(entities, claimed).catch(() => false);
       } else {
         await releaseClaimForRetry(entities, claimed).catch(() => false);
       }

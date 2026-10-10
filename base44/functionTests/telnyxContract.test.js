@@ -1963,7 +1963,7 @@ test("pollFaxStatuses is default-false before Base44 SDK construction", async ()
   assert.equal(workflow.definition?.do?.[0]?.run_function?.with?.function_name, "pollFaxStatuses");
   assert.deepEqual(workflow.definition?.do?.[0]?.run_function?.with?.args, {});
   assert.equal(workflow.trigger?.config?.schedule_mode, "interval");
-  assert.equal(workflow.trigger?.config?.interval_value, 5);
+  assert.equal(workflow.trigger?.config?.interval_value, 15);
   assert.equal(workflow.trigger?.config?.interval_unit, "minutes");
   await assert.rejects(
     readFile(new URL("../functions/pollFaxStatuses/function.jsonc", import.meta.url), "utf8"),
