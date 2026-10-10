@@ -12,6 +12,7 @@ const audioMocks = vi.hoisted(() => ({
   persist: vi.fn(),
   leaseCurrent: true,
   patientAllowed: true,
+  patientDenied: false,
 }));
 
 const scope = {
@@ -66,9 +67,9 @@ vi.mock('@/hooks/useScopedPatients', () => ({
 
 vi.mock('@/hooks/useAuthorizedPatient', () => ({
   useAuthorizedPatient: ({ patientId, enabled }) => (
-    enabled && audioMocks.patientAllowed && patients[patientId]
+    enabled && audioMocks.patientAllowed && !audioMocks.patientDenied && patients[patientId]
       ? { data: patients[patientId], isSuccess: true, isError: false, tenantScope: scope }
-      : { data: undefined, isSuccess: false, isError: false, tenantScope: null }
+      : { data: undefined, isSuccess: false, isError: enabled && audioMocks.patientDenied, tenantScope: null }
   ),
 }));
 
@@ -118,12 +119,22 @@ vi.mock('@/components/ui/SearchablePatientSelect', () => ({
   ),
 }));
 
-vi.mock('../smartNote/ConstrainedNoteReviewer', () => ({
-  default: ({ roughNote, renderFinalNote }) => <>
-    <div data-testid="reviewer-note">{roughNote}</div>
-    {renderFinalNote({ finalNote: roughNote, coverage: 88, result: { finalNote: roughNote } })}
-  </>,
-}));
+// Holds a typed answer in its own state, as the real reviewer does, and renders
+// nothing while withheld, so a remount (which loses the answer) is observable.
+vi.mock('../smartNote/ConstrainedNoteReviewer', async () => {
+  const { useState: useReviewerState } = await vi.importActual('react');
+  return {
+    default: function ReviewerStub({ roughNote, renderFinalNote, withheld }) {
+      const [answer, setAnswer] = useReviewerState('');
+      if (withheld) return null;
+      return <>
+        <div data-testid="reviewer-note">{roughNote}</div>
+        <input aria-label="Test reviewer answer" value={answer} onChange={(event) => setAnswer(event.target.value)} />
+        {renderFinalNote({ finalNote: roughNote, coverage: 88, result: { finalNote: roughNote } })}
+      </>;
+    },
+  };
+});
 
 vi.mock('../smartNote/FinalNoteDisplay', () => ({
   default: ({ onSave, onReset, saveDisabled, saved }) => <>
@@ -187,6 +198,7 @@ describe('AudioVisitCapture authority binding', () => {
     audioMocks.visitId = null;
     audioMocks.leaseCurrent = true;
     audioMocks.patientAllowed = true;
+    audioMocks.patientDenied = false;
     audioMocks.persist.mockReset();
     audioMocks.forceRender = null;
     audioMocks.visitState = {
@@ -314,6 +326,29 @@ describe('AudioVisitCapture authority binding', () => {
     expect(screen.getByTestId('reviewer-note')).toHaveTextContent('Authorized transcription.');
     fireEvent.click(saveButton);
     expect(audioMocks.persist).not.toHaveBeenCalled();
+  });
+
+  it('keeps the review through a same-authority chart recheck and drops it after a denial', async () => {
+    renderWithProviders(<AudioHarness />);
+    fireEvent.change(screen.getByLabelText('Patient'), { target: { value: 'patient-a' } });
+    await screen.findByLabelText('BP Systolic');
+    fireEvent.click(screen.getByRole('button', { name: 'Record test audio' }));
+    fireEvent.change(await screen.findByLabelText('Test reviewer answer'), { target: { value: 'Walker, one assist.' } });
+
+    audioMocks.patientAllowed = false;
+    await refreshAudio();
+    expect(screen.getByText(/Verifying patient chart access/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Test reviewer answer')).not.toBeInTheDocument();
+    audioMocks.patientAllowed = true;
+    await refreshAudio();
+    expect(await screen.findByLabelText('Test reviewer answer')).toHaveValue('Walker, one assist.');
+
+    audioMocks.patientDenied = true;
+    await refreshAudio();
+    expect(await screen.findByText(/Patient chart access could not be verified/i)).toBeInTheDocument();
+    audioMocks.patientDenied = false;
+    await refreshAudio();
+    expect(await screen.findByLabelText('Test reviewer answer')).toHaveValue('');
   });
 
   it('clears Patient A output on a real switch to Patient B', async () => {

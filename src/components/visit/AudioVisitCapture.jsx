@@ -479,15 +479,71 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     </Card>
   );
 
+  // Same rule as SmartNoteAssistant: the reviewer holds the nurse's answers
+  // and the generated note, and every window focus re-verifies chart access, so
+  // it stays mounted and withheld through a pending recheck instead of being
+  // unmounted by the render gates below. A denial unmounts it, and a different
+  // note, visit type, person, tenant membership, patient or visit changes its
+  // key. All three returns render it as the last child of the same root.
+  const reviewerDenied = visitAuthorizationFailed || patientAuthorizationFailed || noteHistoryQuery.isError
+    || !isAuthorityDraftLeaseCurrent(authorityLease);
+  const reviewerKey = JSON.stringify([noteSeq, visitType, currentUser?.id ?? null, tenantContext?.user_id ?? null,
+    tenantContext?.agency_id ?? null, tenantContext?.membership_id ?? null,
+    tenantContext?.membership_version ?? null, tenantContext?.tenant_role ?? null, visitId, patientId || null]);
+  const reviewerWithheld = visitAuthorizationWithheld || (!!patientId && !patientChartReady);
+  const reviewer = hasRoughNote && !reviewerDenied ? (
+    <ConstrainedNoteReviewer
+      key={reviewerKey}
+      withheld={reviewerWithheld}
+      roughNote={roughNote}
+      serviceLine={serviceLine}
+      visitType={visitType}
+      priorNote={getPriorNote(chartPatient)}
+      patient={chartPatient}
+      currentUser={currentUser}
+      renderFinalNote={(api) => (
+        <FinalNoteDisplay
+          finalNote={api.finalNote}
+          setFinalNote={api.setFinalNote}
+          onCopy={async () => {
+            try {
+              await navigator.clipboard.writeText(api.finalNote);
+              setCopied(true); setTimeout(() => setCopied(false), 2500);
+            } catch {
+              setCopied(false);
+              toast.error("Couldn't copy to the clipboard. Select the note text and copy manually.");
+            }
+          }}
+          copied={copied}
+          patient={chartPatient}
+          visitType={visitType}
+          analysisScore={api.coverage}
+          analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: [] }}
+          currentUser={currentUser}
+          signatureImage={signatureImage}
+          onReset={resetCapture}
+          originalNote={roughNote}
+          onSave={() => handleSave(api)}
+          saving={saving}
+          saved={saved && !api.dirty}
+          saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical}
+        />
+      )}
+    />
+  ) : null;
+
   if (visitAuthorizationWithheld) {
     return (
-      <Alert className="bg-white border-slate-200" role="status">
-        <AlertDescription className="text-slate-700">
-          {visitAuthorizationFailed
-            ? "Visit access could not be verified. Reopen this visit after your access is restored."
-            : "Verifying visit access…"}
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <Alert className="bg-white border-slate-200" role="status">
+          <AlertDescription className="text-slate-700">
+            {visitAuthorizationFailed
+              ? "Visit access could not be verified. Reopen this visit after your access is restored."
+              : "Verifying visit access…"}
+          </AlertDescription>
+        </Alert>
+        {reviewer}
+      </div>
     );
   }
 
@@ -502,6 +558,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
               : "Verifying patient chart access…"}
           </AlertDescription>
         </Alert>
+        {reviewer}
       </div>
     );
   }
@@ -609,45 +666,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
           <AlertDescription>{saveError}</AlertDescription>
         </Alert>
       )}
-      {hasRoughNote && (
-        <ConstrainedNoteReviewer
-          key={`${visitType}|${noteSeq}`}
-          roughNote={roughNote}
-          serviceLine={serviceLine}
-          visitType={visitType}
-          priorNote={getPriorNote(chartPatient)}
-          patient={chartPatient}
-          currentUser={currentUser}
-          renderFinalNote={(api) => (
-            <FinalNoteDisplay
-              finalNote={api.finalNote}
-              setFinalNote={api.setFinalNote}
-              onCopy={async () => {
-                try {
-                  await navigator.clipboard.writeText(api.finalNote);
-                  setCopied(true); setTimeout(() => setCopied(false), 2500);
-                } catch {
-                  setCopied(false);
-                  toast.error("Couldn't copy to the clipboard. Select the note text and copy manually.");
-                }
-              }}
-              copied={copied}
-              patient={chartPatient}
-              visitType={visitType}
-              analysisScore={api.coverage}
-              analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: [] }}
-              currentUser={currentUser}
-              signatureImage={signatureImage}
-              onReset={resetCapture}
-              originalNote={roughNote}
-              onSave={() => handleSave(api)}
-              saving={saving}
-              saved={saved && !api.dirty}
-              saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical}
-            />
-          )}
-        />
-      )}
+      {reviewer}
     </div>
   );
 }

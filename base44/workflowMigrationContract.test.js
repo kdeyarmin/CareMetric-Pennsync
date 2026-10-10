@@ -68,9 +68,12 @@ const EXPECTED = {
     // is the operator's kill switch.
     releaseState: 'live_outcome_dispatch',
   },
+  // 15 minutes since 2026-10-10 (was 5): every run bills Base44 credits even
+  // when idle, and this is only the safety net behind the Telnyx webhook (missed
+  // updates, stale retry claims, unpublished terminal notifications).
   'Poll Fax Statuses.jsonc': {
     target: 'pollFaxStatuses',
-    schedule: { mode: 'interval', value: 5, unit: 'minutes' },
+    schedule: { mode: 'interval', value: 15, unit: 'minutes' },
     releaseState: 'paused_workflow',
     releaseEnv: 'WORKFLOW_RELEASE_POLL_FAX_STATUSES',
     releaseConst: 'FAX_POLL_RELEASE_ENV',

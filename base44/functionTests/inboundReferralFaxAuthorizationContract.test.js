@@ -543,9 +543,11 @@ test('uncertain notification creates reconcile once without repeating OCR or pub
   assert.equal((await handler(request())).status, 500);
   assert.equal(runtime.data.IncomingFax[0].processing_notification_state, 'started');
   assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
+  assert.equal(runtime.data.IncomingFax[0].ocr_attempts, 1, 'the failed run had already paid for its read');
   runtime.data.IncomingFax[0].processing_next_attempt_at = null;
   assert.equal((await handler(request())).status, 500);
   assert.equal(runtime.getLlmCalls(), 1);
+  assert.equal(runtime.data.IncomingFax[0].ocr_attempts, 1, 'a reconciliation that reads nothing spends no attempt');
   assert.equal(runtime.calls.filter((call) => call.entity === 'Notification' && call.operation === 'create').length, 1);
   runtime.data.Notification.push(pending);
   runtime.data.IncomingFax[0].processing_next_attempt_at = null;
@@ -562,6 +564,35 @@ test('legacy absence cannot authorize another notification create', async () => 
   assert.equal((await handler(request())).status, 500);
   assert.equal(runtime.data.Notification.length, 0);
   assert.notEqual(runtime.data.IncomingFax[0].processing_status, 'completed');
+});
+
+test('a failure that repeats after OCR stops re-reading the fax at the OCR attempt cap', async () => {
+  // The legacy row above fails after every successful read. Each read is a
+  // billed InvokeLLM call whose result is not kept, so an uncounted retry
+  // re-reads the same fax on every scheduled run with no end.
+  const runtime = makeRuntime();
+  delete runtime.data.IncomingFax[0].processing_notification_state;
+  runtime.hooks.ocr = async () => ({
+    full_text: 'Home Health Referral Additional Information Request Jane Patient DOB 01/05/1950 signed encounter note attached',
+    patient_name: 'Jane Patient',
+    patient_dob: '1950-01-05',
+    provider_name: 'Example Medical Group',
+    summary: 'Completed provider response',
+  });
+  const handler = await loadHandler(() => runtime.client);
+  for (let run = 1; run <= 7; run += 1) {
+    runtime.data.IncomingFax[0].processing_next_attempt_at = null;
+    const expected = run <= 5 ? 500 : 200;
+    assert.equal((await handler(request())).status, expected, `run ${run}`);
+    assert.equal(runtime.getLlmCalls(), Math.min(run, 5), `run ${run}`);
+  }
+  const fax = runtime.data.IncomingFax[0];
+  assert.equal(fax.processing_status, 'failed');
+  assert.equal(fax.ocr_attempts, 5);
+  assert.equal(fax.processing_last_error_code, 'processing_retry_exhausted');
+  assert.equal(fax.processing_next_attempt_at, null);
+  assert.equal(fax.claimed_by, null);
+  assert.equal(runtime.data.Notification.length, 0);
 });
 
 test('overlapping workers publish only once', async () => {

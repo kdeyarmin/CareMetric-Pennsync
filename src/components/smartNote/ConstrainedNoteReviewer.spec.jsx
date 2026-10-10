@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@/test/testUtils";
 
 // The reviewer's compliance modules import the Base44 client at load; stub it so
@@ -353,4 +354,98 @@ describe("ConstrainedNoteReviewer — what is left, and where the advisories wen
     expect(screen.getByText(/These documentation patterns drive most Medicare denials/i)).toBeInTheDocument();
   });
 
+});
+
+describe("ConstrainedNoteReviewer — withheld while the host re-verifies the chart", () => {
+  // The host changes props the way a real recheck does: the chart is withheld,
+  // so the patient is gone and the care type deciding serviceLine with it.
+  let setHostProps;
+  function Host(initial) {
+    const [props, setProps] = useState(initial);
+    setHostProps = setProps;
+    return <ConstrainedNoteReviewer {...props} />;
+  }
+  const change = (next) => act(async () => { setHostProps((props) => ({ ...props, ...next })); });
+
+  const MED_DRAFT = [
+    "Patient is homebound due to severe dyspnea and requires a walker with one-person assist.",
+    "Skilled wound care with a sterile dressing change to the sacral ulcer.",
+    "Took lisinopril and metoprolol this morning.",
+  ].join("\n");
+  const MED_NOTE = "Patient took lisinopril and metoprolol this morning.";
+  const chart = (allergies) => ({ id: "patient-a", allergies, primary_diagnosis: "I10" });
+  const chartAck = () => screen.getByRole("checkbox", { name: /reviewed this against the chart/i });
+
+  beforeEach(() => { setOnline(false); });
+  afterEach(() => { setOnline(true); vi.clearAllMocks(); });
+
+  it("shows nothing while withheld and keeps the answers it had, whatever the service line did meanwhile", async () => {
+    renderWithProviders(<Host roughNote={NEUTRAL_DRAFT} serviceLine="hospice" visitType="routine_visit" />);
+    const answer = "Homebound due to severe dyspnea; requires a walker and one-person assist to ambulate.";
+    fireEvent.change(answerTextareas()[0], { target: { value: answer } });
+
+    await change({ withheld: true, serviceLine: "home_health" });
+    expect(screen.queryByPlaceholderText(/type or dictate your answer/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /generate final note/i })).not.toBeInTheDocument();
+
+    await change({ withheld: false, serviceLine: "hospice" });
+    expect(answerTextareas()[0]).toHaveValue(answer);
+  });
+
+  it("keeps the generated note through a recheck instead of asking the model again", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    generateConstrainedNote.mockResolvedValueOnce({ note: MED_NOTE });
+    renderWithProviders(<Host roughNote={MED_DRAFT} serviceLine="home_health" visitType="routine_visit" patient={chart("Lisinopril")} />);
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+    expect(await screen.findByText(/final clinical note/i)).toBeInTheDocument();
+
+    await change({ withheld: true, patient: undefined });
+    expect(screen.queryByText(/final clinical note/i)).not.toBeInTheDocument();
+    await change({ withheld: false, patient: chart("Lisinopril") });
+    expect(screen.getByText(/final clinical note/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(new RegExp(MED_NOTE))).toBeInTheDocument();
+    expect(generateConstrainedNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a chart-conflict acknowledgement only while it covers the conflicts on screen", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    generateConstrainedNote.mockResolvedValueOnce({ note: MED_NOTE });
+    renderWithProviders(<Host roughNote={MED_DRAFT} serviceLine="home_health" visitType="routine_visit" patient={chart("Lisinopril")} />);
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+    await screen.findByText(/final clinical note/i);
+    fireEvent.click(chartAck());
+    expect(chartAck()).toBeChecked();
+
+    // Same chart after the recheck: still acknowledged.
+    await change({ withheld: true, patient: undefined });
+    await change({ withheld: false, patient: chart("Lisinopril") });
+    expect(chartAck()).toBeChecked();
+
+    // The chart came back with a second conflict the nurse never saw.
+    await change({ withheld: true, patient: undefined });
+    await change({ withheld: false, patient: chart("Lisinopril, metoprolol") });
+    expect(screen.getByText(/references Metoprolol/)).toBeInTheDocument();
+    expect(chartAck()).not.toBeChecked();
+  });
+
+  it("keeps a denial-risk acknowledgement only while the same findings block the note", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    // Conclusory homebound: one blocking finding (homebound narrative).
+    const CONCLUSORY = "Patient is homebound. Skilled wound care with a sterile dressing change to the sacral ulcer.";
+    generateConstrainedNote.mockResolvedValueOnce({ note: CONCLUSORY });
+    renderWithProviders(<Host roughNote={MED_DRAFT} serviceLine="home_health" visitType="routine_visit" />);
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+    const noteBox = await screen.findByDisplayValue(/Patient is homebound\. Skilled wound care/);
+    const denialAck = () => screen.getByRole("checkbox", { name: /reviewed these denial risks/i });
+    fireEvent.click(denialAck());
+    expect(denialAck()).toBeChecked();
+
+    // An edit that leaves the same finding blocking keeps it.
+    fireEvent.change(noteBox, { target: { value: `${noteBox.value} Tolerated the visit.` } });
+    expect(denialAck()).toBeChecked();
+
+    // Dropping the skilled-need sentence adds a second blocking finding.
+    fireEvent.change(noteBox, { target: { value: "Patient is homebound. Tolerated the visit." } });
+    expect(denialAck()).not.toBeChecked();
+  });
 });
