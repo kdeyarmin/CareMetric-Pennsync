@@ -131,6 +131,10 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Check a wave against the running deployment | `node tools-pennsync-release-ladder.mjs --wave patient-read --deployment https://<service-host>` |
 | Check a wave's integration runtime | `node tools-pennsync-release-ladder.mjs --wave integration --integration-deployment https://<runtime-host>` |
 
+## Scheduled jobs and integration credits
+
+Every Base44 workflow run bills about 0.2 integration credits even when idle, so the nine frequent jobs can be driven instead by `services/base44-scheduler`, a Railway Function that calls the same functions with `x-internal-secret`. Its README holds the switch-over and switch-back order. **Exactly one scheduler may drive those nine**: `dispatchScheduledSms` claims by write-then-read-back, so a Base44 workflow re-enabled beside an enabled Railway scheduler can text a patient twice. Which one is driving is a deployment fact, not a property of this tree: read the workflows' `status` through the Base44 API and the service's `SCHEDULER_ENABLED` rather than quoting a sentence here. A new Base44 secret reaches production only when the app is next published.
+
 ## Environment config
 
 `VITE_PENNSYNC_BACKEND` selects the backend. Omitted or `base44` keeps the production path; `independent-staging` requires the `VITE_PENNSYNC_STAGING_*` values documented in `.env.example` and `docs/INDEPENDENT_STAGING_APP.md`, and fails closed before a Base44 client can be constructed if any of them is missing or invalid.
