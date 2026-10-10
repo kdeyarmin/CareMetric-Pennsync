@@ -61,6 +61,15 @@ import { runDenialGuardrail, elementsJudgedByGuardrail } from "../compliance/den
  *                     save-ready `result` (or null if it fails). When provided,
  *                     the reviewer renders the fact-check banner but defers the
  *                     note display + actions (e.g. Save-to-chart, PDF) to the host.
+ *   withheld       — (optional) true while the host keeps this mounted but must
+ *                    not show it: the chart is being re-verified (every window
+ *                    focus does this) or another tool is open. It renders nothing
+ *                    and keeps the nurse's answers, acknowledgements and generated
+ *                    note in memory, and the scan keeps the inputs it had, so a
+ *                    chart field that is missing for the length of the recheck
+ *                    cannot reset it. The host unmounts it, or changes its key,
+ *                    when access is denied or the person, tenant, patient or
+ *                    visit changes, which is what drops that state.
  */
 // Stable default for an optional array prop. A literal `= []` default creates a
 // NEW array every render, which would invalidate the `analysis` useMemo (it lists
@@ -68,16 +77,29 @@ import { runDenialGuardrail, elementsJudgedByGuardrail } from "../compliance/den
 // setState → infinite render loop for any caller that doesn't pass the prop.
 const EMPTY_RULES = [];
 
-export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home_health", visitType = "routine_visit", vitals = null, priorNote = "", patient = null, currentUser, onFinalNote, onBack, renderFinalNote, onEscalate, complianceRules = EMPTY_RULES }) {
+export default function ConstrainedNoteReviewer({ roughNote: liveRoughNote, serviceLine: liveServiceLine = "home_health", visitType: liveVisitType = "routine_visit", vitals: liveVitals = null, priorNote = "", patient = null, currentUser, onFinalNote, onBack, renderFinalNote, onEscalate, complianceRules: liveComplianceRules = EMPTY_RULES, withheld = false }) {
+  // The scan's inputs, held at their last shown values while `withheld` (see
+  // the props above). Without this, a hospice patient's care type vanishing for
+  // the length of a recheck flips serviceLine, which changes the scan, and the
+  // reset effect below throws away everything the nurse has done here.
+  const scanInputsRef = useRef(null);
+  if (!withheld || !scanInputsRef.current) {
+    scanInputsRef.current = { roughNote: liveRoughNote, serviceLine: liveServiceLine, visitType: liveVisitType, vitals: liveVitals, complianceRules: liveComplianceRules };
+  }
+  const { roughNote, serviceLine, visitType, vitals, complianceRules } = scanInputsRef.current;
   const [answers, setAnswers] = useState({});
   const [prefilledIds, setPrefilledIds] = useState(new Set());
   const [confirmedNegatives, setConfirmedNegatives] = useState(new Set());
   const [includeTrend, setIncludeTrend] = useState(false);
-  const [acknowledgedRisks, setAcknowledgedRisks] = useState(false);
+  // Each acknowledgement holds the ids of the findings that were on screen when
+  // it was ticked, not a bare true. It counts only while those are still the
+  // findings, so one that appears later (the note edited, or the chart changed
+  // across a recheck) is never recorded as acknowledged unseen.
+  const [chartAckFor, setChartAckFor] = useState(null);
   const [ackJustification, setAckJustification] = useState("");
   // Denial-guardrail override trail (mirrors the chart-conflict ack above): a
   // blocking guardrail finding is acknowledged before save, never a hard block.
-  const [acknowledgedDenialRisk, setAcknowledgedDenialRisk] = useState(false);
+  const [denialAckFor, setDenialAckFor] = useState(null);
   const [denialAckJustification, setDenialAckJustification] = useState("");
   // Which denial-risk findings are expanded to show remediation/evidence.
   const [openDenialClusters, setOpenDenialClusters] = useState(() => new Set());
@@ -185,6 +207,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // — a conflict is reflected in the save-time safety gate and the persisted
   // audit, rather than gating on (and persisting) a stale rough-draft conflict.
   const chartFindings = useMemo(() => crossCheckChart(finalNote || roughNote, patient), [finalNote, roughNote, patient]);
+  const criticalChartKey = chartFindings.filter((f) => f.severity === "critical").map((f) => f.id).join("|");
+  const acknowledgedRisks = chartAckFor !== null && chartAckFor === criticalChartKey;
 
   // Deterministic critical-vital check on the note being written: a hypertensive
   // crisis / severe hypoxia / 10-of-10 pain documented this visit surfaces an
@@ -199,7 +223,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const priorNoteRef = useRef("");
   priorNoteRef.current = priorNote;
   useEffect(() => {
-    setFinalNote(""); setGeneratedNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setAcknowledgedRisks(false); setAckJustification(""); setAcknowledgedDenialRisk(false); setDenialAckJustification(""); setOpenDenialClusters(new Set()); setShowProvenance(false); setEscalatedKeys(new Set()); setCritic(null); setOpenExamples(new Set()); setShowThinConfirm(false); setConfirmedThinCritical(false);
+    setFinalNote(""); setGeneratedNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setChartAckFor(null); setAckJustification(""); setDenialAckFor(null); setDenialAckJustification(""); setOpenDenialClusters(new Set()); setShowProvenance(false); setEscalatedKeys(new Set()); setCritic(null); setOpenExamples(new Set()); setShowThinConfirm(false); setConfirmedThinCritical(false);
     if (!analysis) { setAnswers({}); setPrefilledIds(new Set()); setConfirmedNegatives(new Set()); return; }
     const prefill = computeCarryForward(priorNoteRef.current || "", analysis.gaps);
     setAnswers(prefill);
@@ -299,6 +323,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     () => (analysis ? runGuardrail(finalNote || buildAllowedInput()) : null),
     [analysis, runGuardrail, finalNote, buildAllowedInput],
   );
+  const blockingDenialKey = (denialGuardrail?.blocking_findings || []).map((f) => f.cluster).join("|");
+  const acknowledgedDenialRisk = denialAckFor !== null && denialAckFor === blockingDenialKey;
 
   // Conclusory CRITICAL documentation, from either source: the nurse's typed
   // answer, or the draft itself when it satisfied the presence scan and so was
@@ -335,7 +361,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     // conflicts (namespaced ids, since guardrail findings are keyed by cluster).
     const guardrail = runGuardrail(text);
     const denialAcknowledgment = guardrail.blocking_findings.length
-      ? { acknowledged: acknowledgedDenialRisk, justification: denialAckJustification.trim(), finding_ids: guardrail.blocking_findings.map((f) => `denial:${f.cluster}`) }
+      ? { acknowledged: denialAckFor !== null && denialAckFor === guardrail.blocking_findings.map((f) => f.cluster).join("|"), justification: denialAckJustification.trim(), finding_ids: guardrail.blocking_findings.map((f) => `denial:${f.cluster}`) }
       : null;
     return { finalNote: text, coverageScore, draftScore: analysis.draftScore, presence: effectivePresence, required: analysis.required, answeredIds, confirmedNegativeIds, answers, chartFindings, sustainedTrends, comparisons, acknowledgment, denialGuardrail: guardrail, denialAcknowledgment, appliedRules: analysis.appliedRules || [] };
   };
@@ -517,6 +543,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // the toggle is open). Reuses the value-guard's extraction so it matches what
   // gated verification.
   const provenanceRows = showProvenance && finalNote ? annotateProvenance(finalNote, buildAllowedInput()) : [];
+
+  if (withheld) return null;
 
   if (!analysis) {
     return <div className="text-sm text-slate-500 p-4 bg-slate-50 border border-slate-200 rounded-xl">Add a rough note (at least 20 characters) to check Medicare compliance and generate a fully factual note.</div>;
@@ -909,7 +937,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             onToggleCluster={toggleDenialCluster}
             ack={{
               acknowledged: acknowledgedDenialRisk,
-              onAcknowledge: setAcknowledgedDenialRisk,
+              onAcknowledge: (checked) => setDenialAckFor(checked ? blockingDenialKey : null),
               justification: denialAckJustification,
               onJustification: setDenialAckJustification,
             }}
@@ -921,7 +949,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
               icon={ShieldAlert}
               title="Chart safety conflict — review before saving"
               checked={acknowledgedRisks}
-              onCheckedChange={setAcknowledgedRisks}
+              onCheckedChange={(checked) => setChartAckFor(checked ? criticalChartKey : null)}
               label="I have reviewed this against the chart and confirm the documentation is correct."
               justification={ackJustification}
               onJustificationChange={setAckJustification}

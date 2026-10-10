@@ -108,14 +108,24 @@ vi.mock('@/components/smartNote/StructuredNoteDrafter', () => ({
   )}>Use structured test draft</button>,
 }));
 
-vi.mock('@/components/smartNote/ConstrainedNoteReviewer', () => ({
-  default: ({ roughNote, renderFinalNote, onBack }) => <>
-    <button onClick={onBack}>Edit draft</button>
-    {renderFinalNote({ finalNote: roughNote, coverage: 88, result: {
-      finalNote: roughNote, presence: [], required: [],
-    } })}
-  </>,
-}));
+// Holds a typed answer in its own state, as the real reviewer does, and renders
+// nothing while withheld, so a remount (which loses the answer) is observable.
+vi.mock('@/components/smartNote/ConstrainedNoteReviewer', async () => {
+  const { useState: useReviewerState } = await vi.importActual('react');
+  return {
+    default: function ReviewerStub({ roughNote, renderFinalNote, onBack, withheld }) {
+      const [answer, setAnswer] = useReviewerState('');
+      if (withheld) return null;
+      return <>
+        <button onClick={onBack}>Edit draft</button>
+        <input aria-label="Test reviewer answer" value={answer} onChange={(event) => setAnswer(event.target.value)} />
+        {renderFinalNote({ finalNote: roughNote, coverage: 88, result: {
+          finalNote: roughNote, presence: [], required: [],
+        } })}
+      </>;
+    },
+  };
+});
 
 vi.mock('@/components/smartNote/FinalNoteDisplay', () => ({
   default: ({ onSave, onReset, saveDisabled, saved, onReportHandoffStatus, onReviewAck }) => <>
@@ -801,6 +811,57 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
     expect(await screen.findByText('Test note fully saved')).toBeInTheDocument();
     expect(authorizationMocks.handoff).toHaveBeenCalledTimes(1);
     expect(authorizationMocks.reviewAck).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the review answers through a same-authority chart recheck and an open tool, and drops them after a denial', async () => {
+    renderWithProviders(<SmartNoteHarness />, { route: '/SmartNoteAssistant?patientId=patient-a' });
+    await typeDraft(DRAFT_FILLED);
+    await waitFor(() => expect(reviewButton()).toBeEnabled());
+    fireEvent.click(reviewButton());
+    fireEvent.change(await screen.findByLabelText('Test reviewer answer'), { target: { value: 'Walker, one assist.' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Structured draft' }));
+    expect(screen.queryByLabelText('Test reviewer answer')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to note' }));
+    expect(await screen.findByLabelText('Test reviewer answer')).toHaveValue('Walker, one assist.');
+
+    // A window focus re-verifies the chart: withheld, not unmounted.
+    const ready = authorizationMocks.patientState;
+    authorizationMocks.patientState = { data: undefined, isSuccess: false, isError: false, tenantScope: null };
+    await refreshSmartNote();
+    expect(screen.queryByLabelText('Test reviewer answer')).not.toBeInTheDocument();
+    expect(screen.getByText(/Your answers are kept/)).toBeInTheDocument();
+    authorizationMocks.patientState = ready;
+    await refreshSmartNote();
+    expect(await screen.findByLabelText('Test reviewer answer')).toHaveValue('Walker, one assist.');
+
+    authorizationMocks.patientState = { data: undefined, isSuccess: false, isError: true, tenantScope: null };
+    await refreshSmartNote();
+    expect(await screen.findByText(/Patient chart access could not be verified/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Test reviewer answer')).not.toBeInTheDocument();
+    authorizationMocks.patientState = ready;
+    await refreshSmartNote();
+    expect(await screen.findByLabelText('Test reviewer answer')).toHaveValue('');
+  });
+
+  it('keeps the review answers through a Visit recheck that replaces the whole page', async () => {
+    const success = completedVisit();
+    authorizationMocks.visitState = success;
+    authorizationMocks.visitId = 'visit-a';
+    renderWithProviders(<SmartNoteHarness />);
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    await typeDraft(DRAFT_FILLED);
+    await waitFor(() => expect(reviewButton()).toBeEnabled());
+    fireEvent.click(reviewButton());
+    fireEvent.change(await screen.findByLabelText('Test reviewer answer'), { target: { value: 'Walker, one assist.' } });
+
+    authorizationMocks.visitState = { data: undefined, isSuccess: false, isError: false, tenantScope: null };
+    await refreshSmartNote();
+    expect(screen.getByText(/Verifying visit access/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Test reviewer answer')).not.toBeInTheDocument();
+    authorizationMocks.visitState = success;
+    await refreshSmartNote();
+    expect(await screen.findByLabelText('Test reviewer answer')).toHaveValue('Walker, one assist.');
   });
 
 });

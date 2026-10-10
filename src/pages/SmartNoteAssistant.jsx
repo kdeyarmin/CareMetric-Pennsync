@@ -963,6 +963,150 @@ export default function SmartNoteAssistant({ visitId = null }) {
     [facilityDocRules, chartPatient, note, visitType],
   );
 
+  // The review step keeps the nurse's answers, acknowledgements and generated
+  // note in the reviewer's own state, and every window focus re-verifies chart
+  // access. Unmounting it for the length of that recheck threw all of it away,
+  // so coming back from pasting the note into the EMR meant answering and
+  // generating again. It now stays mounted and withheld through a pending
+  // recheck (and while another tool is open), on the vital buffer's rule: a
+  // denial unmounts it, and a different person, tenant membership, patient or
+  // visit changes its key. Both returns below render it as the last child of
+  // PageContainer under that key, so the visit render gate cannot remount it.
+  const reviewerDenied = visitAuthorizationFailed || patientAuthorizationFailed || noteHistoryQuery.isError
+    || !isAuthorityDraftLeaseCurrent(authorityDraftLease);
+  const reviewerKey = JSON.stringify([currentUser?.id ?? null, tenantContext?.user_id ?? null,
+    tenantContext?.agency_id ?? null, tenantContext?.membership_id ?? null,
+    tenantContext?.membership_version ?? null, tenantContext?.tenant_role ?? null, visitId, patientId || null]);
+  const reviewerWithheld = visitAuthorizationWithheld || (!!patientId && !patientChartReady) || activeTab !== "builder";
+  const reviewer = step === 2 && !reviewerDenied ? (
+    <ConstrainedNoteReviewer
+      key={reviewerKey}
+      withheld={reviewerWithheld}
+      roughNote={note}
+      serviceLine={serviceLine}
+      visitType={visitType}
+      vitals={vitals}
+      priorNote={getPriorNote(chartPatient)}
+      patient={chartPatient}
+      currentUser={currentUser}
+      complianceRules={complianceRules}
+      onEscalate={escalateToTasks}
+      onBack={() => setStep(1)}
+      renderFinalNote={(api) => {
+        const facilityResults = evaluateFacilityRules({
+          rules: facilityDocRules,
+          patient: chartPatient,
+          noteText: api.finalNote,
+          visitType,
+        });
+        const facilityMissingCritical = facilityResults.filter(
+          (r) => r.missing && r.rule.severity === "critical",
+        );
+        const facilityBlocked = facilityMissingCritical.length > 0 && !facilityAck;
+        return (
+        <>
+          {generatingTasks && (
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />
+              Generating follow-up tasks from your note…
+            </div>
+          )}
+          {followUpTasks.length > 0 && (
+            <FollowUpTasksPanel tasks={followUpTasks} onDismiss={() => setFollowUpTasks([])} />
+          )}
+
+          <FacilityRequirementsChecklist
+            patient={chartPatient}
+            noteText={api.finalNote}
+            visitType={visitType}
+          />
+
+          {facilityMissingCritical.length > 0 && (
+            <AcknowledgeGate
+              tone="red"
+              title={`Critical facility requirement${facilityMissingCritical.length > 1 ? "s" : ""} not documented`}
+              checked={facilityAck}
+              onCheckedChange={setFacilityAck}
+              label="Add the required detail above, or acknowledge saving without it. This override is recorded."
+            >
+              <ul className="ml-6 list-disc text-sm text-red-800">
+                {facilityMissingCritical.map((r) => (
+                  <li key={r.rule.id || r.rule.rule_name}>{r.rule.requirement_label || r.rule.rule_name}</li>
+                ))}
+              </ul>
+            </AcknowledgeGate>
+          )}
+
+          <SaveBlockers
+            error={saveError}
+            items={[
+              { label: "Fix the fact-check findings above, then re-check.", blocked: !!api.fixRequired },
+              { label: "Select a patient — a note can only be saved to a chart.", blocked: !patientId },
+              { label: "Verify access to the selected patient chart.", blocked: !!patientId && !patientChartReady },
+              { label: "Acknowledge the chart safety conflict.", blocked: !!api.chartRisk?.hasUnacknowledgedCritical },
+              { label: "Acknowledge the denial-risk findings.", blocked: !!api.denialRisk?.hasUnacknowledgedCritical },
+              { label: "Document the critical facility requirement, or acknowledge the override.", blocked: facilityBlocked },
+            ]}
+          />
+
+          <FinalNoteDisplay
+            finalNote={api.finalNote}
+            setFinalNote={api.setFinalNote}
+            onCopy={async () => {
+              try {
+                await navigator.clipboard.writeText(api.finalNote);
+                setCopied(true); setTimeout(() => setCopied(false), 2500);
+              } catch {
+                setCopied(false);
+                toast.error("Couldn't copy to the clipboard. Select the note text and copy manually.");
+              }
+            }}
+            copied={copied}
+            patient={chartPatient}
+            visitType={visitType}
+            analysisScore={api.coverage}
+            analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: buildExportFindings(api.result) }}
+            currentUser={currentUser}
+            onReset={reset}
+            originalNote={note}
+            aiAssisted
+            nurseEdited={api.nurseEdited}
+            handoffStatus={handoff.status}
+            onReportHandoffStatus={reportHandoffStatus}
+            handoffStatusError={handoffError}
+            reviewAck={reviewAck}
+            onReviewAck={(checked) => recordReviewAck(checked, api.finalNote, api.nurseEdited)}
+            onSave={() => {
+              if (facilityBlocked) {
+                toast.error("Document the required facility item(s) or acknowledge the override before saving.");
+                return;
+              }
+              if (facilityMissingCritical.length > 0 && facilityAck) {
+                const unmet = facilityMissingCritical.map((r) => r.rule.rule_name);
+                facilityOverrideRef.current = {
+                  acknowledged: true,
+                  unmet_requirements: unmet,
+                };
+                logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {
+                  patientId,
+                  facility_override: true,
+                  unmet_requirements: unmet,
+                });
+              } else {
+                facilityOverrideRef.current = null;
+              }
+              handleSave(api);
+            }}
+            saving={saving}
+            saved={saved && !api.dirty}
+            saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
+          />
+        </>
+        );
+      }}
+    />
+  ) : null;
+
   if (visitAuthorizationWithheld) {
     return (
       <PageContainer>
@@ -974,6 +1118,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
             ? "Visit access could not be verified. Reopen this visit after your access is restored."
             : "Verifying visit access…"}
         </div>
+        {reviewer}
       </PageContainer>
     );
   }
@@ -1234,134 +1379,16 @@ export default function SmartNoteAssistant({ visitId = null }) {
             </div>
           )}
 
-          {step === 2 && (!patientId || patientChartReady) && (
-            <ConstrainedNoteReviewer
-              roughNote={note}
-              serviceLine={serviceLine}
-              visitType={visitType}
-              vitals={vitals}
-              priorNote={getPriorNote(chartPatient)}
-              patient={chartPatient}
-              currentUser={currentUser}
-              complianceRules={complianceRules}
-              onEscalate={escalateToTasks}
-              onBack={() => setStep(1)}
-              renderFinalNote={(api) => {
-                const facilityResults = evaluateFacilityRules({
-                  rules: facilityDocRules,
-                  patient: chartPatient,
-                  noteText: api.finalNote,
-                  visitType,
-                });
-                const facilityMissingCritical = facilityResults.filter(
-                  (r) => r.missing && r.rule.severity === "critical",
-                );
-                const facilityBlocked = facilityMissingCritical.length > 0 && !facilityAck;
-                return (
-                <>
-                  {generatingTasks && (
-                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
-                      <Loader2 className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />
-                      Generating follow-up tasks from your note…
-                    </div>
-                  )}
-                  {followUpTasks.length > 0 && (
-                    <FollowUpTasksPanel tasks={followUpTasks} onDismiss={() => setFollowUpTasks([])} />
-                  )}
-
-                  <FacilityRequirementsChecklist
-                    patient={chartPatient}
-                    noteText={api.finalNote}
-                    visitType={visitType}
-                  />
-
-                  {facilityMissingCritical.length > 0 && (
-                    <AcknowledgeGate
-                      tone="red"
-                      title={`Critical facility requirement${facilityMissingCritical.length > 1 ? "s" : ""} not documented`}
-                      checked={facilityAck}
-                      onCheckedChange={setFacilityAck}
-                      label="Add the required detail above, or acknowledge saving without it. This override is recorded."
-                    >
-                      <ul className="ml-6 list-disc text-sm text-red-800">
-                        {facilityMissingCritical.map((r) => (
-                          <li key={r.rule.id || r.rule.rule_name}>{r.rule.requirement_label || r.rule.rule_name}</li>
-                        ))}
-                      </ul>
-                    </AcknowledgeGate>
-                  )}
-
-                  <SaveBlockers
-                    error={saveError}
-                    items={[
-                      { label: "Fix the fact-check findings above, then re-check.", blocked: !!api.fixRequired },
-                      { label: "Select a patient — a note can only be saved to a chart.", blocked: !patientId },
-                      { label: "Verify access to the selected patient chart.", blocked: !!patientId && !patientChartReady },
-                      { label: "Acknowledge the chart safety conflict.", blocked: !!api.chartRisk?.hasUnacknowledgedCritical },
-                      { label: "Acknowledge the denial-risk findings.", blocked: !!api.denialRisk?.hasUnacknowledgedCritical },
-                      { label: "Document the critical facility requirement, or acknowledge the override.", blocked: facilityBlocked },
-                    ]}
-                  />
-
-                  <FinalNoteDisplay
-                    finalNote={api.finalNote}
-                    setFinalNote={api.setFinalNote}
-                    onCopy={async () => {
-                      try {
-                        await navigator.clipboard.writeText(api.finalNote);
-                        setCopied(true); setTimeout(() => setCopied(false), 2500);
-                      } catch {
-                        setCopied(false);
-                        toast.error("Couldn't copy to the clipboard. Select the note text and copy manually.");
-                      }
-                    }}
-                    copied={copied}
-                    patient={chartPatient}
-                    visitType={visitType}
-                    analysisScore={api.coverage}
-                    analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: buildExportFindings(api.result) }}
-                    currentUser={currentUser}
-                    onReset={reset}
-                    originalNote={note}
-                    aiAssisted
-                    nurseEdited={api.nurseEdited}
-                    handoffStatus={handoff.status}
-                    onReportHandoffStatus={reportHandoffStatus}
-                    handoffStatusError={handoffError}
-                    reviewAck={reviewAck}
-                    onReviewAck={(checked) => recordReviewAck(checked, api.finalNote, api.nurseEdited)}
-                    onSave={() => {
-                      if (facilityBlocked) {
-                        toast.error("Document the required facility item(s) or acknowledge the override before saving.");
-                        return;
-                      }
-                      if (facilityMissingCritical.length > 0 && facilityAck) {
-                        const unmet = facilityMissingCritical.map((r) => r.rule.rule_name);
-                        facilityOverrideRef.current = {
-                          acknowledged: true,
-                          unmet_requirements: unmet,
-                        };
-                        logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {
-                          patientId,
-                          facility_override: true,
-                          unmet_requirements: unmet,
-                        });
-                      } else {
-                        facilityOverrideRef.current = null;
-                      }
-                      handleSave(api);
-                    }}
-                    saving={saving}
-                    saved={saved && !api.dirty}
-                    saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
-                  />
-                </>
-                );
-              }}
-            />
+          {step === 2 && patientId && !patientChartReady && (
+            <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700" role="status">
+              {reviewerDenied
+                ? "Patient chart access could not be verified."
+                : "Verifying patient chart access… Your answers are kept."}
+            </p>
           )}
         </>
       )}
+      {reviewer}
     </PageContainer>
   );
 }
