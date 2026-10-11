@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { staffPlanProgress } from '../../shared/staffPlanProgress.ts';
+import { employeeTrainingProfile, validEmployeeTrainingProfile } from '../../shared/employeeTrainingProfile.ts';
 import { departmentTrainingProgress } from '../../shared/departmentTrainingProgress.ts';
 import { departmentTrainingHeatmap } from '../../shared/departmentTrainingHeatmap.ts';
 import { staffTrainingLeaderboard } from '../../shared/staffTrainingLeaderboard.ts';
@@ -244,6 +245,10 @@ Deno.serve(async (req) => {
       }
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const employeeProfileOnly = input?.employeeProfileOnly === true;
+    if (employeeProfileOnly && !validEmployeeTrainingProfile(input)) {
+      return Response.json({ error: 'Invalid employee profile request.' }, { status: 400 });
+    }
     const planProgressOnly = input?.planProgressOnly === true;
     const departmentProgressOnly = input?.departmentProgressOnly === true;
     const leaderboardOnly = input?.leaderboardOnly === true;
@@ -251,8 +256,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid staff training filter.' }, { status: 400 });
     }
     const heatmapOnly = input?.departmentHeatmapOnly === true;
-    const summaryOnly = planProgressOnly || departmentProgressOnly || leaderboardOnly || assignmentsOnly || heatmapOnly;
-    const loadSummary = heatmapOnly ? departmentTrainingHeatmap : assignmentsOnly ? filteredTrainingAssignments : leaderboardOnly ? staffTrainingLeaderboard : departmentProgressOnly ? departmentTrainingProgress : staffPlanProgress;
+    const summaryOnly = employeeProfileOnly || planProgressOnly || departmentProgressOnly || leaderboardOnly || assignmentsOnly || heatmapOnly;
+    const loadSummary = employeeProfileOnly ? employeeTrainingProfile : heatmapOnly ? departmentTrainingHeatmap : assignmentsOnly ? filteredTrainingAssignments : leaderboardOnly ? staffTrainingLeaderboard : departmentProgressOnly ? departmentTrainingProgress : staffPlanProgress;
     const offset = input?.offset ?? 0;
     if (summaryOnly && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000)) {
       return Response.json({ error: 'Invalid page.' }, { status: 400 });
@@ -280,7 +285,8 @@ Deno.serve(async (req) => {
           return Response.json({ error: 'Staff roster exceeds the reporting limit.' }, { status: 409 });
         }
         const emails = [...new Set(staff.filter(row => row.is_active !== false && row.disabled !== true && row.is_service !== true).flatMap(row => [row.email, normalizeClaimEmail(row.email)]).filter(Boolean))];
-        return Response.json(await loadSummary(svc, emails, offset, staff, input), { headers: { 'Cache-Control': 'no-store' } });
+        const result = await loadSummary(svc, emails, offset, staff, input);
+        return Response.json(result, { status: result.code === 'EMPLOYEE_UNAVAILABLE' ? 404 : 200, headers: { 'Cache-Control': 'no-store' } });
       }
       // Platform-wide reporting keeps an explicit completeness bound. A tenant
       // report below must never inherit another agency's record-count limit.
@@ -328,12 +334,13 @@ Deno.serve(async (req) => {
             agencyEmails.add(member.user_email_normalized);
             queryEmails.add(member.user_email_normalized);
             queryEmails.add(employee.email);
-            if (leaderboardOnly || assignmentsOnly) summaryStaff.push(employee);
+            if (leaderboardOnly || assignmentsOnly || employeeProfileOnly) summaryStaff.push(employee);
           }
         }
       }
       if (summaryOnly) {
-        return Response.json(await loadSummary(svc, [...queryEmails], offset, summaryStaff, input), { headers: { 'Cache-Control': 'no-store' } });
+        const result = await loadSummary(svc, [...queryEmails], offset, summaryStaff, input);
+        return Response.json(result, { status: result.code === 'EMPLOYEE_UNAVAILABLE' ? 404 : 200, headers: { 'Cache-Control': 'no-store' } });
       }
       const seenAssignments = new Set();
       const emails = [...queryEmails];
