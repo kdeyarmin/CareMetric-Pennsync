@@ -160,6 +160,7 @@ export default function NursePerformanceDashboard() {
   };
 
   const handleSaveGoal = (goalData) => {
+    if (!nurseEmail || createGoalMutation.isPending || updateGoalMutation.isPending) return;
     if (editingGoal) {
       updateGoalMutation.mutate({ id: editingGoal.id, data: goalData });
     } else {
@@ -880,11 +881,11 @@ export default function NursePerformanceDashboard() {
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label>Target Value</Label>
-                      <Input name="target_value" type="number" defaultValue={editingGoal?.target_value} required />
+                      <Input name="target_value" type="number" min="0" step="any" defaultValue={editingGoal?.target_value} required />
                     </div>
                     <div>
                       <Label>Current Value</Label>
-                      <Input name="current_value" type="number" defaultValue={editingGoal?.current_value || 0} />
+                      <Input name="current_value" type="number" min="0" step="any" defaultValue={editingGoal?.current_value || 0} />
                     </div>
                     <div>
                       <Label>Unit</Label>
