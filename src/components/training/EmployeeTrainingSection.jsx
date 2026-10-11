@@ -11,7 +11,7 @@ export default function EmployeeTrainingSection({ employeeId, section, initialPa
       if (response.data?.error || !response.data?.[section]) throw new Error(response.data?.error || 'Training details could not be loaded.');
       return response.data[section];
     },
-    onSuccess: next => setPage(previous => ({ ...next, items: [...previous.items, ...next.items] })),
+    onSuccess: next => setPage(previous => ({ ...next, items: [...new Map([...previous.items, ...next.items].map(item => [item.id, item])).values()] })),
   });
   return <Card className="border-border bg-card text-card-foreground">
     <CardHeader><CardTitle className="text-lg">{title}</CardTitle><p className="text-sm text-muted-foreground">{description}</p></CardHeader>

@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
     if (!user?.email) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (isDeactivatedUser(user) || user.disabled === true || user.is_service === true) return DEACTIVATED_USER_RESPONSE();
     {
       const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
       if (_agencyAdminGate) return _agencyAdminGate;
@@ -291,7 +291,7 @@ Deno.serve(async (req) => {
       // Platform-wide reporting keeps an explicit completeness bound. A tenant
       // report below must never inherit another agency's record-count limit.
       const sources = await Promise.all([
-        svc.TrainingAssignment.list('-created_date', 5000),
+        svc.TrainingAssignment.filter({ archived_status: { $ne: true } }, '-created_date', 5000),
         svc.TrainingCourse.list('-updated_date', 1000),
         svc.User.list('-created_date', 2000),
       ]);
@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
       const emails = [...queryEmails];
       for (let start = 0; start < emails.length; start += 100) {
         const batch = emails.slice(start, start + 100);
-        const found = await svc.TrainingAssignment.filter({ assigned_to_user_id: { $in: batch } }, '-created_date', 5001);
+        const found = await svc.TrainingAssignment.filter({ assigned_to_user_id: { $in: batch }, archived_status: { $ne: true } }, '-created_date', 5001);
         if (!Array.isArray(found) || found.length > 5000
           || found.some(row => !claimIdentifier(row?.id) || !batch.includes(row.assigned_to_user_id)
             || !agencyEmails.has(normalizeClaimEmail(row.assigned_to_user_id)))
@@ -390,7 +390,7 @@ Deno.serve(async (req) => {
     const overall = {
       total: required.length,
       done: doneCount,
-      overdue: required.filter((a) => a.status === 'overdue').length,
+      overdue: required.filter((a) => !isCompleted(a) && a.status === 'overdue').length,
       pct: required.length ? Math.round((doneCount / required.length) * 100) : null,
       staff: new Set(required.map((a) => a.assigned_to_user_id)).size,
     };
@@ -403,18 +403,18 @@ Deno.serve(async (req) => {
         label,
         total: subset.length,
         done,
-        overdue: subset.filter((a) => a.status === 'overdue').length,
+        overdue: subset.filter((a) => !isCompleted(a) && a.status === 'overdue').length,
         pct: subset.length ? Math.round((done / subset.length) * 100) : 100,
       };
     }).filter((row) => row.total > 0);
 
-    const roleMap = {};
+    const roleMap = Object.create(null);
     required.forEach((a) => {
       const role = a.assigned_to_role || 'Unspecified role';
       if (!roleMap[role]) roleMap[role] = { role, total: 0, done: 0, overdue: 0 };
       roleMap[role].total += 1;
       if (isCompleted(a)) roleMap[role].done += 1;
-      if (a.status === 'overdue') roleMap[role].overdue += 1;
+      if (!isCompleted(a) && a.status === 'overdue') roleMap[role].overdue += 1;
     });
     const rolesNeedingAttention = Object.values(roleMap)
       .map((r) => ({ ...r, pct: r.total ? Math.round((r.done / r.total) * 100) : 100 }))

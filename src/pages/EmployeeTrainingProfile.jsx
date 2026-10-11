@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { getTeamTrainingReadiness } from '@/functions/getTeamTrainingReadiness';
@@ -8,11 +8,13 @@ import { Button } from '@/components/ui/button';
 import EmployeeTrainingDetails from '@/components/training/EmployeeTrainingDetails';
 export default function EmployeeTrainingProfile() {
   const { user, tenantContext, tenantAuthorityKey } = useAuth();
-  const employeeId = new URLSearchParams(window.location.search).get('id');
+  const location = useLocation();
+  const employeeId = new URLSearchParams(location.search).get('id');
   const allowed = user?.role === 'admin' || ['agency_admin', 'manager', 'platform_owner'].includes(tenantContext?.tenant_role);
   const profile = useQuery({
     queryKey: ['employee-training-profile', user?.id, tenantAuthorityKey, employeeId],
-    enabled: !!employeeId && !!user?.id && allowed, retry: false,
+    enabled: !!employeeId && !!user?.id && !!tenantAuthorityKey && allowed, retry: false,
+    refetchOnWindowFocus: false, refetchOnReconnect: false,
     queryFn: async () => {
       const response = await getTeamTrainingReadiness({ employeeProfileOnly: true, employeeId });
       if (response.data?.error || !response.data?.employee) throw new Error(response.data?.error || 'Employee profile unavailable.');

@@ -15,7 +15,7 @@ export default function StaffTrainingLeaderboard() {
   const allowed = user?.role === 'admin' || ['agency_admin', 'manager', 'platform_owner'].includes(tenantContext?.tenant_role);
   const leaderboard = useQuery({
     queryKey: ['staff-training-leaderboard', user?.id, tenantAuthorityKey, offset, trainingStatus],
-    enabled: !!user?.id && allowed, retry: false,
+    enabled: !!user?.id && !!tenantAuthorityKey && allowed, retry: false,
     queryFn: async () => {
       const response = await getTeamTrainingReadiness({ leaderboardOnly: true, offset, trainingStatus });
       if (response.data?.error || !Array.isArray(response.data?.items)) throw new Error(response.data?.error || 'Leaderboard unavailable.');

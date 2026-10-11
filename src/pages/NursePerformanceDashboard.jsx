@@ -100,7 +100,7 @@ export default function NursePerformanceDashboard() {
     ? selectedNurse
     : currentUser?.email;
 
-  const { data: performanceData, isLoading, refetch } = useQuery({
+  const { data: performanceData, isLoading, isError: performanceError, refetch } = useQuery({
     queryKey: ['nursePerformance', nurseEmail, dateRange],
     queryFn: async () => {
       const response = await base44.functions.invoke('analyzeNursePerformance', {
@@ -152,6 +152,7 @@ export default function NursePerformanceDashboard() {
   });
 
   const getGradeColor = (grade) => {
+    if (!grade) return 'bg-muted';
     if (grade === 'A' || grade === 'A+') return 'bg-emerald-500';
     if (grade === 'B' || grade === 'B+') return 'bg-blue-500';
     if (grade === 'C') return 'bg-amber-500';
@@ -223,7 +224,7 @@ export default function NursePerformanceDashboard() {
       <DepartmentTrainingHeatmap />
       <StaffTrainingLeaderboard />
 
-      {!performanceData ? (
+      {performanceError ? <Alert variant="destructive"><AlertDescription>Performance data could not be loaded. Use Refresh to try again; no performance grade has been calculated.</AlertDescription></Alert> : !performanceData ? (
         <Card>
           <CardContent className="p-12 text-center text-slate-500">
             Select a nurse to view performance data
@@ -236,8 +237,8 @@ export default function NursePerformanceDashboard() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
-                  <div className={`w-20 h-20 rounded-full ${getGradeColor(insights?.performance_grade || 'B')} flex items-center justify-center shadow-lg`}>
-                    <span className="text-3xl font-bold text-white">{insights?.performance_grade || 'B'}</span>
+                  <div className={`w-20 h-20 rounded-full ${getGradeColor(insights?.performance_grade)} flex items-center justify-center shadow-lg`}>
+                    <span className={`text-3xl font-bold ${insights?.performance_grade ? 'text-primary-foreground' : 'text-muted-foreground'}`} aria-label={insights?.performance_grade ? `Performance grade ${insights.performance_grade}` : 'Performance grade not assessed'}>{insights?.performance_grade || '—'}</span>
                   </div>
                   <div>
                     <h2 className="text-xl font-semibold text-slate-900 mb-1">Overall Performance</h2>
@@ -278,9 +279,7 @@ export default function NursePerformanceDashboard() {
                 <StatCard label="Avg Note Length" value={docQuality?.avg_note_length || 0} description="characters" tone="emerald" />
                 <StatCard
                   label="Completeness"
-                  value={`${docQuality?.total_notes > 0
-                    ? Math.round((docQuality.notes_with_vitals / docQuality.total_notes) * 100)
-                    : 0}%`}
+                  value={`${safePercent(docQuality?.notes_with_vitals, docQuality?.total_notes)}%`}
                   description="notes with vitals"
                   tone="navy"
                 />
@@ -388,20 +387,19 @@ export default function NursePerformanceDashboard() {
                   <h3 className="text-xl font-semibold text-slate-900">My Performance Goals</h3>
                   <p className="text-sm text-slate-600">Track your professional development objectives</p>
                 </div>
-                <Button onClick={() => { setEditingGoal(null); setShowGoalDialog(true); }}>
+                <Button onClick={() => { createGoalMutation.reset(); updateGoalMutation.reset(); setEditingGoal(null); setShowGoalDialog(true); }}>
                   <Plus className="w-4 h-4 mr-2" />
                   New Goal
                 </Button>
               </div>
 
+              {deleteGoalMutation.isError && <p role="alert" className="text-sm text-destructive">The goal could not be deleted. Please try again.</p>}
               {nurseGoals.length === 0 ? (
                 <EmptyState icon={Target} title="No goals set yet" description="Create your first performance goal to start tracking." />
               ) : (
                 <div className="grid md:grid-cols-2 gap-6">
                   {nurseGoals.map((goal) => {
-                    const progress = goal.target_value > 0 
-                      ? Math.min(Math.round((goal.current_value / goal.target_value) * 100), 100)
-                      : 0;
+                    const progress = Math.max(0, Math.min(100, safePercent(goal.current_value, goal.target_value)));
                     
                     return (
                       <Card key={goal.id} className={
@@ -416,10 +414,10 @@ export default function NursePerformanceDashboard() {
                               <p className="text-sm text-slate-600 mt-1">{goal.description}</p>
                             </div>
                             <div className="flex gap-2">
-                              <Button variant="ghost" size="icon" aria-label="Edit goal" onClick={() => { setEditingGoal(goal); setShowGoalDialog(true); }}>
+                              <Button variant="ghost" size="icon" aria-label="Edit goal" onClick={() => { createGoalMutation.reset(); updateGoalMutation.reset(); setEditingGoal(goal); setShowGoalDialog(true); }}>
                                 <Edit2 className="w-4 h-4" />
                               </Button>
-                              <Button variant="ghost" size="icon" aria-label="Delete goal" onClick={() => deleteGoalMutation.mutate(goal.id)}>
+                              <Button variant="ghost" size="icon" aria-label="Delete goal" disabled={deleteGoalMutation.isPending} onClick={() => deleteGoalMutation.mutate(goal.id)}>
                                 <Trash2 className="w-4 h-4 text-red-600" />
                               </Button>
                             </div>
@@ -898,9 +896,10 @@ export default function NursePerformanceDashboard() {
                     <Input name="target_date" type="date" defaultValue={editingGoal?.target_date} required />
                   </div>
                 </div>
+                {(editingGoal ? updateGoalMutation.isError : createGoalMutation.isError) && <p role="alert" className="mt-4 text-sm text-destructive">The goal could not be saved. Check your details and permissions, then try again.</p>}
                 <DialogFooter className="mt-6">
-                  <Button type="button" variant="outline" onClick={() => setShowGoalDialog(false)}>Cancel</Button>
-                  <Button type="submit">{editingGoal ? 'Update' : 'Create'} Goal</Button>
+                  <Button type="button" variant="outline" disabled={createGoalMutation.isPending || updateGoalMutation.isPending} onClick={() => setShowGoalDialog(false)}>Cancel</Button>
+                  <Button type="submit" disabled={!nurseEmail || createGoalMutation.isPending || updateGoalMutation.isPending}>{createGoalMutation.isPending || updateGoalMutation.isPending ? 'Saving…' : `${editingGoal ? 'Update' : 'Create'} Goal`}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
