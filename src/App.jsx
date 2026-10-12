@@ -36,7 +36,7 @@ import AIContentResponsibilityAgreement from '@/components/compliance/AIContentR
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/utils/ErrorBoundary';
 import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
-import { getRoleView, canAccessLevel } from '@/lib/roles';
+import { getRoleView, canAccessLevel, isReferralIntakeRole } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { getAiContentAgreementStatus } from '@/functions/getAiContentAgreementStatus';
 import { verifyAiContentAgreementAcceptance } from '@/lib/verifyAiContentAgreementAcceptance';
@@ -197,7 +197,9 @@ const RoleAccessFallback = ({ access }) => (
     <p className="mt-2 max-w-md text-slate-600">
       {access === 'nursing'
         ? 'This clinical nursing tool is available to nursing staff. If you need access, contact your agency administrator.'
-        : 'This patient-information page is not part of your role. If you need access, contact your agency administrator.'}
+        : access === 'referral'
+          ? 'Referral intake is available to managers and office staff. If you need access, contact your agency administrator.'
+          : 'This patient-information page is not part of your role. If you need access, contact your agency administrator.'}
     </p>
   </div>
 );
@@ -350,10 +352,12 @@ const TenantReadyApp = () => {
   // so link clicks do nothing. By keeping <Routes> fresh on every render while
   // reusing the same <Route> element references, React Router doesn't rebuild
   // its matcher (the original issue) but still re-renders on location change.
-  const routeElements = useMemo(() => ROUTES.map(({ name, Component, adminOnly, superAdminOnly, access }) => {
+  const routeElements = useMemo(() => ROUTES.map(({ name, Component, adminOnly, superAdminOnly, access, intakeRole }) => {
     const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
-    const blockedAdmin = adminOnly && !isAdmin;
-    const blockedAccess = !blockedSuperAdmin && !blockedAdmin && !canAccessLevel(user, access);
+    const intakeAllowed = intakeRole && isReferralIntakeRole(user);
+    const blockedAdmin = adminOnly && !isAdmin && !intakeAllowed;
+    const blockedIntake = !adminOnly && intakeRole && !intakeAllowed;
+    const blockedAccess = !blockedSuperAdmin && !blockedAdmin && !blockedIntake && !canAccessLevel(user, access);
     return (
       <Route
         key={name}
@@ -364,8 +368,8 @@ const TenantReadyApp = () => {
               ? <AdminOnlyFallback superAdmin />
               : blockedAdmin
                 ? <AdminOnlyFallback />
-                : blockedAccess
-                  ? <RoleAccessFallback access={access} />
+                : blockedIntake || blockedAccess
+                  ? <RoleAccessFallback access={blockedIntake ? "referral" : access} />
                 : (
                   <Suspense fallback={<RoutePageLoader />}>
                     <Component />

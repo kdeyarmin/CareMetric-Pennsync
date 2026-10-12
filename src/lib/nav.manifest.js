@@ -13,6 +13,10 @@
  *  icon             – Lucide icon component
  *  category         – sidebar section heading; null = not in sidebar
  *  adminOnly        – hide from nurses (visible to facility admins + super admin)
+ *  intakeRole       – also reachable by an active manager or office-staff
+ *                     membership (referral intake). Does not grant the rest of
+ *                     the admin surface. adminOnly stays true where the page
+ *                     must stay off the nurse sidebar.
  *  superAdminOnly   – platform-level page: hide from facility admins too
  *                     (visible to the super admin only). Implies adminOnly.
  *  access           – staff-discipline gate for non-admin users: "general"
@@ -34,7 +38,7 @@ import {
   Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
   Monitor, Radio, Search, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
-import { canAccessLevel } from "@/lib/roles";
+import { canAccessLevel, isAdminView, isReferralIntakeRole } from "@/lib/roles";
 
 // NOTE: PAGE_NAMES and REDIRECTS are NOT imported here to avoid a circular
 // dependency (nav.manifest → routes → nav.manifest). Instead, the helpers below
@@ -175,6 +179,7 @@ export const NAV_MANIFEST = [
     icon: FileText,
     category: "Office",
     adminOnly: true,
+    intakeRole: true,
     breadcrumbParent: null,
     keywords: ["referral", "intake", "admission", "office"],
   },
@@ -187,6 +192,7 @@ export const NAV_MANIFEST = [
     icon: ClipboardCheck,
     category: "Office",
     adminOnly: true,
+    intakeRole: true,
     breadcrumbParent: "ReferralIntake",
     keywords: ["referral", "follow up", "provider", "request", "compliance", "coder", "qa"],
   },
@@ -274,7 +280,8 @@ export const NAV_MANIFEST = [
     icon: Filter,
     category: "Office",
     adminOnly: false,
-    access: "patient",
+    intakeRole: true,
+    access: "general",
     breadcrumbParent: "ReferralIntake",
     keywords: ["referral", "triage", "priority"],
   },
@@ -852,15 +859,22 @@ export function isLinkablePage(page, routedSet, redirectedSet) {
  */
 export function buildNavCategories(manifest, user = null) {
   const categoryOrder = [
-    "Overview", "Patient Care", "Documentation", "Communication",
+    "Overview", "Patient Care", "Documentation", "Office", "Communication",
     "Learning & Resources", "Tools",
   ];
   const map = {};
   const routed = getRoutedPages();
+  const adminView = isAdminView(user);
   for (const entry of manifest) {
-    if (!entry.category || entry.adminOnly) continue;
+    if (!entry.category) continue;
     if (!routed.has(entry.page)) continue;  // never link to an unrouted page
-    if (!canAccessLevel(user, entry.access)) continue;
+    // Facility admins already get Office from buildAdminItems. Intake pages
+    // are added here only for a manager or office-staff membership.
+    if (entry.intakeRole && adminView) continue;
+    const intakeAllowed = entry.intakeRole && isReferralIntakeRole(user);
+    if (entry.adminOnly && !intakeAllowed) continue;
+    if (entry.intakeRole && !intakeAllowed) continue;
+    if (!entry.adminOnly && !canAccessLevel(user, entry.access)) continue;
     if (!map[entry.category]) map[entry.category] = [];
     map[entry.category].push({
       name: entry.navLabel ?? entry.label,
@@ -948,8 +962,9 @@ export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false, use
   return manifest.filter(e => {
     if (!routed.has(e.page)) return false;
     if (e.superAdminOnly && !isSuperAdmin) return false;  // platform-only pages
-    if (e.adminOnly && !isAdmin) return false;
-    if (!isAdmin && !canAccessLevel(user, e.access)) return false;
+    if (e.intakeRole && !isReferralIntakeRole(user)) return false;
+    if (e.adminOnly && !isAdmin && !(e.intakeRole && isReferralIntakeRole(user))) return false;
+    if (!isAdmin && !e.adminOnly && !e.intakeRole && !canAccessLevel(user, e.access)) return false;
     return true;
   });
 }
@@ -962,7 +977,11 @@ export function isPageAllowedForRole(pageName, roleView, user = null) {
   const entry = NAV_MAP[pageName];
   if (!entry) return true;
   if (entry.superAdminOnly) return roleView === "super_admin";
-  if (entry.adminOnly) return roleView === "super_admin" || roleView === "facility_admin";
+  if (entry.adminOnly) {
+    if (roleView === "super_admin" || roleView === "facility_admin") return true;
+    return !!(entry.intakeRole && isReferralIntakeRole(user));
+  }
+  if (entry.intakeRole) return isReferralIntakeRole(user);
   return canAccessLevel(user, entry.access);
 }
 

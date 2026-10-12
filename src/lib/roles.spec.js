@@ -18,6 +18,9 @@ import {
   clearTrustedTenantContext,
   getTrustedTenantContext,
   getTenantAuthorityKey,
+  isTimeApprover,
+  isTenantManager,
+  isReferralIntakeRole,
 } from "@/lib/roles";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -228,6 +231,12 @@ describe("userRoleLabel / staffRoleLabel", () => {
     bindTrustedTenantContext(authorizedAdmin, agencyAdminContext(authorizedAdmin));
     expect(userRoleLabel(authorizedAdmin)).toBe("Admin");
     expect(userRoleLabel({ role: "manager" })).toBe("Manager");
+    const manager = { id: "mgr-1", email: "manager@agency.test", role: "user", staff_role: "nurse" };
+    bindTrustedTenantContext(manager, agencyAdminContext(manager, "manager"));
+    expect(userRoleLabel(manager)).toBe("Manager");
+    expect(isTenantManager(manager)).toBe(true);
+    expect(isTimeApprover(manager)).toBe(true);
+    expect(isTimeApprover({ ...manager, is_manager: true, id: "other" })).toBe(false);
   });
   it("staffRoleLabel falls back gracefully", () => {
     expect(staffRoleLabel("spiritual_care")).toBe("Spiritual Care");
@@ -254,6 +263,23 @@ describe("isPageAllowedForRole — URL-level route guard", () => {
     expect(isPageAllowedForRole("OASISCenter", "nurse", nurse)).toBe(true);
     expect(isPageAllowedForRole("Patients", "nurse", nurse)).toBe(true);
     expect(isPageAllowedForRole("SmartNoteAssistant", "nurse", nurse)).toBe(true);
+  });
+  it("lets a manager or office staff open referral intake and nothing else admin", () => {
+    const manager = { id: "mgr-1", email: "manager@agency.test", role: "user", staff_role: "nurse" };
+    const clerk = { id: "clerk-1", email: "clerk@agency.test", role: "user", staff_role: "office_staff" };
+    bindTrustedTenantContext(manager, agencyAdminContext(manager, "manager"));
+    expect(isPageAllowedForRole("ReferralIntake", "nurse", manager)).toBe(true);
+    expect(isPageAllowedForRole("ReferralFollowUp", "nurse", manager)).toBe(true);
+    expect(isPageAllowedForRole("ReferralTriage", "nurse", manager)).toBe(true);
+    expect(isPageAllowedForRole("IncidentReview", "nurse", manager)).toBe(false);
+    expect(isPageAllowedForRole("DocumentHub", "nurse", manager)).toBe(false);
+    expect(isPageAllowedForRole("UserManagement", "nurse", manager)).toBe(false);
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(clerk, agencyAdminContext(clerk, "office_staff"));
+    expect(isReferralIntakeRole(clerk)).toBe(true);
+    expect(isPageAllowedForRole("ReferralIntake", "nurse", clerk)).toBe(true);
+    expect(isPageAllowedForRole("ReferralTriage", "nurse", nurse)).toBe(false);
+    expect(isPageAllowedForRole("ReferralIntake", "nurse", nurse)).toBe(false);
   });
   it("still blocks non-admins from admin pages", () => {
     expect(isPageAllowedForRole("UserManagement", "nurse", nurse)).toBe(false);

@@ -23,7 +23,7 @@ import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAlert";
-import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel, isAdminView, isTenantManager, getTrustedTenantContext } from "@/lib/roles";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
 
 // Non-critical below-the-fold — lazy loaded
@@ -165,15 +165,12 @@ export default function Dashboard() {
   const patientAccess = canViewPatients(currentUser);
   const eyebrow = clinical ? careScopeLabel : staffRoleLabel(getStaffRole(currentUser));
 
-  // Map app roles onto the pure work-queue summarizer vocabulary.
+  const tenantRole = getTrustedTenantContext(currentUser)?.tenant_role ?? null;
   const workQueueRole = useMemo(() => {
-    const role = String(currentUser?.role || 'nurse').toLowerCase();
-    const account = String(currentUser?.account_type || '').toLowerCase();
-    if (role === 'admin' || ['agency_admin', 'super_admin', 'facility_admin', 'manager', 'qa'].includes(account)) {
-      return role === 'admin' ? 'admin' : (account || 'admin');
-    }
-    return 'nurse';
-  }, [currentUser?.role, currentUser?.account_type]);
+    if (isAdminView(currentUser)) return "facility_admin";
+    if (isTenantManager(currentUser) || tenantRole === "manager") return "manager";
+    return "nurse";
+  }, [currentUser, tenantRole]);
 
   if (isLoading) {
     return <DashboardSkeleton />;

@@ -23,6 +23,8 @@ import {
 import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
 import PatientTimelineStrip from "@/components/patient/PatientTimelineStrip";
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
+import { useAuth } from '@/lib/AuthContext';
+import { ACCESS, canAccessLevel, isAdminView, isReferralIntakeRole } from '@/lib/roles';
 
 const EVENT_ICONS = {
   medication_change: Pill,
@@ -49,6 +51,13 @@ export default function ClinicalEventsTimeline({
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [dateRange, setDateRange] = useState("30");
+  const { user } = useAuth();
+  const timelineAccess = {
+    canOpenVisitNotes: canAccessLevel(user, ACCESS.NURSING),
+    canOpenDocuments: isAdminView(user),
+    canReviewIncidents: isAdminView(user),
+    canOpenReferrals: isReferralIntakeRole(user),
+  };
 
   // Optional related records for the unified (cross-entity) timeline strip.
   // Prefer parent-provided lists to avoid duplicate fetches; fall back to scoped queries.
@@ -115,6 +124,7 @@ export default function ClinicalEventsTimeline({
       visits={visits}
       incidents={incidents}
       tasks={tasks}
+      access={timelineAccess}
       limit={12}
     />
   );

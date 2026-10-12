@@ -31,6 +31,19 @@ test('buildCoreWorkQueues gives admins referral, incident, credential, task, and
   assert.equal(queues[0].count, 2);
 });
 
+test('buildCoreWorkQueues gives managers the referral queue but not admin review queues', () => {
+  const queues = buildCoreWorkQueues({
+    role: 'manager',
+    referrals: [{ status: 'awaiting_info' }],
+    incidents: [{ status: 'reported' }],
+    credentials: [{ status: 'pending_approval' }],
+    notes: [{ status: 'submitted' }],
+  });
+  assert.deepEqual(queues.map((q) => q.id), ['notes-pending-review', 'referrals-awaiting-info']);
+  assert.equal(queues.find((q) => q.id === 'referrals-awaiting-info').route, '/ReferralIntake');
+  assert.equal(queues.some((q) => q.route === '/IncidentReview' || q.route === '/CredentialCompliance'), false);
+});
+
 test('buildCoreWorkQueues omits empty queues', () => {
   assert.deepEqual(buildCoreWorkQueues({ role: 'admin' }), []);
 });

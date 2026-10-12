@@ -229,6 +229,31 @@ export function isNurseView(user) {
   return getRoleView(user) === "nurse";
 }
 
+/**
+ * Active membership whose tenant_role is manager. This is not a facility admin
+ * and it is not the self-editable User.is_manager column.
+ */
+export function isTenantManager(user) {
+  const context = getTrustedTenantContext(user);
+  return context?.membership_status === "active"
+    && context.is_platform_owner === false
+    && context.tenant_role === "manager";
+}
+
+/** Agency admin, manager, or office staff — the roles the referral broker admits. */
+export function isReferralIntakeRole(user) {
+  if (isAdminView(user)) return true;
+  const context = getTrustedTenantContext(user);
+  return context?.membership_status === "active"
+    && context.is_platform_owner === false
+    && (context.tenant_role === "manager" || context.tenant_role === "office_staff");
+}
+
+/** Time-off and timesheet approval. Admins see the queue; a manager sees requests that name them. */
+export function isTimeApprover(user) {
+  return isAdminView(user) || isTenantManager(user);
+}
+
 export const STAFF_ROLES = ["nurse", "office_staff", "social_worker", "spiritual_care"];
 
 export const STAFF_ROLE_OPTIONS = [
@@ -252,7 +277,7 @@ export function userRoleLabel(user) {
   const view = getRoleView(user);
   if (view === "super_admin") return "Super Admin";
   if (view === "facility_admin") return "Admin";
-  if (user.role === "manager") return "Manager";
+  if (isTenantManager(user) || user.role === "manager") return "Manager";
   return staffRoleLabel(getStaffRole(user));
 }
 

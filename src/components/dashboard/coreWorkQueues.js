@@ -5,7 +5,8 @@
 const isOpen = (status) => !['resolved', 'completed', 'closed', 'archived', 'cancelled', 'canceled'].includes(String(status || '').toLowerCase());
 
 export function buildCoreWorkQueues({ role = 'nurse', referrals = [], incidents = [], credentials = [], tasks = [], notes = [] } = {}) {
-  const adminLike = ['admin', 'facility_admin', 'super_admin', 'manager', 'qa'].includes(role);
+  const adminLike = ['admin', 'facility_admin', 'super_admin', 'qa'].includes(role);
+  const seesReferrals = adminLike || role === 'manager';
   const nurseQueues = [
     {
       id: 'my-open-tasks',
@@ -23,14 +24,15 @@ export function buildCoreWorkQueues({ role = 'nurse', referrals = [], incidents 
     },
   ];
 
+  const referralQueue = {
+    id: 'referrals-awaiting-info',
+    label: 'Referrals awaiting info',
+    count: referrals.filter((r) => r.status === 'awaiting_info' || r.requires_manual_review).length,
+    route: '/ReferralIntake',
+    priority: 'high',
+  };
+
   const adminQueues = [
-    {
-      id: 'referrals-awaiting-info',
-      label: 'Referrals awaiting info',
-      count: referrals.filter((r) => r.status === 'awaiting_info' || r.requires_manual_review).length,
-      route: '/ReferralIntake',
-      priority: 'high',
-    },
     {
       id: 'incidents-open-review',
       label: 'Incidents needing review',
@@ -47,7 +49,11 @@ export function buildCoreWorkQueues({ role = 'nurse', referrals = [], incidents 
     },
   ];
 
-  return (adminLike ? [...adminQueues, ...nurseQueues] : nurseQueues)
+  return [
+    ...(seesReferrals ? [referralQueue] : []),
+    ...(adminLike ? adminQueues : []),
+    ...nurseQueues,
+  ]
     .filter((queue) => queue.count > 0)
     .sort((a, b) => {
       const rank = { high: 0, medium: 1, low: 2 };

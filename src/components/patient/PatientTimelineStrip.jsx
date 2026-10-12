@@ -16,6 +16,7 @@ export default function PatientTimelineStrip({
   tasks = [],
   messages = [],
   referrals = [],
+  access,
   limit = 12,
 }) {
   const events = buildPatientTimeline({
@@ -26,6 +27,7 @@ export default function PatientTimelineStrip({
     tasks,
     messages,
     referrals,
+    access,
   }).slice(0, limit);
 
   if (!events.length) return null;
@@ -49,25 +51,37 @@ export default function PatientTimelineStrip({
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {events.map((event) => (
-          <Link
-            key={event.id}
-            to={event.route}
-            className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 transition hover:border-navy-200 hover:bg-navy-50"
-          >
-            <Badge className={`mt-0.5 shrink-0 text-xs ${typeTone[event.type] || 'bg-slate-100 text-slate-700'}`}>
-              {event.label}
-            </Badge>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-slate-900">{event.title}</p>
-              <p className="text-xs text-slate-500">
-                {event.occurred_at ? new Date(event.occurred_at).toLocaleString() : ''}
-                {event.status ? ` · ${String(event.status).replace(/_/g, ' ')}` : ''}
-              </p>
+        {events.map((event) => {
+          const body = (
+            <>
+              <Badge className={`mt-0.5 shrink-0 text-xs ${typeTone[event.type] || 'bg-slate-100 text-slate-700'}`}>
+                {event.label}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-900">{event.title}</p>
+                <p className="text-xs text-slate-500">
+                  {event.occurred_at ? new Date(event.occurred_at).toLocaleString() : ''}
+                  {event.status ? ` · ${String(event.status).replace(/_/g, ' ')}` : ''}
+                </p>
+              </div>
+              {event.route ? <ArrowRight className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-400" /> : null}
+            </>
+          );
+          const className = "flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2";
+          return event.route ? (
+            <Link
+              key={event.id}
+              to={event.route}
+              className={`${className} transition hover:border-navy-200 hover:bg-navy-50`}
+            >
+              {body}
+            </Link>
+          ) : (
+            <div key={event.id} className={className}>
+              {body}
             </div>
-            <ArrowRight className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-400" />
-          </Link>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
