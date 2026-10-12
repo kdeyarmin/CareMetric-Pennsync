@@ -39,7 +39,9 @@ jobs:
     if: github.repository == 'kdeyarmin/CareMetric-Pennsync' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 90
+    # Covers the validation, the function deploy, the publish and the watch of the
+    # site-only publication it dispatches (that run has its own 40 minute cap).
+    timeout-minutes: 150
     steps:
       - name: Checkout the explicitly requested revision
         uses: actions/checkout@v7
@@ -135,7 +137,7 @@ jobs:
             --json functions deploy "${names[@]}" \
             > "$RUNNER_TEMP/base44-functions-receipt.json" 2> "$RUNNER_TEMP/base44-functions.log" < /dev/null; then
             echo 'BASE44_FUNCTION_DEPLOYMENT_FAILED: inspect the function deployment status in Base44 before retrying.'
-            tail -n 40 "$RUNNER_TEMP/base44-functions.log" | sed -E 's/(b44k_)[A-Za-z0-9_-]+/\1REDACTED/g'
+            tail -n 40 "$RUNNER_TEMP/base44-functions.log" | sed -E 's/(b44[ku]_)[A-Za-z0-9_-]+/\1REDACTED/g'
             exit 2
           fi
           echo 'The CLI reported function deployment success. Publishing follows.'
@@ -168,7 +170,7 @@ jobs:
             https://app.base44.com/api/apps/694ec16e72e01b60d22f7cbf/deploy \
             2> "$RUNNER_TEMP/base44-publish.log"; then
             echo 'BASE44_APP_PUBLISH_FAILED: the functions are deployed to preview but production is unchanged.'
-            sed -E 's/(b44k_)[A-Za-z0-9_-]+/\1REDACTED/g' "$RUNNER_TEMP/base44-publish.log" | tail -n 5
+            sed -E 's/(b44[ku]_)[A-Za-z0-9_-]+/\1REDACTED/g' "$RUNNER_TEMP/base44-publish.log" | tail -n 5
             exit 2
           fi
           echo 'The app was published. Live verification follows.'
@@ -206,9 +208,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          dispatch_at=$(date -u +%s)
           gh workflow run publish-production-frontend.yml \
             --repo "$GITHUB_REPOSITORY" --ref main -f central_help_enabled=true
           echo 'Dispatched "Publish production frontend (site only)" on main.' >> "$GITHUB_STEP_SUMMARY"
+          # The dispatch above is otherwise fire-and-forget: wait for the
+          # publication run to appear, then watch it so a failed publication
+          # cannot hide behind a green function deploy.
+          run_id=""
+          for i in $(seq 1 12); do
+            run_id=$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow publish-production-frontend.yml --branch main \
+              --limit 5 --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt | fromdateiso8601 >= $dispatch_at)][0].databaseId // empty")
+            [ -n "$run_id" ] && break
+            sleep 10
+          done
+          if [ -z "$run_id" ]; then
+            echo 'WARNING: dispatched the site publication but could not locate its run; verify it manually.' >> "$GITHUB_STEP_SUMMARY"
+          elif ! gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status; then
+            echo 'SITE_PUBLICATION_FAILED: the site-only publication run failed; inspect it before considering this deploy complete.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - name: Preserve sanitized verification result only
         if: always()
