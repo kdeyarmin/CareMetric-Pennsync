@@ -2,20 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { uploadFile, invokeLLM, referralUpdate } = vi.hoisted(() => ({
+const { uploadFile, invokeLLM, referralUpdate, referralGet } = vi.hoisted(() => ({
   uploadFile: vi.fn(),
   invokeLLM: vi.fn(),
   referralUpdate: vi.fn(),
+  referralGet: vi.fn(),
 }));
 
-vi.mock('@/api/base44Client', () => ({
-  base44: {
-    integrations: { Core: { UploadFile: (...a) => uploadFile(...a), InvokeLLM: (...a) => invokeLLM(...a) } },
-  },
-}));
+vi.mock('@/components/utils/uploadClinicalFile', () => ({ default: input => uploadFile(input) }));
 
 vi.mock('@/functions/manageAuthorizedReferral', () => ({
   updateAuthorizedReferral: (input) => referralUpdate(input),
+  getAuthorizedReferral: input => referralGet(input),
 }));
 vi.mock('@/functions/extractReferralResponseScan', () => ({
   extractReferralResponseScan: (input) => invokeLLM(input),
@@ -43,7 +41,8 @@ const chooseFile = () => {
 };
 
 beforeEach(() => {
-  uploadFile.mockReset().mockResolvedValue({ file_url: 'https://files.example/scan.pdf' });
+  uploadFile.mockReset().mockResolvedValue({ file_url: 'https://files.example/scan.pdf', file_uri: 'private-scan' });
+  referralGet.mockReset().mockResolvedValue({ referral: { ...referral, follow_up_requests: tracking } });
   invokeLLM.mockReset().mockResolvedValue({
     answers: [
       { id: 'f2f_missing', answered: true, response_text: 'Encounter note attached, seen 8/20 by Dr. Wong' },
@@ -88,7 +87,7 @@ describe('ScannedResponseUpload', () => {
     expect(request).toMatchObject({ agencyId: 'agency-a', referralId: 'ref1' });
     const fu = request.changes.follow_up_requests;
     expect(fu.status).toBe('received');
-    expect(fu.response_scan).toMatchObject({ document_url: 'https://files.example/scan.pdf', auto_answered_count: 1 });
+    expect(fu.response_scan).toMatchObject({ document_uri: 'private-scan', auto_answered_count: 1 });
     const f2f = fu.items.find((it) => it.id === 'f2f_missing');
     expect(f2f.item_status).toBe('answered');
     expect(f2f.response).toEqual({ text: 'Encounter note attached, seen 8/20 by Dr. Wong', source: 'scan' });
@@ -118,6 +117,52 @@ describe('ScannedResponseUpload', () => {
     expect(screen.queryByText(/Encounter note attached/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Apply/ })).not.toBeInTheDocument();
     expect(referralUpdate).not.toHaveBeenCalled();
+  });
+
+  it('discards an abandoned extraction after switching A to B to A', async () => {
+    let finishExtraction;
+    invokeLLM.mockImplementationOnce(() => new Promise(resolve => { finishExtraction = resolve; }));
+    const { rerender } = render(<ScannedResponseUpload referral={referral} tracking={tracking} />);
+    chooseFile();
+    await waitFor(() => expect(invokeLLM).toHaveBeenCalledTimes(1));
+    rerender(<ScannedResponseUpload referral={{ ...referral, id: 'ref2' }} tracking={tracking} />);
+    rerender(<ScannedResponseUpload referral={referral} tracking={tracking} />);
+    finishExtraction({ answers: [{ id: 'f2f_missing', answered: true, response_text: 'Abandoned response' }] });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Upload scanned response/ })).toBeEnabled());
+    expect(screen.queryByText('Abandoned response')).not.toBeInTheDocument();
+  });
+
+  it('preserves answers received after the scan preview was opened', async () => {
+    referralGet.mockResolvedValue({ referral: { ...referral, follow_up_requests: {
+      ...tracking, reminder_count: 3, items: tracking.items.map(item => item.id === 'f2f_missing'
+        ? { ...item, item_status: 'resolved', response: { text: 'New portal response' } } : item),
+    } } });
+    render(<ScannedResponseUpload referral={referral} tracking={tracking} />);
+    chooseFile();
+    await screen.findByText(/Encounter note attached/);
+    await userEvent.click(screen.getByRole('button', { name: /Apply 2 answers/ }));
+    await waitFor(() => expect(referralUpdate).toHaveBeenCalledTimes(1));
+    const saved = referralUpdate.mock.calls[0][0].changes.follow_up_requests;
+    expect(saved.reminder_count).toBe(3);
+    expect(saved.items.find(item => item.id === 'f2f_missing').response.text).toBe('New portal response');
+    expect(saved.response_scan.auto_answered_count).toBe(1);
+  });
+
+  it('does not clear the next referral preview when an earlier save completes', async () => {
+    let finishSave;
+    const onApplied = vi.fn();
+    referralUpdate.mockImplementationOnce(() => new Promise(resolve => { finishSave = resolve; }));
+    const { rerender } = render(<ScannedResponseUpload referral={referral} tracking={tracking} onApplied={onApplied} />);
+    chooseFile();
+    await screen.findByText(/Encounter note attached/);
+    await userEvent.click(screen.getByRole('button', { name: /Apply 2 answers/ }));
+    await waitFor(() => expect(referralUpdate).toHaveBeenCalledTimes(1));
+    rerender(<ScannedResponseUpload referral={{ ...referral, id: 'ref2' }} tracking={tracking} onApplied={onApplied} />);
+    chooseFile();
+    await screen.findByText(/Encounter note attached/);
+    finishSave({});
+    await waitFor(() => expect(screen.getByRole('button', { name: /Apply 2 answers/ })).toBeEnabled());
+    expect(onApplied).not.toHaveBeenCalled();
   });
 
   it('renders nothing when every item is already answered/resolved', () => {

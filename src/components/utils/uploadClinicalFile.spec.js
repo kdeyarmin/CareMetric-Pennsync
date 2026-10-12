@@ -12,7 +12,7 @@ describe('private clinical processing uploads', () => {
   });
   it('uploads privately and signs a temporary processing link', async () => {
     const file = new Blob(['audio']);
-    expect(await uploadClinicalFile({ file })).toEqual({ file_url: 'https://example.invalid/temporary' });
+    expect(await uploadClinicalFile({ file })).toEqual({ file_url: 'https://example.invalid/temporary', file_uri: 'private-file' });
     expect(mocks.upload).toHaveBeenCalledWith({ file });
     expect(mocks.sign).toHaveBeenCalledWith({ file_uri: 'private-file', expires_in: 600 });
   });

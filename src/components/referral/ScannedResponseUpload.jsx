@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { updateAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
+import uploadClinicalFile from '@/components/utils/uploadClinicalFile';
+import useScopedOperation from '@/hooks/useScopedOperation';
+import { getAuthorizedReferral, updateAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
 import { extractReferralResponseScan } from '@/functions/extractReferralResponseScan';
 import { validateReferralFile, resolveMimeType, REFERRAL_ACCEPT_ATTR } from "./referralUploadUtils";
 import {
@@ -25,7 +26,9 @@ import { toast } from "sonner";
 export default function ScannedResponseUpload({ referral, tracking, onApplied }) {
   const fileInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
-  const [docUrl, setDocUrl] = useState(null);
+  const [docUri, setDocUri] = useState(null);
+  const referralKey = JSON.stringify([referral?.agency_id ?? null, referral?.id ?? null]);
+  const operations = useScopedOperation(referralKey);
   const [docSummary, setDocSummary] = useState("");
   const [answers, setAnswers] = useState(null); // usable extracted answers
   const [accepted, setAccepted] = useState(() => new Set());
@@ -36,13 +39,12 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
   // silently accept the wrong patient's answers). Render-time state
   // adjustment clears the preview; the ref lets an in-flight extraction
   // discard its own result if the referral changed while it ran.
-  const referralIdRef = useRef(referral?.id ?? null);
-  referralIdRef.current = referral?.id ?? null;
-  const [prevReferralId, setPrevReferralId] = useState(referral?.id ?? null);
-  if (prevReferralId !== (referral?.id ?? null)) {
-    setPrevReferralId(referral?.id ?? null);
-    setDocUrl(null);
-    setDocSummary("");
+  const [prevReferralKey, setPrevReferralKey] = useState(referralKey);
+  if (prevReferralKey !== referralKey) {
+    setPrevReferralKey(referralKey);
+    setBusy(false);
+    setDocUri(null);
+    setDocSummary('');
     setAnswers(null);
     setAccepted(new Set());
   }
@@ -54,7 +56,7 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
   if (!referral || !tracking || openItems.length === 0) return null;
 
   const reset = () => {
-    setDocUrl(null);
+    setDocUri(null);
     setDocSummary("");
     setAnswers(null);
     setAccepted(new Set());
@@ -67,68 +69,85 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
       toast.error(error);
       return;
     }
-    const forReferralId = referralIdRef.current;
+    const operation = operations.begin();
+    if (!operation) return;
     setBusy(true);
     reset();
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      if (referralIdRef.current !== forReferralId) return; // referral changed mid-flight — discard
-      setDocUrl(file_url);
-      const mime = resolveMimeType(file) || "application/pdf";
+      const { file_url, file_uri } = await uploadClinicalFile({ file });
+      if (!operations.isCurrent(operation)) return;
+      setDocUri(file_uri);
+      const mime = resolveMimeType(file) || 'application/pdf';
       const extraction = await extractReferralResponseScan({
-        fileUrl: file_url,
-        referralId: forReferralId,
-        agencyId: referral.agency_id,
+        fileUrl: file_url, referralId: referral.id, agencyId: referral.agency_id,
         isImage: mime.includes('image'),
       });
-      if (referralIdRef.current !== forReferralId) return; // referral changed mid-flight — discard
+      if (!operations.isCurrent(operation)) return;
       const usable = usableAnswers(extraction, openItems);
-      setDocSummary(extraction?.document_summary || "");
+      setDocSummary(typeof extraction?.document_summary === 'string' ? extraction.document_summary : '');
       setAnswers(usable);
-      setAccepted(new Set(usable.map((a) => a.id)));
-      if (usable.length === 0) {
-        toast.info("No answers to the open items were found in this document — you can still resolve items manually.");
-      }
-    } catch (error) {
-      console.error("Scanned response extraction failed:", error);
+      setAccepted(new Set(usable.map(a => a.id)));
+      if (usable.length === 0) toast.info('No unambiguous answers to the open items were found. You can still resolve items manually.');
+    } catch {
+      if (!operations.isCurrent(operation)) return;
       toast.error("Couldn't read the scanned response. Try again or resolve items manually.");
-      if (referralIdRef.current === forReferralId) reset();
+      reset();
     } finally {
-      setBusy(false);
+      if (operations.isCurrent(operation)) setBusy(false);
+      operations.finish(operation);
     }
   };
 
   const applyAccepted = async () => {
     const toApply = (answers || []).filter((a) => accepted.has(a.id));
-    if (toApply.length === 0) return;
+    if (toApply.length === 0 || !docUri) return;
+    const operation = operations.begin();
+    if (!operation) return;
     setBusy(true);
     try {
-      const merged = applyFaxAnswersToItems(items, toApply, undefined, "scan");
+      const { referral: latest } = await getAuthorizedReferral({ agencyId: referral.agency_id, referralId: referral.id });
+      if (!operations.isCurrent(operation)) return;
+      const latestTracking = latest.follow_up_requests;
+      if (!latestTracking || latestTracking.sent_at !== tracking.sent_at) {
+        throw new Error('The follow-up request changed. Refresh it before applying this scan.');
+      }
+      const latestOpenItems = openItemsForExtraction(latestTracking.items);
+      const unchanged = toApply.filter(answer => {
+        const original = openItems.find(item => item.id === answer.id);
+        const current = latestOpenItems.find(item => item.id === answer.id);
+        return original && current && original.question === current.question && original.title === current.title;
+      });
+      const merged = applyFaxAnswersToItems(latestTracking.items, unchanged, undefined, 'scan');
+      if (merged.answeredCount === 0) {
+        toast.info('These items have already been answered or changed. Refresh the request before applying answers.');
+        return;
+      }
       await updateAuthorizedReferral({
         agencyId: referral.agency_id,
         referralId: referral.id,
         changes: {
           follow_up_requests: {
-            ...tracking,
+            ...latestTracking,
             items: merged.items,
             status: "received",
             received_at: new Date().toISOString(),
             response_scan: {
-              document_url: docUrl,
+              document_uri: docUri,
               uploaded_at: new Date().toISOString(),
               auto_answered_count: merged.answeredCount,
             },
           },
         },
       });
-      toast.success(`${merged.answeredCount} item${merged.answeredCount === 1 ? "" : "s"} marked answered from the scanned response — verify and resolve below.`);
+      if (!operations.isCurrent(operation)) return;
       reset();
       onApplied?.();
     } catch (error) {
-      console.error("Applying scanned answers failed:", error);
-      toast.error("Couldn't save the answers. Please try again.");
+      if (!operations.isCurrent(operation)) return;
+      toast.error(error?.message || "Couldn't save the answers. Please try again.");
     } finally {
-      setBusy(false);
+      if (operations.isCurrent(operation)) setBusy(false);
+      operations.finish(operation);
     }
   };
 
@@ -175,6 +194,7 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
               <Checkbox
                 id={`scan-answer-${a.id}`}
                 checked={accepted.has(a.id)}
+                disabled={busy}
                 onCheckedChange={() =>
                   setAccepted((prev) => {
                     const next = new Set(prev);

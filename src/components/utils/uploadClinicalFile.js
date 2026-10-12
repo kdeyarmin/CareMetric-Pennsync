@@ -12,5 +12,5 @@ export default async function uploadClinicalFile({ file }) {
   const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({ file_uri, expires_in: 600 });
   assertTenantSdkRealmLeaseCurrent(lease);
   if (!signed_url) throw new Error('The clinical file could not be prepared for processing.');
-  return { file_url: signed_url };
+  return { file_url: signed_url, file_uri };
 }

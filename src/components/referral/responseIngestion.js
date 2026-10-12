@@ -67,8 +67,15 @@ export const RESPONSE_EXTRACTION_SCHEMA = {
 /** Keep only extracted answers that target one of the open items (the model
  *  must not answer items it wasn't asked about) and carry real text. */
 export function usableAnswers(extraction, openItems) {
-  const openIds = new Set((openItems || []).map((it) => it.id));
-  return (extraction?.answers || []).filter(
-    (a) => a && a.answered === true && openIds.has(a.id) && String(a.response_text ?? "").trim() !== ""
-  );
+  const openIds = new Set((Array.isArray(openItems) ? openItems : []).map(it => it.id));
+  const answers = new Map();
+  const ambiguous = new Set();
+  for (const answer of Array.isArray(extraction?.answers) ? extraction.answers : []) {
+    if (!answer || answer.answered !== true || !openIds.has(answer.id)
+      || typeof answer.response_text !== 'string' || !answer.response_text.trim()) continue;
+    const response_text = answer.response_text.trim();
+    if (answers.has(answer.id) && answers.get(answer.id).response_text !== response_text) ambiguous.add(answer.id);
+    else answers.set(answer.id, { ...answer, response_text });
+  }
+  return [...answers.values()].filter(answer => !ambiguous.has(answer.id));
 }

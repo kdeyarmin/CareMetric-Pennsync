@@ -17,6 +17,7 @@ import CarePlanCanvas from "@/components/carePlan/CarePlanCanvas";
 import InterventionDetailPanel from "@/components/carePlan/InterventionDetailPanel";
 import AICarePlanAnalyzer from "@/components/carePlan/AICarePlanAnalyzer";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import useScopedOperation from '@/hooks/useScopedOperation';
 
 function findLibraryItem(id) {
   for (const cat of INTERVENTIONS_LIBRARY) {
@@ -39,6 +40,8 @@ export default function CarePlanBuilder() {
   const [careType, setCareType] = useState("home_health");
   const [showAIAnalyzer, setShowAIAnalyzer] = useState(false);
   const [assessmentData, _setAssessmentData] = useState(null);
+  const operations = useScopedOperation(selectedPatientId);
+  useEffect(() => { setSaved(false); }, [planItems, linkedPathways]);
 
   const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 100 });
 
@@ -63,6 +66,7 @@ export default function CarePlanBuilder() {
   }, [selectedPatientId]);
 
   const onDragEnd = useCallback((result) => {
+    if (saving) return;
     const { source, destination, draggableId } = result;
     if (!destination) return;
 
@@ -97,26 +101,31 @@ export default function CarePlanBuilder() {
         return next;
       });
     }
-  }, [planItems]);
+  }, [planItems, saving]);
 
   const removeItem = useCallback((id) => {
+    if (saving) return;
     setPlanItems(prev => prev.filter(i => i.id !== id));
     setLinkedPathways(prev => { const n = { ...prev }; delete n[id]; return n; });
     setSelectedItem(prev => prev?.id === id ? null : prev);
-  }, []);
+  }, [saving]);
 
   const linkPathway = useCallback((itemId, pathway) => {
+    if (saving) return;
     setLinkedPathways(prev => ({ ...prev, [itemId]: pathway }));
-    toast.success(`Linked to: ${pathway}`);
-  }, []);
+  }, [saving]);
 
   const handleSave = async () => {
     if (!selectedPatientId) { toast.error("Please select a patient first."); return; }
     if (planItems.length === 0) { toast.error("Add at least one intervention."); return; }
 
+    const operation = operations.begin();
+    if (!operation) return;
     setSaving(true);
     try {
-      const existingPlans = await base44.entities.CarePlan.filter({ patient_id: selectedPatientId }, undefined, PATIENT_HISTORY_ROWS);
+      const existingPlans = await base44.entities.CarePlan.filter({ patient_id: selectedPatientId, status: 'active',
+        problem: { $in: planItems.map(item => item.name) } }, undefined, PATIENT_HISTORY_ROWS);
+      if (!operations.isCurrent(operation)) return;
 
       const _interventionsWithPathways = planItems.map(item => ({
         id: item.id,
@@ -144,17 +153,24 @@ export default function CarePlanBuilder() {
         return base44.entities.CarePlan.create(data);
       });
 
-      await Promise.all(savePromises);
+      const outcomes = await Promise.allSettled(savePromises);
+      if (!operations.isCurrent(operation)) return;
+      const failed = outcomes.filter(outcome => outcome.status === 'rejected').length;
+      if (failed) {
+        toast.error(`${failed} intervention${failed === 1 ? '' : 's'} could not be saved. Your draft is still here; retry saving.`);
+        return;
+      }
       setSaved(true);
-      toast.success(`Care plan saved — ${planItems.length} interventions for ${selectedPatient?.first_name} ${selectedPatient?.last_name}`);
-      setTimeout(() => setSaved(false), 3000);
     } catch {
-      toast.error("Failed to save care plan.");
+      if (operations.isCurrent(operation)) toast.error('Failed to save care plan. Your draft is still here.');
+    } finally {
+      if (operations.isCurrent(operation)) setSaving(false);
+      operations.finish(operation);
     }
-    setSaving(false);
   };
 
   const handleClear = () => {
+    if (saving) return;
     setPlanItems([]);
     setLinkedPathways({});
     setSelectedItem(null);
@@ -181,7 +197,8 @@ export default function CarePlanBuilder() {
         {/* Patient Selector */}
         <div className="relative">
           <button
-            onClick={() => setShowPatientDropdown(!showPatientDropdown)}
+            disabled={saving}
+            onClick={() => { if (!saving) setShowPatientDropdown(!showPatientDropdown); }}
             className="flex items-center gap-2 text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
           >
             <Users className="w-4 h-4 text-slate-500" />
@@ -212,7 +229,8 @@ export default function CarePlanBuilder() {
                   filteredPatients.map(p => (
                     <button
                       key={p.id}
-                      onClick={() => { setSelectedPatientId(p.id); setShowPatientDropdown(false); setPatientSearch(""); }}
+                      disabled={saving}
+                      onClick={() => { if (saving) return; setSelectedPatientId(p.id); setShowPatientDropdown(false); setPatientSearch(""); }}
                       className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 transition-colors ${selectedPatientId === p.id ? "bg-indigo-50 text-indigo-700 font-medium" : "text-slate-700"}`}
                     >
                       <div className="font-medium">{p.first_name} {p.last_name}</div>
@@ -259,7 +277,7 @@ export default function CarePlanBuilder() {
             <Sparkles className="w-3.5 h-3.5" />
             AI Analyzer
           </Button>
-          <Button variant="outline" size="sm" onClick={handleClear} disabled={planItems.length === 0}>
+          <Button variant="outline" size="sm" onClick={handleClear} disabled={saving || planItems.length === 0}>
             <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
             Clear
           </Button>
@@ -285,7 +303,7 @@ export default function CarePlanBuilder() {
             careType={careType}
             assessmentData={assessmentData}
             onInterventionsGenerated={(interventions, schedule) => {
-              toast.success(`Generated ${interventions.length} interventions with ${schedule.routine_frequency} visit schedule`);
+              toast.success(`Generated ${interventions.length} interventions with ${schedule?.routine_frequency || 'the recommended'} visit schedule`);
             }}
           />
         </div>

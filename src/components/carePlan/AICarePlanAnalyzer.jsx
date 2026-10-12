@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
+import useScopedOperation from '@/hooks/useScopedOperation';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,13 +31,24 @@ export default function AICarePlanAnalyzer({
   const [analysis, setAnalysis] = useState(null);
   const [selectedInterventions, setSelectedInterventions] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const contextKey = JSON.stringify([patientId, patientName, diagnosis, careType, assessmentData]);
+  const operations = useScopedOperation(contextKey);
+  const [previousContext, setPreviousContext] = useState(contextKey);
+  if (previousContext !== contextKey) {
+    setPreviousContext(contextKey);
+    setAnalysis(null);
+    setSelectedInterventions({});
+    setIsSaving(false);
+  }
 
   const generateAnalysis = async () => {
-    if (!diagnosis || !assessmentData) {
+    if (!patientId || !diagnosis || !assessmentData) {
       toast.error("Please provide diagnosis and assessment data");
       return;
     }
 
+    const operation = operations.begin();
+    if (!operation) return;
     try {
       const protocolType = careType === "hospice" ? "Hospice" : "Home Health";
       
@@ -143,6 +155,7 @@ Return JSON:
         }
       });
 
+      if (!operations.isCurrent(operation)) return;
       setAnalysis(result);
       // Auto-select all interventions
       const autoSelected = {};
@@ -150,9 +163,10 @@ Return JSON:
         autoSelected[idx] = true;
       });
       setSelectedInterventions(autoSelected);
-    } catch (error) {
-      console.error("Error analyzing care plan:", error);
-      toast.error("Failed to generate analysis");
+    } catch {
+      if (operations.isCurrent(operation)) toast.error('Failed to generate analysis');
+    } finally {
+      operations.finish(operation);
     }
   };
 
@@ -162,6 +176,9 @@ Return JSON:
       return;
     }
 
+    if (!analysis || !Object.values(selectedInterventions).some(Boolean)) return;
+    const operation = operations.begin();
+    if (!operation) return;
     setIsSaving(true);
     try {
       // Save analysis as a care plan note/summary
@@ -185,16 +202,17 @@ Return JSON:
         documentation_templates: JSON.stringify(analysis.documentation_templates)
       });
 
-      toast.success("Care plan analysis saved");
+      if (!operations.isCurrent(operation)) return;
       
       if (onInterventionsGenerated) {
         onInterventionsGenerated(selectedInterventionsList, analysis.visit_schedule);
       }
-    } catch (error) {
-      console.error("Error saving analysis:", error);
-      toast.error("Failed to save care plan");
+    } catch {
+      if (operations.isCurrent(operation)) toast.error('Failed to save care plan');
+    } finally {
+      if (operations.isCurrent(operation)) setIsSaving(false);
+      operations.finish(operation);
     }
-    setIsSaving(false);
   };
 
   const getRiskColor = (level) => {
@@ -223,7 +241,7 @@ Return JSON:
           <div className="space-y-4">
             <Button
               onClick={generateAnalysis}
-              disabled={ai.loading || !diagnosis || !assessmentData}
+              disabled={ai.loading || !patientId || !diagnosis || !assessmentData}
               className="w-full bg-navy-600 hover:bg-navy-700"
               size="lg"
             >
@@ -233,7 +251,7 @@ Return JSON:
                 <><Sparkles className="w-4 h-4 mr-2" /> Generate Personalized Care Plan</>
               )}
             </Button>
-            {!diagnosis && (
+            {(!diagnosis || !assessmentData) && (
               <Alert className="bg-amber-50 border-amber-200">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
                 <AlertDescription className="text-amber-800">
@@ -274,7 +292,7 @@ Return JSON:
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <p className="text-sm text-blue-900">
-                    {analysis.risk_assessment.clinical_rationale}
+                    {analysis.risk_assessment?.clinical_rationale}
                   </p>
                 </div>
 
@@ -297,6 +315,7 @@ Return JSON:
                       </div>
                       <input
                         type="checkbox"
+                        disabled={isSaving}
                         checked={selectedInterventions[idx] || false}
                         onChange={() => setSelectedInterventions(prev => ({
                           ...prev,
@@ -332,31 +351,31 @@ Return JSON:
                       <Clock className="w-4 h-4" />
                       Initial Visit
                     </p>
-                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule.initial_visit}</p>
+                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule?.initial_visit}</p>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900 flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
                       Routine Frequency
                     </p>
-                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule.routine_frequency}</p>
+                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule?.routine_frequency}</p>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900">Assessment Frequency</p>
-                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule.assessment_frequency}</p>
+                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule?.assessment_frequency}</p>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900">Skilled Nursing Hours</p>
-                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule.skilled_nursing_hours_per_visit}/visit</p>
+                    <p className="text-slate-600 text-xs mt-1">{analysis.visit_schedule?.skilled_nursing_hours_per_visit}/visit</p>
                   </div>
                 </div>
                 <div className="border-t border-amber-300 pt-3">
                   <p className="text-xs font-medium text-slate-600 mb-1">Phone Follow-up:</p>
-                  <p className="text-sm text-slate-700">{analysis.visit_schedule.phone_follow_up}</p>
+                  <p className="text-sm text-slate-700">{analysis.visit_schedule?.phone_follow_up}</p>
                 </div>
                 <div className="border-t border-amber-300 pt-3 bg-white rounded p-2">
                   <p className="text-xs font-medium text-slate-600 mb-1">Rationale:</p>
-                  <p className="text-sm text-slate-700">{analysis.visit_schedule.rationale}</p>
+                  <p className="text-sm text-slate-700">{analysis.visit_schedule?.rationale}</p>
                 </div>
               </div>
             </TabsContent>
@@ -430,7 +449,7 @@ Return JSON:
                 <><CheckCircle2 className="w-4 h-4 mr-2" /> Save Care Plan</>
               )}
             </Button>
-            <Button variant="outline" onClick={() => setAnalysis(null)}>
+            <Button variant="outline" disabled={isSaving} onClick={() => { setAnalysis(null); setSelectedInterventions({}); }}>
               Reset
             </Button>
           </div>
