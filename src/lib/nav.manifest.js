@@ -172,14 +172,13 @@ export const NAV_MANIFEST = [
   // Sidebar order follows the visit lifecycle: intake → chart the visit →
   // note tools → document repository.
   {
-    // Office is an admin/back-office section, deliberately hidden from nurses to
-    // keep their view focused on clinical work.
+    // Intake follows the server-validated agency role, not administrator status.
     page: "ReferralIntake",
     label: "Referrals",
     icon: FileText,
     category: "Office",
-    adminOnly: true,
-    intakeRole: true,
+    adminOnly: false,
+    access: "intake",
     breadcrumbParent: null,
     keywords: ["referral", "intake", "admission", "office"],
   },

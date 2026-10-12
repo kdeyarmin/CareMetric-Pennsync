@@ -292,13 +292,16 @@ export function canViewPatients(user) {
   return getStaffRole(user) !== "office_staff";
 }
 
-export const ACCESS = { GENERAL: "general", PATIENT: "patient", NURSING: "nursing" };
+export const ACCESS = { GENERAL: "general", PATIENT: "patient", NURSING: "nursing", INTAKE: "intake" };
 
 export function canAccessLevel(user, level) {
   if (!level || level === ACCESS.GENERAL) return true;
-  if (level !== ACCESS.PATIENT && level !== ACCESS.NURSING) return false;
+  if (level !== ACCESS.PATIENT && level !== ACCESS.NURSING && level !== ACCESS.INTAKE) return false;
   if (!user) return false;
   if (isAdminView(user)) return true;
+  if (level === ACCESS.INTAKE) {
+    return ["agency_admin", "manager", "office_staff"].includes(getTrustedTenantContext(user)?.tenant_role);
+  }
   if (level === ACCESS.NURSING) return getStaffRole(user) === "nurse";
   if (level === ACCESS.PATIENT) return getStaffRole(user) !== "office_staff";
   return false;

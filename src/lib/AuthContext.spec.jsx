@@ -346,6 +346,54 @@ describe('AuthProvider tenant authority state machine', () => {
     } finally { timeout.mockRestore(); }
   });
 
+  it.each(['background', 'online'])('keeps the Base44 workspace ready after %s without purging drafts', async reason => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.tenantAuthorityState).toBe(
+      TENANT_AUTHORITY_STATES.READY,
+    ));
+    const authorityKey = result.current.tenantAuthorityKey;
+    const purgeCount = mocks.clearCachedPhi.mock.calls.length;
+    sessionStorage.setItem('smart-note-draft', 'recoverable-note');
+    let visibility;
+    let clock;
+    try {
+      await act(async () => {
+        if (reason === 'online') window.dispatchEvent(new Event('online'));
+        else {
+          let now = 1000;
+          clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+          visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+          document.dispatchEvent(new Event('visibilitychange'));
+          now += 31000;
+          visibility.mockReturnValue('visible');
+          document.dispatchEvent(new Event('visibilitychange'));
+        }
+      });
+      expect(result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
+      expect(result.current.tenantAuthorityKey).toBe(authorityKey);
+      expect(result.current.tenantContextError).toBeNull();
+      expect(mocks.poisonTenantSdkRealm).not.toHaveBeenCalled();
+      expect(mocks.clearCachedPhi).toHaveBeenCalledTimes(purgeCount);
+      expect(sessionStorage.getItem('smart-note-draft')).toBe('recoverable-note');
+    } finally {
+      visibility?.mockRestore();
+      clock?.mockRestore();
+    }
+  });
+
+  it('still closes the Base44 workspace when another tab changes the login token', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.tenantAuthorityState).toBe(
+      TENANT_AUTHORITY_STATES.READY,
+    ));
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'base44_access_token' }));
+    });
+    expect(result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.BLOCKED);
+    expect(result.current.tenantAuthorityKey).toBeNull();
+    expect(mocks.poisonTenantSdkRealm).toHaveBeenCalled();
+  });
+
   it.each(['online', 'auth-storage'])('independent %s closure revokes the session and forgets the device', async reason => {
     // THE OTHER SIDE OF THE SPLIT, and the reason it exists. These two say the
     // environment changed under a realm established before it, which is what the
