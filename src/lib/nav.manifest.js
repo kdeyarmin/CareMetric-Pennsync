@@ -168,13 +168,13 @@ export const NAV_MANIFEST = [
   // Sidebar order follows the visit lifecycle: intake → chart the visit →
   // note tools → document repository.
   {
-    // Office is an admin/back-office section, deliberately hidden from nurses to
-    // keep their view focused on clinical work.
+    // Intake follows the server-validated agency role, not administrator status.
     page: "ReferralIntake",
     label: "Referrals",
     icon: FileText,
     category: "Office",
-    adminOnly: true,
+    adminOnly: false,
+    access: "intake",
     breadcrumbParent: null,
     keywords: ["referral", "intake", "admission", "office"],
   },
@@ -852,7 +852,7 @@ export function isLinkablePage(page, routedSet, redirectedSet) {
  */
 export function buildNavCategories(manifest, user = null) {
   const categoryOrder = [
-    "Overview", "Patient Care", "Documentation", "Communication",
+    "Overview", "Patient Care", "Documentation", "Communication", "Office",
     "Learning & Resources", "Tools",
   ];
   const map = {};
