@@ -12,6 +12,7 @@ const pageFiles = readdirSync(pagesDir)
 
 const manifestSrc = readFileSync(join(process.cwd(), 'src/lib/nav.manifest.js'), 'utf8');
 const routesSrc = readFileSync(join(process.cwd(), 'src/routes.jsx'), 'utf8');
+const appSrc = readFileSync(join(process.cwd(), 'src/App.jsx'), 'utf8');
 const manifestPages = new Set([...manifestSrc.matchAll(/page:\s*["']([^"']+)["']/g)].map((m) => m[1]));
 
 const PUBLIC_NON_MANIFEST_PAGES = new Set([
@@ -20,6 +21,10 @@ const PUBLIC_NON_MANIFEST_PAGES = new Set([
   'PrivacyPolicy',
   'ProviderFollowUpPortal',
   'SignerPortal',
+]);
+
+const EXPLICITLY_ROUTED_PAGES = new Set([
+  'EmployeeTrainingProfile',
 ]);
 
 // Intentional legacy/reference pages retained for content parity while their
@@ -39,9 +44,19 @@ const INTENTIONAL_UNROUTED_LEGACY_PAGES = new Set([
 
 test('page files are routed, public-token pages, or intentionally allowlisted legacy pages', () => {
   const unexpected = pageFiles.filter(
-    (page) => !manifestPages.has(page) && !PUBLIC_NON_MANIFEST_PAGES.has(page) && !INTENTIONAL_UNROUTED_LEGACY_PAGES.has(page),
+    (page) => !manifestPages.has(page)
+      && !PUBLIC_NON_MANIFEST_PAGES.has(page)
+      && !EXPLICITLY_ROUTED_PAGES.has(page)
+      && !INTENTIONAL_UNROUTED_LEGACY_PAGES.has(page),
   );
   assert.deepEqual(unexpected, [], `Unexpected unrouted page file(s): ${unexpected.join(', ') || '(none)'}`);
+});
+
+test('pages outside the navigation manifest have explicit App routes', () => {
+  for (const page of EXPLICITLY_ROUTED_PAGES) {
+    assert.match(appSrc, new RegExp(`import\\(['"]@/pages/${page}['"]\\)`));
+    assert.match(appSrc, new RegExp(`<Route path=["']/${page}["'][\\s\\S]*?<${page}\\s*/>`));
+  }
 });
 
 test('intentional unrouted legacy pages are documented in routes.jsx', () => {

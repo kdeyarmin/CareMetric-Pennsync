@@ -908,10 +908,10 @@ test('the audit bullet\'s four ratios are derived from integer pairs the test al
   // The PAIRS first. Each of these four is what the corresponding ratio below
   // is computed from, so a population that moved without moving its quotient
   // fails here rather than passing silently one line further down.
-  assert.deepEqual(servedSplit, { readSites: 130, readKeys: 48, writeSites: 31, writeKeys: 24 },
+  assert.deepEqual(servedSplit, { readSites: 129, readKeys: 48, writeSites: 31, writeKeys: 24 },
     'the served pool moved. Re-derive the WHOLE bullet — both of its ratios and\n'
     + '  the sentence about past waves — rather than editing the figure that moved.');
-  assert.deepEqual(remainder, { readSites: 33, readKeys: 21, writeSites: 13, writeKeys: 12 },
+  assert.deepEqual(remainder, { readSites: 32, readKeys: 21, writeSites: 13, writeKeys: 12 },
     'the unrouted remainder moved. Re-derive the WHOLE bullet; its ratios are\n'
     + '  over a remainder, so they move when anything LEAVES it too.');
 

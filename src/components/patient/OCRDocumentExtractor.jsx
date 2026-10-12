@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 import uploadClinicalFile from '@/components/utils/uploadClinicalFile';
 import { validateFileUpload } from "@/components/utils/security";
 import { extractPatientDataFromDocument } from "@/lib/documentExtraction";
@@ -11,6 +12,7 @@ import { Upload, FileText, Sparkles, CheckCircle2, AlertCircle } from "lucide-re
 import { toast } from "sonner";
 
 export default function OCRDocumentExtractor({ onDataExtracted }) {
+  const { tenantContext } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
@@ -42,7 +44,10 @@ export default function OCRDocumentExtractor({ onDataExtracted }) {
       // the bytes and mints the object under the subject that reads it.
       toast.info('Uploading document...');
       const data = await extractPatientDataFromDocument({
-        invoke: (params) => base44.functions.invoke('extractPatientDataFromDocument', params),
+        invoke: (params) => base44.functions.invoke('extractPatientDataFromDocument', {
+          ...params,
+          agency_id: tenantContext?.agency_id,
+        }),
         uploadFile: uploadClinicalFile,
       }, file, {
         independent: usesIndependentBackend,
