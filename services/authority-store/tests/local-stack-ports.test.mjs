@@ -241,7 +241,11 @@ test('every local Supabase workflow reserves configured ports before checkout', 
     assert.ok(reservationStart >= 0 && reservationStart < checkout,
       `${path} must reserve ports before checkout`);
     const reservation = job.slice(reservationStart, checkout);
-    assert.match(reservation, /net\.ipv4\.ip_local_reserved_ports/);
+    assert.match(
+      reservation,
+      /sudo sysctl -w "net\.ipv4\.ip_local_reserved_ports=\$ports"/,
+      `${path} must write the reserved-port list, not only read it`,
+    );
     for (const port of ports) {
       assert.match(reservation, new RegExp(`\\b${port}\\b`), `${path} must reserve port ${port}`);
     }
