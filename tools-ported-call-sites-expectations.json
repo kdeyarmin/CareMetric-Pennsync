@@ -6,7 +6,6 @@
     "src/components/documents/DocumentIngestionUploader.jsx:82 extractClinicalDocument",
     "src/components/documents/PDFSearchInterface.jsx:42 searchPDFs",
     "src/components/documents/PDFSearchInterface.jsx:62 searchPDFs",
-    "src/components/patient/OCRDocumentExtractor.jsx:44 extractPatientDataFromDocument",
     "src/components/personnel/AdminCredentialApproval.jsx:60 reviewPersonnelCredential",
     "src/components/personnel/AdminCredentialApproval.jsx:86 reviewPersonnelCredential",
     "src/components/personnel/CredentialRenewalPortal.jsx:101 submitPersonnelCredential",

@@ -4195,9 +4195,8 @@ entity routes: 97 declared, 161/284 landable call sites SERVED, 123 still to ado
 
 **That block is a dated record as well. What follows is this tree after the fax receiving switch was removed** — another printer run, not an adjustment of anything above it.
 
-**This is the PINNED block**: `tools-entity-routes.test.mjs` fails unless the
-page carries it byte for byte, so paste what `pnpm run check:entity-routes`
-prints and never retype, rewrap or re-indent it.
+**This was the PINNED block through the reading below it**: it is now a dated
+record, not the current measurement.
 
 ```
 entity routes: 97 declared, 161/282 landable call sites SERVED, 121 still to adopt
@@ -4207,6 +4206,24 @@ entity routes: 97 declared, 161/282 landable call sites SERVED, 121 still to ado
 ```
 
 **No route was declared or withdrawn between these two blocks, and the move is two landable sites leaving.** The product owner decided the app receives no faxes, so the administration screen's fax receiving switch was removed rather than left as a control the webhook no longer honours. Its agency-settings create and update were both landable, over routes other screens still call, and both passed arguments the scan cannot read, so the landable denominator, the remainder and the unreadable part each fell by two while the served count and the unrouted part did not move. Nothing was adopted. The totals are the block's to state.
+
+**Re-measured on 2026-10-12; this is the PINNED block**: the test compares
+the output of `pnpm run check:entity-routes` byte for byte.
+
+```
+entity routes: 97 declared, 160/281 landable call sites SERVED, 121 still to adopt
+  5 of those are sites a declared route REFUSES (CarePlan.filter:filter_field, ComplianceAudit.filter:limit_required, Incident.filter:limit_required, Task.filter:filter_field, User.list:sort), and 71 pass arguments this cannot read
+  25 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AIConfiguration.create, AIConfiguration.update, AdrAuditCase.create, AgencySettings.create, AgencySettings.update, ClinicalLibraryFolder.create, ClinicalLibraryTemplate.create, ClinicalPathway.create, ClinicalPathway.update, ComplianceAudit.create, ComplianceAudit.update, CustomValidationRule.create, CustomValidationRule.update, DocumentTemplate.create, DocumentTemplate.update, EducationMaterial.create, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, OnCallShift.create, OnCallShift.update, PatientEducationAssignment.update, Physician.create
+  of those 121, across 36 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 120 need a named capability
+```
+
+The current reading names `CarePlan.filter:filter_field`: that legacy page
+redirects to `/Patients`, and its query asks the generic route to filter on
+`problem` and `status`, which the route does not accept. Keep the refusal
+visible until the call is removed or gets a successor; do not widen the route
+to make an unreachable screen appear served. The summary does not identify the
+other call sites that left the measured population, so no cause is inferred
+from the changed totals.
 
 #### The route audit's front, and why it is now shorter than its own list
 
@@ -4349,8 +4366,8 @@ different kinds of work:
   This population is neither work nor safety — it is the measurement declining
   to answer, and it grows every time a route is declared over a site of that
   shape, which is the check working rather than a regression.
-- **Forty-six have no route declared at all**, over thirty-three entity and
-  operation keys: thirty-three reads over twenty-one keys, and thirteen writes over
+- **Forty-five have no route declared at all**, over thirty-three entity and
+operation keys: thirty-two reads over twenty-one keys, and thirteen writes over
   twelve.
   Re-derived on this head rather than reconciled from either side of the merge,
   because every figure in this bullet is a property of the whole population and
@@ -4361,10 +4378,10 @@ different kinds of work:
   back, so a bucket nobody adopted from has moved in both directions. That is
   what a remainder does: it is a property of what is LEFT, and of what ARRIVES.
   The reason the shape keeps moving is measurable on
-  the sites already served: a read key there carries 2.71 call sites and a write
+  the   sites already served: a read key there carries 2.69 call sites and a write
   key 1.29, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
-  the remainder, though**: inside this pool a read key covers 1.57 sites and a
+  the remainder, though**: inside this pool a read key covers 1.52 sites and a
   write key 1.08, which is nothing like the served spread.
   Both are correct measurements of different populations, and the conclusion
   rests on the first only for what it says about PAST waves: this remainder

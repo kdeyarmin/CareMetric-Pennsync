@@ -113,6 +113,10 @@ const REFUSALS = Object.freeze([
     reason: 'Unreachable, and `contract_task_list` has no `client_request_id` parameter: serving it would mean a forward migration and an RPC signature change for a call with no caller.',
   },
   {
+    file: 'src/pages/CarePlanBuilder.jsx', key: 'CarePlan.filter', because: 'filter_field',
+    reason: 'The legacy page redirects to /Patients, and its query filters by problem and status, which this route cannot serve; retain the refusal until that call is removed or given a successor.',
+  },
+  {
     file: 'src/pages/Timesheets.jsx', key: 'User.list', because: 'sort',
     absent: ['role'],
     reads: ['u.email && u.role === "user" && u.is_active !== false'],
