@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Link, useLocation } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Home, Users, Brain, Send, Mail, FileText, Pen, GraduationCap, CalendarDays } from "lucide-react";
-import { isClinicalUser, canViewPatients } from "@/lib/roles";
+import { staffMiddleNav } from "@/components/layout/mobileStaffNav";
 
 // Role-aware bottom bar: every employee keeps Home / Patients / Messages, but
 // the two middle slots match the role's real top tasks. Nurses chart and fax;
@@ -18,15 +18,17 @@ const ADMIN_NAV_ITEMS = [
 ];
 
 function staffNavItems(currentUser) {
-  const middle = [];
-  if (canViewPatients(currentUser)) middle.push({ page: "Patients", Icon: Users, label: "Patients" });
-  if (isClinicalUser(currentUser)) middle.push({ page: "SmartNoteAssistant", Icon: Brain, label: "Notes" });
-  if (middle.length < 2) middle.push({ page: "LearningCenter", Icon: GraduationCap, label: "Learning" });
-  if (middle.length < 2) middle.push({ page: "TimeOff", Icon: CalendarDays, label: "Time Off" });
+  const byPage = {
+    Patients: { page: "Patients", Icon: Users, label: "Patients" },
+    SmartNoteAssistant: { page: "SmartNoteAssistant", Icon: Brain, label: "Notes" },
+    LearningCenter: { page: "LearningCenter", Icon: GraduationCap, label: "Learning" },
+    TimeOff: { page: "TimeOff", Icon: CalendarDays, label: "Time Off" },
+    ReferralIntake: { page: "ReferralIntake", Icon: FileText, label: "Referrals" },
+  };
 
   return [
     { page: "Dashboard", Icon: Home, label: "Home" },
-    ...middle.slice(0, 2),
+    ...staffMiddleNav(currentUser).map((page) => byPage[page]),
     { page: "SendFax", Icon: Send, label: "Fax" },
     { page: "Messages", Icon: Mail, label: "Messages", hasBadge: true },
   ];

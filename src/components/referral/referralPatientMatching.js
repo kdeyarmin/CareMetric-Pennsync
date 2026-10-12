@@ -52,14 +52,15 @@ function scorePatient(patient, demographics) {
   const address = demographics?.address;
 
   let score = 0;
-  let nameMatched = false;
+  let firstNameMatched = false;
+  let lastNameMatched = false;
   const reasons = [];
 
   if (firstName && patient.first_name) {
     const firstNameSimilarity = similarity(normalize(firstName), normalize(patient.first_name));
     if (firstNameSimilarity >= 0.8) {
       score += firstNameSimilarity * 20;
-      nameMatched = true;
+      firstNameMatched = true;
       reasons.push(`First name: ${(firstNameSimilarity * 100).toFixed(0)}%`);
     }
   }
@@ -68,7 +69,7 @@ function scorePatient(patient, demographics) {
     const lastNameSimilarity = similarity(normalize(lastName), normalize(patient.last_name));
     if (lastNameSimilarity >= 0.8) {
       score += lastNameSimilarity * 20;
-      nameMatched = true;
+      lastNameMatched = true;
       reasons.push(`Last name: ${(lastNameSimilarity * 100).toFixed(0)}%`);
     }
   }
@@ -134,7 +135,34 @@ function scorePatient(patient, demographics) {
     }
   }
 
+  // A shared surname is not an identity. When the referral has both a given
+  // and a family name, both must clear the similarity bar before this row can
+  // auto-link. One-part names still match on the only part present.
+  const nameMatched = firstName && lastName
+    ? firstNameMatched && lastNameMatched
+    : firstNameMatched || lastNameMatched;
+
   return { patient, score, nameMatched, reasons };
+}
+
+/**
+ * An AI "definitive" or ≥90% pick may auto-link only when the same roster row
+ * also clears the two-part name bar. Otherwise the caller must hold the
+ * referral for review instead of copying an MRN onto a household member.
+ * Returns null when this result is not an auto-link candidate at all.
+ */
+export function acceptAiAutoLink({ rankedMatches, matchAnalysis } = {}) {
+  const confidence = matchAnalysis?.confidence_level;
+  const score = Number(matchAnalysis?.confidence_score);
+  const id = matchAnalysis?.best_match_id;
+  const confident = !!id && (
+    confidence === 'definitive' || (confidence === 'high' && score >= 90)
+  );
+  if (!confident) return null;
+  const selected = (Array.isArray(rankedMatches) ? rankedMatches : [])
+    .find((match) => match?.patient?.id === id);
+  if (selected?.nameMatched) return { patient: selected.patient };
+  return { requiresManualReview: true };
 }
 
 /**

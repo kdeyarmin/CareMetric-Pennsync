@@ -2,7 +2,7 @@ import { useMemo, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { Clock, User, FileText, Mic, Send, Mail, Home, Heart, AlertTriangle, Calendar, GraduationCap, BookOpen, Users as UsersIcon } from "lucide-react";
+import { Clock, User, FileText, Mic, Send, Mail, Home, Heart, AlertTriangle, Calendar, GraduationCap, BookOpen, Users as UsersIcon, ClipboardCheck, Filter } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
@@ -23,7 +23,8 @@ import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAlert";
-import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel, isAdminView, isTenantManager, getTrustedTenantContext } from "@/lib/roles";
+import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel, isAdminView, isTenantManager, isReferralIntakeRole } from "@/lib/roles";
+import { useAuth } from "@/lib/AuthContext";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
 
 // Non-critical below-the-fold — lazy loaded
@@ -35,6 +36,7 @@ const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTe
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
+  const { user: authUser } = useAuth();
   const containerRef = useRef(null);
   const [_isRefreshing, setIsRefreshing] = useState(false);
 
@@ -165,12 +167,8 @@ export default function Dashboard() {
   const patientAccess = canViewPatients(currentUser);
   const eyebrow = clinical ? careScopeLabel : staffRoleLabel(getStaffRole(currentUser));
 
-  const tenantRole = getTrustedTenantContext(currentUser)?.tenant_role ?? null;
-  const workQueueRole = useMemo(() => {
-    if (isAdminView(currentUser)) return "facility_admin";
-    if (isTenantManager(currentUser) || tenantRole === "manager") return "manager";
-    return "nurse";
-  }, [currentUser, tenantRole]);
+  const workQueueRole = isAdminView(authUser) ? "facility_admin" : isTenantManager(authUser) ? "manager" : "nurse";
+  const intakeRole = isReferralIntakeRole(authUser);
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -262,9 +260,19 @@ export default function Dashboard() {
       {/* Admin Announcements */}
       <AnnouncementsWidget />
 
+      <Suspense fallback={null}>
+        <PendingReferralsWidget />
+        <OverdueFollowUpsWidget />
+      </Suspense>
+
       {!clinical && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
           {[
+            ...(intakeRole ? [
+              { page: "ReferralIntake", label: "Referrals", Icon: FileText },
+              { page: "ReferralFollowUp", label: "Follow-Up", Icon: ClipboardCheck },
+              { page: "ReferralTriage", label: "Triage", Icon: Filter },
+            ] : []),
             ...(patientAccess ? [{ page: "Patients", label: "Patients", Icon: UsersIcon }] : []),
             { page: "LearningCenter", label: "Learning Center", Icon: GraduationCap },
             { page: "TimeOff", label: "Time Off", Icon: Calendar },
@@ -367,12 +375,6 @@ export default function Dashboard() {
       )}
 
       <Suspense fallback={<LoadingState className="py-12" />}>
-        {/* Pending Referrals */}
-        <PendingReferralsWidget />
-
-        {/* Provider follow-up requests needing attention (agency_admin or manager only) */}
-        <OverdueFollowUpsWidget />
-
         {/* Real-time Patient Alerts */}
         <div>
           <RealTimePatientAlerts

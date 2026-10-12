@@ -14,9 +14,9 @@
  *  category         – sidebar section heading; null = not in sidebar
  *  adminOnly        – hide from nurses (visible to facility admins + super admin)
  *  intakeRole       – also reachable by an active manager or office-staff
- *                     membership (referral intake). Does not grant the rest of
- *                     the admin surface. adminOnly stays true where the page
- *                     must stay off the nurse sidebar.
+ *                     membership. Does not grant the rest of the admin surface.
+ *                     adminOnly stays true so the page stays off the nurse sidebar
+ *                     and still appears in the admin Office section.
  *  superAdminOnly   – platform-level page: hide from facility admins too
  *                     (visible to the super admin only). Implies adminOnly.
  *  access           – staff-discipline gate for non-admin users: "general"
@@ -172,13 +172,14 @@ export const NAV_MANIFEST = [
   // Sidebar order follows the visit lifecycle: intake → chart the visit →
   // note tools → document repository.
   {
-    // Intake follows the server-validated agency role, not administrator status.
+    // Office is an admin/back-office section. A manager or office-staff
+    // membership can open it; a nurse cannot.
     page: "ReferralIntake",
     label: "Referrals",
     icon: FileText,
     category: "Office",
-    adminOnly: false,
-    access: "intake",
+    adminOnly: true,
+    intakeRole: true,
     breadcrumbParent: null,
     keywords: ["referral", "intake", "admission", "office"],
   },
@@ -278,9 +279,8 @@ export const NAV_MANIFEST = [
     navLabel: "Referral Analyzer",
     icon: Filter,
     category: "Office",
-    adminOnly: false,
+    adminOnly: true,
     intakeRole: true,
-    access: "general",
     breadcrumbParent: "ReferralIntake",
     keywords: ["referral", "triage", "priority"],
   },
@@ -863,16 +863,13 @@ export function buildNavCategories(manifest, user = null) {
   ];
   const map = {};
   const routed = getRoutedPages();
-  const adminView = isAdminView(user);
   for (const entry of manifest) {
     if (!entry.category) continue;
     if (!routed.has(entry.page)) continue;  // never link to an unrouted page
-    // Facility admins already get Office from buildAdminItems. Intake pages
-    // are added here only for a manager or office-staff membership.
-    if (entry.intakeRole && adminView) continue;
-    const intakeAllowed = entry.intakeRole && isReferralIntakeRole(user);
-    if (entry.adminOnly && !intakeAllowed) continue;
-    if (entry.intakeRole && !intakeAllowed) continue;
+    // Admins receive Office from buildAdminItems. Intake pages are added here
+    // only for a manager or office-staff membership, so they are not listed twice.
+    const intakeForStaff = entry.intakeRole && isReferralIntakeRole(user) && !isAdminView(user);
+    if (entry.adminOnly && !intakeForStaff) continue;
     if (!entry.adminOnly && !canAccessLevel(user, entry.access)) continue;
     if (!map[entry.category]) map[entry.category] = [];
     map[entry.category].push({
@@ -961,9 +958,9 @@ export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false, use
   return manifest.filter(e => {
     if (!routed.has(e.page)) return false;
     if (e.superAdminOnly && !isSuperAdmin) return false;  // platform-only pages
-    if (e.intakeRole && !isReferralIntakeRole(user)) return false;
-    if (e.adminOnly && !isAdmin && !(e.intakeRole && isReferralIntakeRole(user))) return false;
-    if (!isAdmin && !e.adminOnly && !e.intakeRole && !canAccessLevel(user, e.access)) return false;
+    const intakeAllowed = e.intakeRole && isReferralIntakeRole(user);
+    if (e.adminOnly && !isAdmin && !intakeAllowed) return false;
+    if (!isAdmin && !e.adminOnly && !canAccessLevel(user, e.access)) return false;
     return true;
   });
 }

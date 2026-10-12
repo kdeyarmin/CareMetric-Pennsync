@@ -29,6 +29,7 @@ import CertificateDownloadButton from "@/components/training/CertificateDownload
 import CourseStepIndicator from "@/components/training/CourseStepIndicator";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { formatLocalDate } from "@/lib/dateLocal";
+import { competencyGate, retakeTimerDelayMs, retakeWaitRemainingHours } from "@/components/training/competencyGate";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Fisher-Yates shuffle for unbiased randomization
@@ -72,6 +73,8 @@ export default function TrainingCoursePlayer() {
   const [attestationAccepted, setAttestationAccepted] = useState(false);
   const [signedName, setSignedName] = useState("");
   const [result, setResult] = useState(null);
+  const [resultRecordedAt, setResultRecordedAt] = useState(null);
+  const [retakeClock, setRetakeClock] = useState(() => Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [startTime, setStartTime] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
@@ -88,6 +91,7 @@ export default function TrainingCoursePlayer() {
     setAttestationAccepted(false);
     setSignedName("");
     setResult(null);
+    setResultRecordedAt(null);
     setSubmitting(false);
     setElapsed(0);
     setSubmitError("");
@@ -205,7 +209,23 @@ export default function TrainingCoursePlayer() {
       });
   }, [questions]);
 
-  const passingScore = assignment?.passing_score_required || course?.passing_score || 80;
+  const { passingScore, maxAttempts, waitHours } = competencyGate({ assignment, course });
+  const retakeHoursLeft = retakeWaitRemainingHours(waitHours, resultRecordedAt, retakeClock);
+  useEffect(() => {
+    if (!resultRecordedAt || waitHours <= 0) return undefined;
+    const delay = retakeTimerDelayMs(waitHours, resultRecordedAt, Date.now());
+    if (delay <= 0) return undefined;
+    const openRetake = () => setRetakeClock(Date.now());
+    const timer = setTimeout(openRetake, delay);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") openRetake();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [resultRecordedAt, waitHours, retakeClock]);
   const isAdmin = isAdminView(currentUser);
   const answeredCount = Object.keys(answers).length;
   const totalQuestions = randomizedQuestions.length;
@@ -249,6 +269,9 @@ export default function TrainingCoursePlayer() {
         timeSpentMinutes,
         randomizedQuestionOrder: randomizedQuestions.map((q) => q.id),
       });
+      const recordedAt = Date.now();
+      setResultRecordedAt(recordedAt);
+      setRetakeClock(recordedAt);
       setResult(response.data || response);
       setStep("result");
     } catch (err) {
@@ -469,7 +492,7 @@ export default function TrainingCoursePlayer() {
                   </p>
                   <ul className="space-y-1 text-sm text-indigo-900/90">
                     <li>• A {totalQuestions}-question test at the end, {formats.join(", ")}.</li>
-                    <li>• You need <strong>{passingScore}%</strong> to pass{assignment?.max_attempts ? `, with up to ${assignment.max_attempts} attempt${assignment.max_attempts === 1 ? "" : "s"}` : ""}.</li>
+                    <li>• You need <strong>{passingScore}%</strong> to pass{maxAttempts ? `, with up to ${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"}` : ""}{waitHours ? `. Retakes wait ${waitHours} hour${waitHours === 1 ? "" : "s"}.` : "."}</li>
                     {course.enable_certificate !== false && <li>• Pass to earn your certificate of completion.</li>}
                   </ul>
                 </div>
@@ -867,12 +890,13 @@ export default function TrainingCoursePlayer() {
             <Button variant="outline" onClick={() => navigate(createPageUrl("LearningCenter") + "?tab=courses")}>
               <Home className="w-4 h-4 mr-2" /> Back to My Courses
             </Button>
-            {!result.passed && !result.locked && (
+            {!result.passed && !result.locked && retakeHoursLeft <= 0 && (
               <Button
                 onClick={() => {
                   setStep("content");
                   setAnswers({});
                   setResult(null);
+                  setResultRecordedAt(null);
                   setCompletedModules([]);
                   setActiveModuleIndex(0);
                   setAttestationAccepted(false);
@@ -883,6 +907,11 @@ export default function TrainingCoursePlayer() {
               >
                 <RefreshCw className="w-4 h-4 mr-2" /> Review Content & Retake
               </Button>
+            )}
+            {!result.passed && !result.locked && retakeHoursLeft > 0 && (
+              <p className="text-sm text-amber-800">
+                Retake available in {retakeHoursLeft} hour{retakeHoursLeft === 1 ? "" : "s"}. A retry before then is not recorded.
+              </p>
             )}
             {result.passed && (
               <Button variant="outline" onClick={() => navigate(createPageUrl("LearningCenter") + "?tab=transcripts")}>
