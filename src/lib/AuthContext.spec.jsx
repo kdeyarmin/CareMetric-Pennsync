@@ -591,6 +591,48 @@ describe('AuthProvider tenant authority state machine', () => {
     expect(mocks.getTenantContext).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['app settings', 'getPublicSettings', null],
+    ['account identity', 'authMe', 'identity_unavailable'],
+    ['memberships', 'listMemberships', 'tenant_memberships_unavailable'],
+    ['agency context', 'getTenantContext', 'tenant_context_unavailable'],
+  ])('ends loading safely when %s never responds, and permits a fresh retry', async (_stage, method, errorType) => {
+    vi.useFakeTimers();
+    const pending = deferred();
+    mocks[method].mockReturnValueOnce(pending.promise);
+    const rendered = renderHook(() => useAuth(), { wrapper });
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(mocks[method]).toHaveBeenCalledTimes(1);
+      expect(rendered.result.current.isLoadingPublicSettings).toBe(true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+      expect(rendered.result.current.isLoadingPublicSettings).toBe(false);
+      expect(rendered.result.current.isLoadingAuth).toBe(false);
+      expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.BLOCKED);
+      expect(rendered.result.current.tenantAuthorityKey).toBeNull();
+      expect(mocks.openTenantSdkRealm).not.toHaveBeenCalled();
+      if (errorType) expect(rendered.result.current.tenantContextError.type).toBe(errorType);
+      else expect(rendered.result.current.authError.message).toContain('took too long');
+      await act(async () => {
+        if (method === 'getPublicSettings') await rendered.result.current.checkAppState();
+        else await rendered.result.current.retryTenantAuthority();
+      });
+      expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
+      const verifiedKey = rendered.result.current.tenantAuthorityKey;
+      await act(async () => {
+        pending.resolve(method === 'authMe' ? { ...USER, id: 'late-user' }
+          : method === 'listMemberships' ? membershipResult([])
+            : method === 'getTenantContext' ? { tenant_context: contextFor(B) }
+              : { id: 'late-settings' });
+      });
+      expect(rendered.result.current.tenantAuthorityKey).toBe(verifiedKey);
+      expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
+    } finally {
+      rendered.unmount();
+      vi.useRealTimers();
+    }
+  });
+
   it('lists after auth and auto-resolves one exact active membership', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
