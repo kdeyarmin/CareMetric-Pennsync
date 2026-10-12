@@ -60,3 +60,8 @@ export function buildCoreWorkQueues({ role = 'nurse', referrals = [], incidents 
       return (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9) || b.count - a.count || a.label.localeCompare(b.label);
     });
 }
+
+/** Managers keep their queues even when they are not a nursing discipline. */
+export function showsWorkQueueStrip(role, clinical) {
+  return clinical === true || role === 'manager' || role === 'facility_admin';
+}
