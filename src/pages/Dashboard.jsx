@@ -62,6 +62,7 @@ export default function Dashboard() {
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['dashboardData'] }),
+        queryClient.refetchQueries({ queryKey: ['dashboardData', 'referralQueue'] }),
         queryClient.refetchQueries({ queryKey: ['myNoteConversions'] }),
       ]);
       toast.success('Dashboard refreshed');
@@ -143,15 +144,16 @@ export default function Dashboard() {
     && tenantContext?.membership_status === "active"
     && !!queueAgencyId;
   const { data: queueReferrals = [], isError: referralQueueUnavailable } = useQuery({
-    queryKey: ["dashboardWorkQueueReferrals", queueAgencyId, "awaiting_info"],
+    queryKey: ['dashboardData', 'referralQueue', queueAgencyId, 'awaiting_info'],
     queryFn: () => listAuthorizedReferrals({
       agencyId: queueAgencyId,
-      status: "awaiting_info",
+      status: 'awaiting_info',
       limit: 200,
     }).then((result) => result.referrals),
     enabled: canLoadReferralQueue,
     staleTime: 120000,
   });
+  const referralQueueCapped = !referralQueueUnavailable && queueReferrals.length >= 200;
   const nurseStats = useMemo(() => (
     currentUser?.email
       ? calculateNurseStats(currentUser.email, { visits, noteConversions, dateRange: 30 })
@@ -268,6 +270,7 @@ export default function Dashboard() {
             role={workQueueRole}
             incidents={incidents}
             referrals={referralQueueUnavailable ? [] : queueReferrals}
+            referralCountCapped={referralQueueCapped}
           />
         </>
       )}

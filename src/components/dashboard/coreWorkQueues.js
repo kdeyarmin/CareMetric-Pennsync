@@ -61,7 +61,11 @@ export function buildCoreWorkQueues({ role = 'nurse', referrals = [], incidents 
     });
 }
 
-/** Managers keep their queues even when they are not a nursing discipline. */
+/** A full page is not an exact total. */
+export function formatQueueCount(count, capped) {
+  return capped ? `${count}+` : String(count);
+}
+
 export function showsWorkQueueStrip(role, clinical) {
   return clinical === true || role === 'manager' || role === 'facility_admin';
 }
