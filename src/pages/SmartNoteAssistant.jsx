@@ -815,17 +815,24 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     setHandoffError(null);
-    setHandoff({ status: next.status, history: next.history });
-    if (!savedVisitId) return;
+    // Before a visit exists there is nothing to sync, so the step stays local
+    // and is written on the next save. Once a visit exists, show the step only
+    // after the server accepts it — a failed or offline report must stay retryable
+    // from the last persisted status.
+    if (!savedVisitId) {
+      setHandoff({ status: next.status, history: next.history });
+      return;
+    }
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      setHandoffError("You're offline. This step is recorded on this device — reconnect to sync it.");
+      setHandoffError("You're offline. Reconnect before recording this step.");
       return;
     }
     try {
       await advancePersistedHandoffTo(savedVisitId, handoff.status, next.status);
+      setHandoff({ status: next.status, history: next.history });
     } catch (err) {
       console.error("Failed to sync EMR handoff status:", err);
-      setHandoffError("Couldn't sync this step to the server. It is recorded on this device — try again.");
+      setHandoffError("Couldn't sync this step to the server. Try again.");
     }
   };
 
@@ -1001,7 +1008,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
         const facilityMissingCritical = facilityResults.filter(
           (r) => r.missing && r.rule.severity === "critical",
         );
-        const facilityBlocked = facilityMissingCritical.length > 0 && !facilityAck;
+        const facilityMissingKey = facilityMissingCritical
+          .map((r) => r.rule.id || r.rule.rule_name)
+          .sort()
+          .join("|");
+        const facilityAcknowledged = facilityMissingKey !== "" && facilityAck === facilityMissingKey;
+        const facilityBlocked = facilityMissingCritical.length > 0 && !facilityAcknowledged;
         return (
         <>
           {generatingTasks && (
@@ -1024,8 +1036,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
             <AcknowledgeGate
               tone="red"
               title={`Critical facility requirement${facilityMissingCritical.length > 1 ? "s" : ""} not documented`}
-              checked={facilityAck}
-              onCheckedChange={setFacilityAck}
+              checked={facilityAcknowledged}
+              onCheckedChange={(checked) => setFacilityAck(checked ? facilityMissingKey : false)}
               label="Add the required detail above, or acknowledge saving without it. This override is recorded."
             >
               <ul className="ml-6 list-disc text-sm text-red-800">
@@ -1080,7 +1092,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                 toast.error("Document the required facility item(s) or acknowledge the override before saving.");
                 return;
               }
-              if (facilityMissingCritical.length > 0 && facilityAck) {
+              if (facilityMissingCritical.length > 0 && facilityAcknowledged) {
                 const unmet = facilityMissingCritical.map((r) => r.rule.rule_name);
                 facilityOverrideRef.current = {
                   acknowledged: true,

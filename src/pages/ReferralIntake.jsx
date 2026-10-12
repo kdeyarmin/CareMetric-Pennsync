@@ -742,7 +742,10 @@ export default function ReferralIntake() {
         existingPatient = newPatient;
         createdNewPatient = true;
         }
-      } else if (existingPatient) {
+      } else if (existingPatient && !updates.requires_manual_review) {
+        // A deterministic name match that the AI still flagged for review must
+        // not copy the referral MRN or set patient_id. Linking waits for
+        // handleConfirmMatch, which may choose a different chart.
         // Re-authorize the exact match immediately before linking it. Combining
         // identity_match with the roster projection supplies the current
         // updated_date without widening either broker purpose. Referral intake

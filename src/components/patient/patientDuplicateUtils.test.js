@@ -17,6 +17,7 @@ import {
   effectiveThreshold,
   findDuplicateGroups,
   findDuplicatesForCandidate,
+  groupRequiresTwinReview,
   REASON,
 } from './patientDuplicateUtils.js';
 
@@ -521,4 +522,22 @@ test("twins are flagged for verification, look-alikes and typos are not", () => 
     { first_name: "Catherine", last_name: "Smith", ...base },
   );
   assert.ok(!spelling.matches.includes(REASON.POSSIBLE_TWINS));
+});
+
+test('merge-all selection leaves possible twins and keeps an exact duplicate', () => {
+  const groups = findDuplicateGroups([
+    { id: 'ella', first_name: 'Ella', last_name: 'Smith', date_of_birth: '2015-06-01', address: '12 Oak St', phone: '555-111-2222' },
+    { id: 'emma', first_name: 'Emma', last_name: 'Smith', date_of_birth: '2015-06-01', address: '12 Oak St', phone: '555-111-2222' },
+    { id: 'john-a', first_name: 'John', last_name: 'Doe', date_of_birth: '1940-01-01', address: '9 Pine St', phone: '555-000-1111' },
+    { id: 'john-b', first_name: 'John', last_name: 'Doe', date_of_birth: '1940-01-01', address: '9 Pine St', phone: '555-000-1111' },
+  ]);
+  const mergeable = groups.filter((group) => !groupRequiresTwinReview(group));
+  const held = groups.filter((group) => groupRequiresTwinReview(group));
+  assert.equal(held.length, 1);
+  assert.equal(mergeable.length, 1);
+  assert.deepEqual(
+    [mergeable[0].primary.id, ...mergeable[0].duplicates.map((duplicate) => duplicate.patient.id)].sort(),
+    ['john-a', 'john-b'],
+  );
+  assert.ok(held[0].duplicates.some((duplicate) => duplicate.matches.includes(REASON.POSSIBLE_TWINS)));
 });

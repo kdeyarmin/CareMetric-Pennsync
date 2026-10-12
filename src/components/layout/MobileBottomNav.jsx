@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Link, useLocation } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Home, Users, Brain, Send, Mail, FileText, Pen, GraduationCap, CalendarDays } from "lucide-react";
-import { isClinicalUser, canViewPatients } from "@/lib/roles";
+import { isClinicalUser, canViewPatients, isReferralIntakeRole } from "@/lib/roles";
 
 // Role-aware bottom bar: every employee keeps Home / Patients / Messages, but
 // the two middle slots match the role's real top tasks. Nurses chart and fax;
@@ -23,6 +23,9 @@ function staffNavItems(currentUser) {
   if (isClinicalUser(currentUser)) middle.push({ page: "SmartNoteAssistant", Icon: Brain, label: "Notes" });
   if (middle.length < 2) middle.push({ page: "LearningCenter", Icon: GraduationCap, label: "Learning" });
   if (middle.length < 2) middle.push({ page: "TimeOff", Icon: CalendarDays, label: "Time Off" });
+  if (isReferralIntakeRole(currentUser)) {
+    middle.unshift({ page: "ReferralIntake", Icon: FileText, label: "Referrals" });
+  }
 
   return [
     { page: "Dashboard", Icon: Home, label: "Home" },

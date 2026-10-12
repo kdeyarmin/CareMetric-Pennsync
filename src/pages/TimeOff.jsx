@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { approverOptions } from "@/components/approvals/approverCandidates";
-import { isAdminView } from "@/lib/roles";
+import { isAdminView, isTimeApprover } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ export default function TimeOff() {
   });
 
   const isAdmin = isAdminView(currentUser);
-  const isApprover = isAdmin || currentUser?.is_manager === true;
+  const isApprover = isTimeApprover(currentUser);
 
   // The current user's own requests (for the "My Time Off" tab).
   const { data: myRequests = [] } = useQuery({

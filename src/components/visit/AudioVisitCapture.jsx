@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { validateFileUpload } from "@/components/utils/security";
 import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
 import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
+import { retainAudioAuthorityWhileNoteHistoryRechecks } from './audioAuthority';
 import { useAuth } from '@/lib/AuthContext';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 import { useAuthorizedVisit } from '@/hooks/useAuthorizedVisit';
@@ -179,6 +180,20 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         tenant_role: patientTenantScope.tenant_role,
       }
     : null;
+  const retainedAudioAuthority = nextAudioAuthority
+    ? null
+    : retainAudioAuthorityWhileNoteHistoryRechecks({
+      previous: audioAuthorityRef.current,
+      patientId,
+      visitId,
+      tenantScope: patientTenantScope,
+      exactPatientReady,
+      noteHistorySucceeded: noteHistoryQuery.isSuccess,
+      noteHistoryFailed: Boolean(noteHistoryQuery.isError),
+      noteHistoryIdle: noteHistoryQuery.fetchStatus === 'idle',
+      patientAuthorizationFailed,
+      visitAuthorizationFailed,
+    });
   audioAuthorityRef.current = nextAudioAuthority
     ? {
         ...nextAudioAuthority,
@@ -186,7 +201,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
           ? audioAuthorityRef.current.request_id
           : audioRequestSequenceRef.current,
       }
-    : null;
+    : retainedAudioAuthority;
   // A same-authority recheck is render-gated below, preserving unsaved audio
   // and vitals. Settled denial, context loss/change, or a different visit
   // clears every value hydrated from the old Visit before paint.

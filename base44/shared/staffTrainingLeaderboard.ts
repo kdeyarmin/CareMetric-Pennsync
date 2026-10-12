@@ -1,14 +1,54 @@
 import { staffTrainingCertificates } from './staffTrainingCertificates.ts';
 
+const ENROLLMENT_READ_LIMIT = 5000;
+
+function isPastCalendarDue(dueDate, now) {
+  if (dueDate == null || dueDate === '') return false;
+  const raw = String(dueDate).trim();
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    const due = new Date(y, m - 1, d);
+    if (due.getFullYear() !== y || due.getMonth() !== m - 1 || due.getDate() !== d) return false;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return due < today;
+  }
+  const due = new Date(dueDate);
+  return !Number.isNaN(due.getTime()) && due < now;
+}
+
+/** A plan is overdue from its due date. Status is never written to 'overdue'. */
+export function enrollmentIsOverdue(row, now = new Date()) {
+  const status = String(row?.status || '');
+  if (status === 'completed' || status === 'cancelled') return false;
+  return status === 'overdue' || isPastCalendarDue(row?.due_date, now);
+}
+
+function enrollmentRows(listed) {
+  if (Array.isArray(listed)) return listed;
+  if (Array.isArray(listed?.items)) return listed.items;
+  return [];
+}
+
 export async function staffTrainingLeaderboard(entities, emails, offset = 0, staff = [], input = {}) {
   if (!emails.length) return { items: [], next_offset: null };
+  const now = input.now instanceof Date ? input.now : new Date();
+  const listed = await entities.PlanEnrollment.filter(
+    { user_id: { $in: emails } },
+    '-due_date',
+    ENROLLMENT_READ_LIMIT,
+  );
+  const enrollments = enrollmentRows(listed);
+  if (enrollments.length >= ENROLLMENT_READ_LIMIT) {
+    throw new Error('Staff leaderboard exceeds the reporting limit.');
+  }
+  const overdueByUser = new Map();
+  for (const row of enrollments) {
+    if (!enrollmentIsOverdue(row, now)) continue;
+    const key = String(row.user_id || '').trim().toLowerCase();
+    overdueByUser.set(key, (overdueByUser.get(key) || 0) + 1);
+  }
   if (input.trainingStatus === 'overdue') {
-    const overdue = await entities.PlanEnrollment.aggregate({
-      query: { user_id: { $in: emails }, status: 'overdue' }, groupBy: 'user_id', limit: 1000,
-    });
-    if (overdue.truncated) throw new Error('Overdue staff summary exceeds the reporting limit.');
-    const overdueEmails = new Set(overdue.rows.map(row => String(row.user_id || '').trim().toLowerCase()));
-    emails = emails.filter(email => overdueEmails.has(String(email).trim().toLowerCase()));
+    emails = emails.filter(email => overdueByUser.has(String(email).trim().toLowerCase()));
     if (!emails.length) return { items: [], next_offset: null };
   }
   const summary = await entities.PlanEnrollment.aggregate({
@@ -22,10 +62,12 @@ export async function staffTrainingLeaderboard(entities, emails, offset = 0, sta
     const key = String(row.user_id || '').trim().toLowerCase();
     const identity = identities.get(key);
     if (!identity) throw new Error('Leaderboard staff identity could not be verified.');
-    const entry = totals.get(key) || { id: identity.id, name: identity.full_name || identity.email, plans: 0, progress_sum: 0, completed_courses: 0, completed_plans: 0, overdue_plans: 0 };
+    const entry = totals.get(key) || {
+      id: identity.id, name: identity.full_name || identity.email, plans: 0, progress_sum: 0,
+      completed_courses: 0, completed_plans: 0, overdue_plans: overdueByUser.get(key) || 0,
+    };
     entry.plans += Number(row.count) || 0;
     if (row.status === 'completed') entry.completed_plans += Number(row.count) || 0;
-    if (row.status === 'overdue') entry.overdue_plans += Number(row.count) || 0;
     entry.progress_sum += Number(row.sum_progress_percentage) || 0;
     entry.completed_courses += Number(row.sum_courses_completed) || 0;
     totals.set(key, entry);

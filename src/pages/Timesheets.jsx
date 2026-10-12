@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ClipboardList } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { isAdminView } from "@/lib/roles";
+import { isAdminView, isTimeApprover } from "@/lib/roles";
 
 import MyTimesheetForm from "@/components/timesheet/MyTimesheetForm";
 import MyTimesheetsList from "@/components/timesheet/MyTimesheetsList";
@@ -29,7 +29,7 @@ export default function Timesheets() {
   // Match the app's protected-role model; self-mutable account_type values do
   // not unlock the admin workflow.
   const isAdmin = isAdminView(currentUser);
-  const isApprover = isAdmin || currentUser?.is_manager === true;
+  const isApprover = isTimeApprover(currentUser);
 
   const [editing, setEditing] = useState(null);
 

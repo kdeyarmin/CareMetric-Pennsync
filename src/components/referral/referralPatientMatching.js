@@ -52,14 +52,15 @@ function scorePatient(patient, demographics) {
   const address = demographics?.address;
 
   let score = 0;
-  let nameMatched = false;
+  let firstNameMatched = false;
+  let lastNameMatched = false;
   const reasons = [];
 
   if (firstName && patient.first_name) {
     const firstNameSimilarity = similarity(normalize(firstName), normalize(patient.first_name));
     if (firstNameSimilarity >= 0.8) {
       score += firstNameSimilarity * 20;
-      nameMatched = true;
+      firstNameMatched = true;
       reasons.push(`First name: ${(firstNameSimilarity * 100).toFixed(0)}%`);
     }
   }
@@ -68,7 +69,7 @@ function scorePatient(patient, demographics) {
     const lastNameSimilarity = similarity(normalize(lastName), normalize(patient.last_name));
     if (lastNameSimilarity >= 0.8) {
       score += lastNameSimilarity * 20;
-      nameMatched = true;
+      lastNameMatched = true;
       reasons.push(`Last name: ${(lastNameSimilarity * 100).toFixed(0)}%`);
     }
   }
@@ -133,6 +134,13 @@ function scorePatient(patient, demographics) {
       reasons.push('Address match');
     }
   }
+
+  // A shared surname is not an identity. When the referral has both a given
+  // and a family name, both must clear the similarity bar before this row can
+  // auto-link. One-part names still match on the only part present.
+  const nameMatched = firstName && lastName
+    ? firstNameMatched && lastNameMatched
+    : firstNameMatched || lastNameMatched;
 
   return { patient, score, nameMatched, reasons };
 }

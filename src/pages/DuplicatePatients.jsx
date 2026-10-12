@@ -20,6 +20,7 @@ import {
 import {
   buildVisitsByPatient,
   findDuplicateGroups,
+  groupRequiresTwinReview,
 } from "@/components/patient/patientDuplicateUtils";
 import {
   mergePatientGroup,
@@ -205,13 +206,31 @@ function EnabledDuplicatePatients() {
       return;
     }
     if (!canMerge) return;
-    const totalExtra = duplicateGroups.reduce((sum, g) => sum + g.duplicates.length, 0);
+    const heldKeys = new Set();
+    const mergeableGroups = [];
+    for (let i = 0; i < duplicateGroups.length; i++) {
+      const group = duplicateGroups[i];
+      if (groupRequiresTwinReview(group)) heldKeys.add(`group-${i}`);
+      else mergeableGroups.push({ group, index: i });
+    }
+    if (mergeableGroups.length === 0) {
+      toast.warning(
+        heldKeys.size > 0
+          ? 'Possible twins were left unmerged. Verify those groups before combining them.'
+          : 'No duplicate groups are ready to merge.',
+      );
+      return;
+    }
+    const totalExtra = mergeableGroups.reduce((sum, { group }) => sum + group.duplicates.length, 0);
+    const twinClause = heldKeys.size > 0
+      ? ` ${heldKeys.size} possible-twin group(s) will be left for review.`
+      : '';
     const ok = await confirm({
       title: "Merge all duplicates?",
       description:
-        `This will combine every duplicate group into a single record each, merging ` +
-        `${totalExtra} extra record(s) across ${duplicateGroups.length} group(s). The kept ` +
-        `record absorbs every linked record; the duplicates are archived (recoverable).`,
+        `This will combine ${mergeableGroups.length} duplicate group(s) into a single record each, merging ` +
+        `${totalExtra} extra record(s). The kept ` +
+        `record absorbs every linked record; the duplicates are archived (recoverable).${twinClause}`,
       confirmText: "Merge all",
       destructive: true,
     });
@@ -223,9 +242,9 @@ function EnabledDuplicatePatients() {
     // Track groups that failed so the loop continues instead of aborting on the
     // first error (e.g. one related record the user can't write). Failed groups
     // stay on screen so the admin can retry or merge them individually.
+    // Possible-twin groups are never sent to the merge broker from this action.
     const failedKeys = new Set();
-    for (let i = 0; i < duplicateGroups.length; i++) {
-      const group = duplicateGroups[i];
+    for (const { group, index } of mergeableGroups) {
       const survivor = group.primary;
       const others = group.duplicates.map((d) => d.patient).filter((p) => p.id !== survivor.id);
       try {
@@ -237,23 +256,26 @@ function EnabledDuplicatePatients() {
         mergedGroups += 1;
         mergedRecords += patientsMerged;
       } catch (error) {
-        console.error(`Merge all: group ${i} failed:`, error?.message);
-        failedKeys.add(`group-${i}`);
+        console.error(`Merge all: group ${index} failed:`, error?.message);
+        failedKeys.add(`group-${index}`);
       }
     }
 
-    // Drop only the groups that merged; keep failures visible for retry.
-    setDuplicateGroups((prev) => prev.filter((_, i) => failedKeys.has(`group-${i}`)));
+    // Drop only the groups that merged; keep failures and possible twins visible.
+    setDuplicateGroups((prev) => prev.filter((_, i) => failedKeys.has(`group-${i}`) || heldKeys.has(`group-${i}`)));
     queryClient.invalidateQueries({ queryKey: ['patients'] });
 
+    const twinNote = heldKeys.size > 0
+      ? ` ${heldKeys.size} possible-twin group(s) were left for review.`
+      : '';
     if (failedKeys.size === 0) {
-      toast.success(`Merged ${mergedRecords} duplicate record(s) across ${mergedGroups} group(s).`);
+      toast.success(`Merged ${mergedRecords} duplicate record(s) across ${mergedGroups} group(s).${twinNote}`);
     } else if (mergedGroups > 0) {
       toast.warning(
-        `Merged ${mergedGroups} group(s); ${failedKeys.size} could not be merged and remain below for you to retry.`
+        `Merged ${mergedGroups} group(s); ${failedKeys.size} could not be merged and remain below for you to retry.${twinNote}`
       );
     } else {
-      toast.error('Could not merge the duplicates. Please rescan and try again.');
+      toast.error(`Could not merge the duplicates. Please rescan and try again.${twinNote}`);
     }
     setIsMergingAll(false);
   };

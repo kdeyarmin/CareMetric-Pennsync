@@ -13,6 +13,10 @@
  *  icon             – Lucide icon component
  *  category         – sidebar section heading; null = not in sidebar
  *  adminOnly        – hide from nurses (visible to facility admins + super admin)
+ *  intakeRole       – also reachable by an active manager or office-staff
+ *                     membership. Does not grant the rest of the admin surface.
+ *                     adminOnly stays true so the page stays off the nurse sidebar
+ *                     and still appears in the admin Office section.
  *  superAdminOnly   – platform-level page: hide from facility admins too
  *                     (visible to the super admin only). Implies adminOnly.
  *  access           – staff-discipline gate for non-admin users: "general"
@@ -34,7 +38,7 @@ import {
   Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
   Monitor, Radio, Search, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
-import { canAccessLevel } from "@/lib/roles";
+import { canAccessLevel, isAdminView, isReferralIntakeRole } from "@/lib/roles";
 
 // NOTE: PAGE_NAMES and REDIRECTS are NOT imported here to avoid a circular
 // dependency (nav.manifest → routes → nav.manifest). Instead, the helpers below
@@ -168,13 +172,14 @@ export const NAV_MANIFEST = [
   // Sidebar order follows the visit lifecycle: intake → chart the visit →
   // note tools → document repository.
   {
-    // Intake follows the server-validated agency role, not administrator status.
+    // Office is an admin/back-office section. A manager or office-staff
+    // membership can open it; a nurse cannot.
     page: "ReferralIntake",
     label: "Referrals",
     icon: FileText,
     category: "Office",
-    adminOnly: false,
-    access: "intake",
+    adminOnly: true,
+    intakeRole: true,
     breadcrumbParent: null,
     keywords: ["referral", "intake", "admission", "office"],
   },
@@ -187,6 +192,7 @@ export const NAV_MANIFEST = [
     icon: ClipboardCheck,
     category: "Office",
     adminOnly: true,
+    intakeRole: true,
     breadcrumbParent: "ReferralIntake",
     keywords: ["referral", "follow up", "provider", "request", "compliance", "coder", "qa"],
   },
@@ -273,8 +279,8 @@ export const NAV_MANIFEST = [
     navLabel: "Referral Analyzer",
     icon: Filter,
     category: "Office",
-    adminOnly: false,
-    access: "patient",
+    adminOnly: true,
+    intakeRole: true,
     breadcrumbParent: "ReferralIntake",
     keywords: ["referral", "triage", "priority"],
   },
@@ -858,9 +864,13 @@ export function buildNavCategories(manifest, user = null) {
   const map = {};
   const routed = getRoutedPages();
   for (const entry of manifest) {
-    if (!entry.category || entry.adminOnly) continue;
+    if (!entry.category) continue;
     if (!routed.has(entry.page)) continue;  // never link to an unrouted page
-    if (!canAccessLevel(user, entry.access)) continue;
+    // Admins receive Office from buildAdminItems. Intake pages are added here
+    // only for a manager or office-staff membership, so they are not listed twice.
+    const intakeForStaff = entry.intakeRole && isReferralIntakeRole(user) && !isAdminView(user);
+    if (entry.adminOnly && !intakeForStaff) continue;
+    if (!entry.adminOnly && !canAccessLevel(user, entry.access)) continue;
     if (!map[entry.category]) map[entry.category] = [];
     map[entry.category].push({
       name: entry.navLabel ?? entry.label,
@@ -948,8 +958,9 @@ export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false, use
   return manifest.filter(e => {
     if (!routed.has(e.page)) return false;
     if (e.superAdminOnly && !isSuperAdmin) return false;  // platform-only pages
-    if (e.adminOnly && !isAdmin) return false;
-    if (!isAdmin && !canAccessLevel(user, e.access)) return false;
+    const intakeAllowed = e.intakeRole && isReferralIntakeRole(user);
+    if (e.adminOnly && !isAdmin && !intakeAllowed) return false;
+    if (!isAdmin && !e.adminOnly && !canAccessLevel(user, e.access)) return false;
     return true;
   });
 }
@@ -962,7 +973,11 @@ export function isPageAllowedForRole(pageName, roleView, user = null) {
   const entry = NAV_MAP[pageName];
   if (!entry) return true;
   if (entry.superAdminOnly) return roleView === "super_admin";
-  if (entry.adminOnly) return roleView === "super_admin" || roleView === "facility_admin";
+  if (entry.adminOnly) {
+    if (roleView === "super_admin" || roleView === "facility_admin") return true;
+    return !!(entry.intakeRole && isReferralIntakeRole(user));
+  }
+  if (entry.intakeRole) return isReferralIntakeRole(user);
   return canAccessLevel(user, entry.access);
 }
 
