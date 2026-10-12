@@ -29,7 +29,7 @@ import CertificateDownloadButton from "@/components/training/CertificateDownload
 import CourseStepIndicator from "@/components/training/CourseStepIndicator";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { formatLocalDate } from "@/lib/dateLocal";
-import { competencyGate, retakeEligibleAt, retakeWaitRemainingHours } from "@/components/training/competencyGate";
+import { competencyGate, retakeTimerDelayMs, retakeWaitRemainingHours } from "@/components/training/competencyGate";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Fisher-Yates shuffle for unbiased randomization
@@ -213,9 +213,7 @@ export default function TrainingCoursePlayer() {
   const retakeHoursLeft = retakeWaitRemainingHours(waitHours, resultRecordedAt, retakeClock);
   useEffect(() => {
     if (!resultRecordedAt || waitHours <= 0) return undefined;
-    const eligibleAt = retakeEligibleAt(waitHours, resultRecordedAt);
-    if (!eligibleAt) return undefined;
-    const delay = eligibleAt - Date.now();
+    const delay = retakeTimerDelayMs(waitHours, resultRecordedAt, Date.now());
     if (delay <= 0) return undefined;
     const openRetake = () => setRetakeClock(Date.now());
     const timer = setTimeout(openRetake, delay);
@@ -227,7 +225,7 @@ export default function TrainingCoursePlayer() {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [resultRecordedAt, waitHours]);
+  }, [resultRecordedAt, waitHours, retakeClock]);
   const isAdmin = isAdminView(currentUser);
   const answeredCount = Object.keys(answers).length;
   const totalQuestions = randomizedQuestions.length;

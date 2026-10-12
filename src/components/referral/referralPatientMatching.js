@@ -146,6 +146,26 @@ function scorePatient(patient, demographics) {
 }
 
 /**
+ * An AI "definitive" or ≥90% pick may auto-link only when the same roster row
+ * also clears the two-part name bar. Otherwise the caller must hold the
+ * referral for review instead of copying an MRN onto a household member.
+ * Returns null when this result is not an auto-link candidate at all.
+ */
+export function acceptAiAutoLink({ rankedMatches, matchAnalysis } = {}) {
+  const confidence = matchAnalysis?.confidence_level;
+  const score = Number(matchAnalysis?.confidence_score);
+  const id = matchAnalysis?.best_match_id;
+  const confident = !!id && (
+    confidence === 'definitive' || (confidence === 'high' && score >= 90)
+  );
+  if (!confident) return null;
+  const selected = (Array.isArray(rankedMatches) ? rankedMatches : [])
+    .find((match) => match?.patient?.id === id);
+  if (selected?.nameMatched) return { patient: selected.patient };
+  return { requiresManualReview: true };
+}
+
+/**
  * Rank the authorized identity roster once and derive both the deterministic
  * match and the bounded AI shortlist from that same ordering.
  */

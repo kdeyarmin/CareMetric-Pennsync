@@ -97,7 +97,7 @@ import { markStartOfCareCompleted } from "../components/referral/intakeToSocTrac
 import { referralToF2FInput, validateFaceToFace, toFaceToFaceEncounter } from "../components/referral/faceToFaceValidator";
 import { validateIntakeDiagnoses } from "../components/referral/intakeDiagnosisValidator";
 import { referralPatientReadiness } from "../components/referral/referralPatientReadiness";
-import { buildReferralPatientMatchCandidates } from "../components/referral/referralPatientMatching";
+import { acceptAiAutoLink, buildReferralPatientMatchCandidates } from "../components/referral/referralPatientMatching";
 import { normalizePatientMatchSuggestions } from "../components/referral/patientMatchSuggestions";
 import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
@@ -597,7 +597,7 @@ export default function ReferralIntake() {
       // The complete authorized keyset roster prevents a chart older than an
       // arbitrary UI page from being missed and then duplicated.
       const allPatients = await listAuthorizedReferralIdentityRoster({ tenantContext });
-      const { bestMatch, aiCandidates } = buildReferralPatientMatchCandidates({
+      const { rankedMatches, bestMatch, aiCandidates } = buildReferralPatientMatchCandidates({
         patients: allPatients,
         demographics: extractedData.demographics || {},
       });
@@ -626,12 +626,27 @@ export default function ReferralIntake() {
           updates.match_factors = matchAnalysis.match_factors;
           updates.discrepancies = matchAnalysis.discrepancies;
           
-          if (((matchAnalysis.confidence_level === 'definitive') || (matchAnalysis.confidence_level === 'high' && matchAnalysis.confidence_score >= 90)) && matchAnalysis.best_match_id) {
-            // Definitive (e.g. exact MRN) or high confidence (90%+) - auto-match.
-            // 'definitive' previously fell through every branch and silently created
-            // a DUPLICATE patient despite an exact-identifier match.
-            if (!existingPatient) {
-              existingPatient = allPatients.find(p => p.id === matchAnalysis.best_match_id);
+          if (matchAnalysis.best_match_id && (
+            matchAnalysis.confidence_level === 'definitive'
+            || (matchAnalysis.confidence_level === 'high' && matchAnalysis.confidence_score >= 90)
+          )) {
+            // Definitive (e.g. exact MRN) or high confidence (90%+) may auto-match
+            // only when that same chart also clears the two-part name bar.
+            // Otherwise Jane Smith would be linked to John Smith and pick up his MRN.
+            const aiLink = acceptAiAutoLink({ rankedMatches, matchAnalysis });
+            if (aiLink?.patient) {
+              if (!existingPatient) existingPatient = aiLink.patient;
+            } else {
+              updates.requires_manual_review = true;
+              updates.match_suggestions = normalizePatientMatchSuggestions({
+                preferred: {
+                  patient_id: matchAnalysis.best_match_id,
+                  confidence_score: matchAnalysis.confidence_score,
+                  reasons: matchAnalysis.match_factors,
+                  discrepancies: matchAnalysis.discrepancies,
+                },
+                suggestions: matchAnalysis.alternative_matches,
+              }).suggestions;
             }
           } else if (matchAnalysis.confidence_level === 'high' && matchAnalysis.best_match_id) {
             // Medium-high confidence (70-89%) - flag for quick review

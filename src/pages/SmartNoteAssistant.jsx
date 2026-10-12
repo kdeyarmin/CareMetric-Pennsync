@@ -169,7 +169,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [activeTab, setActiveTab] = useState("builder");
   const [draftRestored, setDraftRestored] = useState(false);
   const [followUpTasks, setFollowUpTasks] = useState([]);
-  const [facilityAck, setFacilityAck] = useState(false);
+  const [facilityAck, setFacilityAck] = useState(/** @type {false | string} */ (false));
   const [generatingTasks, setGeneratingTasks] = useState(false);
   // Why the last save attempt failed, kept on screen instead of only in a toast.
   const [saveError, setSaveError] = useState(null);

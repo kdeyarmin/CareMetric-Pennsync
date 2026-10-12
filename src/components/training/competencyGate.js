@@ -27,6 +27,21 @@ export function retakeEligibleAt(waitHours, submittedAt) {
   return submittedMs + wait * 3_600_000;
 }
 
+/** setTimeout delays above this overflow and fire immediately. */
+export const MAX_RETAKE_TIMER_MS = 2_147_483_647;
+
+/**
+ * Delay for the next retake-clock tick. Long waits are chunked at the timer
+ * ceiling so the caller can reschedule until `retakeEligibleAt`.
+ */
+export function retakeTimerDelayMs(waitHours, submittedAt, now = Date.now()) {
+  const eligibleAt = retakeEligibleAt(waitHours, submittedAt);
+  if (!eligibleAt) return 0;
+  const delay = eligibleAt - now;
+  if (delay <= 0) return 0;
+  return Math.min(delay, MAX_RETAKE_TIMER_MS);
+}
+
 /**
  * Whole hours until a failed attempt may be retaken. 0 means the button can
  * be offered; the grader still rejects a retry that arrives early.
