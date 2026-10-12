@@ -208,25 +208,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dispatch_at=$(date -u +%s)
+          # Taken before the dispatch, with a few seconds of margin for any
+          # difference between this runner's clock and GitHub's.
+          dispatch_at=$(( $(date -u +%s) - 5 ))
           gh workflow run publish-production-frontend.yml \
             --repo "$GITHUB_REPOSITORY" --ref main -f central_help_enabled=true
           echo 'Dispatched "Publish production frontend (site only)" on main.' >> "$GITHUB_STEP_SUMMARY"
-          # The dispatch above is otherwise fire-and-forget: wait for the
-          # publication run to appear, then watch it so a failed publication
-          # cannot hide behind a green function deploy.
+          # The dispatch above is otherwise fire-and-forget: find the
+          # publication run it created, then watch it, so a failed publication
+          # cannot hide behind a green function deploy. Of the dispatched runs
+          # created since, take the OLDEST: this job's own run is created first,
+          # so a run another maintainer starts afterwards is never mistaken for
+          # it. (Exact correlation would need an input on the publication
+          # workflow.) A listing error is retried on the next poll.
           run_id=""
           for i in $(seq 1 12); do
             run_id=$(gh run list --repo "$GITHUB_REPOSITORY" \
-              --workflow publish-production-frontend.yml --branch main \
-              --limit 5 --json databaseId,createdAt \
-              --jq "[.[] | select(.createdAt | fromdateiso8601 >= $dispatch_at)][0].databaseId // empty")
+              --workflow publish-production-frontend.yml --branch main --event workflow_dispatch \
+              --limit 20 --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt | fromdateiso8601 >= $dispatch_at)] | sort_by(.createdAt) | .[0].databaseId // empty") || run_id=""
             [ -n "$run_id" ] && break
             sleep 10
           done
+          # An unobserved publication is not a completed deploy.
           if [ -z "$run_id" ]; then
-            echo 'WARNING: dispatched the site publication but could not locate its run; verify it manually.' >> "$GITHUB_STEP_SUMMARY"
-          elif ! gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status; then
+            echo 'SITE_PUBLICATION_NOT_FOUND: dispatched the site-only publication but could not find its run within two minutes; check it before considering this deploy complete.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if ! gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status; then
             echo 'SITE_PUBLICATION_FAILED: the site-only publication run failed; inspect it before considering this deploy complete.' >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

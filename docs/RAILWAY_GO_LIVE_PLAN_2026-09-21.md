@@ -4378,7 +4378,7 @@ operation keys: thirty-two reads over twenty-one keys, and thirteen writes over
   back, so a bucket nobody adopted from has moved in both directions. That is
   what a remainder does: it is a property of what is LEFT, and of what ARRIVES.
   The reason the shape keeps moving is measurable on
-  the   sites already served: a read key there carries 2.69 call sites and a write
+  the sites already served: a read key there carries 2.69 call sites and a write
   key 1.29, so a read port has historically served many screens per route while
   a write port served the one form that calls it. **Do not carry that ratio into
   the remainder, though**: inside this pool a read key covers 1.52 sites and a
