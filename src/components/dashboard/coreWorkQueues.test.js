@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCoreWorkQueues } from './coreWorkQueues.js';
+import { buildCoreWorkQueues, formatQueueCount, showsWorkQueueStrip } from './coreWorkQueues.js';
 
 test('buildCoreWorkQueues gives nurses task and note queues only', () => {
   const queues = buildCoreWorkQueues({
@@ -46,4 +46,16 @@ test('buildCoreWorkQueues gives managers the referral queue but not admin review
 
 test('buildCoreWorkQueues omits empty queues', () => {
   assert.deepEqual(buildCoreWorkQueues({ role: 'admin' }), []);
+});
+
+test('a full referral page is not shown as an exact count', () => {
+  assert.equal(formatQueueCount(200, true), '200+');
+  assert.equal(formatQueueCount(3, false), '3');
+});
+
+test('a manager sees the work-queue strip without a nursing discipline', () => {
+  assert.equal(showsWorkQueueStrip('manager', false), true);
+  assert.equal(showsWorkQueueStrip('facility_admin', false), true);
+  assert.equal(showsWorkQueueStrip('nurse', false), false);
+  assert.equal(showsWorkQueueStrip('nurse', true), true);
 });

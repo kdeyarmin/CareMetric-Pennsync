@@ -20,6 +20,8 @@ import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
 import TodayPriorities from "@/components/dashboard/TodayPriorities.jsx";
 import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
+import { showsWorkQueueStrip } from "@/components/dashboard/coreWorkQueues";
+import { listAuthorizedReferrals } from "@/functions/manageAuthorizedReferral";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAlert";
@@ -36,7 +38,7 @@ const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTe
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
-  const { user: authUser } = useAuth();
+  const { user: authUser, tenantContext } = useAuth();
   const containerRef = useRef(null);
   const [_isRefreshing, setIsRefreshing] = useState(false);
 
@@ -60,6 +62,7 @@ export default function Dashboard() {
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['dashboardData'] }),
+        queryClient.refetchQueries({ queryKey: ['dashboardData', 'referralQueue'] }),
         queryClient.refetchQueries({ queryKey: ['myNoteConversions'] }),
       ]);
       toast.success('Dashboard refreshed');
@@ -134,6 +137,23 @@ export default function Dashboard() {
     gcTime: 900000,
     enabled: !!currentUser?.email,
   });
+  const workQueueRole = isAdminView(authUser) ? "facility_admin" : isTenantManager(authUser) ? "manager" : "nurse";
+  const intakeRole = isReferralIntakeRole(authUser);
+  const queueAgencyId = tenantContext?.agency_id || null;
+  const canLoadReferralQueue = (workQueueRole === "manager" || workQueueRole === "facility_admin")
+    && tenantContext?.membership_status === "active"
+    && !!queueAgencyId;
+  const { data: queueReferrals = [], isError: referralQueueUnavailable } = useQuery({
+    queryKey: ['dashboardData', 'referralQueue', queueAgencyId, 'awaiting_info'],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: queueAgencyId,
+      status: 'awaiting_info',
+      limit: 200,
+    }).then((result) => result.referrals),
+    enabled: canLoadReferralQueue,
+    staleTime: 120000,
+  });
+  const referralQueueCapped = !referralQueueUnavailable && queueReferrals.length >= 200;
   const nurseStats = useMemo(() => (
     currentUser?.email
       ? calculateNurseStats(currentUser.email, { visits, noteConversions, dateRange: 30 })
@@ -166,9 +186,6 @@ export default function Dashboard() {
   const clinical = isClinicalUser(currentUser);
   const patientAccess = canViewPatients(currentUser);
   const eyebrow = clinical ? careScopeLabel : staffRoleLabel(getStaffRole(currentUser));
-
-  const workQueueRole = isAdminView(authUser) ? "facility_admin" : isTenantManager(authUser) ? "manager" : "nurse";
-  const intakeRole = isReferralIntakeRole(authUser);
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -229,7 +246,6 @@ export default function Dashboard() {
       />
 
       {clinical && (
-        <>
           <TodayPriorities
             currentUser={currentUser}
             visits={visits}
@@ -239,10 +255,22 @@ export default function Dashboard() {
             noteConversionsAvailable={!noteConversionsError}
             dashboardError={hasDataError}
           />
+      )}
 
+      {showsWorkQueueStrip(workQueueRole, clinical) && (
+        <>
+          {referralQueueUnavailable && (
+            <Card className="border-red-200 bg-white">
+              <CardContent className="p-4 text-sm text-red-800">
+                Referral queue could not be authorized. No empty queue is being inferred.
+              </CardContent>
+            </Card>
+          )}
           <CoreWorkQueuesStrip
             role={workQueueRole}
             incidents={incidents}
+            referrals={referralQueueUnavailable ? [] : queueReferrals}
+            referralCountCapped={referralQueueCapped}
           />
         </>
       )}
