@@ -28,7 +28,11 @@ function harness(name, { failures = [], rows = {}, caller = employee, authError 
     async filter(query, _sort, limit = 5000) {
       reads.push({ entity, action: 'filter', query, limit });
       if (failures.includes(entity)) throw new Error('SYNTHETIC_DATASTORE_ERROR');
-      return deepCopy((data[entity] || []).filter(row => Object.entries(query || {}).every(([key,value]) => value && typeof value === 'object' && '$in' in value ? value.$in.includes(row[key]) : row[key] === value)).slice(0,limit));
+      return deepCopy((data[entity] || []).filter(row => Object.entries(query || {}).every(([key, value]) => {
+        if (value && typeof value === 'object' && '$in' in value) return value.$in.includes(row[key]);
+        if (value && typeof value === 'object' && '$ne' in value) return row[key] !== value.$ne;
+        return row[key] === value;
+      })).slice(0, limit));
     },
     async list(_sort, limit = 5000) { reads.push({ entity, action: 'list', limit }); if (failures.includes(entity)) throw new Error('SYNTHETIC_DATASTORE_ERROR'); return deepCopy((data[entity] || []).slice(0,limit)); },
     async get(id) { return deepCopy((data[entity] || []).find(row => row.id === id) || null); },

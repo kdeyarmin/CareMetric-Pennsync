@@ -2114,7 +2114,7 @@ test('a capability whose only entities are the claims helper is not waiting on t
     assert.deepEqual(bare.names, [], `${name} touches none outside the helper`);
     assert.equal(bare.dynamic, false, `${name} indexes no namespace`);
   }
-  // The one the measurement finds. `sendAccountReadyEmail` was the second and
+  // `sendAccountReadyEmail` was the second and
   // LEFT the set rather than being removed from it: it now reads `User` to
   // prove the recipient is a registered user in the caller's own agency, which
   // is the open-relay fix its sibling `sendWelcomeEmail` carries too, so its
@@ -2128,9 +2128,11 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // (released 2026-10-08) joined too: they read no record at all, only the
   // claims fence that decides the caller holds an active membership, and both
   // are carried `preserved_paused`, so neither adds to the port queue.
+  // `generateNoteFromRecording` has the same claims-only entity reach; its
+  // separate file work is why it remains in `files`, not `records_schema`.
   assert.deepEqual([...claims].sort(), [
     'autoImportPatients', 'generateAdmissionNoteFromReferral',
-    'generateCarePlanFromReferral', 'submitAppFeedback',
+    'generateCarePlanFromReferral', 'generateNoteFromRecording', 'submitAppFeedback',
   ]);
 
   const report = checkCoverage(
