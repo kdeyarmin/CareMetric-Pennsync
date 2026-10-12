@@ -9,6 +9,7 @@ import { resolve } from 'node:path';
 const exec = promisify(execFile);
 export const PROJECT = 'local-pennsync-authority';
 export const API = 'http://127.0.0.1:54321';
+export const STACK_PORTS = Object.freeze([54320, 54321, 54322, 54324]);
 export const workdir = fileURLToPath(new URL('../', import.meta.url));
 const marker = new URL('../supabase/.temp/http-harness-owner.json', import.meta.url);
 const CLI = process.env.PENNSYNC_SUPABASE_CLI || 'supabase';
@@ -327,13 +328,12 @@ export async function describePortHolder(port) {
  * that is still closing -- and the third failure spent all PORT_ATTEMPTS,
  * which that cannot explain.
  *
- * The cause it might be is unproved and deliberately not fixed here: 54320,
- * 54321, 54322 and 54324 all sit inside Linux's default ephemeral range
- * (32768-60999), so any OS-assigned port in the same job can land on one of
- * them. Do not reserve the ports until an occurrence NAMES one -- which is why
- * the refusal now carries the port and prints what held it. A port something
- * actually HOLDS stays held for all PORT_ATTEMPTS and still refuses, so the
- * guarantee is unchanged. Do not replace this with a single bind.
+ * 54320, 54321, 54322 and 54324 all sit inside Linux's default ephemeral
+ * range (32768-60999), so an OS-assigned port could land on one between this
+ * check and the CLI's bind. CI reserves these ports from ephemeral allocation
+ * before starting the stack. A port something actually HOLDS stays held for
+ * all PORT_ATTEMPTS and still refuses, so the guarantee is unchanged. Do not
+ * replace this with a single bind.
  *
  * THE HOLDER IS DESCRIBED AT EACH FAILURE, NEVER AFTER THE RETRIES (D112).
  * The first version of that diagnostic ran `describePortHolder` once, after the
@@ -396,7 +396,7 @@ async function main(action) {
     }
     const marked = await access(marker).then(() => true, () => false);
     if (marked) fail('LOCAL_STACK_MARKER_EXISTS_USE_SCOPED_STOP');
-    for (const port of [54321, 54322, 54324]) await unusedPort(port);
+    for (const port of STACK_PORTS) await unusedPort(port);
     await mkdir(new URL('../supabase/.temp/', import.meta.url), { recursive: true });
     await writeFile(marker, JSON.stringify({ version: 2, project: PROJECT, workdir, daemon: pinnedDaemon }), { flag: 'wx' });
     // Keep the ownership marker on failure so `stop` can clean only this attempted stack.

@@ -34,7 +34,7 @@ import { createServer, connect } from 'node:net';
 import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
-  unusedPort, describePortHolder, emittable, PORT_ATTEMPTS, PORT_RETRY_MS,
+  unusedPort, describePortHolder, emittable, PORT_ATTEMPTS, PORT_RETRY_MS, STACK_PORTS,
 } from './http-local-stack.mjs';
 
 /** `/proc/net/tcp` is Linux's, and two tests here read the kernel directly. */
@@ -58,6 +58,25 @@ const elapsed = async work => {
   await work();
   return Number((process.hrtime.bigint() - started) / 1000000n);
 };
+
+test('preflight covers every configured local Supabase port', async () => {
+  const config = await readFile(new URL('../supabase/config.toml', import.meta.url), 'utf8');
+  const configuredPorts = [...config.matchAll(/^\s*(?:port|shadow_port)\s*=\s*(\d+)\s*$/gm)]
+    .map(([, port]) => Number(port))
+    .sort((a, b) => a - b);
+  assert.deepEqual([...STACK_PORTS].sort((a, b) => a - b), configuredPorts);
+});
+
+test('every CI workflow reserves stack ports before checkout can use ephemeral ports', async () => {
+  for (const workflowName of ['pennsync-app', 'pennsync-authority', 'pennsync-browser']) {
+    const workflow = await readFile(new URL(`../../../.github/workflows/${workflowName}.yml`, import.meta.url), 'utf8');
+    const reserveStep = workflow.indexOf('- name: Reserve local Supabase ports from ephemeral allocation');
+    const checkoutStep = workflow.indexOf('- uses: actions/checkout@v7', reserveStep);
+    assert.ok(reserveStep >= 0 && reserveStep < checkoutStep, `${workflowName} must reserve ports before checkout`);
+    assert.ok(workflow.includes(`ip_local_reserved_ports=\${reserved_ports}${STACK_PORTS.join(',')}`),
+      `${workflowName} must reserve every configured port`);
+  }
+});
 
 test('a free port returns without waiting', async () => {
   const port = await freePort();
