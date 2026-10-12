@@ -17,29 +17,12 @@ import DischargeSummaryWorkflow from '@/components/discharge/DischargeSummaryWor
 import DischargeSummaryGenerator from '@/components/discharge/DischargeSummaryGenerator';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { formatLocalDate } from '@/lib/dateLocal';
-
-const formatPdfDate = (value) => formatLocalDate(value) || '—';
+import dischargePdfContent from '@/components/discharge/dischargePdfContent';
 
 async function downloadSummaryPDF(summary) {
   try {
     const { exportToPDF } = await import('@/components/utils/pdfExporter');
-    const content = [];
-    const addSection = (label, value) => {
-      if (value === undefined || value === null || value === '') return;
-      content.push({ type: 'heading', text: label, size: 12 });
-      content.push({ type: 'text', text: String(value) });
-      content.push({ type: 'spacer', height: 3 });
-    };
-    addSection('Primary Diagnosis', summary.primary_diagnosis);
-    if (Array.isArray(summary.secondary_diagnoses) && summary.secondary_diagnoses.length) {
-      addSection('Secondary Diagnoses', summary.secondary_diagnoses.join(', '));
-    }
-    addSection('Admission / Discharge', `${formatPdfDate(summary.admission_date)} to ${formatPdfDate(summary.discharge_date)}`);
-    addSection('Reason for Admission', summary.reason_for_admission);
-    addSection('Summary of Care', summary.summary_of_care);
-    if (summary.signature?.signed_by_name) {
-      addSection('Signed By', `${summary.signature.signed_by_name}${summary.signature.signed_date ? ` on ${new Date(summary.signature.signed_date).toLocaleString()}` : ''}`);
-    }
+    const content = dischargePdfContent(summary);
     await exportToPDF({
       filename: `discharge_summary_${(summary.patient_name || 'patient').replace(/\s+/g, '_')}.pdf`,
       title: 'Discharge Summary',

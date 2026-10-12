@@ -103,8 +103,19 @@ export const exportToPDF = async (options = {}) => {
         doc.setFontSize(10);
         doc.setFont(undefined, 'normal');
         const lines = doc.splitTextToSize(section.text, pageWidth - (2 * margin));
-        doc.text(lines, margin, yPosition);
-        yPosition += lines.length * 5;
+        let offset = 0;
+        while (offset < lines.length) {
+          let capacity = Math.floor((pageHeight - margin - 10 - yPosition) / 5);
+          if (capacity < 1) {
+            doc.addPage();
+            yPosition = margin;
+            capacity = Math.floor((pageHeight - margin - 10 - yPosition) / 5);
+          }
+          const chunk = lines.slice(offset, offset + capacity);
+          doc.text(chunk, margin, yPosition);
+          yPosition += chunk.length * 5;
+          offset += chunk.length;
+        }
       } else if (section.type === 'table') {
         // Accept both table shapes so no caller silently renders a blank table:
         //   1. { headers: [...], rows: [[...]] }                         (most callers)

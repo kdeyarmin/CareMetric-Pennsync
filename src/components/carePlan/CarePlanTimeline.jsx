@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { differenceInDays, isAfter } from "date-fns";
+import { differenceInCalendarDays } from 'date-fns';
 import {
   Target,
   CheckCircle2,
@@ -8,7 +8,7 @@ import {
   AlertCircle,
   TrendingUp
 } from "lucide-react";
-import { parseLocalDate, formatLocalDate, toLocalISODate } from "@/lib/dateLocal";
+import { parseLocalDate, formatLocalDate, toLocalISODate, isPastLocalDueDate } from '@/lib/dateLocal';
 
 export default function CarePlanTimeline({ carePlans = [], _patient }) {
   if (!carePlans || carePlans.length === 0) {
@@ -26,6 +26,7 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
   const sortedPlans = [...carePlans].sort((a, b) => {
     const da = parseLocalDate(a.target_date);
     const db = parseLocalDate(b.target_date);
+    if (!da && !db) return 0;
     if (!da) return 1;
     if (!db) return -1;
     return da - db;
@@ -39,12 +40,12 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
   
   const earliestDate = dates.length > 0 ? new Date(Math.min(...dates)) : today;
   const latestDate = dates.length > 0 ? new Date(Math.max(...dates)) : today;
-  const totalDays = differenceInDays(latestDate, earliestDate) || 30;
+  const totalDays = differenceInCalendarDays(latestDate, earliestDate) || 30;
 
   const getPositionPercentage = (targetDate) => {
     const date = targetDate instanceof Date ? targetDate : parseLocalDate(targetDate);
     if (!date) return 0;
-    const daysFromStart = differenceInDays(date, earliestDate);
+    const daysFromStart = differenceInCalendarDays(date, earliestDate);
     return (daysFromStart / totalDays) * 100;
   };
 
@@ -64,8 +65,8 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
     
     const date = parseLocalDate(targetDate);
     if (date) {
-      if (isAfter(today, date)) return <AlertCircle className="w-4 h-4" />;
-      if (differenceInDays(date, today) <= 7) return <Clock className="w-4 h-4" />;
+      if (status === 'active' && isPastLocalDueDate(targetDate, today)) return <AlertCircle className="w-4 h-4" />;
+      if (differenceInCalendarDays(date, today) <= 7) return <Clock className="w-4 h-4" />;
     }
     
     return <Target className="w-4 h-4" />;
@@ -74,7 +75,7 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
   const getDaysRemaining = (targetDate) => {
     const date = parseLocalDate(targetDate);
     if (!date) return null;
-    const days = differenceInDays(date, today);
+    const days = differenceInCalendarDays(date, today);
     if (days < 0) return { text: `${Math.abs(days)}d overdue`, color: 'text-red-600' };
     if (days === 0) return { text: 'Due today', color: 'text-orange-600' };
     if (days <= 7) return { text: `${days}d left`, color: 'text-yellow-600' };
@@ -138,9 +139,9 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
           {/* Care Plans List with Timeline Context */}
           <div className="space-y-3">
             {sortedPlans.map((plan, _idx) => {
-              const daysInfo = getDaysRemaining(plan.target_date);
+              const daysInfo = plan.status === 'active' ? getDaysRemaining(plan.target_date) : null;
               const targetDate = parseLocalDate(plan.target_date);
-              const isOverdue = targetDate && isAfter(today, targetDate) && plan.status === 'active';
+              const isOverdue = targetDate && isPastLocalDueDate(plan.target_date, today) && plan.status === 'active';
               
               return (
                 <Card 
@@ -209,8 +210,8 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
                               const created = parseLocalDate(plan.created_date);
                               const target = parseLocalDate(plan.target_date);
                               if (!created || !target) return null;
-                              const totalPlanDays = differenceInDays(target, created);
-                              const daysElapsed = differenceInDays(today, created);
+                              const totalPlanDays = differenceInCalendarDays(target, created);
+                              const daysElapsed = differenceInCalendarDays(today, created);
                               // Guard a zero/invalid span (same-day target, or an
                               // unparseable date -> NaN) so progress doesn't render "NaN%".
                               const progress = Number.isFinite(totalPlanDays) && totalPlanDays > 0 && Number.isFinite(daysElapsed)

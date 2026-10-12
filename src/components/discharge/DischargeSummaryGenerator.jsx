@@ -5,6 +5,11 @@ import DischargeSummaryWorkflow from './DischargeSummaryWorkflow';
 
 export default function DischargeSummaryGenerator({ patientId, onComplete }) {
   const [showWorkflow, setShowWorkflow] = useState(false);
+  const [previousPatientId, setPreviousPatientId] = useState(patientId);
+  if (previousPatientId !== patientId) {
+    setPreviousPatientId(patientId);
+    setShowWorkflow(false);
+  }
 
   return (
     <>
@@ -19,6 +24,7 @@ export default function DischargeSummaryGenerator({ patientId, onComplete }) {
 
       {showWorkflow && (
         <DischargeSummaryWorkflow
+          key={patientId}
           patientId={patientId}
           onClose={() => setShowWorkflow(false)}
           onComplete={() => {

@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react';
-import { toLocalISODate, formatLocalDate } from '@/lib/dateLocal';
+import { useEffect, useRef, useState } from 'react';
+import { toLocalISODate } from '@/lib/dateLocal';
+import dischargePdfContent from '@/components/discharge/dischargePdfContent';
+import DischargeSummaryLoadState from '@/components/discharge/DischargeSummaryLoadState';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -31,11 +33,8 @@ import {
 } from 'lucide-react';
 
 import { toast } from 'sonner';
-import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 import { useAuth } from '@/lib/AuthContext';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
-
-const formatPdfDate = (value) => value ? formatLocalDate(value) : '—';
 
 export default function DischargeSummaryWorkflow({ patientId, summaryId = null, initialStep = 'generate', onClose, onComplete }) {
   // initialStep lets a caller (e.g. the Discharge Summaries list "Review & Sign"
@@ -48,6 +47,12 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
   const [attested, setAttested] = useState(false);
   const [signatureImage, setSignatureImage] = useState(null);
   const signRequestIdRef = useRef(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const [activeSummaryId, setActiveSummaryId] = useState(summaryId);
   const { tenantContext } = useAuth();
 
   const { data: currentUser } = useQuery({
@@ -62,24 +67,20 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
     enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
-  const { data: existingSummary, refetch: refetchSummary } = useQuery({
-    queryKey: ['discharge-summary', patientId, summaryId],
+  const { data: existingSummary, refetch: refetchSummary, isPending: summaryPending, isError: summaryError } = useQuery({
+    queryKey: ['discharge-summary', tenantContext?.agency_id, patientId, activeSummaryId],
     queryFn: async () => {
-      // When a specific summary was selected (e.g. from the list), load exactly
-      // that record so review/sign acts on it; otherwise fall back to the
-      // patient's most recent summary (the generate-then-review flow).
-      if (summaryId) {
-        const [s] = await base44.entities.DischargeSummary.filter({ id: summaryId });
-        return s;
-      }
       const summaries = await base44.entities.DischargeSummary.filter(
-        { patient_id: patientId },
-        '-generated_date',
-        PATIENT_HISTORY_ROWS,
+        { patient_id: patientId, ...(activeSummaryId ? { id: activeSummaryId } : {}) },
+        '-generated_date', 1,
       );
-      return summaries[0];
+      const record = summaries[0];
+      if (record && (record.patient_id !== patientId || (activeSummaryId && record.id !== activeSummaryId))) {
+        throw new Error('The discharge summary does not match the selected patient and document.');
+      }
+      return record ?? null;
     },
-    enabled: !!(patientId || summaryId)
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   // Generate summary mutation
@@ -91,36 +92,25 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
       });
       const data = response?.data ?? response;
       if (data?.error) throw new Error(data.error);
-      if (!data?.discharge_summary) throw new Error('Discharge summary was not returned');
+      if (!data?.discharge_summary?.id || data.discharge_summary.patient_id !== patientId) {
+        throw new Error('A discharge summary for the selected patient was not returned');
+      }
       return data;
     },
     onSuccess: (data) => {
-      toast.success('Discharge summary generated successfully');
+      if (!mounted.current) return;
+      setActiveSummaryId(data.discharge_summary.id);
       setEditedSummary(data.discharge_summary);
       setCurrentStep('review');
-      refetchSummary();
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to generate summary');
+      if (mounted.current) toast.error(error.message || 'Failed to generate summary');
     }
   });
 
   // Update summary mutation
   const updateMutation = useMutation({
-    mutationFn: async (updates) => {
-      return base44.entities.DischargeSummary.update(
-        existingSummary?.id || editedSummary?.id,
-        updates
-      );
-    },
-    onSuccess: () => {
-      refetchSummary();
-    },
-    onError: (error) => {
-      // Without this, a failed update left the user with no feedback at all —
-      // for a legally-signed discharge document the workflow just appeared frozen.
-      toast.error(error?.message || 'Failed to save the discharge summary. Please try again.');
-    }
+    mutationFn: ({ id, updates }) => base44.entities.DischargeSummary.update(id, updates),
   });
 
   // Sign through the e-signature broker: it authenticates the clinician,
@@ -129,6 +119,9 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
   // browser never writes the signature or the signed status itself.
   const signMutation = useMutation({
     mutationFn: async () => {
+      if (!attested || !signatureImage || summary?.status !== 'reviewed' || summary.patient_id !== patientId) {
+        throw new Error('Review this patient’s summary and complete the signature attestation first.');
+      }
       const file = signatureFileFromDataUrl(signatureImage, 'discharge-signature.png');
       signRequestIdRef.current ||= newEsignRequestId('discharge');
       return signDischargeSummary({
@@ -139,18 +132,25 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
       });
     },
     onSuccess: async () => {
-      toast.success('Discharge summary signed');
-      setEditedSummary(null);
-      await refetchSummary();
+      if (!mounted.current) return;
+      const refreshed = await refetchSummary();
+      if (!mounted.current) return;
+      if (refreshed.isError || !['signed', 'sent'].includes(refreshed.data?.status)) {
+        toast.error('The signature was submitted, but the signed summary could not be reloaded. Reopen this summary to confirm its status.');
+        return;
+      }
+      setEditedSummary(refreshed.data);
       setCurrentStep('complete');
     },
     onError: (error) => {
-      toast.error(error?.message || 'The discharge summary could not be signed');
+      if (mounted.current) toast.error(error?.message || 'The discharge summary could not be signed');
     },
   });
 
   // Mark as reviewed
   const handleReviewComplete = async () => {
+    if (!summary?.id || summary.patient_id !== patientId || !currentUser?.email
+      || !['draft', 'pending_review', 'reviewed'].includes(summary.status) || updateMutation.isPending) return;
     // Disposition is a required legal fact that the AI no longer guesses — the
     // clinician must select it before this discharge document can be signed/locked.
     if (!summary?.discharge_disposition) {
@@ -158,7 +158,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
       return;
     }
     try {
-      await updateMutation.mutateAsync({
+      const updated = await updateMutation.mutateAsync({ id: summary.id, updates: {
         // Persist the clinician's edits to the narrative fields. Without this the
         // edits lived only in local state, so the reviewed/signed/locked record
         // (and the generated PDF) kept the ORIGINAL AI text — the clinician would
@@ -173,15 +173,19 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
         reviewed_by: currentUser?.email,
         reviewed_date: new Date().toISOString(),
         review_notes: reviewNotes
-      });
-      toast.success('Review completed');
-      // Sign what was stored: drop the local draft so the signing step shows
-      // (and its status gate reads) the saved, reviewed record.
-      await refetchSummary();
-      setEditedSummary(null);
+      } });
+      if (!mounted.current) return;
+      if (updated?.id !== summary.id || updated.patient_id !== patientId || updated.status !== 'reviewed') {
+        throw new Error('The reviewed summary could not be verified.');
+      }
+      setActiveSummaryId(updated.id);
+      setEditedSummary(updated);
+      setAttested(false);
+      setSignatureImage(null);
+      signRequestIdRef.current = null;
       setCurrentStep('sign');
     } catch {
-      // Failure already surfaced by updateMutation.onError; do not advance the step.
+      if (mounted.current) toast.error('The reviewed summary could not be saved and verified. Your edits are still here; please retry.');
     }
   };
 
@@ -189,36 +193,24 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
   const handleDownloadPDF = async () => {
     try {
       const { exportToPDF } = await import('@/components/utils/pdfExporter');
-      const content = [];
-      const addSection = (label, value) => {
-        if (value === undefined || value === null || value === '') return;
-        content.push({ type: 'heading', text: label, size: 12 });
-        content.push({ type: 'text', text: String(value) });
-        content.push({ type: 'spacer', height: 3 });
-      };
-      addSection('Primary Diagnosis', summary.primary_diagnosis);
-      if (Array.isArray(summary.secondary_diagnoses) && summary.secondary_diagnoses.length) {
-        addSection('Secondary Diagnoses', summary.secondary_diagnoses.join(', '));
-      }
-      addSection('Admission / Discharge', `${formatPdfDate(summary.admission_date)} to ${formatPdfDate(summary.discharge_date)}`);
-      addSection('Reason for Admission', summary.reason_for_admission);
-      addSection('Summary of Care', summary.summary_of_care);
-      if (summary.signature?.signed_by_name) {
-        addSection('Signed By', `${summary.signature.signed_by_name}${summary.signature.signed_date ? ` on ${new Date(summary.signature.signed_date).toLocaleString()}` : ''}`);
-      }
+      if (!mounted.current) return false;
+      const content = dischargePdfContent(summary);
       await exportToPDF({
         filename: `discharge_summary_${(summary.patient_name || 'patient').replace(/\s+/g, '_')}.pdf`,
         title: 'Discharge Summary',
         subtitle: summary.patient_name || '',
         content,
       });
-    } catch (err) {
-      console.error('Discharge summary PDF error:', err);
-      toast.error('Failed to generate PDF');
+      return mounted.current;
+    } catch {
+      if (mounted.current) toast.error('Failed to generate PDF. The summary remains open so you can retry.');
+      return false;
     }
   };
 
   const summary = editedSummary || existingSummary;
+  const readOnly = ['signed', 'sent'].includes(summary?.status);
+  const reviewDisabled = readOnly || updateMutation.isPending;
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
@@ -263,9 +255,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
 
         {/* When opened directly at review/sign for a selected summary, wait for it to load. */}
         {(currentStep === 'review' || currentStep === 'sign') && !summary && (
-          <div className="flex items-center justify-center py-12 text-slate-500">
-            <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading summary…
-          </div>
+          <DischargeSummaryLoadState pending={summaryPending} error={summaryError} onRetry={() => refetchSummary()} />
         )}
 
         {/* Step 1: Generate */}
@@ -305,7 +295,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
 
                 <Button
                   onClick={() => generateMutation.mutate()}
-                  disabled={generateMutation.isPending}
+                  disabled={generateMutation.isPending || !patient || !dischargeDate || !tenantContext?.agency_id}
                   className="w-full"
                 >
                   {generateMutation.isPending ? (
@@ -331,7 +321,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
             <Alert>
               <Eye className="w-4 h-4" />
               <AlertDescription>
-                Review the AI-generated summary. You can edit any section before signing.
+                {readOnly ? 'This summary is signed. Its clinical content is read-only.' : 'Review the AI-generated summary. You can edit any section before signing.'}
               </AlertDescription>
             </Alert>
 
@@ -350,6 +340,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
                   </CardHeader>
                   <CardContent>
                     <Textarea
+                      disabled={reviewDisabled}
                       value={summary.summary_of_care}
                       onChange={(e) => setEditedSummary({ ...summary, summary_of_care: e.target.value })}
                       rows={15}
@@ -364,6 +355,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
                   </CardHeader>
                   <CardContent>
                     <Textarea
+                      disabled={reviewDisabled}
                       value={summary.discharge_instructions}
                       onChange={(e) => setEditedSummary({ ...summary, discharge_instructions: e.target.value })}
                       rows={5}
@@ -381,6 +373,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
                         Discharge Disposition <span className="text-red-600">*</span>
                       </Label>
                       <Select
+                        disabled={reviewDisabled}
                         value={summary.discharge_disposition || ''}
                         onValueChange={(value) => setEditedSummary({ ...summary, discharge_disposition: value })}
                       >
@@ -397,6 +390,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
                     <div>
                       <Label className="mb-1 block">Functional Status at Discharge</Label>
                       <Textarea
+                        disabled={reviewDisabled}
                         value={summary.functional_status?.at_discharge || ''}
                         onChange={(e) => setEditedSummary({
                           ...summary,
@@ -507,6 +501,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
             <div>
               <Label>Review Notes (Optional)</Label>
               <Textarea
+                disabled={reviewDisabled}
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 placeholder="Add any notes about your review..."
@@ -518,10 +513,10 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button onClick={handleReviewComplete}>
-                <CheckCircle className="w-4 h-4 mr-2" />
+              {!readOnly && <Button onClick={handleReviewComplete} disabled={updateMutation.isPending || !currentUser?.email}>
+                {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
                 Complete Review
-              </Button>
+              </Button>}
             </div>
           </div>
         )}
@@ -559,6 +554,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
                   <div className="flex items-start gap-2">
                     <Checkbox
                       id="discharge-attestation"
+                      disabled={signMutation.isPending}
                       checked={attested}
                       onCheckedChange={(value) => setAttested(value === true)}
                     />
@@ -622,9 +618,10 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
                     Close
                   </Button>
                   <Button onClick={async () => {
-                    await handleDownloadPDF();
-                    onComplete?.();
-                    onClose();
+                    if (await handleDownloadPDF()) {
+                      onComplete?.();
+                      onClose();
+                    }
                   }}>
                     <Download className="w-4 h-4 mr-2" />
                     Download PDF
