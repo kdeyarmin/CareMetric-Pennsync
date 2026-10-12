@@ -346,6 +346,54 @@ describe('AuthProvider tenant authority state machine', () => {
     } finally { timeout.mockRestore(); }
   });
 
+  it.each(['background', 'online'])('keeps the Base44 workspace ready after %s without purging drafts', async reason => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.tenantAuthorityState).toBe(
+      TENANT_AUTHORITY_STATES.READY,
+    ));
+    const authorityKey = result.current.tenantAuthorityKey;
+    const purgeCount = mocks.clearCachedPhi.mock.calls.length;
+    sessionStorage.setItem('smart-note-draft', 'recoverable-note');
+    let visibility;
+    let clock;
+    try {
+      await act(async () => {
+        if (reason === 'online') window.dispatchEvent(new Event('online'));
+        else {
+          let now = 1000;
+          clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+          visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+          document.dispatchEvent(new Event('visibilitychange'));
+          now += 31000;
+          visibility.mockReturnValue('visible');
+          document.dispatchEvent(new Event('visibilitychange'));
+        }
+      });
+      expect(result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
+      expect(result.current.tenantAuthorityKey).toBe(authorityKey);
+      expect(result.current.tenantContextError).toBeNull();
+      expect(mocks.poisonTenantSdkRealm).not.toHaveBeenCalled();
+      expect(mocks.clearCachedPhi).toHaveBeenCalledTimes(purgeCount);
+      expect(sessionStorage.getItem('smart-note-draft')).toBe('recoverable-note');
+    } finally {
+      visibility?.mockRestore();
+      clock?.mockRestore();
+    }
+  });
+
+  it('still closes the Base44 workspace when another tab changes the login token', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.tenantAuthorityState).toBe(
+      TENANT_AUTHORITY_STATES.READY,
+    ));
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'base44_access_token' }));
+    });
+    expect(result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.BLOCKED);
+    expect(result.current.tenantAuthorityKey).toBeNull();
+    expect(mocks.poisonTenantSdkRealm).toHaveBeenCalled();
+  });
+
   it.each(['online', 'auth-storage'])('independent %s closure revokes the session and forgets the device', async reason => {
     // THE OTHER SIDE OF THE SPLIT, and the reason it exists. These two say the
     // environment changed under a realm established before it, which is what the
@@ -589,6 +637,48 @@ describe('AuthProvider tenant authority state machine', () => {
     expect(mocks.authMe).not.toHaveBeenCalled();
     expect(mocks.listMemberships).not.toHaveBeenCalled();
     expect(mocks.getTenantContext).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['app settings', 'getPublicSettings', null],
+    ['account identity', 'authMe', 'identity_unavailable'],
+    ['memberships', 'listMemberships', 'tenant_memberships_unavailable'],
+    ['agency context', 'getTenantContext', 'tenant_context_unavailable'],
+  ])('ends loading safely when %s never responds, and permits a fresh retry', async (_stage, method, errorType) => {
+    vi.useFakeTimers();
+    const pending = deferred();
+    mocks[method].mockReturnValueOnce(pending.promise);
+    const rendered = renderHook(() => useAuth(), { wrapper });
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(mocks[method]).toHaveBeenCalledTimes(1);
+      expect(rendered.result.current.isLoadingPublicSettings).toBe(true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+      expect(rendered.result.current.isLoadingPublicSettings).toBe(false);
+      expect(rendered.result.current.isLoadingAuth).toBe(false);
+      expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.BLOCKED);
+      expect(rendered.result.current.tenantAuthorityKey).toBeNull();
+      expect(mocks.openTenantSdkRealm).not.toHaveBeenCalled();
+      if (errorType) expect(rendered.result.current.tenantContextError.type).toBe(errorType);
+      else expect(rendered.result.current.authError.message).toContain('took too long');
+      await act(async () => {
+        if (method === 'getPublicSettings') await rendered.result.current.checkAppState();
+        else await rendered.result.current.retryTenantAuthority();
+      });
+      expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
+      const verifiedKey = rendered.result.current.tenantAuthorityKey;
+      await act(async () => {
+        pending.resolve(method === 'authMe' ? { ...USER, id: 'late-user' }
+          : method === 'listMemberships' ? membershipResult([])
+            : method === 'getTenantContext' ? { tenant_context: contextFor(B) }
+              : { id: 'late-settings' });
+      });
+      expect(rendered.result.current.tenantAuthorityKey).toBe(verifiedKey);
+      expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
+    } finally {
+      rendered.unmount();
+      vi.useRealTimers();
+    }
   });
 
   it('lists after auth and auto-resolves one exact active membership', async () => {

@@ -29,6 +29,7 @@ import {
   closeAuthorityBoundWindows,
 } from '@/lib/authorityBoundWindows';
 import { bootstrapMyTenantContext } from '@/functions/getMyTenantContext';
+import { withTimeout } from '@/components/smartNote/compliance/withTimeout';
 import { listMyTenantMemberships } from '@/functions/listMyTenantMemberships';
 import {
   closeTenantSdkRealm,
@@ -38,6 +39,12 @@ import {
 } from '@/lib/tenantSdkRealmGate';
 import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch';
 import { OWNED_SESSION_STORAGE_KEY, ownedSessionEventChangesIdentity } from '@/lib/ownedBackendSessionStore';
+import {
+  exactIdentifier, exactPrincipal, subjectMatchesPrincipal,
+  contextMatchesMembership, contextMatchesOwner, frozenMemberships,
+  responseStatus, tenantError, authorityIntegrityError,
+  browserRealmAuthorityError, isDefinitiveTenantAuthorityFailure, authoritySnapshot,
+} from '@/lib/tenantAuthorityValidation';
 import {
   bindTrustedTenantContext,
   clearTrustedTenantContext,
@@ -56,132 +63,7 @@ export const TENANT_AUTHORITY_STATES = Object.freeze({
   SWITCHING: 'switching',
 });
 
-const MAX_IDENTIFIER_LENGTH = 200;
 
-function exactIdentifier(value) {
-  return typeof value === 'string'
-    && value.length > 0
-    && value.length <= MAX_IDENTIFIER_LENGTH
-    && value.trim() === value
-    && !value.startsWith('$');
-}
-
-function canonicalEmail(value) {
-  if (typeof value !== 'string') return null;
-  const normalized = value.trim().toLowerCase();
-  return normalized
-    && normalized.length <= 320
-    && normalized.includes('@')
-    && !/\s/.test(normalized)
-    ? normalized
-    : null;
-}
-
-function exactPrincipal(user) {
-  const email = canonicalEmail(user?.email);
-  if (!exactIdentifier(user?.id) || !email) return null;
-  return { user_id: user.id, user_email: email };
-}
-
-function subjectMatchesPrincipal(subject, principal) {
-  return !!subject
-    && !!principal
-    && subject.user_id === principal.user_id
-    && subject.user_email === principal.user_email
-    && typeof subject.is_platform_owner === 'boolean';
-}
-
-function exactAgencyMatch(left, right) {
-  if (left === null || right === null) return left === right;
-  return !!left
-    && !!right
-    && left.id === right.id
-    && left.name === right.name
-    && left.status === right.status;
-}
-
-function contextMatchesMembership(context, subject, membership) {
-  return !!context
-    && !!subject
-    && !!membership
-    && context.user_id === subject.user_id
-    && context.user_email === subject.user_email
-    && context.is_platform_owner === false
-    && subject.is_platform_owner === false
-    && context.membership_id === membership.membership_id
-    && context.membership_key === membership.membership_key
-    && context.membership_version === membership.membership_version
-    && context.agency_id === membership.agency_id
-    && context.tenant_role === membership.tenant_role
-    && context.membership_status === membership.membership_status
-    && exactAgencyMatch(context.agency, membership.agency);
-}
-
-function contextMatchesOwner(context, subject) {
-  return !!context
-    && !!subject
-    && subject.is_platform_owner === true
-    && context.user_id === subject.user_id
-    && context.user_email === subject.user_email
-    && context.is_platform_owner === true
-    && context.membership_id === null
-    && context.membership_key === null
-    && context.membership_version === null
-    && context.tenant_role === 'platform_owner'
-    && context.membership_status === null
-    && context.agency_id === null
-    && context.agency === null;
-}
-
-function frozenMemberships(memberships) {
-  return Object.freeze(memberships.map((membership) => Object.freeze({
-    ...membership,
-    agency: Object.freeze({ ...membership.agency }),
-  })));
-}
-
-function responseStatus(error) {
-  return error?.response?.status ?? error?.status ?? null;
-}
-
-function tenantError(type, message) {
-  return Object.freeze({ type, message });
-}
-
-function authorityIntegrityError(message) {
-  const error = new Error(message);
-  error.isDefinitiveTenantAuthorityFailure = true;
-  return error;
-}
-
-function browserRealmAuthorityError() {
-  const error = authorityIntegrityError(
-    'Workspace authority changed. Sign out and reopen the app before using another workspace.',
-  );
-  error.isBrowserRealmAuthorityChange = true;
-  return error;
-}
-
-function isDefinitiveTenantAuthorityFailure(error) {
-  const status = responseStatus(error);
-  return error?.isDefinitiveTenantAuthorityFailure === true
-    || status === 401
-    || status === 403;
-}
-
-function authoritySnapshot(principal, context) {
-  if (!principal || !context) return null;
-  return JSON.stringify([
-    principal.user_id,
-    principal.user_email,
-    context.agency_id,
-    context.membership_id,
-    context.membership_version,
-    context.tenant_role,
-    context.is_platform_owner,
-    context.agency?.status ?? null,
-  ]);
-}
 
 function clearTenantNotifications() {
   sonnerToast.dismiss();
@@ -511,7 +393,10 @@ export const AuthProvider = ({ children }) => {
       if (generation !== authGeneration.current) return false;
 
       stage = 'identity';
-      authenticatedUser = await tenantAuthorityClient.me();
+      authenticatedUser = await withTimeout(
+        tenantAuthorityClient.me(), 30000,
+        'Account verification took too long. Reload the app to try again.',
+      );
       if (generation !== authGeneration.current) return false;
       const principal = exactPrincipal(authenticatedUser);
       if (!principal) {
@@ -533,7 +418,10 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
 
       stage = 'memberships';
-      const listed = await listMyTenantMemberships();
+      const listed = await withTimeout(
+        listMyTenantMemberships(), 30000,
+        'Agency membership verification took too long. Please retry verification.',
+      );
       if (generation !== authGeneration.current) return false;
       if (!subjectMatchesPrincipal(listed?.subject, principal)) {
         throw authorityIntegrityError(
@@ -645,13 +533,17 @@ export const AuthProvider = ({ children }) => {
 
       stage = 'context';
       setTenantAuthorityState(TENANT_AUTHORITY_STATES.RESOLVING);
-      const resolved = subject.is_platform_owner
-        ? await bootstrapMyTenantContext({})
-        : await bootstrapMyTenantContext({
-          agencyId: selectedMembership.agency_id,
-          expectedMembershipId: selectedMembership.membership_id,
-          expectedMembershipVersion: selectedMembership.membership_version,
-        });
+      const resolved = await withTimeout(
+        subject.is_platform_owner
+          ? bootstrapMyTenantContext({})
+          : bootstrapMyTenantContext({
+            agencyId: selectedMembership.agency_id,
+            expectedMembershipId: selectedMembership.membership_id,
+            expectedMembershipVersion: selectedMembership.membership_version,
+          }),
+        30000,
+        'Agency workspace verification took too long. Please retry verification.',
+      );
       if (generation !== authGeneration.current) return false;
 
       const resolvedContext = resolved?.tenant_context || null;
@@ -848,7 +740,11 @@ export const AuthProvider = ({ children }) => {
       });
 
       try {
-        const publicSettings = await appClient.get(`/prod/public-settings/by-id/${appParams.appId}`);
+        const publicSettings = await withTimeout(
+          appClient.get(`/prod/public-settings/by-id/${appParams.appId}`, { timeout: 30000 }),
+          30000,
+          'App settings took too long to load. Reload the app to try again.',
+        );
         setAppPublicSettings(publicSettings);
         if (appParams.token) {
           await establishTenantAuthority({ phase: 'boot' });
@@ -1062,9 +958,11 @@ export const AuthProvider = ({ children }) => {
   const expireReadyBrowserRealm = useCallback(async (reason) => {
     if (authorityStateRef.current !== TENANT_AUTHORITY_STATES.READY) return false;
     const ordinary = ORDINARY_REALM_CLOSURES.has(reason);
-    // On the Base44 build, idle sign-out is handled by SessionTimeoutManager, so
-    // a fixed 5-minute timer must not tear down an active workspace.
-    if (!ownedBackendAuth && reason === 'expiry') return false;
+    // Base44 sessions retain their verified workspace across routine browser
+    // events. Idle sign-out remains handled by SessionTimeoutManager; tab
+    // switching and network recovery do not change identity or agency access.
+    // Actual auth-storage changes and restored documents still close the realm.
+    if (!ownedBackendAuth && ['expiry', 'background', 'online'].includes(reason)) return false;
     const result = await requireFreshBrowserRealm({ ordinary });
     // Ordinary closures re-open a fresh verified session automatically.
     if (!ownedBackendAuth && ordinary) window.location.reload();

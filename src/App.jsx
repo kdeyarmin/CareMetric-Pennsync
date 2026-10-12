@@ -133,6 +133,12 @@ const AppUnavailableScreen = ({ type, message }) => {
         <p className="mt-3 text-sm text-slate-700">
           {serverMessage || 'The Base44 backend did not return a usable response. Try again in a moment, or contact your administrator if this persists.'}
         </p>
+        {!notDeployed && (
+          <button type="button" onClick={() => window.location.reload()}
+            className="app-primary-button mt-5 rounded-lg px-4 py-2 text-sm font-semibold">
+            Reload app
+          </button>
+        )}
         {notDeployed && (
           <p className="mt-3 text-xs text-slate-500">
             The app settings are present, but the Base44 backend has no deployment for this app ID.
@@ -322,6 +328,9 @@ const TenantReadyApp = () => {
     ],
     queryFn: getAiContentAgreementStatus,
     enabled: Boolean(user && tenantAuthorityKey),
+    // Start verification even when the browser reports offline, so its timeout
+    // can show the existing retry screen instead of a permanently paused loader.
+    networkMode: 'always',
     retry: false,
     staleTime: 0,
   });

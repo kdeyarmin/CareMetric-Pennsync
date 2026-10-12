@@ -11,7 +11,7 @@ on:
       - 'ios/**'
       - 'public/**'
   push:
-    branches: [main, 'feat/external-integration-runtime-20260916']
+    branches: [main]
     paths:
       - 'services/integration-runtime/**'
       - '.github/workflows/external-integrations.yml'
@@ -23,18 +23,30 @@ on:
       - 'public/**'
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
+          # Migration tests compare against a fixed prior release (see ci.yml).
           fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
       - name: Preserve established mobile wrapper and packaged public assets
         run: node --test tools-app-store-migration.test.mjs
       - name: Test runtime, paid retries and unsettled scheduler accounting
-        run: node --test services/integration-runtime/*.test.mjs src/lib/aiCall.test.js src/lib/aiScheduler.test.js tools-ai-drain.test.mjs
+        run: node --test "services/integration-runtime/*.test.mjs" src/lib/aiCall.test.js src/lib/aiScheduler.test.js tools-ai-drain.test.mjs
