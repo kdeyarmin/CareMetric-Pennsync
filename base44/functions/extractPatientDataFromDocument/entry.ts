@@ -1,4 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { clinicalUploadUrl } from '../../shared/clinicalAiFiles.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -147,13 +148,13 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    if (!isSafeFetchUrl(file_url)) {
-      return Response.json({ status: 'error', details: 'Invalid or disallowed file_url' }, { status: 400 });
-    }
+    let documentUrl;
+    try { documentUrl = clinicalUploadUrl(file_url); }
+    catch { return Response.json({ status: 'error', details: 'An uploaded document belonging to this app is required.' }, { status: 400 }); }
 
     // Use AI to extract structured patient data from the document
     const extractionResult = await base44.asServiceRole.integrations.Core.ExtractDataFromUploadedFile({
-      file_url: file_url,
+      file_url: documentUrl,
       json_schema: PATIENT_SCHEMA
     });
 

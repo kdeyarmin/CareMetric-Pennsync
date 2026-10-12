@@ -104,6 +104,11 @@ export const formatPhoneNumber = (phone) => {
 // Comprehensive patient record validation with severity levels
 export const validatePatient = (patient) => {
   const validationResults = [];
+  for (const field of ['first_name', 'last_name']) {
+    if (typeof patient[field] !== 'string' || !patient[field].trim()) {
+      validationResults.push({ field, message: field === 'first_name' ? 'First name is required' : 'Last name is required', severity: SEVERITY.ERROR });
+    }
+  }
   
   // Email validation
   if (patient.email) {

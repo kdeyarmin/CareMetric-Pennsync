@@ -74,15 +74,18 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
   });
 
   const handleOCRDataExtracted = (extractedData) => {
-    setFormData(prev => ({
-      ...prev,
-      ...extractedData,
-      secondary_diagnoses: extractedData.secondary_diagnoses || prev.secondary_diagnoses || []
-    }));
-    
-    // Trigger validation on extracted data
-    const errors = validatePatient({ ...formData, ...extractedData });
-    setValidationErrors(errors);
+    if (!extractedData || typeof extractedData !== 'object') return;
+    clearTimeout(validationTimerRef.current);
+    const previousData = formDataRef.current;
+    const extracted = Object.fromEntries(Object.entries(extractedData).filter(([field, value]) =>
+      value != null && (!Object.hasOwn(EMPTY_FORM, field) || (Array.isArray(EMPTY_FORM[field])
+        ? Array.isArray(value) && value.every(item => typeof item === 'string') : typeof value === 'string'))));
+    const next = { ...previousData, ...extracted };
+    formDataRef.current = next;
+    setFormData(next);
+    setOverriddenWarnings(previous => Object.fromEntries(Object.entries(previous).filter(([field]) =>
+      sameFormValue(previousData[field], next[field]))));
+    setValidationErrors(validatePatient(next));
   };
 
   useEffect(() => {
@@ -103,6 +106,12 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     const next = { ...formDataRef.current, [field]: value };
     formDataRef.current = next; // sync so rapid successive edits accumulate
     setFormData(next);
+    setOverriddenWarnings(previous => {
+      if (!Object.hasOwn(previous, field)) return previous;
+      const nextWarnings = { ...previous };
+      delete nextWarnings[field];
+      return nextWarnings;
+    });
 
     // Real-time validation against the authoritative next state, debounced.
     clearTimeout(validationTimerRef.current);
@@ -133,19 +142,13 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
 
   const addSecondaryDiagnosis = () => {
     if (secondaryDiagnosisInput.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        secondary_diagnoses: [...(prev.secondary_diagnoses || []), secondaryDiagnosisInput.trim()]
-      }));
+      handleChange('secondary_diagnoses', [...(formDataRef.current.secondary_diagnoses || []), secondaryDiagnosisInput.trim()]);
       setSecondaryDiagnosisInput('');
     }
   };
 
   const removeSecondaryDiagnosis = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      secondary_diagnoses: prev.secondary_diagnoses.filter((_, i) => i !== index)
-    }));
+    handleChange('secondary_diagnoses', formDataRef.current.secondary_diagnoses.filter((_, i) => i !== index));
   };
 
   // Actually create/update the patient. Split out from handleSubmit so the
@@ -157,11 +160,18 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     try {
       // Include override justifications in form data
       const dataWithOverrides = patient
-        ? formData
-        : { ...formData, validation_overrides: overriddenWarnings };
+        ? formDataRef.current
+        : { ...formDataRef.current, validation_overrides: overriddenWarnings };
 
       // Sanitize all input data before submission using the new sanitizeObject
-      const sanitizedData = sanitizeObject(dataWithOverrides);
+      const sanitizedData = {
+        ...sanitizeObject(dataWithOverrides),
+        // These are plain clinical text, rendered as text, not HTML. Preserve
+        // inequality signs such as '< 1 cm' instead of changing their meaning.
+        primary_diagnosis: dataWithOverrides.primary_diagnosis.trim(),
+        allergies: dataWithOverrides.allergies.trim(),
+        secondary_diagnoses: dataWithOverrides.secondary_diagnoses.map(value => value.trim()),
+      };
 
       if (patient) {
         if (Object.keys(overriddenWarnings).length > 0) {
@@ -215,8 +225,11 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     // create a duplicate patient record.
     if (isSubmitting) return;
 
+    // Include a diagnosis still in the input when Save is pressed.
+    if (secondaryDiagnosisInput.trim()) addSecondaryDiagnosis();
+    clearTimeout(validationTimerRef.current);
     // Enhanced validation
-    const errors = validatePatient(formData);
+    const errors = validatePatient(formDataRef.current);
     const blockingErrors = errors.filter(e =>
       e.severity === SEVERITY.ERROR ||
       (e.severity === SEVERITY.WARNING && e.canOverride && !overriddenWarnings[e.field])
@@ -239,7 +252,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     // looks like one already in the system, warn and offer to open that chart
     // instead of silently creating another duplicate.
     if (!patient) {
-      const matches = findDuplicatesForCandidate(formData, existingPatients, { limit: 5 });
+      const matches = findDuplicatesForCandidate(formDataRef.current, existingPatients, { limit: 5 });
       if (matches.length > 0) {
         setDuplicateMatches(matches);
         setShowDuplicateDialog(true);
@@ -487,7 +500,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
                 id="secondary_diagnoses"
                 value={secondaryDiagnosisInput}
                 onChange={(e) => setSecondaryDiagnosisInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSecondaryDiagnosis())}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSecondaryDiagnosis(); } }}
                 placeholder="Type and press Enter"
                 spellCheck={false}
                 autoCorrect="off"

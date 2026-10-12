@@ -1,4 +1,6 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { clinicalUploadUrl } from '../../shared/clinicalAiFiles.ts';
+import { requireClinicalWorkspace } from '../../shared/securityAccess.ts';
 
 // <<<BEGIN SHARED HELPER: pennsyncProductionAppId — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
@@ -188,9 +190,9 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (isDeactivatedUser(user) || user.disabled === true || user.is_service === true) return DEACTIVATED_USER_RESPONSE();
 
-    const { audio_url, patient_id, visit_type, diagnosis } = await req.json();
+    const { audio_url, patient_id, agency_id, visit_type, diagnosis } = await req.json();
 
     if (!audio_url || !patient_id || !visit_type) {
       return Response.json(
@@ -199,44 +201,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!isSafeFetchUrl(audio_url)) {
-      return Response.json({ error: 'audio_url is not an allowed file URL' }, { status: 400 });
+    let audioUrl;
+    try { audioUrl = clinicalUploadUrl(audio_url); }
+    catch { return Response.json({ error: 'An audio upload belonging to this app is required.' }, { status: 400 }); }
+    if (typeof patient_id !== 'string' || typeof visit_type !== 'string') {
+      return Response.json({ error: 'Invalid patient or visit type.' }, { status: 400 });
     }
-
-    // Explicit access gate — Patient RLS grants all role:admin charts, so
-    // facility admins with an agency must be scoped (service-role + check).
-    const [patient] = await base44.asServiceRole.entities.Patient
-      .filter({ id: patient_id }, '', 1).catch(() => []);
-    if (!patient) {
-      return Response.json({ error: 'Patient not found' }, { status: 404 });
-    }
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    const isAssigned = Array.isArray(patient.assigned_nurses)
-      && patient.assigned_nurses.includes(user.email);
-    if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    if (isAgencyScopedAdmin) {
-      if (!user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-        || (Array.isArray(patient.assigned_nurses)
-          && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-      if (!inAgency) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
+    const agencyId = agency_id || (await requireClinicalWorkspace(base44)).agency_id;
+    // Use the same immutable tenant + care-team broker as the chart. Mutable
+    // profile agency names and legacy assigned-nurse email lists are not grants.
+    const authorized = await base44.functions.invoke('getAuthorizedPatient', {
+      agency_id: agencyId, patient_id, purpose: 'visit_summary',
+    });
+    const authorization = authorized?.data;
+    const patient = authorization?.patient;
+    if (authorization?.success !== true || authorization.purpose !== 'visit_summary'
+      || authorization.scope?.agency_id !== agencyId || patient?.id !== patient_id) {
+      return Response.json({ error: 'Patient chart access could not be verified.' }, { status: 403 });
     }
 
     // Step 1: Transcribe audio using AI
@@ -244,7 +225,7 @@ Deno.serve(async (req) => {
     const transcriptionResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "gemini_3_flash",
       prompt: `Please transcribe the following audio/video file of a medical visit. Provide a clear, complete transcription of the conversation between the healthcare provider and patient. Preserve medical terminology and patient responses accurately.`,
-      file_urls: [audio_url],
+      file_urls: [audioUrl],
       add_context_from_internet: false
     });
 
@@ -355,7 +336,7 @@ Return ONLY a valid JSON object, no prose or code fences, of the form:
     console.error('Error generating note from recording:', error);
     return Response.json({
       success: false,
-      error: 'Internal server error'
-    }, { status: 500 });
+      error: 'Clinical audio processing is unavailable. Verify chart access and try again.'
+    }, { status: [400, 401, 403, 404, 409, 503].includes(error?.response?.status || error?.status) ? (error.response?.status || error.status) : 500 });
   }
 });

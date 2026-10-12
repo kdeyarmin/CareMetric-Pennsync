@@ -68,6 +68,7 @@ export default function SearchablePatientSelect({
   onChange, // Support both for backwards compatibility
   placeholder = "Select patient...",
   className,
+  disabled = false,
   id, // forwarded to the trigger so a <Label htmlFor> can target this control
 }) {
   // Use either onValueChange or onChange
@@ -155,6 +156,7 @@ export default function SearchablePatientSelect({
 
   // Save to recent when patient is selected
   const handleSelect = (patientId) => {
+    if (disabled) return;
     let lease;
     try {
       lease = captureTenantSdkRealmLease();
@@ -219,7 +221,7 @@ export default function SearchablePatientSelect({
 
   // Create new patient
   const handleCreatePatient = async () => {
-    if (!newPatient.first_name || !newPatient.last_name) return;
+    if (disabled || creating || !newPatient.first_name.trim() || !newPatient.last_name.trim()) return;
     let lease;
     try {
       lease = captureTenantSdkRealmLease();
@@ -248,6 +250,7 @@ export default function SearchablePatientSelect({
 
   // Pre-fill new patient with search term
   const openCreateDialog = () => {
+    if (disabled) return;
     patientCreateRequestId.current = createPatientRequestId();
     const names = search.trim().split(' ');
     setNewPatient({
@@ -304,14 +307,14 @@ export default function SearchablePatientSelect({
   }, [localPatients, search, favoritedPatients, recentPatients]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild disabled={false}>
+    <Popover open={open && !disabled} onOpenChange={value => setOpen(!disabled && value)}>
+      <PopoverTrigger asChild disabled={disabled}>
         <Button
           id={id}
           variant="outline"
           role="combobox"
-          aria-expanded={open}
-          disabled={false}
+          aria-expanded={open && !disabled}
+          disabled={disabled}
           className={cn(
             "w-full justify-between h-11 md:h-12 text-base",
             !value && "text-muted-foreground",
@@ -507,7 +510,7 @@ export default function SearchablePatientSelect({
         </Command>
       </PopoverContent>
 
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <Dialog open={createDialogOpen && !disabled} onOpenChange={value => setCreateDialogOpen(!disabled && value)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Patient</DialogTitle>

@@ -45,9 +45,9 @@ export default function ClinicalDocumentation() {
   // Reflect the active choice in the URL so it's shareable/bookmarkable; the
   // default Smart Note choice stays a clean URL apart from a present visitId.
   const handleTabChange = (value) => {
-    const next = {};
-    if (value !== "smart-notes") next.tab = value;
-    if (visitId) next.visitId = visitId;
+    const next = new URLSearchParams(searchParams);
+    if (value !== "smart-notes") next.set('tab', value);
+    else next.delete('tab');
     setSearchParams(next);
   };
 
@@ -56,7 +56,11 @@ export default function ClinicalDocumentation() {
   // ?tab=visit-scribe is left untouched). A ?visitId binding is always preserved.
   useEffect(() => {
     if (requestedTab !== null && activeTab === "smart-notes") {
-      setSearchParams(visitId ? { visitId } : {}, { replace: true });
+      setSearchParams(previous => {
+        const next = new URLSearchParams(previous);
+        next.delete('tab');
+        return next;
+      }, { replace: true });
     }
   }, [requestedTab, activeTab, visitId, setSearchParams]);
 

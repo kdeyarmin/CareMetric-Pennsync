@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import uploadClinicalFile from '@/components/utils/uploadClinicalFile';
 import { validateFileUpload } from "@/components/utils/security";
 import { extractPatientDataFromDocument } from "@/lib/documentExtraction";
 import { usesIndependentBackend } from "@/lib/independentStagingSession";
@@ -42,7 +43,7 @@ export default function OCRDocumentExtractor({ onDataExtracted }) {
       toast.info('Uploading document...');
       const data = await extractPatientDataFromDocument({
         invoke: (params) => base44.functions.invoke('extractPatientDataFromDocument', params),
-        uploadFile: (payload) => base44.integrations.Core.UploadFile(payload),
+        uploadFile: uploadClinicalFile,
       }, file, {
         independent: usesIndependentBackend,
         onUploaded: () => {

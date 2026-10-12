@@ -4,8 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-  CheckCircle2, Loader2, ArrowRight, ClipboardList, User,
-  Mic, Square, AlertTriangle, Sparkles, Activity, Building2, ShieldCheck
+  CheckCircle2, Loader2, ArrowRight, ClipboardList,
+  Activity, Building2, ShieldCheck
 } from "lucide-react";
 import { todayEastern } from "../components/utils/timezone";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
@@ -18,12 +18,12 @@ import VitalSignsForm, { VITAL_FIELDS } from "../components/visit/VitalSignsForm
 import SavedVisitDocumentation from '../components/visit/SavedVisitDocumentation';
 import { useVisitRevisionVitals } from '../components/visit/useVisitRevisionVitals';
 import StructuredNoteDrafter from "../components/smartNote/StructuredNoteDrafter";
-import VisitAudioRecorder from "../components/smartNote/VisitAudioRecorder";
+import RoughClinicalNoteEditor from '@/components/smartNote/RoughClinicalNoteEditor';
+import ClinicalNotePatientSetup from '@/components/smartNote/ClinicalNotePatientSetup';
 import VitalsTrendAnalysis from "../components/smartNote/VitalsTrendAnalysis";
 import FinalNoteDisplay from "../components/smartNote/FinalNoteDisplay";
 import FollowUpTasksPanel from "../components/smartNote/FollowUpTasksPanel";
 import ComplianceChecklist from "../components/smartNote/ComplianceChecklist";
-import QuickPhraseTextarea from "../components/smartNote/QuickPhraseTextarea";
 import FacilityRequirementsChecklist from "../components/smartNote/FacilityRequirementsChecklist";
 import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
 import NoteReadinessBar from "../components/smartNote/NoteReadinessBar";
@@ -40,7 +40,6 @@ import { claimDictation, releaseDictation } from "@/components/smartNote/dictati
 import { generateFollowUpTasks } from "@/functions/generateFollowUpTasks";
 import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsage";
 import { toast } from "sonner";
-import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
 import {
   advanceVisitHandoff,
@@ -1191,124 +1190,19 @@ export default function SmartNoteAssistant({ visitId = null }) {
             <div className="space-y-3">
               {/* Who and what kind of visit. Compact, and honest that a patient is
                   required before the note can reach a chart. */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 space-y-4">
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <User className="w-3.5 h-3.5 text-navy-600" />
-                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Patient</span>
-                    <span className="text-xs text-amber-700 font-semibold normal-case ml-1">required to save</span>
-                  </div>
-                  <SearchablePatientSelect
-                    patients={patients}
-                    value={patientId}
-                    onValueChange={setPatientId}
-                    className="bg-slate-50 border-slate-200 h-12 sm:h-11 text-sm rounded-xl"
-                  />
-                  {!patientId && (
-                    <p className="text-xs text-slate-500 mt-1.5">
-                      You can start writing now — a patient is required before this note can be saved to a chart.
-                    </p>
-                  )}
-                  {patientId && !patientChartReady && (
-                    <p className="text-xs text-amber-700 mt-1.5" role="status">
-                      {patientAuthorizationFailed || noteHistoryQuery.isError
-                        ? "Patient chart access could not be verified."
-                        : "Verifying patient chart access…"}
-                    </p>
-                  )}
-                  {chartPatient && (
-                    <div className="flex items-center gap-2 text-xs text-navy-700 bg-navy-50 border border-navy-200 rounded-lg px-3 py-2 mt-2">
-                      <User className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        <strong>{chartPatient.first_name} {chartPatient.last_name}</strong>
-                        {chartPatient.primary_diagnosis ? ` \u00b7 ${chartPatient.primary_diagnosis}` : ""}
-                        {chartPatient.current_medications?.length > 0 ? ` \u00b7 ${chartPatient.current_medications.length} meds` : ""}
-                        {chartPatient.functional_status?.fall_risk === "high" && <span className="ml-2 inline-flex items-center gap-1 text-rose-600 font-bold"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> High Fall Risk</span>}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="border-t border-slate-100" />
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <ClipboardList className="w-3.5 h-3.5 text-navy-600" />
-                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Visit Type</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {VISIT_TYPES.map(v => {
-                      const selected = visitType === v.value;
-                      return (
-                        <button
-                          key={v.value}
-                          type="button"
-                          onClick={() => setVisitType(v.value)}
-                          aria-pressed={selected}
-                          style={selected ? { backgroundColor: "#264491", borderColor: "#264491", color: "#ffffff" } : undefined}
-                          className={`py-3 sm:py-2 px-2 rounded-xl text-xs font-semibold border-2 transition-all text-center leading-tight min-h-[48px] sm:min-h-0 active:scale-95 ${selected ? "shadow-md" : "bg-slate-50 border-slate-200 text-slate-700 hover:border-navy-300 hover:bg-navy-50"}`}
-                        >
-                          {v.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+              <ClinicalNotePatientSetup patients={patients} patientId={patientId} onPatientChange={value => {
+                  recBindingRef.current?.dispose(); recBindingRef.current = null; recRef.current = null;
+                  releaseDictation(recStopRef.current); recStopRef.current = null; setListening(false); setPatientId(value);
+                }} visitId={visitId} saving={saving}
+                patientChartReady={patientChartReady} patientAuthorizationFailed={patientAuthorizationFailed} historyError={noteHistoryQuery.isError}
+                chartPatient={chartPatient} visitTypes={VISIT_TYPES} visitType={visitType} onVisitTypeChange={setVisitType} />
 
               {/* The editor the nurse came here for, directly under the patient
                   card. Everything that used to sit between the two is now below
                   it, collapsed. */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
-                  <span className="text-xs font-semibold text-navy-700">Your Rough Notes / Bullet Points</span>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
-                      onClick={() => textareaRef.current?.openQuickPhrases?.()}>
-                      <Sparkles className="w-3.5 h-3.5" /> Quick Phrase
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
-                      onClick={() => { setActiveTab("drafter"); }}>
-                      <ClipboardList className="w-3.5 h-3.5" /> Use Structured Form
-                    </Button>
-                  </div>
-                </div>
-                <QuickPhraseTextarea
-                  ref={textareaRef}
-                  value={note}
-                  onChange={setNote}
-                  patientId={patientId}
-                  patientName={chartPatient
-                    ? `${chartPatient.first_name} ${chartPatient.last_name}`
-                    : undefined}
-                  visitType={visitType}
-                  userEmail={currentUser?.email}
-                  placeholder={"Enter bullet points or rough draft \u2014 AI will NOT invent information.\n\nType / or .shortcut to insert a saved quick phrase.\n\n\u2022 BP 148/90, HR 82, O2 95% RA, pain 3/10\n\u2022 homebound: unable to leave without considerable effort\n\u2022 skilled need: wound assessment and dressing change\n\u2022 wound R heel 2\u00d73 cm granulating, no odor\n\u2022 taught med schedule, pt verbalized understanding\n\u2022 fall risk \u2014 clutter noted, discussed w/ family"}
-                  className="w-full min-h-[240px] sm:min-h-[320px] text-sm border-0 px-4 py-3 focus:ring-0 bg-white font-mono resize-none outline-none leading-relaxed" spellCheck={false}
-                />
-                {/* Voice is a real feature but a minority path; it no longer sits
-                    between the nurse and the box they type in. */}
-                <div className="border-t border-slate-100">
-                  <CollapsibleSection
-                    title="Voice input"
-                    icon={Mic}
-                    summary="Dictate or record instead of typing"
-                    defaultOpen={false}
-                    className="border-0 shadow-none rounded-none bg-transparent"
-                  >
-                    <div className="space-y-2">
-                      <Button
-                        variant={listening ? "destructive" : "default"}
-                        className={`h-9 gap-2 text-xs font-semibold shadow-sm ${listening ? 'animate-pulse' : 'bg-navy-600 hover:bg-navy-700 text-white'}`}
-                        onClick={listening ? stopDictation : startDictation}
-                      >
-                        {listening ? <><Square className="w-4 h-4 fill-current" /> Stop Dictation</> : <><Mic className="w-4 h-4" /> Live Dictation</>}
-                      </Button>
-                      <VisitAudioRecorder
-                        onTranscribed={(text) => setNote(prev => prev ? prev + "\n\n" + text : text)}
-                      />
-                    </div>
-                  </CollapsibleSection>
-                </div>
-              </div>
+              <RoughClinicalNoteEditor key={`${visitId || 'new'}:${patientId}`} textareaRef={textareaRef} note={note} setNote={setNote} patientId={patientId} chartPatient={chartPatient}
+                visitType={visitType} userEmail={currentUser?.email} onOpenDrafter={() => setActiveTab('drafter')}
+                listening={listening} onStartDictation={startDictation} onStopDictation={stopDictation} />
 
               <NoteReadinessBar
                 roughNote={note}

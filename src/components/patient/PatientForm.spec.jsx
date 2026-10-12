@@ -76,6 +76,26 @@ async function fillRequired(user) {
 }
 
 describe('PatientForm add-time duplicate guard', () => {
+  it('includes an unsubmitted secondary diagnosis when saving', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PatientForm onSuccess={() => {}} onCancel={() => {}} />);
+    await user.type(screen.getByLabelText(/First Name/i), 'Zelda');
+    await user.type(screen.getByLabelText(/Last Name/i), 'Nightingale');
+    await user.type(screen.getByLabelText(/Secondary Diagnoses/i), 'E11.9');
+    await user.click(screen.getByRole('button', { name: /Add Patient/i }));
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    expect(createMock.mock.calls[0][0].secondary_diagnoses).toEqual(['E11.9']);
+  });
+  it('preserves clinical comparison signs in saved text', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PatientForm onSuccess={() => {}} onCancel={() => {}} />);
+    await user.type(screen.getByLabelText(/First Name/i), 'Zelda');
+    await user.type(screen.getByLabelText(/Last Name/i), 'Nightingale');
+    await user.type(screen.getByLabelText(/Allergies/i), 'Reaction within < 1 hour');
+    await user.click(screen.getByRole('button', { name: /Add Patient/i }));
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    expect(createMock.mock.calls[0][0].allergies).toBe('Reaction within < 1 hour');
+  });
   beforeEach(() => {
     listMock.mockReset();
     createMock.mockReset();

@@ -44,6 +44,8 @@ const patients = {
   },
 };
 
+vi.mock('@/components/utils/uploadClinicalFile', () => ({ default: (...args) => audioMocks.uploadFile(...args) }));
+
 vi.mock('@/api/base44Client', async () => {
   const { makeBase44Stub } = await vi.importActual('@/test/testUtils');
   return {

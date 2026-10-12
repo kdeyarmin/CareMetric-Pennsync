@@ -107,9 +107,7 @@ export default function RealTimeDictationScribe() {
       // A refusal cannot succeed on retry, and `onend` below restarts whenever
       // `_shouldBeListening` is still true — so clear it here or a permission or
       // service refusal spins, re-reporting itself every cycle.
-      if (event.error === "service-not-allowed" || event.error === "not-allowed") {
-        recognition._shouldBeListening = false;
-      }
+      recognition._shouldBeListening = false;
       // Only OUR local requirement gets the plain-language sentence.
       // `service-not-allowed` also means the user agent declined the requested
       // service for its own reasons, which is not the same thing to say.
@@ -145,6 +143,7 @@ export default function RealTimeDictationScribe() {
 
   const toggleListening = useCallback(async () => {
     if (!recognitionRef.current) return;
+    if (isStructuring) return;
     if (isListening) {
       // Also retires any start still pending, so stopping wins over a tap whose
       // availability check has not come back yet.
@@ -154,6 +153,8 @@ export default function RealTimeDictationScribe() {
       setIsListening(false);
     } else {
       setError("");
+      setStructuredNote('');
+      setCopied(false);
       const generation = (startGenerationRef.current += 1);
       // Settle the on-device decision before starting, so the requirement is in
       // place for the first session rather than the second.
@@ -172,7 +173,7 @@ export default function RealTimeDictationScribe() {
       }
       setIsListening(true);
     }
-  }, [isListening]);
+  }, [isListening, isStructuring]);
 
   const clearTranscript = () => {
     transcriptRef.current = "";
@@ -187,6 +188,8 @@ export default function RealTimeDictationScribe() {
     if (!fullText) return;
 
     setIsStructuring(true);
+    setStructuredNote('');
+    setCopied(false);
     setError("");
 
 
@@ -240,7 +243,7 @@ export default function RealTimeDictationScribe() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3 flex-wrap">
-            <Select value={visitType} onValueChange={setVisitType}>
+            <Select value={visitType} disabled={isStructuring} onValueChange={value => { setVisitType(value); setStructuredNote(''); setCopied(false); }}>
               <SelectTrigger className="w-64">
                 <SelectValue />
               </SelectTrigger>
@@ -286,6 +289,7 @@ export default function RealTimeDictationScribe() {
           <div className="flex gap-3 flex-wrap">
             <Button
               onClick={toggleListening}
+              disabled={isStructuring}
               className={isListening
                 ? "bg-red-600 hover:bg-red-700 text-white gap-2"
                 : "bg-indigo-600 hover:bg-indigo-700 text-white gap-2"}
@@ -298,7 +302,7 @@ export default function RealTimeDictationScribe() {
               )}
             </Button>
             {transcript && !isListening && (
-              <Button variant="outline" onClick={clearTranscript} className="gap-2">
+              <Button variant="outline" onClick={clearTranscript} disabled={isStructuring} className="gap-2">
                 <RefreshCw className="w-4 h-4" /> Clear & Restart
               </Button>
             )}
@@ -363,7 +367,7 @@ export default function RealTimeDictationScribe() {
                     {selectedVisitType?.label}
                   </Badge>
                 </CardTitle>
-                <CardDescription>Medicare-compliant documentation formatted for {selectedVisitType?.label}</CardDescription>
+                <CardDescription>AI-assisted draft for {selectedVisitType?.label}. Review all details before using it in clinical documentation.</CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={copyNote} className="gap-2">
                 {copied ? <><Check className="w-4 h-4 text-green-600" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy Note</>}

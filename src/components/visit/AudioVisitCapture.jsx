@@ -7,6 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, Loader2, Check, User, ClipboardList } from "lucide-react";
 import AudioRecorder from "./AudioRecorder";
+import AudioProcessingError from '@/components/visit/AudioProcessingError';
+import uploadClinicalFile from '@/components/utils/uploadClinicalFile';
 import VitalSignsForm from "./VitalSignsForm";
 import { useVisitRevisionVitals } from "./useVisitRevisionVitals";
 import { captureAuthorityDraftLease, isAuthorityDraftLeaseCurrent } from "@/lib/phiStorage";
@@ -97,7 +99,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   } = useAuthorizedPatient({
     patientId,
     agencyId: tenantContext?.agency_id,
-    purpose: 'selector',
+    purpose: 'smart_note_context',
     enabled: !!patientId && !!tenantContext?.agency_id,
   });
   const exactPatientReady = Boolean(
@@ -289,10 +291,13 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
 
   const processAudioMutation = useMutation({
     mutationFn: async ({ audioFile, binding }) => {
-      const uploadResult = await base44.integrations.Core.UploadFile({ file: audioFile });
+      if (!sameAudioAuthority(binding, audioAuthorityRef.current)) throw new Error('Patient context changed.');
+      const uploadResult = await uploadClinicalFile({ file: audioFile });
+      if (!sameAudioAuthority(binding, audioAuthorityRef.current)) throw new Error('Patient context changed.');
       const result = await base44.functions.invoke('generateNoteFromRecording', {
         audio_url: uploadResult.file_url,
         patient_id: binding.patient_id,
+        agency_id: binding.agency_id,
         visit_type: binding.visit_type || 'routine_visit',
         diagnosis: binding.diagnosis,
       });
@@ -323,6 +328,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   processAudioMutationRef.current = processAudioMutation;
 
   const submitAudio = (audioFile) => {
+    if (!audioFile || processAudioMutation.isPending || saving) return false;
     const authority = audioAuthorityRef.current;
     if (!authority) {
       toast.error('Patient chart access must be verified before processing audio');
@@ -368,6 +374,10 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     }
     if (api.chartRisk?.hasUnacknowledgedCritical) {
       toast.error("Acknowledge the chart safety conflict before saving to the chart.");
+      return;
+    }
+    if (api.denialRisk?.hasUnacknowledgedCritical) {
+      toast.error('Acknowledge the denial-risk findings before saving to the chart.');
       return;
     }
     setSaved(false);
@@ -457,7 +467,8 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
           <SearchablePatientSelect
             patients={patients}
             value={patientId}
-            onValueChange={setPatientId}
+            disabled={!!visitId || saving}
+            onValueChange={value => { if (!visitId && !saving) setPatientId(value); }}
             className="bg-slate-50 border-slate-200 h-11 text-sm rounded-xl"
           />
         </div>
@@ -498,6 +509,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       roughNote={roughNote}
       serviceLine={serviceLine}
       visitType={visitType}
+      vitals={vitals}
       priorNote={getPriorNote(chartPatient)}
       patient={chartPatient}
       currentUser={currentUser}
@@ -526,7 +538,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
           onSave={() => handleSave(api)}
           saving={saving}
           saved={saved && !api.dirty}
-          saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical}
+          saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical}
         />
       )}
     />
@@ -639,13 +651,18 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         </Alert>
       )}
 
-      {processAudioMutation.isError && mutationIsCurrent && (
-        <Alert variant="destructive">
-          <AlertDescription>
-            Error processing audio: {processAudioMutation.error?.message}
-          </AlertDescription>
-        </Alert>
-      )}
+      {processAudioMutation.isError && mutationIsCurrent && <AudioProcessingError
+        message={processAudioMutation.error?.message}
+        busy={isProcessing || saving}
+        onRetry={() => submitAudio(recordedAudio || uploadedAudio)}
+        onReplace={() => {
+          setRecordedAudio(null);
+          setUploadedAudio(null);
+          audioRequestSequenceRef.current += 1;
+          audioAuthorityRef.current = null;
+          processAudioMutation.reset();
+        }}
+      />}
 
       {hasRoughNote && (
         <Card className="modern-card">
