@@ -328,6 +328,9 @@ const TenantReadyApp = () => {
     ],
     queryFn: getAiContentAgreementStatus,
     enabled: Boolean(user && tenantAuthorityKey),
+    // Start verification even when the browser reports offline, so its timeout
+    // can show the existing retry screen instead of a permanently paused loader.
+    networkMode: 'always',
     retry: false,
     staleTime: 0,
   });
