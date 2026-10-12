@@ -40,15 +40,16 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
   
   const earliestDate = dates.length > 0 ? new Date(Math.min(...dates)) : today;
   const latestDate = dates.length > 0 ? new Date(Math.max(...dates)) : today;
-  const totalDays = differenceInCalendarDays(latestDate, earliestDate) || 30;
+  const totalDays = differenceInCalendarDays(latestDate, earliestDate);
 
   const getPositionPercentage = (targetDate) => {
     const date = targetDate instanceof Date ? targetDate : parseLocalDate(targetDate);
     if (!date) return 0;
     const daysFromStart = differenceInCalendarDays(date, earliestDate);
-    return (daysFromStart / totalDays) * 100;
+    return (daysFromStart / Math.max(totalDays, 1)) * 100;
   };
 
+  const todayPosition = getPositionPercentage(toLocalISODate(today));
   const getStatusColor = (status) => {
     switch (status) {
       case 'active': return 'bg-green-500';
@@ -107,21 +108,21 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
         <div className="relative">
           {/* Timeline Bar with Today Marker */}
           <div className="relative h-3 bg-slate-200 rounded-full mb-8">
-            {/* Today Indicator */}
-            <div 
+            {/* Today is shown only when it falls within the actual timeline. */}
+            {todayPosition >= 0 && todayPosition <= 100 && <div 
               className="absolute top-0 bottom-0 w-0.5 bg-blue-600 z-10"
               style={{ 
-                left: `${getPositionPercentage(toLocalISODate(today))}%`
+                left: `${todayPosition}%`
               }}
             >
               <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-blue-600 whitespace-nowrap">
                 Today
               </div>
-            </div>
+            </div>}
 
             {/* Progress indicators on timeline */}
             {sortedPlans.map((plan, idx) => {
-              if (!plan.target_date) return null;
+              if (!parseLocalDate(plan.target_date)) return null;
               const position = getPositionPercentage(plan.target_date);
               const status = plan.status;
               
