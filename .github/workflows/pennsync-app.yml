@@ -19,6 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - name: Reserve Supabase ports from ephemeral allocation
+        run: |
+          ports="$(sudo sysctl -n net.ipv4.ip_local_reserved_ports)"
+          for port in 54320 54321 54322 54324; do
+            case ",$ports," in
+              *,"$port",*) ;;
+              *) ports="${ports:+$ports,}$port" ;;
+            esac
+          done
+          sudo sysctl -w "net.ipv4.ip_local_reserved_ports=$ports"
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
