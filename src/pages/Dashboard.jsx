@@ -2,6 +2,7 @@ import { useMemo, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
+import { listAuthorizedReferrals } from "@/functions/manageAuthorizedReferral";
 import { Clock, User, FileText, Mic, Send, Mail, Home, Heart, AlertTriangle, Calendar, GraduationCap, BookOpen, Users as UsersIcon, ClipboardCheck, Filter } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import PageHeader from "@/components/ui/PageHeader";
@@ -36,7 +37,7 @@ const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTe
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
-  const { user: authUser } = useAuth();
+  const { user: authUser, tenantContext } = useAuth();
   const containerRef = useRef(null);
   const [_isRefreshing, setIsRefreshing] = useState(false);
 
@@ -169,6 +170,19 @@ export default function Dashboard() {
 
   const workQueueRole = isAdminView(authUser) ? "facility_admin" : isTenantManager(authUser) ? "manager" : "nurse";
   const intakeRole = isReferralIntakeRole(authUser);
+  const { data: managerReferrals = [] } = useQuery({
+    queryKey: ["dashboardManagerReferrals", tenantContext?.agency_id],
+    queryFn: async () => {
+      const result = await listAuthorizedReferrals({
+        agencyId: tenantContext.agency_id,
+        status: "awaiting_info",
+        limit: 5000,
+      });
+      return result.referrals;
+    },
+    enabled: workQueueRole === "manager" && !!tenantContext?.agency_id,
+    staleTime: 120000,
+  });
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -239,12 +253,15 @@ export default function Dashboard() {
             noteConversionsAvailable={!noteConversionsError}
             dashboardError={hasDataError}
           />
-
-          <CoreWorkQueuesStrip
-            role={workQueueRole}
-            incidents={incidents}
-          />
         </>
+      )}
+
+      {(clinical || workQueueRole === "manager") && (
+        <CoreWorkQueuesStrip
+          role={workQueueRole}
+          referrals={managerReferrals}
+          incidents={incidents}
+        />
       )}
 
       {/* Quick Navigation Hint */}
