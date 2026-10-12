@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
+  acceptAiAutoLink,
   AI_MATCH_CANDIDATE_LIMIT,
   buildReferralPatientMatchCandidates,
 } from './referralPatientMatching';
@@ -111,5 +113,86 @@ describe('referral patient candidate ranking', () => {
       demographics: { phone: '1234' },
     });
     expect(shortExtension.bestMatch).toMatchObject({ score: 0, nameMatched: false });
+  });
+
+  it('does not auto-link a different person who shares a surname, household, and birth month', () => {
+    const householdTwin = buildReferralPatientMatchCandidates({
+      patients: [{
+        id: 'patient-john',
+        first_name: 'John',
+        last_name: 'Smith',
+        date_of_birth: '1940-01-15',
+        phone: '555-0100',
+        address: '1 Computing Way',
+      }],
+      demographics: {
+        full_name: 'Jane Smith',
+        date_of_birth: '1940-01-20',
+        phone: '555-0100',
+        address: '1 Computing Way',
+      },
+    });
+
+    expect(householdTwin.bestMatch.score).toBeGreaterThanOrEqual(60);
+    expect(householdTwin.bestMatch.nameMatched).toBe(false);
+    expect(householdTwin.bestMatch.score >= 60 && householdTwin.bestMatch.nameMatched).toBe(false);
+    expect(householdTwin.bestMatch.reasons.join(' ')).not.toMatch(/First name/);
+  });
+
+  it('does not auto-link an AI definitive pick that fails the two-part name bar', () => {
+    const householdTwin = buildReferralPatientMatchCandidates({
+      patients: [{
+        id: 'patient-john',
+        first_name: 'John',
+        last_name: 'Smith',
+        date_of_birth: '1940-01-15',
+        phone: '555-0100',
+        address: '1 Computing Way',
+      }],
+      demographics: {
+        full_name: 'Jane Smith',
+        date_of_birth: '1940-01-20',
+        phone: '555-0100',
+        address: '1 Computing Way',
+      },
+    });
+
+    expect(acceptAiAutoLink({
+      rankedMatches: householdTwin.rankedMatches,
+      matchAnalysis: {
+        confidence_level: 'definitive',
+        confidence_score: 99,
+        best_match_id: 'patient-john',
+      },
+    })).toEqual({ requiresManualReview: true });
+
+    const named = buildReferralPatientMatchCandidates({
+      patients: [{ id: 'patient-ada', first_name: 'Ada', last_name: 'Lovelace' }],
+      demographics: { full_name: 'Ada Lovelace' },
+    });
+    expect(acceptAiAutoLink({
+      rankedMatches: named.rankedMatches,
+      matchAnalysis: {
+        confidence_level: 'high',
+        confidence_score: 95,
+        best_match_id: 'patient-ada',
+      },
+    })?.patient?.id).toBe('patient-ada');
+    expect(acceptAiAutoLink({
+      rankedMatches: named.rankedMatches,
+      matchAnalysis: {
+        confidence_level: 'high',
+        confidence_score: 80,
+        best_match_id: 'patient-ada',
+      },
+    })).toBeNull();
+  });
+
+  it('keeps a manual-review referral from copying an MRN onto the deterministic chart', () => {
+    const source = readFileSync('src/pages/ReferralIntake.jsx', 'utf8');
+    expect(source).toMatch(
+      /\} else if \(existingPatient && !updates\.requires_manual_review\) \{\s*\/\/ A deterministic name match/,
+    );
+    expect(source).toMatch(/const aiLink = acceptAiAutoLink\(\{ rankedMatches, matchAnalysis \}\)/);
   });
 });

@@ -220,6 +220,29 @@ describe('PatientDetails purpose-bound chart gate', () => {
       agencyId: 'agency-a',
       patientName: 'Ada Lovelace',
     });
+    expect(mocks.logActivity).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ access_boundary: 'patient_and_visit_read_brokers' }),
+    );
+  });
+
+  it('opens a display chart for social work without a visit-schedule read', async () => {
+    mocks.patientResult.tenantScope.tenant_role = 'social_worker';
+    const { default: PatientDetails } = await import('@/pages/PatientDetails');
+    renderWithProviders(<PatientDetails />, {
+      queryClient: queryClient(),
+      route: '/PatientDetails?id=patient-a&agencyId=agency-a',
+    });
+
+    expect(await screen.findByText('Verified chart access')).toBeInTheDocument();
+    expect(screen.getByText(/Current Patient authority was verified/)).toBeInTheDocument();
+    expect(screen.queryByText(/and Visit authority/)).not.toBeInTheDocument();
+    expect(mocks.listAuthorizedVisits).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.logActivity).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ access_boundary: 'patient_display_read_broker' }),
+    ));
+    expect(screen.getByRole('region', { name: 'contact panel' })).toBeInTheDocument();
   });
 
   it('shows verification and requests no PHI while implicit route scope is pending', async () => {

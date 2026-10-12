@@ -1077,6 +1077,13 @@ export function findDuplicateGroups(patients, opts = {}) {
 
   return groups;
 }
+
+/** Merge-all must not archive a pair the scorer marked as possible twins. */
+export function groupRequiresTwinReview(group) {
+  return (group?.duplicates || []).some((duplicate) =>
+    (duplicate?.matches || []).includes(REASON.POSSIBLE_TWINS)
+  );
+}
 // <<<END GENERATED ENGINE>>>
 
 // ---------------------------------------------------------------------------
