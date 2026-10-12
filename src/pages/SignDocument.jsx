@@ -21,6 +21,8 @@ import {
   base64ToBytes, getSignatureAgreement, newEsignRequestId, previewSignatureDocument, signInPerson, signatureFileFromDataUrl,
 } from '@/lib/esignClient';
 import { createPageUrl } from '@/utils';
+import { useAuth } from '@/lib/AuthContext';
+import { isAdminView } from '@/lib/roles';
 
 /**
  * In-person signing on a staff device: the signer reviews the document with
@@ -28,6 +30,8 @@ import { createPageUrl } from '@/utils';
  * confirm the signer's identity; the broker records who collected it.
  */
 export default function SignDocument() {
+  const { user } = useAuth();
+  const canOpenDocumentHub = isAdminView(user);
   const [searchParams, setSearchParams] = useSearchParams();
   const documentId = searchParams.get('document') || '';
   const queryClient = useQueryClient();
@@ -149,8 +153,14 @@ export default function SignDocument() {
             <CardContent>
               {openDocuments.length === 0 ? (
                 <p className="text-sm text-slate-600">
-                  No documents are waiting for signature. Create a request from the{' '}
-                  <Link className="text-navy-700 underline" to={`${createPageUrl('DocumentHub')}?tab=signatures&view=create`}>Document Hub</Link>.
+                  {canOpenDocumentHub ? (
+                    <>
+                      No documents are waiting for signature. Create a request from the{' '}
+                      <Link className="text-navy-700 underline" to={`${createPageUrl('DocumentHub')}?tab=signatures&view=create`}>Document Hub</Link>.
+                    </>
+                  ) : (
+                    'No documents are waiting for signature.'
+                  )}
                 </p>
               ) : (
                 <Select value={current ? current.id : ''} onValueChange={(value) => setSearchParams({ document: value })}>
@@ -176,9 +186,15 @@ export default function SignDocument() {
                     ? 'Every required signer has signed. The sealed PDF has been filed to the patient’s chart.'
                     : 'Other signers still need to sign this document.'}
                 </p>
-                <Button asChild variant="outline">
-                  <Link to={`${createPageUrl('DocumentHub')}?tab=signatures`}>Back to signature requests</Link>
-                </Button>
+                {canOpenDocumentHub ? (
+                  <Button asChild variant="outline">
+                    <Link to={`${createPageUrl('DocumentHub')}?tab=signatures`}>Back to signature requests</Link>
+                  </Button>
+                ) : (
+                  <Button type="button" variant="outline" onClick={() => setSearchParams({})}>
+                    Back to open documents
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}

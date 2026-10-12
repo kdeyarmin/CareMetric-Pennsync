@@ -39,6 +39,12 @@ function sameAuthority(left, right) {
   return AUTHORITY_FIELDS.every((field) => left?.[field] === right?.[field]);
 }
 
+const VISIT_SCHEDULE_ROLES = new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']);
+
+function canAuthorizeVisitSchedule(tenantScope) {
+  return VISIT_SCHEDULE_ROLES.has(tenantScope?.tenant_role);
+}
+
 function sameTenantScope(scope, tenantScope, patientId) {
   return !!scope
     && !!tenantScope
@@ -157,6 +163,7 @@ export default function PatientDetails() {
     enabled: routeIsExact,
   });
 
+  const scheduleAuthorized = canAuthorizeVisitSchedule(patientQuery.tenantScope);
   const visitAuthorizationQuery = useQuery({
     queryKey: [
       'patient-details',
@@ -175,7 +182,8 @@ export default function PatientDetails() {
     }),
     enabled: routeIsExact
       && patientQuery.isSuccess
-      && !!patientQuery.tenantScope,
+      && !!patientQuery.tenantScope
+      && scheduleAuthorized,
     retry: false,
     staleTime: 0,
     gcTime: 0,
@@ -189,10 +197,15 @@ export default function PatientDetails() {
     && patientQuery.isFetchedAfterMount
     && patientQuery.fetchStatus === 'idle'
     && !patientQuery.error
-    && visitAuthorizationQuery.isSuccess
-    && visitAuthorizationQuery.isFetchedAfterMount
-    && visitAuthorizationQuery.fetchStatus === 'idle'
-    && !visitAuthorizationQuery.error
+    && (
+      !scheduleAuthorized
+      || (
+        visitAuthorizationQuery.isSuccess
+        && visitAuthorizationQuery.isFetchedAfterMount
+        && visitAuthorizationQuery.fetchStatus === 'idle'
+        && !visitAuthorizationQuery.error
+      )
+    )
   );
 
   // Normalize a safe server-resolved singleton membership into an explicit
@@ -214,11 +227,15 @@ export default function PatientDetails() {
 
   useEffect(() => {
     if (!authorizationSettled) return;
+    const auditFingerprint = scheduleAuthorized
+      ? visitAuthorizationQuery.data?.authorityFingerprint
+      : 'display-only';
+    if (!auditFingerprint) return;
     const auditKey = [
       patientQuery.tenantScope.user_id,
       agencyId,
       patientId,
-      visitAuthorizationQuery.data.authorityFingerprint,
+      auditFingerprint,
     ].join(':');
     if (auditedAuthorization.current === auditKey) return;
     auditedAuthorization.current = auditKey;
@@ -228,13 +245,16 @@ export default function PatientDetails() {
       entity_id: patientId,
       agency_id: agencyId,
       page: 'PatientDetails',
-      access_boundary: 'patient_and_visit_read_brokers',
+      access_boundary: scheduleAuthorized
+        ? 'patient_and_visit_read_brokers'
+        : 'patient_display_read_broker',
     });
   }, [
     agencyId,
     authorizationSettled,
     patientId,
     patientQuery.tenantScope,
+    scheduleAuthorized,
     visitAuthorizationQuery.data,
   ]);
 
@@ -253,7 +273,7 @@ export default function PatientDetails() {
     );
   }
 
-  if (patientQuery.isError || visitAuthorizationQuery.isError) {
+  if (patientQuery.isError || (scheduleAuthorized && visitAuthorizationQuery.isError)) {
     return (
       <AccessMessage title="Patient details unavailable">
         This chart cannot be opened with the current agency and care-team authority.
@@ -296,7 +316,7 @@ export default function PatientDetails() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-slate-600">
-            Current Patient and Visit authority was verified. Contact and telehealth tools for this
+            Current Patient{scheduleAuthorized ? " and Visit" : ""} authority was verified. Contact and telehealth tools for this
             chart are below; the other clinical panels open as each gains its own purpose-bound
             tenant read service.
           </CardContent>

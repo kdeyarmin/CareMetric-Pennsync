@@ -26,7 +26,8 @@ test('buildTodayPriorities ranks same-day missing notes above scheduled visits',
 test('buildTodayPriorities sends admins to incident review and admin console', () => {
   const priorities = buildTodayPriorities({
     now: NOW,
-    currentUser: { email: 'admin@example.com', role: 'admin' },
+    currentUser: { email: 'admin@example.com', role: 'user', account_type: 'user' },
+    adminView: true,
     incidents: [{ id: 'i1', status: 'open' }],
   });
 
@@ -35,6 +36,19 @@ test('buildTodayPriorities sends admins to incident review and admin console', (
 
   assert.equal(incidentPriority.to, '/IncidentReview');
   assert.equal(adminPriority.to, '/AdminOperations');
+});
+
+test('a self-set account type does not open the admin incident queue', () => {
+  const priorities = buildTodayPriorities({
+    now: NOW,
+    currentUser: { email: 'nurse@example.com', role: 'user', account_type: 'agency_admin' },
+    incidents: [{ id: 'i1', status: 'open' }],
+  });
+
+  const incidentPriority = priorities.find((priority) => priority.id === 'open-incidents');
+  assert.equal(incidentPriority.to, '/Incidents');
+  assert.equal(incidentPriority.actionLabel, 'Open incidents');
+  assert.equal(priorities.some((priority) => priority.id === 'admin-console-check'), false);
 });
 
 test('buildTodayPriorities returns an all-clear action when no urgent data exists', () => {
@@ -166,4 +180,12 @@ test('the builder no longer takes the alert inputs that fed the tile', () => {
   assert.equal(/patientAlertsTruncated/.test(signature), false);
   // And nothing in the module reaches for them under another name.
   assert.equal(/highRiskPatientIds|ALERT_SEVERITY_RANK/.test(source), false);
+  assert.equal(/account_type/.test(source), false);
+});
+
+test('TodayPriorities passes the bound admin view into the builder', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/components/dashboard/TodayPriorities.jsx'), 'utf8');
+  assert.match(source, /adminView: isAdminView\(currentUser\)/);
+  assert.equal(/account_type/.test(source), false);
 });

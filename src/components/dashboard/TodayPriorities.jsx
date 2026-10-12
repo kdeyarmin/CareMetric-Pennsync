@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { buildTodayPriorities } from '@/components/dashboard/todayPriorities';
+import { isAdminView } from '@/lib/roles';
 
 const severityStyles = {
   critical: 'border-red-200 bg-red-50 text-red-700',
@@ -20,7 +21,7 @@ const severityIcons = {
 };
 
 export default function TodayPriorities({ currentUser, visits, patients, incidents, noteConversions, noteConversionsAvailable, messages, dashboardError }) {
-  const priorities = buildTodayPriorities({ currentUser, visits, patients, incidents, noteConversions, noteConversionsAvailable, messages, dashboardError });
+  const priorities = buildTodayPriorities({ currentUser, visits, patients, incidents, noteConversions, noteConversionsAvailable, messages, dashboardError, adminView: isAdminView(currentUser) });
 
   return (
     <Card className="border-navy-100 bg-gradient-to-br from-white via-white to-navy-50/40 shadow-sm">

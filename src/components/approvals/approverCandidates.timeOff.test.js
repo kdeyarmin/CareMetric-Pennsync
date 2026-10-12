@@ -114,10 +114,11 @@ test("the leave page asks the module and no longer reads the profile labels", ()
   const page = readFileSync(new URL("../../pages/TimeOff.jsx", import.meta.url), "utf8");
   assert.match(page, /import \{ approverOptions \} from "@\/components\/approvals\/approverCandidates"/);
   assert.match(page, /return approverOptions\(scoped, currentUser\?\.email\);/);
-  // The labels still appear elsewhere on the page — `isApprover` reads
-  // `is_manager` to decide which TAB a person sees, which is a view concern and
-  // not an authorization one — so the assertion is scoped to the candidate
-  // query's own predicate rather than to the whole file.
+  assert.match(page, /const isApprover = isTimeApprover\(currentUser\)/);
+  assert.doesNotMatch(page, /currentUser\?\.is_manager/);
+  const timesheets = readFileSync(new URL("../../pages/Timesheets.jsx", import.meta.url), "utf8");
+  assert.match(timesheets, /const isApprover = isTimeApprover\(currentUser\)/);
+  assert.doesNotMatch(timesheets, /currentUser\?\.is_manager/);
   assert.doesNotMatch(page,
     /u\.role === "admin" \|\| u\.account_type === "agency_admin" \|\| u\.is_manager === true/,
     "the old candidate predicate must be gone, not merely unused");

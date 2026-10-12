@@ -10,6 +10,31 @@ const EVENT_CONFIG = Object.freeze({
   referral: { label: 'Referral', route: '/ReferralIntake', dateFields: ['referral_date', 'created_date'] },
 });
 
+const CLOSED_ACCESS = Object.freeze({
+  canOpenVisitNotes: false,
+  canOpenDocuments: false,
+  canReviewIncidents: false,
+  canOpenReferrals: false,
+});
+
+function withId(route, queryKey, id) {
+  if (!route) return null;
+  if (!id) return route;
+  return `${route}?${queryKey}=${encodeURIComponent(id)}`;
+}
+
+function eventRoute(type, record, access) {
+  const config = EVENT_CONFIG[type];
+  if (type === 'visit' && access.canOpenVisitNotes && record?.id) {
+    return withId('/ClinicalDocumentation', 'visitId', record.id);
+  }
+  if (type === 'document' && !access.canOpenDocuments) return null;
+  if (type === 'referral' && !access.canOpenReferrals) return null;
+  if (type === 'incident' && !access.canReviewIncidents) return '/Incidents';
+  const routeId = config.idField ? record[config.idField] : record.id;
+  return withId(config.route, 'id', routeId);
+}
+
 function firstDate(record, fields) {
   for (const field of fields) {
     const value = record?.[field];
@@ -29,8 +54,18 @@ function eventTitle(type, record) {
   return EVENT_CONFIG[type].label;
 }
 
-export function buildPatientTimeline({ patientId, visits = [], documents = [], incidents = [], tasks = [], messages = [], referrals = [] } = {}) {
+export function buildPatientTimeline({
+  patientId,
+  visits = [],
+  documents = [],
+  incidents = [],
+  tasks = [],
+  messages = [],
+  referrals = [],
+  access = CLOSED_ACCESS,
+} = {}) {
   const sources = { visit: visits, document: documents, incident: incidents, task: tasks, message: messages, referral: referrals };
+  const viewer = { ...CLOSED_ACCESS, ...(access || {}) };
   const events = [];
 
   for (const [type, rows] of Object.entries(sources)) {
@@ -41,7 +76,6 @@ export function buildPatientTimeline({ patientId, visits = [], documents = [], i
       if (patientId && record?.patient_id !== patientId) continue;
       const occurredAt = firstDate(record, config.dateFields);
       if (!occurredAt) continue;
-      const routeId = config.idField ? record[config.idField] : record.id;
       events.push({
         // Include the index so id-less same-day records don't collide on an
         // identical event id (React key collisions).
@@ -52,7 +86,7 @@ export function buildPatientTimeline({ patientId, visits = [], documents = [], i
         occurred_at: occurredAt,
         status: record.status || null,
         source_id: record.id || null,
-        route: routeId ? `${config.route}?id=${encodeURIComponent(routeId)}` : config.route,
+        route: eventRoute(type, record, viewer),
       });
     }
   }

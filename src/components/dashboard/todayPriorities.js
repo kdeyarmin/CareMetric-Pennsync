@@ -79,10 +79,12 @@ export function buildTodayPriorities({
   dashboardError = null,
   now = new Date(),
   limit = DEFAULT_LIMIT,
+  adminView = false,
 } = {}) {
-  const superAdminEmail = (import.meta.env?.VITE_SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
-  const isOwnerSuperAdmin = superAdminEmail && String(currentUser?.email || '').trim().toLowerCase() === superAdminEmail;
-  const isAdmin = currentUser?.role === 'admin' || ['agency_admin', 'super_admin'].includes(currentUser?.account_type) || isOwnerSuperAdmin;
+  // Incident Review and Admin Operations admit only a bound facility or super
+  // admin. A label the user can edit on their profile must not choose those
+  // destinations.
+  const isAdmin = adminView === true;
   const patientById = new Map(patients.map((patient) => [patient.id, patient]));
   const priorities = [];
 

@@ -15,6 +15,7 @@ import LoadingState from "@/components/ui/LoadingState";
 import LearningPathProgress from "./LearningPathProgress";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
 import { formatLocalDate, isPastLocalDueDate } from "@/lib/dateLocal";
+import { competencyGate } from "@/components/training/competencyGate";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 function isAssignmentOverdue(a) {
@@ -167,6 +168,7 @@ export default function MyAnnualEducationDashboard() {
           ) : (
             assignments.map((assignment) => {
               const course = courseMap[assignment.course_id] || {};
+              const gate = competencyGate({ assignment, course });
               const isOverdue = isAssignmentOverdue(assignment);
               const isCompleted = assignment.status === 'completed';
               const isFailed = assignment.pass_fail_result === 'failed';
@@ -195,8 +197,8 @@ export default function MyAnnualEducationDashboard() {
                         <div><span className="text-slate-400">Due:</span> <span className="font-medium">{formatDate(assignment.due_date)}</span></div>
                         <div><span className="text-slate-400">Time:</span> <span className="font-medium">{course.estimated_minutes || '—'} min</span></div>
                         <div><span className="text-slate-400">Score:</span> <span className="font-medium">{assignment.score_percentage != null ? `${assignment.score_percentage}%` : '—'}</span></div>
-                        <div><span className="text-slate-400">Passing:</span> <span className="font-medium">{assignment.passing_score_required || 80}%</span></div>
-                        <div><span className="text-slate-400">Attempts:</span> <span className="font-medium">{assignment.latest_attempt_number || 0}</span></div>
+                        <div><span className="text-slate-400">Passing:</span> <span className="font-medium">{gate.passingScore}%</span></div>
+                        <div><span className="text-slate-400">Attempts:</span> <span className="font-medium">{assignment.latest_attempt_number || 0}{gate.maxAttempts ? ` / ${gate.maxAttempts}` : ""}</span></div>
                         <div><span className="text-slate-400">Renewal:</span> <span className="font-medium">{formatDate(assignment.renewal_due_date)}</span></div>
                       </div>
                       <Progress value={isCompleted ? 100 : assignment.progress_percentage || 0} className={`h-1.5 ${isCompleted ? '[&>div]:bg-emerald-500' : ''}`} />
