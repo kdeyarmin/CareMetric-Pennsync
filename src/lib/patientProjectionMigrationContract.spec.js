@@ -40,7 +40,7 @@ describe('purpose-bound Patient projection migration', () => {
     expect(report).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
   });
 
-  it('loads the discharge workflow and audio through the selector projection', () => {
+  it('uses selector projection for discharge and clinical context for audio', () => {
     // 2026-10-08 owner decision: discharge summaries are restored; the
     // workflow's patient header comes from the reviewed selector projection.
     const discharge = read('src/components/discharge/DischargeSummaryWorkflow.jsx');
@@ -51,7 +51,7 @@ describe('purpose-bound Patient projection migration', () => {
 
     const audio = read('src/components/visit/AudioVisitCapture.jsx');
     expect(audio).toMatch(/useAuthorizedPatient\(\{/);
-    expect(audio).toMatch(/purpose:\s*'selector'/);
+    expect(audio).toMatch(/purpose:\s*'smart_note_context'/);
     expect(audio).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
     expect(audio).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
   });

@@ -108,7 +108,11 @@ describe('validateEmail / validatePhone / formatPhoneNumber', () => {
 
 describe('validatePatient', () => {
   it('reports the impossible admission date as an error', () => {
-    const results = validatePatient({ admission_date: '2026-02-31' });
+    const results = validatePatient({
+      first_name: 'Jane',
+      last_name: 'Doe',
+      admission_date: '2026-02-31',
+    });
     expect(results).toEqual([
       { field: 'admission_date', message: VALIDATION_ERRORS.INVALID_DATE, severity: SEVERITY.ERROR },
     ]);
@@ -117,6 +121,8 @@ describe('validatePatient', () => {
   it('returns no findings for a clean record', () => {
     expect(
       validatePatient({
+        first_name: 'Jane',
+        last_name: 'Doe',
         email: 'patient@example.com',
         phone: '2155550100',
         date_of_birth: '1950-06-15',
@@ -128,7 +134,11 @@ describe('validatePatient', () => {
 
   it('warns (overridably) on a minor rather than erroring', () => {
     const year = new Date().getFullYear() - 10;
-    const results = validatePatient({ date_of_birth: `${year}-01-01` });
+    const results = validatePatient({
+      first_name: 'Jane',
+      last_name: 'Doe',
+      date_of_birth: `${year}-01-01`,
+    });
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({
       field: 'date_of_birth',
