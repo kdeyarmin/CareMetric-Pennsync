@@ -29,7 +29,7 @@ import CertificateDownloadButton from "@/components/training/CertificateDownload
 import CourseStepIndicator from "@/components/training/CourseStepIndicator";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { formatLocalDate } from "@/lib/dateLocal";
-import { competencyGate } from "@/components/training/competencyGate";
+import { competencyGate, retakeEligibleAt, retakeWaitRemainingHours } from "@/components/training/competencyGate";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Fisher-Yates shuffle for unbiased randomization
@@ -73,6 +73,8 @@ export default function TrainingCoursePlayer() {
   const [attestationAccepted, setAttestationAccepted] = useState(false);
   const [signedName, setSignedName] = useState("");
   const [result, setResult] = useState(null);
+  const [resultRecordedAt, setResultRecordedAt] = useState(null);
+  const [retakeClock, setRetakeClock] = useState(() => Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [startTime, setStartTime] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
@@ -89,6 +91,7 @@ export default function TrainingCoursePlayer() {
     setAttestationAccepted(false);
     setSignedName("");
     setResult(null);
+    setResultRecordedAt(null);
     setSubmitting(false);
     setElapsed(0);
     setSubmitError("");
@@ -207,6 +210,24 @@ export default function TrainingCoursePlayer() {
   }, [questions]);
 
   const { passingScore, maxAttempts, waitHours } = competencyGate({ assignment, course });
+  const retakeHoursLeft = retakeWaitRemainingHours(waitHours, resultRecordedAt, retakeClock);
+  useEffect(() => {
+    if (!resultRecordedAt || waitHours <= 0) return undefined;
+    const eligibleAt = retakeEligibleAt(waitHours, resultRecordedAt);
+    if (!eligibleAt) return undefined;
+    const delay = eligibleAt - Date.now();
+    if (delay <= 0) return undefined;
+    const openRetake = () => setRetakeClock(Date.now());
+    const timer = setTimeout(openRetake, delay);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") openRetake();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [resultRecordedAt, waitHours]);
   const isAdmin = isAdminView(currentUser);
   const answeredCount = Object.keys(answers).length;
   const totalQuestions = randomizedQuestions.length;
@@ -250,6 +271,9 @@ export default function TrainingCoursePlayer() {
         timeSpentMinutes,
         randomizedQuestionOrder: randomizedQuestions.map((q) => q.id),
       });
+      const recordedAt = Date.now();
+      setResultRecordedAt(recordedAt);
+      setRetakeClock(recordedAt);
       setResult(response.data || response);
       setStep("result");
     } catch (err) {
@@ -868,12 +892,13 @@ export default function TrainingCoursePlayer() {
             <Button variant="outline" onClick={() => navigate(createPageUrl("LearningCenter") + "?tab=courses")}>
               <Home className="w-4 h-4 mr-2" /> Back to My Courses
             </Button>
-            {!result.passed && !result.locked && waitHours <= 0 && (
+            {!result.passed && !result.locked && retakeHoursLeft <= 0 && (
               <Button
                 onClick={() => {
                   setStep("content");
                   setAnswers({});
                   setResult(null);
+                  setResultRecordedAt(null);
                   setCompletedModules([]);
                   setActiveModuleIndex(0);
                   setAttestationAccepted(false);
@@ -885,9 +910,9 @@ export default function TrainingCoursePlayer() {
                 <RefreshCw className="w-4 h-4 mr-2" /> Review Content & Retake
               </Button>
             )}
-            {!result.passed && !result.locked && waitHours > 0 && (
+            {!result.passed && !result.locked && retakeHoursLeft > 0 && (
               <p className="text-sm text-amber-800">
-                Retake available in {waitHours} hour{waitHours === 1 ? "" : "s"}. A retry before then is not recorded.
+                Retake available in {retakeHoursLeft} hour{retakeHoursLeft === 1 ? "" : "s"}. A retry before then is not recorded.
               </p>
             )}
             {result.passed && (

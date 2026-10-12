@@ -17,3 +17,26 @@ export function competencyGate({ assignment, course } = {}) {
   );
   return { passingScore, maxAttempts, waitHours };
 }
+
+/** Instant the server will accept another attempt, or 0 when there is no wait. */
+export function retakeEligibleAt(waitHours, submittedAt) {
+  const wait = Number(waitHours) || 0;
+  if (wait <= 0) return 0;
+  const submittedMs = submittedAt == null ? NaN : new Date(submittedAt).getTime();
+  if (!Number.isFinite(submittedMs)) return null;
+  return submittedMs + wait * 3_600_000;
+}
+
+/**
+ * Whole hours until a failed attempt may be retaken. 0 means the button can
+ * be offered; the grader still rejects a retry that arrives early.
+ */
+export function retakeWaitRemainingHours(waitHours, submittedAt, now = Date.now()) {
+  const wait = Number(waitHours) || 0;
+  if (wait <= 0) return 0;
+  const eligibleAt = retakeEligibleAt(waitHours, submittedAt);
+  if (eligibleAt == null) return Math.ceil(wait);
+  const remaining = eligibleAt - now;
+  if (remaining <= 0) return 0;
+  return Math.ceil(remaining / 3_600_000);
+}
