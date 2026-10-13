@@ -33,12 +33,17 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     MEDIUM: 'bg-yellow-100 text-yellow-800 border-yellow-300',
     LOW: 'bg-green-100 text-green-800 border-green-300',
   };
+  const urgencyBannerClass = (level) =>
+    urgencyColors[String(level || '').toUpperCase()]
+    || 'bg-slate-100 text-slate-800 border-slate-300';
 
   const handleAnalyze = async () => {
     if (!referralText.trim()) {
       setError('Please enter or paste referral data');
       return;
     }
+    // In-flight dedupe: a double-click used to fire two billed triage calls.
+    if (isAnalyzing) return;
 
     setIsAnalyzing(true);
     setError(null);
@@ -72,6 +77,17 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     if (!file) return;
 
     try {
+      // Text and common document types. PDFs arrive as binary — file.text()
+      // would produce mojibake, so refuse them with a clear message rather than
+      // silently feeding garbage into triage.
+      const name = String(file.name || '').toLowerCase();
+      const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
+      if (isPdf) {
+        setError('PDF upload is not supported on this triage panel yet — paste the referral text, or use Referral Intake to extract from a PDF.');
+        toast.error('Paste referral text or use Referral Intake for PDFs');
+        e.target.value = '';
+        return;
+      }
       const text = await file.text();
       setReferralText(text);
       setError(null);
@@ -134,7 +150,7 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt"
+              accept=".txt,.text,.md,.csv,text/plain"
               onChange={handleFileUpload}
               className="hidden"
             />
@@ -170,20 +186,20 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
       {analysis && (
         <div className="space-y-4">
           {/* Urgency Banner */}
-          <div className={`p-4 rounded-lg border-2 ${urgencyColors[analysis.urgency_level]}`}>
+          <div className={`p-4 rounded-lg border-2 ${urgencyBannerClass(analysis.urgency_level)}`}>
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-2">
-                {analysis.urgency_level === 'CRITICAL' && (
+                {String(analysis.urgency_level || '').toUpperCase() === 'CRITICAL' && (
                   <AlertTriangle className="w-6 h-6" />
                 )}
-                {analysis.urgency_level === 'HIGH' && (
+                {String(analysis.urgency_level || '').toUpperCase() === 'HIGH' && (
                   <AlertCircle className="w-6 h-6" />
                 )}
-                {['MEDIUM', 'LOW'].includes(analysis.urgency_level) && (
+                {['MEDIUM', 'LOW'].includes(String(analysis.urgency_level || '').toUpperCase()) && (
                   <CheckCircle2 className="w-6 h-6" />
                 )}
                 <div>
-                  <p className="text-sm font-bold">Urgency Level: {analysis.urgency_level}</p>
+                  <p className="text-sm font-bold">Urgency Level: {analysis.urgency_level || 'Unknown'}</p>
                   <p className="text-xs mt-1">{analysis.urgency_reason}</p>
                 </div>
               </div>

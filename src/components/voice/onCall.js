@@ -26,11 +26,28 @@ function ringdownDedupeKey(n) {
   return digits.length >= 10 ? digits.slice(-10) : String(n).trim().toLowerCase();
 }
 
+/**
+ * Normalize a ringdown destination to E.164. Unparseable values are dropped —
+ * Telnyx `transfer` rejects national formats like "7244650440", and dialing
+ * them burned through the ringdown until the caller was hung up. Mirrors
+ * phoneUtils.normalizeE164 / the webhook inline copy (keep dependency-free).
+ */
+function normalizeRingdownTo(raw) {
+  if (!raw) return null;
+  const digits = String(raw).replace(/[^\d]/g, "");
+  if (String(raw).trim().startsWith("+")) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== "0" ? `+${digits}` : null;
+  }
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
 export function buildRingdown({ primary = null, others = [], office = null, maxTargets = 4 } = {}) {
   const seen = new Set();
   const out = [];
   const push = (num, kind) => {
-    const n = String(num || "").trim();
+    const n = normalizeRingdownTo(num);
     if (!n) return;
     const key = ringdownDedupeKey(n);
     if (seen.has(key)) return;

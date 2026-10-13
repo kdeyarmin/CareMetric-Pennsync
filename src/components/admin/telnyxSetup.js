@@ -151,6 +151,50 @@ export function evaluateAgencyConfig(settings) {
       : "Enabled.",
   });
 
+  // After-hours call handling: selecting voicemail without enabling recordings
+  // used to silently fall through to a live office transfer. Surface it here.
+  const afterHoursAction = s.after_hours_call_action || "transfer";
+  if (afterHoursAction === "voicemail" && s.voicemail_enabled !== true) {
+    checks.push({
+      id: "after_hours_voicemail",
+      label: "After-hours voicemail",
+      status: "warn",
+      detail: "After-hours action is voicemail, but voicemail is not enabled — closed-hours callers will hear a hangup message until you enable voicemail.",
+    });
+  } else if (afterHoursAction === "transfer") {
+    const transfer = s.after_hours_transfer_number_e164 || s.main_office_number_e164;
+    checks.push({
+      id: "after_hours_transfer",
+      label: "After-hours transfer",
+      status: isBlank(transfer) ? "warn" : looksLikePhone(transfer) ? "ok" : "warn",
+      detail: isBlank(transfer)
+        ? "No after-hours transfer or main office number — closed-hours callers cannot be connected."
+        : looksLikePhone(transfer)
+          ? "Configured."
+          : "After-hours transfer number doesn't look valid.",
+    });
+  }
+
+  // Inbound fax office-forward requires the office fax to differ from the
+  // Telnyx receive/outbound line; otherwise forwards fail closed.
+  if (
+    !isBlank(s.office_fax_number_e164)
+    && !isBlank(s.outbound_fax_number_e164)
+    && looksLikePhone(s.office_fax_number_e164)
+    && looksLikePhone(s.outbound_fax_number_e164)
+  ) {
+    const officeDigits = String(s.office_fax_number_e164).replace(/\D/g, "").slice(-10);
+    const outboundDigits = String(s.outbound_fax_number_e164).replace(/\D/g, "").slice(-10);
+    if (officeDigits && officeDigits === outboundDigits) {
+      checks.push({
+        id: "fax_forward_distinct",
+        label: "Inbound fax forward target",
+        status: "warn",
+        detail: "Office fax and outbound Telnyx fax line are the same number — inbound fax office-forward cannot deliver.",
+      });
+    }
+  }
+
   return checks;
 }
 

@@ -104,6 +104,28 @@ test("no sms_subaccount / voice_subaccount / region checks exist (removed)", () 
   assert.equal(byId(checks, "region"), undefined);
 });
 
+test("after-hours voicemail without voicemail_enabled warns", () => {
+  const checks = evaluateAgencyConfig({
+    after_hours_call_action: "voicemail",
+    voicemail_enabled: false,
+  });
+  assert.equal(byId(checks, "after_hours_voicemail").status, "warn");
+  assert.match(byId(checks, "after_hours_voicemail").detail, /voicemail is not enabled/i);
+});
+
+test("after-hours transfer without a destination warns", () => {
+  const checks = evaluateAgencyConfig({ after_hours_call_action: "transfer" });
+  assert.equal(byId(checks, "after_hours_transfer").status, "warn");
+});
+
+test("identical office and outbound fax lines warn about inbound forward", () => {
+  const checks = evaluateAgencyConfig({
+    office_fax_number_e164: "+17244650444",
+    outbound_fax_number_e164: "7244650444",
+  });
+  assert.equal(byId(checks, "fax_forward_distinct").status, "warn");
+});
+
 test("summarize picks the worst severity and counts statuses", () => {
   const sum = summarize([
     { id: "1", status: "ok" },

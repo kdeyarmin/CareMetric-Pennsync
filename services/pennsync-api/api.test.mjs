@@ -395,7 +395,7 @@ test('the smart-note seed invents nothing when the extraction is empty', async (
   assert.equal(seed.diagnosis, '');
   assert.deepEqual(seed.secondary_diagnoses, []);
   assert.equal(seed.vital_signs_text, '');
-  assert.equal(seed.clinical_summary.allergies, 'NKDA');
+  assert.equal(seed.clinical_summary.allergies, '');
   assert.equal(seed.clinical_summary.primary_diagnosis, undefined);
   assert.equal(seed.patient_demographics.name, undefined);
   assert.equal(seed.clinical_summary.instructions_from_referral, '');

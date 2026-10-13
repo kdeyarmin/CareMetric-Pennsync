@@ -44,7 +44,12 @@ export function buildAdmissionNoteTemplate(refData) {
     sections.push(`\nCURRENT MEDICATIONS:\n${medications}`);
   }
 
-  sections.push(`\nALLERGIES:\n${data.diagnoses?.allergies || 'NKDA'}`);
+  // Never invent NKDA — a missing allergy field means the referral did not
+  // state allergies, not that the patient has none. Omit the section so Smart
+  // Note presence asks the nurse instead of treating filler as documentation.
+  if (data.diagnoses?.allergies) {
+    sections.push(`\nALLERGIES:\n${data.diagnoses.allergies}`);
+  }
 
   if (data.skilled_needs?.services_ordered?.length > 0) {
     sections.push(`\nSKILLED NURSING NEEDS:\n${data.skilled_needs.services_ordered.join(', ')}`);
@@ -90,7 +95,7 @@ export function buildSmartNoteData(referral, { today = new Date() } = {}) {
       skilled_needs: refData.skilled_needs?.services_ordered || [],
       specific_interventions: refData.skilled_needs?.specific_interventions || [],
       medications: refData.medications || [],
-      allergies: refData.diagnoses?.allergies || 'NKDA',
+      allergies: refData.diagnoses?.allergies || '',
       instructions_from_referral: refData.skilled_needs?.goals_of_care
         || refData.admission_details?.referral_reason || '',
     },

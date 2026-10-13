@@ -845,6 +845,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     // Clearing only local state left the Visit asserting that a clinician had
     // reviewed a note version they had since un-reviewed — a false governance
     // record, which is worse than no record.
+    const previous = reviewAck;
     const ack = checked
       ? buildReviewAcknowledgement({
           noteText: finalText,
@@ -855,8 +856,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
           edited: nurseEdited,
         })
       : null;
+    // Optimistic UI only until the server confirms. Setting the ack first used
+    // to leave the UI showing "reviewed" after a failed sync — a false
+    // governance record on screen even when the Visit row was unchanged.
+    if (!savedVisitId) {
+      setReviewAck(ack);
+      return;
+    }
     setReviewAck(ack);
-    if (!savedVisitId) return;
     try {
       await setVisitReviewAcknowledgement({
         visitId: savedVisitId,
@@ -866,6 +873,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       });
     } catch (err) {
       console.error("Failed to persist the documentation review acknowledgement:", err);
+      setReviewAck(previous);
       toast.error("Couldn't sync your review record to the server. Try again.");
     }
   };

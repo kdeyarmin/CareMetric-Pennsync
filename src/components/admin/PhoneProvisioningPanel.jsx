@@ -21,7 +21,7 @@ import { hasPersonalCell, personalCellTail } from "@/components/admin/rosterTele
 import {
   evaluateAgencyConfig, summarize, WEBHOOK_FUNCTIONS, functionUrlBase,
 } from "@/components/admin/telnyxSetup";
-import { isAdminLike } from "@/lib/superAdmin";
+import { isSuperAdmin } from "@/lib/superAdmin";
 import CallingHoursPanel from "@/components/admin/CallingHoursPanel";
 import NumberPoolPanel from "@/components/admin/NumberPoolPanel";
 
@@ -73,7 +73,10 @@ export default function PhoneProvisioningPanel() {
   const queryClient = useQueryClient();
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdmin = isAdminLike(currentUser);
+  // Backend provision/buy/auto-assign require the protected platform owner
+  // (role === 'admin' AND SUPER_ADMIN_EMAIL). Gating on isAdminLike alone showed
+  // the full UI to every Base44 admin, who then got 403 on every Telnyx action.
+  const isAdmin = isSuperAdmin(currentUser);
 
   const { data: users = [] } = useQuery({
     queryKey: ["phone-users", agencyQueryKey(currentUser)],
@@ -148,14 +151,15 @@ export default function PhoneProvisioningPanel() {
         // Store the office numbers in strict E.164 — sendFax/sendBatchFax use
         // the fax number verbatim as the Telnyx `from`, and the voice webhook
         // routes off the main office number, so formatting must not be saved.
+        // Refuse raw on normalize failure (never persist an un-dialable number).
         main_office_number_e164: agency.main_office_number_e164
-          ? normalizeE164(agency.main_office_number_e164) || agency.main_office_number_e164
+          ? (normalizeE164(agency.main_office_number_e164) || "")
           : "",
         office_fax_number_e164: agency.office_fax_number_e164
-          ? normalizeE164(agency.office_fax_number_e164) || agency.office_fax_number_e164
+          ? (normalizeE164(agency.office_fax_number_e164) || "")
           : "",
         outbound_fax_number_e164: agency.outbound_fax_number_e164
-          ? normalizeE164(agency.outbound_fax_number_e164) || agency.outbound_fax_number_e164
+          ? (normalizeE164(agency.outbound_fax_number_e164) || "")
           : "",
         monthly_sms_cap: Number.isFinite(capNum) && capNum > 0 ? capNum : null,
         ...(agencyKey ? { agency_code: agencyKey, office_name: agencyKey } : {}),

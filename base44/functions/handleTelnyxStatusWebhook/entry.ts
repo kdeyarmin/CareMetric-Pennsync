@@ -3131,8 +3131,12 @@ function buildRingdown(opts) {
   const { primary = null, others = [], office = null, maxTargets = 4 } = opts || {};
   const seen = new Set();
   const out = [];
+  // Normalize every destination to E.164 before dialing. Stored cells often
+  // arrive as "7244650440" / "(724) …"; Telnyx transfer rejects those and the
+  // ringdown burned through targets until the caller was hung up. Drop values
+  // that cannot normalize — a skipped target is better than a failed transfer.
   const push = (num, kind) => {
-    const n = String(num || '').trim();
+    const n = normalizeE164(num);
     if (!n) return;
     const key = ringdownDedupeKey(n);
     if (seen.has(key)) return;
@@ -3316,10 +3320,12 @@ async function otherOnDutyCells(base44, config, primaryEmail, primaryAgency) {
   const cells = [];
   for (const u of Array.isArray(users) ? users : []) {
     if (!u || u.email === primaryEmail) continue;
-    if (!u.personal_cell_e164) continue;
+    // Normalize before dialing — national formats fail Telnyx transfer.
+    const cell = normalizeE164(u.personal_cell_e164);
+    if (!cell) continue;
     if (String(u.agency_name || '').trim() !== agency) continue; // same agency only
     if (isOffDutyNow(u, now, config.settings)) continue; // only currently on-duty
-    cells.push(u.personal_cell_e164);
+    cells.push(cell);
   }
   return cells;
 }
@@ -3343,10 +3349,18 @@ async function decideInboundRouting(base44, config, workNum) {
 
   if (agencyClosed) {
     const office = config.afterHoursTransferDisplay || 'the main office';
-    if (config.afterHoursAction === 'voicemail' && config.voicemailEnabled) {
-      const greeting = (config.afterHoursGreeting || config.voicemailGreeting ||
-        'Our office is currently closed. Please leave a message after the tone and we will return your call.').replace(/\{office\}/gi, office);
-      return { action: 'voicemail', greeting, nurse };
+    if (config.afterHoursAction === 'voicemail') {
+      // Voicemail without voicemail_enabled must NOT fall through to transfer —
+      // admins who selected voicemail expect a recording, not a live bridge to
+      // the office line. Hang up with a closed-hours message instead.
+      if (config.voicemailEnabled) {
+        const greeting = (config.afterHoursGreeting || config.voicemailGreeting ||
+          'Our office is currently closed. Please leave a message after the tone and we will return your call.').replace(/\{office\}/gi, office);
+        return { action: 'voicemail', greeting, nurse };
+      }
+      const greeting = (config.afterHoursGreeting ||
+        'Our office is currently closed. Please call back during business hours.').replace(/\{office\}/gi, office);
+      return { action: 'hangup', greeting, nurse };
     }
     if (config.afterHoursAction === 'hangup' || (!config.afterHoursTransfer && !config.mainOffice)) {
       const greeting = (config.afterHoursGreeting || 'Our office is currently closed. Please call back during business hours.').replace(/\{office\}/gi, office);
@@ -3359,9 +3373,11 @@ async function decideInboundRouting(base44, config, workNum) {
 
   // Off duty = toggled off, after the 5pm auto-off, or a scheduled window.
   if (isOffDutyNow(nurse, new Date(), config.settings)) {
-    const office = config.mainOfficeDisplay || '724-465-0440';
+    // Never hardcode a tenant phone number or brand name — multi-agency / white-
+    // label deployments would speak another practice's identity to patients.
+    const office = config.mainOfficeDisplay || 'the main office';
     const greeting = (nurse.off_duty_message ||
-      'Thank you for your call, I am not working right now. Please hold while I connect you to Penn Home Health.').replace(/\{office\}/gi, office);
+      'Thank you for your call. I am not available right now. Please hold while I connect you to {office}.').replace(/\{office\}/gi, office);
     // Speak the message, then connect them to the office so they don't have to
     // redial; if no office number is configured, just play the message and end.
     if (config.mainOffice) return { action: 'greet_transfer', greeting, to: config.mainOffice, callerId: workNum, nurse };

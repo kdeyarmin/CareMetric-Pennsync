@@ -17,7 +17,7 @@ import { Hash, Plus, Loader2, Trash2, UserPlus, UserMinus, CheckCircle2, Search,
 import { toast } from "sonner";
 import { formatPhoneDisplay, normalizeE164 } from "@/components/voice/phoneUtils";
 import { assignPayload, cellOnFile, cellTail, searchResultDetail } from "@/components/admin/numberPoolAssign";
-import { isAdminLike } from "@/lib/superAdmin";
+import { isSuperAdmin } from "@/lib/superAdmin";
 
 /**
  * NumberPoolPanel — admin inventory of Telnyx numbers. Add a number once, then
@@ -29,7 +29,10 @@ import { isAdminLike } from "@/lib/superAdmin";
 export default function NumberPoolPanel() {
   const queryClient = useQueryClient();
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdmin = isAdminLike(currentUser);
+  // Align with managePhoneNumberPool / searchPurchaseTelnyxNumbers: protected
+  // platform owner only. Agency admins previously saw buy/assign controls that
+  // always 403'd.
+  const isAdmin = isSuperAdmin(currentUser);
 
   const { data: pool = [] } = useQuery({
     queryKey: ["phone-pool"],

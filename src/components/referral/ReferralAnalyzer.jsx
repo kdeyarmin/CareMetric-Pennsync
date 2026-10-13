@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAICall } from "@/hooks/useAICall";
+import { isAICancellation } from "@/lib/aiScheduler";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,10 @@ import MedicareEligibilityCard from "./MedicareEligibilityCard.jsx";
 
 export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
   const [analysis, setAnalysis] = useState(null);
-  const ai = useAICall();
+  // Auto-fires on mount / referral change — must not compete with nurse-initiated
+  // interactive AI work (draft, grounding, triage). Background priority + cancel
+  // queued work on unmount so StrictMode remounts do not bill a dead call.
+  const ai = useAICall({ priority: "background", timeoutMs: 90000, cancelOnUnmount: true });
   const [analysisError, setAnalysisError] = useState(false);
 
   // Deterministic Face-to-Face (F2F) validation from the uploaded referral only
@@ -245,6 +249,8 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
       }
     } catch (error) {
       if (runId !== runIdRef.current) return; // superseded by a newer referral
+      // Queued background work dropped on unmount — not a user-visible failure.
+      if (isAICancellation(error)) return;
       console.error('Error analyzing referral:', error);
       setAnalysisError(true);
       toast.error('Failed to analyze referral. Please try again.');
