@@ -5,8 +5,17 @@ import {
   filterRecentFaxLogs,
   getStatusCounts,
   getRelativeTimeLabel,
-  normalizeStatus
+  normalizeStatus,
+  isUntrackedLegacyFaxRow,
+  faxTrackerDisplayStatus,
 } from './faxTrackerUtils.js';
+
+/** Authority senders stamp an attempt id and leave document_url null. */
+const tracked = (status) => ({
+  status,
+  provider_submission_attempt_id: 'att_test',
+  document_url: null,
+});
 
 test('filterRecentFaxLogs keeps only logs within configured time range', () => {
   const now = Date.parse('2026-04-04T12:00:00.000Z');
@@ -22,12 +31,12 @@ test('filterRecentFaxLogs keeps only logs within configured time range', () => {
 
 test('getStatusCounts normalizes unknown status to pending', () => {
   const logs = [
-    { status: 'delivered' },
-    { status: 'failed' },
-    { status: 'queued' },
-    { status: 'submission_unknown' },
-    { status: 'in_transit' },
-    {}
+    tracked('delivered'),
+    tracked('failed'),
+    tracked('queued'),
+    tracked('submission_unknown'),
+    tracked('in_transit'),
+    tracked(undefined),
   ];
 
   assert.deepEqual(getStatusCounts(logs), {
@@ -35,7 +44,8 @@ test('getStatusCounts normalizes unknown status to pending', () => {
     failed: 1,
     pending: 2,
     queued: 1,
-    needs_review: 1
+    needs_review: 1,
+    untracked: 0,
   });
 });
 
@@ -47,8 +57,33 @@ test('normalizeStatus never counts an unconfirmed sent fax as delivered', () => 
   assert.equal(normalizeStatus('delivered'), 'delivered');
   assert.equal(normalizeStatus('submission_unknown'), 'needs_review');
   assert.deepEqual(getStatusCounts([
-    { status: 'sent' }, { status: 'delivered' }, { status: 'retrying' }, { status: 'retried' },
-  ]), { delivered: 1, failed: 1, pending: 0, queued: 2, needs_review: 0 });
+    tracked('sent'), tracked('delivered'), tracked('retrying'), tracked('retried'),
+  ]), { delivered: 1, failed: 1, pending: 0, queued: 2, needs_review: 0, untracked: 0 });
+});
+
+test('legacy sendFax URL rows display as untracked, not queued forever', () => {
+  assert.equal(isUntrackedLegacyFaxRow({
+    status: 'sending',
+    document_url: 'https://files.example/a.pdf',
+  }), true);
+  assert.equal(isUntrackedLegacyFaxRow({
+    status: 'sending',
+    document_url: null,
+    provider_submission_attempt_id: 'att_1',
+  }), false);
+  assert.equal(faxTrackerDisplayStatus({
+    status: 'sending',
+    document_url: 'https://files.example/a.pdf',
+  }), 'untracked');
+  // A terminal send-time failure still reads as failed, not "not tracked".
+  assert.equal(faxTrackerDisplayStatus({
+    status: 'failed',
+    document_url: 'https://files.example/a.pdf',
+  }), 'failed');
+  assert.deepEqual(getStatusCounts([
+    { status: 'sending', document_url: 'https://files.example/a.pdf' },
+    tracked('sending'),
+  ]), { delivered: 0, failed: 0, pending: 0, queued: 1, needs_review: 0, untracked: 1 });
 });
 
 test('the fax logs dashboard groups statuses with the same buckets', async () => {
@@ -74,6 +109,7 @@ test('getStatusCounts handles empty arrays', () => {
     failed: 0,
     pending: 0,
     queued: 0,
-    needs_review: 0
+    needs_review: 0,
+    untracked: 0,
   });
 });

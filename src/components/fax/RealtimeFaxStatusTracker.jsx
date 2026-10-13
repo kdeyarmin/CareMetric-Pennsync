@@ -10,7 +10,8 @@ import {
   filterRecentFaxLogs,
   getStatusCounts,
   getRelativeTimeLabel,
-  normalizeStatus
+  faxTrackerDisplayStatus,
+  isUntrackedLegacyFaxRow,
 } from '@/components/fax/faxTrackerUtils';
 import { canManuallyRetryFax } from '@/components/fax/faxRetry';
 
@@ -19,7 +20,10 @@ const statusConfig = {
   failed: { color: 'bg-red-50', icon: AlertCircle, label: 'Failed', badge: 'text-red-700 bg-red-100' },
   needs_review: { color: 'bg-amber-50', icon: AlertTriangle, label: 'Needs review', badge: 'text-amber-800 bg-amber-100' },
   pending: { color: 'bg-blue-50', icon: Clock, label: 'Pending', badge: 'text-blue-700 bg-blue-100' },
-  queued: { color: 'bg-amber-50', icon: Clock, label: 'Queued', badge: 'text-amber-700 bg-amber-100' }
+  queued: { color: 'bg-amber-50', icon: Clock, label: 'Queued', badge: 'text-amber-700 bg-amber-100' },
+  // Legacy sendFax rows: webhook/poll never write them, so "Queued"/"Sending"
+  // would read as still in flight forever.
+  untracked: { color: 'bg-slate-50', icon: AlertTriangle, label: 'Not tracked', badge: 'text-slate-700 bg-slate-200' },
 };
 
 
@@ -128,13 +132,14 @@ export default function RealtimeFaxStatusTracker() {
 
       {/* Summary Cards */}
       {total > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
             { key: 'delivered', label: 'Delivered' },
             { key: 'pending', label: 'Pending' },
             { key: 'queued', label: 'Queued' },
             { key: 'failed', label: 'Failed' },
-            { key: 'needs_review', label: 'Needs review' }
+            { key: 'needs_review', label: 'Needs review' },
+            { key: 'untracked', label: 'Not tracked' },
           ].map(({ key, label }) => {
             const config = statusConfig[key];
             const Icon = config.icon;
@@ -212,7 +217,7 @@ export default function RealtimeFaxStatusTracker() {
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {faxLogs.map((fax) => {
-                const status = normalizeStatus(fax.status);
+                const status = faxTrackerDisplayStatus(fax);
                 const config = statusConfig[status] || statusConfig.pending;
                 const Icon = config.icon;
 
@@ -239,6 +244,11 @@ export default function RealtimeFaxStatusTracker() {
                         <p className="text-xs text-slate-600 mt-0.5">
                           {fax.document_name || 'Untitled'} · {getRelativeTimeLabel(fax.created_date)}
                         </p>
+                        {status === 'untracked' && (
+                          <p className="text-xs text-slate-600 mt-1">
+                            Legacy send path — delivery status is not updated in the app.
+                          </p>
+                        )}
                         {(fax.failure_reason || fax.error_message) && (
                           <p className="text-xs text-red-700 mt-1">{fax.failure_reason || fax.error_message}</p>
                         )}
@@ -284,8 +294,8 @@ export default function RealtimeFaxStatusTracker() {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-600 uppercase">Status</p>
-                <span className={`${statusConfig[normalizeStatus(selectedFax.status)]?.badge || statusConfig.pending.badge} text-xs font-semibold px-2 py-1 rounded inline-block mt-1`}>
-                  {statusConfig[normalizeStatus(selectedFax.status)]?.label || 'Unknown'}
+                <span className={`${statusConfig[faxTrackerDisplayStatus(selectedFax)]?.badge || statusConfig.pending.badge} text-xs font-semibold px-2 py-1 rounded inline-block mt-1`}>
+                  {statusConfig[faxTrackerDisplayStatus(selectedFax)]?.label || 'Unknown'}
                 </span>
               </div>
               <div>
@@ -318,6 +328,16 @@ export default function RealtimeFaxStatusTracker() {
                     <><RotateCcw className="w-4 h-4 mr-2" /> Retry failed fax</>
                   )}
                 </Button>
+              )}
+
+              {isUntrackedLegacyFaxRow(selectedFax) && (
+                <Alert className="bg-slate-50 border-slate-200">
+                  <AlertTriangle className="w-4 h-4 text-slate-700" />
+                  <AlertDescription className="text-slate-800">
+                    This fax used the legacy send path. Telnyx may still deliver it, but the app
+                    does not update its status. Use batch or authorized referral fax for tracked delivery.
+                  </AlertDescription>
+                </Alert>
               )}
 
               {selectedFax.status === 'submission_unknown' && (

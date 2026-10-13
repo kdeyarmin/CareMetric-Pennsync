@@ -6,6 +6,19 @@ export const filterRecentFaxLogs = (logs = [], now = Date.now(), rangeMs = TWENT
   return logs.filter((log) => new Date(log.created_date).getTime() > cutoff);
 };
 
+/**
+ * Mirror of handleTelnyxStatusWebhook's outboundFaxIsUntrackedLegacyRow: a
+ * sendFax URL row (document_url set) or any row without a provider submission
+ * attempt id is never status-written by the webhook or pollFaxStatuses. Those
+ * rows sit forever at queued/sending unless we label them honestly here.
+ */
+export const isUntrackedLegacyFaxRow = (row) => {
+  if (!row || typeof row !== 'object') return false;
+  if (row.document_url != null && String(row.document_url).trim() !== '') return true;
+  const attempt = row.provider_submission_attempt_id;
+  return attempt == null || String(attempt).trim() === '';
+};
+
 // Equivalent statuses collapse into the same summary bucket. 'sent' is NOT a
 // delivery: it ranks below 'delivered' in both status consumers, which never
 // notify a sender of it, and Telnyx's fax status enum has no 'sent' at all (it
@@ -31,11 +44,36 @@ export const normalizeStatus = (raw) => {
   return STATUS_GROUP[s] || s;
 };
 
+/**
+ * Display bucket for the tracker. Untracked legacy rows that are still
+ * non-terminal (queued/sending/pending) would otherwise look forever in-flight;
+ * terminal outcomes (delivered/failed/needs_review) keep their status.
+ */
+export const faxTrackerDisplayStatus = (row) => {
+  const status = normalizeStatus(row?.status);
+  if (
+    isUntrackedLegacyFaxRow(row)
+    && status !== 'delivered'
+    && status !== 'failed'
+    && status !== 'needs_review'
+  ) {
+    return 'untracked';
+  }
+  return status;
+};
+
 export const getStatusCounts = (logs = []) => {
-  const counts = { delivered: 0, failed: 0, pending: 0, queued: 0, needs_review: 0 };
+  const counts = {
+    delivered: 0,
+    failed: 0,
+    pending: 0,
+    queued: 0,
+    needs_review: 0,
+    untracked: 0,
+  };
 
   logs.forEach((log) => {
-    const status = normalizeStatus(log.status);
+    const status = faxTrackerDisplayStatus(log);
     if (status in counts) {
       counts[status] += 1;
     } else {
