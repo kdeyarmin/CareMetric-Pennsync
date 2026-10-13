@@ -62,7 +62,7 @@ describe('residual RLS source containment', () => {
     expect(directConsumers('ComplianceRule')).toEqual(['src/components/compliance/RegulatoryMonitor.jsx']);
 
     const manifest = read('src/lib/nav.manifest.js');
-    expect(manifest).toMatch(/page:\s*["']ReferralIntake["'][\s\S]{0,300}?adminOnly:\s*true/);
+    expect(manifest).toMatch(/page:\s*["']ReferralIntake["'][\s\S]{0,400}?adminOnly:\s*true[\s\S]{0,80}?intakeRole:\s*true/);
     expect(manifest).toMatch(/page:\s*["']ComplianceCenter["'][\s\S]{0,300}?adminOnly:\s*true/);
   });
 

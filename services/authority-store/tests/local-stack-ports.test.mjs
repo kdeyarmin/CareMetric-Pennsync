@@ -216,3 +216,38 @@ test('the holder description names a live listener', linuxOnly, async () => {
     server.close();
   }
 });
+
+test('every local Supabase workflow reserves configured ports before checkout', async () => {
+  const config = await readFile(new URL('../supabase/config.toml', import.meta.url), 'utf8');
+  const ports = [...config.matchAll(/^\s*(?:port|shadow_port)\s*=\s*(\d+)\s*$/gm)]
+    .map(([, port]) => port);
+  assert.ok(ports.length, 'Supabase config must declare ports to reserve');
+  const workflows = [
+    ['../../../.github/workflows/pennsync-app.yml', 'actual-app'],
+    ['../../../.github/workflows/pennsync-browser.yml', 'browser'],
+    ['../../../.github/workflows/pennsync-authority.yml', 'http'],
+  ];
+
+  for (const [path, jobName] of workflows) {
+    const workflow = await readFile(new URL(path, import.meta.url), 'utf8');
+    const jobStart = workflow.indexOf(`\n  ${jobName}:\n`);
+    assert.notEqual(jobStart, -1, `${path} is missing the ${jobName} job`);
+    const nextJobPattern = /\n {2}[\w-]+:\n/g;
+    nextJobPattern.lastIndex = jobStart + 1;
+    const nextJob = nextJobPattern.exec(workflow)?.index;
+    const job = workflow.slice(jobStart, nextJob);
+    const reservationStart = job.indexOf('- name: Reserve Supabase ports from ephemeral allocation');
+    const checkout = job.indexOf('- uses: actions/checkout@v7');
+    assert.ok(reservationStart >= 0 && reservationStart < checkout,
+      `${path} must reserve ports before checkout`);
+    const reservation = job.slice(reservationStart, checkout);
+    assert.match(
+      reservation,
+      /sudo sysctl -w "net\.ipv4\.ip_local_reserved_ports=\$ports"/,
+      `${path} must write the reserved-port list, not only read it`,
+    );
+    for (const port of ports) {
+      assert.match(reservation, new RegExp(`\\b${port}\\b`), `${path} must reserve port ${port}`);
+    }
+  }
+});

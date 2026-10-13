@@ -54,7 +54,7 @@ const NON_MANIFEST_ROUTES = new Set(['Dashboard']);
  * case-insensitively, so createPageUrl()'s lowercase output still resolves here.
  */
 export const ROUTES = [
-  { name: 'Dashboard', Component: Dashboard, adminOnly: false, superAdminOnly: false, access: 'general' },
+  { name: 'Dashboard', Component: Dashboard, adminOnly: false, superAdminOnly: false, access: 'general', intakeRole: false },
   ...NAV_MANIFEST
     .filter((entry) => !NON_MANIFEST_ROUTES.has(entry.page))
     .map((entry) => ({ name: entry.page, factory: factoryFor(entry.page), adminOnly: !!entry.adminOnly, superAdminOnly: !!entry.superAdminOnly, access: entry.access || 'general', intakeRole: !!entry.intakeRole }))

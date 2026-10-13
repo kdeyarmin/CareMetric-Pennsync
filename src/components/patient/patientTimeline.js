@@ -2,6 +2,7 @@ const EVENT_CONFIG = Object.freeze({
   // PatientDetails reads ?id= as a PATIENT id — routing a visit there with the
   // visit's own id landed on "Patient not found". idField names the record
   // field holding the id the target page expects (default: the record's id).
+  // A viewer who can chart opens the visit on Clinical Notes instead.
   visit: { label: 'Visit', route: '/PatientDetails', dateFields: ['visit_date', 'date', 'created_date'], idField: 'patient_id' },
   document: { label: 'Document', route: '/DocumentHub', dateFields: ['signed_at', 'uploaded_at', 'created_date'] },
   incident: { label: 'Incident', route: '/IncidentReview', dateFields: ['incident_date', 'created_date'] },

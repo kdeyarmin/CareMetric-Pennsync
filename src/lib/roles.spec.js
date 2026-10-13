@@ -273,6 +273,7 @@ describe("isPageAllowedForRole — URL-level route guard", () => {
     expect(isPageAllowedForRole("ReferralTriage", "nurse", manager)).toBe(true);
     expect(isPageAllowedForRole("IncidentReview", "nurse", manager)).toBe(false);
     expect(isPageAllowedForRole("DocumentHub", "nurse", manager)).toBe(false);
+    expect(isPageAllowedForRole("UserManagement", "nurse", manager)).toBe(false);
     clearTrustedTenantContext();
     bindTrustedTenantContext(clerk, agencyAdminContext(clerk, "office_staff"));
     expect(isReferralIntakeRole(clerk)).toBe(true);

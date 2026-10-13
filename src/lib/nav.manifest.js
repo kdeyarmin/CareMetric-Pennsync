@@ -858,7 +858,7 @@ export function isLinkablePage(page, routedSet, redirectedSet) {
  */
 export function buildNavCategories(manifest, user = null) {
   const categoryOrder = [
-    "Overview", "Patient Care", "Documentation", "Communication", "Office",
+    "Overview", "Patient Care", "Documentation", "Office", "Communication",
     "Learning & Resources", "Tools",
   ];
   const map = {};

@@ -246,7 +246,7 @@ export default function Dashboard() {
       />
 
       {clinical && (
-          <TodayPriorities
+        <TodayPriorities
             currentUser={currentUser}
             visits={visits}
             patients={patients}

@@ -119,6 +119,9 @@ test("the leave page asks the module and no longer reads the profile labels", ()
   const timesheets = readFileSync(new URL("../../pages/Timesheets.jsx", import.meta.url), "utf8");
   assert.match(timesheets, /const isApprover = isTimeApprover\(currentUser\)/);
   assert.doesNotMatch(timesheets, /currentUser\?\.is_manager/);
+  // The labels still appear in comments that explain the old candidate
+  // predicate. The assertion is scoped to that predicate rather than to the
+  // whole file.
   assert.doesNotMatch(page,
     /u\.role === "admin" \|\| u\.account_type === "agency_admin" \|\| u\.is_manager === true/,
     "the old candidate predicate must be gone, not merely unused");
