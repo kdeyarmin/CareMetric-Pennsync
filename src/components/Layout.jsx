@@ -152,6 +152,7 @@ export default function Layout() {
   // boundary. Restore these only behind purpose-built count brokers.
   const navCategories = useMemo(
     () => buildNavCategories(NAV_MANIFEST, currentUser),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tenantContext fields are deliberate invalidation keys, not inputs: buildNavCategories resolves the role view through the module-level bound tenant context (roles.js getTrustedTenantContext), which AuthContext can bind or rebind without currentUser changing identity. Removing them would leave the sidebar stale after a tenant (re)bind.
     [currentUser, tenantContext?.tenant_role, tenantContext?.membership_id, tenantContext?.membership_version],
   );
   const adminItems = useMemo(

@@ -19,6 +19,7 @@ import CertificateExpirationReport from '../components/learning/CertificateExpir
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import AccessDeniedState from '@/components/ui/AccessDeniedState';
+import { isAdminView, isSuperAdminView } from '@/lib/roles';
 
 const BUSINESS_LINES = [
   { value: 'home_health', label: 'Home Health' },
@@ -42,8 +43,10 @@ export default function LearningReports() {
   const activeTab = REPORT_TABS.includes(requestedTab) ? requestedTab : 'summary';
   const handleTabChange = (value) => setSearchParams(value === 'summary' ? {} : { tab: value });
 
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.account_type === 'agency_admin';
-  const isSuperAdmin = currentUser?.account_type === 'super_admin';
+  // Role comes from the validated tenant context (roles.js), never from
+  // the mutable User record's role/account_type strings (D-A1).
+  const isAdmin = isAdminView(currentUser);
+  const isSuperAdmin = isSuperAdminView(currentUser);
 
   if (!isAdmin && !isSuperAdmin) {
     return (
