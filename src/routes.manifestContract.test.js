@@ -23,8 +23,11 @@ const PUBLIC_NON_MANIFEST_PAGES = new Set([
   'SignerPortal',
 ]);
 
+// Pages routed explicitly in App.jsx instead of through the manifest.
+// EmployeeTrainingProfile moved into NAV_MANIFEST (D-A4), so this set is
+// currently empty; a page may only be added here with a matching explicit
+// <Route> in App.jsx, which the test below asserts.
 const EXPLICITLY_ROUTED_PAGES = new Set([
-  'EmployeeTrainingProfile',
 ]);
 
 // Intentional legacy/reference pages retained for content parity while their

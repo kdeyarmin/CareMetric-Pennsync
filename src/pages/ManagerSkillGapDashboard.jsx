@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { Sparkles, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView, isTenantManager } from "@/lib/roles";
 import { isCallerAgencyScoped } from "@/lib/agencyScope";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
@@ -14,7 +15,11 @@ import ManagerSkillGapSummary from "@/components/training/ManagerSkillGapSummary
 import ManagerSkillGapAreas from "@/components/training/ManagerSkillGapAreas";
 import ManagerSkillGapPeople from "@/components/training/ManagerSkillGapPeople";
 
-const isManager = (user) => user?.role === "admin" || user?.account_type === "agency_admin" || user?.account_type === "super_admin" || user?.training_role === "supervisor" || /manager|director|supervisor|lead/i.test(user?.job_title || "");
+// Manager tier from the validated tenant context (roles.js): either admin
+// tier, or an active membership with tenant_role "manager" (D-A2). The old
+// check widened this with account_type, training_role and a free-text
+// job_title regex — all self-mutable User-record fields.
+const isManager = (user) => isAdminView(user) || isTenantManager(user);
 
 export default function ManagerSkillGapDashboard() {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
