@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
-import { isCallerAgencyScoped } from "@/lib/agencyScope";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
@@ -36,13 +35,6 @@ const TAB_KEYS = [
   "compliance-report",
 ];
 
-const isManager = (user) => 
-  user?.role === "admin" || 
-  user?.account_type === "agency_admin" || 
-  user?.account_type === "super_admin" || 
-  user?.training_role === "supervisor" || 
-  /manager|director|supervisor|lead/i.test(user?.job_title || "");
-
 export default function AdminTraining() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -52,7 +44,9 @@ export default function AdminTraining() {
     queryFn: () => base44.auth.me(),
   });
 
-  const hasAccess = !userLoading && currentUser && (isAdminView(currentUser) || isManager(currentUser));
+  // Course management stays on the administrator tier. A self-editable
+  // account_type, training_role, or job title must not open this page.
+  const hasAccess = !userLoading && currentUser && isAdminView(currentUser);
   // The compliance report aggregates org-wide staff PII (names, emails, scores,
   // completions). Unlike the team-scoped Skill Gaps tab, it is not limited to a
   // manager's team, so restrict it to admins.
@@ -104,24 +98,13 @@ export default function AdminTraining() {
     enabled: hasAccess,
   });
 
-  const teamMembers = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.account_type === "super_admin") return users.filter((user) => user.email && user.role !== "admin");
-    // Facility admins (role:admin + agency_name) and agency_admin must stay
-    // in-agency — do not fall through to department/location across tenants.
-    if (currentUser.account_type === "agency_admin" && !currentUser.agency_name) return [];
-    const agency = String(currentUser.agency_name || "").trim();
-    const isAgencyScoped = isCallerAgencyScoped(currentUser);
-    return users.filter((user) => {
-      if (!user.email || user.role === "admin") return false;
-      if (isAgencyScoped) return user.agency_name === agency;
-      if (currentUser.account_type === "super_admin") return true;
-      if (currentUser.department && user.department === currentUser.department) return true;
-      if (currentUser.location && user.location === currentUser.location) return true;
-      if (currentUser.business_line && user.business_line === currentUser.business_line) return true;
-      return false;
-    });
-  }, [currentUser, users]);
+  // `users` is already limited to the caller's trusted agency. Comparing it
+  // again to the editable agency_name label dropped teammates whose stored
+  // label did not match the caller's profile.
+  const teamMembers = useMemo(
+    () => users.filter((member) => member?.email && member.role !== "admin"),
+    [users],
+  );
 
   const analysis = useMemo(() => {
     const teamEmails = new Set(teamMembers.map((member) => member.email));

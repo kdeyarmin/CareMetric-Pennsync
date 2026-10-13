@@ -44,7 +44,7 @@ import {
   Brain
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
-import { isAdminView } from '@/lib/roles';
+import { isAdminView, isTenantManager } from '@/lib/roles';
 import { parseLocalDate, formatLocalDate, toLocalISODate, isPastLocalDueDate } from '@/lib/dateLocal';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
@@ -497,8 +497,10 @@ function LegacyLearningCenter() {
     [enrollments]
   );
 
-  const isEducatorOrAdmin = isAdminView(user) || user?.training_role === 'educator';
-  const isSupervisor = user?.training_role === 'supervisor';
+  // training_role is a profile field. The backend refuses a self-declared
+  // educator, and the same rule applies to these links.
+  const isEducatorOrAdmin = isAdminView(user);
+  const isSupervisor = isTenantManager(user);
 
   // Overall completion rate
   const completionRate = assignments.length > 0
@@ -1550,24 +1552,19 @@ function LegacyLearningCenter() {
                 </>
               )}
               {isSupervisor && (
-                <>
-                  <Link to={createPageUrl('AdminTraining')}>
-                    <Button variant="outline" size="sm">
-                      <Users className="w-4 h-4 mr-1.5" /> Team Dashboard
-                    </Button>
-                  </Link>
-                  <Link to={createPageUrl('ManagerSkillGapDashboard')}>
-                    <Button variant="outline" size="sm">
-                      <BarChart3 className="w-4 h-4 mr-1.5" /> Skill Gap Dashboard
-                    </Button>
-                  </Link>
-                </>
+                <Link to={createPageUrl('ManagerSkillGapDashboard')}>
+                  <Button variant="outline" size="sm">
+                    <BarChart3 className="w-4 h-4 mr-1.5" /> Skill Gap Dashboard
+                  </Button>
+                </Link>
               )}
-              <Link to={createPageUrl('ReportsAnalytics')}>
-                <Button variant="outline" size="sm">
-                  <BarChart3 className="w-4 h-4 mr-1.5" /> Reports
-                </Button>
-              </Link>
+              {isEducatorOrAdmin && (
+                <Link to={createPageUrl('ReportsAnalytics')}>
+                  <Button variant="outline" size="sm">
+                    <BarChart3 className="w-4 h-4 mr-1.5" /> Reports
+                  </Button>
+                </Link>
+              )}
             </div>
           </CardContent>
         </Card>

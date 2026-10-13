@@ -17,6 +17,8 @@
  *                     membership. Does not grant the rest of the admin surface.
  *                     adminOnly stays true so the page stays off the nurse sidebar
  *                     and still appears in the admin Office section.
+ *  managerRole      – also reachable by an active manager membership. Does not
+ *                     admit office staff or nurses. adminOnly stays true.
  *  superAdminOnly   – platform-level page: hide from facility admins too
  *                     (visible to the super admin only). Implies adminOnly.
  *  access           – staff-discipline gate for non-admin users: "general"
@@ -38,7 +40,7 @@ import {
   Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
   Monitor, Radio, Search, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
-import { canAccessLevel, isAdminView, isReferralIntakeRole } from "@/lib/roles";
+import { canAccessLevel, getRoleView, isAdminView, isReferralIntakeRole, isTenantManager } from "@/lib/roles";
 
 // NOTE: PAGE_NAMES and REDIRECTS are NOT imported here to avoid a circular
 // dependency (nav.manifest → routes → nav.manifest). Instead, the helpers below
@@ -569,7 +571,10 @@ export const NAV_MANIFEST = [
     label: "Skill Gap Dashboard",
     icon: BarChart3,
     category: null,
+    // Administrators and a verified manager membership. Nurses and office
+    // staff stay out; the route gate must admit the manager the page renders for.
     adminOnly: true,
+    managerRole: true,
     breadcrumbParent: "AdminTraining",
     keywords: ["skill gap", "training gap", "competency"],
   },
@@ -972,7 +977,8 @@ export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false, use
     if (!routed.has(e.page)) return false;
     if (e.superAdminOnly && !isSuperAdmin) return false;  // platform-only pages
     const intakeAllowed = e.intakeRole && isReferralIntakeRole(user);
-    if (e.adminOnly && !isAdmin && !intakeAllowed) return false;
+    const managerAllowed = e.managerRole && isTenantManager(user);
+    if (e.adminOnly && !isAdmin && !intakeAllowed && !managerAllowed) return false;
     if (!isAdmin && !e.adminOnly && !canAccessLevel(user, e.access)) return false;
     return true;
   });
@@ -982,13 +988,36 @@ export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false, use
  * Whether a page should be reachable for a given admin role view and staff
  * discipline. Used by tests and route-level guards to mirror nav filtering.
  */
+/**
+ * Why a routed page must not render for this principal, or null when it may.
+ * App.jsx is the only caller that turns the reason into a fallback screen.
+ * `super_admin` and `admin` are administrator walls; every other reason is a
+ * staff-discipline wall (`referral`, `nursing`, `patient`).
+ */
+export function manifestRouteBlock(entry, user) {
+  if (!entry) return null;
+  const roleView = getRoleView(user);
+  const isSuperAdminUser = roleView === "super_admin";
+  const isAdmin = isSuperAdminUser || roleView === "facility_admin";
+  if (entry.superAdminOnly && !isSuperAdminUser) return "super_admin";
+  const intakeAllowed = !!entry.intakeRole && isReferralIntakeRole(user);
+  const managerAllowed = !!entry.managerRole && isTenantManager(user);
+  if (entry.adminOnly && !isAdmin && !intakeAllowed && !managerAllowed) return "admin";
+  if (!entry.adminOnly && entry.intakeRole && !intakeAllowed) return "referral";
+  if (!canAccessLevel(user, entry.access)) return entry.access || "patient";
+  return null;
+}
+
 export function isPageAllowedForRole(pageName, roleView, user = null) {
   const entry = NAV_MAP[pageName];
   if (!entry) return true;
   if (entry.superAdminOnly) return roleView === "super_admin";
   if (entry.adminOnly) {
-    if (roleView === "super_admin" || roleView === "facility_admin") return true;
-    return !!(entry.intakeRole && isReferralIntakeRole(user));
+    const admitted = roleView === "super_admin" || roleView === "facility_admin"
+      || !!(entry.intakeRole && isReferralIntakeRole(user))
+      || !!(entry.managerRole && isTenantManager(user));
+    if (!admitted) return false;
+    return canAccessLevel(user, entry.access);
   }
   if (entry.intakeRole) return isReferralIntakeRole(user);
   return canAccessLevel(user, entry.access);
