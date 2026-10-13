@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Send, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { sendFax } from "@/functions/sendFax";
+import { announceLegacyFaxSubmit } from "./legacyFaxSubmitFeedback";
 import FaxAddressBook from "./FaxAddressBook";
 import FaxOCRExtractor from "./FaxOCRExtractor";
 import FaxCoverSheetGenerator from "./FaxCoverSheetGenerator";
@@ -104,16 +105,14 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
         });
         fileUrl = merged.data?.merged_pdf_url || fileUrl;
       }
-      await sendFax({
+      const result = await sendFax({
         file_url: fileUrl,
         to_number: toNumber,
         document_name: doc.title,
         patient_id: patientId,
         to_name: toName || undefined
       });
-      // sendFax accepts at Telnyx immediately; final delivery status only
-      // advances when the fax webhook points at handleTelnyxStatusWebhook.
-      toast.success("Fax submitted — check the fax log for delivery status.");
+      announceLegacyFaxSubmit(toast, result);
       setSelectedDocId("");
       setToNumber("");
       setToName("");

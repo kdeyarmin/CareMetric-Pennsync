@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { sendFax } from "@/functions/sendFax";
+import { announceLegacyFaxSubmit } from "@/components/fax/legacyFaxSubmitFeedback";
 import FaxRecipientFields from "@/components/fax/FaxRecipientFields";
 
 export default function DocumentRecordFaxDialog({ record, patient, open, onOpenChange }) {
@@ -19,8 +20,8 @@ export default function DocumentRecordFaxDialog({ record, patient, open, onOpenC
     if (!record?.file_url || !recipient.fax?.trim()) return toast.error("Select a provider or enter a fax number");
     setIsSending(true);
     try {
-      await sendFax({ file_url: record.file_url, to_number: recipient.fax, to_name: recipient.name || undefined, document_name: documentName, patient_id: patient.id });
-      toast.success("Fax queued successfully");
+      const result = await sendFax({ file_url: record.file_url, to_number: recipient.fax, to_name: recipient.name || undefined, document_name: documentName, patient_id: patient.id });
+      announceLegacyFaxSubmit(toast, result);
       onOpenChange(false);
     } catch (error) {
       toast.error(error?.response?.data?.error || error?.message || "Unable to send fax");

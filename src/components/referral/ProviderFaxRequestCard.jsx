@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Printer, Send, FileDown, CheckCircle2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import { announceLegacyFaxSubmit } from "@/components/fax/legacyFaxSubmitFeedback";
 
 const severityBadge = (severity) =>
   severity === "critical"
@@ -176,7 +177,8 @@ export default function ProviderFaxRequestCard({ referralData, analysis = null }
       });
       if (!data?.success) throw new Error(data?.error || "Fax send failed");
       setSentAt(new Date());
-      toast.success("Information request faxed to the provider — delivery is tracked in the fax log.");
+      // Legacy sendFax: accepted by Telnyx, but status is not authority-tracked.
+      announceLegacyFaxSubmit(toast, data);
     } catch (error) {
       console.error("Provider request fax failed:", error);
       toast.error(error?.message || "Couldn't fax the request. Download the PDF and send manually.");
@@ -265,7 +267,7 @@ export default function ProviderFaxRequestCard({ referralData, analysis = null }
               <p className="text-[11px] text-slate-500 flex items-center gap-1">
                 <ShieldAlert className="w-3.5 h-3.5" />
                 {sentAt
-                  ? `Faxed ${sentAt.toLocaleTimeString()} — delivery tracked in the fax log.`
+                  ? `Submitted ${sentAt.toLocaleTimeString()} — check the fax log; legacy sendFax does not track delivery status.`
                   : "Save the referral, then use Referral Follow-Up for response tracking and a secure online reply link."}
               </p>
               <div className="flex gap-2">
