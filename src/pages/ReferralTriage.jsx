@@ -17,9 +17,15 @@ import { createAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
 import { useAuth } from '@/lib/AuthContext';
 
 // Triage urgency levels → Referral.priority enum (low/normal/high/urgent).
+// Keys are uppercase; resolveTriageUrgency normalizes the model answer first so
+// a mixed-case "High" cannot silently fall through to the "normal" default.
 const URGENCY_TO_PRIORITY = { CRITICAL: 'urgent', HIGH: 'high', MEDIUM: 'normal', LOW: 'low' };
 const URGENCY_TO_TASK_PRIORITY = { CRITICAL: 'high', HIGH: 'high', MEDIUM: 'medium', LOW: 'medium' };
 const REFERRAL_INTAKE_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
+
+function resolveTriageUrgency(level) {
+  return String(level || '').trim().toUpperCase();
+}
 
 /**
  * AI-Powered Referral Triage Workflow
@@ -71,7 +77,8 @@ export default function ReferralTriage() {
 
     try {
       const readiness = referralPatientReadiness(lastAnalysis);
-      const referralPriority = URGENCY_TO_PRIORITY[lastAnalysis.urgency_level] || 'normal';
+      const triageUrgency = resolveTriageUrgency(lastAnalysis.urgency_level);
+      const referralPriority = URGENCY_TO_PRIORITY[triageUrgency] || 'normal';
 
       if (!readiness.ready) {
         const referral = await createAuthorizedReferral({
@@ -94,7 +101,7 @@ export default function ReferralTriage() {
           // type at all. What makes this a referral follow-up is the
           // related_entity pair below, not a bespoke type.
           type: 'followup',
-          priority: URGENCY_TO_TASK_PRIORITY[lastAnalysis.urgency_level] || 'medium',
+          priority: URGENCY_TO_TASK_PRIORITY[triageUrgency] || 'medium',
           status: 'pending',
           assigned_to: currentUser?.email,
           related_entity: 'Referral',
@@ -159,14 +166,14 @@ export default function ReferralTriage() {
       }
 
       // Create a referral intake task
-      const dueTimeframe = lastAnalysis.urgency_level === 'CRITICAL' ? '24_hours' : 'this_week';
+      const dueTimeframe = triageUrgency === 'CRITICAL' ? '24_hours' : 'this_week';
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + (dueTimeframe === '24_hours' ? 1 : 7));
       await base44.entities.Task.create({
         title: `Admission Setup: ${lastAnalysis.patient_name}`,
-        description: `Complete admission assessment and reconcile medications. Urgency: ${lastAnalysis.urgency_level}`,
+        description: `Complete admission assessment and reconcile medications. Urgency: ${triageUrgency || lastAnalysis.urgency_level}`,
         type: 'schedule',
-        priority: URGENCY_TO_TASK_PRIORITY[lastAnalysis.urgency_level] || 'medium',
+        priority: URGENCY_TO_TASK_PRIORITY[triageUrgency] || 'medium',
         status: 'pending',
         assigned_to: currentUser?.email,
         due_timeframe: dueTimeframe,

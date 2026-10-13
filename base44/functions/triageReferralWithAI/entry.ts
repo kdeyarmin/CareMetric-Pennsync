@@ -140,6 +140,13 @@ Provide a JSON response with this exact structure:
 Return ONLY valid JSON, no markdown or explanation.`,
     });
     const analysis = parseLLMJson(rawAnalysis) || {};
+    // Normalize before return AND audit: callers map CRITICAL/HIGH/MEDIUM/LOW
+    // (e.g. ReferralTriage → Referral.priority). A mixed-case model answer used
+    // to pass the UI banner (which uppercases) and still land as priority
+    // "normal" because the create-patient path keyed the raw string. Only rewrite
+    // when the model supplied the field — an unparseable answer stays {}.
+    const urgency = auditUrgencyLevel(analysis?.urgency_level);
+    if (Object.hasOwn(analysis, 'urgency_level')) analysis.urgency_level = urgency;
 
     // Log only the triage category. The analysis contains patient identity and
     // clinical detail; UserActivity is a broad operational audit surface, not
@@ -149,7 +156,7 @@ Return ONLY valid JSON, no markdown or explanation.`,
       user_name: user.full_name,
       action: 'referral_triage_analysis',
       details: {
-        urgency_level: auditUrgencyLevel(analysis?.urgency_level),
+        urgency_level: urgency,
       },
       page: 'referral_triage',
       user_agent: req.headers.get('user-agent'),

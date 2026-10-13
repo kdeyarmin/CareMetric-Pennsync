@@ -3740,6 +3740,20 @@ async function bridgeMaskedCall(base44, cmd, nurseLeg, state) {
     if (state.call_log_id) {
       await base44.asServiceRole.entities.CallLog.update(state.call_log_id, { status: 'failed', failure_reason: 'Bridge transfer to the patient failed' }).catch(() => {});
     }
+  } else if (state.call_log_id) {
+    // Bridging happens on call.machine.detection.ended (or legacy
+    // call.answered), neither of which mapCallStatus promotes to in_progress.
+    // Stamp it here so a successful nurse-leg answer is not left at ringing
+    // until the patient hangup arrives.
+    try {
+      const rows = await base44.asServiceRole.entities.CallLog.filter(
+        { id: state.call_log_id }, undefined, 1,
+      );
+      const cur = Array.isArray(rows) ? rows[0] : null;
+      if (cur && (CALL_RANK.in_progress > (CALL_RANK[cur.status] || 0))) {
+        await base44.asServiceRole.entities.CallLog.update(cur.id, { status: 'in_progress' });
+      }
+    } catch { /* best-effort status; bridge already succeeded */ }
   }
   return Response.json({ success: true, bridged: r.ok });
 }

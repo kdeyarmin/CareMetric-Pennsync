@@ -79,12 +79,18 @@ export async function triageReferral({ params, integration, audit }) {
     prompt: buildTriagePrompt(referralData),
   });
   const analysis = parseLLMJson(raw) || {};
+  // Same as the Base44 original: normalize before return AND audit so a
+  // mixed-case model answer cannot reach callers as an unmapped priority.
+  // Only rewrite when the model supplied the field — an unparseable answer
+  // stays {} rather than inventing UNKNOWN on the analysis object.
+  const urgency = auditUrgencyLevel(analysis?.urgency_level);
+  if (Object.hasOwn(analysis, 'urgency_level')) analysis.urgency_level = urgency;
 
   // The category and nothing else — see the note at the head of this file.
   let auditRecorded = true;
   try {
     await audit('referral_triage_analysis', {
-      detail: { urgency_level: auditUrgencyLevel(analysis?.urgency_level) },
+      detail: { urgency_level: urgency },
     });
   } catch {
     // Static, like the original's: a provider or store message can echo the

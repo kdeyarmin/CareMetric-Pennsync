@@ -390,8 +390,10 @@ export default function ConstrainedNoteReviewer({ roughNote: liveRoughNote, serv
     let g;
     try {
       // Bound the grounding call so a hung request can't leave the note stuck
-      // mid-verification — surface it as a re-checkable error instead.
-      g = await withTimeout(groundNote(groundingText, allowed, { userKey: currentUser?.email || "anon" }), 30000, "Verification timed out — check your connection and re-check.");
+      // mid-verification — surface it as a re-checkable error instead. 90s
+      // matches long notes on Sonnet; the previous 30s ceiling timed out real
+      // verifications while draft/coverage on the same material finished.
+      g = await withTimeout(groundNote(groundingText, allowed, { userKey: currentUser?.email || "anon" }), 90000, "Verification timed out — check your connection and re-check.");
     } catch (timeoutErr) {
       return { ok: false, fix: { values: [], sentences: [], groundingError: timeoutErr.message } };
     }

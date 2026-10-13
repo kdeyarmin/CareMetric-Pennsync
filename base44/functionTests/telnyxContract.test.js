@@ -2904,6 +2904,10 @@ test("a masked call placed before detection existed still bridges on call.answer
   await v.send(voiceEvent("call.answered", { call_control_id: "cc_nurse", direction: "outgoing", client_state: maskedBridgeState({ amd: undefined }) }));
   const transfer = v.calls.find((c) => /\/cc_nurse\/actions\/transfer$/.test(c.url));
   assert.ok(transfer, "a call in flight across the deploy is not left waiting for a verdict nobody requested");
+  // Bridge returns before the best-effort mapCallStatus path, so the bridge
+  // itself must stamp in_progress — otherwise a successful nurse answer stays
+  // at ringing until patient hangup.
+  assert.equal(v.data.CallLog[0].status, "in_progress");
   // ...and a stray verdict for it is ignored rather than bridging twice.
   await v.send(voiceEvent("call.machine.detection.ended", { call_control_id: "cc_nurse", client_state: maskedBridgeState({ amd: undefined }), result: "human" }));
   assert.equal(v.calls.filter((c) => /\/actions\/transfer$/.test(c.url)).length, 1);
