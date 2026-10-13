@@ -9,6 +9,7 @@ import { resolve } from 'node:path';
 const exec = promisify(execFile);
 export const PROJECT = 'local-pennsync-authority';
 export const API = 'http://127.0.0.1:54321';
+export const STACK_PORTS = Object.freeze([54320, 54321, 54322, 54324]);
 export const workdir = fileURLToPath(new URL('../', import.meta.url));
 const marker = new URL('../supabase/.temp/http-harness-owner.json', import.meta.url);
 const CLI = process.env.PENNSYNC_SUPABASE_CLI || 'supabase';
@@ -398,7 +399,7 @@ async function main(action) {
     }
     const marked = await access(marker).then(() => true, () => false);
     if (marked) fail('LOCAL_STACK_MARKER_EXISTS_USE_SCOPED_STOP');
-    for (const port of [54321, 54322, 54324]) await unusedPort(port);
+    for (const port of STACK_PORTS) await unusedPort(port);
     await mkdir(new URL('../supabase/.temp/', import.meta.url), { recursive: true });
     await writeFile(marker, JSON.stringify({ version: 2, project: PROJECT, workdir, daemon: pinnedDaemon }), { flag: 'wx' });
     // Keep the ownership marker on failure so `stop` can clean only this attempted stack.
