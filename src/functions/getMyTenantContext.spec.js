@@ -74,6 +74,34 @@ describe('getMyTenantContext wrapper', () => {
     expect(result.tenant_context.membership_version).toBe(3);
   });
 
+  it('shares one in-flight request across concurrent callers and retries one transient failure', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    invoke.mockImplementation(() => gate.then(() => ({ data: { tenant_context: memberContext() } })));
+    const first = getMyTenantContext({ agencyId: 'agency-a' });
+    const second = getMyTenantContext({ agencyId: 'agency-a' });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    release();
+    const [left, right] = await Promise.all([first, second]);
+    expect(left.tenant_context.membership_id).toBe('membership-a');
+    expect(right.tenant_context.membership_id).toBe('membership-a');
+
+    invoke.mockReset();
+    invoke
+      .mockRejectedValueOnce(Object.assign(new Error('busy'), { response: { status: 500 } }))
+      .mockResolvedValueOnce({ data: { tenant_context: memberContext() } });
+    await expect(getMyTenantContext({ agencyId: 'agency-a' })).resolves.toMatchObject({
+      tenant_context: { agency_id: 'agency-a' },
+    });
+    expect(invoke).toHaveBeenCalledTimes(2);
+
+    invoke.mockReset();
+    const denied = Object.assign(new Error('denied'), { response: { status: 403 } });
+    invoke.mockRejectedValue(denied);
+    await expect(getMyTenantContext({ agencyId: 'agency-a' })).rejects.toBe(denied);
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects membership-backed context that also claims platform-owner authority', async () => {
     invoke.mockResolvedValue({
       data: { tenant_context: memberContext({ is_platform_owner: true }) },

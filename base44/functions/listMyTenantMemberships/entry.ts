@@ -547,6 +547,17 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return jsonResponse({ error: error.message }, error.status);
     }
+    const providerStatus = Number(error?.response?.status ?? error?.status);
+    if (providerStatus === 429 || providerStatus === 503) {
+      return jsonResponse(
+        {
+          error: 'Service temporarily busy; retry the same request.',
+          code: 'backend_temporarily_unavailable',
+        },
+        503,
+        { 'Retry-After': '2' },
+      );
+    }
     // Provider exceptions can contain identity or tenant fields; never retain them.
     console.error('listMyTenantMemberships failed');
     return jsonResponse({ error: 'Internal server error' }, 500);
