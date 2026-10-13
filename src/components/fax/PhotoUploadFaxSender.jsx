@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, X, Send, Camera } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
+import { announceLegacyFaxSubmit } from "./legacyFaxSubmitFeedback";
 import FaxAddressBook from "./FaxAddressBook";
 import FaxCoverSheetGenerator from "./FaxCoverSheetGenerator";
 import {
@@ -221,7 +222,7 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
       const faxData = faxRes?.data ?? faxRes;
       if (faxData?.error) throw new Error(faxData.error);
       if (!authorityIsCurrent(authority)) return;
-      toast.success("Fax sent successfully!");
+      announceLegacyFaxSubmit(toast, faxData);
       setUploadedImages([]);
       setToNumber("");
       setCoverSheetUrl(null);

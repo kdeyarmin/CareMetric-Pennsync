@@ -104,6 +104,28 @@ test("no sms_subaccount / voice_subaccount / region checks exist (removed)", () 
   assert.equal(byId(checks, "region"), undefined);
 });
 
+test("after-hours voicemail without voicemail_enabled warns", () => {
+  const checks = evaluateAgencyConfig({
+    after_hours_call_action: "voicemail",
+    voicemail_enabled: false,
+  });
+  assert.equal(byId(checks, "after_hours_voicemail").status, "warn");
+  assert.match(byId(checks, "after_hours_voicemail").detail, /voicemail is not enabled/i);
+});
+
+test("after-hours transfer without a destination warns", () => {
+  const checks = evaluateAgencyConfig({ after_hours_call_action: "transfer" });
+  assert.equal(byId(checks, "after_hours_transfer").status, "warn");
+});
+
+test("identical office and outbound fax lines warn about inbound forward", () => {
+  const checks = evaluateAgencyConfig({
+    office_fax_number_e164: "+17244650444",
+    outbound_fax_number_e164: "7244650444",
+  });
+  assert.equal(byId(checks, "fax_forward_distinct").status, "warn");
+});
+
 test("summarize picks the worst severity and counts statuses", () => {
   const sum = summarize([
     { id: "1", status: "ok" },
@@ -192,11 +214,59 @@ test("a failing live test surfaces as attention, never blocks readiness", () => 
   assert.equal(summarizeSteps(steps).ready, true);
 });
 
-test("webhooks is a manual step we never auto-complete", () => {
+test("webhooks stays todo until a live probe confirms the URLs", () => {
   const steps = buildIntegrationSteps(READY_INPUTS);
   const w = byId(steps, "webhooks");
   assert.equal(w.kind, "manual");
   assert.equal(w.status, "todo");
+  assert.match(w.detail, /Telnyx Portal/);
+});
+
+test("webhooks auto-completes when the live probe confirms every URL", () => {
+  const steps = buildIntegrationSteps({
+    ...READY_INPUTS,
+    liveResult: {
+      checks: [
+        { id: "telnyx_api_live", status: "ok" },
+        { id: "telnyx_messaging_webhook", status: "ok" },
+        { id: "telnyx_voice_webhook", status: "ok" },
+        { id: "telnyx_fax_webhook", status: "ok" },
+      ],
+      stats: { webhooks_pointed: true },
+    },
+  });
+  const w = byId(steps, "webhooks");
+  assert.equal(w.kind, "manual");
+  assert.equal(w.status, "done");
+  assert.match(w.detail, /handleTelnyxStatusWebhook/);
+});
+
+test("webhooks surfaces attention when a live probe finds a misconfigured URL", () => {
+  const steps = buildIntegrationSteps({
+    ...READY_INPUTS,
+    liveResult: {
+      checks: [
+        { id: "telnyx_messaging_webhook", status: "ok" },
+        { id: "telnyx_voice_webhook", status: "fail", category: "webhook_misconfigured" },
+      ],
+      stats: { webhooks_pointed: false },
+    },
+  });
+  const w = byId(steps, "webhooks");
+  assert.equal(w.status, "attention");
+  assert.match(w.detail, /does not target|Telnyx Portal/i);
+});
+
+test("webhooks surfaces attention when a resource has no webhook URL", () => {
+  const steps = buildIntegrationSteps({
+    ...READY_INPUTS,
+    liveResult: {
+      checks: [
+        { id: "telnyx_fax_webhook", status: "warn", category: "webhook_not_configured" },
+      ],
+    },
+  });
+  assert.equal(byId(steps, "webhooks").status, "attention");
 });
 
 test("step 1 wording says Telnyx API key", () => {
@@ -206,10 +276,11 @@ test("step 1 wording says Telnyx API key", () => {
   assert.match(s.detail, /Telnyx API key/i);
 });
 
-test("step 4 wording says Telnyx Portal", () => {
+test("step 4 wording names the status webhook and Telnyx Portal", () => {
   const steps = buildIntegrationSteps({});
   const w = byId(steps, "webhooks");
   assert.match(w.title, /Telnyx/i);
+  assert.match(w.detail, /handleTelnyxStatusWebhook/);
   assert.match(w.detail, /Telnyx Portal/);
 });
 

@@ -151,6 +151,50 @@ export function evaluateAgencyConfig(settings) {
       : "Enabled.",
   });
 
+  // After-hours call handling: selecting voicemail without enabling recordings
+  // used to silently fall through to a live office transfer. Surface it here.
+  const afterHoursAction = s.after_hours_call_action || "transfer";
+  if (afterHoursAction === "voicemail" && s.voicemail_enabled !== true) {
+    checks.push({
+      id: "after_hours_voicemail",
+      label: "After-hours voicemail",
+      status: "warn",
+      detail: "After-hours action is voicemail, but voicemail is not enabled — closed-hours callers will hear a hangup message until you enable voicemail.",
+    });
+  } else if (afterHoursAction === "transfer") {
+    const transfer = s.after_hours_transfer_number_e164 || s.main_office_number_e164;
+    checks.push({
+      id: "after_hours_transfer",
+      label: "After-hours transfer",
+      status: isBlank(transfer) ? "warn" : looksLikePhone(transfer) ? "ok" : "warn",
+      detail: isBlank(transfer)
+        ? "No after-hours transfer or main office number — closed-hours callers cannot be connected."
+        : looksLikePhone(transfer)
+          ? "Configured."
+          : "After-hours transfer number doesn't look valid.",
+    });
+  }
+
+  // Inbound fax office-forward requires the office fax to differ from the
+  // Telnyx receive/outbound line; otherwise forwards fail closed.
+  if (
+    !isBlank(s.office_fax_number_e164)
+    && !isBlank(s.outbound_fax_number_e164)
+    && looksLikePhone(s.office_fax_number_e164)
+    && looksLikePhone(s.outbound_fax_number_e164)
+  ) {
+    const officeDigits = String(s.office_fax_number_e164).replace(/\D/g, "").slice(-10);
+    const outboundDigits = String(s.outbound_fax_number_e164).replace(/\D/g, "").slice(-10);
+    if (officeDigits && officeDigits === outboundDigits) {
+      checks.push({
+        id: "fax_forward_distinct",
+        label: "Inbound fax forward target",
+        status: "warn",
+        detail: "Office fax and outbound Telnyx fax line are the same number — inbound fax office-forward cannot deliver.",
+      });
+    }
+  }
+
   return checks;
 }
 
@@ -173,7 +217,8 @@ export function evaluateAgencyConfig(settings) {
  *   kind: 'required'|'verify'|'manual', anchor }.
  *   - required → must be 'done' before the integration is ready.
  *   - verify   → a recommended check (live test); never blocks readiness.
- *   - manual   → a step we can't auto-detect (webhook registration).
+ *   - manual   → portal work the admin must do; status can still be filled in
+ *                from a live probe (webhook URL read-back) when available.
  *
  * @param {{ secretStatus?: any, agencySettings?: any,
  *   provisioning?: { total?: number, withWorkNumber?: number, missingBridgeCell?: number },
@@ -260,15 +305,45 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
     detail: provDetail,
   });
 
-  // 4. Register the webhooks (manual — there's no API to read this back).
+  // 4. Point Telnyx webhooks at handleTelnyxStatusWebhook. The action is still
+  // portal work (kind: manual), but testTelnyxConnection now reads each
+  // configured application's webhook URL after a successful live auth — so a
+  // recent liveResult can mark this done or surface a misconfiguration. Without
+  // that probe the step stays todo (same as before the probe existed).
+  const webhookChecks = Array.isArray(liveResult?.checks)
+    ? liveResult.checks.filter((c) => (
+      c
+      && (c.id === "telnyx_messaging_webhook"
+        || c.id === "telnyx_voice_webhook"
+        || c.id === "telnyx_fax_webhook")
+    ))
+    : [];
+  const webhooksPointed = liveResult?.stats?.webhooks_pointed === true
+    || (webhookChecks.length > 0 && webhookChecks.every((c) => c.status === "ok"));
+  const webhookFail = webhookChecks.some((c) => c.status === "fail");
+  const webhookWarn = webhookChecks.some((c) => c.status === "warn");
+  let webhookStatus = "todo";
+  let webhookDetail =
+    "Set your Telnyx messaging/fax profile and voice connection webhook URLs to handleTelnyxStatusWebhook. Run the live connection test to verify, or confirm in the Telnyx Portal.";
+  if (webhooksPointed) {
+    webhookStatus = "done";
+    webhookDetail = "Live test confirmed each configured Telnyx resource points at handleTelnyxStatusWebhook.";
+  } else if (webhookFail) {
+    webhookStatus = "attention";
+    webhookDetail =
+      "Live test found a webhook URL that does not target handleTelnyxStatusWebhook — call/fax/SMS status will not update until you fix it in the Telnyx Portal.";
+  } else if (webhookWarn) {
+    webhookStatus = "attention";
+    webhookDetail =
+      "Live test found a Telnyx resource with no webhook URL — point it at handleTelnyxStatusWebhook in the Telnyx Portal.";
+  }
   steps.push({
     id: "webhooks",
     title: "Point your Telnyx webhooks at this app",
     kind: "manual",
     anchor: "telnyx-webhooks",
-    status: "todo",
-    detail:
-      "Set your Telnyx messaging/fax profile and voice connection webhook URLs to the matching function. This can't be auto-detected — confirm it in the Telnyx Portal.",
+    status: webhookStatus,
+    detail: webhookDetail,
   });
 
   // 5. Verify end to end with the live connection test (recommended).

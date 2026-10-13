@@ -12,13 +12,15 @@ import ReferralTriageAnalyzer from '../components/referral/ReferralTriageAnalyze
 import { todayEastern } from '@/components/utils/timezone';
 import { toast } from 'sonner';
 import { buildIncompleteReferralFromTriage, referralPatientReadiness } from '@/components/referral/referralPatientReadiness';
+import {
+  normalizeTriageUrgency,
+  triageUrgencyToReferralPriority,
+  triageUrgencyToTaskPriority,
+} from '@/components/referral/referralUrgency';
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 import { createAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
 import { useAuth } from '@/lib/AuthContext';
 
-// Triage urgency levels → Referral.priority enum (low/normal/high/urgent).
-const URGENCY_TO_PRIORITY = { CRITICAL: 'urgent', HIGH: 'high', MEDIUM: 'normal', LOW: 'low' };
-const URGENCY_TO_TASK_PRIORITY = { CRITICAL: 'high', HIGH: 'high', MEDIUM: 'medium', LOW: 'medium' };
 const REFERRAL_INTAKE_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
 
 /**
@@ -71,7 +73,8 @@ export default function ReferralTriage() {
 
     try {
       const readiness = referralPatientReadiness(lastAnalysis);
-      const referralPriority = URGENCY_TO_PRIORITY[lastAnalysis.urgency_level] || 'normal';
+      const triageUrgency = normalizeTriageUrgency(lastAnalysis.urgency_level);
+      const referralPriority = triageUrgencyToReferralPriority(triageUrgency);
 
       if (!readiness.ready) {
         const referral = await createAuthorizedReferral({
@@ -94,7 +97,7 @@ export default function ReferralTriage() {
           // type at all. What makes this a referral follow-up is the
           // related_entity pair below, not a bespoke type.
           type: 'followup',
-          priority: URGENCY_TO_TASK_PRIORITY[lastAnalysis.urgency_level] || 'medium',
+          priority: triageUrgencyToTaskPriority(triageUrgency),
           status: 'pending',
           assigned_to: currentUser?.email,
           related_entity: 'Referral',
@@ -159,14 +162,14 @@ export default function ReferralTriage() {
       }
 
       // Create a referral intake task
-      const dueTimeframe = lastAnalysis.urgency_level === 'CRITICAL' ? '24_hours' : 'this_week';
+      const dueTimeframe = triageUrgency === 'CRITICAL' ? '24_hours' : 'this_week';
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + (dueTimeframe === '24_hours' ? 1 : 7));
       await base44.entities.Task.create({
         title: `Admission Setup: ${lastAnalysis.patient_name}`,
-        description: `Complete admission assessment and reconcile medications. Urgency: ${lastAnalysis.urgency_level}`,
+        description: `Complete admission assessment and reconcile medications. Urgency: ${triageUrgency !== 'UNKNOWN' ? triageUrgency : (lastAnalysis.urgency_level || 'Unknown')}`,
         type: 'schedule',
-        priority: URGENCY_TO_TASK_PRIORITY[lastAnalysis.urgency_level] || 'medium',
+        priority: triageUrgencyToTaskPriority(triageUrgency),
         status: 'pending',
         assigned_to: currentUser?.email,
         due_timeframe: dueTimeframe,

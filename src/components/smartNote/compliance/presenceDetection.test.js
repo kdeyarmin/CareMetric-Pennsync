@@ -183,6 +183,30 @@ test("clinical negative findings on ordinary elements still count as evidence", 
   }
 });
 
+test("referral admission filler does not satisfy ordinary required elements", () => {
+  // Regression: ReferralAdmissionNote used to emit these exact lines. Presence
+  // treated them as documented because allergies/safety/functional_baseline
+  // are not negationSensitive, so the nurse was never asked.
+  const elements = getRequiredElements("home_health", "admission");
+  const filler = [
+    "ALLERGIES:",
+    "None documented",
+    "FUNCTIONAL STATUS:",
+    "Ambulation: Not assessed",
+    "Fall Risk: Not assessed",
+    "SAFETY CONCERNS:",
+    "None noted",
+    "SKILLED NEEDS:",
+    "Services Ordered: To be determined",
+  ].join("\n");
+  const presence = detectPresence(filler, elements);
+  const byId = Object.fromEntries(presence.map((p) => [p.id, p.present]));
+  for (const id of ["allergies", "safety", "functional_baseline", "skilled_need"]) {
+    if (byId[id] === undefined) continue;
+    assert.equal(byId[id], false, `${id} must stay a gap on referral filler`);
+  }
+});
+
 // ── Unfilled template placeholders are not documentation ───────────────────
 // The routine-SN template seeds these exact lines. Untouched, they used to
 // satisfy homebound/skilled-need/vitals, so the nurse was never asked and the

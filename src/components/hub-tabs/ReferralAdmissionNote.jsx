@@ -13,6 +13,98 @@ import {
   captureTenantSdkRealmLease,
 } from '@/lib/tenantSdkRealmGate';
 
+/** Include a labeled line only when `value` is a non-empty string. */
+function labeled(label, value) {
+  const v = String(value || '').trim();
+  return v ? `${label}: ${v}` : '';
+}
+
+/**
+ * Build the Smart Note rough-draft seed from referral extraction.
+ * Omits clinical sections the referral never stated so presence detection
+ * cannot treat filler as documentation.
+ */
+export function buildAdmissionRoughNote(data = {}) {
+  const meds = Array.isArray(data.medications)
+    ? data.medications
+        .map((m) => `- ${m?.name || ''} ${m?.dosage || ''} ${m?.frequency || ''}`.trim())
+        .filter((line) => line.length > 2)
+    : [];
+  const functionalLines = [
+    labeled('Ambulation', data.functional_status?.ambulation),
+    labeled('ADLs', data.functional_status?.adl_status),
+    labeled('Fall Risk', data.functional_status?.fall_risk),
+    labeled('Cognitive Status', data.functional_status?.cognitive_status),
+  ].filter(Boolean);
+  const clinicalLines = [
+    labeled('Recent Vitals', data.clinical_info?.vital_signs),
+    labeled('Weight', data.clinical_info?.weight),
+    labeled('Wounds', data.functional_status?.wounds),
+    labeled('Pain', data.functional_status?.pain),
+  ].filter(Boolean);
+  const skilledLines = [
+    Array.isArray(data.skilled_needs?.services_ordered) && data.skilled_needs.services_ordered.length
+      ? `Services Ordered: ${data.skilled_needs.services_ordered.join(', ')}`
+      : '',
+    labeled('Frequency', data.skilled_needs?.frequency_duration),
+    labeled('Goals', data.skilled_needs?.goals_of_care),
+  ].filter(Boolean);
+  const safety = Array.isArray(data.safety_concerns?.high_risk_conditions)
+    ? data.safety_concerns.high_risk_conditions.filter(Boolean).join(', ')
+    : '';
+  const psychoLines = [
+    labeled('Caregiver', data.psychosocial?.caregiver_info),
+    labeled('Mental Health', data.psychosocial?.mental_health),
+  ].filter(Boolean);
+  const orders = Array.isArray(data.orders_treatments?.physician_orders)
+    ? data.orders_treatments.physician_orders.filter(Boolean).join('\n')
+    : '';
+
+  const section = (title, lines) => {
+    const body = (Array.isArray(lines) ? lines : [lines]).filter(Boolean);
+    return body.length ? `${title}\n${body.join('\n')}` : '';
+  };
+
+  const sections = [
+    'ADMISSION NOTE - From Referral',
+    section('PATIENT INFORMATION:', [
+      data.demographics?.full_name || 'Unknown',
+      labeled('DOB', data.demographics?.date_of_birth),
+      labeled('Address', data.demographics?.address),
+      labeled('Phone', data.demographics?.phone),
+    ]),
+    section('INSURANCE:', [labeled('Primary', data.demographics?.insurance_primary)]),
+    section('EMERGENCY CONTACT:', [
+      data.demographics?.emergency_contact || '',
+      labeled('Phone', data.demographics?.emergency_phone),
+    ]),
+    section('ADMISSION DETAILS:', [
+      labeled('Admission Source', data.admission_details?.admission_source),
+      labeled('Referral From', data.demographics?.referring_physician),
+      labeled('Referral Reason', data.admission_details?.referral_reason),
+    ]),
+    section('DIAGNOSES:', [
+      labeled('Primary', data.diagnoses?.primary_diagnosis),
+      labeled('PDGM Group', data.diagnoses?.pdgm_clinical_group),
+      Array.isArray(data.diagnoses?.secondary_diagnoses) && data.diagnoses.secondary_diagnoses.length
+        ? `Secondary: ${data.diagnoses.secondary_diagnoses.join(', ')}`
+        : '',
+    ]),
+    data.diagnoses?.allergies
+      ? `ALLERGIES:\n${String(data.diagnoses.allergies).trim()}`
+      : '',
+    meds.length ? `CURRENT MEDICATIONS:\n${meds.join('\n')}` : '',
+    functionalLines.length ? `FUNCTIONAL STATUS:\n${functionalLines.join('\n')}` : '',
+    clinicalLines.length ? `CLINICAL INFORMATION:\n${clinicalLines.join('\n')}` : '',
+    skilledLines.length ? `SKILLED NEEDS:\n${skilledLines.join('\n')}` : '',
+    safety ? `SAFETY CONCERNS:\n${safety}` : '',
+    psychoLines.length ? `PSYCHOSOCIAL:\n${psychoLines.join('\n')}` : '',
+    orders ? `ORDERS & TREATMENTS:\n${orders}` : '',
+  ].filter(Boolean);
+
+  return sections.join('\n\n');
+}
+
 export default function ReferralAdmissionNote() {
   const { tenantContext } = useAuth();
   const urlParams = new URLSearchParams(window.location.search);
@@ -68,64 +160,12 @@ export default function ReferralAdmissionNote() {
           priority: referral.analysis_results?.priority_analysis?.priority
         },
         
-        // Build comprehensive note from referral data
-        roughNote: `ADMISSION NOTE - From Referral
-
-PATIENT INFORMATION:
-${data.demographics?.full_name || 'Unknown'}
-DOB: ${data.demographics?.date_of_birth || 'Not documented'}
-${data.demographics?.address ? `Address: ${data.demographics.address}` : ''}
-${data.demographics?.phone ? `Phone: ${data.demographics.phone}` : ''}
-
-INSURANCE:
-Primary: ${data.demographics?.insurance_primary || 'Not documented'}
-
-EMERGENCY CONTACT:
-${data.demographics?.emergency_contact || 'Not documented'}
-${data.demographics?.emergency_phone ? `Phone: ${data.demographics.emergency_phone}` : ''}
-
-ADMISSION DETAILS:
-Admission Source: ${data.admission_details?.admission_source || 'Not documented'}
-Referral From: ${data.demographics?.referring_physician || 'Not documented'}
-Referral Reason: ${data.admission_details?.referral_reason || 'Not documented'}
-
-DIAGNOSES:
-Primary: ${data.diagnoses?.primary_diagnosis || 'Not documented'}
-${data.diagnoses?.pdgm_clinical_group ? `PDGM Group: ${data.diagnoses.pdgm_clinical_group}` : ''}
-${data.diagnoses?.secondary_diagnoses?.length > 0 ? `Secondary: ${data.diagnoses.secondary_diagnoses.join(', ')}` : ''}
-
-ALLERGIES:
-${data.diagnoses?.allergies || 'None documented'}
-
-CURRENT MEDICATIONS:
-${data.medications?.map(m => `- ${m.name} ${m.dosage || ''} ${m.frequency || ''}`).join('\n') || 'None documented'}
-
-FUNCTIONAL STATUS:
-Ambulation: ${data.functional_status?.ambulation || 'Not assessed'}
-ADLs: ${data.functional_status?.adl_status || 'Not assessed'}
-Fall Risk: ${data.functional_status?.fall_risk || 'Not assessed'}
-Cognitive Status: ${data.functional_status?.cognitive_status || 'Not assessed'}
-
-CLINICAL INFORMATION:
-${data.clinical_info?.vital_signs ? `Recent Vitals: ${data.clinical_info.vital_signs}` : ''}
-${data.clinical_info?.weight ? `Weight: ${data.clinical_info.weight}` : ''}
-${data.functional_status?.wounds ? `Wounds: ${data.functional_status.wounds}` : ''}
-${data.functional_status?.pain ? `Pain: ${data.functional_status.pain}` : ''}
-
-SKILLED NEEDS:
-Services Ordered: ${data.skilled_needs?.services_ordered?.join(', ') || 'To be determined'}
-${data.skilled_needs?.frequency_duration ? `Frequency: ${data.skilled_needs.frequency_duration}` : ''}
-${data.skilled_needs?.goals_of_care ? `Goals: ${data.skilled_needs.goals_of_care}` : ''}
-
-SAFETY CONCERNS:
-${data.safety_concerns?.high_risk_conditions?.join(', ') || 'None noted'}
-
-PSYCHOSOCIAL:
-${data.psychosocial?.caregiver_info ? `Caregiver: ${data.psychosocial.caregiver_info}` : ''}
-${data.psychosocial?.mental_health ? `Mental Health: ${data.psychosocial.mental_health}` : ''}
-
-ORDERS & TREATMENTS:
-${data.orders_treatments?.physician_orders?.join('\n') || 'To be clarified with physician'}`,
+        // Build the admission seed from referral data. Clinical sections that
+        // the referral did not state are OMITTED — never filled with
+        // "Not assessed" / "None documented" / "NKDA". Those fillers used to
+        // satisfy Smart Note presence checks so the nurse was never asked and
+        // invented absences rode into the chart.
+        roughNote: buildAdmissionRoughNote(data),
         
         referralData: data
       };

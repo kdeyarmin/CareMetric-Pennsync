@@ -67,10 +67,15 @@ test('an unexpected urgency is recorded as UNKNOWN, not as itself', async () => 
     assert.equal(auditUrgencyLevel(sent), recorded);
   }
   // Which matters because a model can answer with prose, and that prose would
-  // otherwise be written into the trail.
+  // otherwise be written into the trail — and into the SPA priority map.
   const h = harness({ answer: JSON.stringify({ urgency_level: 'urgent, see Ada Lovelace' }) });
-  await triageReferral(h);
+  const result = await triageReferral(h);
   assert.deepEqual(h.audits[0].options.detail, { urgency_level: 'UNKNOWN' });
+  assert.equal(result.analysis.urgency_level, 'UNKNOWN');
+  const cased = harness({ answer: JSON.stringify({ ...ANALYSIS, urgency_level: '  High  ' }) });
+  const normalized = await triageReferral(cased);
+  assert.equal(normalized.analysis.urgency_level, 'HIGH');
+  assert.deepEqual(cased.audits[0].options.detail, { urgency_level: 'HIGH' });
 });
 
 test('a model answer wrapped in markdown is still parsed', async () => {

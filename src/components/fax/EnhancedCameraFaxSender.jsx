@@ -8,6 +8,7 @@ import { Camera, Send, X, Loader2, RotateCw, Trash2 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import { sendFax } from "@/functions/sendFax";
+import { announceLegacyFaxSubmit } from "./legacyFaxSubmitFeedback";
 import FaxAddressBook from "./FaxAddressBook";
 import FaxCoverSheetGenerator from "./FaxCoverSheetGenerator";
 import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
@@ -268,14 +269,14 @@ export default function EnhancedCameraFaxSender() {
         file_url = merged.data?.merged_pdf_url || file_url;
       }
       operation.assertCurrent();
-      await sendFax({
+      const result = await sendFax({
         file_url,
         to_number: recipientNumber,
         document_name: `Camera Fax - ${images.length} page(s)`,
       });
       operation.assertCurrent();
       if (!authorityIsCurrent(authority)) return;
-      toast.success("Fax sent successfully!");
+      announceLegacyFaxSubmit(toast, result);
       setCapturedImages([]);
       setToNumber("");
       setCoverSheetUrl(null);

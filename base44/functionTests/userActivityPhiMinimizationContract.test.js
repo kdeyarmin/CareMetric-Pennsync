@@ -97,11 +97,15 @@ test('referral triage activity records only the non-identifying result category'
   const [payload] = payloads;
 
   assert.match(payload, /action:\s*'referral_triage_analysis'/);
-  assert.match(payload, /urgency_level:\s*auditUrgencyLevel\(analysis\?\.urgency_level\)/);
+  // Urgency is normalized into a local before the create so the same category
+  // reaches both the SPA response and the trail (mixed-case answers used to
+  // pass the banner and still map to Referral.priority "normal").
+  assert.match(payload, /urgency_level:\s*urgency\b/);
   assert.doesNotMatch(payload, /referralData|analysis\?\.patient_name/);
   assertNoForbiddenDetails(payload, 'referral triage activity');
 
   const source = readEntry('triageReferralWithAI');
+  assert.match(source, /const urgency = auditUrgencyLevel\(analysis\?\.urgency_level\)/);
   assert.match(source, /TRIAGE_URGENCY_LEVELS\s*=\s*new Set\(\['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'\]\)/);
   assert.match(
     source,

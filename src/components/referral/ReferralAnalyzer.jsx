@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAICall } from "@/hooks/useAICall";
+import { isAICancellation } from "@/lib/aiScheduler";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,10 @@ import MedicareEligibilityCard from "./MedicareEligibilityCard.jsx";
 
 export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
   const [analysis, setAnalysis] = useState(null);
-  const ai = useAICall();
+  // Auto-fires on mount / referral change — must not compete with nurse-initiated
+  // interactive AI work (draft, grounding, triage). Background priority + cancel
+  // queued work on unmount so StrictMode remounts do not bill a dead call.
+  const ai = useAICall({ priority: "background", timeoutMs: 90000, cancelOnUnmount: true });
   const [analysisError, setAnalysisError] = useState(false);
 
   // Deterministic Face-to-Face (F2F) validation from the uploaded referral only
@@ -245,6 +249,8 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
       }
     } catch (error) {
       if (runId !== runIdRef.current) return; // superseded by a newer referral
+      // Queued background work dropped on unmount — not a user-visible failure.
+      if (isAICancellation(error)) return;
       console.error('Error analyzing referral:', error);
       setAnalysisError(true);
       toast.error('Failed to analyze referral. Please try again.');
@@ -386,21 +392,39 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
   }
 
   const getPriorityColor = (level) => {
-    switch (level) {
-      case "STAT": return "bg-red-600 text-white";
-      case "High": return "bg-orange-500 text-white";
-      case "Medium": return "bg-yellow-500 text-white";
-      case "Low": return "bg-green-500 text-white";
-      default: return "bg-slate-500 text-white";
+    // Case-insensitive via Referral.priority mapping so "high"/"HIGH"/"High"
+    // and STAT/CRITICAL share the same banner.
+    switch (String(level || '').trim().toLowerCase()) {
+      case "stat":
+      case "critical":
+      case "urgent":
+        return "bg-red-600 text-white";
+      case "high":
+        return "bg-orange-500 text-white";
+      case "medium":
+      case "normal":
+        return "bg-yellow-500 text-white";
+      case "low":
+        return "bg-green-500 text-white";
+      default:
+        return "bg-slate-500 text-white";
     }
   };
 
   const getSeverityColor = (severity) => {
-    switch (severity) {
-      case "High": return "border-red-500 bg-red-50";
-      case "Medium": return "border-yellow-500 bg-yellow-50";
-      case "Low": return "border-blue-500 bg-blue-50";
-      default: return "border-slate-500 bg-slate-50";
+    switch (String(severity || '').trim().toLowerCase()) {
+      case "high":
+      case "stat":
+      case "critical":
+      case "urgent":
+        return "border-red-500 bg-red-50";
+      case "medium":
+      case "normal":
+        return "border-yellow-500 bg-yellow-50";
+      case "low":
+        return "border-blue-500 bg-blue-50";
+      default:
+        return "border-slate-500 bg-slate-50";
     }
   };
 
@@ -450,7 +474,7 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
       {/* Urgency Header — only when the model actually returned an urgency
           analysis, so a partial response can't render "Priority: undefined" */}
       {analysis.urgency_analysis && (
-        <Alert className={`border-2 ${analysis.urgency_analysis?.priority_level === 'STAT' || analysis.urgency_analysis?.priority_level === 'High' ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}>
+        <Alert className={`border-2 ${['stat', 'critical', 'urgent', 'high'].includes(String(analysis.urgency_analysis?.priority_level || '').trim().toLowerCase()) ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}>
           <TrendingUp className="w-5 h-5" />
           <AlertDescription>
             <div className="flex items-center justify-between">

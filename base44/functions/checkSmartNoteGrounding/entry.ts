@@ -22,8 +22,11 @@ OUTPUT (one sentence per line):
 ${sentences.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
 Return JSON: { "sentences": [ { "text": "...", "status": "supported"|"unsupported", "source": "draft"|"answer"|"negative"|"none" } ] }`;
+    // Match draftSmartNote / checkSmartNoteCoverage on Sonnet. Opus was the
+    // grounding bottleneck: notes regularly hit the browser's verification
+    // timeout while draft/coverage on the same material finished fine.
     const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: 'claude_opus_4_8', prompt,
+      model: 'claude_sonnet_4_6', prompt,
       response_json_schema: { type: 'object', properties: { sentences: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, status: { type: 'string' }, source: { type: 'string' } } } } } },
     });
     return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });

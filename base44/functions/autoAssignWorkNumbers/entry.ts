@@ -394,6 +394,16 @@ Deno.serve(async (req) => {
       ? body.emails.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean)
       : null;
 
+    // Scope candidates by agency. Without this filter a platform owner in
+    // Agency A would hand Agency A's pool numbers to every user in the
+    // deployment — including Agency B nurses — and skip only Agency A's
+    // reserved fax/office lines (cross-tenant provisioning).
+    //
+    // Legacy single-tenant accounts may have a blank agency_name on every
+    // user. In that case only assign to OTHER blank-agency users — never to a
+    // named agency's roster (that would reintroduce the cross-tenant leak).
+    const callerAgency = String(user?.agency_name || '').trim();
+
     // Available pool numbers (FIFO by creation), and the set already in use so we
     // never hand out a number that's actually assigned on a User.
     const pool = await base44.asServiceRole.entities.PhoneNumber.filter({ status: 'available' }, 'created_date', 500).catch(() => []);
@@ -405,7 +415,7 @@ Deno.serve(async (req) => {
     // can sit in the pool (e.g. bought in-app), but handing one to a nurse
     // would break fax transmission/masking or office call routing. Treat them
     // as in-use.
-    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+    const agencySettings = await resolveAgencySettings(base44, callerAgency || user?.agency_name);
     for (const reserved of [
       agencySettings?.office_fax_number_e164,
       agencySettings?.outbound_fax_number_e164,
@@ -415,8 +425,15 @@ Deno.serve(async (req) => {
       if (norm) inUse.add(norm);
     }
 
-    // Candidate users: those missing a work number (optionally limited to `emails`).
+    // Candidate users: same-agency (or both-unscoped legacy) users missing a
+    // work number (optionally limited further to `emails`).
     const candidates = allUsers.filter((u) => {
+      const userAgency = String(u.agency_name || '').trim();
+      if (callerAgency) {
+        if (userAgency !== callerAgency) return false;
+      } else if (userAgency) {
+        return false;
+      }
       if (!isBlank(u.work_phone_number)) return false;
       if (onlyEmails && !onlyEmails.includes(String(u.email || '').trim().toLowerCase())) return false;
       return true;

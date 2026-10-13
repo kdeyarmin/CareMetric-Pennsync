@@ -19,9 +19,28 @@ test("buildRingdown orders primary → backups → office and dedupes", () => {
 });
 
 test("buildRingdown caps the number of targets", () => {
-  const r = buildRingdown({ primary: "+1a", others: ["+1b", "+1c", "+1d", "+1e"], office: "+1z", maxTargets: 2 });
+  const r = buildRingdown({
+    primary: "+12155550101",
+    others: ["+12155550102", "+12155550103", "+12155550104", "+12155550105"],
+    office: "+12155550199",
+    maxTargets: 2,
+  });
   assert.equal(r.length, 2);
   assert.equal(r[0].kind, "primary");
+});
+
+test("buildRingdown normalizes national formats and drops unparseable targets", () => {
+  const r = buildRingdown({
+    primary: "2155550111",
+    others: ["(215) 555-0122", "not-a-phone", "+12155550133"],
+    office: "1-724-465-0440",
+  });
+  assert.deepEqual(r, [
+    { to: "+12155550111", kind: "primary" },
+    { to: "+12155550122", kind: "backup" },
+    { to: "+12155550133", kind: "backup" },
+    { to: "+17244650440", kind: "office" },
+  ]);
 });
 
 test("buildRingdown dedupes the same number across E.164 / national formats", () => {
@@ -46,9 +65,9 @@ test("buildRingdown tolerates a missing primary (office-only fallback)", () => {
 });
 
 test("nextRingdownTarget walks the list and stops at the end", () => {
-  const t = buildRingdown({ primary: "+1a", office: "+1z" });
-  assert.deepEqual(nextRingdownTarget(t, 0), { to: "+1a", kind: "primary" });
-  assert.deepEqual(nextRingdownTarget(t, 1), { to: "+1z", kind: "office" });
+  const t = buildRingdown({ primary: "+12155550101", office: "+12155550999" });
+  assert.deepEqual(nextRingdownTarget(t, 0), { to: "+12155550101", kind: "primary" });
+  assert.deepEqual(nextRingdownTarget(t, 1), { to: "+12155550999", kind: "office" });
   assert.equal(nextRingdownTarget(t, 2), null);
   assert.equal(nextRingdownTarget(t, -1), null);
   assert.equal(nextRingdownTarget(null, 0), null);

@@ -5,6 +5,19 @@
 import { splitSentences } from "./factExtraction.js";
 import { hasPlaceholder } from "./placeholderGuard.js";
 
+// Non-evidence filler that must NEVER satisfy ANY required element — including
+// ordinary (non-negationSensitive) ones. Referral admission prepopulate used to
+// emit "Fall Risk: Not assessed", "ALLERGIES: None documented", "None noted",
+// etc.; those matched keywords and scanned as documented, so the nurse was
+// never asked and blanks rode into the note. Distinct from clinical negatives
+// like "denies pain", which remain valid evidence on ordinary elements.
+const NOT_DOCUMENTED =
+  /\b(?:not|never)\s+(?:documented|assessed|addressed|performed|provided|completed|done|noted)\b/i;
+const NONE_DOCUMENTED =
+  /\bnone\s+(?:documented|noted|known|recorded|stated|reported)\b/i;
+const TO_BE_FILLED =
+  /\bto\s+be\s+(?:determined|clarified|assessed|documented|confirmed)\b/i;
+
 // Negation guard for `negationSensitive` elements (homebound, skilled need):
 // a NEGATED mention is not evidence — "Patient is not homebound", "No wound
 // care performed", and the engine's own "…was not documented this visit"
@@ -12,7 +25,6 @@ import { hasPlaceholder } from "./placeholderGuard.js";
 // the element was missing scanned as compliant (a false PASS on the two
 // eligibility gates that hard-block). Scoped by flag so clinically valid
 // negative findings on other elements ("denies pain") keep counting.
-const NOT_DOCUMENTED = /\bnot\s+(?:documented|assessed|addressed|performed|provided|completed|done)\b/i;
 // Up to 4 words between the negation and the hit, so a coordinated phrase
 // ("No wound care or skilled service…") is still seen as negated. Clause
 // boundaries (; , :) reset the window.
@@ -46,8 +58,21 @@ const NEGATED_VERB_SUFFIX =
 const STANDALONE_DENIAL =
   /[:\-–—]+\s*(?:no|none|negative|nil|n\/?a|denied|declined|refused)\s*$/i;
 
+/** True when the segment is filler / absence language, not clinical evidence. */
+export function isNonEvidenceSegment(segment) {
+  const s = String(segment || "");
+  return NOT_DOCUMENTED.test(s) || NONE_DOCUMENTED.test(s) || TO_BE_FILLED.test(s);
+}
+
+// A lone section heading ("ALLERGIES:", "Fall Risk:") is not documentation.
+// After dropping "None documented" / "Not assessed" lines, the bare label used
+// to remain in the keyword haystack and falsely satisfy the element.
+function isBareSectionLabel(segment) {
+  return /^[A-Za-z][A-Za-z0-9 /&-]{0,48}:\s*$/.test(String(segment || "").trim());
+}
+
 function isNegatedHit(segment, re) {
-  if (NOT_DOCUMENTED.test(segment)) return true;
+  if (isNonEvidenceSegment(segment)) return true;
   if (STANDALONE_DENIAL.test(segment)) return true;
   const m = re.exec(segment);
   if (!m) return false;
@@ -80,10 +105,19 @@ export function detectPresence(draftText, requiredElements) {
   // fallback's haystack, so they can never satisfy a required element.
   // (ConstrainedNoteReviewer separately blocks generation until they are filled,
   // so this only suppresses the false pass — it never hides real documentation.)
-  const segments = splitSentences(draftText || "").filter((s) => !hasPlaceholder(s));
+  // Drop placeholders, non-evidence filler ("Not assessed" / "None documented"),
+  // and bare section labels from BOTH the evidence search and the keyword
+  // haystack — a referral seed that only says the element was missing must
+  // never satisfy presence.
+  const segments = splitSentences(draftText || "").filter(
+    (s) => !hasPlaceholder(s) && !isNonEvidenceSegment(s) && !isBareSectionLabel(s),
+  );
   const searchText = segments.join(" ");
   return requiredElements.map((elem) => {
     let evidence = null;
+    // Non-evidence filler is already stripped from `segments`. Remaining
+    // negation (denies / not homebound / "Homebound: no") stays scoped to
+    // negationSensitive so ordinary clinical negatives still count.
     const accepts = (s, re) => re.test(s) && !(elem.negationSensitive && isNegatedHit(s, re));
 
     // 1) strongest signal: an element-specific regex pattern (case-insensitive,

@@ -205,7 +205,8 @@ Deno.serve(async (req) => {
         skilled_needs: refData.skilled_needs?.services_ordered || [],
         specific_interventions: refData.skilled_needs?.specific_interventions || [],
         medications: refData.medications || [],
-        allergies: refData.diagnoses?.allergies || 'NKDA',
+        // Never invent NKDA — absent means unstated, not "no known allergies".
+        allergies: refData.diagnoses?.allergies || '',
 
         // Pre-visit instructions: the schema's closest source is the skilled-care
         // goals, falling back to the referral reason.
@@ -282,8 +283,10 @@ function generateAdmissionNoteTemplate(refData) {
     sections.push(`\nCURRENT MEDICATIONS:\n${medsList}`);
   }
   
-  // Allergies
-  sections.push(`\nALLERGIES:\n${refData.diagnoses?.allergies || 'NKDA'}`);
+  // Allergies — omit when the referral did not state any (never invent NKDA).
+  if (refData.diagnoses?.allergies) {
+    sections.push(`\nALLERGIES:\n${refData.diagnoses.allergies}`);
+  }
   
   // Skilled Nursing Needs — schema field is skilled_needs.services_ordered.
   if (refData.skilled_needs?.services_ordered?.length > 0) {

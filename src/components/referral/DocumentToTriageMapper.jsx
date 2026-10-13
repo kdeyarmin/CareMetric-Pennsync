@@ -11,6 +11,7 @@ import { todayEastern } from "@/components/utils/timezone";
 import { checkExtractedPatientMatch } from "./documentPatientMatch";
 import { findDuplicatesForCandidate } from "../patient/patientDuplicateUtils";
 import { referralPatientReadiness, splitPatientName } from "./referralPatientReadiness";
+import { toReferralPriority } from "./referralUrgency";
 import { toast } from "sonner";
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
@@ -199,7 +200,6 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
         // the schema doesn't define (chief_complaint, secondary_diagnoses, vitals,
         // medications, allergies, urgency, ai_extracted, confidence_score) — all
         // silently dropped — plus an invalid document_type ('clinical_record').
-        const URGENCY_TO_PRIORITY = { urgent: "urgent", high: "high", routine: "normal" };
         // Referral.document_type is a FILE-FORMAT enum (pdf/fax/image/electronic).
         // The extractor's document_info.document_type is a clinical document KIND
         // (e.g. "clinical_record"), so only adopt it when it happens to be a valid
@@ -209,7 +209,9 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
           patient_id: patientId,
           referral_source: extractedData.document_info?.source_facility || "Document Upload",
           diagnosis: extractedData.clinical?.primary_diagnosis || "",
-          priority: URGENCY_TO_PRIORITY[assessUrgency(extractedData)] || "normal",
+          // assessUrgency speaks urgent|high|routine; toReferralPriority accepts
+          // those plus the other analyzer dialects (STAT/CRITICAL/…).
+          priority: toReferralPriority(assessUrgency(extractedData)),
           status: "new",
           referral_date: todayEastern(),
           document_type: REFERRAL_DOC_TYPES.includes(extractedData.document_info?.document_type)

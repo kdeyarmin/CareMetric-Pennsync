@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { sendFax } from "@/functions/sendFax";
+import { announceLegacyFaxSubmit } from "@/components/fax/legacyFaxSubmitFeedback";
 import FaxRecipientFields from "@/components/fax/FaxRecipientFields";
 
 export default function PatientFaxDocumentDialog({ patient, open, onOpenChange }) {
@@ -32,8 +33,8 @@ export default function PatientFaxDocumentDialog({ patient, open, onOpenChange }
     if (!selectedRecord || !recipient.fax?.trim()) return toast.error("Select a document and recipient");
     setIsSending(true);
     try {
-      await sendFax({ file_url: selectedRecord.file_url, to_number: recipient.fax, to_name: recipient.name || undefined, document_name: selectedRecord.document_name || selectedRecord.file_name, patient_id: patient.id });
-      toast.success("Fax queued successfully");
+      const result = await sendFax({ file_url: selectedRecord.file_url, to_number: recipient.fax, to_name: recipient.name || undefined, document_name: selectedRecord.document_name || selectedRecord.file_name, patient_id: patient.id });
+      announceLegacyFaxSubmit(toast, result);
       closeDialog();
     } catch (error) {
       toast.error(error?.response?.data?.error || error?.message || "Unable to send fax");

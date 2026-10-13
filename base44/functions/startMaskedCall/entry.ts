@@ -676,9 +676,15 @@ Deno.serve(async (req) => {
     }
 
     // Call Control returns call_control_id + call_leg_id; persist the leg id as
-    // the provider call id so status webhooks can find this row.
+    // the provider call id so status webhooks can find this row. Advance to
+    // `ringing` here: Telnyx has accepted the originate, and the webhook's
+    // CALL_RANK table has no `initiated` entry — leaving the row at initiated
+    // made a missed webhook look identical to a call that never left queued.
     const providerCallId = data?.data?.call_control_id || data?.data?.call_leg_id || null;
-    await base44.entities.CallLog.update(callLog.id, { provider_call_id: providerCallId });
+    await base44.entities.CallLog.update(callLog.id, {
+      provider_call_id: providerCallId,
+      status: 'ringing',
+    });
 
     await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,

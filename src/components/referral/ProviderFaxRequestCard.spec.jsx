@@ -27,7 +27,7 @@ vi.mock('@/api/base44Client', () => ({
 }));
 
 vi.mock('@/components/utils/pdfExporter', () => ({ exportToPDF: (...a) => exportToPDF(...a) }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 
 import ProviderFaxRequestCard from '@/components/referral/ProviderFaxRequestCard';
 import { toast } from 'sonner';
@@ -112,7 +112,10 @@ describe('ProviderFaxRequestCard', () => {
       to_number: '570-555-0199',
       to_name: 'Dr. Alice Wong, MD',
     });
-    expect(await screen.findByText(/delivery tracked in the fax log/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Submitted .* check the fax log/i)).toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringMatching(/Fax submitted — check the fax log for delivery status/i),
+    );
     // The PDF content carries the itemized request sections.
     const pdfArgs = exportToPDF.mock.calls[0][0];
     expect(JSON.stringify(pdfArgs.content)).toContain('Face-to-Face');

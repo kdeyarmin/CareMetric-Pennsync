@@ -43,7 +43,10 @@ only presence + the last 4 characters are shown. Functions:
 
 - `saveTelnyxSecret` — store the API key / public key / connection ids (super-admin only).
 - `getTelnyxSecretStatus` — read whether each value is configured (no secrets returned).
-- `testTelnyxConnection` — read-only readiness report + a live `/v2/balance` probe.
+- `testTelnyxConnection` — read-only readiness report + a live `/v2/balance` probe,
+  then a webhook-URL read for each configured messaging / voice / fax application,
+  and a Verified Number lookup for the office fax when it differs from the blind
+  outbound line (same decision outbound fax senders use).
 
 ### Dashboard-env overrides — retired
 
@@ -61,6 +64,13 @@ connection, Programmable Fax connection) at the single function:
 ```
 https://<your-functions-base>/handleTelnyxStatusWebhook
 ```
+
+Admin → Telnyx → **Test live connection** (`testTelnyxConnection`) reads each
+configured application's webhook URL after the API key authenticates and
+classifies whether it targets `handleTelnyxStatusWebhook` (it never echoes the
+full URL). The setup checklist marks that step done only when every probed
+resource passes; a missing or mis-pointed URL shows as attention. Confirm in
+the Telnyx Portal when the live test has not been run yet.
 
 Outbound sends/calls also pass a per-request `webhook_url` pointing at the same
 function (derived automatically from each function's own request URL), so

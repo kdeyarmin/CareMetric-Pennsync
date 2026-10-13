@@ -325,6 +325,12 @@ export default function CallingHoursPanel() {
                   )}
                 </div>
               )}
+              {form.after_hours_call_action === "voicemail" && (
+                <p className="text-xs text-amber-700 md:col-span-2">
+                  Voicemail must also be enabled under Phone Provisioning. If it is off, closed-hours
+                  callers hear a hangup message — they are not transferred to the office.
+                </p>
+              )}
             </div>
             <div>
               <Label className="text-sm font-medium">After-hours call greeting</Label>
