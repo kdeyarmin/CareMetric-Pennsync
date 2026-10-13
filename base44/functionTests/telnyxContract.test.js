@@ -984,6 +984,101 @@ test("a nurse line that is not on the saved 10DLC campaign is assigned with a wa
   }
 });
 
+test("enroll_a2p posts an owned US local line onto the saved campaign (explicit admin action)", async () => {
+  const data = assignmentData();
+  data.AgencySettings = [{ id: "AS1", a2p_campaign_id: "CAMP1" }];
+  data.PhoneNumber[0].status = "assigned";
+  data.PhoneNumber[0].assigned_to_email = "n@x.com";
+  const { impl, calls } = makeFetch([
+    {
+      match: (u, init) => u.includes("/v2/10dlc/phone_number_campaigns") && init?.method === "POST",
+      respond: () => ({ status: 200, json: { data: { phoneNumber: "+12155550188", campaignId: "CAMP1", assignmentStatus: "PENDING_ASSIGNMENT" } } }),
+    },
+  ]);
+  const handler = await loadHandler("../functions/managePhoneNumberPool/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data }), fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/test", {
+    method: "POST",
+    body: JSON.stringify({ action: "enroll_a2p", e164: "+12155550188" }),
+  }));
+  const json = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(json));
+  assert.equal(json.success, true);
+  assert.equal(json.campaign_id, "CAMP1");
+  assert.equal(json.assignment_status, "PENDING_ASSIGNMENT");
+  const post = calls.find((c) => c.method === "POST" && c.url.includes("/10dlc/phone_number_campaigns"));
+  assert.ok(post, "posted enrollment");
+  assert.deepEqual(post.body, { phoneNumber: "+12155550188", campaignId: "CAMP1" });
+});
+
+test("enroll_a2p refuses toll-free and missing campaign; already-on-this-campaign is success", async () => {
+  const handlerFor = async (data, routes, body) => {
+    const { impl, calls } = makeFetch(routes);
+    const handler = await loadHandler("../functions/managePhoneNumberPool/entry.ts", {
+      env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data }), fetchImpl: impl,
+    });
+    const res = await handler(new Request("https://app/functions/test", { method: "POST", body: JSON.stringify(body) }));
+    return { res, json: await res.json(), calls };
+  };
+  {
+    const out = await handlerFor(assignmentData(), [], { action: "enroll_a2p", e164: "+18555140223" });
+    assert.equal(out.res.status, 400);
+    assert.match(out.json.error, /not a US local long code/);
+  }
+  {
+    const data = assignmentData();
+    data.AgencySettings = [];
+    const out = await handlerFor(data, [], { action: "enroll_a2p", e164: "+12155550188" });
+    assert.equal(out.res.status, 409);
+    assert.match(out.json.error, /No A2P 10DLC campaign id/);
+  }
+  {
+    const data = assignmentData();
+    data.AgencySettings = [{ id: "AS1", a2p_campaign_id: "CAMP1" }];
+    const out = await handlerFor(data, [
+      {
+        match: (u, init) => u.includes("/v2/10dlc/phone_number_campaigns") && init?.method === "POST",
+        respond: () => ({ status: 422, json: { errors: [{ detail: "Phone number is already assigned to a campaign" }] } }),
+      },
+      {
+        match: (u, init) => /\/v2\/10dlc\/phone_number_campaigns\//.test(u) && (init?.method || "GET") === "GET",
+        respond: () => ({ status: 200, json: { data: { phoneNumber: "+12155550188", campaignId: "CAMP1", tcrCampaignId: "CAMP1", assignmentStatus: "ASSIGNED" } } }),
+      },
+    ], { action: "enroll_a2p", e164: "+12155550188" });
+    assert.equal(out.res.status, 200, JSON.stringify(out.json));
+    assert.equal(out.json.already_enrolled, true);
+    assert.ok(out.calls.some((c) => (c.method || "GET") === "GET" && c.url.includes("/10dlc/phone_number_campaigns/")));
+  }
+});
+
+test("enroll_a2p refuses when the line is already on a different campaign", async () => {
+  const data = assignmentData();
+  data.AgencySettings = [{ id: "AS1", a2p_campaign_id: "CAMP1" }];
+  const { impl } = makeFetch([
+    {
+      match: (u, init) => u.includes("/v2/10dlc/phone_number_campaigns") && init?.method === "POST",
+      respond: () => ({ status: 422, json: { errors: [{ detail: "Phone number is already assigned to a campaign" }] } }),
+    },
+    {
+      match: (u, init) => /\/v2\/10dlc\/phone_number_campaigns\//.test(u) && (init?.method || "GET") === "GET",
+      respond: () => ({ status: 200, json: { data: { phoneNumber: "+12155550188", campaignId: "OTHER", tcrCampaignId: "C0OTHER", assignmentStatus: "ASSIGNED" } } }),
+    },
+  ]);
+  const handler = await loadHandler("../functions/managePhoneNumberPool/entry.ts", {
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" }, makeClient: () => makeSpyBase44({ data }), fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/test", {
+    method: "POST",
+    body: JSON.stringify({ action: "enroll_a2p", e164: "+12155550188" }),
+  }));
+  const json = await res.json();
+  assert.equal(res.status, 409, JSON.stringify(json));
+  assert.equal(json.code, "a2p_campaign_mismatch");
+  assert.match(json.error, /not the saved campaign CAMP1/);
+  assert.ok(json.current_campaign_ids.includes("OTHER"));
+});
+
 test("a toll-free line is not checked against 10DLC, and a profile-less line warns when no profile is saved", async () => {
   for (const name of ["managePhoneNumberPool", "provisionNurseWorkNumber"]) {
     // Toll-free numbers are not 10DLC long codes; a 404 there would be a false alarm.
