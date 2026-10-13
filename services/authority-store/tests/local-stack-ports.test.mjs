@@ -70,10 +70,10 @@ test('preflight covers every configured local Supabase port', async () => {
 test('every CI workflow reserves stack ports before checkout can use ephemeral ports', async () => {
   for (const workflowName of ['pennsync-app', 'pennsync-authority', 'pennsync-browser']) {
     const workflow = await readFile(new URL(`../../../.github/workflows/${workflowName}.yml`, import.meta.url), 'utf8');
-    const reserveStep = workflow.indexOf('- name: Reserve local Supabase ports from ephemeral allocation');
+    const reserveStep = workflow.indexOf('- name: Reserve Supabase ports from ephemeral allocation');
     const checkoutStep = workflow.indexOf('- uses: actions/checkout@v7', reserveStep);
     assert.ok(reserveStep >= 0 && reserveStep < checkoutStep, `${workflowName} must reserve ports before checkout`);
-    assert.ok(workflow.includes(`ip_local_reserved_ports=\${reserved_ports}${STACK_PORTS.join(',')}`),
+    assert.ok(workflow.includes(`for port in ${STACK_PORTS.join(' ')}; do`),
       `${workflowName} must reserve every configured port`);
   }
 });
