@@ -105,7 +105,7 @@ describe('useAuthorizedVisits', () => {
     clearTrustedTenantContext();
     bindTrustedTenantContext(AUTH_USER, clinician);
     getTenantContext.mockResolvedValue({ tenant_context: clinician });
-    const { Wrapper } = createWrapper();
+    const { client, Wrapper } = createWrapper();
     const { result } = renderHook(
       () => useAuthorizedVisits({ purpose: 'activity', limit: 10 }),
       { wrapper: Wrapper },
@@ -113,7 +113,13 @@ describe('useAuthorizedVisits', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error.message).toMatch(/Agency-wide Visit metrics require manager/);
+    expect(result.current.error.status).toBe(403);
     expect(result.current.data).toEqual([]);
+    expect(collectVisits).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(client.getQueryCache().findAll({
+      queryKey: ['visits', 'authorized-list'],
+    })).toHaveLength(1);
     expect(collectVisits).not.toHaveBeenCalled();
   });
 
