@@ -11,6 +11,7 @@ import {
   updateAuthorizedReferral,
 } from '@/functions/manageAuthorizedReferral';
 import { useAuth } from '@/lib/AuthContext';
+import { maxReferralPriority, toReferralPriority } from '@/components/referral/referralUrgency';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -318,7 +319,7 @@ export default function ReferralIntake() {
           patient_name: extracted.patient_name || prev.patient_name,
           referral_source: extracted.referral_source || prev.referral_source,
           referral_date: extracted.referral_date || prev.referral_date,
-          priority: extracted.urgency_level || prev.priority,
+          priority: toReferralPriority(extracted.urgency_level, { fallback: prev.priority }),
           diagnosis: extracted.primary_diagnosis,
           category: extracted.category,
           urgency_factors: extracted.urgency_factors,
@@ -534,14 +535,10 @@ export default function ReferralIntake() {
 
       // Never DOWNGRADE a staff-selected priority: if intake marked the
       // referral urgent and the AI analysis returns nothing (or a lower
-      // level), keep the higher one.
-      const PRIORITY_RANK = { low: 0, normal: 1, high: 2, urgent: 3 };
-      const aiPriority = priorityAnalysis.priority;
-      const existingPriority = existing.priority;
-      const priority =
-        (PRIORITY_RANK[aiPriority] ?? -1) >= (PRIORITY_RANK[existingPriority] ?? -1)
-          ? (aiPriority || existingPriority || 'normal')
-          : existingPriority;
+      // level), keep the higher one. Normalize first — analyzeReferralPriority
+      // asks for urgent|high|normal|low, but a mixed-case / STAT / CRITICAL
+      // answer used to miss the rank table and fall through as-is.
+      const priority = maxReferralPriority(priorityAnalysis.priority, existing.priority);
 
       // Extract and update referral fields from AI-processed data
       const updates = {
