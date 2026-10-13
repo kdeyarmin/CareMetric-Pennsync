@@ -633,6 +633,42 @@ test('ambiguous replays fail closed and post-create stamp mismatches are removed
   assert.equal(mismatch.state.patients.length, 0);
 });
 
+test('hosted service-role created_by is not the human creator and still authorizes the chart', async () => {
+  const serviceStamp = await loadBroker({
+    createdMutation: {
+      created_by: 'service+platform@no-reply.base44.com',
+      created_by_id: 'service-actor',
+    },
+  });
+  const serviceResult = await invokeBroker(serviceStamp.handler);
+  assert.equal(serviceResult.response.status, 200);
+  assert.equal(serviceResult.json.created, true);
+  assert.equal(serviceStamp.calls.deletes.length, 0);
+  assert.equal(serviceStamp.state.patients.length, 1);
+  assert.equal(
+    serviceStamp.state.patients[0].created_by_user_email_normalized,
+    'clinician@agency.test',
+  );
+
+  const omitted = await loadBroker({ createdMutation: { created_by: null, created_by_id: 'service-actor' } });
+  const omittedResult = await invokeBroker(omitted.handler);
+  assert.equal(omittedResult.response.status, 200);
+  assert.equal(omitted.calls.deletes.length, 0);
+
+  const otherHuman = await loadBroker({ createdMutation: { created_by: 'other-nurse@agency.test' } });
+  const originalError = console.error;
+  console.error = () => {};
+  let otherResult;
+  try {
+    otherResult = await invokeBroker(otherHuman.handler);
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(otherResult.response.status, 500);
+  assert.deepEqual(otherHuman.calls.deletes, ['patient-1']);
+  assert.equal(otherHuman.state.patients.length, 0);
+});
+
 test('bulk Patient import creates charts only through the authorized creation broker', async () => {
   // 2026-10-08 owner decision: the roster import commits again. New charts are
   // created through createAuthorizedPatient as the caller, so they carry the
