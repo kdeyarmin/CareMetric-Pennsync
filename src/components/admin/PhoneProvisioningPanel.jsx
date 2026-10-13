@@ -334,6 +334,11 @@ export default function PhoneProvisioningPanel() {
                           {" "}· webhooks {liveResult.stats.webhooks_pointed ? "pointed at this app" : "not confirmed"}
                         </>
                       )}
+                      {typeof liveResult.stats.office_fax_verified === "boolean" && (
+                        <>
+                          {" "}· office fax {liveResult.stats.office_fax_verified ? "verified" : "not verified"}
+                        </>
+                      )}
                       {" "}· checked {new Date(liveResult.generated_at).toLocaleTimeString()}
                     </p>
                   )}

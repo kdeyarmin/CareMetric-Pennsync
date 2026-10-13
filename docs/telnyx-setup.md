@@ -44,7 +44,9 @@ only presence + the last 4 characters are shown. Functions:
 - `saveTelnyxSecret` — store the API key / public key / connection ids (super-admin only).
 - `getTelnyxSecretStatus` — read whether each value is configured (no secrets returned).
 - `testTelnyxConnection` — read-only readiness report + a live `/v2/balance` probe,
-  then a webhook-URL read for each configured messaging / voice / fax application.
+  then a webhook-URL read for each configured messaging / voice / fax application,
+  and a Verified Number lookup for the office fax when it differs from the blind
+  outbound line (same decision outbound fax senders use).
 
 ### Dashboard-env overrides — retired
 

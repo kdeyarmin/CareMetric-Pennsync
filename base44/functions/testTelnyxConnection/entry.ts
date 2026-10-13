@@ -72,6 +72,10 @@ function serviceRoleClientRequest(req, expectedAppId) {
  *  - when the live probe succeeds, a read of each configured application's
  *    webhook URL confirming it targets handleTelnyxStatusWebhook (call/fax/SMS
  *    status stalls when the portal still points elsewhere).
+ *  - when the live probe succeeds and AgencySettings has a distinct office fax
+ *    beside the blind outbound line, a GET of Telnyx Verified Numbers for that
+ *    office number (same decision sendFax uses) — unverified means returns
+ *    redial the blind Telnyx line instead of the office machine.
  *
  * Returns { checks: [{ id, label, status: 'ok'|'warn'|'fail', detail }], stats,
  * generated_at }. It never sends anything and never returns a secret.
@@ -386,6 +390,106 @@ async function probeTelnyxResourceWebhook(apiKey, { checkId, label, path, urlFie
   }
 }
 
+/**
+ * Same plan as faxOriginationPlan: only a distinct office number beside a blind
+ * outbound line is worth verifying. Returns null when no check should run.
+ * Classification mirrors resolveFaxOrigination's non-PHI warning categories.
+ */
+async function probeOfficeFaxVerification(apiKey, officeE164, blindE164) {
+  const office = typeof officeE164 === 'string' && officeE164 ? officeE164 : null;
+  const blind = typeof blindE164 === 'string' && blindE164 ? blindE164 : null;
+  if (!blind || !office || office === blind) return null;
+
+  const checkId = 'telnyx_office_fax_verified';
+  const label = 'Office fax Verified Number';
+  const url = `https://api.telnyx.com/v2/verified_numbers/${encodeURIComponent(office)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    if (resp.type === 'opaqueredirect' || (resp.status >= 300 && resp.status < 400)) {
+      try { await resp.body?.cancel(); } catch { /* discard */ }
+      return {
+        id: checkId,
+        label,
+        status: 'warn',
+        category: 'office_fax_verification_unavailable',
+        detail: `Telnyx redirected the Verified Number lookup (HTTP ${resp.status}); could not confirm whether returns will reach the office machine.`,
+      };
+    }
+    if (resp.status === 401 || resp.status === 403) {
+      try { await resp.body?.cancel(); } catch { /* discard */ }
+      return {
+        id: checkId,
+        label,
+        status: 'warn',
+        category: 'office_fax_verification_unavailable',
+        detail: `Telnyx rejected the Verified Number lookup (HTTP ${resp.status}).`,
+      };
+    }
+    if (resp.status === 404) {
+      try { await resp.body?.cancel(); } catch { /* discard */ }
+      return {
+        id: checkId,
+        label,
+        status: 'warn',
+        category: 'office_fax_number_unverified',
+        detail: 'Office fax number is not a Telnyx Verified Number — outbound faxes transmit from the blind line. Verify it in the Telnyx Portal so recipient redials reach the office machine.',
+      };
+    }
+    if (!resp.ok) {
+      try { await resp.body?.cancel(); } catch { /* discard */ }
+      return {
+        id: checkId,
+        label,
+        status: 'warn',
+        category: 'office_fax_verification_unavailable',
+        detail: `Could not read Verified Number status (HTTP ${resp.status}).`,
+      };
+    }
+    const body = await resp.json().catch(() => null);
+    const data = body && typeof body === 'object' ? body.data : null;
+    const verified = !!data && typeof data === 'object' && !Array.isArray(data)
+      && data.phone_number === office
+      && typeof data.verified_at === 'string'
+      && Number.isFinite(Date.parse(data.verified_at));
+    if (verified) {
+      return {
+        id: checkId,
+        label,
+        status: 'ok',
+        category: 'office_fax_verified',
+        detail: 'Office fax number is a Telnyx Verified Number — outbound faxes can originate from it so returns reach the office machine.',
+      };
+    }
+    return {
+      id: checkId,
+      label,
+      status: 'warn',
+      category: 'office_fax_number_unverified',
+      detail: 'Office fax number is not verified with Telnyx — outbound faxes transmit from the blind line until you verify it in the Telnyx Portal.',
+    };
+  } catch (error) {
+    const aborted = error?.name === 'AbortError';
+    return {
+      id: checkId,
+      label,
+      status: 'warn',
+      category: 'office_fax_verification_unavailable',
+      detail: aborted
+        ? `Timed out after ${PROBE_TIMEOUT_MS} ms reading Verified Number status.`
+        : 'Could not complete the bounded Verified Number lookup.',
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
@@ -458,12 +562,24 @@ Deno.serve(async (req) => {
         (raw.startsWith('+') && d.length >= 8 && d.length <= 15 && d[0] !== '0')
       );
     };
+    // Same E.164 shape sendFax's normalizeFromE164 uses for the Verified Number
+    // lookup key — Telnyx matches phone_number exactly.
+    const toProbeE164 = (raw) => {
+      if (!raw || !validFaxNumber(raw)) return null;
+      const digits = raw.replace(/[^\d]/g, '');
+      if (raw.startsWith('+')) return `+${digits}`;
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+      return `+${digits}`;
+    };
     const settingsRows = [await resolveAgencySettings(base44, user?.agency_name)].filter(Boolean);
     const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
     const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
     const officeFaxValid = officeFaxRaw !== '' && validFaxNumber(officeFaxRaw);
     const outboundFaxValid = outboundFaxRaw !== '' && validFaxNumber(outboundFaxRaw);
     const faxFromValid = outboundFaxValid || officeFaxValid;
+    const officeFaxE164 = toProbeE164(officeFaxRaw);
+    const outboundFaxE164 = toProbeE164(outboundFaxRaw);
     checks.push({
       id: 'telnyx_fax_from',
       label: 'Outbound fax line',
@@ -542,6 +658,12 @@ Deno.serve(async (req) => {
             urlFields: ['webhook_event_url', 'webhook_url'],
           }));
         }
+        const officeFaxCheck = await probeOfficeFaxVerification(
+          creds.apiKey,
+          officeFaxE164,
+          outboundFaxE164,
+        );
+        if (officeFaxCheck) checks.push(officeFaxCheck);
       }
     }
 
@@ -554,6 +676,7 @@ Deno.serve(async (req) => {
       || c.id === 'telnyx_voice_webhook'
       || c.id === 'telnyx_fax_webhook'
     ));
+    const officeFaxVerifiedCheck = checks.find((c) => c.id === 'telnyx_office_fax_verified');
     const stats = {
       messaging_ready: Boolean(creds.apiKey),
       voice_ready: Boolean(creds.apiKey && creds.voiceConnectionId),
@@ -561,6 +684,9 @@ Deno.serve(async (req) => {
       webhooks_verifiable: Boolean(creds.publicKey),
       webhooks_pointed: webhookChecks.length > 0
         && webhookChecks.every((c) => c.status === 'ok'),
+      office_fax_verified: officeFaxVerifiedCheck
+        ? officeFaxVerifiedCheck.status === 'ok'
+        : null,
       total_users: allUsers.length,
       nurses_with_work_number: allUsers.filter((u) => isSetStr(u.work_phone_number)).length,
     };
