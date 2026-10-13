@@ -1,0 +1,60 @@
+name: Ops request — deploy production functions
+
+# Agent/operator escape hatch when workflow_dispatch cannot be created from the
+# cloud-agent GitHub token (403). Pushing `.github/ops/function-deploy-request`
+# on main dispatches the existing manual production function deploy with the
+# names listed in that file (one name per line, or a single "all" line).
+# Does not deploy itself and does not hold BASE44_API_KEY — it only starts the
+# protected production workflow that already owns that credential.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/ops/function-deploy-request'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: caremetric-pennsync-ops-function-deploy-request
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: github.repository == 'kdeyarmin/CareMetric-Pennsync'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the request file
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Dispatch Deploy production backend functions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          request='.github/ops/function-deploy-request'
+          if [ ! -f "$request" ]; then
+            echo 'OPS_FUNCTION_DEPLOY_REQUEST_MISSING'
+            exit 2
+          fi
+          # Collapse to a single space-separated input; reject empty / comment-only.
+          funcs="$(awk 'NF && $1 !~ /^#/ { print $1 }' "$request" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+          if [ -z "$funcs" ]; then
+            echo 'OPS_FUNCTION_DEPLOY_REQUEST_EMPTY'
+            exit 2
+          fi
+          # Same name grammar the production selector enforces (no CLI smuggling).
+          if ! printf '%s\n' $funcs | grep -Eqv '^[A-Za-z][A-Za-z0-9_-]{0,99}$'; then
+            echo "OPS_FUNCTION_DEPLOY_REQUEST_INVALID: $funcs"
+            exit 2
+          fi
+          echo "Dispatching production function deploy for: $funcs"
+          gh workflow run deploy-production-functions.yml \
+            --repo "$GITHUB_REPOSITORY" --ref main -f "functions=$funcs"
+          echo "Dispatched. Watch Actions → Deploy production backend functions."

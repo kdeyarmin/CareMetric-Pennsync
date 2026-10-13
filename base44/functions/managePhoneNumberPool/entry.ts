@@ -119,6 +119,8 @@ async function resolveAgencySettings(base44, agencyName) {
  *   - 'remove'  { id }                                    → delete an AVAILABLE number
  *   - 'assign'  { id, target_user_email, personal_cell_e164? } → give a nurse this work number
  *   - 'release' { id }                                    → unassign (clears the nurse's work number)
+ *   - 'enroll_a2p' { e164 | id } → POST the number onto AgencySettings.a2p_campaign_id
+ *     (explicit admin action for lines that missed purchase-time auto-enroll)
  *
  * 'assign' first checks the line with Telnyx, read-only (verifyTelnyxWorkLine):
  * a number Telnyx reports as not active, or on another voice connection or
@@ -609,6 +611,81 @@ Deno.serve(async (req) => {
       }
       await audit('phone_number_released', row.id);
       return Response.json({ success: true, e164 });
+    }
+
+    // Explicit A2P enrollment for an already-owned US local line that missed
+    // purchase-time auto-enroll (or was bought in the Telnyx portal). Never runs
+    // as a side effect of assign/provision — those stay warn-only by contract.
+    if (action === 'enroll_a2p') {
+      let e164 = normalizeE164(body.e164);
+      if (!e164 && body.id) {
+        const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id: String(body.id) }, undefined, 5000).catch(() => []);
+        e164 = normalizeE164(rows[0]?.e164);
+      }
+      if (!e164) return Response.json({ error: 'Enter a valid phone number (e164) or pool id.' }, { status: 400 });
+      const tollFree = ['800', '833', '844', '855', '866', '877', '888'].includes(e164.slice(2, 5));
+      if (e164.slice(0, 2) !== '+1' || tollFree) {
+        return Response.json({ error: `${e164} is not a US local long code — A2P 10DLC enrollment does not apply.` }, { status: 400 });
+      }
+      const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+      const campaignId = String(agencySettings?.a2p_campaign_id || '').trim();
+      if (!campaignId) {
+        return Response.json({ error: 'No A2P 10DLC campaign id is saved in Agency Settings.' }, { status: 409 });
+      }
+      const creds = await resolveTelnyxCreds(base44);
+      if (!creds?.apiKey) {
+        return Response.json({
+          error: creds?.readError
+            ? 'Telnyx credential store could not be read.'
+            : 'No Telnyx API key is configured.',
+        }, { status: 503 });
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      let assign;
+      try {
+        const resp = await fetch('https://api.telnyx.com/v2/10dlc/phone_number_campaigns', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + creds.apiKey,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phoneNumber: e164, campaignId }),
+          signal: controller.signal,
+        });
+        const data = await resp.json().catch(() => ({}));
+        assign = { ok: resp.ok, status: resp.status, data };
+      } catch (err) {
+        assign = { ok: false, status: 0, data: { message: String(err?.message || err) } };
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!assign.ok) {
+        const firstErr = Array.isArray(assign.data?.errors) ? assign.data.errors[0] : null;
+        // Already enrolled on this campaign is success for the operator.
+        const detail = String(firstErr?.detail || firstErr?.title || assign.data?.message || `HTTP ${assign.status}`);
+        if (/already|exists|assigned/i.test(detail) && assign.status >= 400 && assign.status < 500) {
+          await audit('phone_number_a2p_enroll_noop', e164);
+          return Response.json({
+            success: true, e164, campaign_id: campaignId, already_enrolled: true, detail,
+          });
+        }
+        return Response.json({
+          error: `Enrolling ${e164} in A2P campaign ${campaignId} failed: ${detail}`,
+          code: 'a2p_enroll_failed',
+          status: assign.status,
+        }, { status: 502 });
+      }
+      await audit('phone_number_a2p_enrolled', e164);
+      const row = assign.data?.data && typeof assign.data.data === 'object' ? assign.data.data : assign.data;
+      return Response.json({
+        success: true,
+        e164,
+        campaign_id: campaignId,
+        assignment_status: row?.assignmentStatus || null,
+        telnyx_campaign_id: row?.campaignId || row?.tcrCampaignId || null,
+      });
     }
 
     return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });
