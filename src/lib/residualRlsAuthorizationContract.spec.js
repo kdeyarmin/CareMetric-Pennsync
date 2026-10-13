@@ -288,7 +288,10 @@ describe('residual RLS source containment', () => {
     ]);
 
     const panel = read('src/components/admin/NumberPoolPanel.jsx');
-    expect(panel).toMatch(/const isAdmin\s*=\s*isAdminLike\(currentUser\)/);
+    // Platform owner only — matches managePhoneNumberPool /
+    // searchPurchaseTelnyxNumbers. Agency admins previously saw buy/assign
+    // controls that always 403'd (isAdminLike was wider than the backend gate).
+    expect(panel).toMatch(/const isAdmin\s*=\s*isSuperAdmin\(currentUser\)/);
     expect(panel).toMatch(/queryFn:\s*\(\)\s*=>\s*base44\.entities\.PhoneNumber\.list[\s\S]{0,120}?enabled:\s*isAdmin/);
   });
 
