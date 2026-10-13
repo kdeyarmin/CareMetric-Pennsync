@@ -663,13 +663,57 @@ Deno.serve(async (req) => {
       }
       if (!assign.ok) {
         const firstErr = Array.isArray(assign.data?.errors) ? assign.data.errors[0] : null;
-        // Already enrolled on this campaign is success for the operator.
+        // "Already assigned to a campaign" does not name WHICH campaign — a line
+        // on another registration must not be reported as enrolled here. Read
+        // the current assignment and compare ids before treating it as a noop.
         const detail = String(firstErr?.detail || firstErr?.title || assign.data?.message || `HTTP ${assign.status}`);
         if (/already|exists|assigned/i.test(detail) && assign.status >= 400 && assign.status < 500) {
-          await audit('phone_number_a2p_enroll_noop', e164);
+          const lookup = new AbortController();
+          const lookupTimer = setTimeout(() => lookup.abort(), 15000);
+          let current;
+          try {
+            const resp = await fetch(
+              'https://api.telnyx.com/v2/10dlc/phone_number_campaigns/' + encodeURIComponent(e164),
+              {
+                method: 'GET',
+                headers: { Authorization: 'Bearer ' + creds.apiKey, Accept: 'application/json' },
+                signal: lookup.signal,
+              },
+            );
+            const bodyJson = await resp.json().catch(() => null);
+            const row = bodyJson && typeof bodyJson === 'object' && bodyJson.data && typeof bodyJson.data === 'object'
+              ? bodyJson.data : bodyJson;
+            current = { ok: resp.ok, status: resp.status, row };
+          } catch {
+            current = { ok: false, status: 0, row: null };
+          } finally {
+            clearTimeout(lookupTimer);
+          }
+          const ids = current.row && typeof current.row === 'object'
+            ? [current.row.campaignId, current.row.tcrCampaignId, current.row.telnyxCampaignId]
+              .filter((id) => typeof id === 'string' && id)
+            : [];
+          if (current.ok && ids.includes(campaignId)) {
+            await audit('phone_number_a2p_enroll_noop', e164);
+            return Response.json({
+              success: true, e164, campaign_id: campaignId, already_enrolled: true,
+              assignment_status: current.row?.assignmentStatus || null,
+              telnyx_campaign_id: current.row?.tcrCampaignId || current.row?.campaignId || null,
+              detail,
+            });
+          }
+          if (current.ok && ids.length > 0) {
+            return Response.json({
+              error: `${e164} is on A2P 10DLC campaign ${current.row?.tcrCampaignId || current.row?.campaignId}, not the saved campaign ${campaignId}.`,
+              code: 'a2p_campaign_mismatch',
+              current_campaign_ids: ids,
+            }, { status: 409 });
+          }
           return Response.json({
-            success: true, e164, campaign_id: campaignId, already_enrolled: true, detail,
-          });
+            error: `Enrolling ${e164} in A2P campaign ${campaignId} failed: ${detail} (current assignment could not be confirmed).`,
+            code: 'a2p_enroll_failed',
+            status: assign.status,
+          }, { status: 502 });
         }
         return Response.json({
           error: `Enrolling ${e164} in A2P campaign ${campaignId} failed: ${detail}`,

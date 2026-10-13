@@ -44,16 +44,15 @@ jobs:
             exit 2
           fi
           # Collapse to a single space-separated input; reject empty / comment-only.
+          # Name grammar is validated in Node (same module the unit test drives)
+          # so an inverted shell `! grep -v` cannot ship again.
           funcs="$(awk 'NF && $1 !~ /^#/ { print $1 }' "$request" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-          if [ -z "$funcs" ]; then
-            echo 'OPS_FUNCTION_DEPLOY_REQUEST_EMPTY'
+          selection="$(REQUESTED_FUNCTIONS="$funcs" node tools-ops-request-function-names.mjs)"
+          if ! node -e 'const s=JSON.parse(process.argv[1]); process.exit(s.ok?0:2)' "$selection"; then
+            echo "$selection"
             exit 2
           fi
-          # Same name grammar the production selector enforces (no CLI smuggling).
-          if ! printf '%s\n' $funcs | grep -Eqv '^[A-Za-z][A-Za-z0-9_-]{0,99}$'; then
-            echo "OPS_FUNCTION_DEPLOY_REQUEST_INVALID: $funcs"
-            exit 2
-          fi
+          funcs="$(node -e 'const s=JSON.parse(process.argv[1]); process.stdout.write(s.names.join(" "))' "$selection")"
           echo "Dispatching production function deploy for: $funcs"
           gh workflow run deploy-production-functions.yml \
             --repo "$GITHUB_REPOSITORY" --ref main -f "functions=$funcs"
