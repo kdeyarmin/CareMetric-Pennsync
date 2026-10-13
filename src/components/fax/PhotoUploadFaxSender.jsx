@@ -221,7 +221,9 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
       const faxData = faxRes?.data ?? faxRes;
       if (faxData?.error) throw new Error(faxData.error);
       if (!authorityIsCurrent(authority)) return;
-      toast.success("Fax sent successfully!");
+      // sendFax accepts at Telnyx immediately; final delivery status only
+      // advances when the fax webhook points at handleTelnyxStatusWebhook.
+      toast.success("Fax submitted — check the fax log for delivery status.");
       setUploadedImages([]);
       setToNumber("");
       setCoverSheetUrl(null);

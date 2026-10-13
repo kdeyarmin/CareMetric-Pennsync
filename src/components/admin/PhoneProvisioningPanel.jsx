@@ -317,8 +317,9 @@ export default function PhoneProvisioningPanel() {
               </div>
               {liveChecks.length === 0 ? (
                 <p className="text-sm text-slate-500 py-3">
-                  Run the test to probe backend secrets, reach the Telnyx API, and check nurse provisioning.
-                  Nothing is sent — it's a read-only health check.
+                  Run the test to probe backend secrets, reach the Telnyx API, read each configured
+                  application&apos;s webhook URL, and check nurse provisioning. Nothing is sent — it&apos;s a
+                  read-only health check.
                 </p>
               ) : (
                 <>
@@ -327,8 +328,13 @@ export default function PhoneProvisioningPanel() {
                   </div>
                   {liveResult?.stats && (
                     <p className="text-[11px] text-slate-500 mt-2">
-                      {liveResult.stats.nurses_with_work_number}/{liveResult.stats.total_users} users have a work number ·
-                      {" "}checked {new Date(liveResult.generated_at).toLocaleTimeString()}
+                      {liveResult.stats.nurses_with_work_number}/{liveResult.stats.total_users} users have a work number
+                      {typeof liveResult.stats.webhooks_pointed === "boolean" && (
+                        <>
+                          {" "}· webhooks {liveResult.stats.webhooks_pointed ? "pointed at this app" : "not confirmed"}
+                        </>
+                      )}
+                      {" "}· checked {new Date(liveResult.generated_at).toLocaleTimeString()}
                     </p>
                   )}
                 </>

@@ -628,7 +628,9 @@ Deno.serve(async (req) => {
       fax_sid: faxId,
       log_id: faxLog.id,
       status: telnyxData?.data?.status || 'sending',
-      message: 'Fax sent successfully',
+      // Accepted by Telnyx — not confirmed delivered. Delivery status advances
+      // via handleTelnyxStatusWebhook (legacy poll authority is quarantined).
+      message: 'Fax submitted — check the fax log for delivery status',
       // Non-PHI: the office number is not (or could not be confirmed as) a
       // Telnyx Verified Number, so this fax went from the blind line.
       ...(origination.warning ? { origination_warning: origination.warning } : {}),

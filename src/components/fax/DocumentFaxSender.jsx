@@ -111,7 +111,9 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
         patient_id: patientId,
         to_name: toName || undefined
       });
-      toast.success("Fax sent successfully!");
+      // sendFax accepts at Telnyx immediately; final delivery status only
+      // advances when the fax webhook points at handleTelnyxStatusWebhook.
+      toast.success("Fax submitted — check the fax log for delivery status.");
       setSelectedDocId("");
       setToNumber("");
       setToName("");

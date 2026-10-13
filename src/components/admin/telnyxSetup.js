@@ -217,7 +217,8 @@ export function evaluateAgencyConfig(settings) {
  *   kind: 'required'|'verify'|'manual', anchor }.
  *   - required → must be 'done' before the integration is ready.
  *   - verify   → a recommended check (live test); never blocks readiness.
- *   - manual   → a step we can't auto-detect (webhook registration).
+ *   - manual   → portal work the admin must do; status can still be filled in
+ *                from a live probe (webhook URL read-back) when available.
  *
  * @param {{ secretStatus?: any, agencySettings?: any,
  *   provisioning?: { total?: number, withWorkNumber?: number, missingBridgeCell?: number },
@@ -304,15 +305,45 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
     detail: provDetail,
   });
 
-  // 4. Register the webhooks (manual — there's no API to read this back).
+  // 4. Point Telnyx webhooks at handleTelnyxStatusWebhook. The action is still
+  // portal work (kind: manual), but testTelnyxConnection now reads each
+  // configured application's webhook URL after a successful live auth — so a
+  // recent liveResult can mark this done or surface a misconfiguration. Without
+  // that probe the step stays todo (same as before the probe existed).
+  const webhookChecks = Array.isArray(liveResult?.checks)
+    ? liveResult.checks.filter((c) => (
+      c
+      && (c.id === "telnyx_messaging_webhook"
+        || c.id === "telnyx_voice_webhook"
+        || c.id === "telnyx_fax_webhook")
+    ))
+    : [];
+  const webhooksPointed = liveResult?.stats?.webhooks_pointed === true
+    || (webhookChecks.length > 0 && webhookChecks.every((c) => c.status === "ok"));
+  const webhookFail = webhookChecks.some((c) => c.status === "fail");
+  const webhookWarn = webhookChecks.some((c) => c.status === "warn");
+  let webhookStatus = "todo";
+  let webhookDetail =
+    "Set your Telnyx messaging/fax profile and voice connection webhook URLs to handleTelnyxStatusWebhook. Run the live connection test to verify, or confirm in the Telnyx Portal.";
+  if (webhooksPointed) {
+    webhookStatus = "done";
+    webhookDetail = "Live test confirmed each configured Telnyx resource points at handleTelnyxStatusWebhook.";
+  } else if (webhookFail) {
+    webhookStatus = "attention";
+    webhookDetail =
+      "Live test found a webhook URL that does not target handleTelnyxStatusWebhook — call/fax/SMS status will not update until you fix it in the Telnyx Portal.";
+  } else if (webhookWarn) {
+    webhookStatus = "attention";
+    webhookDetail =
+      "Live test found a Telnyx resource with no webhook URL — point it at handleTelnyxStatusWebhook in the Telnyx Portal.";
+  }
   steps.push({
     id: "webhooks",
     title: "Point your Telnyx webhooks at this app",
     kind: "manual",
     anchor: "telnyx-webhooks",
-    status: "todo",
-    detail:
-      "Set your Telnyx messaging/fax profile and voice connection webhook URLs to the matching function. This can't be auto-detected — confirm it in the Telnyx Portal.",
+    status: webhookStatus,
+    detail: webhookDetail,
   });
 
   // 5. Verify end to end with the live connection test (recommended).

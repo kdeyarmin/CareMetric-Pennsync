@@ -275,7 +275,9 @@ export default function EnhancedCameraFaxSender() {
       });
       operation.assertCurrent();
       if (!authorityIsCurrent(authority)) return;
-      toast.success("Fax sent successfully!");
+      // sendFax accepts at Telnyx immediately; final delivery status only
+      // advances when the fax webhook points at handleTelnyxStatusWebhook.
+      toast.success("Fax submitted — check the fax log for delivery status.");
       setCapturedImages([]);
       setToNumber("");
       setCoverSheetUrl(null);
