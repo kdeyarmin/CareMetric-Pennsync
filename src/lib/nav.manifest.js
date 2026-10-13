@@ -289,7 +289,7 @@ export const NAV_MANIFEST = [
     label: "Sign Document",
     icon: Pen,
     category: null,
-    adminOnly: false,
+    adminOnly: true,
     breadcrumbParent: "DocumentHub",
     keywords: ["sign", "signature"],
   },
@@ -376,10 +376,10 @@ export const NAV_MANIFEST = [
     label: "Template Management",
     icon: FileText,
     category: null,
-    // Route open to all; the document-template CRUD tab is admin-gated in-page
-    // while the PDF Templates tab stays reachable to non-admins (the retired
-    // /PDFTemplateLibrary route this absorbed was non-admin).
-    adminOnly: false,
+    // Admin-only at the route like the rest of the DocumentHub surfaces
+    // (D-N2): template CRUD was previously gated in-page only. Non-admin
+    // template browsing stays available via TemplateLibrary.
+    adminOnly: true,
     breadcrumbParent: "DocumentHub",
     keywords: ["template", "management"],
   },
@@ -584,6 +584,19 @@ export const NAV_MANIFEST = [
     adminOnly: true,
     breadcrumbParent: "AdminOperations",
     keywords: ["nurse", "performance", "metrics"],
+  },
+  {
+    // Per-employee training profile, reached from the staff leaderboard on
+    // NursePerformanceDashboard. category is null so it stays out of the
+    // sidebar; routed through the manifest like every other authenticated
+    // page (D-A4 — this was previously a hard-coded route in App.jsx).
+    page: "EmployeeTrainingProfile",
+    label: "Employee Training Profile",
+    icon: BookUser,
+    category: null,
+    adminOnly: true,
+    breadcrumbParent: "NursePerformanceDashboard",
+    keywords: ["employee", "training", "profile", "transcript"],
   },
   {
     page: "CredentialCompliance",

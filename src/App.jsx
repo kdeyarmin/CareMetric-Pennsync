@@ -52,7 +52,6 @@ import AccountDeletionRequestLink from '@/components/auth/AccountDeletionRequest
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
 // the whole app — so plain lazy() is sufficient here.
 const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
-const EmployeeTrainingProfile = lazy(() => import('@/pages/EmployeeTrainingProfile'));
 const IndependentStagingWorkspace = lazy(() => import('@/components/auth/IndependentStagingWorkspace'));
 
 // MCP OAuth consent page — public, ctx-token-gated, no app login required.
@@ -444,7 +443,6 @@ const TenantReadyApp = () => {
       <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
       <Route element={<Layout />}>
         {routeElements}
-        <Route path="/EmployeeTrainingProfile" element={<ErrorBoundary><Suspense fallback={<RoutePageLoader />}><EmployeeTrainingProfile /></Suspense></ErrorBoundary>} />
         {redirectElements}
         <Route path="*" element={<PageNotFound />} />
       </Route>
