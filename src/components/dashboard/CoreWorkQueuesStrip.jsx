@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { ClipboardList, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { buildCoreWorkQueues } from '@/components/dashboard/coreWorkQueues';
+import { buildCoreWorkQueues, formatQueueCount } from '@/components/dashboard/coreWorkQueues';
 
 /**
  * Thin UI consumer for the pure role work-queue summarizer.
@@ -15,6 +15,7 @@ export default function CoreWorkQueuesStrip({
   credentials = [],
   tasks = [],
   notes = [],
+  referralCountCapped = false,
 }) {
   const queues = buildCoreWorkQueues({ role, referrals, incidents, credentials, tasks, notes });
   if (!queues.length) return null;
@@ -37,7 +38,7 @@ export default function CoreWorkQueuesStrip({
           >
             <span className="font-medium">{queue.label}</span>
             <Badge className={queue.priority === 'high' ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700'}>
-              {queue.count}
+              {formatQueueCount(queue.count, queue.id === 'referrals-awaiting-info' && referralCountCapped)}
             </Badge>
             <ArrowRight className="h-3.5 w-3.5 opacity-60" />
           </Link>

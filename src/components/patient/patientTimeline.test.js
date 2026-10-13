@@ -5,6 +5,7 @@ import { buildPatientTimeline } from './patientTimeline.js';
 test('buildPatientTimeline keeps a nurse off admin destinations', () => {
   const events = buildPatientTimeline({
     patientId: 'p1',
+    access: { canOpenVisitNotes: true },
     visits: [{ id: 'v1', patient_id: 'p1', visit_date: '2026-07-20', visit_type: 'SOC Visit', status: 'completed' }],
     documents: [{ id: 'd1', patient_id: 'p1', uploaded_at: '2026-07-22T10:00:00Z', document_name: 'Plan of care' }],
     incidents: [
@@ -17,7 +18,7 @@ test('buildPatientTimeline keeps a nurse off admin destinations', () => {
   assert.equal(events[0].title, 'Plan of care');
   assert.equal(events[0].route, null);
   assert.equal(events.find((e) => e.type === 'incident').route, '/Incidents');
-  assert.equal(events.find((e) => e.type === 'visit').route, '/PatientDetails?id=p1');
+  assert.equal(events.find((e) => e.type === 'visit').route, '/ClinicalDocumentation?visitId=v1');
   assert.equal(events.find((e) => e.type === 'referral').route, null);
 });
 
@@ -39,6 +40,21 @@ test('buildPatientTimeline opens the visit note and office pages the viewer can 
   assert.equal(events.find((e) => e.type === 'document').route, '/DocumentHub?id=d1');
   assert.equal(events.find((e) => e.type === 'incident').route, '/IncidentReview?id=i1');
   assert.equal(events.find((e) => e.type === 'referral').route, '/ReferralIntake?id=r1');
+});
+
+test('a clinician timeline does not open admin destinations', () => {
+  const events = buildPatientTimeline({
+    patientId: 'p1',
+    visits: [{ id: 'v1', patient_id: 'p1', visit_date: '2026-07-20', visit_type: 'SOC Visit' }],
+    documents: [{ id: 'd1', patient_id: 'p1', uploaded_at: '2026-07-22T10:00:00Z', document_name: 'Plan of care' }],
+    incidents: [{ id: 'i1', patient_id: 'p1', incident_date: '2026-07-21', incident_name: 'Fall' }],
+    referrals: [{ id: 'r1', patient_id: 'p1', referral_date: '2026-07-19', diagnosis: 'CHF' }],
+    access: { canOpenVisitNotes: true },
+  });
+  assert.equal(events.find((e) => e.type === 'visit').route, '/ClinicalDocumentation?visitId=v1');
+  assert.equal(events.find((e) => e.type === 'document').route, null);
+  assert.equal(events.find((e) => e.type === 'incident').route, '/Incidents');
+  assert.equal(events.find((e) => e.type === 'referral').route, null);
 });
 
 test('buildPatientTimeline skips undated records and tolerates empty inputs', () => {

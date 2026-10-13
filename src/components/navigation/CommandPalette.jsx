@@ -128,7 +128,7 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false, user = n
   }, [navigate]);
 
   const quickActions = useMemo(
-    () => QUICK_ACTIONS.filter((a) => (!a.adminOnly || isAdmin || (a.intakeRole && isReferralIntakeRole(user))) && (!a.superAdminOnly || isSuperAdmin) && (isAdmin || a.intakeRole || canAccessLevel(user, a.access))),
+    () => QUICK_ACTIONS.filter((a) => (!a.adminOnly || isAdmin || (a.intakeRole && isReferralIntakeRole(user))) && (!a.superAdminOnly || isSuperAdmin) && (isAdmin || (a.intakeRole && isReferralIntakeRole(user)) || canAccessLevel(user, a.access))),
     [isAdmin, isSuperAdmin, user],
   );
 

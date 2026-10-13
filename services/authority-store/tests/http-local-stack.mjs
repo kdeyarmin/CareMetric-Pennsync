@@ -328,12 +328,14 @@ export async function describePortHolder(port) {
  * that is still closing -- and the third failure spent all PORT_ATTEMPTS,
  * which that cannot explain.
  *
- * 54320, 54321, 54322 and 54324 all sit inside Linux's default ephemeral
- * range (32768-60999), so an OS-assigned port could land on one between this
- * check and the CLI's bind. CI reserves these ports from ephemeral allocation
- * before starting the stack. A port something actually HOLDS stays held for
- * all PORT_ATTEMPTS and still refuses, so the guarantee is unchanged. Do not
- * replace this with a single bind.
+ * The ephemeral-range collision is why CI reserves 54320, 54321, 54322 and
+ * 54324. Those ports sit inside Linux's default ephemeral range (32768-60999),
+ * so an OS-assigned port in the same job can land on one of them. Each workflow
+ * that starts this stack writes them into `net.ipv4.ip_local_reserved_ports`
+ * before checkout, keeping any reservation that was already there. That write
+ * is the safeguard. Do not remove it, and do not replace this retry with a
+ * single bind. A port something actually HOLDS stays held for all PORT_ATTEMPTS
+ * and still refuses.
  *
  * THE HOLDER IS DESCRIBED AT EACH FAILURE, NEVER AFTER THE RETRIES (D112).
  * The first version of that diagnostic ran `describePortHolder` once, after the
@@ -343,9 +345,10 @@ export async function describePortHolder(port) {
  * were right about different MOMENTS -- something live held the port through
  * ~5.6 s of retries and had closed into TIME_WAIT by the time it was
  * described. So the reader got a representation of a moment that was not the
- * failure, which is worse than no diagnostic: it looks like evidence, it reads
- * as a cause, and it makes an unmade decision (whether to reserve these ports)
- * look ready to make. A diagnostic belongs at the moment of failure.
+ * failure, which is worse than no diagnostic: it looks like evidence and it
+ * reads as a cause. A diagnostic belongs at the moment of failure. The
+ * reservation above stops the kernel from handing these ports out; it does not
+ * replace this series when something is already holding one.
  *
  * Every failed attempt is therefore described as it happens and kept, and the
  * whole series is printed on refusal, so a holder that changed across the

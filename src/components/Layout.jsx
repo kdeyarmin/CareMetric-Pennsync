@@ -152,7 +152,7 @@ export default function Layout() {
   // boundary. Restore these only behind purpose-built count brokers.
   const navCategories = useMemo(
     () => buildNavCategories(NAV_MANIFEST, currentUser),
-    [currentUser],
+    [currentUser, tenantContext?.tenant_role, tenantContext?.membership_id, tenantContext?.membership_version],
   );
   const adminItems = useMemo(
     () => buildAdminItems(NAV_MANIFEST, isSuperAdminUser),

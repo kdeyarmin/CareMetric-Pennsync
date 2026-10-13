@@ -81,9 +81,9 @@ export function buildTodayPriorities({
   limit = DEFAULT_LIMIT,
   adminView = false,
 } = {}) {
-  // The route guard admits Incident Review and Admin Operations only for a
-  // bound facility or super admin. A label the user can edit on their profile
-  // is not that gate, so it must not choose these destinations.
+  // Incident Review and Admin Operations admit only a bound facility or super
+  // admin. A label the user can edit on their profile must not choose those
+  // destinations.
   const isAdmin = adminView === true;
   const patientById = new Map(patients.map((patient) => [patient.id, patient]));
   const priorities = [];

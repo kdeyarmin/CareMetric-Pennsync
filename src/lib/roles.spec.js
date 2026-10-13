@@ -264,7 +264,7 @@ describe("isPageAllowedForRole — URL-level route guard", () => {
     expect(isPageAllowedForRole("Patients", "nurse", nurse)).toBe(true);
     expect(isPageAllowedForRole("SmartNoteAssistant", "nurse", nurse)).toBe(true);
   });
-  it("lets a manager or office staff open referral intake and nothing else admin", () => {
+  it("lets a manager or office staff open referral workflows and nothing else admin", () => {
     const manager = { id: "mgr-1", email: "manager@agency.test", role: "user", staff_role: "nurse" };
     const clerk = { id: "clerk-1", email: "clerk@agency.test", role: "user", staff_role: "office_staff" };
     bindTrustedTenantContext(manager, agencyAdminContext(manager, "manager"));

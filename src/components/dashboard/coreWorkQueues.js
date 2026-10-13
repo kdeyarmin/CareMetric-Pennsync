@@ -60,3 +60,12 @@ export function buildCoreWorkQueues({ role = 'nurse', referrals = [], incidents 
       return (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9) || b.count - a.count || a.label.localeCompare(b.label);
     });
 }
+
+/** A full page is not an exact total. */
+export function formatQueueCount(count, capped) {
+  return capped ? `${count}+` : String(count);
+}
+
+export function showsWorkQueueStrip(role, clinical) {
+  return clinical === true || role === 'manager' || role === 'facility_admin';
+}
