@@ -32,12 +32,8 @@ import { Building2, Loader2 } from "lucide-react";
  * caller text with a generic line.
  */
 export const TENANT_ROLE_OPTIONS = Object.freeze([
-  { value: "agency_admin", label: "Agency administrator" },
-  { value: "manager", label: "Manager" },
-  { value: "clinician", label: "Clinician (nurse / therapist)" },
-  { value: "office_staff", label: "Office staff" },
-  { value: "social_worker", label: "Social worker" },
-  { value: "spiritual_care", label: "Spiritual care" },
+  { value: "agency_admin", label: "Manager" },
+  { value: "clinician", label: "Staff" },
 ]);
 
 // The invitation records a staff discipline (`staff_role`, applied to the User
@@ -51,7 +47,7 @@ const STAFF_ROLE_TO_TENANT_ROLE = Object.freeze({
 });
 
 export function suggestedTenantRole(user) {
-  return STAFF_ROLE_TO_TENANT_ROLE[user?.staff_role] || "clinician";
+  return "clinician";
 }
 
 const STATUS_TONE = {

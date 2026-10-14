@@ -557,9 +557,9 @@ export default function UserManagement() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="user">Staff</SelectItem>
+                  <SelectItem value="admin">Super Admin</SelectItem>
                   <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="user">Staff</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -952,8 +952,8 @@ export default function UserManagement() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent style={{ zIndex: 9999 }}>
-                    <SelectItem value="user">Staff Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="user">Staff</SelectItem>
+                    <SelectItem value="admin">Super Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1088,8 +1088,8 @@ export default function UserManagement() {
               <Select value={setupFormData.role} onValueChange={(role) => setSetupFormData({ ...setupFormData, role })}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent style={{ zIndex: 9999 }}>
-                  <SelectItem value="user">Staff Member</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="user">Staff</SelectItem>
+                  <SelectItem value="admin">Super Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
