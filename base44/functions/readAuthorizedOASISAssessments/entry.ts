@@ -500,17 +500,12 @@ async function loadAuthority(
     'AgencyMembership.filter',
   );
   let selected: Record<string, any> | null = null;
-  if (isPlatformOwner) {
-    if (rawMemberships.length >= MEMBERSHIP_SCAN_LIMIT) {
-      throw new PublicError(409, 'Tenant membership is ambiguous');
-    }
-    if (rawMemberships.some((row) => row?.user_id !== userId)) {
-      throw new PublicError(409, 'Tenant membership query scope could not be verified');
-    }
-    if (rawMemberships.length !== 0) {
-      throw new PublicError(409, 'Platform owner tenant membership must not exist');
-    }
-  } else {
+  // An enrolled owner is validated exactly like any other caller and is
+  // scoped by their exact active membership. Only a membership-free
+  // protected owner proceeds with no selected membership, into the
+  // membership-free owner scope; a revoked or unrelated enrollment cannot
+  // fall back to that scope.
+  if (!isPlatformOwner || rawMemberships.length > 0) {
     const memberships = validateMembershipRows(rawMemberships, userId, normalizedEmail);
     selected = memberships.find(
       (row) => row.agency_id === agencyId && row.status === 'active',
