@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, ChevronLeft, ChevronRight, LogOut, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, Search } from "lucide-react";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 import { userRoleLabel } from "@/lib/roles";
 
@@ -70,12 +70,6 @@ export default function DesktopSidebar({
             </>
           )}
         </button>
-        {!collapsed && (
-          <div className="flex items-center gap-2 px-3 py-1.5 mb-2 bg-emerald-400/10 border border-emerald-400/25 rounded-lg">
-            <Shield className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0" />
-            <span className="text-xs font-semibold text-emerald-200">Secure Session</span>
-          </div>
-        )}
 
         {navCategories.map((category, catIndex) => (
           <div key={catIndex}>

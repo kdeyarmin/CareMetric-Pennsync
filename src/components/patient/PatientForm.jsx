@@ -36,7 +36,7 @@ const EMPTY_FORM = Object.freeze({
 
 const sameFormValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-export default function PatientForm({ patient, onSuccess, onCancel }) {
+export default function PatientForm({ patient, onSuccess, onCancel, rosterPatients = null }) {
   const { tenantContext } = useAuth();
   const patientCreateRequestId = useRef(null);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
@@ -62,16 +62,22 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
   const [duplicateMatches, setDuplicateMatches] = useState([]);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
 
-  // Existing roster, used to catch duplicates at entry time. Reuses the same
-  // ['patients'] cache the Patients page populates, so this is usually instant
-  // and adds no extra round-trip. Only needed when adding a brand-new patient.
-  const { data: existingPatients = [] } = useScopedPatients({
+  // The Patients page already holds an authorized roster. A second
+  // useScopedPatients observer refetches the shared current-user query
+  // (staleTime 0, refetchOnMount always), which drops the page's
+  // patientsReady flag. The page then treats that gap as a scope change and
+  // closes this form before the first field can paint. Use the roster the
+  // parent already authorized, and only read on our own when no roster was
+  // supplied (the hook stays mounted so the call order does not change).
+  const rosterSupplied = Array.isArray(rosterPatients);
+  const { data: loadedPatients = [] } = useScopedPatients({
     purpose: 'deduplication',
     sort: '-created_date',
     limit: 2000,
-    enabled: !patient,
+    enabled: !patient && !rosterSupplied,
     select: excludeArchived,
   });
+  const existingPatients = rosterSupplied ? rosterPatients : loadedPatients;
 
   const handleOCRDataExtracted = (extractedData) => {
     if (!extractedData || typeof extractedData !== 'object') return;

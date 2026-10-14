@@ -155,6 +155,29 @@ function canonicalEmail(value: unknown) {
   return normalized;
 }
 
+function isPlatformServiceActorEmail(value: unknown) {
+  if (typeof value !== 'string') return false;
+  const email = canonicalEmail(value);
+  if (!email || value !== email) return false;
+  const at = email.lastIndexOf('@');
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (!local || !domain) return false;
+  const serviceLocal = local === 'service' || local.startsWith('service+');
+  const serviceDomain = domain === 'no-reply.base44.com' || domain.endsWith('.base44.com');
+  return serviceLocal && serviceDomain;
+}
+
+// Base44 assigns built-in created_by and ignores the value this broker sends.
+// A hosted service-role create stamps the platform actor (a service mailbox,
+// or no email at all). The human creator is the custom stamp pair. A present
+// created_by may be that human or the platform actor, never a different person.
+function platformCreatorAgrees(row: { created_by?: unknown }, creatorEmail: string) {
+  if (row.created_by == null || row.created_by === '') return true;
+  if (row.created_by === creatorEmail) return true;
+  return isPlatformServiceActorEmail(row.created_by);
+}
+
 function exactIdentifier(value: unknown) {
   if (typeof value !== 'string') return null;
   if (!value || value.length > MAX_IDENTIFIER_LENGTH || value.trim() !== value) return null;
@@ -421,7 +444,7 @@ function patientMatchesAuthority(
     && row.created_by_user_id === authority.userId
     && row.created_by_user_email_normalized === authority.normalizedEmail
     && canonicalEmail(row.created_by_user_email_normalized) === authority.normalizedEmail
-    && canonicalEmail(row.created_by) === authority.normalizedEmail
+    && platformCreatorAgrees(row, authority.normalizedEmail)
     && row.client_request_id === authority.clientRequestId
     && row.patient_creation_key === authority.creationKey
     && row.status === 'active'

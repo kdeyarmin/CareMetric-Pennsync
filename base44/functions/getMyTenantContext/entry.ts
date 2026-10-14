@@ -638,6 +638,17 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return jsonResponse({ error: error.message }, error.status);
     }
+    const providerStatus = Number(error?.response?.status ?? error?.status);
+    if (providerStatus === 429 || providerStatus === 503) {
+      return jsonResponse(
+        {
+          error: 'Service temporarily busy; retry the same request.',
+          code: 'backend_temporarily_unavailable',
+        },
+        503,
+        { 'Retry-After': '2' },
+      );
+    }
     // Never retain provider error objects: they may embed identity or tenant data.
     console.error('getMyTenantContext failed');
     return jsonResponse({ error: 'Internal server error' }, 500);

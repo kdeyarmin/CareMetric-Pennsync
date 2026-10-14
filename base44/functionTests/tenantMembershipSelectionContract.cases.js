@@ -96,7 +96,9 @@ async function loadBroker({
           filter: async (...args) => {
             const index = calls.membershipFilters.length;
             calls.membershipFilters.push(args);
-            return membershipResults[Math.min(index, membershipResults.length - 1)];
+            const result = membershipResults[Math.min(index, membershipResults.length - 1)];
+            if (result instanceof Error) throw result;
+            return result;
           },
         },
         Agency: {
@@ -246,7 +248,9 @@ test('selector source is service-owned, finite, read-only, and ignores mutable U
     /user\.(?:account_type|agency_id|agency_name|agency_role|tenant_role|is_approved|is_manager|manager_email|staff_role|care_scope)\b/,
   );
   assert.match(source, /console\.error\('listMyTenantMemberships failed'\)/);
+  assert.match(source, /backend_temporarily_unavailable/);
   assert.doesNotMatch(source, /console\.error\([^)]*,\s*error\b/);
+  assert.match(wrapper, /TRANSIENT_MEMBERSHIP_STATUSES/);
   assert.match(wrapper, /tenantAuthorityClient\.listMyTenantMemberships\(\)/);
   assert.doesNotMatch(wrapper, /\.entities\.|auth\.updateMe/);
 });
@@ -606,6 +610,34 @@ test('cross-user, duplicate, and overflow membership results are rejected', asyn
     const result = await invoke(loaded.handler);
     assert.equal(result.response.status, 409);
     assert.deepEqual(loaded.calls.agencyFilters, []);
+  }
+});
+
+test('a provider rate limit is retryable and does not become a generic 500', async () => {
+  const originalError = console.error;
+  const logged = [];
+  console.error = (...args) => { logged.push(args); };
+  try {
+    for (const status of [429, 503]) {
+      const busy = Object.assign(new Error('rate limit'), { status });
+      const { handler, calls } = await loadBroker({ membershipResults: [busy] });
+      const { response, json } = await invoke(handler);
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('retry-after'), '2');
+      assert.equal(json.code, 'backend_temporarily_unavailable');
+      assert.equal(json.error, 'Service temporarily busy; retry the same request.');
+      assert.equal(Object.hasOwn(json, 'memberships'), false);
+      assert.equal(calls.agencyFilters.length, 0);
+    }
+    const plain = new Error('provider failed');
+    const failed = await loadBroker({ membershipResults: [plain] });
+    const failedResult = await invoke(failed.handler);
+    assert.equal(failedResult.response.status, 500);
+    assert.deepEqual(failedResult.json, { error: 'Internal server error' });
+    assert.equal(logged.length, 1);
+    assert.deepEqual(logged[0], ['listMyTenantMemberships failed']);
+  } finally {
+    console.error = originalError;
   }
 });
 

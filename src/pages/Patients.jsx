@@ -464,6 +464,7 @@ export default function Patients({ independentReadOnly = false }) {
         <PatientForm
           key={`${patientScopeKey}:${editingPatientId || 'new'}`}
           patient={editingPatient}
+          rosterPatients={patients}
           onSuccess={() => {
             invalidateAuthorizedPatientLists(queryClient);
             setShowForm(false);

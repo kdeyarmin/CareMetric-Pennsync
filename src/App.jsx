@@ -36,7 +36,7 @@ import AIContentResponsibilityAgreement from '@/components/compliance/AIContentR
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/utils/ErrorBoundary';
 import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
-import { getRoleView, canAccessLevel, isReferralIntakeRole } from '@/lib/roles';
+import { manifestRouteBlock } from '@/lib/nav.manifest';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { getAiContentAgreementStatus } from '@/functions/getAiContentAgreementStatus';
 import { verifyAiContentAgreementAcceptance } from '@/lib/verifyAiContentAgreementAcceptance';
@@ -339,9 +339,7 @@ const TenantReadyApp = () => {
   // Facility-admin access may come from AuthContext's validated, service-owned
   // AgencyMembership binding. The owner tier still requires the protected
   // Base44 role + configured email; mutable custom User fields never elevate.
-  const roleView = getRoleView(user);
-  const isSuperAdminUser = roleView === 'super_admin';
-  const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
+  // manifestRouteBlock is the same decision the sidebar and palette use.
 
   // Memoized <Route> elements — declared before any early returns so the hooks
   // are called unconditionally on every render (rules of hooks). Only the route
@@ -351,24 +349,23 @@ const TenantReadyApp = () => {
   // so link clicks do nothing. By keeping <Routes> fresh on every render while
   // reusing the same <Route> element references, React Router doesn't rebuild
   // its matcher (the original issue) but still re-renders on location change.
-  const routeElements = useMemo(() => ROUTES.map(({ name, Component, adminOnly, superAdminOnly, access, intakeRole }) => {
-    const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
-    const intakeAllowed = intakeRole && isReferralIntakeRole(user);
-    const blockedAdmin = adminOnly && !isAdmin && !intakeAllowed;
-    const blockedIntake = !adminOnly && intakeRole && !intakeAllowed;
-    const blockedAccess = !blockedSuperAdmin && !blockedAdmin && !blockedIntake && !canAccessLevel(user, access);
+  const routeElements = useMemo(() => ROUTES.map(({ name, Component, adminOnly, superAdminOnly, access, intakeRole, managerRole }) => {
+    const block = manifestRouteBlock(
+      { adminOnly, superAdminOnly, access, intakeRole, managerRole },
+      user,
+    );
     return (
       <Route
         key={name}
         path={`/${name}`}
         element={
           <ErrorBoundary key={name}>
-            {blockedSuperAdmin
+            {block === 'super_admin'
               ? <AdminOnlyFallback superAdmin />
-              : blockedAdmin
+              : block === 'admin'
                 ? <AdminOnlyFallback />
-                : blockedIntake || blockedAccess
-                  ? <RoleAccessFallback access={blockedIntake ? "referral" : access} />
+                : block
+                  ? <RoleAccessFallback access={block} />
                 : (
                   <Suspense fallback={<RoutePageLoader />}>
                     <Component />
@@ -378,7 +375,7 @@ const TenantReadyApp = () => {
         }
       />
     );
-  }), [isSuperAdminUser, isAdmin, user]);
+  }), [user]);
 
   const redirectElements = useMemo(() => REDIRECTS.map(({ from, to }) => (
     <Route key={from} path={from} element={<RedirectTo to={to} />} />

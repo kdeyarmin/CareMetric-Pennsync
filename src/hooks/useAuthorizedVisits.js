@@ -65,6 +65,12 @@ function isAuthorizedVisitListQuery(query) {
   return Array.isArray(key) && key[0] === 'visits' && key[1] === 'authorized-list';
 }
 
+function isExpectedVisitRoleDenial(error) {
+  return error?.status === 403
+    && typeof error?.message === 'string'
+    && error.message.includes('require manager authority');
+}
+
 function validateOptions({ agencyId, patientId, purpose, status, sort, limit, options }) {
   if (agencyId !== undefined && !exactIdentifier(agencyId)) {
     throw new Error('Authorized Visit agencyId is invalid');
@@ -178,9 +184,12 @@ export function useAuthorizedVisits({
         patientId === null
         && !['agency_admin', 'manager', 'platform_owner'].includes(tenantContext.tenant_role)
       ) {
-        throw new Error(
+        // Expected denial, not a failed load. status 403 keeps the app query
+        // cache from toasting "Couldn't load some data" on every nurse page
+        // that asks for agency-wide visit metrics.
+        throw Object.assign(new Error(
           'Agency-wide Visit metrics require manager authority; select an exact patient',
-        );
+        ), { status: 403 });
       }
       return collectAuthorizedVisits({
         agencyId: tenantContext.agency_id,
@@ -231,8 +240,12 @@ export function useAuthorizedVisits({
 
   useEffect(() => {
     if (!visitQuery.isError || visitQuery.isFetching) return;
+    // A clinician asking for agency-wide metrics is an expected denial with no
+    // rows to evict. Removing that query remounts the observer, which fetches
+    // and denies again, so the roster stays on "being reverified".
+    if (isExpectedVisitRoleDenial(visitQuery.error)) return;
     queryClient.removeQueries({ predicate: isAuthorizedVisitListQuery });
-  }, [queryClient, visitQuery.isError, visitQuery.isFetching]);
+  }, [queryClient, visitQuery.error, visitQuery.isError, visitQuery.isFetching]);
 
   return {
     ...visitQuery,

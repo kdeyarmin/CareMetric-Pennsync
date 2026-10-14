@@ -125,12 +125,60 @@ function validMembershipList(memberships, subject) {
   return true;
 }
 
+const TRANSIENT_MEMBERSHIP_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MEMBERSHIP_RETRY_DELAYS_MS = [250, 750];
+let membershipListInflight = null;
+
+function membershipStatus(error) {
+  const status = error?.response?.status ?? error?.status ?? null;
+  return Number.isInteger(status) ? status : null;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+// A full document load asks for memberships before any workspace can open.
+// Overlapping reloads make the hosted function answer 500 (a provider 429/503
+// is still mapped to that generic 500 until the function is redeployed). One
+// failure used to leave the gate on "No clinical workspace was opened".
+// Identical in-flight callers share one attempt, and a transient status is
+// retried before that gate can open. 401, 403, and 409 are not retried.
+async function invokeMembershipList() {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await tenantAuthorityClient.listMyTenantMemberships();
+    } catch (error) {
+      const wait = MEMBERSHIP_RETRY_DELAYS_MS[attempt];
+      if (wait === undefined || !TRANSIENT_MEMBERSHIP_STATUSES.has(membershipStatus(error))) {
+        throw error;
+      }
+      await delay(wait);
+    }
+  }
+}
+
+function shareMembershipList() {
+  if (membershipListInflight) return membershipListInflight;
+  const promise = invokeMembershipList();
+  membershipListInflight = promise;
+  promise.finally(() => {
+    if (membershipListInflight === promise) membershipListInflight = null;
+  }).catch(() => {
+    // The caller awaits `promise` itself. This only absorbs the derived
+    // finally-chain rejection so a refused list is not an unhandled rejection.
+  });
+  return promise;
+}
+
 /**
  * Return validated selector options without selecting or caching a tenant.
  * Call getMyTenantContext({ agencyId }) separately after an explicit choice.
  */
 export async function listMyTenantMemberships() {
-  const response = await tenantAuthorityClient.listMyTenantMemberships();
+  const response = await shareMembershipList();
   const result = response?.data ?? response;
   if (
     !exactKeys(result, ['subject', 'memberships'])

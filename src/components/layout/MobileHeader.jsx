@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
-import { Shield, Bell, Menu, X, ChevronLeft, Search } from "lucide-react";
+import { Bell, Menu, X, ChevronLeft, Search } from "lucide-react";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
 // Root routes show the logo; every other route shows a back button. These are
@@ -37,9 +37,6 @@ export default function MobileHeader({
             <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">by CareMetric</span>
           </span>
         </Link>
-        <div className="hidden sm:flex items-center gap-1 text-emerald-600 text-xs font-medium ml-2">
-          <Shield className="w-3 h-3" /> Secure
-        </div>
       </div>
       <div className="flex items-center gap-1">
         <Button variant="ghost" size="icon" className="text-slate-500 hover:text-navy-700 hover:bg-slate-100 h-10 w-10" onClick={() => window.dispatchEvent(new Event('open-command-palette'))} title="Search pages">

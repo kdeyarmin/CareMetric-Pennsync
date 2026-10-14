@@ -141,6 +141,15 @@ describe('PatientForm add-time duplicate guard', () => {
     expect(onSuccess).toHaveBeenCalled();
   });
 
+  it('does not start a second roster read when the parent already supplied one', async () => {
+    renderWithProviders(
+      <PatientForm rosterPatients={[EXISTING]} onSuccess={() => {}} onCancel={() => {}} />,
+    );
+    await waitFor(() => expect(scopedPatientsMock).toHaveBeenCalled());
+    expect(scopedPatientsMock.mock.calls.every((call) => call[0]?.enabled === false)).toBe(true);
+    expect(screen.getByLabelText(/First Name/i)).toBeInTheDocument();
+  });
+
   it('creates without warning when no existing patient matches', async () => {
     const user = userEvent.setup();
     const onSuccess = vi.fn();

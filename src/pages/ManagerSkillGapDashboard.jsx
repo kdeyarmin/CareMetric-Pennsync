@@ -4,7 +4,6 @@ import { Link } from "react-router";
 import { Sparkles, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { isAdminView, isTenantManager } from "@/lib/roles";
-import { isCallerAgencyScoped } from "@/lib/agencyScope";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { createPageUrl } from "@/utils";
@@ -38,25 +37,30 @@ export default function ManagerSkillGapDashboard() {
     initialData: [],
     enabled: canViewManagement && !!currentUser,
   });
-  const { data: assignments = [] } = useQuery({ queryKey: ["skill-gap-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
-  const { data: attempts = [] } = useQuery({ queryKey: ["skill-gap-attempts"], queryFn: () => base44.entities.TrainingAttempt.list('-submitted_at', 1000), initialData: [] });
-  const { data: courses = [] } = useQuery({ queryKey: ["skill-gap-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
+  const { data: assignments = [] } = useQuery({
+    queryKey: ["skill-gap-assignments"],
+    queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000),
+    initialData: [],
+    enabled: canViewManagement,
+  });
+  const { data: attempts = [] } = useQuery({
+    queryKey: ["skill-gap-attempts"],
+    queryFn: () => base44.entities.TrainingAttempt.list('-submitted_at', 1000),
+    initialData: [],
+    enabled: canViewManagement,
+  });
+  const { data: courses = [] } = useQuery({
+    queryKey: ["skill-gap-courses"],
+    queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500),
+    initialData: [],
+    enabled: canViewManagement,
+  });
 
-  const teamMembers = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.account_type === "super_admin") return users.filter((user) => user.email && user.role !== "admin");
-    if (currentUser.account_type === "agency_admin" && !currentUser.agency_name) return [];
-    const agency = String(currentUser.agency_name || "").trim();
-    const isAgencyScoped = isCallerAgencyScoped(currentUser);
-    return users.filter((user) => {
-      if (!user.email || user.role === "admin") return false;
-      if (isAgencyScoped) return user.agency_name === agency;
-      if (currentUser.department && user.department === currentUser.department) return true;
-      if (currentUser.location && user.location === currentUser.location) return true;
-      if (currentUser.business_line && user.business_line === currentUser.business_line) return true;
-      return false;
-    });
-  }, [currentUser, users]);
+  // `users` is already limited to the caller's trusted agency.
+  const teamMembers = useMemo(
+    () => users.filter((member) => member?.email && member.role !== "admin"),
+    [users],
+  );
 
   const analysis = useMemo(() => {
     const teamEmails = new Set(teamMembers.map((member) => member.email));
@@ -102,8 +106,6 @@ export default function ManagerSkillGapDashboard() {
     return { stats, areas, people, missedTopics, assignmentCount: teamAssignments.length };
   }, [teamMembers, assignments, attempts, courses]);
 
-  if (currentUser && !isManager(currentUser)) return <div className="max-w-3xl mx-auto p-6 text-slate-600">This dashboard is available to managers, supervisors, and admins only.</div>;
-
   if (currentUser && !canViewManagement) {
     return (
       <PageContainer>
@@ -124,13 +126,13 @@ export default function ManagerSkillGapDashboard() {
         title="Skill Gap Dashboard"
         description="Identify team-wide clinical and operational skill gaps based on competency test performance and failed attempts."
         favoritePage="ManagerSkillGapDashboard"
-        actions={
+        actions={isAdminView(currentUser) ? (
           <Link to={createPageUrl('AIComplianceInServices')}>
             <Button variant="outline">
               <Sparkles className="w-4 h-4 mr-2" /> Open AI Compliance In-Services
             </Button>
           </Link>
-        }
+        ) : null}
       />
       <ManagerSkillGapSummary stats={analysis.stats} />
       <ManagerSkillGapAreas areas={analysis.areas} />

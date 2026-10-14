@@ -271,6 +271,8 @@ describe("isPageAllowedForRole — URL-level route guard", () => {
     expect(isPageAllowedForRole("ReferralIntake", "nurse", manager)).toBe(true);
     expect(isPageAllowedForRole("ReferralFollowUp", "nurse", manager)).toBe(true);
     expect(isPageAllowedForRole("ReferralTriage", "nurse", manager)).toBe(true);
+    expect(isPageAllowedForRole("ManagerSkillGapDashboard", "nurse", manager)).toBe(true);
+    expect(isPageAllowedForRole("AdminTraining", "nurse", manager)).toBe(false);
     expect(isPageAllowedForRole("IncidentReview", "nurse", manager)).toBe(false);
     expect(isPageAllowedForRole("DocumentHub", "nurse", manager)).toBe(false);
     expect(isPageAllowedForRole("UserManagement", "nurse", manager)).toBe(false);
@@ -278,8 +280,10 @@ describe("isPageAllowedForRole — URL-level route guard", () => {
     bindTrustedTenantContext(clerk, agencyAdminContext(clerk, "office_staff"));
     expect(isReferralIntakeRole(clerk)).toBe(true);
     expect(isPageAllowedForRole("ReferralIntake", "nurse", clerk)).toBe(true);
+    expect(isPageAllowedForRole("ManagerSkillGapDashboard", "nurse", clerk)).toBe(false);
     expect(isPageAllowedForRole("ReferralTriage", "nurse", nurse)).toBe(false);
     expect(isPageAllowedForRole("ReferralIntake", "nurse", nurse)).toBe(false);
+    expect(isPageAllowedForRole("ManagerSkillGapDashboard", "nurse", nurse)).toBe(false);
   });
   it("still blocks non-admins from admin pages", () => {
     expect(isPageAllowedForRole("UserManagement", "nurse", nurse)).toBe(false);

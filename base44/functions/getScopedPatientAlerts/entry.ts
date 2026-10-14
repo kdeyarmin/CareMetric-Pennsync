@@ -102,6 +102,7 @@ const requireRows = (value, label) => {
 function patientBelongsToCaller(patient, callerEmail) {
   if (!patient || !callerEmail) return false;
   if (normalizeProtectedEmail(patient.created_by) === callerEmail) return true;
+  if (normalizeProtectedEmail(patient.created_by_user_email_normalized) === callerEmail) return true;
   return Array.isArray(patient.assigned_nurses)
     && patient.assigned_nurses.some(
       (email) => normalizeProtectedEmail(email) === callerEmail,
@@ -172,7 +173,7 @@ function alertMatches(alert, { allowedIds, patientId, status, severitySet }) {
 }
 
 async function fetchCallerPatientIds(entities, callerEmail) {
-  const [assignedPatients, createdPatients] = await Promise.all([
+  const [assignedPatients, createdPatients, stampedPatients] = await Promise.all([
     entities.Patient.filter(
       { assigned_nurses: callerEmail },
       '-created_date',
@@ -183,12 +184,18 @@ async function fetchCallerPatientIds(entities, callerEmail) {
       '-created_date',
       PATIENT_SCAN_LIMIT,
     ),
+    entities.Patient.filter(
+      { created_by_user_email_normalized: callerEmail },
+      '-created_date',
+      PATIENT_SCAN_LIMIT,
+    ),
   ]);
 
   return new Set(
     [
       ...requireRows(assignedPatients, 'Patient.filter assigned'),
       ...requireRows(createdPatients, 'Patient.filter created'),
+      ...requireRows(stampedPatients, 'Patient.filter stamped'),
     ]
       .filter((patient) => patient?.id && patientBelongsToCaller(patient, callerEmail))
       .map((patient) => patient.id),

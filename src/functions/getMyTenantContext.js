@@ -121,6 +121,50 @@ function validTenantContext(context, requestedAgencyId, expectedMembership) {
     && validAgency(context.agency, context.agency_id);
 }
 
+const TRANSIENT_TENANT_STATUSES = new Set([429, 500, 502, 503, 504]);
+const tenantContextInflight = new Map();
+
+function tenantContextStatus(error) {
+  const status = error?.response?.status ?? error?.status ?? null;
+  return Number.isInteger(status) ? status : null;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+// Concurrent mounts (bootstrap plus every data hook) each called
+// getMyTenantContext. A provider 429/503, and the generic 500 the hosted
+// function still returns for that case until it is redeployed, used to open
+// the workspace gate. Identical in-flight requests share one call, and one
+// transient failure is retried before that gate can open.
+async function invokeTenantContextWithRetry(invokeTenantContext, payload) {
+  try {
+    return await invokeTenantContext(payload);
+  } catch (error) {
+    if (!TRANSIENT_TENANT_STATUSES.has(tenantContextStatus(error))) throw error;
+    await delay(250);
+    return invokeTenantContext(payload);
+  }
+}
+
+function shareTenantContextRequest(payload, invokeTenantContext) {
+  const key = JSON.stringify(payload);
+  const existing = tenantContextInflight.get(key);
+  if (existing) return existing;
+  const promise = invokeTenantContextWithRetry(invokeTenantContext, payload);
+  tenantContextInflight.set(key, promise);
+  promise.finally(() => {
+    if (tenantContextInflight.get(key) === promise) tenantContextInflight.delete(key);
+  }).catch(() => {
+    // The caller awaits `promise` itself. This only absorbs the derived
+    // finally-chain rejection so a refused context is not an unhandled rejection.
+  });
+  return promise;
+}
+
 /**
  * Resolve an exact, server-owned tenant identity. The membership version is
  * part of the returned authority and must be included in any PHI query key.
@@ -170,7 +214,7 @@ async function resolveMyTenantContext(options, invokeTenantContext) {
     payload.expected_membership_id = expectedMembership.id;
     payload.expected_membership_version = expectedMembership.version;
   }
-  const response = await invokeTenantContext(payload);
+  const response = await shareTenantContextRequest(payload, invokeTenantContext);
   const result = response?.data ?? response;
   if (
     !exactKeys(result, ['tenant_context'])

@@ -95,9 +95,11 @@ async function loadHandler({
           filter: async (...args) => {
             const index = calls.membershipFilters.length;
             calls.membershipFilters.push(args);
-            return effectiveMembershipResults[
+            const result = effectiveMembershipResults[
               Math.min(index, effectiveMembershipResults.length - 1)
             ];
+            if (result instanceof Error) throw result;
+            return result;
           },
         },
         Agency: {
@@ -409,6 +411,22 @@ test('a capped all-status membership scan fails closed', async () => {
   const { response } = await invoke(handler);
   assert.equal(response.status, 409);
   assert.deepEqual(calls.agencyFilters, []);
+});
+
+test('a provider rate limit is retryable and does not become a generic 500', async () => {
+  const busy = Object.assign(new Error('rate limit'), { status: 429 });
+  const { handler } = await loadHandler({ membershipResults: [busy] });
+  const response = await handler(new Request('http://local/getMyTenantContext', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  }));
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('retry-after'), '2');
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const json = await response.json();
+  assert.equal(json.code, 'backend_temporarily_unavailable');
+  assert.equal(json.error, 'Service temporarily busy; retry the same request.');
 });
 
 test('non-array membership and Agency provider results fail closed', async () => {
