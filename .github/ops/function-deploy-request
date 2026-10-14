@@ -1,9 +1,7 @@
-autoAssignWorkNumbers
-checkSmartNoteGrounding
-extractReferralDataForSmartNote
-handleTelnyxStatusWebhook
-managePhoneNumberPool
-sendFax
-startMaskedCall
-testTelnyxConnection
-triageReferralWithAI
+createAuthorizedPatient
+listAuthorizedPatients
+getAuthorizedPatient
+updateAuthorizedPatient
+getScopedPatientAlerts
+getMyTenantContext
+listMyTenantMemberships
