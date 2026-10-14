@@ -838,7 +838,7 @@ async function loadAuthority(
     || user.disabled === true
     || user.is_service === true
     || user.is_verified === false
-    || (!isPlatformOwner && user.role !== 'user')
+    || (!isPlatformOwner && user.role !== 'user' && user.role !== 'admin')
   ) {
     throw new PublicError(403, 'Forbidden', 'forbidden');
   }

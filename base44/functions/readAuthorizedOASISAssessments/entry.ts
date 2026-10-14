@@ -489,7 +489,7 @@ async function loadAuthority(
   const entities = base44.asServiceRole.entities;
   const isPlatformOwner = isProtectedPlatformOwner(user);
   if (!isPlatformOwner) {
-    if (user.role !== 'user') throw new PublicError(403, 'Forbidden');
+    if (user.role !== 'user' && user.role !== 'admin') throw new PublicError(403, 'Forbidden');
   }
   const rawMemberships = requireRows(
     await entities.AgencyMembership.filter(

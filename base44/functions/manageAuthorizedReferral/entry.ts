@@ -439,7 +439,7 @@ async function loadExactAssignee(
   const user = userRows[0];
   if (
     canonicalEmail(user.email) !== normalizedEmail
-    || user.role !== 'user'
+    || (user.role !== 'user' && user.role !== 'admin')
     || user.is_active === false
     || user.disabled === true
     || user.is_service === true

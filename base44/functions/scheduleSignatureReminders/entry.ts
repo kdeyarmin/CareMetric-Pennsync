@@ -222,7 +222,7 @@ async function loadAuthority(base44: Record<string, any>, agencyId: string) {
   const email = canonicalEmail(user.email);
   if (!userId || !email) throw new PublicError(403, 'Forbidden');
   const entities = base44.asServiceRole.entities;
-  if (user.role !== 'user' && !isPlatformOwner(user)) throw new PublicError(403, 'Forbidden');
+  if (user.role !== 'user' && user.role !== 'admin' && !isPlatformOwner(user)) throw new PublicError(403, 'Forbidden');
   // Platform ownership is not tenant membership. An owner may schedule for an
   // agency only when the same immutable User has an exact active membership;
   // never combine the owner's User id with the package creator's membership.

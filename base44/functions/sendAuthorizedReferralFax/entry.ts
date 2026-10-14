@@ -972,7 +972,7 @@ Deno.serve(async (req) => {
     if (
       !userId
       || !userEmail
-      || user?.role !== 'user'
+      || (user?.role !== 'user' && user?.role !== 'admin')
       || user?.is_active === false
       || user?.disabled === true
       || user?.is_service === true

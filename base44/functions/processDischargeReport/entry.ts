@@ -232,7 +232,7 @@ async function resolveDischargeAgency(base44, user, requestedAgencyId) {
   // account_type and agency_id are self-editable; only a role 'user' profile
   // has them rebuilt from the membership.
   const agencyId = String(user.agency_id || '');
-  if (user.role !== 'user' || user.account_type !== 'agency_admin' || !boundedId(agencyId)) {
+  if ((user.role !== 'admin' && (user.role !== 'user' || user.account_type !== 'agency_admin')) || !boundedId(agencyId)) {
     return { error: Response.json({ error: 'Forbidden: agency administrator required' }, { status: 403 }) };
   }
   if (requestedAgencyId != null && requestedAgencyId !== agencyId) {

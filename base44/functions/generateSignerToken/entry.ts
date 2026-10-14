@@ -276,7 +276,7 @@ async function loadAuthority(base44: Record<string, any>, agencyId: string, expe
   const platformOwner = isProtectedPlatformOwner(user);
   let membership = null;
   if (!platformOwner) {
-    if (user.role !== 'user') throw new PublicError(403, 'Forbidden');
+    if (user.role !== 'user' && user.role !== 'admin') throw new PublicError(403, 'Forbidden');
     const rows = requireRows(await entities.AgencyMembership.filter(
       { agency_id: agencyId, user_id: userId }, '-updated_date', EXACT_ROW_LIMIT,
     ), 'AgencyMembership.filter');

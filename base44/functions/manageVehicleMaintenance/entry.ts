@@ -204,7 +204,7 @@ async function assignee(auth: any, userId: string) {
   const member = await exact(auth.entities.AgencyMembership, { agency_id: auth.agencyId, user_id: id(userId) }, 'Choose an active employee in this agency.');
   if (!validAssigneeMembership(member, auth.agencyId, userId)) fail(403, 'Employee assignment is unavailable.');
   const user = await exact(auth.entities.User, { id: userId }, 'Employee unavailable.');
-  if (!enabled(user) || user.role !== 'user' || member.user_email_normalized !== email(user.email)) fail(403, 'Employee assignment is unavailable.');
+  if (!enabled(user) || (user.role !== 'user' && user.role !== 'admin') || member.user_email_normalized !== email(user.email)) fail(403, 'Employee assignment is unavailable.');
   return { assigned_user_id: userId, assigned_user_name: text(user.full_name || user.email, 'Employee name', 320), assigned_user_email: email(user.email) };
 }
 function vehicleData(raw: unknown) {
@@ -452,7 +452,7 @@ export async function handleVehicleMaintenance(req: Request, client: any, ownerE
         || new Set(users.map(user => user.id)).size !== users.length) fail(409, 'Employee roster identity scope is invalid.');
       const staff = page.flatMap(member => {
         const user = users.find(user => user.id === member.user_id);
-        if (!user || !enabled(user) || user.role !== 'user') return [];
+        if (!user || !enabled(user) || (user.role !== 'user' && user.role !== 'admin')) return [];
         if (member.user_email_normalized !== email(user.email)) fail(409, 'Employee roster identity changed.');
         return [{ id: user.id, name: text(user.full_name || user.email, 'Employee name', 320), email: email(user.email) }];
       });

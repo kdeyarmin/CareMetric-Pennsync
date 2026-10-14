@@ -816,7 +816,7 @@ async function loadInteractiveAuthority(base44: Record<string, any>, agencyId: s
   if (!user) throw new PublicError(401, 'Unauthorized', 'unauthorized');
   const ownerEmail = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
   const protectedOwner = user.role === 'admin' && !!ownerEmail && email === ownerEmail;
-  if (!userId || !email || (user.role !== 'user' && !protectedOwner) || user.is_active === false
+  if (!userId || !email || (user.role !== 'user' && user.role !== 'admin' && !protectedOwner) || user.is_active === false
     || user.disabled === true || user.is_service === true || user.is_verified === false) {
     throw new PublicError(403, 'Forbidden', 'forbidden');
   }
