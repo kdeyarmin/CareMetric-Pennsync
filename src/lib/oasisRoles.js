@@ -14,7 +14,6 @@ export function isOasisLeadView(user) {
   if (isAdminView(user)) return true;
   const context = getTrustedTenantContext(user);
   return context?.membership_status === 'active'
-    && context.is_platform_owner === false
     && context.tenant_role === 'manager';
 }
 

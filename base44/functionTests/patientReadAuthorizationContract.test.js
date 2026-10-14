@@ -1572,31 +1572,70 @@ test('only the configured built-in admin receives membership-free platform-owner
   }
 });
 
-test('platform owner Patient reads reject preexisting or duplicate owner memberships', async () => {
+test('platform owner Patient reads use an exact owner membership and reject duplicate owner memberships', async () => {
   const owner = { ...USER, role: 'admin', email: 'owner@platform.test' };
-  const ownerMembership = membership({ user_email_normalized: 'owner@platform.test' });
+  const ownerMembership = membership({
+    user_email_normalized: 'owner@platform.test',
+    tenant_role: 'agency_admin',
+  });
   for (const kind of ['get', 'list']) {
-    for (const memberships of [
-      [ownerMembership],
-      [ownerMembership, { ...ownerMembership, id: 'membership-owner-duplicate' }],
-    ]) {
-      const fixture = await loadBroker(kind, {
-        caller: owner,
-        memberships,
-        superAdminEmail: 'owner@platform.test',
-      });
-      const result = await invoke(
-        fixture.handler,
-        kind,
-        kind === 'get' ? getBody() : pageBody(),
-      );
+    const enrolled = await loadBroker(kind, {
+      caller: owner,
+      memberships: [ownerMembership],
+      superAdminEmail: 'owner@platform.test',
+    });
+    const authorized = await invoke(
+      enrolled.handler,
+      kind,
+      kind === 'get' ? getBody() : pageBody(),
+    );
+    assert.equal(authorized.response.status, 200);
+    assert.deepEqual(authorized.json.scope, {
+      agency_id: 'agency-a',
+      membership_id: 'membership-a',
+      membership_version: 2,
+      tenant_role: 'agency_admin',
+    });
+    assert.ok(enrolled.calls.patients.length > 0);
 
-      assert.equal(result.response.status, 409);
-      assert.equal(result.json.error, 'Platform owner tenant membership must not exist');
-      assert.equal(fixture.calls.memberships.length, 1);
-      assert.deepEqual(fixture.calls.patients, []);
-    }
+    const duplicate = await loadBroker(kind, {
+      caller: owner,
+      memberships: [
+        ownerMembership,
+        { ...ownerMembership, id: 'membership-owner-duplicate' },
+      ],
+      superAdminEmail: 'owner@platform.test',
+    });
+    const rejected = await invoke(
+      duplicate.handler,
+      kind,
+      kind === 'get' ? getBody() : pageBody(),
+    );
+    assert.equal(rejected.response.status, 409);
+    assert.equal(rejected.json.error, 'Tenant membership is ambiguous');
+    assert.equal(duplicate.calls.memberships.length, 1);
+    assert.deepEqual(duplicate.calls.patients, []);
   }
+});
+
+test('an owner enrolled only in another agency gets no membership scope or owner fallback for this agency', async () => {
+  const owner = { ...USER, role: 'admin', email: 'owner@platform.test' };
+  const foreignMembership = membership({
+    id: 'membership-b',
+    membership_key: 'agency-b:user-1',
+    agency_id: 'agency-b',
+    user_email_normalized: 'owner@platform.test',
+  });
+  const fixture = await loadBroker('list', {
+    caller: owner,
+    memberships: [foreignMembership],
+    superAdminEmail: 'owner@platform.test',
+  });
+  const result = await invoke(fixture.handler, 'list', pageBody());
+
+  assert.equal(result.response.status, 403);
+  assert.equal(result.json.error, 'No active membership for agency');
+  assert.deepEqual(fixture.calls.patients, []);
 });
 
 test('id batches are capped, tenant-pinned, ordered, and omit missing or foreign ids identically', async () => {

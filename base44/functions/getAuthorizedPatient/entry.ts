@@ -491,24 +491,19 @@ async function loadAuthority(
     ),
     'AgencyMembership.filter',
   );
-  if (isPlatformOwner) {
-    if (rawMemberships.length >= MEMBERSHIP_SCAN_LIMIT) {
-      throw new PublicError(409, 'Tenant membership is ambiguous');
+  // An enrolled owner is validated exactly like any other caller and is
+  // scoped by their exact active membership. Only a membership-free
+  // protected owner proceeds with no selected membership, into the
+  // membership-free owner scope; a revoked or unrelated enrollment cannot
+  // fall back to that scope.
+  let selected: Record<string, any> | null = null;
+  if (!isPlatformOwner || rawMemberships.length > 0) {
+    const memberships = validateMembershipRows(rawMemberships, userId, normalizedEmail);
+    const active = memberships.filter((row) => row.status === 'active');
+    selected = active.find((row) => row.agency_id === agencyId) ?? null;
+    if (!selected) {
+      throw new PublicError(403, 'No active membership for agency');
     }
-    if (rawMemberships.some((row) => row?.user_id !== userId)) {
-      throw new PublicError(409, 'Tenant membership query scope could not be verified');
-    }
-    if (rawMemberships.length !== 0) {
-      throw new PublicError(409, 'Platform owner tenant membership must not exist');
-    }
-  }
-  const memberships = isPlatformOwner
-    ? []
-    : validateMembershipRows(rawMemberships, userId, normalizedEmail);
-  const active = memberships.filter((row) => row.status === 'active');
-  const selected = active.find((row) => row.agency_id === agencyId);
-  if (!selected && !isPlatformOwner) {
-    throw new PublicError(403, 'No active membership for agency');
   }
   const agency = await loadExactEnabledAgency(entities, agencyId);
   const snapshot = {

@@ -1277,29 +1277,46 @@ test('only the exact configured built-in platform owner bypasses membership', as
   assert.deepEqual(impostor.calls.memberships, []);
 });
 
-test('platform owner Visit reads reject preexisting or duplicate owner memberships', async () => {
+test('platform owner Visit reads use an exact owner membership and reject duplicate owner memberships', async () => {
   const owner = { ...USER, role: 'admin', email: 'Owner@Platform.test' };
-  const ownerMembership = membership({ user_email_normalized: 'owner@platform.test' });
+  const ownerMembership = membership({
+    user_email_normalized: 'owner@platform.test',
+    tenant_role: 'agency_admin',
+  });
   for (const kind of ['get', 'list']) {
-    for (const memberships of [
-      [ownerMembership],
-      [ownerMembership, { ...ownerMembership, id: 'membership-owner-duplicate' }],
-    ]) {
-      const fixture = await loadBroker(kind, {
-        caller: owner,
-        memberships,
-        superAdminEmail: 'owner@platform.test',
-      });
-      const result = await invoke(
-        fixture.handler,
-        kind === 'get' ? 'getAuthorizedVisit' : 'listAuthorizedVisits',
-        kind === 'get' ? getBody() : listBody(),
-      );
-
-      assert.equal(result.response.status, 409);
-      assert.equal(result.json.error, 'Platform owner tenant membership must not exist');
-      assert.equal(fixture.calls.memberships.length, 1);
-      assert.deepEqual(fixture.calls.visits, []);
+    const enrolled = await loadBroker(kind, {
+      caller: owner,
+      memberships: [ownerMembership],
+      superAdminEmail: 'owner@platform.test',
+    });
+    const authorized = await invoke(
+      enrolled.handler,
+      kind === 'get' ? 'getAuthorizedVisit' : 'listAuthorizedVisits',
+      kind === 'get' ? getBody() : listBody(),
+    );
+    assert.equal(authorized.response.status, 200);
+    assert.equal(authorized.json.scope.tenant_role, 'agency_admin');
+    if (kind === 'list') {
+      assert.equal(authorized.json.scope.access_basis, 'agency_wide');
     }
+    assert.ok(enrolled.calls.visits.length > 0);
+
+    const duplicate = await loadBroker(kind, {
+      caller: owner,
+      memberships: [
+        ownerMembership,
+        { ...ownerMembership, id: 'membership-owner-duplicate' },
+      ],
+      superAdminEmail: 'owner@platform.test',
+    });
+    const rejected = await invoke(
+      duplicate.handler,
+      kind === 'get' ? 'getAuthorizedVisit' : 'listAuthorizedVisits',
+      kind === 'get' ? getBody() : listBody(),
+    );
+    assert.equal(rejected.response.status, 409);
+    assert.equal(rejected.json.error, 'Tenant membership is ambiguous');
+    assert.equal(duplicate.calls.memberships.length, 1);
+    assert.deepEqual(duplicate.calls.visits, []);
   }
 });

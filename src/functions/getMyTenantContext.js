@@ -103,6 +103,10 @@ function validTenantContext(context, requestedAgencyId, expectedMembership) {
       && agencyIsValid;
   }
 
+  // A membership-bound context may carry is_platform_owner: true when the
+  // caller is the protected platform owner bound through their own exact
+  // membership; the boolean type was checked above, and the exact
+  // owner/member match is enforced by the caller's authority matcher.
   return exactIdentifier(context.membership_id)
     && exactIdentifier(context.agency_id)
     && context.membership_key === `${context.agency_id}:${context.user_id}`
@@ -110,7 +114,6 @@ function validTenantContext(context, requestedAgencyId, expectedMembership) {
     && context.membership_version >= 1
     && TENANT_ROLES.has(context.tenant_role)
     && context.membership_status === 'active'
-    && context.is_platform_owner === false
     && (
       expectedMembership === null
       || (

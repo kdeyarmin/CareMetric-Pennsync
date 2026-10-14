@@ -102,12 +102,14 @@ describe('getMyTenantContext wrapper', () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects membership-backed context that also claims platform-owner authority', async () => {
+  it('accepts a membership-backed context for the platform owner bound through that membership', async () => {
     invoke.mockResolvedValue({
       data: { tenant_context: memberContext({ is_platform_owner: true }) },
     });
 
-    await expect(getMyTenantContext({ agencyId: 'agency-a' })).rejects.toThrow(/integrity/);
+    await expect(getMyTenantContext({ agencyId: 'agency-a' })).resolves.toMatchObject({
+      tenant_context: { membership_id: 'membership-a', is_platform_owner: true },
+    });
   });
 
   it('accepts only a fully null membership identity for an unscoped owner', async () => {

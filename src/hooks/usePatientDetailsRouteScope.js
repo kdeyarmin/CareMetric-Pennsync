@@ -55,7 +55,6 @@ function exactSingletonTenantScope(context, currentUserId) {
     || context.membership_version < 1
     || !TENANT_ROLES.has(context.tenant_role)
     || context.membership_status !== 'active'
-    || context.is_platform_owner !== false
     || !context.agency
     || typeof context.agency !== 'object'
     || Array.isArray(context.agency)

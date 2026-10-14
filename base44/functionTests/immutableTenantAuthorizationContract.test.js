@@ -553,7 +553,7 @@ test('membership-free owner agency selection is still exact and status validated
   ]);
 });
 
-test('a protected owner fails closed when any tenant membership row exists', async () => {
+test('a protected owner with membership rows keeps the owner context unless binding, and duplicate rows fail closed', async () => {
   const ownerMembership = membership({
     id: 'membership-owner',
     membership_key: 'agency-a:owner',
@@ -561,21 +561,72 @@ test('a protected owner fails closed when any tenant membership row exists', asy
     user_email_normalized: 'owner@example.com',
   });
 
-  for (const membershipRows of [
-    [ownerMembership],
-    [ownerMembership, { ...ownerMembership, id: 'membership-owner-duplicate' }],
-  ]) {
-    const { handler, calls } = await loadHandler({
-      user: { id: 'owner', email: 'owner@example.com', role: 'admin' },
-      membershipRows,
-      superAdminEmail: 'owner@example.com',
-    });
-    const { response, json } = await invoke(handler, { agency_id: 'agency-a' });
+  const single = await loadHandler({
+    user: { id: 'owner', email: 'owner@example.com', role: 'admin' },
+    membershipRows: [ownerMembership],
+    superAdminEmail: 'owner@example.com',
+  });
+  const singleResult = await invoke(single.handler, { agency_id: 'agency-a' });
+  assert.equal(singleResult.response.status, 200);
+  assert.equal(singleResult.json.tenant_context.is_platform_owner, true);
+  assert.equal(singleResult.json.tenant_context.tenant_role, 'platform_owner');
+  assert.equal(singleResult.json.tenant_context.membership_id, null);
+  assert.equal(singleResult.json.tenant_context.agency_id, 'agency-a');
+  assert.deepEqual(single.calls.agencyFilters, [
+    [{ id: 'agency-a' }, undefined, 2],
+    [{ id: 'agency-a' }, undefined, 2],
+  ]);
 
-    assert.equal(response.status, 409);
-    assert.match(json.error, /Platform owner tenant membership must not exist|ambiguous/);
-    assert.deepEqual(calls.agencyFilters, []);
-  }
+  const duplicate = await loadHandler({
+    user: { id: 'owner', email: 'owner@example.com', role: 'admin' },
+    membershipRows: [
+      ownerMembership,
+      { ...ownerMembership, id: 'membership-owner-duplicate' },
+    ],
+    superAdminEmail: 'owner@example.com',
+  });
+  const duplicateResult = await invoke(duplicate.handler, { agency_id: 'agency-a' });
+  assert.equal(duplicateResult.response.status, 409);
+  assert.match(duplicateResult.json.error, /ambiguous/);
+  assert.deepEqual(duplicate.calls.agencyFilters, []);
+});
+
+test('a protected owner binds an exact active membership and keeps the owner flag', async () => {
+  const ownerMembership = membership({
+    id: 'membership-owner',
+    membership_key: 'agency-a:owner',
+    user_id: 'owner',
+    user_email_normalized: 'owner@example.com',
+    tenant_role: 'agency_admin',
+  });
+  const { handler, calls } = await loadHandler({
+    user: { id: 'owner', email: 'owner@example.com', role: 'admin' },
+    membershipRows: [ownerMembership],
+    superAdminEmail: 'owner@example.com',
+  });
+  const { response, json } = await invoke(handler, {
+    agency_id: 'agency-a',
+    expected_membership_id: 'membership-owner',
+    expected_membership_version: 1,
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.agencyFilters, [
+    [{ id: 'agency-a' }, undefined, 2],
+    [{ id: 'agency-a' }, undefined, 2],
+  ]);
+  assert.deepEqual(json.tenant_context, {
+    user_id: 'owner',
+    user_email: 'owner@example.com',
+    membership_id: 'membership-owner',
+    membership_key: 'agency-a:owner',
+    membership_version: 1,
+    agency_id: 'agency-a',
+    tenant_role: 'agency_admin',
+    membership_status: 'active',
+    is_platform_owner: true,
+    agency: { id: 'agency-a', name: 'Agency A', status: 'active' },
+  });
 });
 
 test('operator-shaped and malformed agency selectors are rejected before service reads', async () => {

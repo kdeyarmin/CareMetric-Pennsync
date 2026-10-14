@@ -29,7 +29,7 @@
     "src/functions/generateUserManual.js:3 generateUserManual",
     "src/functions/getAiContentAgreementStatus.js:6 getAiContentAgreementStatus",
     "src/functions/getAuthorizedPatientNoteHistory.js:23 getAuthorizedPatientNoteHistory",
-    "src/functions/getMyTenantContext.js:243 getMyTenantContext",
+    "src/functions/getMyTenantContext.js:246 getMyTenantContext",
     "src/functions/importProvidersCsv.js:3 importProvidersCsv",
     "src/functions/listAuthorizedDocuments.js:228 listAuthorizedDocuments",
     "src/functions/listAuthorizedPatients.js:287 listAuthorizedPatients",

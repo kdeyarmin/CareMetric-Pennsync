@@ -77,9 +77,8 @@ const validTenantContextForUser = (user, tenantContext) => {
     return false;
   }
 
-  if (tenantContext.is_platform_owner === true) {
-    return tenantContext.membership_id === null
-      && tenantContext.membership_key === null
+  if (tenantContext.is_platform_owner === true && tenantContext.membership_id === null) {
+    return tenantContext.membership_key === null
       && tenantContext.membership_version === null
       && tenantContext.tenant_role === "platform_owner"
       && tenantContext.membership_status === null
@@ -87,7 +86,10 @@ const validTenantContextForUser = (user, tenantContext) => {
       && tenantContext.agency === null;
   }
 
-  return tenantContext.is_platform_owner === false
+  // A membership-bound context is validated identically whether or not the
+  // caller is also the platform owner: membership is the only tenant scope.
+  return (tenantContext.is_platform_owner === false
+    || tenantContext.is_platform_owner === true)
     && exactIdentifier(tenantContext.membership_id)
     && exactIdentifier(tenantContext.agency_id)
     && tenantContext.membership_key === `${tenantContext.agency_id}:${user.id}`
@@ -182,7 +184,6 @@ export function getRoleView(user) {
   }
   if (
     tenantContext?.membership_status === "active"
-    && tenantContext.is_platform_owner === false
     && (tenantContext.tenant_role === "agency_admin" || user.role === "admin")
   ) {
     return "facility_admin";
@@ -236,7 +237,6 @@ export function isNurseView(user) {
 export function isTenantManager(user) {
   const context = getTrustedTenantContext(user);
   return context?.membership_status === "active"
-    && context.is_platform_owner === false
     && context.tenant_role === "manager";
 }
 
@@ -245,7 +245,6 @@ export function isReferralIntakeRole(user) {
   if (isAdminView(user)) return true;
   const context = getTrustedTenantContext(user);
   return context?.membership_status === "active"
-    && context.is_platform_owner === false
     && (context.tenant_role === "manager" || context.tenant_role === "office_staff");
 }
 

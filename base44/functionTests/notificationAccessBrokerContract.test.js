@@ -179,7 +179,7 @@ test('browser Notification access is broker-only and the center is tenant-bound'
   assert.deepEqual(violations, []);
   const layout = await readFile(new URL('../../src/components/Layout.jsx', import.meta.url), 'utf8');
   assert.match(layout, /<NotificationCenter[\s\S]*agencyId=\{tenantContext\.agency_id\}/);
-  assert.match(layout, /const notificationsAvailable = Boolean\([\s\S]*tenantContext\?\.membership_id[\s\S]*tenantContext\?\.is_platform_owner === false/);
+  assert.match(layout, /const notificationsAvailable = Boolean\([\s\S]*tenantContext\?\.membership_id[\s\S]*tenantContext\?\.membership_version/);
   assert.match(layout, /disabled=\{!notificationsAvailable\}/);
   assert.match(layout, /notificationCenterOpen && notificationsAvailable/);
 });
