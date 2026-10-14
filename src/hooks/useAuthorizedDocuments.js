@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { getMyTenantContext } from '@/functions/getMyTenantContext';
+import { getTrustedTenantContext } from '@/lib/roles';
 import { listAuthorizedDocuments } from '@/functions/listAuthorizedDocuments';
 import {
   tenantContextMatchesRequest,
@@ -162,6 +162,13 @@ function isAuthorizedDocumentsQuery(query) {
  * revalidated. A singleton tenant may be resolved server-side; callers with
  * multiple memberships and platform owners must provide an explicit agency.
  * There is no direct Document entity fallback.
+ *
+ * Tenant scope derives from the context AuthContext bound once at login
+ * (src/lib/roles.js), validated locally by the same exact-match checks a
+ * freshly fetched context passed through. This hook deliberately does not
+ * re-invoke getMyTenantContext on mount/focus: that heavyweight call is the
+ * one the platform throttles into HTTP 503s, and the broker revalidates
+ * authority server-side on every list regardless.
  */
 export function useAuthorizedDocuments({
   agencyId,
@@ -200,29 +207,20 @@ export function useAuthorizedDocuments({
     ? 'Requested agency does not match the trusted tenant selection'
     : null;
 
-  const tenantContextQuery = useQuery({
-    queryKey: [
-      'tenant-context',
-      'authorized-documents',
-      currentUserId,
-      requestedAgencyId,
-      tenantRequest?.authorityKey || null,
-    ],
-    queryFn: () => getMyTenantContext(tenantRequest.options),
-    enabled: enabled
-      && !validationError
-      && currentUserSettled
-      && !!currentUserId
-      && !!tenantRequest,
-    ...AUTH_REFRESH_OPTIONS,
-  });
-  const tenantContextSettled = currentUserSettled
-    && settledSuccessfullyAfterMount(tenantContextQuery);
+  // Mirror how the rest of the app obtains tenant scope: read the context
+  // AuthContext bound and validated once at login, synchronously, instead of
+  // re-invoking getMyTenantContext on every mount/focus. The bound context
+  // passes through the same local validation the fresh response did, and no
+  // scope exists at all when nothing is bound for this principal.
+  const boundTenantContext = useMemo(
+    () => (tenantRequest ? getTrustedTenantContext(currentUserQuery.data) : null),
+    [currentUserQuery.data, tenantRequest],
+  );
+  const tenantContextSettled = currentUserSettled && !!tenantRequest;
   const tenantScope = useMemo(() => {
-    const context = tenantContextQuery.data?.tenant_context;
-    if (!tenantContextMatchesRequest(context, tenantRequest)) return null;
-    return exactTenantScope(context, currentUserId, requestedAgencyId);
-  }, [currentUserId, requestedAgencyId, tenantContextQuery.data?.tenant_context, tenantRequest]);
+    if (!tenantContextMatchesRequest(boundTenantContext, tenantRequest)) return null;
+    return exactTenantScope(boundTenantContext, currentUserId, requestedAgencyId);
+  }, [boundTenantContext, currentUserId, requestedAgencyId, tenantRequest]);
   const scopeError = tenantContextSettled && !tenantScope
     ? 'Document tenant authorization scope failed integrity validation'
     : null;
@@ -262,14 +260,10 @@ export function useAuthorizedDocuments({
     ...AUTH_REFRESH_OPTIONS,
   });
 
-  const upstreamError = currentUserQuery.error || tenantContextQuery.error || null;
+  const upstreamError = currentUserQuery.error || null;
   const authorizationError = upstreamError || documentsQuery.error || null;
-  const isFetching = currentUserQuery.isFetching
-    || tenantContextQuery.isFetching
-    || documentsQuery.isFetching;
-  const isPaused = currentUserQuery.isPaused
-    || tenantContextQuery.isPaused
-    || documentsQuery.isPaused;
+  const isFetching = currentUserQuery.isFetching || documentsQuery.isFetching;
+  const isPaused = currentUserQuery.isPaused || documentsQuery.isPaused;
 
   useEffect(() => {
     if (!currentUserSettled || !currentUserId) return;
@@ -312,14 +306,9 @@ export function useAuthorizedDocuments({
   ]);
 
   useEffect(() => {
-    if (!upstreamError || currentUserQuery.isFetching || tenantContextQuery.isFetching) return;
+    if (!upstreamError || currentUserQuery.isFetching) return;
     queryClient.removeQueries({ predicate: isAuthorizedDocumentsQuery });
-  }, [
-    currentUserQuery.isFetching,
-    queryClient,
-    tenantContextQuery.isFetching,
-    upstreamError,
-  ]);
+  }, [currentUserQuery.isFetching, queryClient, upstreamError]);
 
   const settledSuccessfully = Boolean(
     enabled

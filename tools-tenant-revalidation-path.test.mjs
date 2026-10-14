@@ -101,9 +101,13 @@ test('the committed tree carries only trusted revalidation calls', () => {
   assert.deepEqual(census.untrusted, []);
   assert.equal(census.bare, 0);
   assert.equal(census.unverified, 0);
-  // The six revalidation hooks the plan names. A seventh is welcome and moves
-  // this number; one that is not trusted fails the gate above instead.
-  assert.ok(census.trusted >= 6, `expected the revalidation hooks, got ${census.trusted}`);
+  // The revalidation hooks the plan names. Another is welcome and moves this
+  // number; one that is not trusted fails the gate above instead. The count
+  // dropped from six to five when useAuthorizedDocuments stopped revalidating
+  // per mount: it now derives scope from the login-bound trusted context
+  // (the broker still revalidates server-side on every list), so it carries
+  // no revalidation call site of its own.
+  assert.ok(census.trusted >= 5, `expected the revalidation hooks, got ${census.trusted}`);
   assert.equal(census.trusted, census.revalidation_call_sites);
 });
 
