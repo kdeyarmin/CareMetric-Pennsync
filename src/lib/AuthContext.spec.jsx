@@ -802,6 +802,52 @@ describe('AuthProvider tenant authority state machine', () => {
     expect(result.current.tenantContext).toEqual(ownerContext);
   });
 
+  it('binds the protected platform owner through their sole active membership', async () => {
+    const ownerMembershipContext = contextFor(A, { is_platform_owner: true });
+    mocks.listMemberships.mockResolvedValue(
+      membershipResult([A], {
+        subject: {
+          user_id: 'user-a',
+          user_email: 'admin@agency.test',
+          is_platform_owner: true,
+        },
+      }),
+    );
+    mocks.getTenantContext.mockResolvedValue({ tenant_context: ownerMembershipContext });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.tenantAuthorityState).toBe(
+      TENANT_AUTHORITY_STATES.READY,
+    ));
+    expect(mocks.getTenantContext).toHaveBeenCalledWith({
+      agencyId: 'agency-a',
+      expectedMembershipId: 'membership-a',
+      expectedMembershipVersion: 2,
+    });
+    expect(result.current.tenantContext).toEqual(ownerMembershipContext);
+    expect(getRoleView(result.current.user)).toBe('facility_admin');
+  });
+
+  it('blocks an owner membership context that drops the owner flag', async () => {
+    mocks.listMemberships.mockResolvedValue(
+      membershipResult([A], {
+        subject: {
+          user_id: 'user-a',
+          user_email: 'admin@agency.test',
+          is_platform_owner: true,
+        },
+      }),
+    );
+    mocks.getTenantContext.mockResolvedValue({ tenant_context: contextFor(A) });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.tenantAuthorityState).toBe(
+      TENANT_AUTHORITY_STATES.BLOCKED,
+    ));
+    expect(result.current.tenantContext).toBeNull();
+    expect(result.current.tenantAuthorityKey).toBeNull();
+  });
+
   it('rejects a tenant-bearing owner context when no owner agency was selected', async () => {
     mocks.listMemberships.mockResolvedValue({
       subject: {
