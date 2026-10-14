@@ -112,15 +112,16 @@ export default function Layout() {
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
   // In-app Notification rows are authorized by an exact current
-  // AgencyMembership id/version. The protected platform owner is deliberately
-  // membership-free, so keep the control visible but disabled instead of
-  // opening an inbox request that must fail closed or look deceptively empty.
+  // AgencyMembership id/version. A caller with no bound membership (the
+  // membership-free platform owner) keeps the control visible but disabled
+  // instead of opening an inbox request that must fail closed or look
+  // deceptively empty; an owner bound through their own membership has the
+  // exact id/version the inbox requires.
   const notificationsAvailable = Boolean(
     tenantContext?.agency_id
     && tenantContext?.membership_id
     && Number.isSafeInteger(tenantContext?.membership_version)
     && tenantContext.membership_version >= 1
-    && tenantContext?.is_platform_owner === false
   );
   // Base44's automated Testing Agent signs in as a dynamically-created account
   // (is_test_agent_user flag, @testagent.base44.com email) that is never

@@ -41,7 +41,8 @@ import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch';
 import { OWNED_SESSION_STORAGE_KEY, ownedSessionEventChangesIdentity } from '@/lib/ownedBackendSessionStore';
 import {
   exactIdentifier, exactPrincipal, subjectMatchesPrincipal,
-  contextMatchesMembership, contextMatchesOwner, frozenMemberships,
+  contextMatchesMembership, contextMatchesOwner, contextMatchesOwnerMembership,
+  frozenMemberships,
   responseStatus, tenantError, authorityIntegrityError,
   browserRealmAuthorityError, isDefinitiveTenantAuthorityFailure, authoritySnapshot,
 } from '@/lib/tenantAuthorityValidation';
@@ -435,11 +436,7 @@ export const AuthProvider = ({ children }) => {
       setTenantMemberships(memberships);
 
       let selectedMembership = null;
-      if (subject.is_platform_owner) {
-        if (explicitAgencyId !== null) {
-          throw new Error('Platform owner tenant selection requires a reviewed agency workflow');
-        }
-      } else if (memberships.length === 0) {
+      if (memberships.length === 0 && !subject.is_platform_owner) {
         await ensurePersistentPurge({ includeDrafts: true });
         if (generation !== authGeneration.current) return false;
         if (previousAuthority) poisonTenantSdkRealm();
@@ -452,6 +449,10 @@ export const AuthProvider = ({ children }) => {
         setTenantAuthorityState(TENANT_AUTHORITY_STATES.BLOCKED);
         queryClientInstance.setQueryData(['currentUser'], { ...authenticatedUser });
         return false;
+      } else if (memberships.length === 0) {
+        // A platform owner with no memberships keeps the agency-less owner
+        // context resolved below; membership remains the only source of
+        // tenant scope, so there is nothing to select.
       } else if (explicitAgencyId !== null) {
         if (!exactIdentifier(explicitAgencyId)) throw new Error('Tenant selection is invalid');
         selectedMembership = memberships.find(
@@ -534,22 +535,24 @@ export const AuthProvider = ({ children }) => {
       stage = 'context';
       setTenantAuthorityState(TENANT_AUTHORITY_STATES.RESOLVING);
       const resolved = await withTimeout(
-        subject.is_platform_owner
-          ? bootstrapMyTenantContext({})
-          : bootstrapMyTenantContext({
+        selectedMembership
+          ? bootstrapMyTenantContext({
             agencyId: selectedMembership.agency_id,
             expectedMembershipId: selectedMembership.membership_id,
             expectedMembershipVersion: selectedMembership.membership_version,
-          }),
+          })
+          : bootstrapMyTenantContext({}),
         30000,
         'Agency workspace verification took too long. Please retry verification.',
       );
       if (generation !== authGeneration.current) return false;
 
       const resolvedContext = resolved?.tenant_context || null;
-      const contextIsExact = subject.is_platform_owner
-        ? contextMatchesOwner(resolvedContext, subject)
-        : contextMatchesMembership(resolvedContext, subject, selectedMembership);
+      const contextIsExact = selectedMembership
+        ? (subject.is_platform_owner
+          ? contextMatchesOwnerMembership(resolvedContext, subject, selectedMembership)
+          : contextMatchesMembership(resolvedContext, subject, selectedMembership))
+        : contextMatchesOwner(resolvedContext, subject);
       if (!contextIsExact) {
         throw authorityIntegrityError(
           'Resolved tenant context does not match selected authority',
