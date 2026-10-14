@@ -425,19 +425,28 @@ test('mutable user claims, weak roles, and deactivated identities never grant OA
     { caller: { ...USER, is_active: false } },
     { caller: { ...USER, disabled: true } },
     { caller: { ...USER, is_service: true } },
-    { caller: { ...USER, role: 'admin' }, memberships: [membership()] },
   ]) {
     const { handler } = await loadBroker(options);
     const result = await invoke(handler, exactBody());
     assert.equal(result.response.status, 403);
   }
 
-  const wrongBuiltInRole = await loadBroker({
+  // e703f3a deliberately admitted the built-in admin role past the broker's
+  // caller-role gate, so a non-owner admin is now authorized exactly like any
+  // other caller: through an exact active membership, and only through one.
+  const adminMember = await loadBroker({
     caller: { ...USER, role: 'admin' },
     memberships: [membership()],
   });
-  assert.equal((await invoke(wrongBuiltInRole.handler, exactBody())).response.status, 403);
-  assert.equal(wrongBuiltInRole.calls.memberships.length, 0);
+  assert.equal((await invoke(adminMember.handler, exactBody())).response.status, 200);
+  assert.ok(adminMember.calls.memberships.length > 0);
+
+  const adminWithoutMembership = await loadBroker({
+    caller: { ...USER, role: 'admin' },
+    memberships: [],
+  });
+  assert.equal((await invoke(adminWithoutMembership.handler, exactBody())).response.status, 403);
+  assert.deepEqual(adminWithoutMembership.calls.assessments, []);
 });
 
 test('protected owner reads through an exact owner membership and duplicate owner memberships fail closed', async () => {
@@ -818,7 +827,7 @@ test('static contract keeps the broker service-role-only, read-only, finite, and
     broker,
     /requireAssignmentBinding\(assignment, authority\.membership, authority\.normalizedEmail\)/,
   );
-  assert.match(broker, /if \(user\.role !== 'user'\) throw new PublicError\(403, 'Forbidden'\)/);
+  assert.match(broker, /if \(user\.role !== 'user' && user\.role !== 'admin'\) throw new PublicError\(403, 'Forbidden'\)/);
   assert.doesNotMatch(broker, /\.create\s*\(|\.update\s*\(|\.delete\s*\(/);
   assert.doesNotMatch(broker, /base44\.entities\./);
   assert.doesNotMatch(wrapper, /\.entities\./);

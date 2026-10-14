@@ -19,7 +19,7 @@ vi.mock("@/lib/superAdmin", () => ({
   isSuperAdminEmail: (email) => email === "owner@agency.test",
 }));
 
-import AgencyAccessPanel, { suggestedTenantRole } from "./AgencyAccessPanel";
+import AgencyAccessPanel, { suggestedTenantRole, TENANT_ROLE_OPTIONS } from "./AgencyAccessPanel";
 
 const owner = { id: "owner-1", email: "owner@agency.test", role: "admin" };
 const nurse = { id: "user-2", email: "Nurse@Agency.test", full_name: "Pat Nurse", role: "user", is_active: true };
@@ -31,14 +31,24 @@ beforeEach(() => {
 });
 
 describe("suggestedTenantRole", () => {
-  it("pre-selects the tenant role matching the invited staff discipline", () => {
+  it("pre-selects the clinician tenant role for every invited staff discipline", () => {
+    // 4775c15 deliberately reduced the panel's tenant roles and made the
+    // pre-selection constant: the invited staff discipline no longer
+    // pre-selects a matching tenant role.
     expect(suggestedTenantRole({ staff_role: "nurse" })).toBe("clinician");
-    expect(suggestedTenantRole({ staff_role: "office_staff" })).toBe("office_staff");
-    expect(suggestedTenantRole({ staff_role: "social_worker" })).toBe("social_worker");
-    expect(suggestedTenantRole({ staff_role: "spiritual_care" })).toBe("spiritual_care");
+    expect(suggestedTenantRole({ staff_role: "office_staff" })).toBe("clinician");
+    expect(suggestedTenantRole({ staff_role: "social_worker" })).toBe("clinician");
+    expect(suggestedTenantRole({ staff_role: "spiritual_care" })).toBe("clinician");
     // Never pre-selects a privileged role: an administrator is chosen by hand.
     expect(suggestedTenantRole({ staff_role: "agency_admin" })).toBe("clinician");
     expect(suggestedTenantRole(undefined)).toBe("clinician");
+  });
+
+  it("offers only the agency_admin and clinician tenant roles", () => {
+    expect(TENANT_ROLE_OPTIONS).toEqual([
+      { value: "agency_admin", label: "Manager" },
+      { value: "clinician", label: "Staff" },
+    ]);
   });
 });
 
