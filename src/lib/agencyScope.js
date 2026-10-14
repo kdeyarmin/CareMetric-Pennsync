@@ -49,9 +49,11 @@ function trustedCallerScope(user) {
   }
   const agencyId = norm(context.agency_id);
   const agencyName = norm(context.agency?.name);
+  // The membership binding decides the scope: an owner bound through their
+  // own active membership is agency-scoped exactly like any other member.
+  // The membership-free owner shape already returned above.
   if (
-    context.is_platform_owner !== false
-    || context.membership_status !== 'active'
+    context.membership_status !== 'active'
     || !agencyId
     || !agencyName
   ) {

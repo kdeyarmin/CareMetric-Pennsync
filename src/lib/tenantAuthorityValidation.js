@@ -60,6 +60,26 @@ function contextMatchesMembership(context, subject, membership) {
     && exactAgencyMatch(context.agency, membership.agency);
 }
 
+// The platform owner bound through an exact active membership: every field
+// check of contextMatchesMembership, with the owner flag true on both sides.
+// Membership remains the only source of the context's tenant scope.
+function contextMatchesOwnerMembership(context, subject, membership) {
+  return !!context
+    && !!subject
+    && !!membership
+    && context.user_id === subject.user_id
+    && context.user_email === subject.user_email
+    && context.is_platform_owner === true
+    && subject.is_platform_owner === true
+    && context.membership_id === membership.membership_id
+    && context.membership_key === membership.membership_key
+    && context.membership_version === membership.membership_version
+    && context.agency_id === membership.agency_id
+    && context.tenant_role === membership.tenant_role
+    && context.membership_status === membership.membership_status
+    && exactAgencyMatch(context.agency, membership.agency);
+}
+
 function contextMatchesOwner(context, subject) {
   return !!context
     && !!subject
@@ -128,7 +148,8 @@ function authoritySnapshot(principal, context) {
 
 export {
   exactIdentifier, exactPrincipal, subjectMatchesPrincipal,
-  contextMatchesMembership, contextMatchesOwner, frozenMemberships,
+  contextMatchesMembership, contextMatchesOwner, contextMatchesOwnerMembership,
+  frozenMemberships,
   responseStatus, tenantError, authorityIntegrityError,
   browserRealmAuthorityError, isDefinitiveTenantAuthorityFailure, authoritySnapshot,
 };

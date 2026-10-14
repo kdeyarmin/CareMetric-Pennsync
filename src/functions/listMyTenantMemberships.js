@@ -101,7 +101,9 @@ function validMembershipList(memberships, subject) {
   if (!Array.isArray(memberships) || memberships.length > MAX_ACTIVE_MEMBERSHIPS) {
     return false;
   }
-  if (subject.is_platform_owner && memberships.length !== 0) return false;
+  // A platform owner may hold exact active memberships like any other
+  // caller; each one is validated by the same rules below. Owner status
+  // alone still yields an empty list when no membership exists.
 
   const ids = new Set();
   const keys = new Set();
