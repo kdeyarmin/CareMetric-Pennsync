@@ -440,7 +440,7 @@ test('mutable user claims, weak roles, and deactivated identities never grant OA
   assert.equal(wrongBuiltInRole.calls.memberships.length, 0);
 });
 
-test('protected owner rejects preexisting and duplicate tenant memberships', async () => {
+test('protected owner reads through an exact owner membership and duplicate owner memberships fail closed', async () => {
   const owner = {
     ...USER,
     id: 'owner-user',
@@ -458,25 +458,36 @@ test('protected owner rejects preexisting and duplicate tenant memberships', asy
     membership_key: 'agency-a:owner-user',
     user_id: 'owner-user',
     user_email_normalized: 'owner@platform.test',
+    tenant_role: 'agency_admin',
   });
 
   for (const body of [exactBody({ purpose: 'summary' }), listBody()]) {
-    for (const memberships of [
-      [ownerMembership],
-      [ownerMembership, { ...ownerMembership, id: 'membership-owner-duplicate' }],
-    ]) {
-      const fixture = await loadBroker({
-        caller: owner,
-        memberships,
-        patients: [assignedPatient],
-        superAdminEmail: 'owner@platform.test',
-      });
-      const result = await invoke(fixture.handler, body);
-      assert.equal(result.response.status, 409);
-      assert.equal(result.json.error, 'Platform owner tenant membership must not exist');
-      assert.equal(fixture.calls.memberships.length, 1);
-      assert.deepEqual(fixture.calls.patients, []);
-    }
+    const enrolled = await loadBroker({
+      caller: owner,
+      memberships: [ownerMembership],
+      patients: [assignedPatient],
+      superAdminEmail: 'owner@platform.test',
+    });
+    const authorized = await invoke(enrolled.handler, body);
+    assert.equal(authorized.response.status, 200);
+    assert.equal(authorized.json.scope.tenant_role, 'agency_admin');
+    assert.equal(authorized.json.scope.membership_id, 'membership-owner');
+    assert.ok(enrolled.calls.patients.length > 0);
+
+    const duplicate = await loadBroker({
+      caller: owner,
+      memberships: [
+        ownerMembership,
+        { ...ownerMembership, id: 'membership-owner-duplicate' },
+      ],
+      patients: [assignedPatient],
+      superAdminEmail: 'owner@platform.test',
+    });
+    const rejected = await invoke(duplicate.handler, body);
+    assert.equal(rejected.response.status, 409);
+    assert.equal(rejected.json.error, 'Tenant membership is ambiguous');
+    assert.equal(duplicate.calls.memberships.length, 1);
+    assert.deepEqual(duplicate.calls.patients, []);
   }
 });
 
