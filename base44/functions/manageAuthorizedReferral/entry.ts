@@ -473,7 +473,7 @@ async function loadAuthority(
   const user = await base44.auth.me().catch(() => null);
   if (!user) throw new PublicError(401, 'Unauthorized');
   if (
-    user.role !== 'user'
+    (user.role !== 'user' && user.role !== 'admin')
     || user.is_active === false
     || user.disabled === true
     || user.is_service === true
