@@ -535,7 +535,7 @@ function publicContext(
     agency_id: membership.agency_id,
     tenant_role: membership.tenant_role,
     membership_status: 'active',
-    is_platform_owner: false,
+    is_platform_owner: caller.is_platform_owner === true,
     agency,
   };
 }
@@ -563,13 +563,10 @@ Deno.serve(async (req) => {
       String(caller.user_email),
     );
 
-    if (caller.is_platform_owner) {
-      if (beforeMemberships.length !== 0) {
-        throw new PublicError(409, 'Platform owner tenant membership must not exist');
-      }
-      if (input.expectedMembership) {
-        throw new PublicError(409, 'Platform owner cannot bind a tenant membership');
-      }
+    // An owner who names an expected membership binds it through the exact
+    // member path below; the bound context keeps is_platform_owner: true.
+    // Only an owner binding no membership takes this agency-less owner path.
+    if (caller.is_platform_owner && !input.expectedMembership) {
       const beforeAgency = input.agencyId
         ? await loadExactAgency(entities, input.agencyId)
         : null;

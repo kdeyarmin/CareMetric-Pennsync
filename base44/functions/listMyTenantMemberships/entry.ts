@@ -504,15 +504,11 @@ Deno.serve(async (req) => {
       String(caller.user_email),
     );
 
-    if (caller.is_platform_owner && before.all.length !== 0) {
-      throw new PublicError(409, 'Platform owner tenant membership must not exist');
-    }
-
-    // A platform owner deliberately receives an empty membership list. This
-    // endpoint never converts global owner status into an inferred tenant.
-    const beforeAgencies = caller.is_platform_owner
-      ? []
-      : await loadAgencySnapshot(entities, before.active);
+    // Membership is the only source of tenant scope, for the platform owner
+    // exactly as for any other caller: owner status alone never converts
+    // into an inferred tenant, and an owner's exact active memberships are
+    // listed through the same validation as everyone else's.
+    const beforeAgencies = await loadAgencySnapshot(entities, before.active);
 
     const after = await loadMembershipSnapshot(
       entities,
@@ -522,13 +518,7 @@ Deno.serve(async (req) => {
     if (!sameValue(before.all, after.all)) {
       throw new PublicError(409, 'Tenant membership list changed during request');
     }
-    if (caller.is_platform_owner && after.all.length !== 0) {
-      throw new PublicError(409, 'Platform owner tenant membership must not exist');
-    }
-
-    const afterAgencies = caller.is_platform_owner
-      ? []
-      : await loadAgencySnapshot(entities, after.active);
+    const afterAgencies = await loadAgencySnapshot(entities, after.active);
     if (!sameValue(beforeAgencies, afterAgencies)) {
       throw new PublicError(409, 'Agency list changed during request');
     }
@@ -536,12 +526,10 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       subject: caller,
-      memberships: caller.is_platform_owner
-        ? []
-        : before.active.map((membership, index) => publicOption(
-          membership,
-          beforeAgencies[index],
-        )),
+      memberships: before.active.map((membership, index) => publicOption(
+        membership,
+        beforeAgencies[index],
+      )),
     });
   } catch (error) {
     if (error instanceof PublicError) {
