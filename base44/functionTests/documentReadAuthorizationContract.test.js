@@ -759,10 +759,23 @@ test('protected platform owner is exact-email gated and can read without a tenan
   result = await invoke(fixture.handler, 'getAuthorizedDocument', getBody());
   assert.equal(result.response.status, 403);
 
+  // e703f3a admitted the built-in admin role past the brokers' caller-role
+  // gate: a non-owner admin holding an exact active membership now reads
+  // through that membership. The role alone still grants nothing — the same
+  // admin with no membership is refused before any document read.
   fixture = await loadBroker('get', { caller: { ...USER, role: 'admin' } });
   result = await invoke(fixture.handler, 'getAuthorizedDocument', getBody());
+  assert.equal(result.response.status, 200);
+  assert.equal(result.json.scope.membership_id, 'membership-a');
+  assert.equal(result.json.scope.tenant_role, 'clinician');
+
+  fixture = await loadBroker('get', {
+    caller: { ...USER, role: 'admin' },
+    memberships: [],
+  });
+  result = await invoke(fixture.handler, 'getAuthorizedDocument', getBody());
   assert.equal(result.response.status, 403);
-  assert.equal(fixture.calls.memberships.length, 0);
+  assert.deepEqual(fixture.calls.documents, []);
 });
 
 test('list preserves exact membership-free platform-owner isolation', async () => {
@@ -799,7 +812,11 @@ test('list preserves exact membership-free platform-owner isolation', async () =
   });
   result = await invoke(fixture.handler, 'listAuthorizedDocuments', listBody());
   assert.equal(result.response.status, 403);
-  assert.equal(fixture.calls.memberships.length, 0);
+  // Since e703f3a the refusal happens at membership scope, after exactly one
+  // lookup of the caller's own membership rows; no documents are read.
+  assert.equal(fixture.calls.memberships.length, 1);
+  assert.equal(fixture.calls.memberships[0].query.user_id, 'owner-user');
+  assert.deepEqual(fixture.calls.documents, []);
 });
 
 test('enrolled platform owner uses exact tenant scope and rejects duplicate or revoked enrollments', async () => {

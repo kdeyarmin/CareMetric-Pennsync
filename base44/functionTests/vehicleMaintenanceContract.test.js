@@ -217,15 +217,19 @@ test('the broker offers no edit/delete action for original service facts', async
 });
 
 
-test('non-owner built-in admins cannot act through tenant membership or be assigned', async () => {
+test('non-owner built-in admins cannot act through tenant membership, but may be assigned since e703f3a', async () => {
   const elevated = { ...admin, role: 'admin' };
   const h = harness({ user: elevated });
   assert.equal((await h.call('vehicles')).status, 403);
   assert.equal((await h.call('context')).status, 403);
+  // e703f3a widened only the assignee guard in manageVehicleMaintenance: a
+  // built-in admin may now be a vehicle's assignee. Caller authority is
+  // unchanged — the same admin still cannot act through the broker, as the
+  // two refusals above pin.
   const assigning = harness({ user: admin });
   assigning.state.User[0].role = 'admin';
-  assert.equal((await assigning.call('create_vehicle', { request_id: 'role-test', vehicle: vehicleFacts })).status, 403);
-  assert.equal(assigning.writes.length, 0);
+  assert.equal((await assigning.call('create_vehicle', { request_id: 'role-test', vehicle: vehicleFacts })).status, 200);
+  assert.equal(assigning.writes.filter((write) => write.action === 'create').length, 1);
 });
 
 test('present malformed review history is rejected without replacing or appending data', async () => {
