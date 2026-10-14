@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { getTrustedTenantContext } from '@/lib/roles';
@@ -44,6 +44,27 @@ const DOCUMENTS_QUERY_OPTIONS = Object.freeze({
   refetchOnReconnect: true,
   refetchOnWindowFocus: true,
 });
+
+// Bounded settle deadline (diagnosis #3, item (b)): the hook withholds every
+// row until its own identity query settles successfully after mount, and a
+// platform-throttled identity fetch can stay non-terminal with error === null
+// indefinitely — no query timeout exists, so the page presented
+// "Loading documents…" forever with no error and no broker call. If the
+// settlement prerequisites have not completed within this deadline after
+// mount, the hook surfaces its existing error state instead (the same
+// authorizationError path DocumentManagement already turns into the
+// "Documents are unavailable…" banner). The deadline only relabels the
+// pending presentation: it never enables the documents query, never exposes
+// rows, and never fabricates scope — and a settlement that completes after
+// it fires supersedes it and restores normal behavior. 30 s matches the
+// scale AuthContext already allows each bootstrap stage (its identity,
+// memberships, and context calls are each wrapped in a 30_000 ms timeout,
+// src/lib/AuthContext.jsx): an identity fetch that has not settled within
+// one full stage budget is not merely slow.
+export const DOCUMENT_SETTLE_DEADLINE_MS = 30_000;
+const SETTLE_DEADLINE_ERROR = new Error(
+  'Document authorization verification did not complete in time',
+);
 
 function exactIdentifier(value) {
   return typeof value === 'string'
@@ -218,8 +239,10 @@ export function useAuthorizedDocuments({
   purpose = 'library',
   bindingPurpose = null,
   enabled = true,
+  settleDeadlineMs = DOCUMENT_SETTLE_DEADLINE_MS,
 } = {}) {
   const queryClient = useQueryClient();
+  const [settleDeadlineExceeded, setSettleDeadlineExceeded] = useState(false);
   const requestedAgencyId = agencyId === undefined ? null : agencyId;
   const validationError = inputError({
     agencyId: requestedAgencyId,
@@ -362,17 +385,42 @@ export function useAuthorizedDocuments({
     && settledDocumentsList(documentsQuery)
   );
 
+  // Settle deadline: while the hook is enabled, holds no genuine error, and
+  // has not settled, a per-mount timer runs; if it fires first, the existing
+  // error presentation takes over from the indefinite pending one. The
+  // timer is armed per mount (a fresh mount restarts it) and re-arms
+  // whenever the hook falls back into the unsettled state; any settlement
+  // or genuine error disarms it and clears a fired deadline, so a late
+  // settlement recovers normal behavior with no remount.
+  const settlePending = enabled && !authorizationError && !settledSuccessfully;
+  useEffect(() => {
+    if (!settlePending) {
+      if (settleDeadlineExceeded) setSettleDeadlineExceeded(false);
+      return undefined;
+    }
+    if (settleDeadlineExceeded) return undefined;
+    const timer = setTimeout(() => setSettleDeadlineExceeded(true), settleDeadlineMs);
+    return () => clearTimeout(timer);
+  }, [settleDeadlineExceeded, settleDeadlineMs, settlePending]);
+
+  // The deadline error feeds the exact authorizationError path the page
+  // already renders as its unavailable banner; it is derived from the live
+  // pending state, so the render in which settlement lands never reports
+  // error and success at once.
+  const presentedError = authorizationError
+    || (settleDeadlineExceeded && settlePending ? SETTLE_DEADLINE_ERROR : null);
+
   return {
     ...documentsQuery,
     data: settledSuccessfully ? documentsQuery.data : [],
-    error: authorizationError,
-    status: authorizationError ? 'error' : settledSuccessfully ? 'success' : 'pending',
-    isError: Boolean(authorizationError),
+    error: presentedError,
+    status: presentedError ? 'error' : settledSuccessfully ? 'success' : 'pending',
+    isError: Boolean(presentedError),
     isSuccess: settledSuccessfully,
-    isPending: !authorizationError && !settledSuccessfully,
+    isPending: !presentedError && !settledSuccessfully,
     isFetching,
     isPaused,
-    isLoading: enabled && !authorizationError && !settledSuccessfully,
+    isLoading: enabled && !presentedError && !settledSuccessfully,
     tenantScope: tenantContextSettled && tenantScope ? tenantScope : null,
   };
 }

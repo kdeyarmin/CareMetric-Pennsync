@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invoke = vi.fn();
 const bootstrapInvoke = vi.fn();
@@ -33,6 +33,10 @@ describe('getMyTenantContext wrapper', () => {
   beforeEach(() => {
     invoke.mockReset();
     bootstrapInvoke.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('uses the raw authority client only for the explicit pre-realm bootstrap seam', async () => {
@@ -74,7 +78,7 @@ describe('getMyTenantContext wrapper', () => {
     expect(result.tenant_context.membership_version).toBe(3);
   });
 
-  it('shares one in-flight request across concurrent callers and retries one transient failure', async () => {
+  it('shares one in-flight request across concurrent callers', async () => {
     let release;
     const gate = new Promise((resolve) => { release = resolve; });
     invoke.mockImplementation(() => gate.then(() => ({ data: { tenant_context: memberContext() } })));
@@ -85,21 +89,46 @@ describe('getMyTenantContext wrapper', () => {
     const [left, right] = await Promise.all([first, second]);
     expect(left.tenant_context.membership_id).toBe('membership-a');
     expect(right.tenant_context.membership_id).toBe('membership-a');
+  });
 
-    invoke.mockReset();
+  it('retries one transient failure only after the server-paced delay, and never retries 403', async () => {
+    vi.useFakeTimers();
     invoke
       .mockRejectedValueOnce(Object.assign(new Error('busy'), { response: { status: 500 } }))
       .mockResolvedValueOnce({ data: { tenant_context: memberContext() } });
-    await expect(getMyTenantContext({ agencyId: 'agency-a' })).resolves.toMatchObject({
+    const pending = getMyTenantContext({ agencyId: 'agency-a' });
+
+    // The single retry waits the full server-directed 2 s, not the old 250 ms.
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(invoke).toHaveBeenCalledTimes(2);
+    await expect(pending).resolves.toMatchObject({
       tenant_context: { agency_id: 'agency-a' },
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
 
     invoke.mockReset();
     const denied = Object.assign(new Error('denied'), { response: { status: 403 } });
     invoke.mockRejectedValue(denied);
     await expect(getMyTenantContext({ agencyId: 'agency-a' })).rejects.toBe(denied);
     expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors a longer server Retry-After over the floor before the single retry', async () => {
+    vi.useFakeTimers();
+    invoke
+      .mockRejectedValueOnce(Object.assign(new Error('busy'), {
+        response: { status: 503, headers: { 'retry-after': '4' } },
+      }))
+      .mockResolvedValueOnce({ data: { tenant_context: memberContext() } });
+    const pending = getMyTenantContext({ agencyId: 'agency-a' });
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(invoke).toHaveBeenCalledTimes(2);
+    await expect(pending).resolves.toMatchObject({
+      tenant_context: { agency_id: 'agency-a' },
+    });
   });
 
   it('accepts a membership-backed context for the platform owner bound through that membership', async () => {

@@ -128,12 +128,42 @@ function validMembershipList(memberships, subject) {
 }
 
 const TRANSIENT_MEMBERSHIP_STATUSES = new Set([429, 500, 502, 503, 504]);
-const MEMBERSHIP_RETRY_DELAYS_MS = [250, 750];
+// The backend answers a translated provider 429/503 with HTTP 503 and
+// Retry-After: 2 (base44/functions/listMyTenantMemberships/entry.ts), i.e.
+// it asks callers to wait two seconds before asking again. The old 250/750
+// ms cadence retried well inside that window, so every throttled sign-in
+// multiplied provider calls under the very pressure that caused the
+// failure. The waits below never go under that server-directed floor: the
+// first retry waits the directed 2 s, the second backs off further, and a
+// longer Retry-After carried on the error wins over both.
+const MEMBERSHIP_RETRY_DELAYS_MS = [2_000, 5_000];
 let membershipListInflight = null;
 
 function membershipStatus(error) {
   const status = error?.response?.status ?? error?.status ?? null;
   return Number.isInteger(status) ? status : null;
+}
+
+// The invoke transport (axios) exposes response headers on the error
+// beside the response.status this wrapper already reads; accept either a
+// Headers-like `.get` or a plain header map, case-insensitively. Only the
+// delta-seconds form is honored — that is the only form this backend
+// emits. Anything unreadable yields null and the floor above applies.
+function retryAfterMs(error) {
+  const headers = error?.response?.headers;
+  if (!headers || typeof headers !== 'object') return null;
+  let raw = typeof headers.get === 'function' ? headers.get('retry-after') : null;
+  if (raw === null || raw === undefined) {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'retry-after') {
+        raw = headers[key];
+        break;
+      }
+    }
+  }
+  if (raw === null || raw === undefined) return null;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.round(seconds * 1000) : null;
 }
 
 function delay(ms) {
@@ -153,11 +183,11 @@ async function invokeMembershipList() {
     try {
       return await tenantAuthorityClient.listMyTenantMemberships();
     } catch (error) {
-      const wait = MEMBERSHIP_RETRY_DELAYS_MS[attempt];
-      if (wait === undefined || !TRANSIENT_MEMBERSHIP_STATUSES.has(membershipStatus(error))) {
+      const baseWait = MEMBERSHIP_RETRY_DELAYS_MS[attempt];
+      if (baseWait === undefined || !TRANSIENT_MEMBERSHIP_STATUSES.has(membershipStatus(error))) {
         throw error;
       }
-      await delay(wait);
+      await delay(Math.max(baseWait, retryAfterMs(error) ?? 0));
     }
   }
 }
