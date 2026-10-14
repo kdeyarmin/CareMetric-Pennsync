@@ -381,15 +381,29 @@ test('the exact protected owner stays membership-free and cannot infer a tenant'
     user_id: 'owner-1',
     user_email_normalized: 'owner@example.com',
   });
-  const polluted = await loadBroker({
+  const enrolled = await loadBroker({
     users: [owner, owner],
     membershipResults: [[ownerMembership], [ownerMembership]],
     superAdminEmail: 'owner@example.com',
   });
-  const pollutedResult = await invoke(polluted.handler);
-  assert.equal(pollutedResult.response.status, 409);
-  assert.equal(pollutedResult.json.error, 'Platform owner tenant membership must not exist');
-  assert.deepEqual(polluted.calls.agencyFilters, []);
+  const enrolledResult = await invoke(enrolled.handler);
+  assert.equal(enrolledResult.response.status, 200);
+  assert.deepEqual(enrolledResult.json, {
+    subject: {
+      user_id: 'owner-1',
+      user_email: 'owner@example.com',
+      is_platform_owner: true,
+    },
+    memberships: [{
+      membership_id: 'owner-membership',
+      membership_key: 'agency-a:owner-1',
+      membership_version: 1,
+      agency_id: 'agency-a',
+      tenant_role: 'clinician',
+      membership_status: 'active',
+      agency: { id: 'agency-a', name: 'Agency A', status: 'active' },
+    }],
+  });
 });
 
 test('mutable custom User claims neither grant owner status nor alter exact membership authority', async () => {
@@ -723,6 +737,22 @@ test('the frontend wrapper accepts only the exact bounded broker envelope and cl
   const owner = await loaded.list();
   assert.equal(owner.subject.is_platform_owner, true);
   assert.deepEqual(owner.memberships, []);
+
+  loaded.setResult({
+    subject: {
+      user_id: 'owner-1',
+      user_email: 'owner@example.com',
+      is_platform_owner: true,
+    },
+    memberships: [publicOption({
+      membership_id: 'owner-membership',
+      membership_key: 'agency-a:owner-1',
+    })],
+  });
+  const enrolledOwner = await loaded.list();
+  assert.equal(enrolledOwner.subject.is_platform_owner, true);
+  assert.equal(enrolledOwner.memberships.length, 1);
+  assert.equal(enrolledOwner.memberships[0].membership_id, 'owner-membership');
 });
 
 test('the frontend wrapper rejects cross-user, duplicate, malformed, overflow, and drifted rows', async () => {
@@ -738,7 +768,11 @@ test('the frontend wrapper rejects cross-user, duplicate, malformed, overflow, a
     publicResult({ subject: { ...publicResult().subject, account_type: 'super_admin' } }),
     publicResult({ subject: { ...publicResult().subject, user_email: 'Member@Example.com' } }),
     publicResult({
-      subject: { ...publicResult().subject, is_platform_owner: true },
+      subject: {
+        user_id: 'owner-1',
+        user_email: 'owner@example.com',
+        is_platform_owner: true,
+      },
     }),
     publicResult({ memberships: null }),
     publicResult({ memberships: Array.from({ length: 26 }, (_, index) => publicOption({
