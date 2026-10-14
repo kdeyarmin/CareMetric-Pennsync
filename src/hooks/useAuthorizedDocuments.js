@@ -22,6 +22,29 @@ const AUTH_REFRESH_OPTIONS = Object.freeze({
   refetchOnWindowFocus: 'always',
 });
 
+// The documents list is served by a deliberately expensive broker (three
+// authority re-derivations plus list reads per invocation), so it cannot
+// refetch on every UI event the way the identity query above does: with
+// AUTH_REFRESH_OPTIONS, every mount, window focus, reconnect, and tab
+// return is a full broker invocation — and under platform throttling each
+// one fails visibly while amplifying the pressure that caused the failure.
+// Give the list the app-standard staleness contract instead (the global
+// QueryClient defaults in src/lib/query-client.js): cached rows are
+// served inside the stale window, tab switches no longer destroy the
+// query, and refetches happen when data is stale or the query is
+// invalidated — DocumentUploader invalidates ['documents'] on upload.
+// retry stays false: the broker's 503 already carries Retry-After, and a
+// failed fetch surfaces the existing error state until the next natural
+// refetch or invalidation.
+const DOCUMENTS_QUERY_OPTIONS = Object.freeze({
+  retry: false,
+  staleTime: 60_000,
+  gcTime: 300_000,
+  refetchOnMount: true,
+  refetchOnReconnect: true,
+  refetchOnWindowFocus: true,
+});
+
 function exactIdentifier(value) {
   return typeof value === 'string'
     && value.length > 0
@@ -33,6 +56,25 @@ function exactIdentifier(value) {
 function settledSuccessfullyAfterMount(query) {
   return query.isSuccess
     && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error;
+}
+
+function settledDocumentsList(query) {
+  // Companion to DOCUMENTS_QUERY_OPTIONS: a warm remount serves the list
+  // from cache with no fetch after this mount, so the fetched-after-mount
+  // test above can never settle for it and the cached rows would stay
+  // masked behind a permanent loading state. Settle instead on a fetch
+  // having completed into this exact query key: the key embeds the full
+  // scope tuple (user, agency, membership, version, role), the purge
+  // effects below evict any same-user query whose key disagrees with the
+  // scope this mount validated, and the composite gate still requires
+  // this mount's identity and scope validation before rows are exposed.
+  // A never-fetched query (initialData leaves dataUpdatedAt at 0), an
+  // errored query, and one with a fetch in flight stay unsettled — the
+  // same states the after-mount test masks.
+  return query.isSuccess
+    && query.dataUpdatedAt > 0
     && query.fetchStatus === 'idle'
     && !query.error;
 }
@@ -257,7 +299,7 @@ export function useAuthorizedDocuments({
     ),
     initialData: [],
     initialDataUpdatedAt: 0,
-    ...AUTH_REFRESH_OPTIONS,
+    ...DOCUMENTS_QUERY_OPTIONS,
   });
 
   const upstreamError = currentUserQuery.error || null;
@@ -317,7 +359,7 @@ export function useAuthorizedDocuments({
     && currentUserId
     && tenantContextSettled
     && tenantScope
-    && settledSuccessfullyAfterMount(documentsQuery)
+    && settledDocumentsList(documentsQuery)
   );
 
   return {

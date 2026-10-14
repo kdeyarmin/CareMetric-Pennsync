@@ -103,6 +103,18 @@ function wrapper() {
   };
 }
 
+function harnessClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+}
+
+function sharedWrapper(client) {
+  return function TestProvider({ children }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
+}
+
 describe('authorized Document list boundary', () => {
   beforeEach(() => {
     clearTrustedTenantContext();
@@ -170,6 +182,98 @@ describe('authorized Document list boundary', () => {
     });
     expect(result.current.data.map((row) => row.id)).toEqual(['document-a']);
     expect(result.current.tenantScope).toEqual(SCOPE);
+  });
+
+  it('fires the broker wrapper exactly once on mount', async () => {
+    mocks.listDocuments.mockResolvedValue(page({
+      documents: [documentRow('document-a', '2026-09-04T00:00:00.000Z')],
+    }));
+    const { result } = renderHook(() => useAuthorizedDocuments(), { wrapper: wrapper() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+    expect(result.current.data.map((row) => row.id)).toEqual(['document-a']);
+  });
+
+  it('serves cached rows on focus and remount inside the stale window without another broker call', async () => {
+    mocks.listDocuments.mockResolvedValue(page({
+      documents: [documentRow('document-a', '2026-09-04T00:00:00.000Z')],
+    }));
+    const client = harnessClient();
+    const wrap = sharedWrapper(client);
+    const first = renderHook(() => useAuthorizedDocuments(), { wrapper: wrap });
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+
+    // Window focus: the identity query refetches on every focus (its own
+    // 'always' policy), which proves the focus event was delivered — while
+    // the documents list, still inside its stale window, must not spend
+    // another broker invocation on it.
+    const authCallsBeforeFocus = mocks.authMe.mock.calls.length;
+    await act(async () => {
+      // React Query's focus manager keys off visibilitychange/focus.
+      window.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(async () => {});
+    expect(mocks.authMe.mock.calls.length).toBeGreaterThan(authCallsBeforeFocus);
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+    expect(first.result.current.isSuccess).toBe(true);
+    expect(first.result.current.data.map((row) => row.id)).toEqual(['document-a']);
+    first.unmount();
+
+    // Remount (a Document Hub tab return): the query survives unmount and
+    // its cached rows are served once this mount revalidates identity and
+    // scope — again with no broker invocation.
+    const second = renderHook(() => useAuthorizedDocuments(), { wrapper: wrap });
+    await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+    expect(second.result.current.data.map((row) => row.id)).toEqual(['document-a']);
+    second.unmount();
+  });
+
+  it('refetches on the next mount after the uploader invalidation, even inside the stale window', async () => {
+    const client = harnessClient();
+    const wrap = sharedWrapper(client);
+    const first = renderHook(() => useAuthorizedDocuments(), { wrapper: wrap });
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    // The exact call DocumentUploader makes on upload completion; the
+    // partial ['documents'] key must still match this query after the
+    // policy change, and the invalidation must break the stale window.
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['documents'] });
+    });
+
+    const second = renderHook(() => useAuthorizedDocuments(), { wrapper: wrap });
+    await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(2);
+    second.unmount();
+  });
+
+  it('surfaces a broker 503 with exactly one attempt per mount — the documents query does not retry', async () => {
+    mocks.listDocuments.mockRejectedValue(Object.assign(
+      new Error('Backend temporarily unavailable'),
+      { status: 503 },
+    ));
+    // No harness retry override: the hook's own retry policy is what keeps
+    // this to a single attempt (a bare QueryClient would retry 3 times).
+    const client = new QueryClient();
+    const { result } = renderHook(
+      () => useAuthorizedDocuments(),
+      { wrapper: sharedWrapper(client) },
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 3000 });
+    expect(result.current.data).toEqual([]);
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when no tenant context is bound for the signed-in principal', async () => {
