@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -110,7 +110,6 @@ describe('authorized Document list boundary', () => {
     mocks.getTenantContext.mockReset();
     mocks.listDocuments.mockReset();
     mocks.authMe.mockResolvedValue({ id: 'user-a', email: 'manager@agency.test' });
-    mocks.getTenantContext.mockResolvedValue({ tenant_context: tenantContext() });
     mocks.listDocuments.mockResolvedValue(page());
     bindTrustedTenantContext(
       { id: 'user-a', email: 'manager@agency.test' },
@@ -156,13 +155,59 @@ describe('authorized Document list boundary', () => {
     expect(result.current.data).toEqual([]);
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mocks.getTenantContext).toHaveBeenCalledWith({
+    // Scope comes from the bound login context: the hook reaches the broker
+    // without ever invoking getMyTenantContext, and the scope handed to the
+    // broker wrapper is exactly the bound context's.
+    expect(mocks.getTenantContext).not.toHaveBeenCalled();
+    expect(mocks.listDocuments).toHaveBeenCalledWith({
       agencyId: 'agency-a',
-      expectedMembershipId: 'membership-a',
-      expectedMembershipVersion: 4,
+      purpose: 'library',
+      patientId: null,
+      bindingPurpose: null,
+      sort: 'document_id_asc',
+      pageSize: 10,
+      cursor: null,
     });
     expect(result.current.data.map((row) => row.id)).toEqual(['document-a']);
     expect(result.current.tenantScope).toEqual(SCOPE);
+  });
+
+  it('fails closed when no tenant context is bound for the signed-in principal', async () => {
+    clearTrustedTenantContext();
+    const { result } = renderHook(() => useAuthorizedDocuments(), { wrapper: wrapper() });
+
+    // With no bound context the hook can never settle successfully: it
+    // fabricates no scope, exposes no rows, and reaches neither the tenant
+    // endpoint nor the broker — the same closed state as before the fix.
+    await waitFor(() => expect(mocks.authMe).toHaveBeenCalled());
+    await act(async () => {});
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+    expect(mocks.getTenantContext).not.toHaveBeenCalled();
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the bound context belongs to another principal', async () => {
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(
+      { id: 'user-b', email: 'other@agency.test' },
+      tenantContext({
+        user_id: 'user-b',
+        user_email: 'other@agency.test',
+        membership_id: 'membership-b',
+        membership_key: 'agency-a:user-b',
+      }),
+    );
+    const { result } = renderHook(() => useAuthorizedDocuments(), { wrapper: wrapper() });
+
+    await waitFor(() => expect(mocks.authMe).toHaveBeenCalled());
+    await act(async () => {});
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+    expect(mocks.getTenantContext).not.toHaveBeenCalled();
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
   });
 
   it('fails closed on broker scope drift and exposes no cached metadata', async () => {
@@ -178,11 +223,7 @@ describe('authorized Document list boundary', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.data).toEqual([]);
     expect(result.current.error.message).toMatch(/scope changed/);
-    expect(mocks.getTenantContext).toHaveBeenCalledWith({
-      agencyId: 'agency-a',
-      expectedMembershipId: 'membership-a',
-      expectedMembershipVersion: 4,
-    });
+    expect(mocks.getTenantContext).not.toHaveBeenCalled();
   });
 
   it('rejects operator-shaped tenant input before authentication or listing', async () => {
