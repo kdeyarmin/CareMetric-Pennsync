@@ -77,7 +77,11 @@ test('fax owner enrollment uses exact protected identity and never skips tenant 
     rows = [];
     await assert.rejects(() => loadInteractiveAuthority(client, 'agency'), /membership/);
     user.email = 'unconfigured-admin@agency.test';
-    await assert.rejects(() => loadInteractiveAuthority(client, 'agency'), /Forbidden/);
+    // e703f3a admitted the built-in admin role past sendBatchFax's caller
+    // gate, so an unconfigured admin is now refused at membership resolution
+    // (no exact membership row) rather than at the role gate. The refusal —
+    // no fax authority without an exact membership — is unchanged.
+    await assert.rejects(() => loadInteractiveAuthority(client, 'agency'), /Fax tenant membership is ambiguous/);
   } finally { globalThis.Deno.env.get = priorGet; }
 });
 
