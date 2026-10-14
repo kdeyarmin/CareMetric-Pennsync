@@ -711,7 +711,16 @@ test('cross-tenant Patient links, invalid assignees, immutable-field spoofing, a
       status: 409,
     },
     {
+      // 8e90807/e703f3a admitted the built-in admin role past
+      // manageAuthorizedReferral's caller gates, so an admin holding the
+      // caller's exact active membership lists through that membership.
       options: { caller: { ...USER, role: 'admin' } },
+      body: { action: 'list', agency_id: 'agency-a' },
+      status: 200,
+    },
+    {
+      // The admin role alone still grants nothing without a membership.
+      options: { caller: { ...USER, role: 'admin' }, memberships: [] },
       body: { action: 'list', agency_id: 'agency-a' },
       status: 403,
     },

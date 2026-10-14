@@ -1274,7 +1274,13 @@ test('only the exact configured built-in platform owner bypasses membership', as
   });
   const denied = await invoke(impostor.handler, 'getAuthorizedVisit', getBody());
   assert.equal(denied.response.status, 403);
-  assert.deepEqual(impostor.calls.memberships, []);
+  // e703f3a admitted the built-in admin role past the brokers' caller-role
+  // gate, so a non-owner admin is now refused at membership scope instead:
+  // exactly one lookup of the caller's own membership rows runs first, and
+  // no Visit data is read. The exact-email owner gate itself is unchanged.
+  assert.equal(impostor.calls.memberships.length, 1);
+  assert.equal(impostor.calls.memberships[0].query.user_id, 'user-1');
+  assert.deepEqual(impostor.calls.visits, []);
 });
 
 test('platform owner Visit reads use an exact owner membership and reject duplicate owner memberships', async () => {
