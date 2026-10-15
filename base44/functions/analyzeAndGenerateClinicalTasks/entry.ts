@@ -128,9 +128,16 @@ function directAiIsSafeFetchUrl(raw) {
 // implementing the same call contract so call sites swap mechanically:
 //   directInvokeLLM({ prompt, model?, response_json_schema?, file_urls?,
 //                     add_context_from_internet? })
-// With response_json_schema it resolves to the parsed result object (a forced
+// With response_json_schema it resolves to the parsed result object (a single
 // return_result tool call, conformance-checked and unwrapped); without, to the
 // concatenated text string — the two shapes InvokeLLM callers already handle.
+// The call cannot be forced: tool_choice 'tool' / 'any' is a 400 on the 5.5
+// models this helper maps to, so structured mode offers return_result under
+// tool_choice 'auto' with parallel calls off and a system instruction naming
+// it; a reply without exactly one conforming call is AI_RESULT_SCHEMA_MISMATCH.
+// The tool is not strict: strict schemas are compiled and cached outside the
+// message content, where no PHI may appear, and they reject the min/max
+// keywords and open objects this schema subset accepts.
 // Errors are Errors carrying .status and .code in the integration-runtime's
 // vocabulary (services/integration-runtime/providers.mjs, whose ai() this
 // ports). Model policy: 'automatic'/absent -> claude-sonnet-5-5; only the
@@ -161,6 +168,7 @@ const DIRECT_AI_MAX_TOKENS = { plain: 4096, structured: 8192 };
 const DIRECT_AI_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const DIRECT_AI_FILE_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv'];
 const DIRECT_AI_SCHEMA_KEYS = ['type', 'description', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems'];
+const DIRECT_AI_STRUCTURED_SYSTEM = 'Answer only by calling the return_result tool exactly once, with the complete requested result as its result argument. Do not answer in plain text.';
 function directAiFail(status, code) {
   const error = new Error(code);
   error.status = status;
@@ -304,8 +312,9 @@ async function directInvokeLLM(params, deps) {
   content.push({ type: 'text', text: params.prompt });
   const body = { model, max_tokens: schema ? DIRECT_AI_MAX_TOKENS.structured : DIRECT_AI_MAX_TOKENS.plain, messages: [{ role: 'user', content }] };
   if (schema) {
+    body.system = DIRECT_AI_STRUCTURED_SYSTEM;
     body.tools = [{ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.', input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } }];
-    body.tool_choice = { type: 'tool', name: 'return_result' };
+    body.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
   }
   const started = Date.now();
   let response;

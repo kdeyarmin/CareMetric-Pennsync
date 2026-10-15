@@ -136,7 +136,7 @@ test('strict schema supports primitives and rejects unsupported semantics', () =
   assert.equal(conforms({value:2},schema),true);assert.equal(conforms({value:'2'},schema),false);assert.equal(conforms({value:2,other:true},schema),false);
 });
 test('text AI uses Anthropic directly without any Base44 Core request', async () => {
-  const urls=[];const provider=createProviders(cfg(),{},async(url,options)=>{urls.push(url);const b=JSON.parse(options.body);assert.equal(b.model,cfg().model);return Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'});});
+  const urls=[];const provider=createProviders(cfg(),{},async(url,options)=>{urls.push(url);const b=JSON.parse(options.body);assert.equal(b.model,cfg().model);assert.equal(b.tools,undefined);assert.equal(b.tool_choice,undefined);assert.equal(b.system,undefined);return Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'});});
   assert.equal(await provider('InvokeLLM',{prompt:'synthetic'},actor),'Synthetic answer');assert.deepEqual(urls,['https://api.anthropic.com/v1/messages']);
 });
 test('structured AI uses a nonexecuting envelope and rejects truncated or invalid results', async () => {
@@ -146,6 +146,21 @@ test('structured AI uses a nonexecuting envelope and rejects truncated or invali
     if(typeof output[0]==='number')assert.deepEqual(await provider('InvokeLLM',{prompt:'x',response_json_schema:schema},actor),output);
     else await assert.rejects(()=>provider('InvokeLLM',{prompt:'x',response_json_schema:schema},actor),e=>e.status===502);
   }
+});
+test('structured AI never forces the tool call, which the 5.5 models reject with a 400', async () => {
+  assert.equal(cfg().model,'claude-sonnet-5-5');
+  const schema={type:'object',properties:{value:{type:'integer',minimum:0}},required:['value']};
+  const bodies=[];const replyWith=content=>createProviders(cfg(),{},async(_url,options)=>{bodies.push(JSON.parse(options.body));return Response.json({content,stop_reason:content.some(block=>block.type==='tool_use')?'tool_use':'end_turn'});});
+  const call={type:'tool_use',name:'return_result',input:{result:{value:3}}};
+  assert.deepEqual(await replyWith([{type:'text',text:'Synthetic preamble'},call])('InvokeLLM',{prompt:'x',response_json_schema:schema},actor),{value:3});
+  const b=bodies[0];
+  assert.deepEqual(b.tool_choice,{type:'auto',disable_parallel_tool_use:true});
+  assert.equal(b.tools.length,1);assert.equal(b.tools[0].name,'return_result');assert.equal(b.tools[0].strict,undefined);
+  assert.deepEqual(b.tools[0].input_schema,{type:'object',properties:{result:schema},required:['result'],additionalProperties:false});
+  assert.match(b.system,/calling the return_result tool exactly once/);
+  // auto does not guarantee the call: a plain-text answer or a second call is refused, never parsed.
+  for(const content of [[{type:'text',text:'{"value":3}'}],[call,{...call,input:{result:{value:4}}}],[{...call,input:{result:{value:-1}}}]])
+    await assert.rejects(()=>replyWith(content)('InvokeLLM',{prompt:'x',response_json_schema:schema},actor),e=>e.status===502&&e.code==='AI_RESULT_SCHEMA_MISMATCH');
 });
 test('email means provider accepted, not delivered, and its sender is server controlled', async () => {
   const provider=createProviders(cfg(),{},async(url,options)=>{assert.equal(url,'https://api.sendgrid.com/v3/mail/send');const body=JSON.parse(options.body);assert.equal(body.from.email,'test@example.test');assert.equal(body.tracking_settings.open_tracking.enable,false);return new Response(null,{status:202});});

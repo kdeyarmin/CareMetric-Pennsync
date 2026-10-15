@@ -6,6 +6,14 @@ import { TELECOM_OPERATIONS, TELECOM_PROVIDER, sendTelecom, validateTelecomParam
 import { MAX_FILE, UUID, conforms, exactObject, fail, fileBytes, limitedBytes, readJson, text, validateSchema } from './safety.mjs';
 
 const FILE_URI = /^cmfile:([0-9a-f-]{36})$/i;
+// Structured results come back through one return_result call that cannot be
+// forced: tool_choice 'tool' / 'any' is a 400 on the 5.5 models config.model
+// defaults to. The call is offered under 'auto' with parallel calls off and a
+// system instruction naming it; anything but exactly one conforming call is
+// AI_RESULT_SCHEMA_MISMATCH. Not strict: strict schemas are compiled and cached
+// outside the message content, where no PHI may appear, and callers supply
+// these schemas, which may use the min/max keywords strict mode rejects.
+const STRUCTURED_SYSTEM = 'Answer only by calling the return_result tool exactly once, with the complete requested result as its result argument. Do not answer in plain text.';
 function requireFileUri(value) {
   const match = typeof value === 'string' && value.match(FILE_URI);
   if (!match || !UUID.test(match[1])) fail(400, 'PRIVATE_FILE_MIGRATION_REQUIRED');
@@ -124,9 +132,10 @@ export function createProviders(config, store, fetcher = fetch) {
     const schema = params.response_json_schema;
     const body = { model: config.model, max_tokens: 4096, messages: [{ role: 'user', content }] };
     if (schema) {
+      body.system = STRUCTURED_SYSTEM;
       body.tools = [{ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.',
         input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } }];
-      body.tool_choice = { type: 'tool', name: 'return_result' };
+      body.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
     }
     const response = await fetcher('https://api.anthropic.com/v1/messages', {
       method: 'POST', headers: { 'x-api-key': config.anthropicKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
