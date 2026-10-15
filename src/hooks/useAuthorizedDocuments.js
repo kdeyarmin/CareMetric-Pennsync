@@ -46,9 +46,10 @@ const DOCUMENTS_QUERY_OPTIONS = Object.freeze({
 });
 
 // Bounded settle deadline (diagnosis #3, item (b)): the hook withholds every
-// row until its own identity query settles successfully after mount, and a
-// platform-throttled identity fetch can stay non-terminal with error === null
-// indefinitely — no query timeout exists, so the page presented
+// row until identity settles from the bound authority (below), and the
+// states that never settle — identity data that never lands, or data
+// present with nothing bound for that principal — otherwise persist
+// indefinitely: no query timeout exists, so the page presented
 // "Loading documents…" forever with no error and no broker call. If the
 // settlement prerequisites have not completed within this deadline after
 // mount, the hook surfaces its existing error state instead (the same
@@ -59,7 +60,7 @@ const DOCUMENTS_QUERY_OPTIONS = Object.freeze({
 // it fires supersedes it and restores normal behavior. 30 s matches the
 // scale AuthContext already allows each bootstrap stage (its identity,
 // memberships, and context calls are each wrapped in a 30_000 ms timeout,
-// src/lib/AuthContext.jsx): an identity fetch that has not settled within
+// src/lib/AuthContext.jsx): a settlement that has not completed within
 // one full stage budget is not merely slow.
 export const DOCUMENT_SETTLE_DEADLINE_MS = 30_000;
 const SETTLE_DEADLINE_ERROR = new Error(
@@ -72,13 +73,6 @@ function exactIdentifier(value) {
     && value.length <= MAX_IDENTIFIER_LENGTH
     && value.trim() === value
     && !value.startsWith('$');
-}
-
-function settledSuccessfullyAfterMount(query) {
-  return query.isSuccess
-    && query.isFetchedAfterMount
-    && query.fetchStatus === 'idle'
-    && !query.error;
 }
 
 function settledDocumentsList(query) {
@@ -231,7 +225,11 @@ function isAuthorizedDocumentsQuery(query) {
  * freshly fetched context passed through. This hook deliberately does not
  * re-invoke getMyTenantContext on mount/focus: that heavyweight call is the
  * one the platform throttles into HTTP 503s, and the broker revalidates
- * authority server-side on every list regardless.
+ * authority server-side on every list regardless. Identity settlement reads
+ * that same bound context (see the derivation below): AuthContext seeds the
+ * shared ['currentUser'] query before this hook mounts, so requiring a
+ * fetch to land after the observer's birth made settlement hostage to a
+ * refetch that might never land.
  */
 export function useAuthorizedDocuments({
   agencyId,
@@ -257,16 +255,45 @@ export function useAuthorizedDocuments({
     enabled: enabled && !validationError,
     ...AUTH_REFRESH_OPTIONS,
   });
-  const currentUserSettled = settledSuccessfullyAfterMount(currentUserQuery);
+  // Settle identity from the bound authority itself (diagnosis #4).
+  // AuthContext seeds the shared ['currentUser'] query by hand (setQueryData,
+  // src/lib/AuthContext.jsx) BEFORE this hook's observer exists, so the seed
+  // is absorbed into the observer's initial state and a fetched-after-mount
+  // settlement test made the hook depend on its mount refetch of the
+  // realm-wrapped auth.me() landing a second update — a fetch that in calm
+  // production sessions neither resolved nor errored, leaving the hook
+  // unsettled forever with the broker never invoked. The binding is the
+  // stronger evidence anyway: it exists only after AuthContext's full
+  // server-validated handshake (identity → memberships → context) for this
+  // exact principal, and the broker re-derives authority server-side on
+  // every list call regardless.
+  //
+  // The trusted-context store (src/lib/roles.js) is a non-reactive module
+  // singleton, so read it synchronously on every render — the pattern
+  // useSignatureRequests' useSigningTenant uses — rather than inside a
+  // useMemo keyed on the query data: structural sharing can return the
+  // previous data reference for a deeply equal user record, which would
+  // freeze a derivation computed before a binding landed. The frozen
+  // context reference doubles as a memo key below, so a binding that lands
+  // (or is cleared) after an earlier render is observed on the next one.
+  const boundContext = getTrustedTenantContext(currentUserQuery.data);
   const currentUserId = exactIdentifier(currentUserQuery.data?.id)
     ? currentUserQuery.data.id
     : null;
-  const identityError = currentUserSettled && !currentUserId
+  // A genuine identity error revokes settlement: the error surfaces in
+  // place of rows, as the fetched-after-mount test behaved when the mount
+  // fetch rejected.
+  const currentUserSettled = Boolean(
+    currentUserId && boundContext && !currentUserQuery.error,
+  );
+  const identityError = currentUserQuery.isSuccess && !currentUserId
     ? 'Authenticated user identity failed integrity validation'
     : null;
   const tenantRequest = useMemo(
-    () => trustedTenantRequest(currentUserQuery.data, requestedAgencyId),
-    [currentUserQuery.data, requestedAgencyId],
+    () => (boundContext
+      ? trustedTenantRequest(currentUserQuery.data, requestedAgencyId)
+      : null),
+    [boundContext, currentUserQuery.data, requestedAgencyId],
   );
   const authorityError = currentUserSettled && currentUserId && !tenantRequest
     ? 'Requested agency does not match the trusted tenant selection'
@@ -277,10 +304,7 @@ export function useAuthorizedDocuments({
   // re-invoking getMyTenantContext on every mount/focus. The bound context
   // passes through the same local validation the fresh response did, and no
   // scope exists at all when nothing is bound for this principal.
-  const boundTenantContext = useMemo(
-    () => (tenantRequest ? getTrustedTenantContext(currentUserQuery.data) : null),
-    [currentUserQuery.data, tenantRequest],
-  );
+  const boundTenantContext = tenantRequest ? boundContext : null;
   const tenantContextSettled = currentUserSettled && !!tenantRequest;
   const tenantScope = useMemo(() => {
     if (!tenantContextMatchesRequest(boundTenantContext, tenantRequest)) return null;
