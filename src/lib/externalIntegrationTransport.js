@@ -74,7 +74,7 @@ export function normalizeExternalIntegrationParams(operation, input) {
   if (operation === 'InvokeLLM') {
     exactObject(value, ['prompt', 'model', 'response_json_schema', 'file_urls', 'file_uris', 'add_context_from_internet']);
     text(value.prompt, 100000);
-    if (Object.hasOwn(value, 'model') && !['automatic', 'claude-sonnet-4-6'].includes(value.model)) deny('INVALID_INPUT');
+    if (Object.hasOwn(value, 'model') && !['automatic', 'claude-sonnet-5-5'].includes(value.model)) deny('INVALID_INPUT');
     if (Object.hasOwn(value, 'response_json_schema')) validateSchema(value.response_json_schema);
     if (Object.hasOwn(value, 'add_context_from_internet') && value.add_context_from_internet !== false) deny('INVALID_INPUT');
     if (Object.hasOwn(value, 'file_urls') && Object.hasOwn(value, 'file_uris')) deny('INVALID_INPUT');

@@ -74,7 +74,7 @@ export function loadConfig(env = process.env) {
     telecomReleased: env.INTEGRATIONS_TELECOM_RELEASE === 'enabled-v1',
 
     supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '', anthropicKey: env.ANTHROPIC_API_KEY || '',
-    model: env.INTEGRATIONS_AI_MODEL || 'claude-sonnet-4-6', sendgridKey: env.SENDGRID_API_KEY || '',
+    model: env.INTEGRATIONS_AI_MODEL || 'claude-sonnet-5-5', sendgridKey: env.SENDGRID_API_KEY || '',
     fromEmail: env.NOTIFICATION_FROM_EMAIL || '',
     revision: /^[0-9a-f]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA || '') ? env.RAILWAY_GIT_COMMIT_SHA : 'unbound',
   };
