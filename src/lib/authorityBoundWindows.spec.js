@@ -128,6 +128,31 @@ describe('authority-bound auxiliary-window containment', () => {
     expect(nativePrint).toHaveBeenCalledTimes(1);
   });
 
+  it('lets the support line and the account-deletion email through before any workspace exists', async () => {
+    // The sign-in and "no agency workspace" screens render before a tenant
+    // realm is ever pinned; their support links are the only way to reach a
+    // person, and the deletion request (Guideline 5.1.1(v)) is one of them.
+    vi.resetModules();
+    localStorage.clear();
+    const windows = await import('./authorityBoundWindows');
+    const { accountDeletionEmailHref, CENTRAL_SUPPORT_PHONE_HREF } = await import('./supportContacts');
+    cleanups.push(windows.installAuthorityBoundLinkInterceptor());
+    const reachesApp = (href) => {
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      const listener = vi.fn((event) => event.preventDefault());
+      anchor.addEventListener('click', listener);
+      document.body.append(anchor);
+      anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return listener.mock.calls.length === 1;
+    };
+    expect(reachesApp(accountDeletionEmailHref('nurse@example.test', '2026-10-15T00:00:00.000Z'))).toBe(true);
+    expect(reachesApp(CENTRAL_SUPPORT_PHONE_HREF)).toBe(true);
+    // Any other native handoff is still held until a workspace is open.
+    expect(reachesApp('tel:+12155550182')).toBe(false);
+    expect(reachesApp('mailto:someone@example.test')).toBe(false);
+  });
+
   it('blocks declarative and programmatic blank-target links before app listeners', async () => {
     const { windows } = await freshRealm();
     const remove = windows.installAuthorityBoundLinkInterceptor();
