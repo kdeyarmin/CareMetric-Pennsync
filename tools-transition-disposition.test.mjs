@@ -223,20 +223,26 @@ test('a module whose only entity is the retired trail is re-classified by what e
   // the transcription provider's key from the environment. R1 of the
   // direct-AI migration (2026-10-15) removed that provider's calls entirely —
   // the account is closed — and with them the key read and the function's
-  // only entity write, so nothing is left for the classifier to find.
-  assert.equal(entityFree.transcribeAudioWithWhisper, 'none');
+  // only entity write, so for the hours between R1 and R2 nothing was left
+  // for the classifier to find and this verdict read 'none'. R2 (the same
+  // day) rebuilt transcription on Deepgram: the key read is back, as the
+  // `DEEPGRAM_API_KEY` function secret, and the UserActivity write is
+  // restored — so the verdict is `external_secret` again, the audited write
+  // masked and the key the reach that remains.
+  assert.equal(entityFree.transcribeAudioWithWhisper, 'external_secret');
   assert.equal(entityFree.mergePDFs, 'files');
   // The verdict is about the MODULE, so it still reads the handout's send.
   // What took the handout out of that bucket is D81's port, not a change here:
   // a written capability is `none` whatever its original reaches.
   assert.equal(entityFree.generatePatientHandout, 'core_integration');
   // And the ones it found that are still in the queue are in the buckets
-  // that describe them. `transcribeAudioWithWhisper` is the fourth it found
-  // and is in NO bucket now: R1 switched the capability off, and switching a
-  // capability off changes its disposition in the same change (D47), so it
-  // is carried `preserved_paused` until the replacement transcription
-  // provider is wired in. Leaving it in `none` would have claimed a
-  // refusing shell was portable today.
+  // that describe them. `transcribeAudioWithWhisper` is the fourth it found.
+  // Between R1 and R2 it was in NO bucket: R1 switched the capability off,
+  // and switching a capability off changes its disposition in the same
+  // change (D47), so it was carried `preserved_paused` while no replacement
+  // transcription provider was wired in — leaving it in `none` would have
+  // claimed a refusing shell was portable today. R2 restored it to `port`,
+  // and it sits in the bucket its key read describes:
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -248,9 +254,8 @@ test('a module whose only entity is the retired trail is re-classified by what e
       `${name} should wait on ${blocker}`);
     assert.equal(report.port_blockers.records_schema.includes(name), false);
   }
-  for (const bucket of Object.values(report.port_blockers)) {
-    assert.equal(bucket.includes('transcribeAudioWithWhisper'), false);
-  }
+  assert.ok(report.port_blockers.external_secret.includes('transcribeAudioWithWhisper'),
+    'transcribeAudioWithWhisper should wait on external_secret');
 });
 
 /**
@@ -390,14 +395,6 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
       + 'calls and carried it `preserved_paused`, moving `external_secret` to 1 and the queue '
       + 'total to 104, and the first wave inlined the directInvokeLLM helper into the four '
       + 'SmartNote capabilities and emptied `core_integration` into `files`',
-  },
-  {
-    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
-    reading: 'entity_authorization=5 files=16 external_secret=2 none=82',
-    reason: 'the 2026-10-15 re-read the direct-AI migration\'s first wave appended to that '
-      + 'same entry, which WAS the measurement on the wave\'s own tree: it differs from the '
-      + 'merged tree\'s by one in `external_secret` alone, because R1 landed in the same '
-      + 'merge and moved that bucket 2 → 1 underneath it',
   },
 ];
 
@@ -1302,7 +1299,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
     records_schema: 0, files: 16, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 1, none: 82 });
+    external_secret: 2, none: 82 });
   // R1 of the direct-AI migration (2026-10-15) moved this distribution by
   // one without a port landing: `external_secret` 2 → 1 and the queue total
   // 105 → 104, with `none` unmoved. `transcribeAudioWithWhisper`'s provider
@@ -1312,6 +1309,15 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // claiming to be startable. `transcribeAndGenerateSOAPNote` is the one
   // that stays: it still reads `ANTHROPIC_API_KEY` from the environment for
   // its surviving structuring leg.
+  // R2 (2026-10-15, the same day) moved it back: transcription was rebuilt
+  // on Deepgram, so `external_secret` 1 → 2 and the total 104 → 105, again
+  // with `none` unmoved — a vendor existing is not a port landing either.
+  // The returning capability reads `DEEPGRAM_API_KEY` from the environment
+  // (D227): the credential store once predicted for it, IntegrationSecret,
+  // is an entity read, and an entity read would have classified both
+  // transcription functions `records_schema` and falsified this
+  // distribution — the same ground on which the Anthropic key is a
+  // function secret.
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -1602,19 +1608,24 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // All three emptied this bucket once the service adopted a PDF library and a
   // call-sequence parity test; nothing is waiting on a rendering decision now.
   assert.deepEqual(report.port_blockers.pdf_rendering, []);
-  // `transcribeAndGenerateSOAPNote` is the bucket's whole population now:
-  // it reads `ANTHROPIC_API_KEY` from the environment and calls the provider
-  // directly rather than through the brokered runtime.
-  // `transcribeAudioWithWhisper` joined it the same way — its only entity
-  // was `UserActivity`, and it read its provider's key the same way — until
-  // R1 of the direct-AI migration (2026-10-15) took that provider's calls
-  // out entirely (the account is closed) and carried the switched-off
-  // capability `preserved_paused`. It returns to the queue when the
-  // replacement transcription provider is wired in (R2), reading its
-  // credential through `IntegrationSecret` entities rather than the
-  // environment.
+  // The bucket's population is the transcription pair again.
+  // `transcribeAndGenerateSOAPNote` reads `ANTHROPIC_API_KEY` from the
+  // environment and calls the provider directly rather than through the
+  // brokered runtime, and since R2 its transcription leg reads
+  // `DEEPGRAM_API_KEY` the same way. `transcribeAudioWithWhisper` joined it
+  // originally the same way — its only entity was `UserActivity`, and it
+  // read its provider's key the same way — left when R1 of the direct-AI
+  // migration (2026-10-15) took that provider's calls out entirely (the
+  // account is closed) and carried the switched-off capability
+  // `preserved_paused`, and returned the same day when R2 rebuilt
+  // transcription on Deepgram, its UserActivity write restored beside the
+  // new key read. Its credential is the `DEEPGRAM_API_KEY` function secret
+  // (D227), not the IntegrationSecret entity read an earlier draft of this
+  // comment predicted for it: that read classifies a capability
+  // `records_schema`, which would have emptied this bucket into the wrong
+  // one and falsified the queue it feeds.
   assert.deepEqual(report.port_blockers.external_secret,
-    ['transcribeAndGenerateSOAPNote']);
+    ['transcribeAndGenerateSOAPNote', 'transcribeAudioWithWhisper']);
   // D87 measures what `external_secret` was standing on for the transcription pair, because
   // "a key from the environment" reads as one missing credential and is three
   // separate walls. The bucket name has been wrong here before, so each is an

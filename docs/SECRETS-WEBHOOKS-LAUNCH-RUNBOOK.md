@@ -126,18 +126,19 @@ of the app is unaffected.
 | Secret | Powers |
 |---|---|
 | `ANTHROPIC_API_KEY` | Direct SOAP-note-from-audio structuring |
+| `DEEPGRAM_API_KEY` | Audio transcription (Deepgram Nova-3 Medical) |
 | `HEYGEN_API_KEY` | AI training-video generation |
 
-(Audio transcription currently has no provider key: the OpenAI account was
-closed and its calls were removed on 2026-10-15, so the transcription functions
-fail closed with a "not configured" notice until the replacement provider is
-wired in. Telehealth video tokens and outbound fax use the Telnyx config from
-§2, not these.)
+(Audio transcription runs on Deepgram: the OpenAI account was closed and its
+calls removed on 2026-10-15, and the transcription functions were rebuilt on
+Deepgram the same day. Until `DEEPGRAM_API_KEY` is provisioned, they fail
+closed with a "not configured" notice. Telehealth video tokens and outbound
+fax use the Telnyx config from §2, not these.)
 
 Most application AI uses platform-managed `Core.InvokeLLM`, and transactional
 email uses platform-managed `Core.SendEmail`; neither consumes an app-managed
 provider key. Fax-cover formatting is deterministic and sends no patient data
-to an AI provider. Gemini, Deepgram, Resend, Notifyre, and Twilio environment
+to an AI provider. Gemini, Resend, Notifyre, and Twilio environment
 keys are not runtime requirements in the current source tree and must not be
 treated as launch blockers.
 
