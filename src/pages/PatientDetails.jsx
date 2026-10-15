@@ -166,7 +166,7 @@ export default function PatientDetails() {
   });
 
   // The information card's projections are read here, mounted with the page,
-  // and handed to the card. Every reader shares the ['currentUser'] and
+  // and handed to the card. Every reader shares the signed-in identity and
   // tenant-context checks, which re-run whenever a reader mounts, so a card
   // that read for itself (mounting only once the gate below passed) re-opened
   // that gate, was unmounted by it, and remounted without end. The tenant role
