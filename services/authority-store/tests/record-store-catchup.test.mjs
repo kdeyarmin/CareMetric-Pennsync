@@ -353,8 +353,9 @@ before(async () => {
   // rather than an exception. It arrived here when the last wave's migration
   // was the newest pending record file; the five fax and phone CONTRACTS in
   // the same change sort at 850000 to 890000 and OVERTOOK it, so the guard
-  // belongs to the newest of those -- `contract-fax-log.test.mjs`, over
-  // 20260920890000. That is the same handover by which it reached this suite
+  // belonged to the newest of those -- `contract-fax-log.test.mjs`, over
+  // 20260920890000 -- and has since moved on to `ai-model-default.test.mjs`,
+  // over 20260920900000. That is the same handover by which it reached this suite
   // from `contract-reference-writes.test.mjs`, which is why the helper's own
   // error text talks about renaming rather than merging.
   //
