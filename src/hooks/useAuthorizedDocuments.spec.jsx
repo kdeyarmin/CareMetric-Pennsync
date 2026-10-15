@@ -343,4 +343,112 @@ describe('authorized Document list boundary', () => {
     expect(mocks.getTenantContext).not.toHaveBeenCalled();
     expect(mocks.listDocuments).not.toHaveBeenCalled();
   });
+
+  it('serves rows normally when settlement completes before the settle deadline', async () => {
+    mocks.listDocuments.mockResolvedValue(page({
+      documents: [documentRow('document-a', '2026-09-04T00:00:00.000Z')],
+    }));
+    const { result } = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 60_000 }),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.isError).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.data.map((row) => row.id)).toEqual(['document-a']);
+  });
+
+  it('converts an identity fetch that never settles into the existing error state at the deadline', async () => {
+    // The 4:21 PM production shape: the identity fetch stays non-terminal
+    // with error === null, so no genuine error ever arrives and, without
+    // the deadline, the hook would report loading forever.
+    mocks.authMe.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 50 }),
+      { wrapper: wrapper() },
+    );
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.isError).toBe(false);
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    // The same presentation the page already turns into its unavailable
+    // banner: isError with an Error, no rows, no scope — and the deadline
+    // never enabled the documents query, so the broker was never invoked.
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.error.message).toMatch(/did not complete in time/);
+    expect(result.current.status).toBe('error');
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
+  });
+
+  it('recovers to normal behavior when settlement completes after the deadline fired', async () => {
+    let resolveMe;
+    mocks.authMe.mockImplementation(
+      () => new Promise((resolve) => { resolveMe = resolve; }),
+    );
+    mocks.listDocuments.mockResolvedValue(page({
+      documents: [documentRow('document-a', '2026-09-04T00:00:00.000Z')],
+    }));
+    const { result } = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 50 }),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error.message).toMatch(/did not complete in time/);
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveMe({ id: 'user-a', email: 'manager@agency.test' });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.isError).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.data.map((row) => row.id)).toEqual(['document-a']);
+    expect(result.current.tenantScope).toEqual(SCOPE);
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it('arms a fresh deadline per mount: a remount of a hung hook reports loading, not the fired deadline', async () => {
+    mocks.authMe.mockImplementation(() => new Promise(() => {}));
+    const wrap = sharedWrapper(harnessClient());
+    const first = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 50 }),
+      { wrapper: wrap },
+    );
+    await waitFor(() => expect(first.result.current.isError).toBe(true));
+    first.unmount();
+
+    const second = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 60_000 }),
+      { wrapper: wrap },
+    );
+    expect(second.result.current.isError).toBe(false);
+    expect(second.result.current.isLoading).toBe(true);
+    second.unmount();
+  });
+
+  it('never lets the deadline mask a genuine error that arrives first', async () => {
+    mocks.authMe.mockRejectedValue(new Error('identity transport failed'));
+    const { result } = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 50 }),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error.message).toBe('identity transport failed');
+    // Past the deadline, the surfaced error is still the genuine one.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
+    expect(result.current.isError).toBe(true);
+    expect(result.current.error.message).toBe('identity transport failed');
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
+  });
 });

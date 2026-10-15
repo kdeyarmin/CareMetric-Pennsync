@@ -125,11 +125,40 @@ function validTenantContext(context, requestedAgencyId, expectedMembership) {
 }
 
 const TRANSIENT_TENANT_STATUSES = new Set([429, 500, 502, 503, 504]);
+// Same pacing contract as the memberships wrapper: the backend answers a
+// translated provider 429/503 with HTTP 503 and Retry-After: 2
+// (base44/functions/getMyTenantContext/entry.ts), so the single retry
+// waits at least that server-directed 2 s — never the old 250 ms, which
+// retried inside the window the server asked callers to back off for —
+// and a longer Retry-After carried on the error wins over the floor.
+const TENANT_CONTEXT_RETRY_DELAY_MS = 2_000;
 const tenantContextInflight = new Map();
 
 function tenantContextStatus(error) {
   const status = error?.response?.status ?? error?.status ?? null;
   return Number.isInteger(status) ? status : null;
+}
+
+// The invoke transport (axios) exposes response headers on the error
+// beside the response.status this wrapper already reads; accept either a
+// Headers-like `.get` or a plain header map, case-insensitively. Only the
+// delta-seconds form is honored — that is the only form this backend
+// emits. Anything unreadable yields null and the floor above applies.
+function retryAfterMs(error) {
+  const headers = error?.response?.headers;
+  if (!headers || typeof headers !== 'object') return null;
+  let raw = typeof headers.get === 'function' ? headers.get('retry-after') : null;
+  if (raw === null || raw === undefined) {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'retry-after') {
+        raw = headers[key];
+        break;
+      }
+    }
+  }
+  if (raw === null || raw === undefined) return null;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.round(seconds * 1000) : null;
 }
 
 function delay(ms) {
@@ -148,7 +177,7 @@ async function invokeTenantContextWithRetry(invokeTenantContext, payload) {
     return await invokeTenantContext(payload);
   } catch (error) {
     if (!TRANSIENT_TENANT_STATUSES.has(tenantContextStatus(error))) throw error;
-    await delay(250);
+    await delay(Math.max(TENANT_CONTEXT_RETRY_DELAY_MS, retryAfterMs(error) ?? 0));
     return invokeTenantContext(payload);
   }
 }
