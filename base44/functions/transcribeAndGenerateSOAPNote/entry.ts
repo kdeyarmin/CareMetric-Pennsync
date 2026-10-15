@@ -56,8 +56,6 @@ function serviceRoleClientRequest(req, expectedAppId) {
   return pinnedBase44Request(req, expectedAppId, false);
 }
 // <<<END SHARED HELPER: base44ClientRequest>>>
-import OpenAI from 'npm:openai@4.104.0';
-
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -77,49 +75,36 @@ Deno.serve(async (req) => {
         }
         if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-        // Construct the OpenAI client inside the handler — module-level init
-        // crashes boot if the secret is missing (no try/catch reached, no logs).
-        const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") });
-
         const payload = await req.json();
-        const { audio_base64, mime_type } = payload;
-        
-        if (!audio_base64) {
+        const { audio_base64, transcript: suppliedTranscript } = payload;
+
+        if (!audio_base64 && !suppliedTranscript) {
              return Response.json({ error: 'No audio provided' }, { status: 400 });
         }
 
-        // Convert base64 to File object for OpenAI
-        const binaryString = atob(audio_base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+        // 1. Transcription. The provider leg that ran here (an SDK client
+        // calling the transcription model over the base64 audio) is removed
+        // (R1 of the direct-AI migration): that account is closed, so every
+        // call to it was broken on use. Until the replacement provider is
+        // wired in (R2), audio input fails closed at this step — after auth and
+        // payload validation, before any provider call — with the refusal
+        // the frontend maps to its "isn't set up yet" copy
+        // (src/lib/aiFeatureError.js). A caller that already holds a
+        // transcript may supply it as `transcript`, and the Anthropic leg
+        // below then runs exactly as before.
+        const transcript = typeof suppliedTranscript === 'string' ? suppliedTranscript : '';
+        if (!transcript) {
+            return Response.json({ error: 'Transcription provider not configured' }, { status: 500 });
         }
-        
-        // determine extension
-        let ext = "webm";
-        if (mime_type && mime_type.includes("mp4")) ext = "mp4";
-        if (mime_type && mime_type.includes("wav")) ext = "wav";
-
-        const file = new File([bytes], `audio.${ext}`, { type: mime_type || "audio/webm" });
-
-        // 1. Transcribe audio using gpt-4o-transcribe
-        const transcriptionResponse = await openai.audio.transcriptions.create({
-            file: file,
-            model: "gpt-4o-transcribe",
-            response_format: "text",
-        });
-
-        const transcript = transcriptionResponse;
 
         // 2. Generate the SOAP note using Claude — the reasoning step over the
-        // transcript. Transcription stays on OpenAI's gpt-4o-transcribe above;
-        // only this step uses Anthropic (same direct-API pattern as
-        // generateFaxCoverPage). The model id MUST be a real Anthropic id:
+        // transcript. Only this step uses Anthropic (same direct-API pattern
+        // as generateFaxCoverPage). The model id MUST be a real Anthropic id:
         // 'automatic' is a Base44 InvokeLLM convention that 404s on the direct
         // Messages API, so every SOAP draft was silently failing to the
-        // degrade path below. claude-opus-4-8 runs without thinking when the
-        // thinking field is omitted, so the whole max_tokens budget goes to the
-        // JSON answer; it does not take an OpenAI-style response_format, so the
+        // degrade path below. claude-opus-5-5 runs without thinking when the
+        // thinking field is omitted, so the whole max_tokens budget goes to
+        // the JSON answer; the Messages API takes no response_format, so the
         // JSON contract is expressed in the prompt and extracted from the text.
         const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
         if (!anthropicKey) {

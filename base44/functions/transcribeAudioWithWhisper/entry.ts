@@ -95,63 +95,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: "No audio file provided" }, { status: 400 });
     }
 
-    // Convert file to buffer
-    const arrayBuffer = await audioFile.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
-
-    // Call OpenAI transcription API (gpt-4o-transcribe)
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiApiKey) {
-      return Response.json({ error: "OpenAI API key not configured" }, { status: 500 });
-    }
-
-    // Create FormData for OpenAI transcription (gpt-4o-transcribe)
-    const whisperFormData = new FormData();
-    whisperFormData.append("file", new Blob([buffer], { type: "audio/mp3" }), "audio.mp3");
-    whisperFormData.append("model", "gpt-4o-transcribe");
-    whisperFormData.append("language", "en");
-
-    const transcribeResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openaiApiKey}`,
-      },
-      body: whisperFormData,
-    });
-
-    if (!transcribeResponse.ok) {
-      const error = await transcribeResponse.json();
-      console.error("Whisper API error:", error);
-      return Response.json(
-        { error: error.error?.message || "Transcription failed" },
-        { status: transcribeResponse.status }
-      );
-    }
-
-    const result = await transcribeResponse.json();
-
-    // Log activity
-    try {
-      await base44.asServiceRole.entities.UserActivity.create({
-        user_email: user.email,
-        user_name: user.full_name,
-        action: "audio_transcribed",
-        details: {
-          duration_seconds: Math.round((buffer.length / 16000) || 1),
-          transcription_length: result.text?.length || 0,
-          timestamp: new Date().toISOString(),
-        },
-        page: "SmartNoteAssistant",
-        user_agent: req.headers.get("user-agent"),
-      });
-    } catch (logErr) {
-      console.error("Activity logging error:", logErr);
-    }
-
-    return Response.json({
-      text: result.text || "",
-      duration: result.duration || null,
-    });
+    // Transcription provider removed (R1 of the direct-AI migration): the
+    // provider account this function called is closed, so the provider fetch,
+    // its API-key read and the UserActivity success log are gone — no
+    // transcription occurs, so there is no success to log. Until a
+    // replacement provider is wired in (R2), the function fails closed here,
+    // after auth and payload validation, with the refusal the frontend maps
+    // to its "isn't set up yet" copy (src/lib/aiFeatureError.js).
+    return Response.json(
+      { error: "Transcription provider not configured" },
+      { status: 500 }
+    );
   } catch (error) {
     console.error("Transcription error:", error);
     return Response.json(

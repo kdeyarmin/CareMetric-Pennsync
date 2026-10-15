@@ -386,22 +386,13 @@ Deno.serve(async (req) => {
       return isSet(value) ? value : null;
     };
 
-    const openaiKey = env('OPENAI_API_KEY');
     const anthropicKey = env('ANTHROPIC_API_KEY');
     const centralLearningReleased = env('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1';
     const heygenKey = centralLearningReleased ? null : env('HEYGEN_API_KEY');
 
     // Independent provider checks run concurrently, each with its own timeout.
     // Missing optional feature keys cause no request.
-    const [openaiHealth, anthropicHealth, heygenHealth, telnyxHealth] = await Promise.all([
-      openaiKey
-        ? probe(
-          'https://api.openai.com/v1/models',
-          { headers: { Authorization: `Bearer ${openaiKey}` } },
-          'The OpenAI credential authenticated; transcription-model entitlement and audio processing are not proven.',
-          'OpenAI',
-        )
-        : Promise.resolve(null),
+    const [anthropicHealth, heygenHealth, telnyxHealth] = await Promise.all([
       anthropicKey
         ? probe(
           'https://api.anthropic.com/v1/models',
@@ -436,29 +427,6 @@ Deno.serve(async (req) => {
         delivery_verified: false,
         detail: 'Application AI uses the platform-managed Core.InvokeLLM capability. This health check does not spend credits, invoke a model, or prove end-to-end generation.',
       },
-      openaiKey
-        ? {
-          id: 'openai_transcription',
-          label: 'OpenAI audio transcription',
-          category: 'Transcription',
-          capability: 'direct_audio_transcription',
-          configured: true,
-          editable_in_app: false,
-          delivery_verified: false,
-          ...openaiHealth,
-        }
-        : {
-          id: 'openai_transcription',
-          label: 'OpenAI audio transcription',
-          category: 'Transcription',
-          capability: 'direct_audio_transcription',
-          configured: false,
-          editable_in_app: false,
-          status: 'warn',
-          probe: 'not-run',
-          delivery_verified: false,
-          detail: 'OPENAI_API_KEY is not set; direct audio transcription is unavailable, but platform-managed application AI is unaffected.',
-        },
       anthropicKey
         ? {
           id: 'anthropic_soap',
