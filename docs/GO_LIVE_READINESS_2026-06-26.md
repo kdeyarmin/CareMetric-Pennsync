@@ -100,16 +100,16 @@ Per `.env.example` and the checklist:
   environment's exact HTTPS origin. Outbound account/invitation/notification
   links fail closed when it is missing or malformed; there is no `APP_URL` or
   production-host fallback.
-- **`ANTHROPIC_API_KEY`** (direct SOAP-note structuring), **`HEYGEN_API_KEY`**
+- **`ANTHROPIC_API_KEY`** (direct SOAP-note structuring), **`DEEPGRAM_API_KEY`**
+  (audio transcription, Deepgram Nova-3 Medical), **`HEYGEN_API_KEY`**
   (training video) —
   each feature shows a clear "not configured" notice until set, so these gate
-  *features*, not launch. Audio transcription has no provider key at all: the
-  OpenAI account was closed and its calls removed on 2026-10-15, so the
-  transcription functions (including the transcription stage of
-  SOAP-from-audio) fail closed with that same notice until a replacement
-  provider is wired in.
+  *features*, not launch. Transcription was rebuilt on Deepgram on 2026-10-15
+  after the OpenAI account closed and its calls were removed; until the key
+  is set, the transcription functions (including the transcription stage of
+  SOAP-from-audio) fail closed with that same notice.
 - Most application AI and email use Base44-managed `Core.InvokeLLM` and
-  `Core.SendEmail`. Fax-cover formatting is deterministic. Gemini, Deepgram,
+  `Core.SendEmail`. Fax-cover formatting is deterministic. Gemini,
   Resend, Notifyre, and Twilio environment keys are not current runtime
   requirements and are not launch blockers.
 - `SIGNUP_WEBHOOK_SECRET` (optional) locks `onUserSignup` to the trusted trigger.
