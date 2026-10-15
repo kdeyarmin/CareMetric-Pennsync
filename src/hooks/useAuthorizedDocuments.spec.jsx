@@ -451,4 +451,109 @@ describe('authorized Document list boundary', () => {
     expect(result.current.error.message).toBe('identity transport failed');
     expect(mocks.listDocuments).not.toHaveBeenCalled();
   });
+
+  it('settles from the bound authority when the identity cache was seeded before mount and the refetch never lands', async () => {
+    // The production ordering from diagnosis #4: AuthContext binds the
+    // trusted context (the beforeEach above) and then seeds ['currentUser']
+    // by hand BEFORE the hook's observer exists, so the seed is absorbed
+    // into the observer's initial state and the mount refetch of auth.me()
+    // is the only possible second update. Here that refetch never resolves
+    // and never errors — the 5:49 PM calm-window signature that left the
+    // shipped hook pending forever. Settlement must come from the bound
+    // authority itself: rows served, broker invoked exactly once.
+    mocks.authMe.mockImplementation(() => new Promise(() => {}));
+    mocks.listDocuments.mockResolvedValue(page({
+      documents: [documentRow('document-a', '2026-09-04T00:00:00.000Z')],
+    }));
+    const client = harnessClient();
+    client.setQueryData(['currentUser'], { id: 'user-a', email: 'manager@agency.test' });
+    const { result } = renderHook(
+      () => useAuthorizedDocuments(),
+      { wrapper: sharedWrapper(client) },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mocks.authMe).toHaveBeenCalled();
+    expect(mocks.listDocuments).toHaveBeenCalledTimes(1);
+    expect(result.current.data.map((row) => row.id)).toEqual(['document-a']);
+    expect(result.current.tenantScope).toEqual(SCOPE);
+    expect(mocks.getTenantContext).not.toHaveBeenCalled();
+  });
+
+  it('seeded identity with no binding stays unsettled until the settle deadline, then errors without a broker call', async () => {
+    clearTrustedTenantContext();
+    mocks.authMe.mockImplementation(() => new Promise(() => {}));
+    const client = harnessClient();
+    client.setQueryData(['currentUser'], { id: 'user-a', email: 'manager@agency.test' });
+    const { result } = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 50 }),
+      { wrapper: sharedWrapper(client) },
+    );
+
+    // Data is present but nothing is bound for this principal: no settle,
+    // no scope, no rows — the deadline is the only terminator.
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.isError).toBe(false);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error.message).toMatch(/did not complete in time/);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
+    expect(mocks.getTenantContext).not.toHaveBeenCalled();
+  });
+
+  it('seeded identity with a binding for a different principal fails closed at the settle deadline', async () => {
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(
+      { id: 'user-b', email: 'other@agency.test' },
+      tenantContext({
+        user_id: 'user-b',
+        user_email: 'other@agency.test',
+        membership_id: 'membership-b',
+        membership_key: 'agency-a:user-b',
+      }),
+    );
+    mocks.authMe.mockImplementation(() => new Promise(() => {}));
+    const client = harnessClient();
+    client.setQueryData(['currentUser'], { id: 'user-a', email: 'manager@agency.test' });
+    const { result } = renderHook(
+      () => useAuthorizedDocuments({ settleDeadlineMs: 50 }),
+      { wrapper: sharedWrapper(client) },
+    );
+
+    // The binding is exact-principal: another principal's bound context
+    // settles nothing for the seeded user.
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error.message).toMatch(/did not complete in time/);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
+    expect(mocks.getTenantContext).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a genuine identity error over the bound-state settle in the seeded arrangement', async () => {
+    // Settlement comes from the binding, but it is not a mask: when the
+    // post-mount identity refetch rejects, the genuine error revokes
+    // settlement and surfaces — no rows, no scope.
+    mocks.authMe.mockRejectedValue(new Error('identity transport failed'));
+    const client = harnessClient();
+    client.setQueryData(['currentUser'], { id: 'user-a', email: 'manager@agency.test' });
+    const { result } = renderHook(
+      () => useAuthorizedDocuments(),
+      { wrapper: sharedWrapper(client) },
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error.message).toBe('identity transport failed');
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toEqual([]);
+    expect(result.current.tenantScope).toBeNull();
+  });
 });
