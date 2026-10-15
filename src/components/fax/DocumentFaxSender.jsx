@@ -11,6 +11,7 @@ import { Send, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { sendFax } from "@/functions/sendFax";
 import { announceLegacyFaxSubmit } from "./legacyFaxSubmitFeedback";
+import LegacyFaxSubmissionNotice from "./LegacyFaxSubmissionNotice";
 import FaxAddressBook from "./FaxAddressBook";
 import FaxOCRExtractor from "./FaxOCRExtractor";
 import FaxCoverSheetGenerator from "./FaxCoverSheetGenerator";
@@ -24,6 +25,8 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
     if (prefilledData?.recipient_fax_number) setToNumber(prefilledData.recipient_fax_number);
   }, [prefilledData]);
   const [isSending, setIsSending] = useState(false);
+  const [lastSubmission, setLastSubmission] = useState(null);
+  const sendInFlightRef = React.useRef(false);
   const [coverSheetUrl, setCoverSheetUrl] = useState(null);
   const [authorizedFileUrl, setAuthorizedFileUrl] = useState(null);
   const [isAuthorizingDocument, setIsAuthorizingDocument] = useState(false);
@@ -55,6 +58,7 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
     const requestNumber = authorizationRequestRef.current + 1;
     authorizationRequestRef.current = requestNumber;
     setSelectedDocId(documentId);
+    setLastSubmission(null);
     setCoverSheetUrl(null);
     setAuthorizedFileUrl(null);
     if (!documentId || !agencyId) return;
@@ -81,6 +85,21 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
   };
 
   const handleSendFax = async () => {
+    // Synchronous in-flight guard: the isSending state + disabled button only
+    // take effect after React flushes, so a fast double-click could otherwise
+    // invoke sendFax twice and transmit two real faxes. The ref is checked
+    // and set before any await, so a second invocation while one is in flight
+    // is a no-op.
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    try {
+      await sendFaxOnce();
+    } finally {
+      sendInFlightRef.current = false;
+    }
+  };
+
+  const sendFaxOnce = async () => {
     if (!selectedDocId || !toNumber.trim()) {
       toast.error("Please select a document and enter a recipient number");
       return;
@@ -113,6 +132,14 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
         to_name: toName || undefined
       });
       announceLegacyFaxSubmit(toast, result);
+      // Durable confirmation: set BEFORE the form reset below, and not
+      // cleared by it — the toast alone read as "nothing happened" and
+      // invited a duplicate send.
+      setLastSubmission({
+        recipientNumber: toNumber,
+        submittedAt: new Date(),
+        originationWarning: result?.origination_warning ?? null,
+      });
       setSelectedDocId("");
       setToNumber("");
       setToName("");
@@ -182,10 +209,10 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
             type="tel"
             placeholder="+1234567890"
             value={toNumber}
-            onChange={(e) => { setToNumber(e.target.value); setToName(""); }}
+            onChange={(e) => { setToNumber(e.target.value); setToName(""); setLastSubmission(null); }}
             className="h-11"
           />
-          <FaxAddressBook onSelectContact={(c) => { setToNumber(c.fax_number); setToName(c.name || ""); }} />
+          <FaxAddressBook onSelectContact={(c) => { setToNumber(c.fax_number); setToName(c.name || ""); setLastSubmission(null); }} />
         </div>
 
         <FaxCoverSheetGenerator
@@ -200,6 +227,11 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
           {isSending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Send className="w-5 h-5 mr-2" />}
           {isSending ? "Sending..." : "Send Fax"}
         </Button>
+
+        <LegacyFaxSubmissionNotice
+          submission={lastSubmission}
+          onDismiss={() => setLastSubmission(null)}
+        />
       </CardContent>
     </Card>
   );
