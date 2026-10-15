@@ -16,7 +16,10 @@ import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 export default function PersonalizedMaterialSender({ material, onClose, onSent }) {
   const [selectedPatientId, setSelectedPatientId] = useState('');
-  const [deliveryMethod, setDeliveryMethod] = useState('printed');
+  // Nothing here sends anything: no email, portal or text delivery exists for
+  // education material, so the only method this can truthfully record is a
+  // printed copy handed to the patient.
+  const deliveryMethod = 'printed';
   const [notes, setNotes] = useState('');
   const [showPreview, setShowPreview] = useState(true);
   const { tenantContext } = useAuth();
@@ -99,11 +102,11 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
       return sent;
     },
     onSuccess: () => {
-      toast.success('Education material sent successfully');
+      toast.success('Delivery recorded');
       onSent();
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to send material');
+      toast.error(error.message || 'Failed to record the delivery');
     }
   });
 
@@ -111,7 +114,7 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Send: {material.title}</DialogTitle>
+          <DialogTitle>Record delivery: {material.title}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -135,17 +138,10 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
           {/* Delivery Method */}
           <div>
             <Label>Delivery Method</Label>
-            <Select value={deliveryMethod} onValueChange={setDeliveryMethod}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="printed">Printed (Hand-delivered)</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="patient_portal">Patient Portal</SelectItem>
-                <SelectItem value="text_message">Text Message</SelectItem>
-              </SelectContent>
-            </Select>
+            <p className="text-sm text-slate-700">Printed and handed to the patient</p>
+            <p className="text-xs text-slate-500">
+              This records that you gave the patient a printed copy. Nothing is sent electronically.
+            </p>
           </div>
 
           {/* Notes */}
@@ -208,12 +204,12 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
               {sendMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Sending...
+                  Recording...
                 </>
               ) : (
                 <>
                   <Send className="w-4 h-4 mr-2" />
-                  Send to Patient
+                  Record Delivery
                 </>
               )}
             </Button>

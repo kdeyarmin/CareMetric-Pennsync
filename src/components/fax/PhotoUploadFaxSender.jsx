@@ -307,7 +307,7 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
                         : prev
                     ));
                   }}
-                  className="absolute right-2 top-2 rounded-full bg-white/95 p-1 text-slate-600 shadow-sm opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                  className="absolute right-2 top-2 rounded-full bg-white/95 p-1 text-slate-600 shadow-sm opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
                 >
                   <X className="w-3 h-3" />
                 </button>
