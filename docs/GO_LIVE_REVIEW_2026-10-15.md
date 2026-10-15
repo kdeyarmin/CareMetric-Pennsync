@@ -36,6 +36,8 @@ Out of scope by the owner's instruction: whether PHI may be sent to the AI provi
 | 15 | High | The 15-minute idle sign-out lived in page memory | Any reload (an iOS relaunch, pull-to-refresh, a reopened tab) restarted it; an idle tab could sign out an active one | A shared, reload-surviving activity stamp; sign-out on mount when stale; first touch after the deadline signs out. A missing stamp is a fresh session, so this release signs nobody out | New spec, fails 6/6 on old code |
 | 16 | Low-medium | `onUserSignup` took `invitations[0]` and, on an approval-write error, fell through to the uninvited path | Re-invited staff refused as "expired"; invited staff un-approved with a false security alert | Latest-expiring invitation; 500 instead of falling through | Two new tests, fail on old code |
 | 17 | Low | Base44 builder note on the 404 page, dead role map in AgencyAccessPanel (the 2 lint warnings), no `noindex` | — | Removed; `noindex, nofollow` added | Lint now has 0 warnings |
+| 18 | High | **Owner decision 2026-10-15:** only the super admin sets up new employees; the invitee accepts. `onUserSignup` verified invited emails itself (it read the account's one-time code with the service role), and any Base44 admin, or through `resendInvitationV2` a facility Manager, could invite or resend | Whoever registered first with a pending invitee's address got a verified account | All six invite/resend functions require the super admin, and the UI shows those controls only to them. The invitee completes the emailed verification themselves; `onUserSignup` makes no platform auth call | New tests, including a facility admin refused at invite and resend (fails on old code) |
+| 19 | Medium | **Owner decision 2026-10-15:** all patient information and names must be visible. Patient Details showed no name and hid the chart | Wrong-patient risk | The name heads the page and a Patient information card shows every field the existing purpose-bound reads return for the caller's role | Updated page spec, new formatter spec |
 
 ## 2. Before you merge or deploy this
 
@@ -54,10 +56,9 @@ Out of scope by the owner's instruction: whether PHI may be sent to the AI provi
 
 | Priority | Item | Why it needs you | Recommendation |
 | --- | --- | --- | --- |
-| High | **`onUserSignup` verifies invited emails itself.** `verifyInvitedUser` reads the account's `otp_code` with the service role and posts it to `/auth/verify-otp` (`base44/functions/onUserSignup/entry.ts`). The function takes no caller credential. | Whoever registers first with a pending invitee's address gets a verified, approved account without access to that mailbox; granting Agency access by email then hands them the chart. Changing it changes how new staff finish sign-up. | Delete the server-side verify, let invitees complete the emailed code themselves (outbound email is on), approve only when the re-read User has `is_verified === true`, and restore a signed trigger secret. |
 | High | **Integration runtime `/v1` accepts `SendEmail` from any manager's own token** (`services/integration-runtime/app.mjs`, `runtime.mjs`). The recipient-in-agency check (D98) exists only in `pennsync-api`. | A manager can send up to ~1,000 emails/day from the company's verified sender to any address with a copied browser token. This is a Railway setting plus a code change. | Remove `SendEmail` from `INTEGRATIONS_ALLOWED_OPERATIONS` until `/v1` requires a service credential that only `pennsync-api` holds. Do not release telecom on the runtime before that. |
 | High | **`main` is unprotected and the repository is public.** Bot commits land on `main` with no PR (e.g. `e703f3a` changed authorization in 15 functions), and a pushed `.github/ops/function-deploy-request` dispatches a production deploy. | GitHub settings only you can change. | Ruleset on `main` requiring a PR and green CI; required reviewers on the `production` environment; make the repo private unless public is deliberate. |
-| Medium | **Patient Details shows no patient name.** A spec pins that the name is not rendered (data minimization), but the page offers call, text and telehealth for the chart. | Wrong-patient risk versus a deliberate choice. | Show `first last` in the header; the display read already returns it. |
+| High | **Every toast message is replaced with generic text in all builds** (`src/lib/tenantSonner.js`, aliased for `sonner` in `vite.config.js`): successes are silent and all ~570 error toasts read "The action could not be completed." | It guards against one agency's message appearing after a switch to another, which a single-agency deployment does not face, but nurses lose the specific guidance ("Required before generating: Homebound status", "Enter the provider's fax number first") and names. | Let string messages and descriptions through, keep JSX and action callbacks blocked, and dismiss queued toasts on an agency switch. |
 | Medium | **The e-signature disclosure promises the signer a copy** (`docs/SIGNATURE_CONSENT_TEXT_2026-10-09.md`), but the signer portal offers no download and only staff are emailed. | Wording or a feature, and the text is pinned by hash. | Offer a one-time download of the sealed PDF on the done screen, or reword the disclosure and rotate the hash. |
 | Medium | **AI spend has no server-side cap.** Wave 1 moved 21 functions off platform credits onto the org's `ANTHROPIC_API_KEY`. Several referral/match functions check only that the caller is signed in. | Budget policy. | Require an active membership on every AI function, and add a per-agency daily token budget that returns 402 (the UI already handles 402). |
 | Low | **Sonnet 5.5 thinks at `high` effort by default.** Nothing sets `output_config.effort`. | A latency/cost trade-off. | Measure SmartNote and extraction at `medium`/`low` on real notes before changing it. |
@@ -104,8 +105,7 @@ Out of scope by the owner's instruction: whether PHI may be sent to the AI provi
 
 ## 6. Validation of this change
 
-On the final code commit: `pnpm run lint` (0 errors, 0 warnings),
-`pnpm run lint:actions`, `pnpm run check:shared-helpers` and
-`pnpm run check:backend-transpile` pass, as does every suite touched by these
-fixes. The full `pnpm test` and `pnpm run build` results are recorded on the
-pull request.
+`pnpm run lint` (0 errors, 0 warnings), `pnpm test` (every suite, including
+2,570 component tests), `pnpm run build`, `pnpm run lint:actions`,
+`pnpm run check:shared-helpers` and `pnpm run check:backend-transpile` are run
+on the final commit; the results are recorded on the pull request.
