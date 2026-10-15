@@ -93,7 +93,7 @@ describe('extractPdfText with a real PDF', () => {
 
     const result = await extractPdfText(pdfFile(doc), { loadPdf: loadLegacyPdfjs });
 
-    expect(result).toMatchObject({ pageCount: 3, emptyPages: 1, unreadPages: 0 });
+    expect(result).toMatchObject({ pageCount: 3, emptyPages: 1, unreadPages: 0, cutPage: null });
     expect(result.text).toMatch(/Patient: Jane Doe\s+DOB 05\/01\/1950\nDx: CHF exacerbation/);
     expect(result.text.indexOf('Jane Doe')).toBeLessThan(result.text.indexOf('Orders: SN 3x/wk'));
   });
@@ -102,7 +102,7 @@ describe('extractPdfText with a real PDF', () => {
     const doc = new jsPDF();
     doc.rect(10, 10, 50, 50, 'F');
     const result = await extractPdfText(pdfFile(doc), { loadPdf: loadLegacyPdfjs });
-    expect(result).toEqual({ text: '', pageCount: 1, emptyPages: 1, unreadPages: 0 });
+    expect(result).toEqual({ text: '', pageCount: 1, emptyPages: 1, unreadPages: 0, cutPage: null });
   });
 
   it("rejects with pdf.js's own error for a file that is not a PDF", async () => {
@@ -119,21 +119,32 @@ describe('extractPdfText limits', () => {
     const result = await extractPdfText(fakeFile, { loadPdf: pdfjs.load, maxChars: 100 });
     // 40 + 2 (separator) + 40 fits; a third page would make 124.
     expect(result.text).toBe(`${'a'.repeat(40)}\n\n${'b'.repeat(40)}`);
-    expect(result).toMatchObject({ pageCount: 3, emptyPages: 0, unreadPages: 1 });
+    expect(result).toMatchObject({ pageCount: 3, emptyPages: 0, unreadPages: 1, cutPage: null });
     expect(pdfjs.destroy).toHaveBeenCalled();
   });
 
-  it('cuts a first page longer than the whole budget instead of dropping it', async () => {
+  it('cuts a first page longer than the whole budget instead of dropping it, and says so', async () => {
     const pdfjs = fakePdfjs([line('x'.repeat(250)), line('y')]);
     const result = await extractPdfText(fakeFile, { loadPdf: pdfjs.load, maxChars: 100 });
     expect(result.text).toBe('x'.repeat(100));
-    expect(result).toMatchObject({ pageCount: 2, unreadPages: 1 });
+    expect(result).toMatchObject({ pageCount: 2, unreadPages: 1, cutPage: 1 });
+  });
+
+  it('reports a cut even when the cut page is the whole packet', async () => {
+    // One oversized page: nothing is unread or empty, so only cutPage can
+    // tell this apart from a complete read.
+    const pdfjs = fakePdfjs([[], line('z'.repeat(150))]);
+    const result = await extractPdfText(fakeFile, { loadPdf: pdfjs.load, maxChars: 100 });
+    expect(result).toEqual({ text: 'z'.repeat(100), pageCount: 2, emptyPages: 1, unreadPages: 0, cutPage: 2 });
+
+    const single = await extractPdfText(fakeFile, { loadPdf: fakePdfjs([line('w'.repeat(101))]).load, maxChars: 100 });
+    expect(single).toEqual({ text: 'w'.repeat(100), pageCount: 1, emptyPages: 0, unreadPages: 0, cutPage: 1 });
   });
 
   it('reads no further than the page cap', async () => {
     const pdfjs = fakePdfjs([line('one'), [], line('three'), line('four')]);
     const result = await extractPdfText(fakeFile, { loadPdf: pdfjs.load, maxPages: 2 });
-    expect(result).toEqual({ text: 'one', pageCount: 4, emptyPages: 1, unreadPages: 2 });
+    expect(result).toEqual({ text: 'one', pageCount: 4, emptyPages: 1, unreadPages: 2, cutPage: null });
   });
 });
 

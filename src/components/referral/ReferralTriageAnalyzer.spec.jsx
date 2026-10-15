@@ -36,7 +36,7 @@ const choose = (file) =>
 beforeEach(() => {
   invoke.mockReset().mockResolvedValue({ data: { success: true, analysis: ANALYSIS } });
   extractPdfText.mockReset().mockResolvedValue({
-    text: 'Patient: Jane Doe\nDx: CHF', pageCount: 3, emptyPages: 0, unreadPages: 0,
+    text: 'Patient: Jane Doe\nDx: CHF', pageCount: 3, emptyPages: 0, unreadPages: 0, cutPage: null,
   });
 });
 
@@ -72,7 +72,7 @@ describe('ReferralTriageAnalyzer', () => {
   });
 
   it('refuses a scanned packet with no text layer instead of triaging nothing', async () => {
-    extractPdfText.mockResolvedValue({ text: '', pageCount: 4, emptyPages: 4, unreadPages: 0 });
+    extractPdfText.mockResolvedValue({ text: '', pageCount: 4, emptyPages: 4, unreadPages: 0, cutPage: null });
     const onTriageComplete = vi.fn();
     render(<ReferralTriageAnalyzer onTriageComplete={onTriageComplete} />);
 
@@ -84,7 +84,7 @@ describe('ReferralTriageAnalyzer', () => {
   });
 
   it('says which pages triage did not see when the packet was read only in part', async () => {
-    extractPdfText.mockResolvedValue({ text: 'Patient: Jane Doe', pageCount: 12, emptyPages: 3, unreadPages: 1 });
+    extractPdfText.mockResolvedValue({ text: 'Patient: Jane Doe', pageCount: 12, emptyPages: 3, unreadPages: 1, cutPage: null });
     render(<ReferralTriageAnalyzer />);
 
     choose(pdf());
@@ -93,6 +93,17 @@ describe('ReferralTriageAnalyzer', () => {
     expect(screen.getByText('Part of the packet was not analyzed')).toBeInTheDocument();
     expect(screen.getByText(/3 of 12 pages had no readable text/)).toBeInTheDocument();
     expect(screen.getByText(/the last 1 page was not included/)).toBeInTheDocument();
+  });
+
+  it('warns when a single oversized page was cut, though no page is unread or empty', async () => {
+    extractPdfText.mockResolvedValue({ text: 'x'.repeat(90_000), pageCount: 1, emptyPages: 0, unreadPages: 0, cutPage: 1 });
+    render(<ReferralTriageAnalyzer />);
+
+    choose(pdf());
+
+    expect(await screen.findByText('Urgency Level: HIGH')).toBeInTheDocument();
+    expect(screen.getByText('Part of the packet was not analyzed')).toBeInTheDocument();
+    expect(screen.getByText(/Page 1 is longer than triage can read at once/)).toBeInTheDocument();
   });
 
   it('turns an unreadable PDF into words and does not call triage', async () => {

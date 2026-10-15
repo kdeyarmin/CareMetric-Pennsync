@@ -24,8 +24,11 @@ import {
 const pages = (count) => `${count} page${count === 1 ? '' : 's'}`;
 
 /** Which pages triage did not see, or null when it saw the whole packet. */
-function describePartialRead({ pageCount, emptyPages, unreadPages }) {
+function describePartialRead({ pageCount, emptyPages, unreadPages, cutPage }) {
   const parts = [];
+  if (cutPage) {
+    parts.push(`Page ${cutPage} is longer than triage can read at once, so the end of it was not included.`);
+  }
   if (emptyPages > 0) {
     parts.push(`${emptyPages} of ${pages(pageCount)} had no readable text (they look like scanned images), so triage did not see ${emptyPages === 1 ? 'it' : 'them'}.`);
   }

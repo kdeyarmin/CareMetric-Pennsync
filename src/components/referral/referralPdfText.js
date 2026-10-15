@@ -77,11 +77,14 @@ const PAGE_SEPARATOR = '\n\n';
  * The packet's text, page by page in order, plus the counts the caller needs
  * to tell a complete read from a partial one.
  *
- * Resolves `{ text, pageCount, emptyPages, unreadPages }`:
+ * Resolves `{ text, pageCount, emptyPages, unreadPages, cutPage }`:
  * - `emptyPages` — pages with no text layer (scanned images);
  * - `unreadPages` — pages left out because the packet passed `maxPages` or
  *   `maxChars`. Reading stops at the first page that does not fit, so what is
- *   sent is always the packet's opening pages and never a gap in the middle.
+ *   sent is always the packet's opening pages and never a gap in the middle;
+ * - `cutPage` — the number of a page whose end was cut off to fit `maxChars`,
+ *   or null. Only the first page carrying text can be cut, and only when it
+ *   alone is longer than the whole budget.
  * `text` is '' when no page read carried text. Rejects with pdf.js's own error
  * for a file it cannot open, which {@link describePdfTextError} turns into
  * words.
@@ -100,6 +103,7 @@ export async function extractPdfText(file, {
     let text = '';
     let emptyPages = 0;
     let pagesDone = 0;
+    let cutPage = null;
     for (let number = 1; number <= Math.min(pageCount, maxPages); number += 1) {
       const page = await pdf.getPage(number);
       const content = await page.getTextContent();
@@ -111,9 +115,11 @@ export async function extractPdfText(file, {
         const next = text ? text + PAGE_SEPARATOR + pageText : pageText;
         if (next.length > maxChars) {
           // A first page longer than the whole budget is cut rather than
-          // dropped, so a one-page dump still gets triaged.
+          // dropped, so a one-page dump still gets triaged — and reported as
+          // cut, because the counts alone would read as a complete page.
           if (!text) {
             text = pageText.slice(0, maxChars);
+            cutPage = number;
             pagesDone += 1;
           }
           break;
@@ -122,7 +128,7 @@ export async function extractPdfText(file, {
       }
       pagesDone += 1;
     }
-    return { text, pageCount, emptyPages, unreadPages: pageCount - pagesDone };
+    return { text, pageCount, emptyPages, unreadPages: pageCount - pagesDone, cutPage };
   } finally {
     await task.destroy?.();
   }
