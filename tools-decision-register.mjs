@@ -66,7 +66,15 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // will go inert again when this collection merges, and the next change that
 // files a numbered entry rewrites it again: a list that oscillates between
 // live and inert on every collection is the design working, not drift.
-export const EXPECTED_NEW = Object.freeze([227]);
+//
+// Rewritten again 2026-10-15 for the collection in hand, which adds D228
+// and nothing else. It held [227] from the rewrite earlier the same day,
+// and that list went INERT when #472 merged and 227 reached the base, so
+// the differential had stood down a second time. Nothing is lost by this
+// rewrite either: 227 is in `BASE_NUMBERS` below and `EXPECTED_DOCUMENT`
+// is the union, so what the document must hold is unchanged apart from
+// D228. What is bought back is the same differential, live a third time.
+export const EXPECTED_NEW = Object.freeze([228]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //

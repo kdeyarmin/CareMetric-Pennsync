@@ -64,13 +64,23 @@ export function stable(value) {
   return JSON.stringify(value);
 }
 const SCHEMA_KEYS = ['type', 'description', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems'];
+const SCHEMA_TYPES = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'];
 export function validateSchema(schema, depth = 0, budget = { nodes: 0 }) {
   if (depth > 12 || ++budget.nodes > 200) fail(400, 'SCHEMA_TOO_COMPLEX');
   exactObject(schema, SCHEMA_KEYS, 'UNSUPPORTED_SCHEMA');
-  if (!['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'].includes(schema.type)) fail(400, 'UNSUPPORTED_SCHEMA');
+  // A type is one kind or a union of kinds (D228): the ADR and clinical
+  // document schemas name nullable fields ['string', 'null'] /
+  // ['number', 'null'], and Base44's InvokeLLM honors them, so the direct
+  // contract must too. Every member is validated and conformance-checked
+  // exactly as the single kind would be; the hosted helper
+  // (base44/_shared/backendHelpers.mjs, directInvokeLLM) mirrors this.
+  const schemaTypes = Array.isArray(schema.type) ? schema.type : [schema.type];
+  if (!schemaTypes.length || schemaTypes.length > SCHEMA_TYPES.length
+    || new Set(schemaTypes).size !== schemaTypes.length
+    || schemaTypes.some(kind => !SCHEMA_TYPES.includes(kind))) fail(400, 'UNSUPPORTED_SCHEMA');
   if (schema.description !== undefined) text(schema.description, 2000, false);
   if (schema.enum !== undefined && (!Array.isArray(schema.enum) || !schema.enum.length || schema.enum.length > 100)) fail(400, 'UNSUPPORTED_SCHEMA');
-  if (schema.type === 'object') {
+  if (schemaTypes.includes('object')) {
     const properties = schema.properties || {};
     if (!properties || typeof properties !== 'object' || Array.isArray(properties) || Object.keys(properties).length > 100) fail(400, 'UNSUPPORTED_SCHEMA');
     if (Object.keys(properties).some(key => ['__proto__', 'constructor', 'prototype'].includes(key))) fail(400, 'UNSUPPORTED_SCHEMA');
@@ -78,7 +88,7 @@ export function validateSchema(schema, depth = 0, budget = { nodes: 0 }) {
     if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') fail(400, 'UNSUPPORTED_SCHEMA');
     Object.values(properties).forEach(child => validateSchema(child, depth + 1, budget));
   } else if (['properties', 'required', 'additionalProperties'].some(key => Object.hasOwn(schema, key))) fail(400, 'UNSUPPORTED_SCHEMA');
-  if (schema.type === 'array') validateSchema(schema.items, depth + 1, budget);
+  if (schemaTypes.includes('array')) validateSchema(schema.items, depth + 1, budget);
   else if (Object.hasOwn(schema, 'items')) fail(400, 'UNSUPPORTED_SCHEMA');
   for (const { low, high, kinds } of [
     { low: 'minLength', high: 'maxLength', kinds: ['string'] },
@@ -87,7 +97,7 @@ export function validateSchema(schema, depth = 0, budget = { nodes: 0 }) {
   ]) {
     for (const key of [low, high]) {
       if (schema[key] === undefined) continue;
-      if (!kinds.includes(schema.type) || typeof schema[key] !== 'number' || !Number.isFinite(schema[key])) fail(400, 'UNSUPPORTED_SCHEMA');
+      if (!kinds.some(kind => schemaTypes.includes(kind)) || typeof schema[key] !== 'number' || !Number.isFinite(schema[key])) fail(400, 'UNSUPPORTED_SCHEMA');
       if (!['minimum', 'maximum'].includes(key) && (!Number.isSafeInteger(schema[key]) || schema[key] < 0 || schema[key] > 100000)) fail(400, 'UNSUPPORTED_SCHEMA');
     }
     if (schema[low] !== undefined && schema[high] !== undefined && schema[low] > schema[high]) fail(400, 'UNSUPPORTED_SCHEMA');
@@ -96,6 +106,7 @@ export function validateSchema(schema, depth = 0, budget = { nodes: 0 }) {
 }
 export function conforms(value, schema) {
   if (schema.enum && !schema.enum.some(item => stable(item) === stable(value))) return false;
+  if (Array.isArray(schema.type)) return schema.type.some(kind => conforms(value, { ...schema, type: kind }));
   if (schema.type === 'null') return value === null;
   if (schema.type === 'object') {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
