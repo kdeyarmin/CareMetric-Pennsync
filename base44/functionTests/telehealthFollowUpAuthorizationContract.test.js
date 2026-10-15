@@ -32,6 +32,15 @@ async function loadHandler(functionName, { client, superAdminEmail = '', fetchIm
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     'const createClientFromRequest = globalThis.__clinicalBoundaryMakeClient;',
   );
+  // The direct-AI migration's first wave moved generateFollowUpTasks' model
+  // call to the inlined directInvokeLLM helper, so where a loaded function
+  // carries that generated block it is replaced with a delegate to the
+  // stubbed service-role InvokeLLM: the recorded `calls.llm` arguments and
+  // the canned results are unchanged, and no real fetch takes place.
+  source = source.replace(
+    /\/\/ <<<BEGIN SHARED HELPER: directInvokeLLM[\s\S]*?\/\/ <<<END SHARED HELPER: directInvokeLLM>>>/,
+    'async function directInvokeLLM(argument) { return globalThis.__clinicalBoundaryMakeClient().asServiceRole.integrations.Core.InvokeLLM(argument); }',
+  );
 
   const temporaryModule = join(
     tmpdir(),

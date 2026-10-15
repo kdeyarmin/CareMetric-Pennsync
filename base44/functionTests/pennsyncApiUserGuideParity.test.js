@@ -81,6 +81,14 @@ async function loadOriginal(surface, guideContent) {
          globalThis.__calls.push(argument); return globalThis.__content;
        } } } },
      });`);
+  // Wave 1 of the direct-AI migration moved the original's model call from
+  // the stubbed InvokeLLM above to the inlined directInvokeLLM helper, so the
+  // recording seam moves with the transport: the generated helper block is
+  // replaced by a stub with the same contract (record the argument, return
+  // the canned content), and every comparison below is unchanged.
+  source = source.replace(
+    /\/\/ <<<BEGIN SHARED HELPER: directInvokeLLM[\s\S]*?\/\/ <<<END SHARED HELPER: directInvokeLLM>>>/,
+    'async function directInvokeLLM(argument) { globalThis.__calls.push(argument); return globalThis.__content; }');
   const js = transpileTs(source).outputText;
   const file = join(tmpdir(), `guideparity_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   let handler = null;
