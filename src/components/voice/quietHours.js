@@ -13,6 +13,10 @@
  * When the timezone can't be resolved (unknown/non-NANP area code), the guard
  * FAILS OPEN (`allowed: true`, `reason: 'unknown_timezone'`) so legitimate sends
  * aren't blocked by an incomplete table — callers can surface a soft warning.
+ * That holds for a clinician sending by hand (sendSms). The unattended paths
+ * (dispatchScheduledSms, redriveFailedSms) instead allow an unmapped number
+ * only while the window is open in every mainland zone, so a scheduled or
+ * retried text never fails open into someone's night.
  */
 
 // Area code → IANA timezone (best-effort; US/Canada NANP). Not exhaustive —
@@ -91,6 +95,28 @@ export const AREA_CODE_TIMEZONE = {
   775: "America/Los_Angeles", 805: "America/Los_Angeles", 818: "America/Los_Angeles", 820: "America/Los_Angeles",
   831: "America/Los_Angeles", 858: "America/Los_Angeles", 909: "America/Los_Angeles", 916: "America/Los_Angeles",
   925: "America/Los_Angeles", 949: "America/Los_Angeles", 951: "America/Los_Angeles", 971: "America/Los_Angeles",
+  // Eastern (added 2026-10-15)
+  229: "America/New_York", 231: "America/New_York", 248: "America/New_York", 252: "America/New_York",
+  260: "America/New_York", 269: "America/New_York", 313: "America/New_York", 315: "America/New_York",
+  317: "America/New_York", 332: "America/New_York", 336: "America/New_York", 380: "America/New_York",
+  423: "America/New_York", 445: "America/New_York", 463: "America/New_York", 574: "America/New_York",
+  586: "America/New_York", 603: "America/New_York", 606: "America/New_York", 609: "America/New_York",
+  616: "America/New_York", 640: "America/New_York", 681: "America/New_York", 704: "America/New_York",
+  706: "America/New_York", 734: "America/New_York", 762: "America/New_York", 765: "America/New_York",
+  802: "America/New_York", 812: "America/New_York", 835: "America/New_York", 838: "America/New_York",
+  854: "America/New_York", 860: "America/New_York", 865: "America/New_York", 906: "America/New_York",
+  917: "America/New_York", 930: "America/New_York", 973: "America/New_York", 978: "America/New_York",
+  // Central (added 2026-10-15)
+  219: "America/Chicago", 270: "America/Chicago", 274: "America/Chicago", 308: "America/Chicago",
+  325: "America/Chicago", 364: "America/Chicago", 531: "America/Chicago", 534: "America/Chicago",
+  539: "America/Chicago", 615: "America/Chicago", 629: "America/Chicago", 659: "America/Chicago",
+  662: "America/Chicago", 701: "America/Chicago", 726: "America/Chicago", 806: "America/Chicago",
+  850: "America/Chicago", 931: "America/Chicago", 938: "America/Chicago", 945: "America/Chicago",
+  985: "America/Chicago",
+  // Mountain (986: Idaho overlay of 208) (added 2026-10-15)
+  986: "America/Denver",
+  // Pacific (added 2026-10-15)
+  458: "America/Los_Angeles", 702: "America/Los_Angeles", 725: "America/Los_Angeles",
   // Alaska / Hawaii
   907: "America/Anchorage", 808: "Pacific/Honolulu",
 };

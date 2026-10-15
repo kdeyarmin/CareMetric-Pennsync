@@ -1,7 +1,8 @@
 // What the SMS function harnesses share with the hosted entity store, so a
 // compare-and-set claim is exercised with its REAL predicate semantics:
 //   - every write moves updated_date (a millisecond clock that never repeats),
-//     and a seeded SmsMessage row carries one, as a hosted row always does;
+//     and a seeded SmsMessage or ScheduledSms row carries one, as a hosted row
+//     always does;
 //   - updateMany applies $set to exactly the rows its predicate matches ($and,
 //     $or, $exists, and null-as-missing, through the e-signature harness's
 //     matcher) and answers { success, updated, has_more } as the SDK does;
@@ -17,7 +18,7 @@ export function createStamp(start = Date.parse('2026-10-08T12:00:00.000Z')) {
 }
 
 export function stampSmsRows(data, stamp) {
-  for (const row of data.SmsMessage || []) {
+  for (const row of [...(data.SmsMessage || []), ...(data.ScheduledSms || [])]) {
     if (row && typeof row === 'object' && row.updated_date === undefined) row.updated_date = stamp();
   }
 }
