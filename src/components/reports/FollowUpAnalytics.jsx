@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClipboardCheck, Clock, TrendingUp } from "lucide-react";
-import { buildFollowUpPlan } from "@/components/referral/referralFollowUpEngine";
+import { buildFollowUpPlan, countFollowUpItems } from "@/components/referral/referralFollowUpEngine";
 import ReportReadState from '@/components/analytics/ReportReadState';
 import { EMPTY_REPORT_ROWS } from '@/components/analytics/reportReadContracts';
 import useReferralReportRows from './useReferralReportRows';
@@ -62,11 +62,14 @@ export default function FollowUpAnalytics() {
     let completeOnArrival = 0;
     for (const r of processed) {
       try {
-        const plan = buildFollowUpPlan(r.extracted_data, {
+        // Compliance items only, as the Referral Follow-Up page counts them:
+        // the engine's "reimbursement" (coding/case-mix) category is payment
+        // content (owner decision 2026-10-08).
+        const items = buildFollowUpPlan(r.extracted_data, {
           socDate: r.estimated_start_date,
-        });
-        if (plan.counts.critical === 0) completeOnArrival += 1;
-        for (const it of plan.items) {
+        }).items.filter((it) => it?.category !== 'reimbursement');
+        if (countFollowUpItems(items).critical === 0) completeOnArrival += 1;
+        for (const it of items) {
           gapCounts.set(it.title, (gapCounts.get(it.title) || 0) + 1);
         }
       } catch {
