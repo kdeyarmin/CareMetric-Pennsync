@@ -65,6 +65,7 @@ const DIRECT_AI_TOOL_INSTRUCTION = 'Return your answer by calling the return_res
 const DIRECT_AI_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const DIRECT_AI_FILE_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv'];
 const DIRECT_AI_SCHEMA_KEYS = ['type', 'description', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems'];
+const DIRECT_AI_SCHEMA_TYPES = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'];
 function directAiFail(status, code) {
   const error = new Error(code);
   error.status = status;
@@ -82,7 +83,15 @@ function directAiValidateSchema(schema, depth, budget) {
   if (depth > 12 || ++budget.nodes > 200) directAiFail(400, 'SCHEMA_TOO_COMPLEX');
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)
     || Object.keys(schema).some((key) => !DIRECT_AI_SCHEMA_KEYS.includes(key))) directAiFail(400, 'UNSUPPORTED_SCHEMA');
-  if (!['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'].includes(schema.type)) directAiFail(400, 'UNSUPPORTED_SCHEMA');
+  // A type is one kind or a union of kinds (D228): the ADR and clinical
+  // document schemas name nullable fields ['string', 'null'] /
+  // ['number', 'null'], and Base44's InvokeLLM honors them, so the port
+  // must too. Every member is validated and conformance-checked exactly
+  // as the single kind would be; the runtime's contracts.mjs mirrors this.
+  const schemaTypes = Array.isArray(schema.type) ? schema.type : [schema.type];
+  if (!schemaTypes.length || schemaTypes.length > DIRECT_AI_SCHEMA_TYPES.length
+    || new Set(schemaTypes).size !== schemaTypes.length
+    || schemaTypes.some((kind) => !DIRECT_AI_SCHEMA_TYPES.includes(kind))) directAiFail(400, 'UNSUPPORTED_SCHEMA');
   if (schema.description !== undefined) {
     if (typeof schema.description !== 'string' || schema.description.length > 2000) directAiFail(400, 'INVALID_TEXT');
     for (const character of schema.description) {
@@ -91,7 +100,7 @@ function directAiValidateSchema(schema, depth, budget) {
     }
   }
   if (schema.enum !== undefined && (!Array.isArray(schema.enum) || !schema.enum.length || schema.enum.length > 100)) directAiFail(400, 'UNSUPPORTED_SCHEMA');
-  if (schema.type === 'object') {
+  if (schemaTypes.includes('object')) {
     const properties = schema.properties || {};
     if (!properties || typeof properties !== 'object' || Array.isArray(properties) || Object.keys(properties).length > 100) directAiFail(400, 'UNSUPPORTED_SCHEMA');
     if (Object.keys(properties).some((key) => ['__proto__', 'constructor', 'prototype'].includes(key))) directAiFail(400, 'UNSUPPORTED_SCHEMA');
@@ -99,13 +108,13 @@ function directAiValidateSchema(schema, depth, budget) {
     if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') directAiFail(400, 'UNSUPPORTED_SCHEMA');
     Object.values(properties).forEach((child) => directAiValidateSchema(child, depth + 1, budget));
   } else if (['properties', 'required', 'additionalProperties'].some((key) => Object.hasOwn(schema, key))) directAiFail(400, 'UNSUPPORTED_SCHEMA');
-  if (schema.type === 'array') directAiValidateSchema(schema.items, depth + 1, budget);
+  if (schemaTypes.includes('array')) directAiValidateSchema(schema.items, depth + 1, budget);
   else if (Object.hasOwn(schema, 'items')) directAiFail(400, 'UNSUPPORTED_SCHEMA');
   for (const pair of [['minLength', 'maxLength', ['string']], ['minItems', 'maxItems', ['array']], ['minimum', 'maximum', ['number', 'integer']]]) {
     const low = pair[0], high = pair[1], kinds = pair[2];
     for (const key of [low, high]) {
       if (schema[key] === undefined) continue;
-      if (!kinds.includes(schema.type) || typeof schema[key] !== 'number' || !Number.isFinite(schema[key])) directAiFail(400, 'UNSUPPORTED_SCHEMA');
+      if (!kinds.some((kind) => schemaTypes.includes(kind)) || typeof schema[key] !== 'number' || !Number.isFinite(schema[key])) directAiFail(400, 'UNSUPPORTED_SCHEMA');
       if (!['minimum', 'maximum'].includes(key) && (!Number.isSafeInteger(schema[key]) || schema[key] < 0 || schema[key] > 100000)) directAiFail(400, 'UNSUPPORTED_SCHEMA');
     }
     if (schema[low] !== undefined && schema[high] !== undefined && schema[low] > schema[high]) directAiFail(400, 'UNSUPPORTED_SCHEMA');
@@ -114,6 +123,7 @@ function directAiValidateSchema(schema, depth, budget) {
 }
 function directAiConforms(value, schema) {
   if (schema.enum && !schema.enum.some((item) => directAiStable(item) === directAiStable(value))) return false;
+  if (Array.isArray(schema.type)) return schema.type.some((kind) => directAiConforms(value, { ...schema, type: kind }));
   if (schema.type === 'null') return value === null;
   if (schema.type === 'object') {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

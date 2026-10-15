@@ -323,22 +323,22 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 //
 // **The list was rewritten again on 2026-10-15, for D227, and the two diverged
 // — then #472 merged the same day, the base grew to hold 227, and they converged
-// again.** So at this reading the third assertion IS implied by the first: the
-// union is the base's 205 with D227 already in it, and the assertion goes
-// independent again when the list is rewritten for the next collection. Its
-// message below says the converged state, for the reason the paragraph above
-// records.
+// again.** So at that reading the third assertion WAS implied by the first: the
+// union was the base's 205 with D227 already in it. **The list has since been
+// rewritten a third time on 2026-10-15, for D228, and the two have diverged
+// again** — so at this reading the third assertion is independent, the state
+// its message below now says, for the reason the paragraph above records.
 test('the figures quoted in prose are the figures the lists hold', () => {
   assert.equal(REAL_BASE_NUMBERS.length, 205,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D227 alone, now on the base and so inert until the next '
-    + "collection rewrites the list, and the figure is quoted in the module's rewrite "
-    + 'note, which attributes it to this pass');
-  assert.equal(EXPECTED_DOCUMENT.length, 205,
-    'the union: equal to the base figure now that D227 has merged, so implied by the '
-    + 'first assertion until the next collection is pending — the convergence the '
-    + 'comment above this test describes. It still catches a union built as a '
-    + 'concatenation, which neither other assertion would.');
+    'the collection figure: D228 alone, pending, so live until its collection '
+    + "merges and the list goes inert, and the figure is quoted in the module's "
+    + 'rewrite note, which attributes it to this pass');
+  assert.equal(EXPECTED_DOCUMENT.length, 206,
+    'the union: the base figure plus D228, which is not on the base yet, so this '
+    + 'assertion is independent of the first while the collection is pending — the '
+    + 'divergence the comment above this test describes. It still catches a union '
+    + 'built as a concatenation, which neither other assertion would.');
 });

@@ -14867,3 +14867,50 @@ What it does to the queue: `transcribeAudioWithWhisper` returns from
 pair and the queue reads `port queue: entity_authorization=5 files=16 external_secret=2 none=82`. Nothing was written: `none`
 does not move, because a vendor existing is not a port landing — the same
 tell the go-live plan records for the removal, run in reverse.
+
+## D228 — The direct-AI schema contract accepts a union of kinds, because the file batch's schemas name nullable fields as one (2026-10-15)
+
+Wave 2 of the direct-AI migration — the file batch: `analyzeAdrLetter`,
+`extractClinicalDocument`, `extractFaxContact`,
+`extractReferralResponseScan`, `splitReferralPDF`,
+`verifyAdrResponsePacket` — measured something the migration plan's
+census did not: three of the six pass schemas whose fields are
+union-typed. `ADR_LETTER_SCHEMA` and `PACKET_VERIFICATION_SCHEMA`
+(`base44/shared/adrIntegrationAnalysis.ts`) name nullable fields
+`['string', 'null']` and `['number', 'null']` throughout, and
+`extractClinicalDocument`'s eight vitals are `['number', 'null']`. The
+plan (§1.1, §2) adopted the integration runtime's schema subset for
+both paths, under which a `type` is a single kind and a union fails
+`UNSUPPORTED_SCHEMA` at validation, before any file is fetched — so a
+mechanical transport swap would have broken three live capabilities on
+their first call, silently in the sense that every gate the plan named
+was green on the unmodified tree.
+
+The schemas cannot be narrowed to fit the subset. Base44's InvokeLLM
+honors them today, and the nullability is load-bearing: the ADR
+prompt's honesty contract requires anything the letter does not state
+to come back null, and consumers read those fields as nullable. The
+pennsync-api port of the clinical document did narrow — its vitals
+ship as a free-form object, pinned by the parity test — and that
+stands as that port's shipped behavior; it is not a precedent the
+hosted originals can follow without changing what they return.
+
+**The subset grows by exactly one shape, on both paths in the same
+change.** `validateSchema`/`conforms` in
+`services/integration-runtime/contracts.mjs` and
+`directAiValidateSchema`/`directAiConforms` in the shared
+`directInvokeLLM` helper now accept `type` as one kind or an array of
+distinct kinds drawn from the same seven. Every member is validated
+and conformance-checked exactly as the single kind would be; a bounds
+key (`minimum`, `minLength`, …) applies when any of its kinds is in
+the union; an unknown kind, a repeated kind, or an empty union still
+refuses `UNSUPPORTED_SCHEMA`. Nothing else about the subset moves —
+`format`, `pattern`, `anyOf`, `$ref` still refuse — and the caller's
+schema reaches the provider verbatim, union included, so the model's
+answer is bounded by the same shape the caller wrote.
+
+What it does to the queue: nothing, and the nothing is measured. The
+four unported functions of the six already classified `files` on
+their own file tokens and stay there; `extractClinicalDocument` and
+`splitReferralPDF` are written ports and stay `none`. The queue reads
+as it read before the wave: `port queue: entity_authorization=5 files=16 external_secret=2 none=82`.

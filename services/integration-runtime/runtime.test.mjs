@@ -135,6 +135,17 @@ test('strict schema supports primitives and rejects unsupported semantics', () =
   const schema=validateSchema({type:'object',properties:{value:{type:'integer',minimum:0}},required:['value'],additionalProperties:false});
   assert.equal(conforms({value:2},schema),true);assert.equal(conforms({value:'2'},schema),false);assert.equal(conforms({value:2,other:true},schema),false);
 });
+test('strict schema accepts a union of kinds and conforms per member (D228)', () => {
+  // The ADR and clinical-document originals name nullable fields
+  // ['string', 'null'] / ['number', 'null']; Base44's InvokeLLM honors
+  // them, so the direct contract does too — member by member, and no
+  // further: an unknown kind, a repeat, or an empty union still refuses.
+  const schema=validateSchema({type:'object',properties:{name:{type:['string','null']},days:{type:['number','null'],minimum:0}},required:['name','days'],additionalProperties:false});
+  assert.equal(conforms({name:null,days:45},schema),true);assert.equal(conforms({name:'MAC',days:null},schema),true);
+  assert.equal(conforms({name:'MAC',days:'45'},schema),false);assert.equal(conforms({name:7,days:45},schema),false);
+  assert.equal(conforms({name:'MAC',days:-1},schema),false);
+  for (const bad of [{type:['string','date']},{type:['string','string']},{type:[]}]) assert.throws(()=>validateSchema({type:'object',properties:{value:bad}}));
+});
 test('text AI uses Anthropic directly without any Base44 Core request', async () => {
   const urls=[];const provider=createProviders(cfg(),{},async(url,options)=>{urls.push(url);const b=JSON.parse(options.body);assert.equal(b.model,cfg().model);return Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'});});
   assert.equal(await provider('InvokeLLM',{prompt:'synthetic'},actor),'Synthetic answer');assert.deepEqual(urls,['https://api.anthropic.com/v1/messages']);
