@@ -33,13 +33,14 @@ test('every job keeps its interval over a whole UTC day', () => {
 test('intervals land on UTC marks and a late start keeps its mark', () => {
   const names = (iso) => dueJobs(at(iso)).map((job) => job.fn).sort();
   assert.deepEqual(names('2026-10-10T14:00:00Z'), JOBS.map((job) => job.fn).sort());
-  assert.deepEqual(names('2026-10-10T14:05:00Z'), ['copyInboundSmsMedia', 'dispatchScheduledSms']);
+  assert.deepEqual(names('2026-10-10T14:05:00Z'), ['copyInboundSmsMedia', 'dispatchScheduledSms', 'referralTriageJobs']);
   assert.deepEqual(names('2026-10-10T14:10:00Z'), [
     'copyInboundSmsMedia', 'dispatchScheduledSms', 'processInboundFaxes', 'processScheduledFaxes', 'redriveFailedSms',
+    'referralTriageJobs',
   ]);
   assert.deepEqual(names('2026-10-10T14:15:00Z'), [
     'autoRetryFailedFaxes', 'copyInboundSmsMedia', 'dispatchScheduledSignatureReminders', 'dispatchScheduledSms',
-    'pollFaxStatuses',
+    'pollFaxStatuses', 'referralTriageJobs',
   ]);
   // Ninety seconds late is still the 14:10 run, not a run with no mark.
   assert.deepEqual(names('2026-10-10T14:11:30Z'), names('2026-10-10T14:10:00Z'));

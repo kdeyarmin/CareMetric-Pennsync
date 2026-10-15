@@ -196,6 +196,12 @@ export const EXPECTED_NOTIFICATION_PRODUCERS = Object.freeze({
       PRODUCER_EXECUTION_STATES.RUNTIME_GATED,
     ),
   ]),
+  // The referral-packet triage job's completion notice goes to the uploader
+  // alone, minted with their current exact active membership in the job's
+  // agency, and names no patient.
+  'referralTriageJobs/entry.ts': Object.freeze([
+    authorityV1({ kind: 'call-argument' }),
+  ]),
   'processTrainingRenewals/entry.ts': Object.freeze([
     scheduleQuarantinedLegacy(),
   ]),

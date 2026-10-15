@@ -1,0 +1,132 @@
+{
+  "name": "ReferralTriageJob",
+  "type": "object",
+  "description": "Server-only background job that reads an uploaded referral packet PDF in page batches and produces one triage assessment for the person who uploaded it. Written and read only by the referralTriageJobs function; the browser never reads this entity directly.",
+  "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Tenant scope taken from the uploader's active membership when the job was started."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Built-in user id of the uploader. Only this user may read the job."
+    },
+    "created_by_email_normalized": {
+      "type": "string",
+      "description": "Lower-cased built-in email of the uploader, for the completion notice."
+    },
+    "created_by_membership_id": {
+      "type": "string",
+      "description": "The uploader's AgencyMembership id when the job was started."
+    },
+    "created_by_membership_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Caller-supplied request id, so a retried start returns the same job instead of a second one."
+    },
+    "job_key": {
+      "type": "string",
+      "description": "agency id, user id and client request id joined with colons; the start action looks this up before creating a job."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "processing", "ready", "failed"]
+    },
+    "source_file_uri": {
+      "type": "string",
+      "description": "Private storage URI of the uploaded packet. Signed only at processing time."
+    },
+    "source_file_name": {
+      "type": "string",
+      "description": "Display name of the uploaded file, shown only to the uploader."
+    },
+    "source_file_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "page_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "chunks": {
+      "type": "array",
+      "description": "Page ranges of the packet, each read separately. The pages are cut from the source file in memory at processing time and never stored on their own.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "start_page": { "type": "integer", "minimum": 1 },
+          "end_page": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["pending", "done", "failed"] },
+          "attempts": { "type": "integer", "minimum": 0 },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "chunks_done": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "analysis": {
+      "type": "object",
+      "description": "The triage assessment, in the shape triageReferralWithAI returns."
+    },
+    "urgency_level": {
+      "type": "string",
+      "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
+    },
+    "synthesis_attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "claimed_by": {
+      "type": "string",
+      "description": "Run id of the invocation currently working the job; empty when no run holds it."
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notice_state": {
+      "type": "string",
+      "enum": ["pending", "sent", "skipped"]
+    },
+    "email_state": {
+      "type": "string",
+      "enum": ["pending", "sent", "paused", "failed", "skipped"]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Server-owned revision used by conditional writes."
+    }
+  },
+  "required": [
+    "agency_id",
+    "created_by_user_id",
+    "created_by_email_normalized",
+    "created_by_membership_id",
+    "created_by_membership_version",
+    "client_request_id",
+    "job_key",
+    "status",
+    "source_file_uri",
+    "version"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

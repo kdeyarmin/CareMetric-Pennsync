@@ -1,7 +1,6 @@
 import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
-import { useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -12,20 +11,64 @@ import {
   AlertTriangle,
   Copy,
   Download,
+  FileText,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { base44 } from '@/api/base44Client';
+import {
+  PACKET_MAX_BYTES,
+  describeJobProgress,
+  getPacketTriage,
+  isOpenJob,
+  isPdfFile,
+  jobErrorMessage,
+  listPacketTriage,
+  processPacketTriage,
+  startPacketTriage,
+} from './referralTriageJobs';
+
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+const pageRange = ({ start_page: start, end_page: end }) => (start === end ? `${start}` : `${start}–${end}`);
+
+// What a run can change; a run that changes none of it is not making progress.
+const progressKey = (job) => `${job?.status}:${job?.parts_done}:${job?.summarizing}`;
+
+function statusBadge(job) {
+  if (job.status === 'ready') {
+    return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{job.urgency_level ? `Ready · ${job.urgency_level}` : 'Ready'}</Badge>;
+  }
+  if (job.status === 'failed') return <Badge className="bg-red-100 text-red-800 border-red-200">Failed</Badge>;
+  return <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">Analyzing</Badge>;
+}
 
 /**
- * AI-powered referral triage analyzer
- * Parses unstructured clinical data and suggests urgency levels and care plans
+ * Referral packet triage. The packet PDF is uploaded to private storage and
+ * analyzed on the server in the background, page range by page range, so a
+ * 75-100 page scanned packet works and the user may leave while it runs; they
+ * are notified when it is ready. While this panel is open it drives the job
+ * itself, so a packet someone is watching finishes as fast as it can.
  */
-export default function ReferralTriageAnalyzer({ onTriageComplete }) {
-  const [referralText, setReferralText] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysis, setAnalysis] = useState(null);
+export default function ReferralTriageAnalyzer({
+  agencyId,
+  initialJobId = null,
+  onTriageComplete,
+  onTriageReset,
+  retryDelayMs = 4000,
+  busyDelayMs = 8000,
+}) {
+  const [jobs, setJobs] = useState([]);
+  const [selectedId, setSelectedId] = useState(initialJobId);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [connectionNotice, setConnectionNotice] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
+  const callbacks = useRef({ onTriageComplete, onTriageReset });
+  callbacks.current = { onTriageComplete, onTriageReset };
+
+  const analysis = selectedJob?.status === 'ready' ? selectedJob.analysis : null;
 
   const urgencyColors = {
     CRITICAL: 'bg-red-100 text-red-800 border-red-300',
@@ -37,64 +80,139 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     urgencyColors[String(level || '').toUpperCase()]
     || 'bg-slate-100 text-slate-800 border-slate-300';
 
-  const handleAnalyze = async () => {
-    if (!referralText.trim()) {
-      setError('Please enter or paste referral data');
+  const rememberJob = useCallback((job) => {
+    if (!job?.id) return;
+    setJobs((previous) => {
+      const { analysis: _omit, ...summary } = job;
+      const rest = previous.filter((row) => row.id !== job.id);
+      return previous.some((row) => row.id === job.id)
+        ? previous.map((row) => (row.id === job.id ? summary : row))
+        : [summary, ...rest];
+    });
+  }, []);
+
+  const loadList = useCallback(async () => {
+    if (!agencyId) return;
+    try {
+      setJobs(await listPacketTriage({ agencyId }));
+    } catch (err) {
+      setError(jobErrorMessage(err, 'Your recent packets could not be loaded.'));
+    }
+  }, [agencyId]);
+
+  useEffect(() => { loadList(); }, [loadList]);
+
+  // Follow the selected job: read it, drive it while it is open, and hand a
+  // finished triage to the page. Cancelled when the selection or agency changes.
+  useEffect(() => {
+    if (!selectedId || !agencyId) return undefined;
+    let cancelled = false;
+    setSelectedJob(null);
+    setConnectionNotice(null);
+    (async () => {
+      let job;
+      try {
+        job = await getPacketTriage({ agencyId, jobId: selectedId });
+      } catch (err) {
+        if (!cancelled) setError(jobErrorMessage(err, 'That referral packet could not be opened.'));
+        return;
+      }
+      let failures = 0;
+      while (!cancelled) {
+        setSelectedJob(job);
+        rememberJob(job);
+        if (!isOpenJob(job)) break;
+        try {
+          const before = progressKey(job);
+          const { job: next, busy } = await processPacketTriage({ agencyId, jobId: selectedId });
+          job = next;
+          failures = 0;
+          // Another run holds it, or this run could not move it on (its file
+          // was briefly unavailable, a summary attempt failed): wait before the
+          // next run rather than asking again at once.
+          if ((busy || progressKey(next) === before) && isOpenJob(next) && !cancelled) await sleep(busyDelayMs);
+        } catch {
+          failures += 1;
+          if (failures >= 3 && !cancelled) {
+            setConnectionNotice('Lost contact with the analysis. It keeps running on the server, and you will be notified when it finishes.');
+          }
+          await sleep(failures >= 3 ? busyDelayMs : retryDelayMs);
+          if (cancelled) return;
+          try { job = await getPacketTriage({ agencyId, jobId: selectedId }); } catch { /* keep the last state */ }
+        }
+      }
+      if (cancelled) return;
+      setConnectionNotice(null);
+      if (job.status === 'ready' && job.analysis) {
+        callbacks.current.onTriageComplete?.(job.analysis);
+        toast.success('Triage analysis complete');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedId, agencyId, rememberJob, retryDelayMs, busyDelayMs]);
+
+  const selectJob = (jobId) => {
+    if (jobId === selectedId) return;
+    setError(null);
+    callbacks.current.onTriageReset?.();
+    setSelectedId(jobId);
+  };
+
+  const handlePacket = async (file) => {
+    if (!file || uploading) return;
+    setError(null);
+    if (!isPdfFile(file)) {
+      setError('Upload the referral packet as a PDF.');
       return;
     }
-    // In-flight dedupe: a double-click used to fire two billed triage calls.
-    if (isAnalyzing) return;
-
-    setIsAnalyzing(true);
-    setError(null);
-    setAnalysis(null);
-
+    if (file.size > PACKET_MAX_BYTES) {
+      setError('This PDF is larger than 25 MB. Split the packet and upload the parts.');
+      return;
+    }
+    if (!agencyId) {
+      setError('Your agency could not be determined. Reload the page and try again.');
+      return;
+    }
+    // A new packet replaces the previous one's result here AND on the page, so
+    // nothing offers to create the previous patient while this one runs.
+    callbacks.current.onTriageReset?.();
+    setUploading(true);
     try {
-      // Route through the authenticated Base44 function (attaches the auth token
-      // and targets the backend origin); a raw relative fetch never reaches it.
-      const response = await base44.functions.invoke('triageReferralWithAI', {
-        referralData: referralText,
-      });
-      const result = response?.data || {};
-
-      if (result.success && result.analysis) {
-        setAnalysis(result.analysis);
-        onTriageComplete?.(result.analysis);
-        toast.success('Triage analysis complete');
-      } else {
-        setError(result.error || 'Failed to analyze referral');
-      }
+      const job = await startPacketTriage({ agencyId, file });
+      rememberJob(job);
+      setSelectedId(job.id);
     } catch (err) {
-      setError(err.message || 'Analysis error');
-      console.error('Triage error:', err);
+      setError(jobErrorMessage(err, 'The packet could not be uploaded. Try again.'));
+      toast.error('The packet could not be uploaded');
     } finally {
-      setIsAnalyzing(false);
+      setUploading(false);
     }
   };
 
-  const handleFileUpload = async (e) => {
+  const handleFileChange = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    // Clear now: picking the same file again (say, after a failure) fires no
+    // change event otherwise.
+    e.target.value = '';
+    handlePacket(file);
+  };
 
-    try {
-      // Text and common document types. PDFs arrive as binary — file.text()
-      // would produce mojibake, so refuse them with a clear message rather than
-      // silently feeding garbage into triage.
-      const name = String(file.name || '').toLowerCase();
-      const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
-      if (isPdf) {
-        setError('PDF upload is not supported on this triage panel yet — paste the referral text, or use Referral Intake to extract from a PDF.');
-        toast.error('Paste referral text or use Referral Intake for PDFs');
-        e.target.value = '';
-        return;
-      }
-      const text = await file.text();
-      setReferralText(text);
-      setError(null);
-      toast.success('File loaded');
-    } catch {
-      setError('Failed to read file');
-    }
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!uploading) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    // Moving over the zone's own children fires dragleave too.
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading) return;
+    handlePacket(e.dataTransfer?.files?.[0]);
   };
 
   const handleCopyAnalysis = async () => {
@@ -114,6 +232,16 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     link.click();
   };
 
+  const dropZoneClass = uploading
+    ? 'border-slate-300 bg-slate-50'
+    : isDragging
+      ? 'border-indigo-500 bg-indigo-50'
+      : 'border-slate-300 hover:border-indigo-500 hover:bg-indigo-50';
+
+  const progressPercent = selectedJob?.part_count
+    ? Math.round(((selectedJob.parts_done || 0) / selectedJob.part_count) * (selectedJob.summarizing ? 100 : 90))
+    : 0;
+
   return (
     <div className="w-full space-y-6">
       {/* Input Section */}
@@ -121,53 +249,51 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5 text-indigo-600" />
-            Referral Input
+            Referral Packet
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label htmlFor="referral-text" className="text-sm font-semibold text-slate-700 block mb-2">
-              Paste referral documentation or fax text
-            </label>
-            <Textarea
-              id="referral-text"
-              value={referralText}
-              onChange={(e) => setReferralText(e.target.value)}
-              placeholder="Paste referral information here... Can include fax text, email content, or any unstructured clinical notes..."
-              className="min-h-[200px] font-mono text-sm"
-            />
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              variant="outline"
-              className="gap-2"
-            >
-              <Upload className="w-4 h-4" />
-              Upload File
-            </Button>
+          <div
+            data-testid="referral-packet-dropzone"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            aria-busy={uploading}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dropZoneClass}`}
+          >
+            {uploading ? (
+              <div className="space-y-2" role="status">
+                <Loader className="w-10 h-10 text-indigo-600 mx-auto animate-spin" />
+                <p className="font-medium text-indigo-700">Uploading referral packet…</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Upload className="w-10 h-10 text-slate-400 mx-auto" />
+                <div>
+                  <p className="font-medium text-slate-700">Upload the referral packet PDF</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Scanned or digital, up to 200 pages and 25 MB. Drag and drop it here, or choose a file.
+                    It is analyzed in the background — you can leave this page and you will be notified when it is ready.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+                >
+                  <Upload className="w-4 h-4" />
+                  Choose PDF
+                </Button>
+              </div>
+            )}
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.text,.md,.csv,text/plain"
-              onChange={handleFileUpload}
+              accept=".pdf,application/pdf"
+              aria-label="Referral packet PDF"
+              onChange={handleFileChange}
+              disabled={uploading}
               className="hidden"
             />
-            <Button
-              onClick={handleAnalyze}
-              disabled={!referralText.trim() || isAnalyzing}
-              className="gap-2 bg-indigo-600 hover:bg-indigo-700 flex-1"
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader className="w-4 h-4 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                'Analyze Referral'
-              )}
-            </Button>
           </div>
 
           {error && (
@@ -181,6 +307,92 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Selected packet: progress, failure, or partial-read note */}
+      {selectedJob && isOpenJob(selectedJob) && (
+        <Card className="border-indigo-200">
+          <CardContent className="p-5 space-y-3" role="status">
+            <div className="flex items-center gap-2">
+              <Loader className="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
+              <p className="font-semibold text-slate-900 truncate">{selectedJob.file_name}</p>
+            </div>
+            <p className="text-sm text-indigo-700">
+              {describeJobProgress(selectedJob)}
+              {selectedJob.page_count ? ` · ${selectedJob.page_count} pages` : ''}
+            </p>
+            <div className="h-2 rounded-full bg-indigo-100 overflow-hidden">
+              <div className="h-full bg-indigo-600 transition-all" style={{ width: `${Math.max(5, progressPercent)}%` }} />
+            </div>
+            <p className="text-xs text-slate-500">
+              You can leave this page. The packet keeps processing, and you will get a notification when the triage is ready.
+            </p>
+            {connectionNotice && <p className="text-xs text-amber-700">{connectionNotice}</p>}
+          </CardContent>
+        </Card>
+      )}
+
+      {selectedJob?.status === 'failed' && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex gap-2">
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-red-900">{selectedJob.file_name} could not be analyzed</p>
+            <p className="text-sm text-red-700">{selectedJob.error_message || 'Upload the packet again.'}</p>
+          </div>
+        </div>
+      )}
+
+      {analysis && selectedJob?.unread_pages?.length > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-2">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Part of the packet was not analyzed</p>
+            <p className="text-sm text-amber-800">
+              Pages {selectedJob.unread_pages.map(pageRange).join(', ')} could not be read, so triage did not see them.
+              Review those pages before relying on this triage.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Recent packets */}
+      {jobs.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <FileText className="w-5 h-5 text-slate-500" />
+              Your recent packets
+            </CardTitle>
+            <Button variant="ghost" size="sm" className="gap-1" onClick={loadList}>
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-slate-100">
+              {jobs.map((job) => (
+                <li key={job.id}>
+                  <button
+                    type="button"
+                    onClick={() => selectJob(job.id)}
+                    aria-current={job.id === selectedId ? 'true' : undefined}
+                    className={`w-full text-left py-3 px-2 rounded-md flex items-center justify-between gap-3 hover:bg-slate-50 ${job.id === selectedId ? 'bg-indigo-50' : ''}`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-slate-900 truncate">{job.file_name}</span>
+                      <span className="block text-xs text-slate-500">
+                        {job.page_count ? `${job.page_count} pages · ` : ''}
+                        {job.created_date ? new Date(job.created_date).toLocaleString() : ''}
+                        {isOpenJob(job) ? ` · ${describeJobProgress(job)}` : ''}
+                      </span>
+                    </span>
+                    {statusBadge(job)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Analysis Results */}
       {analysis && (

@@ -24,6 +24,7 @@ const EMAIL_SENDERS = [
   'notifyAdminOfSignedDocument',
   'onDocumentSigned',
   'onUserSignup',
+  'referralTriageJobs',
   'resetUserPassword',
   'reviewPersonnelCredential',
   'reviewTimeOffRequest',
@@ -107,6 +108,9 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   onDocumentSigned: 'mixed-state-transition',
   onUserSignup: 'mixed-platform-boundary',
   redriveFailedSms: 'provider-wrapper',
+  // The packet-triage job emails its uploader a PHI-free completion notice
+  // behind the shared gate; the job itself completes either way.
+  referralTriageJobs: 'mixed-state-transition',
   resendInvitation: 'manual-invitation',
   resendInvitationV2: 'manual-invitation',
   resetUserPassword: 'direct',

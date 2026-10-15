@@ -276,6 +276,7 @@
     "recordSmsConsent": "preserved_paused",
     "recordTrainingAuditEvent": "hub",
     "redriveFailedSms": "preserved_paused",
+    "referralTriageJobs": "preserved_paused",
     "remindPlanOverdueStaff": "hub",
     "reorderDeletePDFPages": "port",
     "resendInvitation": "port",
@@ -549,6 +550,7 @@
     "RealTimePerformanceMetric": "hub",
     "RecurringFax": "preserved_paused",
     "Referral": "port",
+    "ReferralTriageJob": "preserved_paused",
     "RegulatoryUpdate": "broker",
     "ReminderLog": "port",
     "ReportTemplate": "port",
@@ -630,6 +632,7 @@
     "Nightly Outcome Measure Computation.jsonc": "preserved_paused",
     "Poll Fax Statuses.jsonc": "preserved_paused",
     "Process Inbound Referral Faxes.jsonc": "preserved_paused",
+    "Process Referral Triage Jobs.jsonc": "preserved_paused",
     "Process Scheduled Faxes.jsonc": "preserved_paused",
     "Redrive Failed SMS.jsonc": "preserved_paused"
   },

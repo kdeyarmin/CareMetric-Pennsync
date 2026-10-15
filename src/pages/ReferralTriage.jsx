@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { toLocalISODate } from '@/lib/dateLocal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -29,6 +30,8 @@ const REFERRAL_INTAKE_ROLES = new Set(['agency_admin', 'manager', 'office_staff'
  */
 export default function ReferralTriage() {
   const { tenantContext } = useAuth();
+  // A completion notice links here as ?job=<id>.
+  const [searchParams] = useSearchParams();
   const patientCreateRequestId = useRef(null);
   const queryClient = useQueryClient();
   const [lastAnalysis, setLastAnalysis] = useState(null);
@@ -61,6 +64,13 @@ export default function ReferralTriage() {
       </PageContainer>
     );
   }
+
+  // A new packet is on its way: drop the previous one's result so the
+  // create-patient action can never act on the patient before this one.
+  const handleTriageReset = () => {
+    setLastAnalysis(null);
+    setShowCreatePatient(false);
+  };
 
   const handleTriageComplete = (analysis) => {
     patientCreateRequestId.current = createPatientRequestId();
@@ -240,7 +250,12 @@ export default function ReferralTriage() {
       </div>
 
       {/* Main Triage Analyzer */}
-      <ReferralTriageAnalyzer onTriageComplete={handleTriageComplete} />
+      <ReferralTriageAnalyzer
+        agencyId={tenantContext?.agency_id}
+        initialJobId={searchParams.get('job')}
+        onTriageComplete={handleTriageComplete}
+        onTriageReset={handleTriageReset}
+      />
 
       {/* Post-Analysis Actions */}
       {lastAnalysis && showCreatePatient && (
@@ -282,7 +297,7 @@ export default function ReferralTriage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[
-              { number: '1', title: 'Upload', desc: 'Paste referral or upload fax text' },
+              { number: '1', title: 'Upload', desc: 'Upload the referral packet PDF' },
               { number: '2', title: 'Analyze', desc: 'AI parses and structures data' },
               { number: '3', title: 'Assess', desc: 'Urgency level and risk assigned' },
               { number: '4', title: 'Onboard', desc: 'Create a patient or queue missing identity info' },

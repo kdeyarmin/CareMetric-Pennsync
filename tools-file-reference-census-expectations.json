@@ -2,11 +2,11 @@
   "format": "pennsync-file-reference-census",
   "schema_version": 1,
   "totals": {
-    "entities": 254,
+    "entities": 255,
     "unreadable": 0,
-    "entities_with_file_fields": 59,
-    "locator_fields": 68,
-    "descriptor_fields": 63
+    "entities_with_file_fields": 60,
+    "locator_fields": 69,
+    "descriptor_fields": 65
   },
   "entities": {
     "AdrAuditCase": [
@@ -548,6 +548,23 @@
       },
       {
         "path": "processed_document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "ReferralTriageJob": [
+      {
+        "path": "page_count",
+        "kind": "descriptor",
+        "type": "integer"
+      },
+      {
+        "path": "source_file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "source_file_uri",
         "kind": "locator",
         "type": "string"
       }

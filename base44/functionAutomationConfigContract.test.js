@@ -18,6 +18,7 @@ const EXPECTED_TARGETS = {
   'Nightly Outcome Measure Computation.jsonc': 'dispatchNightlyOutcomeMeasures',
   'Poll Fax Statuses.jsonc': 'pollFaxStatuses',
   'Process Inbound Referral Faxes.jsonc': 'processInboundFaxes',
+  'Process Referral Triage Jobs.jsonc': 'referralTriageJobs',
   'Process Scheduled Faxes.jsonc': 'processScheduledFaxes',
   'Redrive Failed SMS.jsonc': 'redriveFailedSms',
 };
