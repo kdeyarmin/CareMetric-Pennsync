@@ -335,6 +335,43 @@ test('reminders rotate the link, the scheduler dispatches due reminders, and can
   assert.equal(listed.data.requests[0].status, 'cancelled');
 });
 
+test('a scheduled reminder survives a transient read failure and never strands the signer without a link', async () => {
+  let failAgencyReads = false;
+  const h = world({ beforeFilter: async (name) => {
+    if (failAgencyReads && name === 'Agency') throw new Error('HTTP 429 Too Many Requests');
+  } });
+  const { request } = (await createRequest(h)).data;
+  const tokens = await issueLinks(h, request);
+  const pkg = request.packages[1];
+  const scheduled = await h.call('scheduleSignatureReminders', { user: 'nurse', body: {
+    agency_id: AGENCY, package_id: pkg.id, signer_id: pkg.signer_id,
+    document_id: request.documents[0].id, send_at: new Date(Date.now() - 1000).toISOString(),
+    client_request_id: 'auto-transient',
+  } });
+  assert.equal(scheduled.status, 200, JSON.stringify(scheduled.data));
+  const dispatch = () => h.call('dispatchScheduledSignatureReminders', {
+    headers: { 'x-internal-secret': 'synthetic-internal-secret' },
+  });
+  const before = h.emails.length;
+
+  failAgencyReads = true;
+  assert.equal((await dispatch()).status, 200);
+  const released = h.db.ScheduledSignatureReminder[0];
+  assert.equal(released.status, 'pending', 'a throttled read is not a verdict on the authority');
+  assert.equal(released.delivery_state, 'not_started');
+  assert.equal(released.attempts, 1);
+  assert.equal(h.emails.length, before);
+
+  // A configuration problem is found before the signer's current link is
+  // revoked, so the link they already hold keeps working.
+  failAgencyReads = false;
+  h.env.APP_PUBLIC_URL = '';
+  assert.equal((await dispatch()).status, 200);
+  assert.equal(h.db.ScheduledSignatureReminder[0].status, 'failed');
+  assert.equal(h.emails.length, before);
+  assert.equal((await h.call('validateSignerToken', { body: { token: tokens[pkg.signer_email] } })).status, 200);
+});
+
 test('the staff list shows only charts the caller may open', async () => {
   const h = world();
   await createRequest(h);
