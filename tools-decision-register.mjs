@@ -81,7 +81,7 @@ export const EXPECTED_NEW = Object.freeze([227]);
 // file exists to record, arriving in the file.
 //
 // So the base is data here and git is corroboration. Typed as a RANGE minus
-// the absent numbers because 204 of them in a row is unreadable, and the
+// the absent numbers because 205 of them in a row is unreadable, and the
 // subtraction is over this typed list rather than over the document, so it is
 // not the tautology this check replaced.
 //
@@ -89,10 +89,10 @@ export const EXPECTED_NEW = Object.freeze([227]);
 // of this comment SAID they were while nothing did it — a comment naming a check
 // that is not there, in the file whose write-up is about reading a setting for
 // something it does not say. Main-watch found it by looking for the assertion.
-// So what the check catches is stated rather than implied: `226 - 22 = 204`
-// holds automatically unless an absent number is outside `1..226` or repeated,
+// So what the check catches is stated rather than implied: `227 - 22 = 205`
+// holds automatically unless an absent number is outside `1..227` or repeated,
 // and those are the two typos that would silently ENLARGE the base: an absent
-// number that removes nothing leaves 205 where the list claims 204.
+// number that removes nothing leaves 206 where the list claims 205.
 //
 // That read "shrink" until 2026-10-01, which is backwards and contradicted both
 // guards below — each says "larger than it reads" in its own message — and the
@@ -131,7 +131,14 @@ export const EXPECTED_NEW = Object.freeze([227]);
 // not yet applied. What keeps the window short is that the failure is loud and
 // fires on every branch cut from the merge rather than only on `main`: this one
 // was found two minutes after the merge, by the next command that ran.
-const BASE_HIGHEST = 226;
+//
+// Re-derived 2026-10-15 from `origin/main` at `2519038`, where it had been
+// `226 - 22 = 204`. What moved on the base branch: #472 merged, landing D227
+// and nothing else. D227 follows D226 directly, so the base gained that one
+// number and no absent one, and the twenty-two absent numbers are unchanged.
+// The window above opened again and was closed the same way: the next branch
+// to merge `main` failed here in CI and carried this re-derivation.
+const BASE_HIGHEST = 227;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
   180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);
 for (const absent of BASE_ABSENT) {
