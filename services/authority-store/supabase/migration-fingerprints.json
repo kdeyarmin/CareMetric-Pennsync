@@ -102,5 +102,6 @@
   "record-migrations/20260920860000_contract_fax_template.sql": "f90a620e907edee44b16bb0f823b2096424ba71f55b727d7b4c27d282a45ae15",
   "record-migrations/20260920870000_contract_fax_retry_config.sql": "9e8f0faab22b367989e157de604ee9a0792dbca160a64b66f80539be5f447a19",
   "record-migrations/20260920880000_contract_phone_number.sql": "1416e448cb14c231c67baa7072cae5ef88b71ae78bd68d3fc461375a7cbbde4b",
-  "record-migrations/20260920890000_contract_fax_log.sql": "c3a00bbf753de05ddbb44c0dc2302d7d464156473db0a0874c74e24252c43c1c"
+  "record-migrations/20260920890000_contract_fax_log.sql": "c3a00bbf753de05ddbb44c0dc2302d7d464156473db0a0874c74e24252c43c1c",
+  "record-migrations/20260920900000_ai_model_default.sql": "8d9b6d17914c017d7db94f429bd6fbee1135dddf61f82ca3af87819951aa9680"
 }
