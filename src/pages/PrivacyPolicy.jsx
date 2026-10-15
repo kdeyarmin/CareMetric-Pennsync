@@ -23,9 +23,12 @@ import {
  * data sales, request-based account deletion). Have counsel review it before
  * public App Store submission — in particular the third-party AI paragraph
  * (added 2026-10-08 for Guideline 5.1.2(i)), which names the providers the code
- * calls: OpenAI in transcribeAudioWithWhisper / transcribeAndGenerateSOAPNote,
- * Anthropic in transcribeAndGenerateSOAPNote, and Google (Gemini) through
- * Base44's InvokeLLM. Re-check that list whenever a provider changes. The owner
+ * calls: Anthropic (the direct AI calls) and Google (Gemini) through Base44's
+ * InvokeLLM. OpenAI was removed on 2026-10-15: the code no longer calls it and
+ * the account is closed. Speech-to-text is being rebuilt on Deepgram and stays
+ * off until DEEPGRAM_API_KEY is set; before that key is set, Deepgram has to
+ * be added here and in the agreement gate, with its own business associate
+ * agreement. Re-check that list whenever a provider changes. The owner
  * confirmed on 2026-10-08 that business associate agreements are in place for
  * every provider, which is what the paragraph now states. The same providers are
  * named in the AI agreement gate (AI_CONTENT_AGREEMENT_DATA_SHARING in
@@ -127,9 +130,9 @@ const PrivacyPolicy = () => {
             use an AI-assisted feature, the text, documents, images, or visit audio you submit to it
             — which can include patient health information — are sent to third-party AI model
             providers to produce the result, either directly or through our platform hosting
-            provider. These currently include OpenAI (speech-to-text transcription and text
-            generation), Anthropic, and Google. Each processes it on our behalf under a
-            business associate agreement and may not use it to train its models. That data is sent
+            provider. These currently include Anthropic and Google. Each processes it on our
+            behalf under a business associate agreement and may not use it to train its models.
+            That data is sent
             only to return the requested output and is never used to advertise to you. You agree to
             this before your first use of the app, and using an AI feature is always optional.
           </p>
