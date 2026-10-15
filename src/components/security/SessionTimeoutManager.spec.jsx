@@ -66,6 +66,16 @@ describe('SessionTimeoutManager idle clock', () => {
     expect(logout).toHaveBeenCalledTimes(1);
   });
 
+  it('still signs out an idle session whose stamp a clock change left in the future', () => {
+    // The device clock was moved back an hour after the last activity.
+    localStorage.setItem(SESSION_ACTIVITY_KEY, String(NOW + 60 * MINUTE));
+    render(<SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />);
+    expect(logout).not.toHaveBeenCalled();
+    expect(localStorage.getItem(SESSION_ACTIVITY_KEY)).toBe(String(NOW));
+    act(() => { vi.advanceTimersByTime(16 * MINUTE); });
+    expect(logout).toHaveBeenCalledTimes(1);
+  });
+
   it('records ordinary activity to the shared stamp', () => {
     render(<SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />);
     vi.setSystemTime(NOW + 5 * MINUTE);

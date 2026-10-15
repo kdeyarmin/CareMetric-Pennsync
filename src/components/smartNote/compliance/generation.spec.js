@@ -30,6 +30,25 @@ describe('groundNote', () => {
     });
   });
 
+  it('accepts verdicts out of order or echoed with list numbers, spacing and end punctuation', async () => {
+    requestSmartNoteGrounding.mockResolvedValue({ sentences: [
+      verdict('3. Denies chest pain.'),
+      verdict('patient ambulated  50 feet with walker'),
+      verdict('Wound bed pink, no drainage', 'unsupported'),
+    ] });
+    const result = await groundNote(NOTE, SOURCE);
+    expect(result.error).toBeUndefined();
+    expect(result.unsupported.map((s) => s.text)).toEqual(['Wound bed pink, no drainage']);
+  });
+
+  it('matches repeated sentences one verdict each', async () => {
+    requestSmartNoteGrounding.mockResolvedValue({ sentences: [
+      verdict('Denies chest pain'),
+      verdict('Denies chest pain'),
+    ] });
+    expect(await groundNote('Denies chest pain. Denies chest pain.', SOURCE)).toMatchObject({ ok: true });
+  });
+
   it('flags an unsupported sentence', async () => {
     requestSmartNoteGrounding.mockResolvedValue({ sentences: [
       verdict('Patient ambulated 50 feet with walker'),
@@ -45,6 +64,16 @@ describe('groundNote', () => {
     ['an empty verdict list', []],
     ['a dropped sentence', [verdict('Patient ambulated 50 feet with walker'), verdict('Wound bed pink, no drainage')]],
     ['merged sentences', [verdict('Patient ambulated 50 feet with walker. Wound bed pink, no drainage. Denies chest pain')]],
+    ['one sentence three times', [
+      verdict('Patient ambulated 50 feet with walker'),
+      verdict('Patient ambulated 50 feet with walker'),
+      verdict('Patient ambulated 50 feet with walker'),
+    ]],
+    ['a substituted sentence', [
+      verdict('Patient ambulated 50 feet with walker'),
+      verdict('Wound bed pink, no drainage'),
+      verdict('Denies shortness of breath'),
+    ]],
   ])('does not verify a note when the check returns %s', async (_label, sentences) => {
     requestSmartNoteGrounding.mockResolvedValue({ sentences });
     const result = await groundNote(NOTE, SOURCE);

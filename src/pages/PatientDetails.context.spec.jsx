@@ -10,7 +10,9 @@ const mocks = vi.hoisted(() => ({
   logActivity: vi.fn(),
   patientResult: null,
   useAuthorizedPatient: vi.fn((options) => {
-    mocks.lastPatientOptions = options;
+    // The page also reads the information card's projections; before the
+    // tenant role is known those ask for the same display read.
+    if (options.purpose === 'display') mocks.lastPatientOptions = options;
     mocks.patientOptions.push(options);
     return mocks.patientResult;
   }),

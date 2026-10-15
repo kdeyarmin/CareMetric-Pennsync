@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ShieldAlert, Users } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -13,6 +13,7 @@ import PatientContactActions from '@/components/voice/PatientContactActions';
 import { listAuthorizedVisits } from '@/functions/listAuthorizedVisits';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 import PatientInformationCard from '@/components/patient/PatientInformationCard';
+import { patientInformationPurposes } from '@/components/patient/patientInformationRows';
 import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
 import {
   createPatientDetailsRouteHref,
@@ -161,6 +162,34 @@ export default function PatientDetails() {
     patientId,
     agencyId,
     purpose: 'display',
+    enabled: routeIsExact,
+  });
+
+  // The information card's projections are read here, mounted with the page,
+  // and handed to the card. Every reader shares the ['currentUser'] and
+  // tenant-context checks, which re-run whenever a reader mounts, so a card
+  // that read for itself (mounting only once the gate below passed) re-opened
+  // that gate, was unmounted by it, and remounted without end. The tenant role
+  // that picks the projections is held per agency, so the gate's own re-checks
+  // (which withhold tenantScope while they run) do not switch them back.
+  const settledRole = patientQuery.tenantScope?.tenant_role ?? null;
+  const [heldRole, setHeldRole] = useState({ agencyId: null, role: null });
+  if (settledRole && (heldRole.agencyId !== agencyId || heldRole.role !== settledRole)) {
+    setHeldRole({ agencyId, role: settledRole });
+  }
+  const informationPurposes = patientInformationPurposes(
+    heldRole.agencyId === agencyId ? heldRole.role : null,
+  );
+  const informationSummary = useAuthorizedPatient({
+    patientId,
+    agencyId,
+    purpose: informationPurposes.summary,
+    enabled: routeIsExact,
+  });
+  const informationHistory = useAuthorizedPatient({
+    patientId,
+    agencyId,
+    purpose: informationPurposes.history,
     enabled: routeIsExact,
   });
 
@@ -321,11 +350,7 @@ export default function PatientDetails() {
             contact and telehealth tools for this chart are below.
           </CardContent>
         </Card>
-        <PatientInformationCard
-          patientId={patientId}
-          agencyId={agencyId}
-          tenantRole={patientQuery.tenantScope?.tenant_role ?? null}
-        />
+        <PatientInformationCard summary={informationSummary} history={informationHistory} />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-1">
             <PatientContactActions patientId={patientId} agencyId={agencyId} />

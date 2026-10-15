@@ -8,6 +8,7 @@ import { render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import SignInScreen from './SignInScreen';
+import { SESSION_ACTIVITY_KEY } from '@/lib/sessionActivity';
 
 const render = (ui) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
@@ -48,6 +49,7 @@ describe('arriving on an invitation or recovery link', () => {
     mocks.link = { type: 'invite', tokenHash: 'invitetoken-aaaaaa' };
     mocks.setPasswordFromLink.mockResolvedValue({ email: 'nurse@agency.example' });
     mocks.signIn.mockResolvedValue(undefined);
+    localStorage.clear();
   });
 
   it('asks for a password instead of offering a sign-in form', () => {
@@ -80,6 +82,25 @@ describe('arriving on an invitation or recovery link', () => {
     expect(mocks.checkAppState).not.toHaveBeenCalled();
     await waitFor(() => expect(mocks.setPasswordFromLink).toHaveBeenCalledWith(
       'Nurse@Agency.Example', 'invite', 'invitetoken-aaaaaa', 'a-new-long-password'));
+  });
+
+  it('starts a fresh idle clock before the app opens on an owned-backend sign-in', async () => {
+    // Left by a session someone signed out of by hand an hour ago. The idle
+    // check reads it as soon as the app opens, and would sign this one out.
+    localStorage.setItem(SESSION_ACTIVITY_KEY, String(Date.now() - 60 * 60 * 1000));
+    let stampWhenAppOpened = null;
+    mocks.checkAppState.mockImplementation(async () => {
+      stampWhenAppOpened = Number(localStorage.getItem(SESSION_ACTIVITY_KEY));
+    });
+    mocks.link = null;
+    const user = userEvent.setup();
+    const before = Date.now();
+    render(<SignInScreen />);
+    await user.type(screen.getByLabelText('Email'), 'nurse@agency.example');
+    await user.type(screen.getByLabelText('Password'), 'a-long-password');
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+    await waitFor(() => expect(mocks.checkAppState).toHaveBeenCalledTimes(1));
+    expect(stampWhenAppOpened).toBeGreaterThanOrEqual(before);
   });
 
   it('shows the ordinary form when the page carries no link', () => {

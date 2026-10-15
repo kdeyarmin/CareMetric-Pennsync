@@ -29,9 +29,14 @@ export function readSessionActivity(now = Date.now()) {
     if (!raw) return null;
     const value = Number(raw);
     if (!Number.isFinite(value) || value <= 0) return null;
-    // A clock moved backwards must not leave a stamp in the future that the
-    // idle check can never reach.
-    return Math.min(value, now);
+    // A clock moved backwards leaves a stamp in the future. Store now in its
+    // place: returning now without storing it would make every later read look
+    // like fresh activity until the clock caught up with the old stamp.
+    if (value > now) {
+      storage()?.setItem(SESSION_ACTIVITY_KEY, String(now));
+      return now;
+    }
+    return value;
   } catch {
     return null;
   }

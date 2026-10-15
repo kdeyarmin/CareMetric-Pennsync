@@ -68,6 +68,23 @@ const FIELDS = [
 
 const ENUM_FIELDS = new Set(['status', 'care_type', 'admission_source']);
 
+const CLINICAL_ROLES = new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']);
+
+/**
+ * The two purpose-bound projections the information card reads for a tenant
+ * role. Clinical roles get the two clinical-context projections; social work
+ * and spiritual care get the identity and diagnosis projections their roles
+ * are allowed. Until the role is known, both ask for the chart's own display
+ * projection, which the chart gate has already read, so nothing extra is
+ * requested.
+ */
+export function patientInformationPurposes(role) {
+  if (!role) return { summary: 'display', history: 'display' };
+  return CLINICAL_ROLES.has(role)
+    ? { summary: 'smart_note_context', history: 'oasis_analysis_context' }
+    : { summary: 'selector', history: 'visit_summary' };
+}
+
 export function patientInformationRows(patient, now = new Date()) {
   if (!patient || typeof patient !== 'object') return [];
   const rows = [];

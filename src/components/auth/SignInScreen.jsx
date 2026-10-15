@@ -141,6 +141,8 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         setPassword('');
         await ownedBackendAuth.signIn(email, submittedPassword, controller.signal);
         if (!mountedRef.current || operation !== authOperationRef.current || controller.signal.aborted) return;
+        // A new session starts a new idle clock, as on the Base44 path below.
+        recordSessionActivity();
         await checkAppState();
         return;
       }

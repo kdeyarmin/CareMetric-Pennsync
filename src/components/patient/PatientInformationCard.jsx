@@ -1,38 +1,21 @@
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClipboardList } from 'lucide-react';
-import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 import { patientInformationRows } from './patientInformationRows';
 
 // Owner decision 2026-10-15: all patient information and names must be
-// visible on the chart. This reads through the existing purpose-bound patient
-// broker, which re-checks chart access on every read; no projection is
-// widened. Clinical roles get the two clinical-context projections; social
-// work and spiritual care get the identity and diagnosis projections their
-// roles are allowed.
-const CLINICAL_ROLES = new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']);
-
-export default function PatientInformationCard({ patientId, agencyId, tenantRole }) {
-  const clinical = CLINICAL_ROLES.has(tenantRole);
-  const summary = useAuthorizedPatient({
-    patientId,
-    agencyId,
-    purpose: clinical ? 'smart_note_context' : 'selector',
-    enabled: true,
-  });
-  const history = useAuthorizedPatient({
-    patientId,
-    agencyId,
-    purpose: clinical ? 'oasis_analysis_context' : 'visit_summary',
-    enabled: true,
-  });
-
+// visible on the chart. PatientDetails reads the two role-specific projections
+// through the purpose-bound patient broker (see patientInformationPurposes) and
+// hands them in; this card only renders them. It must not read for itself: a
+// reader that mounts after the chart gate passes re-runs the shared identity
+// and tenant checks, which re-closes the gate and unmounts the card again.
+export default function PatientInformationCard({ summary, history }) {
   const rows = useMemo(
-    () => patientInformationRows({ ...(history.data || {}), ...(summary.data || {}) }),
-    [history.data, summary.data],
+    () => patientInformationRows({ ...(history?.data || {}), ...(summary?.data || {}) }),
+    [history?.data, summary?.data],
   );
-  const loading = (summary.isLoading || history.isLoading) && !rows.length;
-  const failed = !!(summary.error || history.error);
+  const failed = !!(summary?.error || history?.error);
+  const loading = !rows.length && !failed && !!(summary?.isPending || history?.isPending);
 
   return (
     <Card>
