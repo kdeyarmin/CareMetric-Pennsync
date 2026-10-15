@@ -456,11 +456,11 @@ the copy Base44 holds may be the only one — revoke rather than try to retrieve
 **The function-environment secrets.** Read from every `Deno.env.get` in
 `base44/functions/` and `base44/_shared/`, the secret-bearing names are
 `INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET`, `SIGNATURE_HMAC_KEYRING`,
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `HEYGEN_API_KEY`. `APP_PUBLIC_URL`,
+`ANTHROPIC_API_KEY` and `HEYGEN_API_KEY`. `APP_PUBLIC_URL`,
 `SUPER_ADMIN_EMAIL` and the various `*_RELEASE` names are configuration rather than
 credentials and need no revocation, only the move step 7 already covers. Each
 secret is rotated at the provider that issued it, not inside Base44 — a value
-deleted from Base44's environment is still a live key at OpenAI, Anthropic or
+deleted from Base44's environment is still a live key at Anthropic or
 HeyGen until it is rotated there.
 
 **The Telnyx credentials**, which per `AGENTS.md` are configured in-app through the
