@@ -58,6 +58,12 @@ jobs:
       # what Base44's sandbox ran on 2026-10-09, and there npm crashes on this
       # tree unless the repository's .npmrc turns peer installation off. The
       # first check alone stayed green while the preview could not start.
+      #
+      # package.json's npm-only `overrides` pins vitest for peer resolution.
+      # vitest-axe and @testing-library/jest-dom declare open vitest peers, so
+      # once vitest 4.1.12 was published (2026-10-15 14:51Z) npm 10.8.2 pulled
+      # its peer set beside the pinned 4.1.11 and crashed with the same
+      # "edgesOut" error. pnpm ignores the field; move it with the vitest pin.
       - name: Check Base44 npm dependency compatibility
         timeout-minutes: 8
         shell: bash
