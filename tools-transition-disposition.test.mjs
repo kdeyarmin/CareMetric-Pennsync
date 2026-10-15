@@ -376,13 +376,28 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reason: 'the re-reads on `6995e5a7` and `c7d6940`, dated in their own words, which the eight '
       + 'Base44-builder ports dispositioned on 2026-10-09 turned into history',
   },
+  // The next link in that same ledger chain. The 2026-10-09 reading is kept
+  // beside its 2026-10-15 re-read rather than corrected, because the sentence
+  // is a dated link in a chain of readings and each link's figures are its
+  // own claim about its own day; the pages claiming the present tense
+  // (AGENTS.md, the go-live plan) were corrected instead.
   {
     page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
     reading: 'entity_authorization=5 files=12 core_integration=4 external_secret=2 none=82',
     reason: 'the 2026-10-09 re-read at #442, recorded beside the earlier readings in the '
-      + 'collector\'s footnote: it WAS the measurement until R1 of the direct-AI migration '
-      + '(2026-10-15) removed `transcribeAudioWithWhisper`\'s provider calls and carried it '
-      + '`preserved_paused`, moving `external_secret` to 1 and the queue total to 104',
+      + 'collector\'s footnote: it WAS the measurement until 2026-10-15, when the direct-AI '
+      + 'migration landed on it twice — R1 removed `transcribeAudioWithWhisper`\'s provider '
+      + 'calls and carried it `preserved_paused`, moving `external_secret` to 1 and the queue '
+      + 'total to 104, and the first wave inlined the directInvokeLLM helper into the four '
+      + 'SmartNote capabilities and emptied `core_integration` into `files`',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=16 external_secret=2 none=82',
+    reason: 'the 2026-10-15 re-read the direct-AI migration\'s first wave appended to that '
+      + 'same entry, which WAS the measurement on the wave\'s own tree: it differs from the '
+      + 'merged tree\'s by one in `external_secret` alone, because R1 landed in the same '
+      + 'merge and moved that bucket 2 → 1 underneath it',
   },
 ];
 
@@ -1271,9 +1286,22 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // `port`, and nothing was written. They first read as `records_schema`,
   // because any `asServiceRole` counted as a record reach. Their only service-role
   // use is `asServiceRole.integrations.Core.InvokeLLM`, which reads no row.
+  //
+  // Then `files` 12 → 16 and `core_integration` 4 → 0 with `none` unmoved
+  // (2026-10-15): the direct-AI migration's first wave inlined the shared
+  // directInvokeLLM helper into 21 port functions, replacing the platform
+  // InvokeLLM call with a direct Anthropic call under the app's own key. The
+  // classifier reads the inlined body, whose `file_urls` tokens the files rule
+  // matches ahead of the runtime rule, so the four capabilities whose whole
+  // reach had been the integration (the SmartNote four, pinned by name below)
+  // now read as waiting on the file layer. The other seventeen were already
+  // ported, already carried a file reach of their own, or reach an entity
+  // first, and none of them moved. Nothing was written and no disposition
+  // changed: what moved is the measured reach of four modules, which is what
+  // a bucket records.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 0, core_integration: 4, pdf_rendering: 0,
+    records_schema: 0, files: 16, ported_function: 0, core_integration: 0, pdf_rendering: 0,
     external_secret: 1, none: 82 });
   // R1 of the direct-AI migration (2026-10-15) moved this distribution by
   // one without a port landing: `external_secret` 2 → 1 and the queue total
@@ -1462,8 +1490,15 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // Four arrived on 2026-10-09: SmartNote capabilities the Base44 builder added,
   // whose whole reach is `Core.InvokeLLM`. That operation IS brokered, so they
   // wait on being written, not on an owner decision about delivery.
-  assert.deepEqual(report.port_blockers.core_integration, ['checkSmartNoteCoverage',
-    'checkSmartNoteGrounding', 'draftSmartNote', 'structureDictatedVisit']);
+  //
+  // They left on 2026-10-15, still unwritten: the direct-AI migration inlined
+  // the shared directInvokeLLM helper into all four, so the module's only
+  // service-role reach is gone and the classifier now meets the inlined body's
+  // `file_urls` tokens first — they sit in `files` below, beside the other
+  // handlers whose measured reach includes the file layer. The bucket is
+  // empty because no port-dispositioned capability's whole reach is a Core
+  // integration any more, not because the runtime learned to broker one.
+  assert.deepEqual(report.port_blockers.core_integration, []);
   for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is written`);
   }
@@ -1501,10 +1536,18 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   //
   // Four more arrived on 2026-10-09 with the Base44 builder's ADR, fax and
   // referral-scan capabilities: each hands a stored file to `InvokeLLM`.
-  assert.deepEqual(report.port_blockers.files, ['analyzeAdrLetter', 'createAuthorizedDocument',
+  //
+  // Four more arrived on 2026-10-15 from `core_integration` — the SmartNote
+  // four pinned above. None of them hands a stored file to the model in its
+  // own code; what the classifier meets is the `file_urls` contract inside
+  // the directInvokeLLM helper inlined into all four, and a bucket records
+  // the reach of the module as written, helper included.
+  assert.deepEqual(report.port_blockers.files, ['analyzeAdrLetter', 'checkSmartNoteCoverage',
+    'checkSmartNoteGrounding', 'createAuthorizedDocument', 'draftSmartNote',
     'extractFaxContact', 'extractReferralResponseScan', 'generateAdrPacket',
     'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
-    'preparePDFWithPatientInfo', 'reorderDeletePDFPages', 'verifyAdrResponsePacket']);
+    'preparePDFWithPatientInfo', 'reorderDeletePDFPages', 'structureDictatedVisit',
+    'verifyAdrResponsePacket']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
       'analyzeClinicalEvents', 'analyzeClinicalTrends',
