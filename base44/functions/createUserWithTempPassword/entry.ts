@@ -384,6 +384,11 @@ Deno.serve(async (req) => {
     if (!isProtectedAdmin(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
+    // Owner decision 2026-10-15: the super admin is the only way to set up a
+    // new employee (invite, then the person accepts).
+    if (!isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the super admin can invite new staff.' }, { status: 403 });
+    }
     if (user.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
     }

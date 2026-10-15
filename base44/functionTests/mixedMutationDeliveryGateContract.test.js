@@ -167,12 +167,15 @@ function signupClient({ invited }) {
   return { calls, client, signupUser };
 }
 
-test('paused resend-OTP keeps invited approval and audit but performs no human delivery', async () => {
+test('an invited sign-up is approved but never has its email verified on the person\'s behalf', async () => {
+  // Owner decision 2026-10-15: the super admin invites and the person accepts
+  // by completing the emailed verification themselves. Whoever registers first
+  // with a pending invitee's address must not get a verified account.
   const runtime = signupClient({ invited: true });
   const handler = await loadHandler('onUserSignup', runtime.client, {
     fetchImpl: async (...args) => {
       runtime.calls.fetches.push(args);
-      throw new Error('paused OTP resend must not call fetch');
+      throw new Error('onUserSignup must not call the platform auth endpoints');
     },
   });
   const response = await handler({ json: async () => ({ user: runtime.signupUser }) });
@@ -183,13 +186,29 @@ test('paused resend-OTP keeps invited approval and audit but performs no human d
   assert.equal(body.auto_approved, true);
   assert.equal(body.auth_verified, false);
   assert.equal(body.email, false);
-  assert.equal(body.delivery_paused, true);
+  assert.equal(body.delivery_paused, false);
   assert.ok(runtime.calls.userUpdates.some(([, row]) => row.is_approved === true));
   assert.ok(runtime.calls.activities.some((row) => row.action === 'user_signup_auto_approved'));
+  // Still unverified, so the invitation stays open until the person finishes.
   assert.deepEqual(runtime.calls.invitationUpdates, []);
   assert.deepEqual(runtime.calls.emails, []);
   assert.deepEqual(runtime.calls.fetches, []);
   assert.equal(runtime.calls.configReads, 0);
+});
+
+test('an invitee who already verified their email closes the invitation', async () => {
+  const runtime = signupClient({ invited: true });
+  const users = await runtime.client.asServiceRole.entities.User.filter();
+  users[0].is_verified = true;
+  const handler = await loadHandler('onUserSignup', runtime.client, {
+    fetchImpl: async () => { throw new Error('must not call fetch'); },
+  });
+  const response = await handler({ json: async () => ({ user: runtime.signupUser }) });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.auth_verified, true);
+  assert.equal(runtime.calls.invitationUpdates.length, 1);
+  assert.equal(runtime.calls.invitationUpdates[0][1].status, 'accepted');
 });
 
 test('a re-invited user is approved even when the expired invitation is listed first', async () => {

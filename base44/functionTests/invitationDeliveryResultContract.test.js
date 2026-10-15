@@ -194,3 +194,33 @@ test('resend stamp that commits before throwing leaves effective metadata unconf
   assert.deepEqual(runtime.state.calls, ['send', 'stamp', 'audit']);
   assert.doesNotMatch(JSON.stringify(result.body), /private-provider-detail/);
 });
+
+test('only the super admin can invite or resend (owner decision 2026-10-15)', async () => {
+  // Another holder of the built-in admin role is still an administrator for
+  // other work, but setting up a new employee belongs to the super admin.
+  const facilityAdmin = { id: 'facility-admin', email: 'facility@example.test', role: 'admin', is_active: true };
+  for (const action of ['invite_user', 'resend_invitation']) {
+    const runtime = fixture({ user: facilityAdmin });
+    const result = await runtime.invoke(action);
+    assert.equal(result.status, 403, action);
+    assert.match(result.body.error, /super admin/i, action);
+    assert.deepEqual(runtime.state.calls, [], `${action}: nothing created or sent`);
+    assert.deepEqual(runtime.state.invitations, [], `${action}: no platform invite`);
+  }
+});
+
+test('every invitation sender and resender carries the super-admin gate', async () => {
+  for (const name of [
+    'createUserWithTempPassword', 'createUserWithTempPasswordV2',
+    'resendInvitation', 'resendInvitationV2',
+    'userManagement', 'userManagementV2',
+  ]) {
+    const entry = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    assert.match(entry, /function isProtectedSuperAdmin\(user\)/, `${name}: protected helper embedded`);
+    assert.match(
+      entry,
+      /if \(!(?:isProtectedSuperAdmin\(user\)|callerIsSuperAdmin)\) \{\s*return Response\.json\(\{ error: 'Only the super admin can (?:invite new staff|resend invitations)\.' \}, \{ status: 403 \}\);/,
+      `${name}: refuses anyone but the super admin`,
+    );
+  }
+});
