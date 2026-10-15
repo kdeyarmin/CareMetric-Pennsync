@@ -97,6 +97,8 @@ const EXACT_ROW_LIMIT = 10;
 const BATCH_LIMIT = 100;
 const MAX_PACKAGE_DOCUMENTS = 25;
 const CLAIM_LEASE_MS = 20 * 60 * 1000;
+// A transient read failure releases the claim this many times before failing.
+const MAX_TRANSIENT_ATTEMPTS = 5;
 
 class PublicError extends Error {
   status: number;
@@ -605,10 +607,24 @@ Deno.serve(async (req) => {
         continue;
       }
       let target: Record<string, any>;
-      try { target = await loadDispatchTarget(entities, reminder); } catch {
-        await settleReminder(entities, reminder, {
+      try { target = await loadDispatchTarget(entities, reminder); } catch (error) {
+        // Only a PublicError is a verdict on the authority. Anything else (a
+        // 429 or 5xx on one of the reads) says nothing about it, so the claim
+        // is released for a later run instead of canceling the reminder for
+        // good — up to MAX_TRANSIENT_ATTEMPTS, then it is failed visibly.
+        if (!(error instanceof PublicError) && reminder.attempts + 1 < MAX_TRANSIENT_ATTEMPTS) {
+          await settleReminder(entities, reminder, {
+            status: 'pending', delivery_state: 'not_started', claimed_by: null, claimed_at: null,
+            delivery_attempt_id: null, attempts: reminder.attempts + 1,
+          }).catch(() => false);
+          continue;
+        }
+        await settleReminder(entities, reminder, error instanceof PublicError ? {
           status: 'canceled', delivery_state: 'rejected', canceled_at: new Date().toISOString(),
           failure_reason: 'Signature authority is no longer valid', attempts: reminder.attempts + 1,
+        } : {
+          status: 'failed', delivery_state: 'rejected',
+          failure_reason: 'Signature authority could not be read after repeated attempts', attempts: reminder.attempts + 1,
         }).catch(() => false);
         summary.canceled += 1;
         continue;
@@ -631,7 +647,17 @@ Deno.serve(async (req) => {
 
       let tokenId = null;
       let externalStarted = false;
+      let revokedPriorLinks = 0;
       try {
+        // Everything that can refuse without touching a row is checked before
+        // the signer's current link is revoked, so a configuration problem
+        // never leaves them with no working link.
+        const portalOrigin = signerPortalOrigin();
+        const expiresAt = new Date(Math.min(
+          Date.now() + 72 * 60 * 60 * 1000,
+          Date.parse(target.deadline),
+        )).toISOString();
+        if (Date.parse(expiresAt) <= Date.now()) throw new PublicError(409, 'Signature deadline has expired');
         const oldTokens = requireRows(await entities.DocumentPackageToken.filter(
           { agency_id: reminder.agencyId, package_id: reminder.packageId,
             signer_id: reminder.signerId, status: 'active' }, '-created_date', EXACT_ROW_LIMIT,
@@ -647,15 +673,11 @@ Deno.serve(async (req) => {
               authority_version: old.authority_version + 1 } },
           );
           if (revoked?.updated !== 1) throw new PublicError(409, 'Active signer token changed during rotation');
+          revokedPriorLinks += 1;
         }
         const plaintext = generateToken();
         const tokenDigest = await sha256(plaintext);
         const now = new Date().toISOString();
-        const expiresAt = new Date(Math.min(
-          Date.now() + 72 * 60 * 60 * 1000,
-          Date.parse(target.deadline),
-        )).toISOString();
-        if (Date.parse(expiresAt) <= Date.now()) throw new PublicError(409, 'Signature deadline has expired');
         const token = await entities.DocumentPackageToken.create({
           agency_id: reminder.agencyId, package_id: reminder.packageId,
           document_ids: target.documentIds, token: tokenDigest, token_hashed: true,
@@ -680,7 +702,7 @@ Deno.serve(async (req) => {
           request_id: deliveryAttemptId, authority_version: 1,
           document_content_sha256: target.sourceDigest, occurred_at: now,
         });
-        const link = `${signerPortalOrigin()}/signer?token=${encodeURIComponent(plaintext)}`;
+        const link = `${portalOrigin}/signer?token=${encodeURIComponent(plaintext)}`;
         externalStarted = true;
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: target.signerEmail,
@@ -753,7 +775,10 @@ Deno.serve(async (req) => {
           }
           await settleReminder(entities, reminder, {
             status: 'failed', delivery_state: 'rejected',
-            failure_reason: 'Reminder could not be prepared safely', attempts: reminder.attempts + 1,
+            failure_reason: revokedPriorLinks > 0
+              ? "Reminder could not be prepared safely; the signer's previous link was revoked, so send a new signing link"
+              : 'Reminder could not be prepared safely',
+            attempts: reminder.attempts + 1,
           }).catch(() => false);
           summary.quarantined += 1;
         }

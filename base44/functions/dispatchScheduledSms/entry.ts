@@ -805,21 +805,30 @@ const AREA_CODE_TIMEZONE = {
   216: "America/New_York",
   217: "America/Chicago",
   218: "America/Chicago",
+  219: "America/Chicago",
   220: "America/New_York",
   223: "America/New_York",
   224: "America/Chicago",
   225: "America/Chicago",
   228: "America/Chicago",
+  229: "America/New_York",
+  231: "America/New_York",
   234: "America/New_York",
   239: "America/New_York",
   240: "America/New_York",
+  248: "America/New_York",
   251: "America/Chicago",
+  252: "America/New_York",
   253: "America/Los_Angeles",
   254: "America/Chicago",
   256: "America/Chicago",
+  260: "America/New_York",
   262: "America/Chicago",
   267: "America/New_York",
+  269: "America/New_York",
+  270: "America/Chicago",
   272: "America/New_York",
+  274: "America/Chicago",
   276: "America/New_York",
   279: "America/Los_Angeles",
   281: "America/Chicago",
@@ -830,20 +839,27 @@ const AREA_CODE_TIMEZONE = {
   304: "America/New_York",
   305: "America/New_York",
   307: "America/Denver",
+  308: "America/Chicago",
   309: "America/Chicago",
   310: "America/Los_Angeles",
   312: "America/Chicago",
+  313: "America/New_York",
   314: "America/Chicago",
+  315: "America/New_York",
   316: "America/Chicago",
+  317: "America/New_York",
   318: "America/Chicago",
   319: "America/Chicago",
   320: "America/Chicago",
   321: "America/New_York",
   323: "America/Los_Angeles",
   324: "America/New_York",
+  325: "America/Chicago",
   330: "America/New_York",
   331: "America/Chicago",
+  332: "America/New_York",
   334: "America/Chicago",
+  336: "America/New_York",
   337: "America/Chicago",
   339: "America/New_York",
   341: "America/Los_Angeles",
@@ -853,6 +869,8 @@ const AREA_CODE_TIMEZONE = {
   352: "America/New_York",
   360: "America/Los_Angeles",
   361: "America/Chicago",
+  364: "America/Chicago",
+  380: "America/New_York",
   385: "America/Denver",
   386: "America/New_York",
   401: "America/New_York",
@@ -870,6 +888,7 @@ const AREA_CODE_TIMEZONE = {
   415: "America/Los_Angeles",
   417: "America/Chicago",
   419: "America/New_York",
+  423: "America/New_York",
   424: "America/Los_Angeles",
   425: "America/Los_Angeles",
   430: "America/Chicago",
@@ -879,7 +898,10 @@ const AREA_CODE_TIMEZONE = {
   440: "America/New_York",
   442: "America/Los_Angeles",
   443: "America/New_York",
+  445: "America/New_York",
   447: "America/Chicago",
+  458: "America/Los_Angeles",
+  463: "America/New_York",
   469: "America/Chicago",
   470: "America/New_York",
   475: "America/New_York",
@@ -904,6 +926,9 @@ const AREA_CODE_TIMEZONE = {
   518: "America/New_York",
   520: "America/Phoenix",
   530: "America/Los_Angeles",
+  531: "America/Chicago",
+  534: "America/Chicago",
+  539: "America/Chicago",
   540: "America/New_York",
   541: "America/Los_Angeles",
   551: "America/New_York",
@@ -916,17 +941,24 @@ const AREA_CODE_TIMEZONE = {
   570: "America/New_York",
   571: "America/New_York",
   573: "America/Chicago",
+  574: "America/New_York",
   575: "America/Denver",
   580: "America/Chicago",
   585: "America/New_York",
+  586: "America/New_York",
   601: "America/Chicago",
   602: "America/Phoenix",
+  603: "America/New_York",
   605: "America/Chicago",
+  606: "America/New_York",
   607: "America/New_York",
   608: "America/Chicago",
+  609: "America/New_York",
   610: "America/New_York",
   612: "America/Chicago",
   614: "America/New_York",
+  615: "America/Chicago",
+  616: "America/New_York",
   617: "America/New_York",
   618: "America/Chicago",
   619: "America/Los_Angeles",
@@ -934,23 +966,32 @@ const AREA_CODE_TIMEZONE = {
   623: "America/Phoenix",
   626: "America/Los_Angeles",
   628: "America/Los_Angeles",
+  629: "America/Chicago",
   630: "America/Chicago",
   631: "America/New_York",
   636: "America/Chicago",
+  640: "America/New_York",
   641: "America/Chicago",
   646: "America/New_York",
   650: "America/Los_Angeles",
   651: "America/Chicago",
   657: "America/Los_Angeles",
+  659: "America/Chicago",
   660: "America/Chicago",
   661: "America/Los_Angeles",
+  662: "America/Chicago",
   667: "America/New_York",
   669: "America/Los_Angeles",
   678: "America/New_York",
   680: "America/New_York",
+  681: "America/New_York",
   682: "America/Chicago",
   689: "America/New_York",
+  701: "America/Chicago",
+  702: "America/Los_Angeles",
   703: "America/New_York",
+  704: "America/New_York",
+  706: "America/New_York",
   707: "America/Los_Angeles",
   708: "America/Chicago",
   712: "America/Chicago",
@@ -963,9 +1004,12 @@ const AREA_CODE_TIMEZONE = {
   719: "America/Denver",
   720: "America/Denver",
   724: "America/New_York",
+  725: "America/Los_Angeles",
+  726: "America/Chicago",
   727: "America/New_York",
   731: "America/Chicago",
   732: "America/New_York",
+  734: "America/New_York",
   737: "America/Chicago",
   740: "America/New_York",
   743: "America/New_York",
@@ -973,7 +1017,9 @@ const AREA_CODE_TIMEZONE = {
   754: "America/New_York",
   757: "America/New_York",
   760: "America/Los_Angeles",
+  762: "America/New_York",
   763: "America/Chicago",
+  765: "America/New_York",
   769: "America/Chicago",
   770: "America/New_York",
   772: "America/New_York",
@@ -985,11 +1031,14 @@ const AREA_CODE_TIMEZONE = {
   785: "America/Chicago",
   786: "America/New_York",
   801: "America/Denver",
+  802: "America/New_York",
   803: "America/New_York",
   804: "America/New_York",
   805: "America/Los_Angeles",
+  806: "America/Chicago",
   808: "Pacific/Honolulu",
   810: "America/New_York",
+  812: "America/New_York",
   813: "America/New_York",
   814: "America/New_York",
   815: "America/Chicago",
@@ -1001,23 +1050,30 @@ const AREA_CODE_TIMEZONE = {
   830: "America/Chicago",
   831: "America/Los_Angeles",
   832: "America/Chicago",
+  835: "America/New_York",
+  838: "America/New_York",
   843: "America/New_York",
   845: "America/New_York",
   847: "America/Chicago",
   848: "America/New_York",
+  850: "America/Chicago",
+  854: "America/New_York",
   856: "America/New_York",
   857: "America/New_York",
   858: "America/Los_Angeles",
   859: "America/New_York",
+  860: "America/New_York",
   862: "America/New_York",
   863: "America/New_York",
   864: "America/New_York",
+  865: "America/New_York",
   870: "America/Chicago",
   872: "America/Chicago",
   878: "America/New_York",
   901: "America/Chicago",
   903: "America/Chicago",
   904: "America/New_York",
+  906: "America/New_York",
   907: "America/Anchorage",
   908: "America/New_York",
   909: "America/Los_Angeles",
@@ -1027,17 +1083,22 @@ const AREA_CODE_TIMEZONE = {
   914: "America/New_York",
   915: "America/Denver",
   916: "America/Los_Angeles",
+  917: "America/New_York",
   918: "America/Chicago",
   919: "America/New_York",
   920: "America/Chicago",
   925: "America/Los_Angeles",
   928: "America/Phoenix",
   929: "America/New_York",
+  930: "America/New_York",
+  931: "America/Chicago",
   934: "America/New_York",
   936: "America/Chicago",
   937: "America/New_York",
+  938: "America/Chicago",
   940: "America/Chicago",
   941: "America/New_York",
+  945: "America/Chicago",
   947: "America/New_York",
   949: "America/Los_Angeles",
   951: "America/Los_Angeles",
@@ -1048,9 +1109,13 @@ const AREA_CODE_TIMEZONE = {
   970: "America/Denver",
   971: "America/Los_Angeles",
   972: "America/Chicago",
+  973: "America/New_York",
+  978: "America/New_York",
   979: "America/Chicago",
   980: "America/New_York",
   984: "America/New_York",
+  985: "America/Chicago",
+  986: "America/Denver",
   989: "America/New_York",
 };
 // <<<END SHARED HELPER: areaCodeTimezone>>>
@@ -1070,19 +1135,32 @@ function hourInZone(date, timeZone) {
     return null;
   }
 }
-/** TCPA quiet-hours check in the RECIPIENT's timezone. Fails open when unknown. */
+/**
+ * TCPA quiet-hours check in the RECIPIENT's timezone. This path sends with
+ * nobody watching, so it does NOT fail open like sendSms: a number whose area
+ * code is not in the table (or whose zone cannot be read) is allowed only while
+ * the window is open in every mainland zone it could be in, and otherwise
+ * waits for a later run.
+ */
+const QUIET_HOURS_UNMAPPED_ZONES = ['America/Halifax', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles'];
 function quietHoursCheck(toNumber, now, settings) {
   const startHour = Number(settings?.tcpa_quiet_start_hour ?? 8);
   const endHour = Number(settings?.tcpa_quiet_end_hour ?? 21);
+  const inWindow = (h) => (startHour === endHour ? true
+    : startHour < endHour ? (h >= startHour && h < endHour)
+      : (h >= startHour || h < endHour));
   const tz = tzForNumber(toNumber);
-  if (!tz) return { allowed: true, reason: 'unknown_timezone' };
-  const h = hourInZone(now, tz);
-  if (h == null) return { allowed: true, reason: 'unknown_timezone' };
+  const h = tz ? hourInZone(now, tz) : null;
+  if (h == null) {
+    const allowed = QUIET_HOURS_UNMAPPED_ZONES.every((zone) => {
+      const zoneHour = hourInZone(now, zone);
+      return zoneHour != null && inWindow(zoneHour);
+    });
+    return { allowed, reason: allowed ? 'within_hours_all_zones' : 'unknown_timezone' };
+  }
   // Allowed contact window; supports a window that wraps past midnight
   // (start > end). Mirrors quietHoursCheck in sendSms / isWithinQuietHours.
-  const allowed = startHour === endHour ? true
-    : startHour < endHour ? (h >= startHour && h < endHour)
-      : (h >= startHour || h < endHour);
+  const allowed = inWindow(h);
   return { allowed, reason: allowed ? 'within_hours' : 'quiet_hours' };
 }
 
@@ -1122,6 +1200,20 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: smsRowCas — generated, edit base44/_shared/backendHelpers.mjs>>>
+const successfulSmsCas = (value) => !!value
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && value.success === true
+  && value.updated === 1
+  && value.has_more === false;
+function observedSmsField(field, value) {
+  return value == null
+    ? { $or: [{ [field]: { $exists: false } }, { [field]: null }] }
+    : { [field]: value };
+}
+// <<<END SHARED HELPER: smsRowCas>>>
 
 function monthStartISO(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
@@ -1276,16 +1368,22 @@ Deno.serve(async (req) => {
     const result = { processed: 0, sent: 0, failed: 0, skipped: 0 };
 
     for (const row of due) {
-      // Claim with a per-run token, then RE-READ to confirm we still own it.
-      // This read-after-write check makes overlapping runs far safer than a bare
-      // status flip (the loser sees the winner's token and skips). Since Telnyx
-      // has no client idempotency key, the claim+re-read is the primary
-      // double-send prevention — we do NOT retry thrown network errors either.
-      try {
-        await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
-          status: 'sending', claimed_by: runId, claimed_at: new Date().toISOString(),
-        });
-      } catch {
+      // Claim with ONE compare-and-set over the row exactly as this run listed
+      // it — still pending, same claim token, same updated_date — then RE-READ
+      // to confirm the token. Telnyx has no client idempotency key, so this is
+      // the double-send prevention. An unconditional status write was not: a
+      // run that listed a row before an overlapping run sent it would flip the
+      // 'sent' row back to 'sending', see its own token on re-read, and text
+      // the patient again. A row whose updated_date cannot be read is never
+      // claimed. Thrown network errors are not retried either.
+      if (typeof row.updated_date !== 'string' || !row.updated_date) { result.skipped++; continue; }
+      const claim = await base44.asServiceRole.entities.ScheduledSms.updateMany({
+        id: row.id,
+        status: 'pending',
+        updated_date: row.updated_date,
+        $and: [observedSmsField('claimed_by', row.claimed_by)],
+      }, { $set: { status: 'sending', claimed_by: runId, claimed_at: new Date().toISOString() } }).catch(() => null);
+      if (!successfulSmsCas(claim)) {
         result.skipped++;
         continue;
       }

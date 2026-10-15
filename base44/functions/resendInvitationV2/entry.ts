@@ -148,6 +148,16 @@ async function withTrustedClaims(base44, profile) {
 // <<<END SHARED HELPER: trustedCallerClaims>>>
 
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -206,6 +216,11 @@ Deno.serve(async (req) => {
     }
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+    }
+    // Owner decision 2026-10-15: the super admin is the only way to set up a
+    // new employee (invite, then the person accepts).
+    if (!isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the super admin can resend invitations.' }, { status: 403 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 

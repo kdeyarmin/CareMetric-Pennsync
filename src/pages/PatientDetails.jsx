@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ShieldAlert, Users } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -12,6 +12,8 @@ import { logActivity, ActivityActions } from '@/components/utils/activityLogger'
 import PatientContactActions from '@/components/voice/PatientContactActions';
 import { listAuthorizedVisits } from '@/functions/listAuthorizedVisits';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import PatientInformationCard from '@/components/patient/PatientInformationCard';
+import { patientInformationPurposes } from '@/components/patient/patientInformationRows';
 import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
 import {
   createPatientDetailsRouteHref,
@@ -163,6 +165,34 @@ export default function PatientDetails() {
     enabled: routeIsExact,
   });
 
+  // The information card's projections are read here, mounted with the page,
+  // and handed to the card. Every reader shares the signed-in identity and
+  // tenant-context checks, which re-run whenever a reader mounts, so a card
+  // that read for itself (mounting only once the gate below passed) re-opened
+  // that gate, was unmounted by it, and remounted without end. The tenant role
+  // that picks the projections is held per agency, so the gate's own re-checks
+  // (which withhold tenantScope while they run) do not switch them back.
+  const settledRole = patientQuery.tenantScope?.tenant_role ?? null;
+  const [heldRole, setHeldRole] = useState({ agencyId: null, role: null });
+  if (settledRole && (heldRole.agencyId !== agencyId || heldRole.role !== settledRole)) {
+    setHeldRole({ agencyId, role: settledRole });
+  }
+  const informationPurposes = patientInformationPurposes(
+    heldRole.agencyId === agencyId ? heldRole.role : null,
+  );
+  const informationSummary = useAuthorizedPatient({
+    patientId,
+    agencyId,
+    purpose: informationPurposes.summary,
+    enabled: routeIsExact,
+  });
+  const informationHistory = useAuthorizedPatient({
+    patientId,
+    agencyId,
+    purpose: informationPurposes.history,
+    enabled: routeIsExact,
+  });
+
   const scheduleAuthorized = canAuthorizeVisitSchedule(patientQuery.tenantScope);
   const visitAuthorizationQuery = useQuery({
     queryKey: [
@@ -289,13 +319,13 @@ export default function PatientDetails() {
     );
   }
 
-  // Only the panels that carry their own server authority are mounted here:
-  // contacting the patient (the `contact` read purpose plus startMaskedCall /
-  // sendSms / scheduleSms, each re-checking the chart) and the chart's
-  // telehealth visits (manageTelehealthSession, which re-checks the chart on
-  // every list and create). The rest of the chart stays hidden until each
-  // clinical panel has its own purpose-bound read.
-  const displayName = [patientQuery.data?.first_name, patientQuery.data?.last_name]
+  // Every panel here carries its own server authority: the patient's name
+  // and information (owner decision 2026-10-15: all patient information and
+  // names must be visible) come through the purpose-bound patient broker,
+  // contacting the patient through the `contact` read purpose plus
+  // startMaskedCall / sendSms / scheduleSms, and the chart's telehealth visits
+  // through manageTelehealthSession; each re-checks the chart on every read.
+  const displayName = [patientQuery.data?.first_name, patientQuery.data?.middle_name, patientQuery.data?.last_name]
     .filter((part) => typeof part === 'string' && part.trim())
     .join(' ');
   return (
@@ -303,8 +333,8 @@ export default function PatientDetails() {
       <PageHeader
         icon={Users}
         eyebrow="Patient Care"
-        title="Patient details"
-        description="Purpose-bound chart access"
+        title={displayName || "Patient details"}
+        description="Patient details"
         favoritePage="PatientDetails"
       />
       <div className="mx-auto max-w-4xl space-y-4">
@@ -316,11 +346,11 @@ export default function PatientDetails() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-slate-600">
-            Current Patient{scheduleAuthorized ? " and Visit" : ""} authority was verified. Contact and telehealth tools for this
-            chart are below; the other clinical panels open as each gains its own purpose-bound
-            tenant read service.
+            Current Patient{scheduleAuthorized ? " and Visit" : ""} authority was verified. The patient's information,
+            contact and telehealth tools for this chart are below.
           </CardContent>
         </Card>
+        <PatientInformationCard summary={informationSummary} history={informationHistory} />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-1">
             <PatientContactActions patientId={patientId} agencyId={agencyId} />

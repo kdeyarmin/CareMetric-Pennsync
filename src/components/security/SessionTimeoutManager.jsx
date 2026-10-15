@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,10 @@ import { Clock, RefreshCw } from "lucide-react";
 import { logSecurityEvent } from "../utils/security";
 import { formatTime } from "@/lib/formatTime";
 import { useAuth } from "@/lib/AuthContext";
+import { clearSessionActivity, readSessionActivity, recordSessionActivity } from "@/lib/sessionActivity";
+
+// Shared-stamp writes are throttled; the in-page ref stays exact.
+const ACTIVITY_WRITE_INTERVAL_MS = 15 * 1000;
 
 /**
  * Session Timeout Manager Component
@@ -27,7 +31,11 @@ export default function SessionTimeoutManager({
   // touch/click — holding it in state would re-render the manager AND tear down +
   // recreate the 1s interval on every one of those events (scroll alone fires
   // many times a second). The interval reads the ref instead.
+  // It is mirrored, throttled, into a stamp every tab shares and a reload
+  // keeps (sessionActivity.js), and the effective last activity is the later
+  // of the two.
   const lastActivityRef = useRef(Date.now());
+  const lastWrittenRef = useRef(0);
   // Latch so the 1-second checkInterval can't re-enter handleLogout on every
   // tick while the logout redirect is still in flight — otherwise each tick
   // re-fires the SESSION_TIMEOUT audit write and another logout/clear call.
@@ -36,6 +44,8 @@ export default function SessionTimeoutManager({
   const handleLogout = useCallback(async () => {
     if (loggingOutRef.current) return;
     loggingOutRef.current = true;
+    // The next sign-in starts a fresh idle clock.
+    clearSessionActivity();
 
     // Logging is corroborating telemetry, never a prerequisite for revoking a
     // session. A stalled audit endpoint must not keep the provider token,
@@ -53,6 +63,8 @@ export default function SessionTimeoutManager({
   const handleExtendSession = useCallback(() => {
     setShowWarning(false);
     lastActivityRef.current = Date.now();
+    lastWrittenRef.current = lastActivityRef.current;
+    recordSessionActivity(lastActivityRef.current);
     setSecondsRemaining(warningMinutes * 60);
 
     void logSecurityEvent('SESSION_EXTENDED', {
@@ -61,11 +73,44 @@ export default function SessionTimeoutManager({
   }, [warningMinutes]);
 
   const resetActivity = useCallback(() => {
-    lastActivityRef.current = Date.now();
+    const now = Date.now();
+    // The first touch after a device wakes must not race the 1s check and
+    // reset a deadline that has already passed. Storage is consulted only
+    // when this tab's own clock says the deadline may have passed, which
+    // keeps the hot scroll path to a ref write.
+    if (now - lastActivityRef.current >= timeoutMinutes * 60 * 1000
+      && now - Math.max(lastActivityRef.current, readSessionActivity(now) ?? 0) >= timeoutMinutes * 60 * 1000) {
+      handleLogout();
+      return;
+    }
+    lastActivityRef.current = now;
+    if (now - lastWrittenRef.current >= ACTIVITY_WRITE_INTERVAL_MS) {
+      lastWrittenRef.current = now;
+      recordSessionActivity(now);
+    }
     // setShowWarning(false) is a no-op re-render while already hidden (React bails
     // on identical state), so the hot activity path stays cheap; it only actually
     // re-renders to CLOSE an open warning when the user returns.
     setShowWarning(false);
+  }, [handleLogout, timeoutMinutes]);
+
+  // A reload, an iOS relaunch or a reopened tab resumes the shared idle clock
+  // rather than starting a new one; a session already idle past the deadline
+  // is signed out before any page effect runs. No stamp means a fresh session.
+  useLayoutEffect(() => {
+    const now = Date.now();
+    const stored = readSessionActivity(now);
+    if (stored !== null && now - stored >= timeoutMinutes * 60 * 1000) {
+      handleLogout();
+      return;
+    }
+    lastActivityRef.current = stored ?? now;
+    if (stored === null) {
+      lastWrittenRef.current = now;
+      recordSessionActivity(now);
+    }
+    // Mount-only: the boot check must not re-run when its callbacks change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -92,7 +137,9 @@ export default function SessionTimeoutManager({
     // re-renders when the value is unchanged, so an idle-but-not-warning session
     // costs nothing per tick.
     const checkInterval = setInterval(() => {
-      const inactive = Date.now() - lastActivityRef.current;
+      const now = Date.now();
+      // Activity in any other tab counts too.
+      const inactive = now - Math.max(lastActivityRef.current, readSessionActivity(now) ?? 0);
 
       if (inactive >= timeoutThreshold) {
         handleLogout();

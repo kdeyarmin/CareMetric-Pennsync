@@ -236,9 +236,11 @@ test('backend delivery primitive inventory cannot grow unnoticed', async () => {
     matchingFunctions(sources, (source) => /\.resendOtp\s*\(/.test(source)),
     ['manageUserVerification'],
   );
+  // onUserSignup no longer resends or verifies the invitee's one-time code on
+  // their behalf (owner decision 2026-10-15): the invitee completes it.
   assert.deepEqual(
-    matchingFunctions(sources, (source) => /\/auth\/resend-otp/.test(source)),
-    ['onUserSignup'],
+    matchingFunctions(sources, (source) => /\/auth\/(?:resend|verify)-otp/.test(source)),
+    [],
   );
   assert.deepEqual(
     matchingFunctions(sources, (source) => (

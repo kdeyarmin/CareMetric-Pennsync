@@ -147,6 +147,20 @@ test('structured AI uses a nonexecuting envelope and rejects truncated or invali
     else await assert.rejects(()=>provider('InvokeLLM',{prompt:'x',response_json_schema:schema},actor),e=>e.status===502);
   }
 });
+test('structured AI requests the tool without forcing it and asks once more after a prose answer', async () => {
+  // The 5.5 models reject tool_choice 'tool'/'any' with a 400.
+  const schema={type:'object',properties:{value:{type:'integer'}},required:['value']};
+  const bodies=[];const answers=[{content:[{type:'text',text:'value is 3'}],stop_reason:'end_turn'},{content:[{type:'thinking',thinking:''},{type:'tool_use',name:'return_result',input:{result:{value:3}}}],stop_reason:'tool_use'}];
+  const provider=createProviders(cfg(),{},async(_url,options)=>{bodies.push(JSON.parse(options.body));return Response.json(answers.shift());});
+  assert.deepEqual(await provider('InvokeLLM',{prompt:'x',response_json_schema:schema},actor),{value:3});
+  assert.equal(bodies.length,2);
+  for(const b of bodies){assert.deepEqual(b.tool_choice,{type:'auto',disable_parallel_tool_use:true});assert.match(b.system,/return_result tool/);assert.ok(b.max_tokens>=16000);}
+  const twice=[{content:[{type:'text',text:'a'}],stop_reason:'end_turn'},{content:[{type:'text',text:'b'}],stop_reason:'end_turn'}];
+  const stubborn=createProviders(cfg(),{},async()=>Response.json(twice.shift()));
+  await assert.rejects(()=>stubborn('InvokeLLM',{prompt:'x',response_json_schema:schema},actor),e=>e.status===502&&e.code==='AI_RESULT_SCHEMA_MISMATCH');
+  const refused=createProviders(cfg(),{},async()=>Response.json({content:[],stop_reason:'refusal'}));
+  await assert.rejects(()=>refused('InvokeLLM',{prompt:'x'},actor),e=>e.status===502&&e.code==='AI_RESULT_INCOMPLETE');
+});
 test('email means provider accepted, not delivered, and its sender is server controlled', async () => {
   const provider=createProviders(cfg(),{},async(url,options)=>{assert.equal(url,'https://api.sendgrid.com/v3/mail/send');const body=JSON.parse(options.body);assert.equal(body.from.email,'test@example.test');assert.equal(body.tracking_settings.open_tracking.enable,false);return new Response(null,{status:202});});
   assert.deepEqual(await provider('SendEmail',{to:'recipient@example.test',subject:'Synthetic',body:'Synthetic test'},actor),{accepted:true,delivered:false,provider:'sendgrid'});

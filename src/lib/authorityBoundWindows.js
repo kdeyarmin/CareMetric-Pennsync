@@ -11,6 +11,7 @@ import {
   hasActivePublicCapabilityRealm,
   isPublicCapabilityLeaseCurrent,
 } from '@/lib/publicCapabilityRealmGate';
+import { CENTRAL_SUPPORT_EMAIL, CENTRAL_SUPPORT_PHONE_E164 } from '@/lib/supportContacts';
 
 const authorityBoundObjectUrls = new Map();
 const authorityBoundChildWindows = new Set();
@@ -67,6 +68,21 @@ function isNativeExternalHandoff(url, ownerWindow = window) {
     return ['tel:', 'mailto:', 'sms:'].includes(
       new ownerWindow.URL(url, ownerWindow.location.href).protocol,
     );
+  } catch {
+    return false;
+  }
+}
+
+// The central support line and inbox carry nothing about a patient, and they
+// are the only way out of the screens a person sees before any workspace
+// exists: sign-in, "no agency workspace" and "not registered", where the
+// account-deletion request (App Store Guideline 5.1.1(v)) lives.
+function isCentralSupportHandoff(url, ownerWindow = window) {
+  try {
+    const parsed = new ownerWindow.URL(url, ownerWindow.location.href);
+    if (parsed.protocol === 'mailto:') return decodeURIComponent(parsed.pathname).trim().toLowerCase() === CENTRAL_SUPPORT_EMAIL;
+    if (parsed.protocol === 'tel:') return parsed.pathname === CENTRAL_SUPPORT_PHONE_E164;
+    return false;
   } catch {
     return false;
   }
@@ -204,7 +220,8 @@ function shouldBlockNavigation(element, documentObject, ownerWindow) {
   if (element.hasAttribute?.('download') && !isTenantSdkRealmOpen()) return true;
   return isNativeExternalHandoff(href, ownerWindow)
     && !isTenantSdkRealmOpen()
-    && !hasActivePublicCapabilityRealm();
+    && !hasActivePublicCapabilityRealm()
+    && !isCentralSupportHandoff(href, ownerWindow);
 }
 
 function shouldBlockSubmit(form, submitter, documentObject) {

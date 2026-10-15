@@ -382,8 +382,8 @@ export default function EnhancedCameraFaxSender() {
                     onDragStart={(event) => event.preventDefault()}
                     className="w-full"
                   />
-                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button disabled={!authorityReady} onClick={() => rotateImage(index)} variant="secondary" size="sm" className="h-7 w-7 p-0">
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <Button disabled={!authorityReady} onClick={() => rotateImage(index)} variant="secondary" size="sm" className="h-7 w-7 p-0" aria-label={`Rotate page ${index + 1}`}>
                       <RotateCw className="w-3 h-3" />
                     </Button>
                     <Button
@@ -400,6 +400,7 @@ export default function EnhancedCameraFaxSender() {
                       variant="destructive"
                       size="sm"
                       className="h-7 w-7 p-0"
+                      aria-label={`Remove page ${index + 1}`}
                     >
                       <Trash2 className="w-3 h-3" />
                     </Button>

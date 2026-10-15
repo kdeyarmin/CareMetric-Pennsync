@@ -100,7 +100,7 @@ export default function MaterialPreview({ material, onClose, onEdit, onSend }) {
             </Button>
             <Button onClick={onSend}>
               <Send className="w-4 h-4 mr-2" />
-              Send to Patient
+              Record Delivery
             </Button>
           </div>
         </div>

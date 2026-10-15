@@ -10,7 +10,9 @@ const mocks = vi.hoisted(() => ({
   logActivity: vi.fn(),
   patientResult: null,
   useAuthorizedPatient: vi.fn((options) => {
-    mocks.lastPatientOptions = options;
+    // The page also reads the information card's projections; before the
+    // tenant role is known those ask for the same display read.
+    if (options.purpose === 'display') mocks.lastPatientOptions = options;
     mocks.patientOptions.push(options);
     return mocks.patientResult;
   }),
@@ -205,7 +207,17 @@ describe('PatientDetails purpose-bound chart gate', () => {
     expect(qc.getQueryData(['patientIncidents', 'patient-a'])).toBeUndefined();
     expect(qc.getQueryData(['patientTasks', 'patient-a'])).toBeUndefined();
     expect(qc.getQueryData(['patientActiveAlerts', 'patient-a'])).toBeUndefined();
-    expect(screen.queryByText(/Ada|Lovelace/)).not.toBeInTheDocument();
+    // Owner decision 2026-10-15: all patient information and names must be
+    // visible. The name heads the page, and the information card reads the
+    // clinical projections through the same purpose-bound broker.
+    expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeInTheDocument();
+    expect(screen.getByText('Patient information')).toBeInTheDocument();
+    expect(mocks.patientOptions.map((options) => options.purpose)).toEqual(
+      expect.arrayContaining(['display', 'smart_note_context', 'oasis_analysis_context']),
+    );
+    for (const options of mocks.patientOptions.filter((entry) => entry.purpose !== 'display')) {
+      expect(options).toEqual(expect.objectContaining({ patientId: 'patient-a', agencyId: 'agency-a' }));
+    }
     expect(screen.queryByText(/OASIS assessment/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Fax Document/i)).not.toBeInTheDocument();
 
@@ -238,6 +250,11 @@ describe('PatientDetails purpose-bound chart gate', () => {
     expect(screen.getByText(/Current Patient authority was verified/)).toBeInTheDocument();
     expect(screen.queryByText(/and Visit authority/)).not.toBeInTheDocument();
     expect(mocks.listAuthorizedVisits).not.toHaveBeenCalled();
+    // Social work reads only the projections its role is allowed.
+    const purposes = mocks.patientOptions.map((options) => options.purpose);
+    expect(purposes).toEqual(expect.arrayContaining(['display', 'selector', 'visit_summary']));
+    expect(purposes).not.toContain('smart_note_context');
+    expect(purposes).not.toContain('oasis_analysis_context');
     await waitFor(() => expect(mocks.logActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ access_boundary: 'patient_display_read_broker' }),

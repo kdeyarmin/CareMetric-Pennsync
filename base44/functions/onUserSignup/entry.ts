@@ -330,7 +330,14 @@ Deno.serve(async (req) => {
     debugLog('Found invitations:', invitations.length);
 
     if (invitations && invitations.length > 0) {
-      const invitation = invitations[0];
+      // A re-invite creates a new pending row and nothing sweeps the old one,
+      // so take the invitation that expires last; with the list's own order an
+      // expired row could be checked first and refuse a validly re-invited user.
+      const expiryOf = (inv) => {
+        const at = Date.parse(inv?.expires_at || '');
+        return Number.isFinite(at) ? at : -Infinity;
+      };
+      const invitation = invitations.reduce((latest, inv) => (expiryOf(inv) > expiryOf(latest) ? inv : latest));
 
       // status:'pending' only means "actionable until expires_at" — the sweep
       // that flips pending->expired (checkExpiredInvitations) runs on a
@@ -422,7 +429,11 @@ Deno.serve(async (req) => {
           delivery_paused: verification.delivery_paused === true,
         });
       } catch (updateError) {
+        // This person IS invited. Falling through to the uninvited path below
+        // would un-approve them and send every administrator a false "blocked
+        // uninvited sign-up" alert, then report success.
         console.error('Failed to auto-approve user:', updateError);
+        return Response.json({ error: 'The invited sign-up could not be completed. Please try again.' }, { status: 500 });
       }
     }
 
@@ -550,54 +561,17 @@ Deno.serve(async (req) => {
 });
 
 async function verifyInvitedUser(base44, email) {
+  // The invited person proves they own the address by completing the emailed
+  // verification themselves (owner decision 2026-10-15: the super admin
+  // invites, the person accepts). This used to read the account's one-time
+  // code with the service role and verify it with the platform on their behalf, so
+  // whoever registered first with a pending invitee's address got a verified
+  // account without access to that mailbox. It now only reports whether the
+  // account is verified; an unverified account cannot sign in.
   try {
-    let users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
-    let authUser = users?.[0];
-
-    if (authUser?.is_verified) {
-      return { success: true, already_verified: true, email: false, delivery_paused: false };
-    }
-
-    const otpExpired = !authUser?.otp_code || !authUser?.otp_expires_at || new Date(authUser.otp_expires_at) <= new Date();
-
-    if (otpExpired) {
-      if (!outboundDeliveryReleased()) {
-        return {
-          success: false,
-          step: 'resend_delivery_paused',
-          email: false,
-          delivery_paused: true,
-        };
-      }
-
-      const config = base44.getConfig();
-      const resendResponse = await fetch(`${config.serverUrl}/api/apps/${config.appId}/auth/resend-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-
-      if (!resendResponse.ok) {
-        return { success: false, step: 'resend_failed', email: false, delivery_paused: false };
-      }
-
-      users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
-      authUser = users?.[0];
-    }
-
-    if (!authUser?.otp_code) {
-      return { success: false, step: 'missing_otp_code', email: otpExpired, delivery_paused: false };
-    }
-
-    const config = base44.getConfig();
-    const verifyResponse = await fetch(`${config.serverUrl}/api/apps/${config.appId}/auth/verify-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, otp_code: authUser.otp_code })
-    });
-
-    const result = await verifyResponse.json();
-    return { success: verifyResponse.ok, result, email: otpExpired, delivery_paused: false };
+    const users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
+    const verified = users?.[0]?.is_verified === true;
+    return { success: verified, already_verified: verified, email: false, delivery_paused: false };
   } catch (error) {
     console.error('verifyInvitedUser error:', error);
     return {

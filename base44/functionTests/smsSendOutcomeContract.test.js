@@ -95,7 +95,7 @@ export function fixture(seed = {}) {
   let sequence = 0;
   const stamp = createStamp();
   stampSmsRows(data, stamp);
-  const sms = (name) => name === 'SmsMessage';
+  const sms = (name) => name === 'SmsMessage' || name === 'ScheduledSms';
   const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => (
     value && typeof value === 'object' && Array.isArray(value.$in) ? value.$in.includes(row?.[key]) : row?.[key] === value
   ));
@@ -244,6 +244,73 @@ test('a scheduled send Telnyx refuses records the HTTP status and Telnyx code', 
   await handler(cron('dispatchScheduledSms'));
   assert.equal(state.data.ScheduledSms[0].status, 'failed');
   assert.equal(state.data.ScheduledSms[0].failure_reason, 'Telnyx API error: HTTP 400, code 40310: Invalid to number');
+});
+
+test('a run that listed a scheduled text before an overlapping run sent it does not send it again', async () => {
+  const state = scheduledFixture();
+  // Between this run's due-list read and its claim, an overlapping run claims,
+  // sends and settles the row — the window the dispatcher's 5-minute cadence
+  // opens whenever a run outlasts it.
+  const real = state.client.asServiceRole.entities;
+  let listed = false;
+  const entities = new Proxy({}, {
+    get: (_target, name) => {
+      const entity = real[name];
+      if (name !== 'ScheduledSms') return entity;
+      return {
+        ...entity,
+        filter: async (query, ...rest) => {
+          const rows = await entity.filter(query, ...rest);
+          if (!listed && query?.status === 'pending') {
+            listed = true;
+            Object.assign(state.data.ScheduledSms[0], {
+              status: 'sent', claimed_by: 'other_run', updated_date: new Date(Date.now() + 1000).toISOString(),
+            });
+          }
+          return rows;
+        },
+      };
+    },
+  });
+  state.client.asServiceRole = { entities };
+  const telnyx = telnyxAnswer(200, { data: { id: 'prov_sched', to: [{ status: 'queued' }] } });
+  const handler = await loadFunction('dispatchScheduledSms', state.client, RELEASED, telnyx.impl);
+  const response = await handler(cron('dispatchScheduledSms'));
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(telnyx.sends.length, 0, 'the patient is not texted twice');
+  assert.equal(state.data.ScheduledSms[0].status, 'sent', 'the other run\'s outcome is left as it settled it');
+  assert.equal(state.data.ScheduledSms[0].claimed_by, 'other_run');
+});
+
+test('a scheduled text to an unmapped area code waits until it is daytime in every mainland zone', async (t) => {
+  // 943 (a Georgia overlay) is deliberately absent from the area-code table:
+  // the unattended path must not fail open into a recipient's night.
+  const UNMAPPED = '+19435550182';
+  const run = async (nowIso) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse(nowIso) });
+    try {
+      const state = scheduledFixture({
+        AgencySettings: [{ tcpa_quiet_hours_enabled: true }],
+        SmsConsent: [optIn({ phone_e164: UNMAPPED, consent_key: `telnyx:integration_1:MP1:agency_a:${UNMAPPED}` })],
+        ScheduledSms: [{
+          id: 'sched_1', status: 'pending', send_at: new Date(Date.now() - 60_000).toISOString(),
+          nurse_email: 'nurse@example.test', from_number: LINE, to_number: UNMAPPED, body: 'Your visit is at 10',
+          thread_id: `${LINE}|${UNMAPPED}`, patient_id: null, attempts: 0,
+        }],
+      });
+      const telnyx = telnyxAnswer(200, { data: { id: 'prov_sched', to: [{ status: 'queued' }] } });
+      const handler = await loadFunction('dispatchScheduledSms', state.client, RELEASED, telnyx.impl);
+      const response = await handler(cron('dispatchScheduledSms'));
+      assert.equal(response.status, 200, await response.clone().text());
+      return { sends: telnyx.sends.length, status: state.data.ScheduledSms[0].status };
+    } finally {
+      t.mock.timers.reset();
+    }
+  };
+  // 10:30 in New York is 07:30 in Los Angeles: someone's quiet hours.
+  assert.deepEqual(await run('2026-10-15T14:30:00.000Z'), { sends: 0, status: 'pending' });
+  // 14:00 in New York, 11:00 in Los Angeles, 15:00 in Halifax: open everywhere.
+  assert.deepEqual(await run('2026-10-15T18:00:00.000Z'), { sends: 1, status: 'sent' });
 });
 
 test('the scheduled monthly cap counts the line agency as sendSms does, not a profile agency_name', async () => {

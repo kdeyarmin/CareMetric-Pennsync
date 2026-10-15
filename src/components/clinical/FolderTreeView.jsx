@@ -129,7 +129,7 @@ export default function FolderTreeView({
               )}
 
               {canEdit && (
-                <div className="opacity-0 group-hover:opacity-100 flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+                <div className="opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex gap-0.5" onClick={(e) => e.stopPropagation()}>
                   <Popover open={colorPickerOpen === folder.id} onOpenChange={(open) => setColorPickerOpen(open ? folder.id : null)}>
                     <PopoverTrigger asChild>
                       <Button

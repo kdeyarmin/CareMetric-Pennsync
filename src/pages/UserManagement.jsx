@@ -110,6 +110,8 @@ export default function UserManagement() {
   // admins must not be shown controls that those APIs will reject.
   const canManageUsers = isAdminLike(currentUser);
   const canManageOffboarding = isSuperAdmin(currentUser);
+  // Owner decision 2026-10-15: only the super admin invites new staff.
+  const canInviteStaff = isSuperAdmin(currentUser);
   // Reactivation (owner decision, 2026-10-08) is the owner's and an agency
   // administrator's; offboardUser re-checks the service-owned membership and
   // limits an agency administrator to former members of their own agency.
@@ -589,13 +591,15 @@ export default function UserManagement() {
                 </SelectContent>
               </Select>
             </div>
-            <Button
-              onClick={() => setShowUserSetupDialog(true)}
-              className="btn-primary w-full sm:w-auto"
-            >
-              <Users className="w-4 h-4 mr-2" />
-              Add New User
-            </Button>
+            {canInviteStaff && (
+              <Button
+                onClick={() => setShowUserSetupDialog(true)}
+                className="btn-primary w-full sm:w-auto"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Add New User
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -644,16 +648,18 @@ export default function UserManagement() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => resendInvitationMutation.mutate(invitation.id)}
-                        disabled={resendInvitationMutation.isPending}
-                        className="flex items-center gap-2 min-h-[44px] flex-1 sm:flex-none"
-                      >
-                        <Send className="w-4 h-4" />
-                        Resend
-                      </Button>
+                      {canInviteStaff && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => resendInvitationMutation.mutate(invitation.id)}
+                          disabled={resendInvitationMutation.isPending}
+                          className="flex items-center gap-2 min-h-[44px] flex-1 sm:flex-none"
+                        >
+                          <Send className="w-4 h-4" />
+                          Resend
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -706,16 +712,18 @@ export default function UserManagement() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => resendInvitationMutation.mutate(invitation.id)}
-                        disabled={resendInvitationMutation.isPending}
-                        className="flex items-center gap-2 min-h-[44px] flex-1 sm:flex-none"
-                      >
-                        <Send className="w-4 h-4" />
-                        Resend New Link
-                      </Button>
+                      {canInviteStaff && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => resendInvitationMutation.mutate(invitation.id)}
+                          disabled={resendInvitationMutation.isPending}
+                          className="flex items-center gap-2 min-h-[44px] flex-1 sm:flex-none"
+                        >
+                          <Send className="w-4 h-4" />
+                          Resend New Link
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
