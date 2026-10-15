@@ -18,7 +18,7 @@ import {
 // One unified record-and-transcribe control for Step 1, replacing the two separate
 // recorders. The recording itself is mode-agnostic; only the post-stop processing
 // differs, so a `mode` toggle selects the backend + output shape:
-//   - "narrative": Whisper transcription -> medical-term enhancement -> the
+//   - "narrative": transcription -> medical-term enhancement -> the
 //     DictationSectionMapper, which appends the mapped note via onTranscribed.
 //   - "soap":      transcribeAndGenerateSOAPNote -> a formatted SOAP block appended
 //     via onTranscribed.
@@ -99,7 +99,7 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
         } else {
           // Use the recorder's actual container type. MediaRecorder with no
           // explicit mimeType produces audio/webm (Opus) in Chromium, so
-          // labeling it audio/mp3 makes Whisper mis-decode by extension.
+          // labeling it audio/mp3 makes the transcription backend mis-decode by extension.
           const type = mediaRecorderRef.current?.mimeType || "audio/webm";
           const blob = new Blob(audioChunksRef.current, { type });
           setAudioUrl(URL.createObjectURL(blob));
@@ -138,7 +138,7 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
   };
 
   // Narrative: upload the recorded Blob as a File (multipart, with auth) to the
-  // Whisper backend, enhance medical terms, then hand to the section mapper.
+  // transcription backend, enhance medical terms, then hand to the section mapper.
   const processNarrative = async (blob, realmLease, acquisition) => {
     setProcessing(true);
     try {
