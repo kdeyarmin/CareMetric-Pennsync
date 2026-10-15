@@ -52,7 +52,7 @@ export const projectPatient = patient => ({
 export const PATIENT_MATCH_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
-    best_match_id: { type: 'string', description: 'Patient ID of best match, or null if no confident match' },
+    best_match_id: { type: 'string', description: 'Patient ID of best match, or an empty string if no confident match' },
     confidence_score: { type: 'number', description: 'Confidence percentage 0-100' },
     confidence_level: {
       type: 'string',

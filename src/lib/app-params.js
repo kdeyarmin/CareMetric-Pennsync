@@ -2,6 +2,7 @@ import { evaluateAccessTokenTrust } from '@/lib/accessTokenTrust';
 import { invalidateBrowserAuthorityEpoch } from '@/lib/browserAuthorityEpoch';
 import { isTrustedBase44BackendHost } from '@/lib/backendOriginTrust';
 import { normalizeBuildPinnedFunctionsVersion } from '@/lib/functionRevisionPolicy';
+import { SESSION_ACTIVITY_KEY } from '@/lib/sessionActivity';
 
 const isNode = typeof window === 'undefined';
 const memoryStorage = new Map();
@@ -242,6 +243,9 @@ const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl =
 			if (paramName === 'access_token') {
 				storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
 					invalidateBrowserAuthorityEpoch();
+				// A token handed back by the hosted sign-in page is a new
+				// session: drop any earlier session's idle stamp (sessionActivity.js).
+				storage.removeItem(SESSION_ACTIVITY_KEY);
 			}
 			setStoredItem(storageKey, searchParam);
 			return searchParam;

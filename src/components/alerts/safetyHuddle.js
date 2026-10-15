@@ -60,12 +60,12 @@ export function buildSafetyHuddleItem(alert = {}, now = new Date(), options = {}
     slaMinutes,
     minutesUntilDue,
     nextAction,
-    riskScore: Number(alert.risk_score || 0),
+    // risk_score is a legacy AI risk prediction (removed 2026-10-08, owner
+    // decision); it is neither shown nor allowed to reorder the huddle.
     sortScore: (SEVERITY_WEIGHT[severity] || 0) * 100000
       + (alert.flagged_urgent ? 50000 : 0)
       + (isOverdue ? 25000 : 0)
-      + (needsOwner ? 10000 : 0)
-      + Number(alert.risk_score || 0),
+      + (needsOwner ? 10000 : 0),
   };
 }
 

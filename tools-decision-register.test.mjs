@@ -248,7 +248,7 @@ test('the git helper can carry this document, and a skip means an absent ref and
 // believed because it is written down is this file's whole subject, so the
 // guards get the same treatment as the predicate: sabotage, and watch it refuse.
 //
-// The arithmetic `226 - 22 = 204` cannot fail on its own — the base is DERIVED
+// The arithmetic `227 - 22 = 205` cannot fail on its own — the base is DERIVED
 // as the range minus the absent list — so what the guards catch is the two
 // typos that would make the derivation quietly produce a larger base than the
 // list reads: an absent number outside the range, which removes nothing, and a
@@ -269,7 +269,7 @@ test('the base refuses the two typos that would silently enlarge it', async () =
     'the unmutated copy does not load to the same base, so a refusal below proves nothing');
 
   const CASES = [
-    ['outside-the-range', '225]', '325]', /outside 1\.\.226/],
+    ['outside-the-range', '225]', '325]', /outside 1\.\.227/],
     ['repeated', ', 216,', ', 214,', /repeats a number/],
   ];
   for (const [name, from, to, message] of CASES) {
@@ -291,7 +291,7 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // removed rather than renumbered — a figure that was wrong within the night of
 // being typed is not made safe by being corrected. So the base pin no longer
 // guards prose. What it guards is the module's own dated paragraph and this
-// file's sabotage range `1..226`: both say what the lists are, neither is
+// file's sabotage range `1..227`: both say what the lists are, neither is
 // derived from them, and a silent re-derivation makes all three disagree.
 //
 // The collection figure no longer guards a sentence describing the design, and
@@ -321,21 +321,24 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // after the assertion message below had been rewritten to say the opposite,
 // which is the hazard of a comment that argues about figures it sits beside.
 //
-// **The list was rewritten again on 2026-10-15, for D227, and the two diverge
-// again** — so at this reading the third assertion is NOT implied by the first:
-// the union is the base's 204 plus the one pending number, and the assertion is
-// independent until this collection merges. Its message below says that state
-// rather than the converged one, for the reason the paragraph above records.
+// **The list was rewritten again on 2026-10-15, for D227, and the two diverged
+// — then #472 merged the same day, the base grew to hold 227, and they converged
+// again.** So at this reading the third assertion IS implied by the first: the
+// union is the base's 205 with D227 already in it, and the assertion goes
+// independent again when the list is rewritten for the next collection. Its
+// message below says the converged state, for the reason the paragraph above
+// records.
 test('the figures quoted in prose are the figures the lists hold', () => {
-  assert.equal(REAL_BASE_NUMBERS.length, 204,
+  assert.equal(REAL_BASE_NUMBERS.length, 205,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D227 alone, not yet on the base, and the figure is quoted '
-    + "in the module's rewrite note, which attributes it to this pass");
+    'the collection figure: D227 alone, now on the base and so inert until the next '
+    + "collection rewrites the list, and the figure is quoted in the module's rewrite "
+    + 'note, which attributes it to this pass');
   assert.equal(EXPECTED_DOCUMENT.length, 205,
-    'the union: the base figure plus the one pending number, so this is NOT implied by '
-    + 'the first assertion while D227 is unmerged — the divergence the comment above '
-    + 'this test describes for exactly this state. It still catches a union '
-    + 'built as a concatenation, which neither other assertion would.');
+    'the union: equal to the base figure now that D227 has merged, so implied by the '
+    + 'first assertion until the next collection is pending — the convergence the '
+    + 'comment above this test describes. It still catches a union built as a '
+    + 'concatenation, which neither other assertion would.');
 });

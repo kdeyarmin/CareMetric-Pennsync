@@ -21,7 +21,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toast } from "sonner";
 import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
-import { isAdminLike } from "@/lib/superAdmin";
+import { isAdminLike, isSuperAdmin } from "@/lib/superAdmin";
 
 export default function AdminUserSetup() {
   const queryClient = useQueryClient();
@@ -38,6 +38,7 @@ export default function AdminUserSetup() {
   // Base44's protected built-in admin role. A membership-backed facility-admin
   // view cannot safely populate even a read-only roster from these APIs yet.
   const canManageUsers = isAdminLike(currentUser);
+  const canInviteStaff = isSuperAdmin(currentUser);
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
@@ -115,7 +116,9 @@ export default function AdminUserSetup() {
         favoritePage="AdminUserSetup"
       />
 
-      {/* Invite New User */}
+      {/* Invite New User — owner decision 2026-10-15: only the super admin
+          sets up new employees; the backend refuses anyone else. */}
+      {canInviteStaff ? (
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -200,6 +203,11 @@ export default function AdminUserSetup() {
           </div>
         </CardContent>
       </Card>
+      ) : (
+        <p className="mb-6 text-sm text-slate-600">
+          New staff are invited by the super admin.
+        </p>
+      )}
 
       {/* Users List */}
       <Card>

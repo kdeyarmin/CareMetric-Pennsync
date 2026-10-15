@@ -101,9 +101,15 @@ function directAiIsSafeFetchUrl(raw) {
 // implementing the same call contract so call sites swap mechanically:
 //   directInvokeLLM({ prompt, model?, response_json_schema?, file_urls?,
 //                     add_context_from_internet? })
-// With response_json_schema it resolves to the parsed result object (a forced
+// With response_json_schema it resolves to the parsed result object (a
 // return_result tool call, conformance-checked and unwrapped); without, to the
 // concatenated text string — the two shapes InvokeLLM callers already handle.
+// The tool call is requested, not forced: the 5.5 models reject a forced
+// tool_choice ('tool'/'any') with a 400, so the request uses 'auto' with one
+// tool and an explicit instruction, and asks once more if the model answered
+// in prose instead. Structured outputs (output_config.format) are not used
+// because they require every object to be closed, and call sites pass
+// free-form objects (extractClinicalEvents' structured_data).
 // Errors are Errors carrying .status and .code in the integration-runtime's
 // vocabulary (services/integration-runtime/providers.mjs, whose ai() this
 // ports). Model policy: 'automatic'/absent -> claude-sonnet-5-5; only the
@@ -125,12 +131,13 @@ const DIRECT_AI_MODEL_MAP = {
   claude_opus_4_8: 'claude-opus-5-5',
 };
 const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_urls', 'add_context_from_internet'];
-// Per-class output budget. Plain text keeps the runtime's 4096; a structured
-// result is a whole object (the largest schemas — chart and guide documents —
-// overflow 4096), so the structured class carries the raise, set here in the
-// generator's mapping table. A max_tokens stop throws AI_RESULT_INCOMPLETE; a
-// truncated object never reaches a caller silently.
-const DIRECT_AI_MAX_TOKENS = { plain: 4096, structured: 8192 };
+// Per-class output budget. The mapped models think adaptively by default and
+// their thinking tokens count against max_tokens, so both classes carry the
+// headroom a non-streaming request can use rather than the bare answer size.
+// A max_tokens stop throws AI_RESULT_INCOMPLETE; a truncated object never
+// reaches a caller silently.
+const DIRECT_AI_MAX_TOKENS = { plain: 16000, structured: 16000 };
+const DIRECT_AI_TOOL_INSTRUCTION = 'Return your answer by calling the return_result tool exactly once with the complete result. Do not answer in plain text.';
 const DIRECT_AI_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const DIRECT_AI_FILE_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv'];
 const DIRECT_AI_SCHEMA_KEYS = ['type', 'description', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems'];
@@ -277,26 +284,40 @@ async function directInvokeLLM(params, deps) {
   content.push({ type: 'text', text: params.prompt });
   const body = { model, max_tokens: schema ? DIRECT_AI_MAX_TOKENS.structured : DIRECT_AI_MAX_TOKENS.plain, messages: [{ role: 'user', content }] };
   if (schema) {
+    body.system = DIRECT_AI_TOOL_INSTRUCTION;
     body.tools = [{ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.', input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } }];
-    body.tool_choice = { type: 'tool', name: 'return_result' };
+    body.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
   }
   const started = Date.now();
-  let response;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    response = await fetcher('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(90000),
-    });
-    if (response.ok || attempt === 1 || !(response.status === 429 || response.status >= 500)) break;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  if (!response.ok) directAiFail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
-  const responseBytes = await directAiReadBytes(response, 2 * 1024 * 1024, 'RESPONSE_TOO_LARGE');
-  let result;
-  try { result = JSON.parse(new TextDecoder().decode(responseBytes)); } catch { directAiFail(502, 'INVALID_UPSTREAM_RESPONSE'); }
-  if (!result || !Array.isArray(result.content) || result.stop_reason === 'max_tokens'
-    || result.content.some((block) => block && block.type === 'refusal')) directAiFail(502, 'AI_RESULT_INCOMPLETE');
+  const callProvider = async () => {
+    let response;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      response = await fetcher('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(90000),
+      });
+      if (response.ok || attempt === 1 || !(response.status === 429 || response.status >= 500)) break;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    if (!response.ok) {
+      // Only the status and the provider's error type are logged; the body can
+      // quote the request.
+      let errorType = null;
+      try { errorType = String((JSON.parse(new TextDecoder().decode(await directAiReadBytes(response, 64 * 1024, 'RESPONSE_TOO_LARGE'))).error || {}).type || '').slice(0, 64) || null; } catch { /* unreadable error body */ }
+      console.log(JSON.stringify({ event: 'direct_ai_rejected', model, status: response.status, error_type: errorType }));
+      directAiFail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
+    }
+    const responseBytes = await directAiReadBytes(response, 2 * 1024 * 1024, 'RESPONSE_TOO_LARGE');
+    let parsed;
+    try { parsed = JSON.parse(new TextDecoder().decode(responseBytes)); } catch { directAiFail(502, 'INVALID_UPSTREAM_RESPONSE'); }
+    if (!parsed || !Array.isArray(parsed.content) || parsed.stop_reason === 'max_tokens' || parsed.stop_reason === 'refusal'
+      || parsed.content.some((block) => block && block.type === 'refusal')) directAiFail(502, 'AI_RESULT_INCOMPLETE');
+    return parsed;
+  };
+  let result = await callProvider();
+  // tool_choice 'auto' does not guarantee the call; ask once more before failing.
+  if (schema && result.stop_reason === 'end_turn' && !result.content.some((block) => block && block.type === 'tool_use')) result = await callProvider();
   const usage = result.usage || {};
   const provenance = JSON.stringify({ event: 'direct_ai_call', model, tier: model.split('-')[1], class: schema ? 'structured' : 'plain', input_tokens: usage.input_tokens ?? null, output_tokens: usage.output_tokens ?? null, latency_ms: Date.now() - started });
   if (schema) {

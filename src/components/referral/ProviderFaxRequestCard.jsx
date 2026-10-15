@@ -10,7 +10,6 @@ import {
 } from "./referralFollowUpEngine.js";
 import { followUpFormPdfContent } from "./ProviderFollowUpForm.jsx";
 import { buildAnalyzerFaxItems } from "./providerFaxItems.js";
-import { collectComorbidityCapture } from "./comorbidityCapture.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,10 +29,12 @@ const severityBadge = (severity) =>
 /**
  * Provider information-request fax, generated straight from the analyzed
  * referral: every compliance gap (missing/invalid F2F, orders, frequencies,
- * homebound support, certifier, meds, insurance) and reimbursement
- * clarification (uncoded diagnoses, unacceptable principal, per-condition
- * comorbidity confirmations, AI critical-missing items) becomes one itemized
- * request the provider answers in a single round trip.
+ * homebound support, certifier, meds, insurance, AI critical-missing items)
+ * becomes one itemized request the provider answers in a single round trip.
+ * The engine's coding/case-mix items (its "reimbursement" category, which
+ * includes the per-condition comorbidity confirmations) are payment content
+ * and are left out, as on the Referral Follow-Up page (owner decision
+ * 2026-10-08).
  *
  * Reuses the referral follow-up engine + provider form + fax pipeline the
  * Referral Follow-Up page already uses — this card covers the analyze-first
@@ -98,13 +99,13 @@ export default function ProviderFaxRequestCard({ referralData, analysis = null }
 
   const items = useMemo(() => {
     if (!referralData) return [];
-    const plan = buildFollowUpPlan(referralData, { ruleConfig: ruleConfig || undefined });
-    const analyzerItems = buildAnalyzerFaxItems({
-      comorbidityCapture: collectComorbidityCapture(referralData),
-      analysis,
-      existingItems: plan.items,
-    });
-    return sortFollowUpItems([...plan.items, ...analyzerItems]);
+    const planItems = buildFollowUpPlan(referralData, { ruleConfig: ruleConfig || undefined }).items
+      .filter((item) => item?.category !== "reimbursement");
+    // Filtered first so an AI critical-missing item is deduped only against
+    // what the provider will actually be asked.
+    const analyzerItems = buildAnalyzerFaxItems({ analysis, existingItems: planItems })
+      .filter((item) => item?.category !== "reimbursement");
+    return sortFollowUpItems([...planItems, ...analyzerItems]);
   }, [referralData, ruleConfig, analysis]);
 
   const included = items.filter((it) => !excluded.has(it.id));

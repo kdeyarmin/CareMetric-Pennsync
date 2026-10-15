@@ -381,7 +381,7 @@ Deno.serve(async (req) => {
         return await inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdmin);
 
       case 'resend_invitation':
-        return await resendInvitation(base44, currentUser, params, isAdmin);
+        return await resendInvitation(base44, currentUser, params, isAdmin, callerIsSuperAdmin);
 
       case 'reset_password':
         return await resetPassword(base44, currentUser, params, isAdmin, callerIsSuperAdmin);
@@ -424,6 +424,11 @@ Deno.serve(async (req) => {
 async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdmin) {
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+  }
+  // Owner decision 2026-10-15: the super admin is the only way to set up a
+  // new employee (invite, then the person accepts).
+  if (!callerIsSuperAdmin) {
+    return Response.json({ error: 'Only the super admin can invite new staff.' }, { status: 403 });
   }
   if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
     return Response.json({ error: 'Forbidden: agency_name is required to invite staff.' }, { status: 403 });
@@ -532,9 +537,14 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   });
 }
 
-async function resendInvitation(base44, currentUser, params, isAdmin) {
+async function resendInvitation(base44, currentUser, params, isAdmin, callerIsSuperAdmin) {
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+  }
+  // Owner decision 2026-10-15: the super admin is the only way to set up a
+  // new employee (invite, then the person accepts).
+  if (!callerIsSuperAdmin) {
+    return Response.json({ error: 'Only the super admin can resend invitations.' }, { status: 403 });
   }
 
   const { invitation_id } = params;

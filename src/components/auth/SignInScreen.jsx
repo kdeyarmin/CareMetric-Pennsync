@@ -26,6 +26,7 @@ import {
   CENTRAL_SUPPORT_PHONE_DISPLAY,
   CENTRAL_SUPPORT_PHONE_HREF,
 } from '@/lib/supportContacts';
+import { recordSessionActivity } from '@/lib/sessionActivity';
 
 /**
  * Branded in-app sign-in screen: PennSync by CareMetric.
@@ -115,6 +116,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
       return;
     }
     setBusy(true);
+    recordSessionActivity();
     onAuthenticated();
   };
 
@@ -139,6 +141,8 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         setPassword('');
         await ownedBackendAuth.signIn(email, submittedPassword, controller.signal);
         if (!mountedRef.current || operation !== authOperationRef.current || controller.signal.aborted) return;
+        // A new session starts a new idle clock, as on the Base44 path below.
+        recordSessionActivity();
         await checkAppState();
         return;
       }
@@ -171,6 +175,9 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
       declinePendingAccessToken();
       setPendingToken(null);
       base44.auth.setToken(result.access_token);
+      // A new session starts a new idle clock (an earlier session's stale
+      // stamp must not sign this one straight back out).
+      recordSessionActivity();
       onAuthenticated();
     } catch (err) {
       if (

@@ -78,11 +78,15 @@ beforeEach(() => {
 });
 
 describe('ProviderFaxRequestCard', () => {
-  it('itemizes engine gaps AND analyzer comorbidity confirmations', async () => {
+  it('itemizes compliance gaps and leaves out coding/case-mix (payment) items', async () => {
     renderCard();
     expect(await screen.findByText(/Face-to-Face encounter documentation missing/)).toBeInTheDocument();
     expect(screen.getByText(/Visit frequency and duration not specified/)).toBeInTheDocument();
-    expect(screen.getByText(/Confirm diagnosis: Diabetes \(documented but not coded\)/)).toBeInTheDocument();
+    // Owner decision 2026-10-08: no PDGM payment content, as on the Referral
+    // Follow-Up page — the engine's "reimbursement" category (which includes
+    // the per-condition comorbidity confirmations) is not requested.
+    expect(screen.queryByText(/Confirm diagnosis: Diabetes \(documented but not coded\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText('reimbursement')).not.toBeInTheDocument();
     // Return fax prefilled from agency settings (via the real lib helper).
     await waitFor(() => expect(screen.getByLabelText(/Return fax/).value).toBe('+15705550111'));
   });
@@ -119,6 +123,8 @@ describe('ProviderFaxRequestCard', () => {
     // The PDF content carries the itemized request sections.
     const pdfArgs = exportToPDF.mock.calls[0][0];
     expect(JSON.stringify(pdfArgs.content)).toContain('Face-to-Face');
+    // Nothing on the faxed form argues from payment.
+    expect(JSON.stringify(pdfArgs.content)).not.toMatch(/payment|comorbidity adjustment|case-mix|reimburse/i);
   });
 
   it('refuses to fax without a provider number', async () => {
