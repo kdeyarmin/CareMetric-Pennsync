@@ -3,9 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import {
-  applyRecordMigrations, assertNewestRecordMigration, recordMigrationNames,
-} from './record-migrations.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * The fax transmission log: two reads and no write.
@@ -19,14 +17,13 @@ import {
  * the store whole: the listing read does not project it at all, and the search
  * read returns the 300-character excerpt the screen already renders.
  *
- * THIS SUITE HOLDS THE RECORD-MIGRATION ORDERING GUARD, over
- * `20260920890000_contract_fax_log.sql`, because that is the newest file in the
- * record directory. It took the guard from `record-store-catchup.test.mjs` by
- * OVERTAKING the schema-only wave at 840000 in the same change, which is the
- * handover `assertNewestRecordMigration`'s own error text describes. When some
- * later migration overtakes this one, the guard moves there and the call here
- * is retired — not widened, because a guard that admits exceptions stops
- * asserting the thing it is for.
+ * This suite held the record-migration ordering guard over
+ * `20260920890000_contract_fax_log.sql` until that file merged and
+ * `20260920900000_ai_model_default.sql` overtook it. The guard moved to
+ * `ai-model-default.test.mjs` and the call here is retired, not widened,
+ * because a guard that admits exceptions stops asserting the thing it is for.
+ * What stays is this suite's own precondition: the walk applied the migration
+ * it measures.
  */
 const APP = '6a9881683dc68a0bd54f1ef7';
 const A = 'agency-a'; const B = 'agency-b';
@@ -35,21 +32,19 @@ const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const SENDER = 2; const COLLEAGUE = 1; const OUTSIDER = 4;
 const LIST = 'select "public"."pennsync_contract_fax_log_list"($1,$2,$3) as result';
 const SEARCH = 'select "public"."pennsync_contract_fax_log_search"($1,$2,$3) as result';
-const NEWEST = '20260920890000_contract_fax_log.sql';
+const MIGRATION = '20260920890000_contract_fax_log.sql';
 // Long enough that the excerpt is a cut rather than the whole thing.
 const ORDERS = `${'Wound care orders for the follow up visit. '.repeat(20)}END MARKER`;
 let db;
 
 before(async () => {
-  // The guard belongs to whichever suite owns the newest record migration.
-  assertNewestRecordMigration(await recordMigrationNames(), NEWEST);
   db = new PGlite();
   await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
   const dir = new URL('../supabase/migrations/', import.meta.url);
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  await applyRecordMigrations(db);
+  assert.ok((await applyRecordMigrations(db)).includes(MIGRATION));
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const [id, name] of [[A, 'Keystone Home Health'], [B, 'Allegheny Care Partners']]) {
     await db.query(`insert into ${SCHEMA}."agency"
