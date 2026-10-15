@@ -304,8 +304,8 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // the document carries the same word about three unrelated populations, which is
 // why this is scoped: a first draft of this comment said "in the register" and
 // was false by those three. So this pin guards the
-// module's own rewrite note and D226, both of which attribute the figure to a
-// pass, which is the whole of D226's ruling.
+// module's own rewrite note, which attributes the figure to the pass that
+// filed it — the whole of D226's ruling, exercised again for D227.
 //
 // **The third assertion is implied by the first AGAIN, and the round trip is the
 // instructive part.** An older version of this comment kept it on the stated
@@ -320,16 +320,22 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // concatenation. A review bot caught this paragraph still claiming the divergence
 // after the assertion message below had been rewritten to say the opposite,
 // which is the hazard of a comment that argues about figures it sits beside.
+//
+// **The list was rewritten again on 2026-10-15, for D227, and the two diverge
+// again** — so at this reading the third assertion is NOT implied by the first:
+// the union is the base's 204 plus the one pending number, and the assertion is
+// independent until this collection merges. Its message below says that state
+// rather than the converged one, for the reason the paragraph above records.
 test('the figures quoted in prose are the figures the lists hold', () => {
   assert.equal(REAL_BASE_NUMBERS.length, 204,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D226 alone, now wholly on the base, and the figure is quoted '
-    + "in the module's rewrite note and in D226, each attributing it to a pass");
-  assert.equal(EXPECTED_DOCUMENT.length, 204,
-    'the union, which equals the base figure again now that the collection is inert — so '
-    + 'this is implied by the first assertion once more, and is kept for the same stated '
-    + 'reason as before: it diverges on the next collection. It still catches a union '
+    'the collection figure: D227 alone, not yet on the base, and the figure is quoted '
+    + "in the module's rewrite note, which attributes it to this pass");
+  assert.equal(EXPECTED_DOCUMENT.length, 205,
+    'the union: the base figure plus the one pending number, so this is NOT implied by '
+    + 'the first assertion while D227 is unmerged — the divergence the comment above '
+    + 'this test describes for exactly this state. It still catches a union '
     + 'built as a concatenation, which neither other assertion would.');
 });

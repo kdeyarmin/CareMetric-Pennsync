@@ -349,7 +349,7 @@
     "testTelnyxConnection": "preserved_paused",
     "trackUserLogin": "preserved_paused",
     "transcribeAndGenerateSOAPNote": "port",
-    "transcribeAudioWithWhisper": "preserved_paused",
+    "transcribeAudioWithWhisper": "port",
     "triageReferralWithAI": "port",
     "triggerCorrectiveActionPlan": "hub",
     "updateAuthorizedPatient": "port",

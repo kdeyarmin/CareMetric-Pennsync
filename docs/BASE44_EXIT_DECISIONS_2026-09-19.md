@@ -14396,7 +14396,7 @@ that one: `port queue: entity_authorization=5 files=8 external_secret=2 none=82`
 NAME in `tools-transition-disposition.test.mjs`, because a count alone passes
 a swap — and because the thing this decision is most likely to be misread as
 is a promise that the five are coming. They are not coming until somebody
-decides who enrols, who offboards, and who the scheduler is. Re-read on 2026-10-15, beside all four: `port queue: entity_authorization=5 files=16 external_secret=2 none=82`, because the direct-AI migration's first wave inlined the shared directInvokeLLM helper into the four SmartNote capabilities that were the whole of `core_integration`, and the classifier meets the inlined body's `file_urls` tokens ahead of the runtime bucket — so all four sit in `files` now and `core_integration` is empty, with nothing written and no disposition changed.
+decides who enrols, who offboards, and who the scheduler is. Re-read on 2026-10-15, beside all four: `port queue: entity_authorization=5 files=16 external_secret=2 none=82`, because the direct-AI migration's first wave inlined the shared directInvokeLLM helper into the four SmartNote capabilities that were the whole of `core_integration`, and the classifier meets the inlined body's `file_urls` tokens ahead of the runtime bucket — so all four sit in `files` now and `core_integration` is empty, with nothing written and no disposition changed. Re-read on 2026-10-15 again, beside all five: `port queue: entity_authorization=5 files=16 external_secret=2 none=82` — the same figures as the previous link, reached by the opposite road. That link was the wave tree's own measurement; on the merged tree R1 had already landed beside the wave, and the present-tense pages carried the merged reading (one less in `external_secret`, 104 carried) until R2 of the direct-AI migration rebuilt transcription on Deepgram later the same day and returned `transcribeAudioWithWhisper` from `preserved_paused` to `port`, where it classifies `external_secret` — its only provider reach is a function secret and its only entity touch is the audited UserActivity trail, which the audited-trail rule keeps out of `records_schema`. Nothing was written: `none` is where this entry left it. D227 records the rebuild.
 
 *Carried by the register's collector, 2026-09-30, unedited. The entry is the
 profile-write thread's, heading line included, so the carrier imposed nothing at
@@ -14816,3 +14816,54 @@ direction that makes the work its own. The answer is that D226's own sentence
 contrasts an ephemeral pull-request description with the durable document, so the
 ephemeral side is a pull request's and the register collection's write-up is the
 durable side of the same contrast — the reading that lands against the asker.*
+
+## D227 — Transcription is rebuilt on Deepgram Nova-3 Medical, and its key is a function secret, not an IntegrationSecret row (2026-10-15)
+
+R1 of the direct-AI migration removed the transcription provider whose
+account had closed and left the transcription capabilities failing closed;
+this entry records the rebuild R1 deferred. Transcription now runs on
+Deepgram's prerecorded API (model `nova-3-medical`, diarized, smart
+formatting and punctuation on, the app's clinical vocabulary passed as
+keyterm prompting, bounded at one hundred terms), through one shared
+helper — `deepgramTranscribe` in `base44/_shared/backendHelpers.mjs` —
+inlined into the three capabilities that transcribe:
+`transcribeAudioWithWhisper`, `transcribeAndGenerateSOAPNote`, and
+`generateNoteFromRecording`, whose first leg had been handing the
+recording URL to the platform LLM integration pinned to a Gemini model —
+the one call the direct Anthropic API cannot honor, because it takes no
+audio. That leg now fetches the recording's bytes through the function's
+own SSRF guard and transcribes them; the provider is never given an app
+URL to fetch.
+
+**The key is a function secret, `DEEPGRAM_API_KEY`, read with
+`Deno.env.get` — the `ANTHROPIC_API_KEY` precedent, not the Telnyx
+IntegrationSecret pattern.** Three grounds, all measured rather than
+preferred. First, IntegrationSecret is an entity: reading it classifies a
+capability `records_schema`, and the transcription capabilities are
+entity-free by design — one's only entity reach was its credential store,
+the other's is the audited UserActivity trail — so an entity read would
+falsify the port queue this register keeps, which is the same ground on
+which the Anthropic key is a function secret. Second, the repository's
+own rule confines IntegrationSecret to Telnyx credential material; every
+other provider key in the tree is a function secret. Third, no surface
+provisions an IntegrationSecret row for a new provider — the settings UI
+enumerates fixed rows and the integration health check enumerates fixed
+keys — while a function secret is provisioned in the same place as the
+Anthropic one. The health check is deliberately untouched: it classifies
+as `records_schema` through an IntegrationSecret-only helper by design,
+and its own contract test already names this key among the legacy
+provider keys it must not read.
+
+Until the secret is provisioned, the build fails closed exactly where R1
+left it: both transcription capabilities return R1's refusal body after
+auth and payload validation, which the frontend renders as its "isn't set
+up yet" copy, and `generateNoteFromRecording` surfaces the helper's 503
+in its own error envelope. No transcript is ever fabricated on a provider
+failure.
+
+What it does to the queue: `transcribeAudioWithWhisper` returns from
+`preserved_paused` to `port` and classifies `external_secret`, joining
+`transcribeAndGenerateSOAPNote`, so the bucket holds the transcription
+pair and the queue reads `port queue: entity_authorization=5 files=16 external_secret=2 none=82`. Nothing was written: `none`
+does not move, because a vendor existing is not a port landing — the same
+tell the go-live plan records for the removal, run in reverse.
