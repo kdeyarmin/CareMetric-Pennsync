@@ -111,6 +111,14 @@ const EXPECTED = {
     schedule: { mode: 'interval', value: 5, unit: 'minutes' },
     releaseState: 'live',
   },
+  // Added 2026-10-15 with background referral-packet triage. The sweep only
+  // continues jobs an intake user started, under the scheduler auth helper;
+  // its completion email is gated by the shared OUTBOUND_DELIVERY_RELEASE.
+  'Process Referral Triage Jobs.jsonc': {
+    target: 'referralTriageJobs',
+    schedule: { mode: 'interval', value: 5, unit: 'minutes' },
+    releaseState: 'live',
+  },
 };
 
 function assertSchedule(config, expected, file) {

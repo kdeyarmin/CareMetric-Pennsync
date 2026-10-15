@@ -8,6 +8,7 @@
 // they already accept (`x-internal-secret`, the schedulerAuth helper in
 // base44/_shared/backendHelpers.mjs), in place of those nine workflows, which
 // must be paused on Base44 while it runs. The four daily workflows stay there.
+// referralTriageJobs joined on 2026-10-15 and never ran as a Base44 workflow.
 //
 // EXACTLY ONE scheduler may drive these. dispatchScheduledSms claims a row by
 // writing it and reading it back, so two overlapping runs can both win the
@@ -29,6 +30,7 @@ export const CALL_TIMEOUT_MS = 4 * 60 * 1000;
 export const JOBS = Object.freeze([
   { fn: 'dispatchScheduledSms', everyMinutes: 5 },
   { fn: 'copyInboundSmsMedia', everyMinutes: 5 },
+  { fn: 'referralTriageJobs', everyMinutes: 5 },
   { fn: 'redriveFailedSms', everyMinutes: 10 },
   { fn: 'processScheduledFaxes', everyMinutes: 10 },
   { fn: 'processInboundFaxes', everyMinutes: 10 },

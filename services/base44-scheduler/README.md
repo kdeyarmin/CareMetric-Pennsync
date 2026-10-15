@@ -1,6 +1,6 @@
 # Base44 scheduler (Railway)
 
-Calls the nine frequent PennSync Base44 scheduled functions on Railway's clock,
+Calls the ten frequent PennSync Base44 scheduled functions on Railway's clock,
 in place of the Base44 workflows that call them.
 
 ## Why
@@ -18,6 +18,7 @@ page before and after rather than trusting it.
 | --- | --- |
 | `dispatchScheduledSms` | 5 min |
 | `copyInboundSmsMedia` | 5 min |
+| `referralTriageJobs` | 5 min |
 | `redriveFailedSms` | 10 min |
 | `processScheduledFaxes` | 10 min |
 | `processInboundFaxes` | 10 min |
@@ -33,10 +34,10 @@ truth for this table.
 
 `dispatchScheduledSms` claims a row by writing it and reading it back. Two
 overlapping runs can both win the same row and text a patient twice. Treat all
-nine the same way, so at any moment exactly one of these drives them:
+ten the same way, so at any moment exactly one of these drives them:
 
 - the Base44 workflows, with `SCHEDULER_ENABLED` anything but `true` here; or
-- this service, with the nine workflows paused on Base44.
+- this service, with the ten workflows paused on Base44.
 
 Never let both run.
 
@@ -62,12 +63,13 @@ Variables:
 
 1. Publish the app, so production holds the secret this service has. Confirm
    with one call carrying the secret: anything but 401.
-2. Pause the nine workflows on Base44 (toggle-status, or the dashboard). Check
-   that all nine read `inactive`.
+2. Pause the ten workflows on Base44 (toggle-status, or the dashboard). Check
+   that all ten read `inactive`. `Process Referral Triage Jobs` (added
+   2026-10-15) may never have been created there; absent counts as paused.
 3. Set `SCHEDULER_ENABLED=true` on this service.
 4. Read the next run's log: one `ok` line per due function.
 
-After any later publish, confirm the nine workflows still read `inactive`.
+After any later publish, confirm the ten workflows still read `inactive`.
 
 To switch back, reverse the order: set `SCHEDULER_ENABLED=false` first, then
 re-enable the workflows.

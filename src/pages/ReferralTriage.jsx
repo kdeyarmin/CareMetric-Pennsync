@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { toLocalISODate } from '@/lib/dateLocal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -29,6 +30,8 @@ const REFERRAL_INTAKE_ROLES = new Set(['agency_admin', 'manager', 'office_staff'
  */
 export default function ReferralTriage() {
   const { tenantContext } = useAuth();
+  // A completion notice links here as ?job=<id>.
+  const [searchParams] = useSearchParams();
   const patientCreateRequestId = useRef(null);
   const queryClient = useQueryClient();
   const [lastAnalysis, setLastAnalysis] = useState(null);
@@ -248,6 +251,8 @@ export default function ReferralTriage() {
 
       {/* Main Triage Analyzer */}
       <ReferralTriageAnalyzer
+        agencyId={tenantContext?.agency_id}
+        initialJobId={searchParams.get('job')}
         onTriageComplete={handleTriageComplete}
         onTriageReset={handleTriageReset}
       />

@@ -93,9 +93,11 @@ test('tracked producer census is complete, per-call-site, and exposes current bl
     // -1 on 2026-10-09: syncFaxStatuses was retired in source, taking its one
     // legacy fax-failure Notification.create (outside the publication claim
     // the webhook and pollFaxStatuses share) with it.
-    producer_files: 36,
-    call_sites: 46,
-    authority_v1: 15,
+    // +1 on 2026-10-15: referralTriageJobs mints one authority-v1 completion
+    // notice for the packet's uploader.
+    producer_files: 37,
+    call_sites: 47,
+    authority_v1: 16,
     legacy_unmigrated: 31,
     explicitly_quarantined: 0,
     workflow_schedule_quarantined: 12,
