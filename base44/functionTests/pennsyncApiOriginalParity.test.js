@@ -700,8 +700,13 @@ test('the chart export prompt is the original s, interpolation for interpolation
   }
   assert.deepEqual(Object.keys(CHART_EXPORT_SCHEMA.properties), ['document_content', 'page_count']);
   assert.equal(CHART_EXPORT_SCHEMA.properties.page_count.type, 'number');
-  // And the original really does render no PDF, despite its name.
-  assert.equal(/jsPDF|new Blob|application\/pdf/.test(original), false,
+  // And the original really does render no PDF, despite its name. The claim
+  // is about the function's own code, so the generated shared-helper blocks
+  // are stripped first: the direct-AI migration inlined directInvokeLLM,
+  // whose file typing names `application/pdf` without rendering anything.
+  const ownCode = original.replace(
+    /\/\/ <<<BEGIN SHARED HELPER:[\s\S]*?\/\/ <<<END SHARED HELPER: [^>]*>>>/g, '');
+  assert.equal(/jsPDF|new Blob|application\/pdf/.test(ownCode), false,
     'the original still renders no PDF');
 });
 
