@@ -21,6 +21,15 @@ export const LEGACY_FAX_SUBMITTED_TOAST =
   "Fax submitted — check the fax log for delivery status.";
 
 /**
+ * Body copy for the durable in-page submission confirmation
+ * (LegacyFaxSubmissionNotice). Same honesty rule as the toast: the legacy
+ * path was submitted to Telnyx; delivery is NOT tracked in-app, and the fax
+ * log entry for this path stays "Sending" by design.
+ */
+export const LEGACY_FAX_SUBMISSION_DETAIL =
+  "This send hands the fax to Telnyx and is not tracked to delivery inside PennSync — the fax log entry stays \"Sending\". Confirm arrival at the destination (for example, the receiving office's fax inbox).";
+
+/**
  * Human copy for a sendFax/sendBatchFax origination_warning category, or null
  * when the code is absent / unknown (never invent a warning from silence).
  */

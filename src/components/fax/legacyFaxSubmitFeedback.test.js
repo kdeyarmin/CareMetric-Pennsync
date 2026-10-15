@@ -5,6 +5,7 @@ import {
   FAX_ORIGINATION_UNVERIFIED,
 } from "./faxOrigination.js";
 import {
+  LEGACY_FAX_SUBMISSION_DETAIL,
   LEGACY_FAX_SUBMITTED_TOAST,
   announceLegacyFaxSubmit,
   legacyFaxOriginationWarning,
@@ -43,6 +44,16 @@ test("announceLegacyFaxSubmit warns when Telnyx returned an origination category
   assert.equal(calls[0][0], "success");
   assert.equal(calls[1][0], "warning");
   assert.match(calls[1][1], /blind line/i);
+});
+
+test("durable submission detail copy stays honest about untracked delivery", () => {
+  // The durable confirmation (LegacyFaxSubmissionNotice) must never upgrade
+  // a legacy submit into a delivery claim: it hands off to Telnyx, delivery
+  // is not tracked in-app, and the fax log entry stays "Sending".
+  assert.match(LEGACY_FAX_SUBMISSION_DETAIL, /Telnyx/);
+  assert.match(LEGACY_FAX_SUBMISSION_DETAIL, /not tracked to delivery inside PennSync/i);
+  assert.match(LEGACY_FAX_SUBMISSION_DETAIL, /stays "Sending"/);
+  assert.doesNotMatch(LEGACY_FAX_SUBMISSION_DETAIL, /was delivered|has been delivered|delivery is tracked/i);
 });
 
 test("announceLegacyFaxSubmit does not throw when toast.warning is missing", () => {

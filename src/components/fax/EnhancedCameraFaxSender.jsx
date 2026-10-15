@@ -9,6 +9,7 @@ import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import { sendFax } from "@/functions/sendFax";
 import { announceLegacyFaxSubmit } from "./legacyFaxSubmitFeedback";
+import LegacyFaxSubmissionNotice from "./LegacyFaxSubmissionNotice";
 import FaxAddressBook from "./FaxAddressBook";
 import FaxCoverSheetGenerator from "./FaxCoverSheetGenerator";
 import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
@@ -25,6 +26,8 @@ export default function EnhancedCameraFaxSender() {
   const [toNumber, setToNumber] = useState("");
   const [coverSheetUrl, setCoverSheetUrl] = useState(null);
   const [authorityReady, setAuthorityReady] = useState(false);
+  const [lastSubmission, setLastSubmission] = useState(null);
+  const sendInFlightRef = useRef(false);
   const rootRef = useRef(null);
   const cameraContainerRef = useRef(null);
   const videoRef = useRef(null);
@@ -84,6 +87,7 @@ export default function EnhancedCameraFaxSender() {
       setIsSending(false);
       setToNumber("");
       setCoverSheetUrl(null);
+      setLastSubmission(null);
     };
 
     authorityRef.current = authority;
@@ -169,6 +173,7 @@ export default function EnhancedCameraFaxSender() {
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageDataUrl = canvas.toDataURL("image/jpeg", 0.95);
     if (!authorityIsCurrent(authority)) return;
+    setLastSubmission(null);
     setCapturedImages(prev => (
       authorityIsCurrent(authority) ? [...prev, imageDataUrl] : prev
     ));
@@ -242,6 +247,21 @@ export default function EnhancedCameraFaxSender() {
   };
 
   const handleSendFax = async () => {
+    // Synchronous in-flight guard: the isSending state + disabled button only
+    // take effect after React flushes, so a fast double-click could otherwise
+    // invoke sendFax twice and transmit two real faxes. The ref is checked
+    // and set before any await, so a second invocation while one is in flight
+    // is a no-op.
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    try {
+      await sendFaxOnce();
+    } finally {
+      sendInFlightRef.current = false;
+    }
+  };
+
+  const sendFaxOnce = async () => {
     const authority = authorityRef.current;
     if (!authorityIsCurrent(authority)) return;
     if (capturedImages.length === 0) return toast.error("Please capture at least one photo");
@@ -277,6 +297,14 @@ export default function EnhancedCameraFaxSender() {
       operation.assertCurrent();
       if (!authorityIsCurrent(authority)) return;
       announceLegacyFaxSubmit(toast, result);
+      // Durable confirmation: set BEFORE the form reset below, and not
+      // cleared by it — the toast alone read as "nothing happened" and
+      // invited a duplicate send.
+      setLastSubmission({
+        recipientNumber,
+        submittedAt: new Date(),
+        originationWarning: result?.origination_warning ?? null,
+      });
       setCapturedImages([]);
       setToNumber("");
       setCoverSheetUrl(null);
@@ -394,11 +422,17 @@ export default function EnhancedCameraFaxSender() {
                 value={toNumber}
                 disabled={!authorityReady}
                 onChange={(event) => {
-                  if (authorityIsCurrent()) setToNumber(event.target.value);
+                  if (authorityIsCurrent()) {
+                    setToNumber(event.target.value);
+                    setLastSubmission(null);
+                  }
                 }}
               />
               <FaxAddressBook onSelectContact={(contact) => {
-                if (authorityIsCurrent()) setToNumber(contact.fax_number);
+                if (authorityIsCurrent()) {
+                  setToNumber(contact.fax_number);
+                  setLastSubmission(null);
+                }
               }} />
             </div>
             <FaxCoverSheetGenerator
@@ -418,6 +452,15 @@ export default function EnhancedCameraFaxSender() {
             {isSending ? "Sending..." : "Send Fax"}
           </Button>
         )}
+
+        {/* Durable submission confirmation — rendered outside the
+            captured-images sections so it survives the post-send form reset. */}
+        <LegacyFaxSubmissionNotice
+          submission={lastSubmission}
+          onDismiss={() => {
+            if (authorityIsCurrent()) setLastSubmission(null);
+          }}
+        />
 
         <canvas ref={canvasRef} className="hidden" />
       </CardContent>

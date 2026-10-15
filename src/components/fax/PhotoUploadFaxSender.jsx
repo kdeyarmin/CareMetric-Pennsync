@@ -9,6 +9,7 @@ import { Loader2, X, Send, Camera } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { announceLegacyFaxSubmit } from "./legacyFaxSubmitFeedback";
+import LegacyFaxSubmissionNotice from "./LegacyFaxSubmissionNotice";
 import FaxAddressBook from "./FaxAddressBook";
 import FaxCoverSheetGenerator from "./FaxCoverSheetGenerator";
 import {
@@ -25,6 +26,8 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [coverSheetUrl, setCoverSheetUrl] = useState(null);
   const [authorityReady, setAuthorityReady] = useState(false);
+  const [lastSubmission, setLastSubmission] = useState(null);
+  const sendInFlightRef = useRef(false);
   const rootRef = useRef(null);
   const fileInputRef = useRef(null);
   const mountedRef = useRef(false);
@@ -81,6 +84,7 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
       setIsSending(false);
       setIsProcessing(false);
       setCoverSheetUrl(null);
+      setLastSubmission(null);
     };
 
     authorityRef.current = authority;
@@ -118,6 +122,7 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
     }
     const selection = ++fileSelectionRef.current;
     setIsProcessing(true);
+    setLastSubmission(null);
     try {
       for (const file of files) {
         operation.assertCurrent();
@@ -191,6 +196,22 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
   };
 
   const handleSendFax = async () => {
+    // Synchronous in-flight guard: the isSending state + disabled button only
+    // take effect after React flushes, so a fast double-click (or a click
+    // landing while the button is not yet disabled) could otherwise invoke
+    // sendFax twice and transmit two real faxes. The ref is checked and set
+    // before any await, so a second invocation while one is in flight is a
+    // no-op.
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    try {
+      await sendFaxOnce();
+    } finally {
+      sendInFlightRef.current = false;
+    }
+  };
+
+  const sendFaxOnce = async () => {
     const authority = authorityRef.current;
     if (!authorityIsCurrent(authority)) return;
     if (!toNumber.trim()) return toast.error("Please enter a recipient fax number");
@@ -223,6 +244,14 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
       if (faxData?.error) throw new Error(faxData.error);
       if (!authorityIsCurrent(authority)) return;
       announceLegacyFaxSubmit(toast, faxData);
+      // Durable confirmation: set BEFORE the form reset below, and not
+      // cleared by it — the toast alone read as "nothing happened" and
+      // invited a duplicate send.
+      setLastSubmission({
+        recipientNumber,
+        submittedAt: new Date(),
+        originationWarning: faxData?.origination_warning ?? null,
+      });
       setUploadedImages([]);
       setToNumber("");
       setCoverSheetUrl(null);
@@ -296,11 +325,17 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
             value={toNumber}
             disabled={!authorityReady}
             onChange={(event) => {
-              if (authorityIsCurrent()) setToNumber(event.target.value);
+              if (authorityIsCurrent()) {
+                setToNumber(event.target.value);
+                setLastSubmission(null);
+              }
             }}
           />
           <FaxAddressBook onSelectContact={(contact) => {
-            if (authorityIsCurrent()) setToNumber(contact.fax_number);
+            if (authorityIsCurrent()) {
+              setToNumber(contact.fax_number);
+              setLastSubmission(null);
+            }
           }} />
         </div>
 
@@ -322,6 +357,13 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
           {isSending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Send className="w-5 h-5 mr-2" />}
           {isSending ? "Sending..." : "Send Fax"}
         </Button>
+
+        <LegacyFaxSubmissionNotice
+          submission={lastSubmission}
+          onDismiss={() => {
+            if (authorityIsCurrent()) setLastSubmission(null);
+          }}
+        />
       </CardContent>
     </Card>
   );
