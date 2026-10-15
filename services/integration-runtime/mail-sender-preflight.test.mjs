@@ -43,7 +43,7 @@ const routed = ({ senders, domains, seen = [] } = {}) => async (url) => {
   if (pathname === new URL(VERIFIED_SENDERS_URL).pathname) return typeof senders === 'function' ? senders(searchParams) : Response.json(senders ?? { results: [] });
   if (pathname === new URL(AUTHENTICATED_DOMAINS_URL).pathname) return typeof domains === 'function' ? domains(searchParams) : Response.json(domains ?? []);
   if (url.endsWith('/v3/scopes')) return Response.json({ scopes: ['mail.send'] });
-  if (url.includes('/v1/models')) return Response.json({ data: [{ id: 'claude-sonnet-4-6' }] });
+  if (url.includes('/v1/models')) return Response.json({ data: [{ id: 'claude-sonnet-5-5' }] });
   if (url.includes('/bucket/')) return Response.json({ id: 'pennsync-external-integrations', public: false, file_size_limit: 8388608 });
   return Response.json(null);
 };
