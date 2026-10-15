@@ -14396,7 +14396,7 @@ that one: `port queue: entity_authorization=5 files=8 external_secret=2 none=82`
 NAME in `tools-transition-disposition.test.mjs`, because a count alone passes
 a swap — and because the thing this decision is most likely to be misread as
 is a promise that the five are coming. They are not coming until somebody
-decides who enrols, who offboards, and who the scheduler is.
+decides who enrols, who offboards, and who the scheduler is. Re-read on 2026-10-15, beside all four: `port queue: entity_authorization=5 files=16 external_secret=2 none=82`, because the direct-AI migration's first wave inlined the shared directInvokeLLM helper into the four SmartNote capabilities that were the whole of `core_integration`, and the classifier meets the inlined body's `file_urls` tokens ahead of the runtime bucket — so all four sit in `files` now and `core_integration` is empty, with nothing written and no disposition changed.
 
 *Carried by the register's collector, 2026-09-30, unedited. The entry is the
 profile-write thread's, heading line included, so the carrier imposed nothing at

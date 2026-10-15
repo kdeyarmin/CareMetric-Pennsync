@@ -123,7 +123,7 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=5 files=12 core_integration=4 external_secret=1 none=82
+port queue: entity_authorization=5 files=16 external_secret=1 none=82
 ```
 
 104 carried capabilities, **82 written, 22 blocked** (2026-10-15), which is
