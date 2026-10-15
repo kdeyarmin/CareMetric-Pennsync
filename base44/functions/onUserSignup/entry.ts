@@ -330,7 +330,14 @@ Deno.serve(async (req) => {
     debugLog('Found invitations:', invitations.length);
 
     if (invitations && invitations.length > 0) {
-      const invitation = invitations[0];
+      // A re-invite creates a new pending row and nothing sweeps the old one,
+      // so take the invitation that expires last; with the list's own order an
+      // expired row could be checked first and refuse a validly re-invited user.
+      const expiryOf = (inv) => {
+        const at = Date.parse(inv?.expires_at || '');
+        return Number.isFinite(at) ? at : -Infinity;
+      };
+      const invitation = invitations.reduce((latest, inv) => (expiryOf(inv) > expiryOf(latest) ? inv : latest));
 
       // status:'pending' only means "actionable until expires_at" — the sweep
       // that flips pending->expired (checkExpiredInvitations) runs on a
@@ -422,7 +429,11 @@ Deno.serve(async (req) => {
           delivery_paused: verification.delivery_paused === true,
         });
       } catch (updateError) {
+        // This person IS invited. Falling through to the uninvited path below
+        // would un-approve them and send every administrator a false "blocked
+        // uninvited sign-up" alert, then report success.
         console.error('Failed to auto-approve user:', updateError);
+        return Response.json({ error: 'The invited sign-up could not be completed. Please try again.' }, { status: 500 });
       }
     }
 

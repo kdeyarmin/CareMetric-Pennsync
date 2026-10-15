@@ -192,6 +192,36 @@ test('paused resend-OTP keeps invited approval and audit but performs no human d
   assert.equal(runtime.calls.configReads, 0);
 });
 
+test('a re-invited user is approved even when the expired invitation is listed first', async () => {
+  const runtime = signupClient({ invited: true });
+  const current = (await runtime.client.asServiceRole.entities.UserInvitation.filter())[0];
+  const stale = { ...current, id: 'invitation-old', expires_at: new Date(Date.now() - 86_400_000).toISOString() };
+  runtime.client.asServiceRole.entities.UserInvitation.filter = async () => [stale, current];
+  const handler = await loadHandler('onUserSignup', runtime.client, {
+    fetchImpl: async () => { throw new Error('paused OTP resend must not call fetch'); },
+  });
+  const response = await handler({ json: async () => ({ user: runtime.signupUser }) });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).auto_approved, true);
+  assert.ok(runtime.calls.userUpdates.some(([, row]) => row.is_approved === true));
+  assert.ok(!runtime.calls.invitationUpdates.some(([id]) => id === 'invitation-old'));
+});
+
+test('an invited sign-up whose approval write fails is not treated as uninvited', async () => {
+  const runtime = signupClient({ invited: true });
+  runtime.client.asServiceRole.entities.User.update = async (...args) => {
+    runtime.calls.userUpdates.push(args);
+    throw new Error('HTTP 503');
+  };
+  const handler = await loadHandler('onUserSignup', runtime.client, {
+    fetchImpl: async () => { throw new Error('must not call fetch'); },
+  });
+  const response = await handler({ json: async () => ({ user: runtime.signupUser }) });
+  assert.equal(response.status, 500);
+  assert.ok(!runtime.calls.userUpdates.some(([, row]) => row.is_approved === false), 'never un-approved');
+  assert.ok(!runtime.calls.activities.some((row) => row.action === 'uninvited_signup_blocked'), 'no false security alert');
+});
+
 test('paused blocked-signup fanout preserves denial and audit without claiming admins were alerted', async () => {
   const runtime = signupClient({ invited: false });
   const handler = await loadHandler('onUserSignup', runtime.client, {
