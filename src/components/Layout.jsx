@@ -133,7 +133,12 @@ export default function Layout() {
     || (currentUser?.email || '').toLowerCase().endsWith('@testagent.base44.com');
   // UI state only: is_approved is a self-mutable custom User field and is not an
   // authorization boundary. Backend/RLS must independently enforce access.
-  const isApproved = currentUser?.is_approved === true || isAdmin || isTestAgent;
+  // An exact bound membership is the owner's grant (Agency access provisions
+  // it; AuthContext binds nobody without an active one), so it counts as
+  // approval too. Nothing in the app sets is_approved for someone who signed
+  // up after their invitation expired, and they would otherwise sit on this
+  // screen waiting for an email that never comes.
+  const isApproved = currentUser?.is_approved === true || isAdmin || isTestAgent || notificationsAvailable;
   // Offboarding sets is_active:false but never clears is_approved, and the
   // approval gate has an isAdmin bypass — so without an explicit check a
   // deactivated user (including a deactivated admin) kept full access. A

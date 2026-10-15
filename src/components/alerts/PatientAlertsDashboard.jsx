@@ -346,7 +346,6 @@ export default function PatientAlertsDashboard({ patientId = null }) {
                 <SelectItem value="vital_deterioration">Vital Deterioration</SelectItem>
                 <SelectItem value="medication_risk">Medication Risk</SelectItem>
                 <SelectItem value="fall_risk">Fall Risk</SelectItem>
-                <SelectItem value="readmission_risk">Readmission Risk</SelectItem>
                 <SelectItem value="infection_risk">Infection Risk</SelectItem>
                 <SelectItem value="symptom_escalation">Symptom Escalation</SelectItem>
                 <SelectItem value="care_gap">Care Gap</SelectItem>
@@ -443,19 +442,6 @@ export default function PatientAlertsDashboard({ patientId = null }) {
                               </div>
                             )}
 
-                            {alert.risk_score && (
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs text-slate-500">Risk Score:</span>
-                                <div className="flex-1 max-w-[100px] bg-slate-200 rounded-full h-2">
-                                  <div 
-                                    className={`h-2 rounded-full ${alert.risk_score >= 70 ? 'bg-red-500' : alert.risk_score >= 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                                    style={{ width: `${alert.risk_score}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-medium">{alert.risk_score}%</span>
-                              </div>
-                            )}
-
                             <p className="text-xs text-slate-400 mt-2">
                               Created {formatDistanceToNow(new Date(alert.created_date), { addSuffix: true })}
                             </p>
@@ -522,9 +508,6 @@ export default function PatientAlertsDashboard({ patientId = null }) {
                   {getStatusBadge(selectedAlert.status)}
                   {selectedAlert.flagged_urgent && (
                     <Badge className="bg-red-100 text-red-800">🚨 Flagged Urgent</Badge>
-                  )}
-                  {selectedAlert.risk_score && (
-                    <Badge variant="outline">Risk Score: {selectedAlert.risk_score}%</Badge>
                   )}
                 </div>
 
