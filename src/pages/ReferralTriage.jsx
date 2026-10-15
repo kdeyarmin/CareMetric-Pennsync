@@ -62,6 +62,13 @@ export default function ReferralTriage() {
     );
   }
 
+  // A new packet is on its way: drop the previous one's result so the
+  // create-patient action can never act on the patient before this one.
+  const handleTriageReset = () => {
+    setLastAnalysis(null);
+    setShowCreatePatient(false);
+  };
+
   const handleTriageComplete = (analysis) => {
     patientCreateRequestId.current = createPatientRequestId();
     setLastAnalysis(analysis);
@@ -240,7 +247,10 @@ export default function ReferralTriage() {
       </div>
 
       {/* Main Triage Analyzer */}
-      <ReferralTriageAnalyzer onTriageComplete={handleTriageComplete} />
+      <ReferralTriageAnalyzer
+        onTriageComplete={handleTriageComplete}
+        onTriageReset={handleTriageReset}
+      />
 
       {/* Post-Analysis Actions */}
       {lastAnalysis && showCreatePatient && (
@@ -282,7 +292,7 @@ export default function ReferralTriage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[
-              { number: '1', title: 'Upload', desc: 'Paste referral or upload fax text' },
+              { number: '1', title: 'Upload', desc: 'Upload the referral packet PDF' },
               { number: '2', title: 'Analyze', desc: 'AI parses and structures data' },
               { number: '3', title: 'Assess', desc: 'Urgency level and risk assigned' },
               { number: '4', title: 'Onboard', desc: 'Create a patient or queue missing identity info' },

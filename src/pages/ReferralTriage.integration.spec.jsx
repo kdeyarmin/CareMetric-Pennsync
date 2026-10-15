@@ -56,8 +56,11 @@ vi.mock('@/api/base44Client', () => {
 });
 
 vi.mock('@/components/referral/ReferralTriageAnalyzer', () => ({
-  default: ({ onTriageComplete }) => (
-    <button onClick={() => onTriageComplete(analysisState.value)}>run-triage</button>
+  default: ({ onTriageComplete, onTriageReset }) => (
+    <>
+      <button onClick={() => onTriageComplete(analysisState.value)}>run-triage</button>
+      <button onClick={() => onTriageReset?.()}>new-packet</button>
+    </>
   ),
 }));
 
@@ -123,6 +126,19 @@ describe('ReferralTriage — create patient from triage', () => {
 
     expect(toastSuccess).toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('drops the previous packet\'s create action as soon as a new packet starts', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ReferralTriage />);
+
+    await user.click(screen.getByText('run-triage'));
+    expect(await screen.findByRole('button', { name: /Create Patient or Queue Referral/i })).toBeInTheDocument();
+
+    await user.click(screen.getByText('new-packet'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Create Patient or Queue Referral/i })).toBeNull());
+    expect(patientCreate).not.toHaveBeenCalled();
+    expect(referralCreate).not.toHaveBeenCalled();
   });
 
   it('queues an awaiting-info referral instead of creating a placeholder patient when identity is incomplete', async () => {

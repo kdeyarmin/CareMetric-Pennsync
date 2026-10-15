@@ -1,7 +1,6 @@
 import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -15,17 +14,44 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
+import {
+  PDF_TEXT_MAX_BYTES,
+  describePdfTextError,
+  extractPdfText,
+  isPdfFile,
+} from './referralPdfText';
+
+const pages = (count) => `${count} page${count === 1 ? '' : 's'}`;
+
+/** Which pages triage did not see, or null when it saw the whole packet. */
+function describePartialRead({ pageCount, emptyPages, unreadPages }) {
+  const parts = [];
+  if (emptyPages > 0) {
+    parts.push(`${emptyPages} of ${pages(pageCount)} had no readable text (they look like scanned images), so triage did not see ${emptyPages === 1 ? 'it' : 'them'}.`);
+  }
+  if (unreadPages > 0) {
+    parts.push(`The packet is longer than triage can read at once, so the last ${pages(unreadPages)} ${unreadPages === 1 ? 'was' : 'were'} not included.`);
+  }
+  if (!parts.length) return null;
+  return `${parts.join(' ')} Review those pages before relying on this triage — Referral Intake can read scanned pages.`;
+}
 
 /**
  * AI-powered referral triage analyzer
- * Parses unstructured clinical data and suggests urgency levels and care plans
+ * Reads an uploaded referral packet PDF and suggests urgency levels and care plans
  */
-export default function ReferralTriageAnalyzer({ onTriageComplete }) {
-  const [referralText, setReferralText] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+export default function ReferralTriageAnalyzer({ onTriageComplete, onTriageReset }) {
+  const [fileName, setFileName] = useState(null);
+  // 'reading' while the PDF's text is pulled out, 'analyzing' during the
+  // triage call, null when idle.
+  const [stage, setStage] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
+  const inFlightRef = useRef(false);
+  const busy = stage !== null;
 
   const urgencyColors = {
     CRITICAL: 'bg-red-100 text-red-800 border-red-300',
@@ -37,23 +63,49 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     urgencyColors[String(level || '').toUpperCase()]
     || 'bg-slate-100 text-slate-800 border-slate-300';
 
-  const handleAnalyze = async () => {
-    if (!referralText.trim()) {
-      setError('Please enter or paste referral data');
-      return;
-    }
-    // In-flight dedupe: a double-click used to fire two billed triage calls.
-    if (isAnalyzing) return;
+  const analyzePacket = async (file) => {
+    // In-flight dedupe: a second packet dropped while one is being read or
+    // analyzed would race two billed triage calls into one result panel.
+    if (!file || inFlightRef.current) return;
+    inFlightRef.current = true;
 
-    setIsAnalyzing(true);
+    // A new packet replaces the previous one's result here AND on the page, so
+    // nothing offers to create the previous patient while this one is read.
     setError(null);
+    setNotice(null);
     setAnalysis(null);
+    setFileName(file.name || 'Referral packet');
+    onTriageReset?.();
 
     try {
+      if (!isPdfFile(file)) {
+        setError('Upload the referral packet as a PDF.');
+        return;
+      }
+      if (file.size > PDF_TEXT_MAX_BYTES) {
+        setError('This PDF is larger than 25 MB. Split the packet, or use Referral Intake.');
+        return;
+      }
+
+      setStage('reading');
+      let packet;
+      try {
+        packet = await extractPdfText(file);
+      } catch (err) {
+        setError(describePdfTextError(err));
+        return;
+      }
+      if (!packet.text) {
+        setError('This PDF has no readable text — it looks like a scanned or faxed image. Use Referral Intake, which can read scanned documents.');
+        return;
+      }
+      setNotice(describePartialRead(packet));
+
+      setStage('analyzing');
       // Route through the authenticated Base44 function (attaches the auth token
       // and targets the backend origin); a raw relative fetch never reaches it.
       const response = await base44.functions.invoke('triageReferralWithAI', {
-        referralData: referralText,
+        referralData: packet.text,
       });
       const result = response?.data || {};
 
@@ -68,33 +120,35 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
       setError(err.message || 'Analysis error');
       console.error('Triage error:', err);
     } finally {
-      setIsAnalyzing(false);
+      inFlightRef.current = false;
+      setStage(null);
     }
   };
 
-  const handleFileUpload = async (e) => {
+  const handleFileChange = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    // Clear now: picking the same file again (say, after a failure) fires no
+    // change event otherwise.
+    e.target.value = '';
+    analyzePacket(file);
+  };
 
-    try {
-      // Text and common document types. PDFs arrive as binary — file.text()
-      // would produce mojibake, so refuse them with a clear message rather than
-      // silently feeding garbage into triage.
-      const name = String(file.name || '').toLowerCase();
-      const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
-      if (isPdf) {
-        setError('PDF upload is not supported on this triage panel yet — paste the referral text, or use Referral Intake to extract from a PDF.');
-        toast.error('Paste referral text or use Referral Intake for PDFs');
-        e.target.value = '';
-        return;
-      }
-      const text = await file.text();
-      setReferralText(text);
-      setError(null);
-      toast.success('File loaded');
-    } catch {
-      setError('Failed to read file');
-    }
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!busy) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    // Moving over the zone's own children fires dragleave too.
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (busy) return;
+    analyzePacket(e.dataTransfer?.files?.[0]);
   };
 
   const handleCopyAnalysis = async () => {
@@ -114,6 +168,12 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     link.click();
   };
 
+  const dropZoneClass = busy
+    ? 'border-slate-300 bg-slate-50'
+    : isDragging
+      ? 'border-indigo-500 bg-indigo-50'
+      : 'border-slate-300 hover:border-indigo-500 hover:bg-indigo-50';
+
   return (
     <div className="w-full space-y-6">
       {/* Input Section */}
@@ -121,54 +181,72 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5 text-indigo-600" />
-            Referral Input
+            Referral Packet
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label htmlFor="referral-text" className="text-sm font-semibold text-slate-700 block mb-2">
-              Paste referral documentation or fax text
-            </label>
-            <Textarea
-              id="referral-text"
-              value={referralText}
-              onChange={(e) => setReferralText(e.target.value)}
-              placeholder="Paste referral information here... Can include fax text, email content, or any unstructured clinical notes..."
-              className="min-h-[200px] font-mono text-sm"
-            />
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              variant="outline"
-              className="gap-2"
-            >
-              <Upload className="w-4 h-4" />
-              Upload File
-            </Button>
+          <div
+            data-testid="referral-packet-dropzone"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            aria-busy={busy}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dropZoneClass}`}
+          >
+            {busy ? (
+              <div className="space-y-2" role="status">
+                <Loader className="w-10 h-10 text-indigo-600 mx-auto animate-spin" />
+                <p className="font-medium text-indigo-700">
+                  {stage === 'reading' ? 'Reading referral packet…' : 'Analyzing referral…'}
+                </p>
+                <p className="text-xs text-slate-500 truncate">{fileName}</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Upload className="w-10 h-10 text-slate-400 mx-auto" />
+                <div>
+                  <p className="font-medium text-slate-700">
+                    {fileName ? 'Upload another referral packet' : 'Upload the referral packet PDF'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Drag and drop it here, or choose a file. Triage starts automatically. PDF, up to 25 MB.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+                >
+                  <Upload className="w-4 h-4" />
+                  Choose PDF
+                </Button>
+                {analysis && fileName && (
+                  <p className="text-xs text-emerald-700 flex items-center justify-center gap-1 truncate">
+                    <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                    Analyzed {fileName}
+                  </p>
+                )}
+              </div>
+            )}
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.text,.md,.csv,text/plain"
-              onChange={handleFileUpload}
+              accept=".pdf,application/pdf"
+              aria-label="Referral packet PDF"
+              onChange={handleFileChange}
+              disabled={busy}
               className="hidden"
             />
-            <Button
-              onClick={handleAnalyze}
-              disabled={!referralText.trim() || isAnalyzing}
-              className="gap-2 bg-indigo-600 hover:bg-indigo-700 flex-1"
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader className="w-4 h-4 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                'Analyze Referral'
-              )}
-            </Button>
           </div>
+
+          {notice && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Part of the packet was not analyzed</p>
+                <p className="text-sm text-amber-800">{notice}</p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex gap-2">
