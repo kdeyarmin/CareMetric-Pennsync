@@ -1300,15 +1300,17 @@ test('the patient extraction schema is the original s, field for field', async (
 test('the clinical document prompt and schema are the original s', async () => {
   /*
    * Lifted as ONE object rather than two, because the prompt, the model and
-   * the schema are the original's single `InvokeLLM` argument and pulling them
+   * the schema are the original's single model-call argument and pulling them
    * out separately is three chances to pick up the wrong block. The argument
    * closes over `file_url`, so it is wrapped in a function over that name —
-   * D57's trick for a block that was never a named export.
+   * D57's trick for a block that was never a named export. The transport is
+   * the direct-AI helper since Wave 2 of that migration; the argument is
+   * the original's, unchanged.
    */
   const relative = 'base44/functions/extractClinicalDocument/entry.ts';
   const original = await readFile(resolve(repository, relative), 'utf8');
-  const open = original.indexOf('await base44.asServiceRole.integrations.Core.InvokeLLM({');
-  assert.ok(open > 0, 'the original still calls InvokeLLM');
+  const open = original.indexOf('await directInvokeLLM({');
+  assert.ok(open > 0, 'the original still calls directInvokeLLM');
   const start = original.indexOf('{', open);
   const end = original.indexOf('\n    });', start);
   assert.ok(end > start, 'and its argument still ends where it did');
@@ -1339,15 +1341,20 @@ test('the clinical document prompt and schema are the original s', async () => {
   assert.deepEqual(Object.keys(portedRest), Object.keys(carried), 'in the original s order');
   assert.deepEqual(ported, { type: 'object' });
 
-  // And the reason: the original's own vitals are union-typed, which the owned
-  // runtime's schema contract refuses outright. Driven through that contract
-  // rather than asserted about it, so restoring the union fails here.
+  // The original's own vitals are union-typed. The narrowing above was
+  // forced by the owned runtime's schema contract, which refused a union
+  // outright; D228 lifted that refusal on both paths (the hosted helper
+  // and this contract), because the original's transport now runs on the
+  // same contract and Base44's InvokeLLM honored the union all along.
+  // The port keeps its narrowed vitals as shipped — restoring them is a
+  // change to the port, not a consequence of the contract moving.
+  // Driven through the contract rather than asserted about it, so
+  // narrowing the contract again fails here.
   assert.equal(Object.keys(vitals.properties).length, 8);
   for (const [name, field] of Object.entries(vitals.properties)) {
     assert.deepEqual(field.type, ['number', 'null'], name);
   }
-  assert.throws(() => validateSchema(structuredClone(call.response_json_schema)),
-    error => error.code === 'UNSUPPORTED_SCHEMA');
+  validateSchema(structuredClone(call.response_json_schema));
   validateSchema(structuredClone(CLINICAL_DOCUMENT_SCHEMA));
 });
 
@@ -1438,11 +1445,11 @@ test('every ported model call is one the owned runtime will actually accept', as
 
 test('the referral split prompt and schema are the original s', async () => {
   // Same technique as the clinical document above: the original's single
-  // `InvokeLLM` argument, lifted whole and closed over `fileUrl`.
+  // model-call argument, lifted whole and closed over `fileUrl`.
   const relative = 'base44/functions/splitReferralPDF/entry.ts';
   const original = await readFile(resolve(repository, relative), 'utf8');
-  const open = original.indexOf('await base44.asServiceRole.integrations.Core.InvokeLLM({');
-  assert.ok(open > 0, 'the original still calls InvokeLLM');
+  const open = original.indexOf('await directInvokeLLM({');
+  assert.ok(open > 0, 'the original still calls directInvokeLLM');
   const start = original.indexOf('{', open);
   const end = original.indexOf('\n    });', start);
   assert.ok(end > start, 'and its argument still ends where it did');
