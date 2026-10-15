@@ -522,13 +522,21 @@ Organize the stated content into:
 
 Format professionally. Add nothing that was not said.`;
 
-    const noteResponse = await directInvokeLLM({
-      model: "automatic",
-      prompt: notePrompt,
-      add_context_from_internet: false
-    });
-
-    const generatedNote = typeof noteResponse === 'string' ? noteResponse : noteResponse.text || '';
+    // Steps 2 and 3 are optional extras: the capture screen uses only the
+    // transcription. A failure in either (a timeout, a token limit) must not
+    // throw away a transcription that already succeeded and send the nurse
+    // back to re-record, so each degrades to an empty result.
+    let generatedNote = '';
+    try {
+      const noteResponse = await directInvokeLLM({
+        model: "automatic",
+        prompt: notePrompt,
+        add_context_from_internet: false
+      });
+      generatedNote = typeof noteResponse === 'string' ? noteResponse : noteResponse.text || '';
+    } catch {
+      console.error('generateNoteFromRecording: SOAP draft unavailable; returning the transcription only');
+    }
 
     // Step 3: Generate treatment suggestions
     debugLog('Generating treatment suggestions...');
@@ -552,14 +560,19 @@ Only include clinically appropriate suggestions.`;
     // Ask for strict JSON in-prompt and tolerantly parse the text. The platform
     // rejects an array-root response_json_schema (root must be an object), so we
     // avoid the schema entirely here.
-    const treatmentResponse = await directInvokeLLM({
-      model: "automatic",
-      prompt: `${treatmentPrompt}
+    let treatmentResponse = null;
+    try {
+      treatmentResponse = await directInvokeLLM({
+        model: "automatic",
+        prompt: `${treatmentPrompt}
 
 Return ONLY a valid JSON object, no prose or code fences, of the form:
 {"suggestions":[{"treatment":"","rationale":"","category":"","confidence":0}]}`,
-      add_context_from_internet: false
-    });
+        add_context_from_internet: false
+      });
+    } catch {
+      console.error('generateNoteFromRecording: treatment suggestions unavailable');
+    }
 
     const parseTreatments = (raw) => {
       if (!raw) return [];

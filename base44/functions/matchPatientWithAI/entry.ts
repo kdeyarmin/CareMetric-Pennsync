@@ -436,7 +436,7 @@ Provide detailed match analysis with reasoning.`,
                 properties: {
                     best_match_id: {
                         type: "string",
-                        description: "Patient ID of best match, or null if no confident match"
+                        description: "Patient ID of best match, or an empty string if no confident match"
                     },
                     confidence_score: {
                         type: "number",
