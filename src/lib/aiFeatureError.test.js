@@ -4,8 +4,8 @@ import { configNotReadyMessage } from "./aiFeatureError.js";
 
 test("matches each provider's 'not configured' message", () => {
   assert.match(
-    configNotReadyMessage(new Error("OpenAI API key not configured")),
-    /audio transcription and AI documentation/,
+    configNotReadyMessage(new Error("Transcription provider not configured")),
+    /audio transcription/,
   );
   assert.match(
     configNotReadyMessage(new Error("Anthropic API key not configured")),
@@ -22,7 +22,7 @@ test("matches each provider's 'not configured' message", () => {
 });
 
 test("reads the message off a Base44 SDK error shape (response.data.error)", () => {
-  const sdkErr = { response: { data: { error: "OpenAI API key not configured" } } };
+  const sdkErr = { response: { data: { error: "Transcription provider not configured" } } };
   assert.match(configNotReadyMessage(sdkErr), /set up yet/);
 });
 
@@ -33,7 +33,7 @@ test("reads the message off err.data.error and raw strings", () => {
 
 test("is case-insensitive and tolerant of surrounding text", () => {
   assert.ok(
-    configNotReadyMessage(new Error("500: openai api key NOT CONFIGURED for this app")),
+    configNotReadyMessage(new Error("500: transcription provider NOT CONFIGURED for this app")),
   );
 });
 
@@ -46,5 +46,5 @@ test("returns null for unrelated errors so callers fall back", () => {
 });
 
 test("does not match a configured/success case mentioning a provider", () => {
-  assert.equal(configNotReadyMessage(new Error("OpenAI request timed out")), null);
+  assert.equal(configNotReadyMessage(new Error("Transcription provider request timed out")), null);
 });

@@ -2,15 +2,15 @@
 // user-facing message telling the user the feature needs an administrator to
 // configure it. Several Base44 edge functions (audio transcription, SOAP-note
 // structuring, training-video generation, telehealth tokens) return an
-// HTTP 500 with a body like { error: "OpenAI API key not configured" } when the
-// required API key / credential is missing. Without this helper that raw,
-// technical string leaks straight to the end user.
+// HTTP 500 with a body like { error: "Transcription provider not configured" }
+// when the required API key / credential / provider is missing. Without this
+// helper that raw, technical string leaks straight to the end user.
 //
 // Returns a friendly admin-facing string when the error matches, otherwise
 // null so callers can fall back to their existing error handling.
 
 const SERVICE_LABELS = {
-  openai: "audio transcription and AI documentation",
+  "transcription provider": "audio transcription",
   anthropic: "SOAP-note structuring",
   heygen: "AI training-video generation",
   telnyx: "telehealth and messaging",
@@ -29,7 +29,7 @@ export function configNotReadyMessage(err) {
 
   if (!raw) return null;
 
-  const match = /(openai|anthropic|heygen|telnyx)[\s\S]*?not configured/i.exec(raw);
+  const match = /(transcription provider|anthropic|heygen|telnyx)[\s\S]*?not configured/i.exec(raw);
   if (!match) return null;
 
   const label = SERVICE_LABELS[match[1].toLowerCase()] || "this AI feature";

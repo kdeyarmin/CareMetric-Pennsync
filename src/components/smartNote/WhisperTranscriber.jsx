@@ -13,7 +13,7 @@ import {
 } from '@/lib/audioRecordingFormat';
 
 /**
- * Real-time audio transcription component using OpenAI Whisper
+ * Real-time audio transcription component
  * Optimized for bedside clinical documentation during patient visits
  */
 export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
@@ -170,7 +170,7 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
     await transcribeAudio(realmLease, acquisition);
   };
 
-  // Send audio to Whisper API for transcription
+  // Send audio to the transcription function
   const transcribeAudio = async (realmLease, acquisition) => {
     if (audioChunksRef.current.length === 0) {
       setError('No audio recorded');

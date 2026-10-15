@@ -48,7 +48,7 @@ export const AI_CONTENT_AGREEMENT_INTRO =
 export const AI_CONTENT_AGREEMENT_DATA_SHARING =
   'When you use an AI feature, the text, audio, or documents you provide to it, which ' +
   'can include patient health information, are sent to our AI service providers ' +
-  '(OpenAI, Anthropic, and Google) to generate the result. They process it on our ' +
+  '(Anthropic and Google) to generate the result. They process it on our ' +
   'behalf under business associate agreements and may not use it to train their ' +
   'models. Using an AI feature is optional; you can document without one.';
 
