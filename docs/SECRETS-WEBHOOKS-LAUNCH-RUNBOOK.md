@@ -125,11 +125,14 @@ of the app is unaffected.
 
 | Secret | Powers |
 |---|---|
-| `OPENAI_API_KEY` | Direct Whisper/audio transcription, including the transcription stage of SOAP-note-from-audio |
 | `ANTHROPIC_API_KEY` | Direct SOAP-note-from-audio structuring |
 | `HEYGEN_API_KEY` | AI training-video generation |
 
-(Telehealth video tokens and outbound fax use the Telnyx config from §2, not these.)
+(Audio transcription currently has no provider key: the OpenAI account was
+closed and its calls were removed on 2026-10-15, so the transcription functions
+fail closed with a "not configured" notice until the replacement provider is
+wired in. Telehealth video tokens and outbound fax use the Telnyx config from
+§2, not these.)
 
 Most application AI uses platform-managed `Core.InvokeLLM`, and transactional
 email uses platform-managed `Core.SendEmail`; neither consumes an app-managed

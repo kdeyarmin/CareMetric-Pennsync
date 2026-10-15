@@ -123,18 +123,23 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=5 files=12 core_integration=4 external_secret=2 none=82
+port queue: entity_authorization=5 files=12 core_integration=4 external_secret=1 none=82
 ```
 
-105 carried capabilities, **82 written, 23 blocked** (2026-10-09), which is
+104 carried capabilities, **82 written, 22 blocked** (2026-10-15), which is
 the line above summed — `none` is the written total and every other
 bucket is blocked. Derive it that way rather than carrying it
 forward: this paragraph read 78 and 20 for a day after the queue line beside it
 had moved, so the page carried two measurements of one thing that disagreed,
-which is the defect its own next sentence is about.
+which is the defect its own next sentence is about. The carried total fell by
+one here rather than the written total rising: R1 of the direct-AI migration
+switched `transcribeAudioWithWhisper` off (`preserved_paused`) when its
+provider's account closed, instead of porting it — the same shape as the D153
+reading kept below, and the written count not moving is the tell.
 
-The previous reading was **78 written, 20 blocked** (2026-09-29, after D153),
-and it is kept because of what it shows rather than for the numbers. The
+The previous readings were **82 written, 23 blocked** of 105 carried
+(2026-10-09) and **78 written, 20 blocked** (2026-09-29, after D153);
+the older is kept because of what it shows rather than for the numbers. The
 carried total fell by one there rather than the written total rising, because
 D153 retired `enforceStaffRoleIntegrity` instead of porting it: the owned store
 constrains `staff_role` on both tables and lets nobody write it, so the sweep

@@ -399,7 +399,7 @@ create table "pennsync_records"."ai_model_configuration" (
   "provider_type" text,
   "task_type" text,
   "version" double precision,
-  "model" text default 'gpt-4o',
+  "model" text default 'claude-sonnet-5-5',
   "temperature" double precision default 0.3,
   "max_tokens" double precision default 2500,
   "system_prompt" text,

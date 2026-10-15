@@ -219,24 +219,37 @@ test('a module whose only entity is the retired trail is re-classified by what e
   // The discovery reads every module, so the evidence and the classifier
   // cannot drift apart.
   const entityFree = discoverEntityFreeBlockers(repository);
-  assert.equal(entityFree.transcribeAudioWithWhisper, 'external_secret');
+  // `transcribeAudioWithWhisper` read `external_secret` here while it read
+  // the transcription provider's key from the environment. R1 of the
+  // direct-AI migration (2026-10-15) removed that provider's calls entirely —
+  // the account is closed — and with them the key read and the function's
+  // only entity write, so nothing is left for the classifier to find.
+  assert.equal(entityFree.transcribeAudioWithWhisper, 'none');
   assert.equal(entityFree.mergePDFs, 'files');
   // The verdict is about the MODULE, so it still reads the handout's send.
   // What took the handout out of that bucket is D81's port, not a change here:
   // a written capability is `none` whatever its original reaches.
   assert.equal(entityFree.generatePatientHandout, 'core_integration');
-  // And the four it actually found are in the buckets that describe them.
+  // And the ones it found that are still in the queue are in the buckets
+  // that describe them. `transcribeAudioWithWhisper` is the fourth it found
+  // and is in NO bucket now: R1 switched the capability off, and switching a
+  // capability off changes its disposition in the same change (D47), so it
+  // is carried `preserved_paused` until the replacement transcription
+  // provider is wired in. Leaving it in `none` would have claimed a
+  // refusing shell was portable today.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
     discoverEvidence(repository),
   );
   for (const [name, blocker] of [['mergePDFs', 'files'], ['reorderDeletePDFPages', 'files'],
-    ['generatePatientHandout', 'none'],
-    ['transcribeAudioWithWhisper', 'external_secret']]) {
+    ['generatePatientHandout', 'none']]) {
     assert.ok(report.port_blockers[blocker].includes(name),
       `${name} should wait on ${blocker}`);
     assert.equal(report.port_blockers.records_schema.includes(name), false);
+  }
+  for (const bucket of Object.values(report.port_blockers)) {
+    assert.equal(bucket.includes('transcribeAudioWithWhisper'), false);
   }
 });
 
@@ -362,6 +375,14 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
     reading: 'entity_authorization=5 files=8 external_secret=2 none=82',
     reason: 'the re-reads on `6995e5a7` and `c7d6940`, dated in their own words, which the eight '
       + 'Base44-builder ports dispositioned on 2026-10-09 turned into history',
+  },
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=12 core_integration=4 external_secret=2 none=82',
+    reason: 'the 2026-10-09 re-read at #442, recorded beside the earlier readings in the '
+      + 'collector\'s footnote: it WAS the measurement until R1 of the direct-AI migration '
+      + '(2026-10-15) removed `transcribeAudioWithWhisper`\'s provider calls and carried it '
+      + '`preserved_paused`, moving `external_secret` to 1 and the queue total to 104',
   },
 ];
 
@@ -1253,7 +1274,16 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
     records_schema: 0, files: 12, ported_function: 0, core_integration: 4, pdf_rendering: 0,
-    external_secret: 2, none: 82 });
+    external_secret: 1, none: 82 });
+  // R1 of the direct-AI migration (2026-10-15) moved this distribution by
+  // one without a port landing: `external_secret` 2 → 1 and the queue total
+  // 105 → 104, with `none` unmoved. `transcribeAudioWithWhisper`'s provider
+  // account is closed, so its calls, its key read and its `UserActivity`
+  // write came out together, and a capability switched off is carried
+  // `preserved_paused` in the same change (D47) rather than left in `none`
+  // claiming to be startable. `transcribeAndGenerateSOAPNote` is the one
+  // that stays: it still reads `ANTHROPIC_API_KEY` from the environment for
+  // its surviving structuring leg.
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -1529,12 +1559,20 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // All three emptied this bucket once the service adopted a PDF library and a
   // call-sequence parity test; nothing is waiting on a rendering decision now.
   assert.deepEqual(report.port_blockers.pdf_rendering, []);
-  // `transcribeAudioWithWhisper` joins it the same way: its only entity is
-  // `UserActivity`, and it reads `OPENAI_API_KEY` and calls the provider
+  // `transcribeAndGenerateSOAPNote` is the bucket's whole population now:
+  // it reads `ANTHROPIC_API_KEY` from the environment and calls the provider
   // directly rather than through the brokered runtime.
+  // `transcribeAudioWithWhisper` joined it the same way — its only entity
+  // was `UserActivity`, and it read its provider's key the same way — until
+  // R1 of the direct-AI migration (2026-10-15) took that provider's calls
+  // out entirely (the account is closed) and carried the switched-off
+  // capability `preserved_paused`. It returns to the queue when the
+  // replacement transcription provider is wired in (R2), reading its
+  // credential through `IntegrationSecret` entities rather than the
+  // environment.
   assert.deepEqual(report.port_blockers.external_secret,
-    ['transcribeAndGenerateSOAPNote', 'transcribeAudioWithWhisper']);
-  // D87 measures what `external_secret` is standing on for these two, because
+    ['transcribeAndGenerateSOAPNote']);
+  // D87 measures what `external_secret` was standing on for the transcription pair, because
   // "a key from the environment" reads as one missing credential and is three
   // separate walls. The bucket name has been wrong here before, so each is an
   // assertion rather than a sentence:

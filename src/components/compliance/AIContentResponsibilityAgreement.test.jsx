@@ -40,7 +40,7 @@ describe('AIContentResponsibilityAgreement', () => {
   it('names the third-party AI providers before the user agrees (Guideline 5.1.2(i))', () => {
     render(<AIContentResponsibilityAgreement />);
     const disclosure = screen.getByRole('region', { name: /where your information goes when you use ai/i });
-    for (const provider of ['OpenAI', 'Anthropic', 'Google']) {
+    for (const provider of ['Anthropic', 'Google']) {
       expect(disclosure).toHaveTextContent(provider);
     }
     expect(disclosure).toHaveTextContent(/patient health information/i);

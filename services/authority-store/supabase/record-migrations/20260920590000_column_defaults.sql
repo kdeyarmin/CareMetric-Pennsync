@@ -79,7 +79,7 @@ alter table "pennsync_records"."ai_knowledge_base" alter column "is_active" set 
 alter table "pennsync_records"."ai_learning_pattern" alter column "occurrences" set default 1;
 alter table "pennsync_records"."ai_learning_pattern" alter column "successful_applications" set default 0;
 alter table "pennsync_records"."ai_learning_pattern" alter column "is_active" set default true;
-alter table "pennsync_records"."ai_model_configuration" alter column "model" set default 'gpt-4o';
+alter table "pennsync_records"."ai_model_configuration" alter column "model" set default 'claude-sonnet-5-5';
 alter table "pennsync_records"."ai_model_configuration" alter column "temperature" set default 0.3;
 alter table "pennsync_records"."ai_model_configuration" alter column "max_tokens" set default 2500;
 alter table "pennsync_records"."ai_model_configuration" alter column "is_active" set default true;

@@ -100,11 +100,14 @@ Per `.env.example` and the checklist:
   environment's exact HTTPS origin. Outbound account/invitation/notification
   links fail closed when it is missing or malformed; there is no `APP_URL` or
   production-host fallback.
-- **`OPENAI_API_KEY`** (direct audio transcription, including the transcription
-  stage of SOAP-from-audio), **`ANTHROPIC_API_KEY`** (direct SOAP-note
-  structuring), **`HEYGEN_API_KEY`** (training video) —
+- **`ANTHROPIC_API_KEY`** (direct SOAP-note structuring), **`HEYGEN_API_KEY`**
+  (training video) —
   each feature shows a clear "not configured" notice until set, so these gate
-  *features*, not launch.
+  *features*, not launch. Audio transcription has no provider key at all: the
+  OpenAI account was closed and its calls removed on 2026-10-15, so the
+  transcription functions (including the transcription stage of
+  SOAP-from-audio) fail closed with that same notice until a replacement
+  provider is wired in.
 - Most application AI and email use Base44-managed `Core.InvokeLLM` and
   `Core.SendEmail`. Fax-cover formatting is deterministic. Gemini, Deepgram,
   Resend, Notifyre, and Twilio environment keys are not current runtime
@@ -222,8 +225,8 @@ Telnyx credentials and resource identifiers are read only from the in-app
 `IntegrationSecret` record; retired Telnyx/Twilio environment variables are not
 fallbacks. `APP_PUBLIC_URL`, `INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET`, and
 `SUPER_ADMIN_EMAIL` are backend configuration/security inputs. Direct-provider
-feature keys are limited to OpenAI audio transcription, Anthropic SOAP-note
-structuring, and HeyGen training-video generation. Platform-managed LLM and
+feature keys are limited to Anthropic SOAP-note
+structuring and HeyGen training-video generation. Platform-managed LLM and
 email capabilities require no separate provider secret, and deterministic fax
 covers require none.
 

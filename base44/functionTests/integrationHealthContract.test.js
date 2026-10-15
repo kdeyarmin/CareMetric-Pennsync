@@ -77,11 +77,10 @@ test('provider probes are bounded, parallel, and never report non-2xx as working
 });
 
 const PROVIDER_KEYS = {
-  OPENAI_API_KEY: 'openai-probe-key-secret',
   ANTHROPIC_API_KEY: 'anthropic-probe-key-secret',
   HEYGEN_API_KEY: 'heygen-probe-key-secret',
 };
-const PROVIDER_IDS = ['openai_transcription', 'anthropic_soap', 'heygen'];
+const PROVIDER_IDS = ['anthropic_soap', 'heygen'];
 
 // Real calls carry the caller's credential, and since 2026-10-09 several of
 // these functions answer 401 before anything else when it is missing.
@@ -264,7 +263,7 @@ test('rejected credentials, timeouts, and runtime errors are classified without 
   assert.doesNotMatch(timedOut.serialized, /probe-key-secret|provider timeout echoed/);
 
   const runtimeError = await runProviderProbes(async () => {
-    throw new TypeError('runtime failure echoed openai-probe-key-secret');
+    throw new TypeError('runtime failure echoed anthropic-probe-key-secret');
   });
   for (const id of PROVIDER_IDS) {
     assert.equal(runtimeError.byId[id].status, 'warn', id);
@@ -454,7 +453,6 @@ test('missing optional provider keys produce no direct provider requests or phan
     assert.equal(byId.app_public_url.status, 'ok');
     assert.equal(byId.base44_email.configured, true);
     assert.equal(byId.base44_email.delivery_verified, false);
-    assert.equal(byId.openai_transcription.status, 'warn');
     assert.equal(byId.anthropic_soap.status, 'warn');
     assert.equal(byId.outbound_delivery_release.release_state, 'paused');
     assert.equal(byId.outbound_delivery_release.configured, false);
@@ -468,7 +466,7 @@ test('missing optional provider keys produce no direct provider requests or phan
       assert.equal(byId[id].release_state, 'paused');
       assert.equal(byId[id].status, 'warn');
     }
-    for (const id of ['gemini', 'deepgram', 'resend', 'notifyre', 'twilio']) {
+    for (const id of ['gemini', 'deepgram', 'resend', 'notifyre', 'twilio', 'openai_transcription']) {
       assert.equal(byId[id], undefined);
     }
   } finally {
