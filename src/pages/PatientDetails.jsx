@@ -12,6 +12,7 @@ import { logActivity, ActivityActions } from '@/components/utils/activityLogger'
 import PatientContactActions from '@/components/voice/PatientContactActions';
 import { listAuthorizedVisits } from '@/functions/listAuthorizedVisits';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import PatientInformationCard from '@/components/patient/PatientInformationCard';
 import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
 import {
   createPatientDetailsRouteHref,
@@ -289,13 +290,13 @@ export default function PatientDetails() {
     );
   }
 
-  // Only the panels that carry their own server authority are mounted here:
-  // contacting the patient (the `contact` read purpose plus startMaskedCall /
-  // sendSms / scheduleSms, each re-checking the chart) and the chart's
-  // telehealth visits (manageTelehealthSession, which re-checks the chart on
-  // every list and create). The rest of the chart stays hidden until each
-  // clinical panel has its own purpose-bound read.
-  const displayName = [patientQuery.data?.first_name, patientQuery.data?.last_name]
+  // Every panel here carries its own server authority: the patient's name
+  // and information (owner decision 2026-10-15: all patient information and
+  // names must be visible) come through the purpose-bound patient broker,
+  // contacting the patient through the `contact` read purpose plus
+  // startMaskedCall / sendSms / scheduleSms, and the chart's telehealth visits
+  // through manageTelehealthSession; each re-checks the chart on every read.
+  const displayName = [patientQuery.data?.first_name, patientQuery.data?.middle_name, patientQuery.data?.last_name]
     .filter((part) => typeof part === 'string' && part.trim())
     .join(' ');
   return (
@@ -303,8 +304,8 @@ export default function PatientDetails() {
       <PageHeader
         icon={Users}
         eyebrow="Patient Care"
-        title="Patient details"
-        description="Purpose-bound chart access"
+        title={displayName || "Patient details"}
+        description="Patient details"
         favoritePage="PatientDetails"
       />
       <div className="mx-auto max-w-4xl space-y-4">
@@ -316,11 +317,15 @@ export default function PatientDetails() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-slate-600">
-            Current Patient{scheduleAuthorized ? " and Visit" : ""} authority was verified. Contact and telehealth tools for this
-            chart are below; the other clinical panels open as each gains its own purpose-bound
-            tenant read service.
+            Current Patient{scheduleAuthorized ? " and Visit" : ""} authority was verified. The patient's information,
+            contact and telehealth tools for this chart are below.
           </CardContent>
         </Card>
+        <PatientInformationCard
+          patientId={patientId}
+          agencyId={agencyId}
+          tenantRole={patientQuery.tenantScope?.tenant_role ?? null}
+        />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-1">
             <PatientContactActions patientId={patientId} agencyId={agencyId} />
