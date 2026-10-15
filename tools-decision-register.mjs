@@ -50,27 +50,23 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // document changes, and a reader who carries "inert, not wrong" across to it
 // gets the wrong answer. A base that has moved is wrong rather than inert, and
 // the corroboration test is what says so.
-// Rewritten 2026-10-01 for the collection in hand, which adds D226 and nothing
-// else. It held #359's thirty-five numbers in `181..224`, every one of which
-// `BASE_NUMBERS` below now carries, so the differential in the corroboration
-// test had gone INERT and was saying so in a printed info line rather than a
-// failure. Nothing is lost by the rewrite: those thirty-five are in the base and
-// `EXPECTED_DOCUMENT` is the union, so what the document must hold is unchanged
-// apart from D226. What is bought back is a differential that can fail again.
+// Rewritten 2026-10-15 for the collection in hand, which adds D227 and nothing
+// else. It held [226] from the 2026-10-01 rewrite, and that list went INERT
+// when #388 merged and 226 reached the base, so the differential in the
+// corroboration test had stood down and was saying so in a printed info line
+// rather than a failure. Nothing is lost by the rewrite: 226 is in
+// `BASE_NUMBERS` below and `EXPECTED_DOCUMENT` is the union, so what the
+// document must hold is unchanged apart from D227. What is bought back is a
+// differential that can fail again.
 //
 // This is the paragraph above being OBEYED and not the deletion it warns
-// against. D226 records why it had to happen in the same change as the entry,
-// and why the figure moving is the reason a count like this one belongs in a
-// pull request rather than in a sentence of the register.
-//
-// **It went INERT again when #388 merged, hours later**, because 226 is now on
-// the base — so the differential it bought back has already stood down, and the
-// corroboration test says which branch it took. Left alone rather than emptied,
-// which is this list's own prescription for the inert state: it is rewritten by
-// the next change that files a numbered entry, and the change re-deriving the
-// base is not one. A list that oscillates between live and inert on every
-// collection is the design working, not drift.
-export const EXPECTED_NEW = Object.freeze([226]);
+// against. D226 records why the rewrite has to happen in the same change as
+// the entry, and why the figure moving is the reason a count like this one
+// belongs in a pull request rather than in a sentence of the register. It
+// will go inert again when this collection merges, and the next change that
+// files a numbered entry rewrites it again: a list that oscillates between
+// live and inert on every collection is the design working, not drift.
+export const EXPECTED_NEW = Object.freeze([227]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //

@@ -482,6 +482,139 @@ async function directInvokeLLM(params, deps) {
   return answer;
 }`;
 
+const DEEPGRAM_TRANSCRIBE_SOURCE = `// Speech-to-text helper: transcribes recorded visit audio with Deepgram's
+// prerecorded API (Nova-3 Medical) under the app's own DEEPGRAM_API_KEY
+// function secret — the same secret posture as ANTHROPIC_API_KEY beside it
+// in the secret inventory. The IntegrationSecret store is not used: it is
+// the Telnyx credential store by repo rule, and reading it goes through
+// entities, which would reclassify these entity-free functions as waiting
+// on the record store in the port queue — the same reasoning that keeps
+// the Anthropic key in the environment (migration plan §2.4, D87).
+// Contract:
+//   deepgramTranscribe({ data, contentType? }, deps?) -> { text, duration }
+// data is the audio bytes (Uint8Array or ArrayBuffer); contentType is the
+// recorder's container type when the caller knows it — when it is absent,
+// generic, or not an audio type, the container is sniffed from the bytes
+// instead. Deepgram accepts the recorder containers natively (MP4/M4A,
+// WebM, WAV, Ogg, MP3), so no relabeling or transcode stands between the
+// upload and the provider. Diarization and smart formatting are on;
+// keyterm prompting carries the app's clinical vocabulary
+// (DEEPGRAM_KEYTERMS, mirrored from src/components/utils/medicalDictionary.js
+// — medications first, then clinical terms — capped at the provider's
+// 100-term keyterm limit, enforced again at request build).
+// Errors are Errors carrying .status and .code, in the same style as
+// directInvokeLLM: TRANSCRIPTION_NOT_CONFIGURED (503) when the secret is
+// absent — callers map that one code to the fail-closed refusal the
+// frontend renders as its "isn't set up yet" copy — INVALID_AUDIO (400)
+// for empty input, AUDIO_TOO_LARGE (413), and TRANSCRIPTION_PROVIDER_ERROR
+// (502) for a provider refusal, an unreadable response, or a response with
+// no transcript channel. A well-formed response whose transcript is empty
+// (a silent recording) resolves with text '' so each caller keeps its own
+// empty-transcript behavior. One provenance log line is emitted per
+// completed call; the transcript itself is never logged.
+const DEEPGRAM_MODEL = 'nova-3-medical';
+const DEEPGRAM_MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+const DEEPGRAM_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const DEEPGRAM_KEYTERMS = [
+  'Metformin', 'Lisinopril', 'Atorvastatin', 'Amlodipine', 'Omeprazole',
+  'Levothyroxine', 'Sertraline', 'Ibuprofen', 'Amoxicillin', 'Azithromycin',
+  'Prednisone', 'Aspirin', 'Metoprolol', 'Furosemide', 'Insulin', 'Warfarin',
+  'Clopidogrel', 'Pantoprazole', 'Ranitidine', 'Gabapentin', 'Tramadol',
+  'Hydrocodone', 'Oxycodone', 'Morphine', 'Fentanyl', 'Diltiazem', 'Verapamil',
+  'Losartan', 'Valsartan', 'Olmesartan', 'Irbesartan', 'Candesartan',
+  'Simvastatin', 'Pravastatin', 'Rosuvastatin', 'Fluoxetine', 'Paroxetine',
+  'Citalopram', 'Escitalopram', 'Duloxetine', 'Venlafaxine', 'Fluconazole',
+  'Ketoconazole', 'Miconazole', 'Clotrimazole', 'Doxycycline', 'Tetracycline',
+  'Ciprofloxacin', 'Levofloxacin', 'Metronidazole', 'Vancomycin', 'Ampicillin',
+  'Cephalexin', 'Ceftriaxone', 'Cefdinir', 'Sulfamethoxazole', 'Trimethoprim',
+  'Assessment', 'Vitals', 'Blood', 'Pressure', 'Heart', 'Rate', 'Respiration',
+  'Respiratory', 'Temperature', 'Oxygen', 'Saturation', 'Pulse', 'Oximetry',
+  'Auscultation', 'Percussion', 'Palpation', 'Edema', 'Erythema', 'Ecchymosis',
+  'Petechiae', 'Urticaria', 'Rash', 'Wound', 'Laceration', 'Abrasion',
+  'Contusion', 'Hematoma', 'Abscess', 'Cellulitis', 'Gangrene', 'Ulcer',
+  'Decubitus', 'Sore', 'Eschar', 'Slough', 'Granulation', 'Epithelialization',
+  'Hemostasis', 'Hemoptysis', 'Dyspnea',
+];
+function deepgramFail(status, code) {
+  const error = new Error(code);
+  error.status = status;
+  error.code = code;
+  throw error;
+}
+function deepgramSniffAudioType(bytes) {
+  const ascii = (part) => [...part].map((b) => String.fromCharCode(b)).join('');
+  if (bytes.length >= 8 && ascii(bytes.subarray(4, 8)) === 'ftyp') return 'audio/mp4';
+  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return 'audio/webm';
+  if (bytes.length >= 12 && ascii(bytes.subarray(0, 4)) === 'RIFF' && ascii(bytes.subarray(8, 12)) === 'WAVE') return 'audio/wav';
+  if (bytes.length >= 4 && ascii(bytes.subarray(0, 4)) === 'OggS') return 'audio/ogg';
+  if (bytes.length >= 3 && ascii(bytes.subarray(0, 3)) === 'ID3') return 'audio/mpeg';
+  if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) return 'audio/mpeg';
+  return 'application/octet-stream';
+}
+async function deepgramReadBytes(response, maximum) {
+  const reader = response.body && typeof response.body.getReader === 'function' ? response.body.getReader() : null;
+  if (!reader) deepgramFail(502, 'TRANSCRIPTION_PROVIDER_ERROR');
+  const chunks = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maximum) { try { await reader.cancel(); } catch { /* already failing */ } deepgramFail(502, 'TRANSCRIPTION_PROVIDER_ERROR'); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
+async function deepgramTranscribe(audio, deps) {
+  const fetcher = deps && typeof deps.fetcher === 'function' ? deps.fetcher : fetch;
+  const apiKey = deps && typeof deps.apiKey === 'string' && deps.apiKey
+    ? deps.apiKey
+    : (typeof Deno !== 'undefined' ? Deno.env.get('DEEPGRAM_API_KEY') : undefined);
+  if (!apiKey) deepgramFail(503, 'TRANSCRIPTION_NOT_CONFIGURED');
+  let bytes = null;
+  if (audio && audio.data instanceof Uint8Array) bytes = audio.data;
+  else if (audio && audio.data instanceof ArrayBuffer) bytes = new Uint8Array(audio.data);
+  if (!bytes || !bytes.length) deepgramFail(400, 'INVALID_AUDIO');
+  if (bytes.length > DEEPGRAM_MAX_AUDIO_BYTES) deepgramFail(413, 'AUDIO_TOO_LARGE');
+  let contentType = audio && typeof audio.contentType === 'string'
+    ? audio.contentType.split(';')[0].trim().toLowerCase() : '';
+  if (!contentType || contentType === 'application/octet-stream' || !contentType.startsWith('audio/')) {
+    contentType = deepgramSniffAudioType(bytes);
+  }
+  const keytermSource = deps && Array.isArray(deps.keyterms) ? deps.keyterms : DEEPGRAM_KEYTERMS;
+  const keyterms = keytermSource.filter((term) => typeof term === 'string' && term.trim()).slice(0, 100);
+  const query = new URLSearchParams({
+    model: DEEPGRAM_MODEL, language: 'en', diarize: 'true', smart_format: 'true', punctuate: 'true',
+  });
+  for (const term of keyterms) query.append('keyterm', term);
+  const started = Date.now();
+  // Redirects are never followed: the Authorization header carries the app's
+  // key, and a redirect would carry it to whatever host answered.
+  const response = await fetcher('https://api.deepgram.com/v1/listen?' + query.toString(), {
+    method: 'POST',
+    headers: { Authorization: 'Token ' + apiKey, 'Content-Type': contentType },
+    body: bytes, redirect: 'manual', signal: AbortSignal.timeout(120000),
+  });
+  if (!response.ok) {
+    console.error('Deepgram transcription failed with provider status', response.status);
+    deepgramFail(502, 'TRANSCRIPTION_PROVIDER_ERROR');
+  }
+  const responseBytes = await deepgramReadBytes(response, DEEPGRAM_MAX_RESPONSE_BYTES);
+  let result;
+  try { result = JSON.parse(new TextDecoder().decode(responseBytes)); } catch { deepgramFail(502, 'TRANSCRIPTION_PROVIDER_ERROR'); }
+  const channels = result && result.results && Array.isArray(result.results.channels) ? result.results.channels : [];
+  const alternative = channels.length && Array.isArray(channels[0].alternatives) ? channels[0].alternatives[0] : undefined;
+  if (!alternative || typeof alternative.transcript !== 'string') deepgramFail(502, 'TRANSCRIPTION_PROVIDER_ERROR');
+  const duration = result.metadata && typeof result.metadata.duration === 'number' ? result.metadata.duration : null;
+  console.log(JSON.stringify({ event: 'deepgram_transcription', model: DEEPGRAM_MODEL, duration_seconds: duration, latency_ms: Date.now() - started }));
+  return { text: alternative.transcript, duration };
+}`;
+
 export const SHARED_HELPERS = {
 
   esignCore: esignHelperSource('core'),
@@ -1368,6 +1501,12 @@ function validateOasisResponseWrite(payload) {
   // map (composed with the SSRF guard it fetches files through); edit it
   // there, never in a function copy.
   directInvokeLLM: DIRECT_INVOKE_LLM_SOURCE,
+
+  // Deepgram prerecorded speech-to-text (Nova-3 Medical) — the transcription
+  // path that replaced the removed OpenAI leg (R2 of the direct-AI
+  // migration). Source is DEEPGRAM_TRANSCRIBE_SOURCE above the map; edit it
+  // there, never in a function copy.
+  deepgramTranscribe: DEEPGRAM_TRANSCRIBE_SOURCE,
 
   // Base44 protects the built-in role from auth.updateMe; every custom User
   // field is self-mutable. This broad admin predicate may therefore trust role

@@ -123,10 +123,10 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=5 files=16 external_secret=1 none=82
+port queue: entity_authorization=5 files=16 external_secret=2 none=82
 ```
 
-104 carried capabilities, **82 written, 22 blocked** (2026-10-15), which is
+105 carried capabilities, **82 written, 23 blocked** (2026-10-15), which is
 the line above summed — `none` is the written total and every other
 bucket is blocked. Derive it that way rather than carrying it
 forward: this paragraph read 78 and 20 for a day after the queue line beside it
@@ -135,10 +135,16 @@ which is the defect its own next sentence is about. The carried total fell by
 one here rather than the written total rising: R1 of the direct-AI migration
 switched `transcribeAudioWithWhisper` off (`preserved_paused`) when its
 provider's account closed, instead of porting it — the same shape as the D153
-reading kept below, and the written count not moving is the tell.
+reading kept below, and the written count not moving is the tell. R2 of the
+same migration (also 2026-10-15) put it back: with transcription rebuilt on
+Deepgram the capability is carried `port` again and waits on its provider
+key, so the carried and blocked totals each rise by one and the written
+count does not move — the mirror image of the removal, arriving the same day.
 
 The previous readings were **82 written, 23 blocked** of 105 carried
-(2026-10-09) and **78 written, 20 blocked** (2026-09-29, after D153);
+(2026-10-09), **82 written, 22 blocked** of 104 carried earlier on 2026-10-15
+(R1's interim, between the removal and the rebuild), and **78 written, 20
+blocked** (2026-09-29, after D153);
 the older is kept because of what it shows rather than for the numbers. The
 carried total fell by one there rather than the written total rising, because
 D153 retired `enforceStaffRoleIntegrity` instead of porting it: the owned store
