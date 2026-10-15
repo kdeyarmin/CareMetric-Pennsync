@@ -36,6 +36,14 @@ async function loadOriginal(name) {
        auth: { me: async () => ({ id: 'synthetic-user', is_active: true }) },
        asServiceRole: { integrations: { Core: { InvokeLLM: async (argument) => { globalThis.__calls.push(argument); return globalThis.__answer; } } } },
      });`);
+  // Wave 1 of the direct-AI migration moved these originals' model call from
+  // the stubbed InvokeLLM above to the inlined directInvokeLLM helper, so the
+  // recording seam moves with the transport: the generated helper block is
+  // replaced by a stub with the same contract (record the argument, return
+  // the canned answer), and every comparison below is unchanged.
+  source = source.replace(
+    /\/\/ <<<BEGIN SHARED HELPER: directInvokeLLM[\s\S]*?\/\/ <<<END SHARED HELPER: directInvokeLLM>>>/,
+    'async function directInvokeLLM(argument) { globalThis.__calls.push(argument); return globalThis.__answer; }');
   assert.match(source, /Deno\.serve\(/, `${name} should still be a Deno.serve module`);
   const js = transpileTs(source).outputText;
   const file = join(tmpdir(), `integparity_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);

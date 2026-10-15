@@ -339,7 +339,9 @@ test('analyzeAndGenerateClinicalTasks authorizes the patient before PHI reads an
   const patientRead = handler.indexOf('entities.Patient');
   const accessGate = handler.indexOf('assertPatientAccess(base44, user, patient)');
   const relatedPhiReads = handler.indexOf('entities.Visit');
-  const modelCall = handler.indexOf('base44.asServiceRole.integrations.Core.InvokeLLM');
+  // The model call itself: directInvokeLLM since the direct-AI migration's
+  // first wave replaced the platform InvokeLLM call in this handler.
+  const modelCall = handler.indexOf('directInvokeLLM(');
 
   assert.notEqual(patientRead, -1);
   assert.notEqual(accessGate, -1);

@@ -22,6 +22,14 @@ async function loadHandler({
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     'const createClientFromRequest = globalThis.__patientChartMakeClient;',
   );
+  // The direct-AI migration's first wave moved this function's model call to
+  // the inlined directInvokeLLM helper, so the generated helper block is
+  // replaced with a delegate to the stubbed service-role InvokeLLM below:
+  // the recorded `calls.llm` arguments and the canned result are unchanged.
+  source = source.replace(
+    /\/\/ <<<BEGIN SHARED HELPER: directInvokeLLM[\s\S]*?\/\/ <<<END SHARED HELPER: directInvokeLLM>>>/,
+    'async function directInvokeLLM(argument) { return globalThis.__patientChartMakeClient().asServiceRole.integrations.Core.InvokeLLM(argument); }',
+  );
 
   const temporaryModule = join(
     tmpdir(),
