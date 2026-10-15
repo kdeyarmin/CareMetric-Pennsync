@@ -122,19 +122,31 @@ export function createProviders(config, store, fetcher = fetch) {
     for (const uri of params.file_uris || []) content.push(await loadDocument(uri, ctx));
     content.push({ type: 'text', text: params.prompt });
     const schema = params.response_json_schema;
-    const body = { model: config.model, max_tokens: 4096, messages: [{ role: 'user', content }] };
+    // The default model thinks adaptively and its thinking counts against
+    // max_tokens, so the budget carries headroom beyond the answer itself.
+    const body = { model: config.model, max_tokens: 16000, messages: [{ role: 'user', content }] };
     if (schema) {
+      // Requested, not forced: the 5.5 models reject tool_choice 'tool'/'any'
+      // with a 400. One tool, an explicit instruction, and one more ask below
+      // if the model answered in prose.
+      body.system = 'Return your answer by calling the return_result tool exactly once with the complete result. Do not answer in plain text.';
       body.tools = [{ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.',
         input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } }];
-      body.tool_choice = { type: 'tool', name: 'return_result' };
+      body.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
     }
-    const response = await fetcher('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: { 'x-api-key': config.anthropicKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(90000),
-    });
-    if (!response.ok) fail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
-    const result = await readJson(response, 2 * 1024 * 1024);
-    if (!Array.isArray(result.content) || result.stop_reason === 'max_tokens' || result.content.some(block => block.type === 'refusal')) fail(502, 'AI_RESULT_INCOMPLETE');
+    const callModel = async () => {
+      const response = await fetcher('https://api.anthropic.com/v1/messages', {
+        method: 'POST', headers: { 'x-api-key': config.anthropicKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(90000),
+      });
+      if (!response.ok) fail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
+      const answer = await readJson(response, 2 * 1024 * 1024);
+      if (!Array.isArray(answer.content) || answer.stop_reason === 'max_tokens' || answer.stop_reason === 'refusal'
+        || answer.content.some(block => block.type === 'refusal')) fail(502, 'AI_RESULT_INCOMPLETE');
+      return answer;
+    };
+    let result = await callModel();
+    if (schema && result.stop_reason === 'end_turn' && !result.content.some(block => block.type === 'tool_use')) result = await callModel();
     if (schema) {
       const tools = result.content.filter(block => block.type === 'tool_use');
       if (result.stop_reason !== 'tool_use' || tools.length !== 1 || tools[0].name !== 'return_result'
