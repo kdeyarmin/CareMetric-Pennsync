@@ -15077,3 +15077,59 @@ provenance at all. The structured shape is unchanged: there the
 model itself fills the schema's source fields from what it read.
 Contract tests pin all three behaviors in the helper, broker, and
 runtime suites.
+
+## D231 — The schema validators accept itemless arrays, and the node cap is measured, not guessed (2026-10-16)
+
+**The production finding.** The first live smoke of the published
+Waves 3+4 build ran RegulatoryMonitor's refresh scan and watched it
+fail: the broker logged one `invokeDirectLLM` invocation answered
+`400 UNSUPPORTED_SCHEMA`, and the provider was never called. The
+component's schema declares `compliance_check_updates` as
+`{ type: 'array' }` — an array with no `items`. That is valid JSON
+Schema (an itemless array constrains nothing about its elements)
+and the retired platform `InvokeLLM` accepted it, but both direct
+validators — the Base44 helper's `directAiValidateSchema` /
+`directAiConforms` and the integration runtime's mirror — treated
+`items` as required structure: validation recursed into the absent
+`items` and refused the schema, and conformance dereferenced it
+unconditionally. RegulatoryMonitor is the only call site in the
+tree with a bare array, which is why a green gate set did not see
+it: every suite schema had been written with `items` present.
+
+**The rule.** An array schema with no `items` — absent, or
+explicitly `undefined` — accepts any array, elements unchecked, on
+both validators and in both conformance checks; an array with
+`items` keeps exactly the check it had. Nothing else in the
+validators loosened. The frontend component is unchanged: its
+schema was always legal, so the repair belongs to the contract
+that refused it, in the same shape D228 repaired the nullable
+unions the ADR schemas already wrote.
+
+**The audit that came with it, and the second gap it measured.**
+Every real schema in the tree was driven through the fixed
+validator: 33 `directInvokeLLM` call expressions across the Base44
+functions (schemas inline, or imported — the ADR pair resolves
+from `base44/shared/adrIntegrationAnalysis.ts`) and 67
+`response_json_schema` occurrences across the frontend's broker
+callers. All pass. One more refusal surfaced, of the same kind: the
+referral-extraction schema the frontend builds
+(`REFERRAL_EXTRACTION_SCHEMA`, assembled by spreading a legacy
+schema and omitting three OASIS properties) measures **203 schema
+nodes** — three over the D219 complexity budget of 200 — at depth
+4, so the referral feature's calls would have failed
+`SCHEMA_TOO_COMPLEX` at the same broker. The census around it:
+109 statically resolvable schemas, the largest 67 nodes, maximum
+depth 6. The cap was a round number chosen before any real schema
+was measured against it; it is now **500 nodes** in both
+validators — two and a half times the largest real schema, still a
+hard bound a pathological schema refuses against — and the depth
+cap stays 12 against a measured maximum of 6. Contract tests pin
+both ends: a 251-node schema validates, a 601-node schema still
+refuses. The validators' other bound — at most 100 properties on
+any one object — was measured the same way and left alone: the
+widest real object in the census carries 35. One near-miss was measured and left alone:
+`PatientSummaryGenerator` initialises its schema to `{}` before a
+three-way format branch assigns a real one; the empty object is
+unreachable as a schema-bearing call (the prompt is empty on the
+same path and refuses first), so it is recorded here rather than
+repaired.

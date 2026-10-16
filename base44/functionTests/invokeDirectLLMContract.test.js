@@ -347,3 +347,81 @@ test('a provider throttle passes through at 429 so the frontend rate-limit path 
   assert.equal(refused.status, 429);
   assert.equal(refused.data.error, 'AI_PROVIDER_REJECTED');
 });
+
+test('the RegulatoryMonitor call shape passes the broker end to end (D231)', async () => {
+  // Production finding, 2026-10-16: this exact shape — a web-grounded
+  // structured call whose schema nests a bare array
+  // (compliance_check_updates: { type: 'array' }, valid JSON Schema with no
+  // items) — failed 400 UNSUPPORTED_SCHEMA at the broker and the provider
+  // was never called. The schema is the component's own, trimmed only in
+  // the sibling string fields.
+  const monitorResult = {
+    updates: [{
+      title: 'CMS Conditions of Participation update',
+      source: 'CMS',
+      category: 'regulation',
+      effective_date: '2026-11-01',
+      summary: 'Suggested review topic.',
+      full_details: 'Details.',
+      impact_level: 'high',
+      affected_areas: ['nursing', 'compliance'],
+      required_actions: ['Review the policy'],
+      compliance_check_updates: [{ check_name: 'Verify the new requirement' }, 'a plain string entry', 7],
+      suggested_training: ['CoP refresher'],
+      reference_url: 'https://www.cms.gov/example',
+    }],
+    scan_summary: 'One suggested update.',
+  };
+  const monitorModel = fakeModel({
+    script: async () => new Response(JSON.stringify({
+      content: [{ type: 'tool_use', id: 'toolu_1', name: 'return_result', input: { result: monitorResult } }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 3, output_tokens: 2, server_tool_use: { web_search_requests: 1 } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  });
+  const runtime = createRuntime({ model: monitorModel });
+  runtime.addUser('nurse');
+  const ok = await runtime.call({
+    user: 'nurse',
+    body: {
+      prompt: 'Scan for regulatory updates.',
+      add_context_from_internet: true,
+      response_json_schema: {
+        type: 'object',
+        properties: {
+          updates: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                source: { type: 'string' },
+                category: { type: 'string' },
+                effective_date: { type: 'string' },
+                summary: { type: 'string' },
+                full_details: { type: 'string' },
+                impact_level: { type: 'string' },
+                affected_areas: { type: 'array', items: { type: 'string' } },
+                required_actions: { type: 'array', items: { type: 'string' } },
+                compliance_check_updates: { type: 'array' },
+                suggested_training: { type: 'array', items: { type: 'string' } },
+                reference_url: { type: 'string' },
+              },
+            },
+          },
+          scan_summary: { type: 'string' },
+        },
+      },
+    },
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.data, monitorResult);
+  assert.equal(monitorModel.calls.length, 1);
+  assert.deepEqual(
+    monitorModel.calls[0].tools.map((tool) => tool.name),
+    ['return_result', 'web_search'],
+    'the web tool and the result tool ride together (D230)',
+  );
+  const [entry] = provenance(runtime).filter((line) => line.outcome === 'ok');
+  assert.equal(entry.actor_email, 'nurse@agency.test');
+});
