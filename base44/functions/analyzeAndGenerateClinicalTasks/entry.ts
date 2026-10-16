@@ -144,8 +144,12 @@ function directAiIsSafeFetchUrl(raw) {
 // Base44-style ids are translated, never forwarded; anything else throws
 // MODEL_MAPPING_REQUIRED instead of 404ing at the provider (the
 // transcribeAndGenerateSOAPNote 'automatic' incident).
-// add_context_from_internet: true throws WEB_SEARCH_NOT_MIGRATED until the
-// web-search wave lands it. Files are fetched server-side through the SSRF
+// add_context_from_internet: true enables Anthropic's web_search server
+// tool (Wave 4, D230): the provider runs the searches inside the same turn
+// and grounds the answer, and the result comes back in the same shapes —
+// the concatenated text, or the return_result object when a schema is
+// passed (the two tools ride side by side in one tools array).
+// Files are fetched server-side through the SSRF
 // guard embedded above this helper (a renamed copy of isSafeFetchUrl,
 // generated from the same canonical source, so the helper is self-contained).
 // One provenance log line is emitted per completed call.
@@ -165,6 +169,17 @@ const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_u
 // reaches a caller silently.
 const DIRECT_AI_MAX_TOKENS = { plain: 16000, structured: 16000 };
 const DIRECT_AI_TOOL_INSTRUCTION = 'Return your answer by calling the return_result tool exactly once with the complete result. Do not answer in plain text.';
+// The web_search server tool (D230). max_uses bounds the searches one call
+// may run; a model that reaches it answers with what it has rather than
+// failing. The pause bound caps how many times a 'pause_turn' answer is
+// handed back for resumption before the call fails as incomplete. Grounded
+// answers carry one encrypted result blob per source and run well past the
+// plain response cap, so the read bound for a web call is larger — the file
+// layer's SSRF allowlist is untouched by all of this: the tool executes on
+// the provider's side and no URL is ever fetched from here.
+const DIRECT_AI_WEB_SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: 5 };
+const DIRECT_AI_WEB_MAX_RESUMES = 3;
+const DIRECT_AI_WEB_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const DIRECT_AI_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const DIRECT_AI_FILE_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv'];
 const DIRECT_AI_SCHEMA_KEYS = ['type', 'description', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems'];
@@ -306,7 +321,8 @@ async function directInvokeLLM(params, deps) {
     if (typeof params.model !== 'string' || !Object.hasOwn(DIRECT_AI_MODEL_MAP, params.model)) directAiFail(400, 'MODEL_MAPPING_REQUIRED');
     model = DIRECT_AI_MODEL_MAP[params.model];
   }
-  if (params.add_context_from_internet !== undefined && params.add_context_from_internet !== false) directAiFail(409, 'WEB_SEARCH_NOT_MIGRATED');
+  if (params.add_context_from_internet !== undefined && typeof params.add_context_from_internet !== 'boolean') directAiFail(400, 'INVALID_INPUT');
+  const webSearch = params.add_context_from_internet === true;
   if (params.file_urls !== undefined && (!Array.isArray(params.file_urls) || params.file_urls.length > 3
     || params.file_urls.some((url) => typeof url !== 'string' || !url))) directAiFail(400, 'INVALID_FILES');
   const schema = params.response_json_schema;
@@ -320,11 +336,17 @@ async function directInvokeLLM(params, deps) {
   for (const url of params.file_urls || []) content.push(await directAiLoadFile(url, fetcher));
   content.push({ type: 'text', text: params.prompt });
   const body = { model, max_tokens: schema ? DIRECT_AI_MAX_TOKENS.structured : DIRECT_AI_MAX_TOKENS.plain, messages: [{ role: 'user', content }] };
+  const tools = [];
   if (schema) {
     body.system = DIRECT_AI_TOOL_INSTRUCTION;
-    body.tools = [{ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.', input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } }];
+    tools.push({ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.', input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } });
     body.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
   }
+  // The server tool rides beside the client tool: tool_choice governs the
+  // client's return_result only, and the provider runs the searches inside
+  // the same turn either way (D230).
+  if (webSearch) tools.push({ ...DIRECT_AI_WEB_SEARCH_TOOL });
+  if (tools.length) body.tools = tools;
   const started = Date.now();
   const callProvider = async () => {
     let response;
@@ -345,18 +367,44 @@ async function directInvokeLLM(params, deps) {
       console.log(JSON.stringify({ event: 'direct_ai_rejected', model, status: response.status, error_type: errorType }));
       directAiFail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
     }
-    const responseBytes = await directAiReadBytes(response, 2 * 1024 * 1024, 'RESPONSE_TOO_LARGE');
+    const responseBytes = await directAiReadBytes(response, webSearch ? DIRECT_AI_WEB_MAX_RESPONSE_BYTES : 2 * 1024 * 1024, 'RESPONSE_TOO_LARGE');
     let parsed;
     try { parsed = JSON.parse(new TextDecoder().decode(responseBytes)); } catch { directAiFail(502, 'INVALID_UPSTREAM_RESPONSE'); }
     if (!parsed || !Array.isArray(parsed.content) || parsed.stop_reason === 'max_tokens' || parsed.stop_reason === 'refusal'
       || parsed.content.some((block) => block && block.type === 'refusal')) directAiFail(502, 'AI_RESULT_INCOMPLETE');
     return parsed;
   };
+  // For a web-grounded call the provenance line totals the usage of every
+  // provider response behind the one logical call (a resumed search turn is
+  // several responses), and carries the search count that marks the call as
+  // web-grounded. A non-web call logs its single response's usage, as before.
+  const webUsage = webSearch ? { input_tokens: 0, output_tokens: 0, web_search_requests: 0 } : null;
+  const absorbUsage = (u) => {
+    if (!webUsage || !u) return;
+    webUsage.input_tokens += u.input_tokens ?? 0;
+    webUsage.output_tokens += u.output_tokens ?? 0;
+    webUsage.web_search_requests += (u.server_tool_use || {}).web_search_requests ?? 0;
+  };
   let result = await callProvider();
+  absorbUsage(result.usage);
+  // A web-grounded turn can stop at 'pause_turn' when the provider's
+  // server-side search loop reaches its iteration cap; handing the answer
+  // back as the assistant turn resumes it. Bounded — a call still paused at
+  // the bound fails as incomplete rather than returning a half-searched
+  // answer as though it were whole.
+  for (let resumes = 0; webSearch && result.stop_reason === 'pause_turn' && resumes < DIRECT_AI_WEB_MAX_RESUMES; resumes++) {
+    body.messages.push({ role: 'assistant', content: result.content });
+    result = await callProvider();
+    absorbUsage(result.usage);
+  }
+  if (webSearch && result.stop_reason === 'pause_turn') directAiFail(502, 'AI_RESULT_INCOMPLETE');
   // tool_choice 'auto' does not guarantee the call; ask once more before failing.
-  if (schema && result.stop_reason === 'end_turn' && !result.content.some((block) => block && block.type === 'tool_use')) result = await callProvider();
-  const usage = result.usage || {};
-  const provenance = JSON.stringify({ event: 'direct_ai_call', model, tier: model.split('-')[1], class: schema ? 'structured' : 'plain', input_tokens: usage.input_tokens ?? null, output_tokens: usage.output_tokens ?? null, latency_ms: Date.now() - started });
+  if (schema && result.stop_reason === 'end_turn' && !result.content.some((block) => block && block.type === 'tool_use')) {
+    result = await callProvider();
+    absorbUsage(result.usage);
+  }
+  const usage = webUsage || result.usage || {};
+  const provenance = JSON.stringify({ event: 'direct_ai_call', model, tier: model.split('-')[1], class: schema ? 'structured' : 'plain', input_tokens: usage.input_tokens ?? null, output_tokens: usage.output_tokens ?? null, ...(webSearch ? { web_search_requests: webUsage.web_search_requests } : {}), latency_ms: Date.now() - started });
   if (schema) {
     const tools = result.content.filter((block) => block && block.type === 'tool_use');
     if (result.stop_reason !== 'tool_use' || tools.length !== 1 || tools[0].name !== 'return_result'
