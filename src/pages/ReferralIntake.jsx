@@ -10,7 +10,6 @@ import {
   updateAuthorizedReferral,
 } from '@/functions/manageAuthorizedReferral';
 import { useAuth } from '@/lib/AuthContext';
-import { maxReferralPriority, toReferralPriority } from '@/components/referral/referralUrgency';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -263,8 +262,8 @@ export default function ReferralIntake() {
       const result = await runReferralUpload({
         file,
         uploadFile: (picked) => base44.integrations.Core.UploadFile({ file: picked }),
-        // Instant form pre-population + urgency triage, using the shared
-        // quick-scan definition (single source of truth) wrapped in the standard
+        // Instant form pre-population, using the shared quick-scan
+        // definition (single source of truth) wrapped in the standard
         // retry/timeout policy.
         quickScan: (fileUrl) => runReferralQuickScan(invokeLLM, { fileUrl }),
       });
@@ -318,10 +317,11 @@ export default function ReferralIntake() {
           patient_name: extracted.patient_name || prev.patient_name,
           referral_source: extracted.referral_source || prev.referral_source,
           referral_date: extracted.referral_date || prev.referral_date,
-          priority: toReferralPriority(extracted.urgency_level, { fallback: prev.priority }),
+          // No priority pre-fill (D234): the quick scan assigns no urgency
+          // level, so the form's priority stays whatever staff chose (or the
+          // schema default) — it is a staff field, never an analyzer output.
           diagnosis: extracted.primary_diagnosis,
           category: extracted.category,
-          urgency_factors: extracted.urgency_factors,
           suggested_tasks: extracted.suggested_initial_tasks,
           suggested_care_plans: extracted.suggested_care_plans
         }));
@@ -437,12 +437,6 @@ export default function ReferralIntake() {
             icd10_codes: extractedFormData.icd10_codes || []
           },
           clinical_category: extractedFormData.category,
-          urgency_assessment: {
-            urgency_level: extractedFormData.urgency_level,
-            urgency_factors: extractedFormData.urgency_factors || [],
-            clinical_urgency_score: extractedFormData.clinical_urgency_score || 0,
-            administrative_urgency_score: extractedFormData.administrative_urgency_score || 0
-          },
           care_needs: {
             skilled_nursing: extractedFormData.skilled_nursing_needs || [],
             therapy_requirements: extractedFormData.therapy_requirements || [],
@@ -504,19 +498,14 @@ export default function ReferralIntake() {
 
   const handleProcessingComplete = async (referralId, extractedData, analysisResults, generatedPdfUrl = null) => {
     try {
-      // Comprehensive AI-powered referral analysis
-      const [priorityResponse, intakeAnalysisResponse] = await Promise.all([
-        base44.functions.invoke('analyzeReferralPriority', {
-          extractedData,
-          analysisResults
-        }),
-        base44.functions.invoke('analyzeReferralIntake', {
-          extractedData,
-          analysisResults
-        })
-      ]);
+      // Comprehensive AI-powered referral analysis. The standalone
+      // analyzeReferralPriority call is gone (D234): it was retired because
+      // referrals carry no analyzer-assigned priority level.
+      const intakeAnalysisResponse = await base44.functions.invoke('analyzeReferralIntake', {
+        extractedData,
+        analysisResults
+      });
 
-      const priorityAnalysis = priorityResponse.data?.priorityAnalysis || {};
       const intakeAnalysis = intakeAnalysisResponse.data?.analysis || {};
 
       // Merge DEFENSIVELY against the existing record: extraction can miss
@@ -532,12 +521,10 @@ export default function ReferralIntake() {
         referrals.find((r) => r.id === referralId) ||
         {};
 
-      // Never DOWNGRADE a staff-selected priority: if intake marked the
-      // referral urgent and the AI analysis returns nothing (or a lower
-      // level), keep the higher one. Normalize first — analyzeReferralPriority
-      // asks for urgent|high|normal|low, but a mixed-case / STAT / CRITICAL
-      // answer used to miss the rank table and fall through as-is.
-      const priority = maxReferralPriority(priorityAnalysis.priority, existing.priority);
+      // The referral's priority is a staff-selected field (D234): the
+      // analyzer no longer computes or writes one, so processing preserves
+      // whatever staff set on the existing record and nothing more.
+      const priority = existing.priority;
 
       // Extract and update referral fields from AI-processed data
       const updates = {
@@ -545,7 +532,6 @@ export default function ReferralIntake() {
         extracted_data: extractedData,
         analysis_results: {
           ...analysisResults,
-          priority_analysis: priorityAnalysis,
           intake_analysis: intakeAnalysis
         },
         patient_name: extractedData.demographics?.full_name || existing.patient_name || null,
@@ -559,7 +545,7 @@ export default function ReferralIntake() {
                        existing.referral_date ||
                        null,
         diagnosis: extractedData.diagnoses?.primary_diagnosis || existing.diagnosis || null,
-        priority
+        ...(priority ? { priority } : {})
       };
 
       // Deterministic PDGM-sequenced diagnosis coding (codes only ever
@@ -572,14 +558,16 @@ export default function ReferralIntake() {
         console.error('Diagnosis coding skipped:', codingError);
       }
 
-      // Check for missing critical information using AI analysis
+      // Check for missing critical information using AI analysis. The
+      // buckets are named for what they mean, not a priority level (D234):
+      // blocking / important / optional.
       const allMissingInfo = [
-        ...(intakeAnalysis.missing_critical_info?.high_priority || []),
-        ...(intakeAnalysis.missing_critical_info?.medium_priority || []),
-        ...(intakeAnalysis.missing_critical_info?.low_priority || [])
+        ...(intakeAnalysis.missing_critical_info?.blocking || []),
+        ...(intakeAnalysis.missing_critical_info?.important || []),
+        ...(intakeAnalysis.missing_critical_info?.optional || [])
       ];
 
-      if (intakeAnalysis.missing_critical_info?.high_priority?.length > 0) {
+      if (intakeAnalysis.missing_critical_info?.blocking?.length > 0) {
         updates.status = 'awaiting_info';
         updates.missing_information = allMissingInfo;
       }
@@ -825,22 +813,22 @@ export default function ReferralIntake() {
         related_entity_id: referralId,
       };
       
-      // Tasks from intake analysis
+      // Tasks from intake analysis. Steps carry no priority anymore (D234),
+      // so every suggested step becomes a task at the staff default — the
+      // old behavior created tasks only for steps the model had labeled
+      // immediate/urgent/high and silently dropped the rest.
       if (intakeAnalysis.suggested_next_steps?.length > 0) {
         const analysisTasksToCreate = intakeAnalysis.suggested_next_steps
-          .filter(step => step.priority === 'immediate' || step.priority === 'urgent' || step.priority === 'high')
+          .filter(step => step?.action)
           .map(step => ({
             patient_id: updates.patient_id || null,
             title: step.action,
             description: `AI-suggested action based on referral analysis. Timeframe: ${step.timeframe}`,
             type: 'followup',
-            // The filter above admits only immediate/urgent/high, so every step
-            // reaching here is high-priority work; the old ternary silently
-            // downgraded a 'high' step to 'medium'.
-            priority: 'high',
+            priority: 'medium',
             status: 'pending',
             source: 'ai_generated',
-            ai_reason: `Referral intake analysis identified this as ${step.priority} priority action`,
+            ai_reason: 'Referral intake analysis suggested this action',
             ...taskReferralLink,
           }));
         allSuggestedTasks.push(...analysisTasksToCreate);
@@ -1525,16 +1513,16 @@ export default function ReferralIntake() {
                              )}
                               {referral.analysis_results?.intake_analysis && (
                                 <div className="text-xs text-slate-600 space-y-0.5">
-                                  {referral.analysis_results.intake_analysis.missing_critical_info?.high_priority?.length > 0 && (
+                                  {referral.analysis_results.intake_analysis.missing_critical_info?.blocking?.length > 0 && (
                                     <div className="flex items-center gap-1 text-red-600">
                                       <AlertCircle className="w-3 h-3" />
-                                      {referral.analysis_results.intake_analysis.missing_critical_info.high_priority.length} critical items
+                                      {referral.analysis_results.intake_analysis.missing_critical_info.blocking.length} critical items
                                     </div>
                                   )}
-                                  {referral.analysis_results.intake_analysis.suggested_next_steps?.filter(s => s.priority === 'immediate' || s.priority === 'urgent').length > 0 && (
-                                    <div className="flex items-center gap-1 text-orange-600">
+                                  {referral.analysis_results.intake_analysis.suggested_next_steps?.length > 0 && (
+                                    <div className="flex items-center gap-1 text-slate-600">
                                       <ClipboardCheck className="w-3 h-3" />
-                                      {referral.analysis_results.intake_analysis.suggested_next_steps.filter(s => s.priority === 'immediate' || s.priority === 'urgent').length} urgent actions
+                                      {referral.analysis_results.intake_analysis.suggested_next_steps.length} suggested actions
                                     </div>
                                   )}
                                 </div>
@@ -1624,16 +1612,6 @@ export default function ReferralIntake() {
                     <Sparkles className="w-4 h-4 text-blue-600" />
                     <AlertDescription className="text-blue-900 text-sm">
                       <strong>Auto-Categorized:</strong> {extractedFormData.category.replace(/_/g, ' ').toUpperCase()}
-                      {extractedFormData.urgency_factors?.length > 0 && (
-                        <div className="mt-2 text-xs">
-                          <strong>Urgency Factors:</strong>
-                          <ul className="list-disc list-inside mt-1">
-                            {extractedFormData.urgency_factors.slice(0, 3).map((factor, idx) => (
-                              <li key={idx}>{factor}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1683,11 +1661,12 @@ export default function ReferralIntake() {
                       <div className="mt-2 text-xs space-y-1">
                         {extractedFormData.suggested_initial_tasks.slice(0, 3).map((task, idx) => (
                           <div key={idx} className="flex items-start gap-2">
-                            <Badge className={
-                              task.priority === 'critical' || task.priority === 'immediate' ? 'bg-red-600' :
-                              task.priority === 'urgent' || task.priority === 'high' ? 'bg-orange-600' : 'bg-blue-600'
-                            }>{task.priority}</Badge>
+                            {/* A legacy quick scan could carry a per-task
+                                priority; new scans never do (D234), so the
+                                badge renders only when one is present. */}
+                            {task.priority && <Badge className="bg-blue-600">{task.priority}</Badge>}
                             <span>{task.task}</span>
+                            {task.timeframe && <span className="text-slate-500">({task.timeframe})</span>}
                           </div>
                         ))}
                         {extractedFormData.suggested_initial_tasks.length > 3 && (
@@ -1756,15 +1735,12 @@ export default function ReferralIntake() {
                 <div>
                   <Label htmlFor="priority" className="flex items-center gap-2 mb-1.5">
                     Priority
-                    {extractedFormData?.urgency_level && (
-                      <Badge className="bg-emerald-100 text-emerald-700 text-xs">Suggested</Badge>
-                    )}
                   </Label>
                   <Select
                     value={newReferral.priority}
                     onValueChange={(value) => setNewReferral({ ...newReferral, priority: value })}
                   >
-                    <SelectTrigger id="priority" className={`h-10 ${extractedFormData?.urgency_level ? "border-emerald-300 bg-emerald-50" : ""}`}>
+                    <SelectTrigger id="priority" className="h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
