@@ -136,7 +136,7 @@ test('the web flag is a boolean: true and false validate, anything else refuses'
   assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',add_context_from_internet:'yes'},cfg()),e=>e.code==='INVALID_INPUT');
 });
 test('strict schema supports primitives and rejects unsupported semantics', () => {
-  for (const schema of [{type:'string',pattern:'anything'},{type:'object',$ref:'https://evil.test'},{type:'string',minLength:10,maxLength:2},{type:'array'}]) assert.throws(()=>validateSchema(schema));
+  for (const schema of [{type:'string',pattern:'anything'},{type:'object',$ref:'https://evil.test'},{type:'string',minLength:10,maxLength:2}]) assert.throws(()=>validateSchema(schema));
   const schema=validateSchema({type:'object',properties:{value:{type:'integer',minimum:0}},required:['value'],additionalProperties:false});
   assert.equal(conforms({value:2},schema),true);assert.equal(conforms({value:'2'},schema),false);assert.equal(conforms({value:2,other:true},schema),false);
 });
@@ -150,6 +150,30 @@ test('strict schema accepts a union of kinds and conforms per member (D228)', ()
   assert.equal(conforms({name:'MAC',days:'45'},schema),false);assert.equal(conforms({name:7,days:45},schema),false);
   assert.equal(conforms({name:'MAC',days:-1},schema),false);
   for (const bad of [{type:['string','date']},{type:['string','string']},{type:[]}]) assert.throws(()=>validateSchema({type:'object',properties:{value:bad}}));
+});
+test('itemless arrays validate and conform unchecked; items still checks elements (D231)', () => {
+  // Production finding, 2026-10-16: RegulatoryMonitor's schema declares
+  // compliance_check_updates as { type: 'array' } — valid JSON Schema the
+  // retired InvokeLLM accepted, refused UNSUPPORTED_SCHEMA here because
+  // items was treated as required. Absent (or explicitly undefined) items
+  // means any array conforms; present items keeps its element check.
+  const bare=validateSchema({type:'array'});
+  assert.equal(conforms(['a',1,true,null,{x:1},['nested']],bare),true);assert.equal(conforms('not-an-array',bare),false);assert.equal(conforms({},bare),false);
+  const undef=validateSchema({type:'array',items:undefined});
+  assert.equal(conforms([1,'two'],undef),true);
+  const checked=validateSchema({type:'array',items:{type:'string'}});
+  assert.equal(conforms(['a','b'],checked),true);assert.equal(conforms(['a',1],checked),false);
+  const monitor=validateSchema({type:'object',properties:{updates:{type:'array',items:{type:'object',properties:{title:{type:'string'},compliance_check_updates:{type:'array'}}}}},required:['updates']});
+  assert.equal(conforms({updates:[{title:'CoP update',compliance_check_updates:[{check_name:'Verify X'},'plain',7]}]},monitor),true);
+  assert.equal(conforms({updates:[{title:'CoP update',compliance_check_updates:'not-an-array'}]},monitor),false);
+});
+test('the schema node budget admits the measured real schemas and still bounds the pathological (D231)', () => {
+  // Referral extraction's real schema measures 203 nodes — three over the
+  // old 200 cap. The cap is 500 now; growth is nested objects, each under
+  // the separate 100-properties-per-object bound (widest real object: 35).
+  const wide=(branches,leaves)=>({type:'object',properties:Object.fromEntries(Array.from({length:branches},(_,i)=>[`section_${i}`,{type:'object',properties:Object.fromEntries(Array.from({length:leaves},(_,j)=>[`field_${j}`,{type:'string'}]))}]))});
+  validateSchema(wide(50,4)); // 251 nodes
+  assert.throws(()=>validateSchema(wide(100,5)),e=>e.code==='SCHEMA_TOO_COMPLEX'); // 601 nodes
 });
 test('text AI uses Anthropic directly without any Base44 Core request', async () => {
   const urls=[];const provider=createProviders(cfg(),{},async(url,options)=>{urls.push(url);const b=JSON.parse(options.body);assert.equal(b.model,cfg().model);return Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'});});

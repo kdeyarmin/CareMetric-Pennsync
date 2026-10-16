@@ -66,7 +66,8 @@ export function stable(value) {
 const SCHEMA_KEYS = ['type', 'description', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems'];
 const SCHEMA_TYPES = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'];
 export function validateSchema(schema, depth = 0, budget = { nodes: 0 }) {
-  if (depth > 12 || ++budget.nodes > 200) fail(400, 'SCHEMA_TOO_COMPLEX');
+  // Node cap 500 (raised from 200 under D231 — see backendHelpers.mjs).
+  if (depth > 12 || ++budget.nodes > 500) fail(400, 'SCHEMA_TOO_COMPLEX');
   exactObject(schema, SCHEMA_KEYS, 'UNSUPPORTED_SCHEMA');
   // A type is one kind or a union of kinds (D228): the ADR and clinical
   // document schemas name nullable fields ['string', 'null'] /
@@ -88,8 +89,14 @@ export function validateSchema(schema, depth = 0, budget = { nodes: 0 }) {
     if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') fail(400, 'UNSUPPORTED_SCHEMA');
     Object.values(properties).forEach(child => validateSchema(child, depth + 1, budget));
   } else if (['properties', 'required', 'additionalProperties'].some(key => Object.hasOwn(schema, key))) fail(400, 'UNSUPPORTED_SCHEMA');
-  if (schemaTypes.includes('array')) validateSchema(schema.items, depth + 1, budget);
-  else if (Object.hasOwn(schema, 'items')) fail(400, 'UNSUPPORTED_SCHEMA');
+  // An array may omit 'items' entirely: an itemless array is valid JSON
+  // Schema (any element is allowed) and Base44's InvokeLLM accepted it —
+  // the RegulatoryMonitor's compliance_check_updates is one, and a live
+  // production smoke on 2026-10-16 caught the hosted helper refusing that
+  // schema with UNSUPPORTED_SCHEMA. An explicit undefined reads as absent.
+  // The hosted helper (base44/_shared/backendHelpers.mjs) mirrors this.
+  if (schemaTypes.includes('array')) { if (schema.items !== undefined) validateSchema(schema.items, depth + 1, budget); }
+  else if (schema.items !== undefined) fail(400, 'UNSUPPORTED_SCHEMA');
   for (const { low, high, kinds } of [
     { low: 'minLength', high: 'maxLength', kinds: ['string'] },
     { low: 'minItems', high: 'maxItems', kinds: ['array'] },
@@ -116,7 +123,8 @@ export function conforms(value, schema) {
         && (Object.hasOwn(properties, key) ? conforms(child, properties[key]) : schema.additionalProperties !== false));
   }
   if (schema.type === 'array') return Array.isArray(value) && value.length >= (schema.minItems ?? 0)
-    && value.length <= (schema.maxItems ?? 100000) && value.every(child => conforms(child, schema.items));
+    && value.length <= (schema.maxItems ?? 100000)
+    && (schema.items === undefined || value.every(child => conforms(child, schema.items)));
   if (schema.type === 'string') return typeof value === 'string' && [...value].length >= (schema.minLength ?? 0) && [...value].length <= (schema.maxLength ?? 1000000);
   if (schema.type === 'boolean') return typeof value === 'boolean';
   return typeof value === 'number' && Number.isFinite(value) && (schema.type !== 'integer' || Number.isInteger(value))
