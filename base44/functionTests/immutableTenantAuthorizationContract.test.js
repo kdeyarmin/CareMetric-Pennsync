@@ -208,7 +208,7 @@ test('resolver source does not authorize from mutable custom User claims', async
     source,
     /user\.(?:account_type|agency_id|agency_name|agency_role|is_active|is_approved|is_manager|manager_email|staff_role|care_scope)\b/,
   );
-  assert.match(source, /console\.error\('getMyTenantContext failed'\)/);
+  assert.match(source, /console\.error\(`getMyTenantContext failed: \$\{error\.status\} \$\{error\.message\}`\)/);
   assert.doesNotMatch(source, /console\.error\([^)]*,\s*error\b/);
   assert.ok(
     source.indexOf("req.method !== 'POST'") < source.indexOf('createClientFromRequest('),

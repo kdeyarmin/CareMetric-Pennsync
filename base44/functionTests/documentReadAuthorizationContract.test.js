@@ -542,9 +542,9 @@ test('download signing fails closed, never logs capability details, and rechecks
     console.error = original;
   }
   assert.deepEqual(logged, [
-    ['getAuthorizedDocument failed'],
-    ['getAuthorizedDocument failed'],
-    ['getAuthorizedDocument failed'],
+    ['getAuthorizedDocument failed: 500 Error'],
+    ['getAuthorizedDocument failed: 500 Error'],
+    ['getAuthorizedDocument failed: 500 Error'],
   ]);
 
   const drift = await loadBroker('get', {
