@@ -84,7 +84,17 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // `EXPECTED_DOCUMENT` is the union, so what the document must hold is
 // unchanged apart from D229. What is bought back is the same
 // differential, live a fourth time.
-export const EXPECTED_NEW = Object.freeze([229]);
+//
+// Rewritten a fifth time on 2026-10-15, for the collection in hand,
+// which adds D230 and nothing else. It held [229] from the rewrite
+// above, and that list went INERT when #477 merged and 229 reached the
+// base, so the differential had stood down a fourth time. Nothing is
+// lost by this rewrite either: 229 is in `BASE_NUMBERS` below
+// (re-derived in this same change, the window the base paragraphs
+// describe) and `EXPECTED_DOCUMENT` is the union, so what the document
+// must hold is unchanged apart from D230. What is bought back is the
+// same differential, live a fifth time.
+export const EXPECTED_NEW = Object.freeze([230]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //
@@ -165,7 +175,15 @@ export const EXPECTED_NEW = Object.freeze([229]);
 // change that files the next entry — the two clocks the paragraphs above
 // keep separate, landing in one change because the change that owed the
 // re-derivation is also the next collection.
-const BASE_HIGHEST = 228;
+//
+// Re-derived a third time on 2026-10-15 from `origin/main` at `0c49826`,
+// where it had been `228 - 22 = 206`. What moved on the base branch: #477
+// merged, landing D229 and nothing else. D229 follows D228 directly, so the
+// base gained that one number and no absent one, and the twenty-two absent
+// numbers are unchanged. The window opened a fourth time and is closed
+// here, in the same change that files the next entry, exactly as the third
+// was.
+const BASE_HIGHEST = 229;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
   180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);
 for (const absent of BASE_ABSENT) {

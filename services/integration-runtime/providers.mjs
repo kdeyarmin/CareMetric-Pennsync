@@ -6,6 +6,19 @@ import { TELECOM_OPERATIONS, TELECOM_PROVIDER, sendTelecom, validateTelecomParam
 import { MAX_FILE, UUID, conforms, exactObject, fail, fileBytes, limitedBytes, readJson, text, validateSchema } from './safety.mjs';
 
 const FILE_URI = /^cmfile:([0-9a-f-]{36})$/i;
+// The web_search server tool (Wave 4, D230), identical to the hosted
+// helper's (base44/_shared/backendHelpers.mjs, directInvokeLLM) so both
+// paths honor add_context_from_internet the same way: max_uses bounds the
+// searches one call may run, the pause bound caps 'pause_turn' resumptions,
+// and a grounded answer — one encrypted result blob per source — reads under
+// a larger response cap than a plain one. A paused turn's segments are
+// accumulated rather than overwritten, the structured path's one prose
+// re-ask resumes under the same bound, and a plain grounded answer
+// appends the source URLs its text blocks cite (PR #478 review
+// corrections) — identical behavior to the helper's on all three.
+const WEB_SEARCH_TOOL = Object.freeze({ type: 'web_search_20250305', name: 'web_search', max_uses: 5 });
+const WEB_MAX_RESUMES = 3;
+const WEB_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 function requireFileUri(value) {
   const match = typeof value === 'string' && value.match(FILE_URI);
   if (!match || !UUID.test(match[1])) fail(400, 'PRIVATE_FILE_MIGRATION_REQUIRED');
@@ -31,7 +44,7 @@ export function validateParams(operation, params, config) {
     exactObject(params, ['prompt', 'model', 'response_json_schema', 'file_uris', 'add_context_from_internet']);
     text(params.prompt, 100000);
     if (Object.hasOwn(params, 'model') && (typeof params.model !== 'string' || !['automatic', config.model].includes(params.model))) fail(400, 'MODEL_MAPPING_REQUIRED');
-    if (params.add_context_from_internet !== undefined && params.add_context_from_internet !== false) fail(409, 'WEB_SEARCH_NOT_MIGRATED');
+    if (params.add_context_from_internet !== undefined && typeof params.add_context_from_internet !== 'boolean') fail(400, 'INVALID_INPUT');
     if (params.file_uris !== undefined && (!Array.isArray(params.file_uris) || params.file_uris.length > 3)) fail(400, 'INVALID_FILES');
     (params.file_uris || []).forEach(requireFileUri);
     if (Object.hasOwn(params, 'response_json_schema')) validateSchema(params.response_json_schema);
@@ -122,31 +135,62 @@ export function createProviders(config, store, fetcher = fetch) {
     for (const uri of params.file_uris || []) content.push(await loadDocument(uri, ctx));
     content.push({ type: 'text', text: params.prompt });
     const schema = params.response_json_schema;
+    const webSearch = params.add_context_from_internet === true;
     // The default model thinks adaptively and its thinking counts against
     // max_tokens, so the budget carries headroom beyond the answer itself.
     const body = { model: config.model, max_tokens: 16000, messages: [{ role: 'user', content }] };
+    const tools = [];
     if (schema) {
       // Requested, not forced: the 5.5 models reject tool_choice 'tool'/'any'
       // with a 400. One tool, an explicit instruction, and one more ask below
       // if the model answered in prose.
       body.system = 'Return your answer by calling the return_result tool exactly once with the complete result. Do not answer in plain text.';
-      body.tools = [{ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.',
-        input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } }];
+      tools.push({ name: 'return_result', description: 'Return the requested result; this tool does not execute actions.',
+        input_schema: { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false } });
       body.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
     }
+    // The server tool rides beside the client tool: tool_choice governs the
+    // client's return_result only, and the provider runs the searches inside
+    // the same turn either way (D230).
+    if (webSearch) tools.push({ ...WEB_SEARCH_TOOL });
+    if (tools.length) body.tools = tools;
     const callModel = async () => {
       const response = await fetcher('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'x-api-key': config.anthropicKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
         body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(90000),
       });
       if (!response.ok) fail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
-      const answer = await readJson(response, 2 * 1024 * 1024);
+      const answer = await readJson(response, webSearch ? WEB_MAX_RESPONSE_BYTES : 2 * 1024 * 1024);
       if (!Array.isArray(answer.content) || answer.stop_reason === 'max_tokens' || answer.stop_reason === 'refusal'
         || answer.content.some(block => block.type === 'refusal')) fail(502, 'AI_RESULT_INCOMPLETE');
       return answer;
     };
-    let result = await callModel();
-    if (schema && result.stop_reason === 'end_turn' && !result.content.some(block => block.type === 'tool_use')) result = await callModel();
+    // One logical call, however many provider responses it takes. A
+    // web-grounded turn can stop at 'pause_turn' when the provider's
+    // server-side search loop reaches its iteration cap; handing the
+    // answer back as the assistant turn resumes it, and every segment's
+    // content is accumulated — a resumed answer is its segments
+    // together, not the last segment alone. Bounded — a call still
+    // paused at the bound fails as incomplete rather than returning a
+    // half-searched answer as though it were whole.
+    const runCall = async () => {
+      let segment = await callModel();
+      const content = [...segment.content];
+      let stopReason = segment.stop_reason;
+      for (let resumes = 0; webSearch && stopReason === 'pause_turn' && resumes < WEB_MAX_RESUMES; resumes++) {
+        body.messages.push({ role: 'assistant', content: segment.content });
+        segment = await callModel();
+        content.push(...segment.content);
+        stopReason = segment.stop_reason;
+      }
+      if (webSearch && stopReason === 'pause_turn') fail(502, 'AI_RESULT_INCOMPLETE');
+      return { content, stop_reason: stopReason };
+    };
+    let result = await runCall();
+    // The one prose re-ask is a call like any other and goes through
+    // runCall: a re-ask that pauses mid-search resumes under the same
+    // bound instead of failing as a schema mismatch.
+    if (schema && result.stop_reason === 'end_turn' && !result.content.some(block => block.type === 'tool_use')) result = await runCall();
     if (schema) {
       const tools = result.content.filter(block => block.type === 'tool_use');
       if (result.stop_reason !== 'tool_use' || tools.length !== 1 || tools[0].name !== 'return_result'
@@ -155,9 +199,20 @@ export function createProviders(config, store, fetcher = fetch) {
       return tools[0].input.result;
     }
     if (result.stop_reason !== 'end_turn') fail(502, 'AI_RESULT_INCOMPLETE');
-    const answer = result.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
-    if (!answer.trim()) fail(502, 'AI_RESULT_EMPTY');
-    return answer;
+    const textBlocks = result.content.filter(block => block.type === 'text');
+    const answerText = textBlocks.map(block => block.text).join('\n');
+    if (!answerText.trim()) fail(502, 'AI_RESULT_EMPTY');
+    // A grounded answer's sources ride in its text blocks' citations,
+    // not in the text itself; the cited URLs the text does not already
+    // name are appended as a source list rather than dropped.
+    const citedUrls = [];
+    for (const block of textBlocks) {
+      for (const citation of block.citations || []) {
+        if (citation && citation.type === 'web_search_result_location' && typeof citation.url === 'string'
+          && citation.url && !citedUrls.includes(citation.url) && !answerText.includes(citation.url)) citedUrls.push(citation.url);
+      }
+    }
+    return citedUrls.length ? answerText + '\n\nSources:\n' + citedUrls.map(url => '- ' + url).join('\n') : answerText;
   }
   return async function provide(operation, params, ctx) {
     validateParams(operation, params, config);

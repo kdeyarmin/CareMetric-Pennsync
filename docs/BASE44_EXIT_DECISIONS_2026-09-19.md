@@ -14984,3 +14984,96 @@ waits on, because a runtime InvokeLLM that cannot accept a hosted
 file URL cannot serve this broker's file calls at all, while the key
 is a function secret the hosted side already holds. Recorded as
 measured, not as predicted: the queue reads `port queue: entity_authorization=5 files=17 external_secret=2 none=82`.
+
+## D230 — Web context is the provider's own search tool, on both direct paths at once (2026-10-15)
+
+Wave 4 of the direct-AI migration (D223's sequence), the web-context
+class. `add_context_from_internet: true` no longer meets the
+`WEB_SEARCH_NOT_MIGRATED` refusal in either implementation of the
+direct contract: the shared helper (`directInvokeLLM`) and the owned
+runtime (`services/integration-runtime/providers.mjs`) both put
+Anthropic's `web_search` server tool (`web_search_20250305`,
+`max_uses: 5`) on the Messages request, so the provider runs the
+searches inside the same turn and the answer returns in the shapes
+callers already consume — the concatenated text, or the unwrapped
+`return_result` object when a schema is passed. The three frontend
+components that pass the flag ride the Wave-3 broker unchanged
+(D229): the broker never held a refusal of its own, so the helper's
+new answer is theirs without a line of `src/` moving. The code
+`WEB_SEARCH_NOT_MIGRATED` survives only in dated prose; the one
+refusal the flag still meets is a non-boolean value, which is
+`INVALID_INPUT` (400) on both paths, as any other malformed
+parameter is.
+
+**The schema-and-web combination is supported, and the census is
+what decided it.** The class this wave exists for (A3) is DEFINED
+as structured + web: `syncCMSRegulations`, the wave's named
+migration, passes a `response_json_schema` and the flag together.
+Refusing the combination would have left the wave's own target
+un-migratable, so the two tools ride in one tools array — the
+client `return_result` and the server `web_search` — and
+`tool_choice: 'auto'` governs the client tool only, the provider
+running its searches inside the same turn regardless. The
+structured path's existing disciplines carry over untouched: the
+conformance check, the one prose re-ask, the schema-mismatch
+refusal. `syncCMSRegulations` itself swaps one line — platform
+`InvokeLLM` with its `gemini_3_1_pro` pin becomes the helper with
+`claude-sonnet-5-5` and the flag — and keeps its admin gate, its
+prompt and schema verbatim, its `RegulatoryUpdate` writes and its
+`UserActivity` trail, and its response shape. Its blocker stays
+`records_schema` and its disposition stays `port`; the queue does
+not move: `port queue: entity_authorization=5 files=17 external_secret=2 none=82`, functions still 304.
+
+**A searched turn can pause, and a half-searched answer is never
+returned as a whole one.** The provider's server-side search loop
+can stop a turn at `pause_turn`; both implementations hand the
+answer back as the assistant turn and resume, bounded at three, and
+a call still paused at the bound fails `AI_RESULT_INCOMPLETE`
+(502) — the same posture as a `max_tokens` stop, for the same
+reason. `max_uses` is a softer bound by the provider's own design:
+a model that reaches it answers with what it has rather than
+failing, which is why five is a cost bound and not a correctness
+one. Grounded answers carry one encrypted result blob per source,
+so a web call reads its response under an 8 MB cap where a plain
+call keeps 2 MB; the file layer's SSRF allowlist is untouched,
+because the tool executes on the provider's side and no URL is
+fetched from here. The helper's provenance line marks a
+web-grounded call with `web_search_requests` and totals the token
+usage of every response behind a resumed call.
+
+**What this wave deliberately did not do.** The dark external
+transport (`src/lib/externalIntegrationTransport.js`) still denies
+the flag in its own validation: it is not the frontend's vehicle
+(D229), and teaching it web search is the file-layer port's
+business, not this wave's — recorded so its denial is not misread
+as a second refusal on the live path. And `pennsync-api`'s
+`syncCMSRegulations` stays paused under its own
+`WEB_SEARCH_RELEASE_PAUSED` guard. The provider that guard waited
+on now exists in the runtime it calls, but its `REGULATION_MODEL`
+still names `gemini_3_1_pro`, which the runtime refuses — deleting
+the guard alone would restore nothing, and changing the constant
+is that track's release decision, not this wave's. The parity
+cross-check narrows accordingly: it now pins the model pin as the
+exception's whole remainder, where before it pinned the pair.
+
+**Addendum (PR #478 review, 2026-10-15).** Review of the wave's
+pull request found three places where the implementations did not
+yet do what this decision records, and all three are corrected on
+both paths. A resumed turn's answer is its segments together: the
+resumption kept only the final segment's content, discarding text
+a turn had already emitted before pausing, so accumulation — not
+replacement — is now the rule inside one logical call. The
+structured path's one prose re-ask is a call like any other: it
+previously went back to the provider bare, so a re-ask that paused
+mid-search failed `AI_RESULT_SCHEMA_MISMATCH`; it now runs under
+the same bounded resumption and fails `AI_RESULT_INCOMPLETE` if
+it never unpauses. And a plain grounded answer keeps its sources:
+Anthropic carries them as citations on the text blocks, not in the
+text, so the cited URLs the text does not already name are
+appended as a `Sources:` list — the platform integration's
+grounded text carried its URLs inline, and dropping them would
+have left plain web answers, which the broker serves, with no
+provenance at all. The structured shape is unchanged: there the
+model itself fills the schema's source fields from what it read.
+Contract tests pin all three behaviors in the helper, broker, and
+runtime suites.

@@ -1372,17 +1372,24 @@ test('every ported model call is one the owned runtime will actually accept', as
    *
    * ONE capability is a known exception and it is named here with its reason
    * rather than excluded: `syncCMSRegulations` sends `gemini_3_1_pro` and
-   * `add_context_from_internet: true`, and the runtime refuses both —
+   * `add_context_from_internet: true`, and the runtime refused both —
    * `MODEL_MAPPING_REQUIRED` and `WEB_SEARCH_NOT_MIGRATED`.
    *
-   * **Its search leg is now paused by name** (`WEB_SEARCH_RELEASE_PAUSED`,
-   * raised before the model is reached; `cms-regulations.test.mjs` proves it),
-   * so no caller reaches those params today. They are kept as the original
-   * wrote them rather than edited down to match the pause, because restoring
-   * the capability when a web search provider exists is deleting one guard.
-   * That is exactly why this check has to stay: the constants are still there
-   * to be un-paused, and the runtime still refuses them, so the pairing is the
-   * only thing recording that the two do not fit.
+   * **Wave 4 (D230) closed the web half of the exception**: the runtime now
+   * honors the flag with Anthropic's web_search server tool, identically to
+   * the hosted helper, so the params below validate in full when the
+   * operator's configured model is the pinned name. What remains is the
+   * model half alone: under any real configuration the pinned
+   * `gemini_3_1_pro` is still refused, by name.
+   *
+   * **Its search leg stays paused by name** (`WEB_SEARCH_RELEASE_PAUSED`,
+   * raised before the model is reached; `cms-regulations.test.mjs` proves
+   * it), so no caller reaches those params today. Un-pausing is now a
+   * pennsync-api decision rather than a missing provider — and deleting the
+   * guard alone would still not restore the capability while the model
+   * constant names one the runtime refuses. That is exactly why this check
+   * has to stay: the constants are still there to be un-paused, the model
+   * still does not fit, and the pairing is the only thing recording it.
    */
   const directory = resolve(repository, 'services/pennsync-api');
   const modules = (await readdir(directory)).filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));
@@ -1428,12 +1435,14 @@ test('every ported model call is one the owned runtime will actually accept', as
   };
   for (const [configured, code] of [
     ['claude-sonnet-4', 'MODEL_MAPPING_REQUIRED'],
-    // Even if an operator named that model, the web search is refused after it.
-    [REGULATION_MODEL, 'WEB_SEARCH_NOT_MIGRATED'],
   ]) {
     assert.throws(() => validateParams('InvokeLLM', params, { model: configured, anthropicKey: 'k' }),
       error => error.code === code, `${configured} -> ${code}`);
   }
+  // And if an operator named that model, nothing else refuses the call any
+  // more: Wave 4 taught the runtime the web search the flag asks for, so
+  // the web half of this exception is closed and only the model pin is left.
+  validateParams('InvokeLLM', params, { model: REGULATION_MODEL, anthropicKey: 'k' });
 
   // And every other port's model IS accepted, so the exception above is the
   // whole of it rather than the first one somebody happened to look at.

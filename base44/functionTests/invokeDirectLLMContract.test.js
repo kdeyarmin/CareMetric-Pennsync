@@ -237,9 +237,9 @@ test('the helper validation refusals keep their codes and statuses', async () =>
   assert.equal(badSchema.status, 400);
   assert.equal(badSchema.data.error, 'UNSUPPORTED_SCHEMA');
 
-  const web = await call({ prompt: 'Search first.', add_context_from_internet: true });
-  assert.equal(web.status, 409);
-  assert.equal(web.data.error, 'WEB_SEARCH_NOT_MIGRATED');
+  const badWebFlag = await call({ prompt: 'Search first.', add_context_from_internet: 'yes' });
+  assert.equal(badWebFlag.status, 400);
+  assert.equal(badWebFlag.data.error, 'INVALID_INPUT');
 
   const unknownModel = await call({ prompt: 'Hi.', model: 'gpt-4o' });
   assert.equal(unknownModel.status, 400);
@@ -280,6 +280,56 @@ test('structured and file-based happy paths reach the provider and return its an
   assert.ok(document, 'the fetched file reached the provider as a document block');
   assert.equal(document.source.media_type, 'application/pdf');
   assert.equal(Buffer.from(document.source.data, 'base64').toString('utf8'), Buffer.from(PDF_BYTES).toString('utf8'));
+});
+
+test('a web-grounded call rides the broker and returns the grounded answer', async () => {
+  // Wave 4 (D230): the broker passes the flag through to the helper, whose
+  // request carries the web_search server tool; the grounded text comes
+  // back as the plain string the frontend wrappers already return.
+  const webModel = fakeModel({
+    script: async () => new Response(JSON.stringify({
+      content: [
+        { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'CMS home health updates' } },
+        {
+          type: 'web_search_tool_result', tool_use_id: 'srv_1',
+          content: [{ type: 'web_search_result', title: 'CMS', url: 'https://www.cms.gov/example', encrypted_content: 'blob' }],
+        },
+        { type: 'text', text: 'Grounded answer.' },
+      ],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 3, output_tokens: 2, server_tool_use: { web_search_requests: 1 } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  });
+  const runtime = createRuntime({ model: webModel });
+  runtime.addUser('nurse');
+  const ok = await runtime.call({ user: 'nurse', body: { prompt: 'Search first.', add_context_from_internet: true } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data, 'Grounded answer.');
+  assert.equal(webModel.calls.length, 1);
+  assert.deepEqual(webModel.calls[0].tools, [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }]);
+  const [entry] = provenance(runtime).filter((line) => line.outcome === 'ok');
+  assert.equal(entry.actor_email, 'nurse@agency.test');
+});
+
+test('a web-grounded plain answer keeps the sources its text cites', async () => {
+  // The citation URL rides in the text block's citations, not in its
+  // text; the helper appends the ones the text does not name and the
+  // broker returns that string untouched (PR #478 review).
+  const webModel = fakeModel({
+    script: async () => new Response(JSON.stringify({
+      content: [
+        { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'CMS home health updates' } },
+        { type: 'text', text: 'The rule changed.', citations: [{ type: 'web_search_result_location', url: 'https://www.cms.gov/example', title: 'CMS', encrypted_index: 'e1' }] },
+      ],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 3, output_tokens: 2, server_tool_use: { web_search_requests: 1 } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  });
+  const runtime = createRuntime({ model: webModel });
+  runtime.addUser('nurse');
+  const ok = await runtime.call({ user: 'nurse', body: { prompt: 'Search first.', add_context_from_internet: true } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data, 'The rule changed.\n\nSources:\n- https://www.cms.gov/example');
 });
 
 test('a provider throttle passes through at 429 so the frontend rate-limit path keys on it', async () => {

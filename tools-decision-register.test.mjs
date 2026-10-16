@@ -248,7 +248,7 @@ test('the git helper can carry this document, and a skip means an absent ref and
 // believed because it is written down is this file's whole subject, so the
 // guards get the same treatment as the predicate: sabotage, and watch it refuse.
 //
-// The arithmetic `228 - 22 = 206` cannot fail on its own — the base is DERIVED
+// The arithmetic `229 - 22 = 207` cannot fail on its own — the base is DERIVED
 // as the range minus the absent list — so what the guards catch is the two
 // typos that would make the derivation quietly produce a larger base than the
 // list reads: an absent number outside the range, which removes nothing, and a
@@ -269,7 +269,7 @@ test('the base refuses the two typos that would silently enlarge it', async () =
     'the unmutated copy does not load to the same base, so a refusal below proves nothing');
 
   const CASES = [
-    ['outside-the-range', '225]', '325]', /outside 1\.\.228/],
+    ['outside-the-range', '225]', '325]', /outside 1\.\.229/],
     ['repeated', ', 216,', ', 214,', /repeats a number/],
   ];
   for (const [name, from, to, message] of CASES) {
@@ -291,7 +291,7 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // removed rather than renumbered — a figure that was wrong within the night of
 // being typed is not made safe by being corrected. So the base pin no longer
 // guards prose. What it guards is the module's own dated paragraph and this
-// file's sabotage range `1..228`: both say what the lists are, neither is
+// file's sabotage range `1..229`: both say what the lists are, neither is
 // derived from them, and a silent re-derivation makes all three disagree.
 //
 // The collection figure no longer guards a sentence describing the design, and
@@ -335,16 +335,23 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // the module's own paragraphs predict), and **the list has been rewritten a
 // fourth time, for D229, so the two have diverged again** — the third
 // assertion is independent at this reading too, and its message says so.
+//
+// **And once more.** #477 merged, the base grew to hold 229, and the two
+// converged a fourth time; the base was re-derived in the change that files
+// D230 (207, the same window closed the same way), and **the list has been
+// rewritten a fifth time, for D230, so the two have diverged again** — the
+// third assertion is independent at this reading too, and its message says
+// so.
 test('the figures quoted in prose are the figures the lists hold', () => {
-  assert.equal(REAL_BASE_NUMBERS.length, 206,
+  assert.equal(REAL_BASE_NUMBERS.length, 207,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D229 alone, pending, so live until its collection '
+    'the collection figure: D230 alone, pending, so live until its collection '
     + "merges and the list goes inert, and the figure is quoted in the module's "
     + 'rewrite note, which attributes it to this pass');
-  assert.equal(EXPECTED_DOCUMENT.length, 207,
-    'the union: the base figure plus D229, which is not on the base yet, so this '
+  assert.equal(EXPECTED_DOCUMENT.length, 208,
+    'the union: the base figure plus D230, which is not on the base yet, so this '
     + 'assertion is independent of the first while the collection is pending — the '
     + 'divergence the comment above this test describes. It still catches a union '
     + 'built as a concatenation, which neither other assertion would.');
