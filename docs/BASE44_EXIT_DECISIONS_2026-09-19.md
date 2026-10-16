@@ -15202,3 +15202,83 @@ now fails a suite instead of a scan. The voicemail download's
 existing pin, which had asserted the retired mode on the wire, was
 updated to the new one in the same change, and its failure table
 gained the `302` case the refusal exists for.
+
+## D233 — A referral document's MRN is the sending facility's, never ours (2026-10-16)
+
+**The rule, from the owner.** Do not pull the MRN from a referral.
+The number printed on a referral packet — "13383" on a Heritage
+Ridge SNF packet is the worked example — is the SENDING facility's
+medical record number, assigned by that facility's record system
+for its own chart. It is not PennSync's number: MatrixCare, the
+EMR, assigns PennSync's own MRN when a chart is ours. Copying the
+document's number into a PennSync chart, or matching on it as
+though the two were one quantity, manufactures a second MRN for a
+patient and invites staff to track both. So the document MRN is
+not data: it is never requested, never carried, and never compared.
+The Patient entity's `medical_record_number` field is untouched —
+it holds the MatrixCare-assigned number, and everything that reads
+or displays OUR patients' MRN stays exactly as it was.
+
+**The census.** Every path by which a document-sourced MRN could
+reach a chart was read and closed, in four groups. (1) The model
+was ASKED for it: `extractClinicalDocument`'s prompt template and
+response schema carried a `patient.medical_record_number` field,
+`matchPatientWithAI` scored "MRN match = DEFINITIVE" and returned
+a `field_matches.mrn_match`, and `analyzeReferral`'s
+`match_patient` prompt awarded the Medical Record Number 15 points
+and pasted the raw referral demographics — MRN included — into the
+prompt. All three are removed at the source; the two matcher
+prompts now sanitize the referral demographics before they are
+stringified, so a legacy stored analysis carrying the key cannot
+re-introduce it. (2) The readiness choke point folded it in:
+`referralPatientReadiness` built its identifiers with a
+`medical_record_number` entry and counted an MRN toward identity
+sufficiency ("DOB, MRN, phone, or address"), and every consumer
+that builds a chart from those identifiers — ReferralIntake's
+auto-create and review-create payloads, ReferralProcessor's
+readiness call, DocumentToTriageMapper's chart write, and
+ReferralTriage's create payload — wrote it onward. The entry and
+the writes are gone; a new chart's MRN field is simply left unset
+for MatrixCare to assign. ReferralIntake also carried a merge that
+copied the extracted MRN onto a MATCHED chart to "fill a missing
+MRN" — the worst of the set, since it wrote a foreign number onto
+an existing chart — removed outright, matcher and linking
+unchanged. (3) Matching compared it: `documentPatientMatch`
+treated a differing document MRN as a HARD conflict against the
+chart's own MRN, so a correct referral could be refused for
+carrying the sending facility's number; the comparison and the
+conflict are deleted, and matching rests on name and DOB as it
+already did for every other field. (4) The UI displayed it as
+though it were a fact about the referral: PatientMatchReview's
+referral-side "Medical Record #" and DocumentIngestionUploader's
+extraction preview. The referral-side line now reads N/A — a
+referral has no PennSync MRN — and the preview row is gone.
+
+**The defensive ignore.** Closing the requests does not retire the
+data already in flight: a model can still volunteer the field, and
+stored analyses written before this change still carry it. So the
+choke points ignore it rather than merely not asking.
+`referralPatientReadiness` drops `medical_record_number`/`mrn`
+even when the input analysis carries them — an MRN alone no longer
+satisfies the identity bar, and the identifiers it returns have no
+MRN key for any caller to write — and the mapper and triage create
+paths take their patient fields from those identifiers, so the
+ignore holds end to end. What deliberately stays, each because it
+is OUR number rather than the document's: the existing patients'
+own `medical_record_number` values the two LLM matcher prompts
+pass as context about PennSync charts (context, never a comparison
+input — the criterion that consumed it is deleted), the broker's
+chart-MRN reads, the chart-vs-chart duplicate tooling, and every
+display of a matched patient's own MRN.
+
+**The pins.** A hostile payload is the test, at each layer: the
+readiness suite feeds an analysis whose only identifier is an MRN
+and one carrying an MRN beside a real identifier, and asserts the
+first is not ready and the second's identifiers hold no MRN key;
+the matching suite asserts a differing document MRN cannot conflict
+and cannot block a name+DOB match; and two end-to-end specs drive a
+Heritage Ridge-shaped extraction carrying `13383` under both keys
+through DocumentToTriageMapper and through the ReferralTriage
+create flow, asserting the created chart has no
+`medical_record_number` property and the value appears nowhere in
+the payload.
