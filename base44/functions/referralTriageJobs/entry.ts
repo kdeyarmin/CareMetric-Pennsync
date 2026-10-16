@@ -1276,7 +1276,14 @@ Return ONLY valid JSON, no markdown or explanation.`;
 }
 
 const SSN_SHAPED = /\b\d{3}-\d{2}-\d{4}\b/g;
-const MRN_MENTION = /\bMRN\s*[:#]?\s*\d+\b/gi;
+// Bounded label/value rule: an MRN label (MRN, Medical Record Number/No.,
+// medical_record_number) followed by a bounded alphanumeric value that
+// contains at least one digit. Label-anchored and digit-requiring so
+// ordinary narrative numbers (doses, dates, room numbers) and a bare
+// mention of the field ("MRN field left blank") are never masked, while
+// labeled values the old numeric-only pattern missed — "Medical Record
+// Number: 13383", "MRN: AB13383" — are.
+const MRN_MENTION = /\b(?:MRN|Medical\s+Record\s+(?:Number|No\.?)|medical_record_number)\s*[:#]?\s*[A-Za-z0-9-]*\d[A-Za-z0-9-]{0,24}/gi;
 
 /**
  * D233 + D234, applied to everything the synthesis answer carries before it
@@ -1319,7 +1326,11 @@ function complianceEntry(value: unknown) {
  * as an absent row staff cannot see. Face-to-face timing is the one element
  * that can be computed exactly: when both dates parse, the 90-days-before
  * to 30-days-after window decides, and the model's prose is replaced by the
- * computed evidence.
+ * computed evidence. Timing defaults to missing BEFORE any date math: when
+ * either date is missing or unparseable there is no window to compute, so a
+ * model verdict of satisfied must never carry the element — defaulting
+ * first keeps the timing documentation request in the missing-items packet
+ * instead of letting a confident summary suppress it.
  */
 function normalizeCompliance(analysis: Record<string, any>) {
   const source = plainObject(analysis.medicare_compliance) ? analysis.medicare_compliance : {};
@@ -1327,7 +1338,17 @@ function normalizeCompliance(analysis: Record<string, any>) {
   for (const key of COMPLIANCE_KEYS) checklist[key] = complianceEntry(source[key]);
   const f2f = Date.parse(String(analysis.face_to_face_date || ''));
   const soc = Date.parse(String(analysis.start_of_care_date || ''));
-  if (Number.isFinite(f2f) && Number.isFinite(soc)) {
+  if (!Number.isFinite(f2f) || !Number.isFinite(soc)) {
+    const missingDates = !Number.isFinite(f2f) && !Number.isFinite(soc)
+      ? 'Neither the face-to-face encounter date nor the start-of-care date is documented'
+      : !Number.isFinite(f2f)
+        ? 'No face-to-face encounter date is documented'
+        : 'No start-of-care date is documented';
+    checklist.face_to_face_timing = {
+      status: 'missing',
+      evidence: `${missingDates}, so the 90-days-before to 30-days-after window (42 CFR 424.22) cannot be verified.`,
+    };
+  } else {
     const days = Math.round((f2f - soc) / 86_400_000);
     const within = days >= -90 && days <= 30;
     checklist.face_to_face_timing = {
