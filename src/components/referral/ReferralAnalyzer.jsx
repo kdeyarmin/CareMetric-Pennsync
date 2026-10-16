@@ -12,8 +12,6 @@ import {
   Calendar,
   XCircle,
   AlertCircle,
-  TrendingUp,
-  Brain,
   ShieldCheck,
   ShieldAlert,
   FileText
@@ -51,7 +49,7 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
 
   // Monotonic run id: a new referral (or retry) supersedes any in-flight call,
   // so a slower earlier response can never display — or report via
-  // onAnalysisComplete — the PREVIOUS referral's urgency/risk analysis as if it
+  // onAnalysisComplete — the PREVIOUS referral's risk analysis as if it
   // belonged to the current one.
   const runIdRef = useRef(0);
   // The referralData object currently being analyzed. StrictMode's double-run
@@ -100,7 +98,8 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
 NON-NEGOTIABLE GROUNDING RULES:
 - Base EVERY statement only on the Referral Data below (plus the deterministic pre-check). Never invent demographics, diagnoses, codes, medications, dates, findings, or history.
 - Information that is absent is MISSING — report it in missing_information instead of assuming a typical value. Before listing a field as missing, confirm it is actually absent from the Referral Data.
-- Risk flags, urgency factors, and the patient summary may only reference documented findings — no textbook-typical risks the referral doesn't support.
+- Risk flags and the patient summary may only reference documented findings — no textbook-typical risks the referral doesn't support.
+- Do NOT assign an urgency score or a priority level: PennSync referrals carry no urgency level (D234). State scheduling needs as timeframes, never as priorities.
 - Visit estimates are planning estimates: when the referral documents too little for a discipline, omit that estimate rather than guessing, and set confidence accordingly.
 
 1. MISSING INFORMATION ANALYSIS:
@@ -108,33 +107,27 @@ NON-NEGOTIABLE GROUNDING RULES:
    - Flag critical missing information (e.g., physician orders, diagnosis, contact info)
    - List nice-to-have information that would improve care planning
 
-2. URGENCY SCORING (0-100 scale):
-   - Clinical urgency based on diagnosis, recent hospitalization, symptoms
-   - Administrative urgency based on requested start date, insurance requirements
-   - Overall urgency score and priority level (STAT/High/Medium/Low)
-   - Reasoning for the urgency rating
-
-3. SCHEDULING RECOMMENDATIONS:
+2. SCHEDULING RECOMMENDATIONS:
    - Ideal timeframe for first visit (e.g., within 24 hours, within 3 days)
    - Suggested visit frequency based on diagnosis and orders
    - Special scheduling considerations (e.g., needs wound care specialist, interpreter needed)
    - Estimated visit duration for first assessment
 
-4. RISK FLAGS:
+3. RISK FLAGS:
    - Clinical risks (fall risk, cognitive impairment, multiple comorbidities)
    - Social risks (lives alone, no caregiver support, language barrier)
    - Safety concerns (home environment, compliance issues)
 
-5. NURSE SKILL REQUIREMENTS:
+4. NURSE SKILL REQUIREMENTS:
    - Required certifications or specializations
    - Experience level needed
    - Special skills (e.g., PICC line care, ventilator management)
 
-6. PATIENT SUMMARY:
+5. PATIENT SUMMARY:
    - A concise clinical snapshot (3-5 sentences) an intake nurse could read in report: who the patient is, why they were referred, key active conditions, functional status, and home support
    - Key active conditions as a short list
 
-7. VISIT UTILIZATION ESTIMATE (planning-grade — a clinician confirms at SOC):
+6. VISIT UTILIZATION ESTIMATE (planning-grade — a clinician confirms at SOC):
    - If the referral ORDERS explicit visit frequencies, restate them exactly in suggested_frequency (ordered frequencies are authoritative — never change them)
    - Otherwise estimate: skilled nursing visits for days 1-30 and days 31-60, and PT/OT/ST/MSW/aide visits for the 60-day episode, based on diagnosis acuity, wound care burden, medication teaching needs, and rehab potential
    - Give a week-by-week frequency in standard home-health notation (e.g. "SN 3w2, 2w2, 1w5; PT 2w4") with the clinical rationale
@@ -169,17 +162,6 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
                   }
                 },
                 data_completeness_score: { type: "number" }
-              }
-            },
-            urgency_analysis: {
-              type: "object",
-              properties: {
-                clinical_urgency_score: { type: "number" },
-                administrative_urgency_score: { type: "number" },
-                overall_urgency_score: { type: "number" },
-                priority_level: { type: "string", enum: ["STAT", "High", "Medium", "Low"] },
-                urgency_factors: { type: "array", items: { type: "string" } },
-                reasoning: { type: "string" }
               }
             },
             scheduling_recommendations: {
@@ -391,26 +373,6 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
     );
   }
 
-  const getPriorityColor = (level) => {
-    // Case-insensitive via Referral.priority mapping so "high"/"HIGH"/"High"
-    // and STAT/CRITICAL share the same banner.
-    switch (String(level || '').trim().toLowerCase()) {
-      case "stat":
-      case "critical":
-      case "urgent":
-        return "bg-red-600 text-white";
-      case "high":
-        return "bg-orange-500 text-white";
-      case "medium":
-      case "normal":
-        return "bg-yellow-500 text-white";
-      case "low":
-        return "bg-green-500 text-white";
-      default:
-        return "bg-slate-500 text-white";
-    }
-  };
-
   const getSeverityColor = (severity) => {
     switch (String(severity || '').trim().toLowerCase()) {
       case "high":
@@ -471,29 +433,9 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
           deterministic, never AI-generated */}
       <DiagnosisCodeGenerator referralData={referralData} />
 
-      {/* Urgency Header — only when the model actually returned an urgency
-          analysis, so a partial response can't render "Priority: undefined" */}
-      {analysis.urgency_analysis && (
-        <Alert className={`border-2 ${['stat', 'critical', 'urgent', 'high'].includes(String(analysis.urgency_analysis?.priority_level || '').trim().toLowerCase()) ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}>
-          <TrendingUp className="w-5 h-5" />
-          <AlertDescription>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-lg mb-1">
-                  Referral Priority: <Badge className={getPriorityColor(analysis.urgency_analysis?.priority_level)}>
-                    {analysis.urgency_analysis?.priority_level}
-                  </Badge>
-                </p>
-                <p className="text-sm">Urgency Score: {analysis.urgency_analysis?.overall_urgency_score}/100</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-600">Clinical: {analysis.urgency_analysis?.clinical_urgency_score}</p>
-                <p className="text-xs text-slate-600">Administrative: {analysis.urgency_analysis?.administrative_urgency_score}</p>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* No urgency header (D234): referrals carry no analyzer-assigned
+          urgency or priority level, so a stored legacy analysis's
+          urgency_analysis is never rendered. */}
 
       {/* Face-to-Face (F2F) validation — deterministic, referral-only */}
       {f2fAlert}
@@ -684,36 +626,6 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
         </CardContent>
       </Card>
 
-      {/* Urgency Reasoning */}
-      {analysis.urgency_analysis && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Brain className="w-5 h-5 text-blue-600" />
-            AI Urgency Analysis
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="bg-blue-50 p-3 rounded border border-blue-200">
-            <p className="text-sm text-slate-900">{analysis.urgency_analysis?.reasoning}</p>
-          </div>
-
-          {analysis.urgency_analysis?.urgency_factors?.length > 0 && (
-            <div>
-              <p className="text-sm font-semibold text-slate-900 mb-2">Key Urgency Factors:</p>
-              <ul className="space-y-1">
-                {analysis.urgency_analysis?.urgency_factors.map((factor, idx) => (
-                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
-                    <span className="text-blue-600 mt-0.5">•</span>
-                    <span>{factor}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      )}
     </div>
   );
 }

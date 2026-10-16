@@ -124,7 +124,17 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // describe) and `EXPECTED_DOCUMENT` is the union, so what the document
 // must hold is unchanged apart from D233. What is bought back is the
 // same differential, live an eighth time.
-export const EXPECTED_NEW = Object.freeze([233]);
+//
+// Rewritten a ninth time on 2026-10-16, for the collection in hand,
+// which adds D234 and nothing else. It held [233] from the rewrite
+// above, and that list went INERT when #481 merged and 233 reached the
+// base, so the differential had stood down an eighth time. Nothing is
+// lost by this rewrite either: 233 is in `BASE_NUMBERS` below
+// (re-derived in this same change, the window the base paragraphs
+// describe) and `EXPECTED_DOCUMENT` is the union, so what the document
+// must hold is unchanged apart from D234. What is bought back is the
+// same differential, live a ninth time.
+export const EXPECTED_NEW = Object.freeze([234]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //
@@ -238,15 +248,13 @@ export const EXPECTED_NEW = Object.freeze([233]);
 // closed here, in the same change that files the next entry, exactly as
 // the sixth was.
 //
-// Re-derived a seventh time on 2026-10-16 from `origin/main` at `17bd7572`,
-// where it had been `232 - 22 = 210`. What moved on the base branch: #481
-// merged, landing D233 and nothing else. D233 follows D232 directly, so
-// the base gained that one number and no absent one, and the twenty-two
-// absent numbers are unchanged. The window opened an eighth time and is
-// closed here, in a change that files no new entry: the list above is not
-// rewritten a ninth time and [233] goes inert where it stands — the two
-// clocks landing apart, as they did in the re-derivation that followed
-// #472 — and the next collection rewrites it.
+// Re-derived a seventh time on 2026-10-16 from `origin/main` at
+// `17bd757`, where it had been `232 - 22 = 210`. What moved on the base
+// branch: #481 merged, landing D233 and nothing else. D233 follows D232
+// directly, so the base gained that one number and no absent one, and
+// the twenty-two absent numbers are unchanged. The window opened an
+// eighth time and is closed here, in the same change that files the
+// next entry, exactly as the seventh was.
 const BASE_HIGHEST = 233;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
   180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);

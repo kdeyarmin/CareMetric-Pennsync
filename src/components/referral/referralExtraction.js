@@ -4,7 +4,8 @@
  * The app extracts referral data in two passes that previously duplicated their
  * prompts/schemas inline at the call sites:
  *   1. A quick categorization scan at upload time (ReferralIntake) for instant
- *      form pre-population, urgency triage, and suggested tasks.
+ *      form pre-population and suggested tasks. (It carried an urgency triage
+ *      until D234: referrals carry no analyzer-assigned urgency level.)
  *   2. The full, OASIS-grade clinical extraction at processing time
  *      (ReferralPDFSummarizer).
  *
@@ -764,11 +765,11 @@ export function runReferralExtraction(invoke, { fileUrl, fileType = "application
 // Quick categorization scan (ReferralIntake upload)
 // ---------------------------------------------------------------------------
 
-/** Lightweight prompt for fast form pre-population + urgency triage at upload. */
+/** Lightweight prompt for fast form pre-population at upload. */
 export function buildReferralQuickScanPrompt() {
   return `Analyze this referral document and extract key information with automatic categorization.
 
-GROUNDING: Extract only what this document states — leave any field empty/omitted when it is not documented. ICD-10 codes only as printed in the document, never inferred from a diagnosis name. Urgency ratings and suggested tasks must be justified by documented findings, not assumptions.
+GROUNDING: Extract only what this document states — leave any field empty/omitted when it is not documented. ICD-10 codes only as printed in the document, never inferred from a diagnosis name. Suggested tasks must be justified by documented findings, not assumptions. Do NOT assign an urgency or priority level to the referral or to any task: PennSync referrals carry no urgency level (D234).
 
 Extract and categorize:
 
@@ -790,11 +791,8 @@ Extract and categorize:
 - ICD-10 codes if mentioned
 - Medical history highlights
 
-4. URGENCY ASSESSMENT:
-- Urgency indicators (urgent, high priority, stat, emergency, routine)
-- Clinical urgency factors (recent hospitalization, unstable vitals, critical condition)
-- Administrative urgency (insurance requirements, requested start date)
-- Recommended priority level
+4. TIME-SENSITIVE FACTORS:
+- Documented timing facts only: recent hospitalization, requested start date, expiring orders or authorizations, unstable findings as documented
 
 5. INITIAL CARE NEEDS:
 - Skilled nursing needs
@@ -805,8 +803,8 @@ Extract and categorize:
 - IV therapy requirements
 
 6. SUGGESTED INITIAL TASKS:
-- Critical actions needed immediately (within 24 hours)
-- High priority actions (within 48-72 hours)
+- Actions needed immediately (within 24 hours)
+- Actions needed soon (within 48-72 hours)
 - Important follow-ups (within first week)
 
 Return comprehensive structured data for intelligent form pre-population and care planning.`;
@@ -831,13 +829,6 @@ export const REFERRAL_QUICKSCAN_SCHEMA = {
       enum: ["cardiac", "respiratory", "wound_care", "orthopedic", "neurological", "diabetes", "post_surgical", "general_medical", "hospice", "palliative"]
     },
     icd10_codes: { type: "array", items: { type: "string" } },
-    urgency_level: {
-      type: "string",
-      enum: ["urgent", "high", "normal", "low"]
-    },
-    urgency_factors: { type: "array", items: { type: "string" } },
-    clinical_urgency_score: { type: "number" },
-    administrative_urgency_score: { type: "number" },
     skilled_nursing_needs: { type: "array", items: { type: "string" } },
     therapy_requirements: { type: "array", items: { type: "string" } },
     dme_needs: { type: "array", items: { type: "string" } },
@@ -850,7 +841,6 @@ export const REFERRAL_QUICKSCAN_SCHEMA = {
         type: "object",
         properties: {
           task: { type: "string" },
-          priority: { type: "string" },
           timeframe: { type: "string" },
           reason: { type: "string" }
         }

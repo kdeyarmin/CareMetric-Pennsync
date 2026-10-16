@@ -13,11 +13,6 @@ import ReferralTriageAnalyzer from '../components/referral/ReferralTriageAnalyze
 import { todayEastern } from '@/components/utils/timezone';
 import { toast } from 'sonner';
 import { buildIncompleteReferralFromTriage, referralPatientReadiness } from '@/components/referral/referralPatientReadiness';
-import {
-  normalizeTriageUrgency,
-  triageUrgencyToReferralPriority,
-  triageUrgencyToTaskPriority,
-} from '@/components/referral/referralUrgency';
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 import { createAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
 import { useAuth } from '@/lib/AuthContext';
@@ -51,7 +46,7 @@ export default function ReferralTriage() {
           icon={Filter}
           eyebrow="Documentation"
           title="Referral Triage"
-          description="AI-powered analysis of incoming referrals with automatic urgency and risk assessment"
+          description="AI-powered analysis of incoming referrals with structured clinical extraction, PDGM coding review, and Medicare compliance checks"
           favoritePage="ReferralTriage"
         />
         <Alert variant="destructive">
@@ -83,16 +78,17 @@ export default function ReferralTriage() {
 
     try {
       const readiness = referralPatientReadiness(lastAnalysis);
-      const triageUrgency = normalizeTriageUrgency(lastAnalysis.urgency_level);
-      const referralPriority = triageUrgencyToReferralPriority(triageUrgency);
 
       if (!readiness.ready) {
+        // No priority on the referral (D234): referrals carry no
+        // analyzer-assigned urgency/priority level, so neither the referral
+        // nor the follow-up task derives one from the analysis. The task
+        // priority is the staff-task default, not a referral attribute.
         const referral = await createAuthorizedReferral({
           ...buildIncompleteReferralFromTriage(lastAnalysis, {
             assignedTo: currentUser?.email,
             referralDate: todayEastern(),
           }),
-          priority: referralPriority,
         }, {
           agencyId: tenantContext?.agency_id,
         });
@@ -107,7 +103,7 @@ export default function ReferralTriage() {
           // type at all. What makes this a referral follow-up is the
           // related_entity pair below, not a bespoke type.
           type: 'followup',
-          priority: triageUrgencyToTaskPriority(triageUrgency),
+          priority: 'medium',
           status: 'pending',
           assigned_to: currentUser?.email,
           related_entity: 'Referral',
@@ -159,7 +155,6 @@ export default function ReferralTriage() {
           referral_source: lastAnalysis.referral_source || 'Manual triage',
           referral_date: todayEastern(),
           document_type: 'manual',
-          priority: referralPriority,
           status: 'ready_for_admission',
         }, {
           agencyId: tenantContext?.agency_id,
@@ -173,15 +168,17 @@ export default function ReferralTriage() {
         return;
       }
 
-      // Create a referral intake task
-      const dueTimeframe = triageUrgency === 'CRITICAL' ? '24_hours' : 'this_week';
+      // Create a referral intake task. Timing is a flat this-week target:
+      // the analysis assigns no urgency level to derive a faster track
+      // from (D234).
+      const dueTimeframe = 'this_week';
       const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + (dueTimeframe === '24_hours' ? 1 : 7));
+      dueDate.setDate(dueDate.getDate() + 7);
       await base44.entities.Task.create({
         title: `Admission Setup: ${lastAnalysis.patient_name}`,
-        description: `Complete admission assessment and reconcile medications. Urgency: ${triageUrgency !== 'UNKNOWN' ? triageUrgency : (lastAnalysis.urgency_level || 'Unknown')}`,
+        description: 'Complete admission assessment and reconcile medications.',
         type: 'schedule',
-        priority: triageUrgencyToTaskPriority(triageUrgency),
+        priority: 'medium',
         status: 'pending',
         assigned_to: currentUser?.email,
         due_timeframe: dueTimeframe,
@@ -205,7 +202,7 @@ export default function ReferralTriage() {
         icon={Filter}
         eyebrow="Documentation"
         title="Referral Triage"
-        description="AI-powered analysis of incoming referrals with automatic urgency and risk assessment"
+        description="AI-powered analysis of incoming referrals with structured clinical extraction, PDGM coding review, and Medicare compliance checks"
         favoritePage="ReferralTriage"
       />
 
@@ -242,9 +239,9 @@ export default function ReferralTriage() {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-navy-600 flex-shrink-0 mt-1" />
               <div>
-                <p className="text-xs text-navy-600 font-semibold uppercase">Risk Flagged</p>
+                <p className="text-xs text-navy-600 font-semibold uppercase">Missing Items</p>
                 <p className="text-2xl font-bold text-navy-900">Auto</p>
-                <p className="text-xs text-navy-600 mt-1">priority assignment</p>
+                <p className="text-xs text-navy-600 mt-1">packet + generated forms</p>
               </div>
             </div>
           </CardContent>
@@ -301,7 +298,7 @@ export default function ReferralTriage() {
             {[
               { number: '1', title: 'Upload', desc: 'Upload the referral packet PDF' },
               { number: '2', title: 'Analyze', desc: 'AI parses and structures data' },
-              { number: '3', title: 'Assess', desc: 'Urgency level and risk assigned' },
+              { number: '3', title: 'Review', desc: 'Diagnoses coded, compliance checked' },
               { number: '4', title: 'Onboard', desc: 'Create a patient or queue missing identity info' },
             ].map((step, i) => (
               <div key={i} className="p-4 border border-slate-200 rounded-lg">

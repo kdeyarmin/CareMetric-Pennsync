@@ -1,9 +1,11 @@
 // Ported from base44/functions/analyzeReferral.
 //
-// A dispatcher over four actions. Its own docstring calls it a replacement for
-// `analyzeReferralPriority`, `generateReferralTasks` and `matchPatientWithAI`,
-// and the frontend calls both it and two of those three — so both live on, and
-// both are ported.
+// A dispatcher over three actions. Its own docstring once called it a
+// replacement for `analyzeReferralPriority`, `generateReferralTasks` and
+// `matchPatientWithAI`; D234 removed the priority leg entirely — referrals
+// carry no analyzer-assigned urgency or priority level — so what remains is
+// task generation and patient matching, and the standalone priority function
+// is retired rather than ported onward.
 //
 // They are NOT the same functions with a shared body. Every prompt here is
 // shorter and differently worded than its standalone namesake, the task
@@ -13,15 +15,14 @@
 // what the model is asked on a path the frontend actually uses, which is why
 // the prompts are reproduced here rather than imported.
 //
-// `full_analysis` starts priority and match together and only then asks for
-// tasks, because the task prompt takes the priority answer as input. That order
-// is behaviour, not an implementation detail, and the parity test asserts the
+// `full_analysis` matches first and only then asks for tasks. That order is
+// behaviour, not an implementation detail, and the parity test asserts the
 // call sequence rather than just the set.
 import { parseLLMJson } from './llm-json.mjs';
 import { fail, isObject } from './contracts.mjs';
 
 export const ANALYSIS_MODEL = 'automatic';
-export const REFERRAL_ACTIONS = Object.freeze(['analyze_priority', 'generate_tasks', 'match_patient', 'full_analysis']);
+export const REFERRAL_ACTIONS = Object.freeze(['generate_tasks', 'match_patient', 'full_analysis']);
 
 /** This dispatcher's own projection: nine fields, and `name` rather than `full_name`. */
 export const projectCandidate = patient => ({
@@ -36,62 +37,27 @@ export const projectCandidate = patient => ({
   status: patient.status,
 });
 
-export function buildPriorityPrompt(extractedData, analysisResults) {
-  return `You are a clinical triage AI specializing in home health referral prioritization with advanced Natural Language Processing (NLP) capabilities.
-
-Analyze this referral and determine the urgency/priority level based on:
-- Medical condition severity and complexity
-- Recent hospitalizations or ER visits
-- Clinical stability indicators
-- Wound severity or infection risks
-- Medication complexity and safety concerns
-- Fall risk or safety issues
-- Cognitive/mental health concerns
-- Social determinants and support system
-- Discharge planning urgency
-- Insurance/authorization timeline pressures
-- Unstructured Clinical Notes (NLP)
-
-REFERRAL DATA:
-${JSON.stringify(extractedData, null, 2)}
-
-AI-ASSISTED INITIAL ANALYSIS:
-${JSON.stringify(analysisResults, null, 2)}
-
-Provide a detailed priority assessment with clear reasoning.
-
-Return ONLY valid JSON, no prose or code fences, with this shape:
-{"priority":"urgent|high|normal|low","priority_score":0,"urgency_factors":[""],"clinical_risks":[""],"recommended_response_time":"","reasoning":"","critical_actions":[""]}`;
-}
-
-export function buildTasksPrompt(referralData, priorityAnalysis) {
-  return `You are an expert home health intake coordinator. Based on the referral data and priority analysis, generate actionable tasks for office and clinical staff.
+export function buildTasksPrompt(referralData) {
+  return `You are an expert home health intake coordinator. Based on the referral data, generate actionable tasks for office and clinical staff.
 
 REFERRAL DATA:
 ${JSON.stringify(referralData, null, 2)}
 
-PRIORITY ANALYSIS:
-${JSON.stringify(priorityAnalysis, null, 2)}
-
 Generate tasks in these categories:
-1. Immediate/Critical Actions
+1. Time-Sensitive Clinical Actions
 2. Patient Intake & Verification
 3. Clinical Assessment & Coordination
 4. Administrative Tasks
 
 Each task should have:
-- title, description, type, priority, assigned_role, due_date, ai_reason
+- title, description, type, assigned_role, due_date, ai_reason
 
-Priority-based timing:
-- Urgent: Same day or within 4-6 hours
-- High: Within 24 hours
-- Normal: Within 2-3 days
-- Low: Within 1 week
+Set each due_date from the task's own clinical or regulatory timing (a face-to-face window, an expiring authorization, a first-visit target). Do not assign a priority or urgency level to any task: referrals carry no urgency level (D234).
 
-Return 5-12 tasks ordered by priority and due date.
+Return 5-12 tasks ordered by due date and clinical sequence.
 
 Return ONLY valid JSON, no prose or code fences, with this shape:
-{"tasks":[{"title":"","description":"","type":"call|notify|schedule|order|coordinate|document|safety|followup|other","priority":"high|medium|low","assigned_role":"intake_coordinator|nurse_manager|field_nurse|billing|admin|other","due_date":"YYYY-MM-DD","ai_reason":""}]}`;
+{"tasks":[{"title":"","description":"","type":"call|notify|schedule|order|coordinate|document|safety|followup|other","assigned_role":"intake_coordinator|nurse_manager|field_nurse|billing|admin|other","due_date":"YYYY-MM-DD","ai_reason":""}]}`;
 }
 
 export function buildMatchPrompt(extractedData, existingPatients) {
@@ -154,13 +120,8 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 
 const ask = (integration, prompt) => integration('InvokeLLM', { model: ANALYSIS_MODEL, prompt });
 
-async function analyzePriority(integration, { extractedData, analysisResults }) {
-  const priorityAnalysis = await ask(integration, buildPriorityPrompt(extractedData, analysisResults));
-  return { success: true, priorityAnalysis: parseLLMJson(priorityAnalysis) || {} };
-}
-
-async function generateTasks(integration, { referralData, priorityAnalysis }) {
-  const tasks = await ask(integration, buildTasksPrompt(referralData, priorityAnalysis));
+async function generateTasks(integration, { referralData }) {
+  const tasks = await ask(integration, buildTasksPrompt(referralData));
   // `(parsed).tasks || []` rather than an Array check: the original takes
   // whatever sits under `tasks`, so a non-array there reaches the caller here
   // too. Its standalone namesake guards with `Array.isArray`; this one does not.
@@ -173,24 +134,18 @@ async function matchPatient(integration, { extractedData, existingPatients }) {
   return { success: true, matchAnalysis: parseLLMJson(matchAnalysis) || {} };
 }
 
-async function fullAnalysis(integration, { extractedData, analysisResults, existingPatients }) {
-  // Priority and match start together; tasks waits, because its prompt takes
-  // the priority answer. Preserved as ordering, not merely as three calls.
-  const [priority, match] = await Promise.all([
-    analyzePriority(integration, { extractedData, analysisResults }),
-    matchPatient(integration, { extractedData, existingPatients }),
-  ]);
-  const tasks = await generateTasks(integration, {
-    referralData: extractedData,
-    priorityAnalysis: priority.priorityAnalysis,
-  });
-  return { success: true, priority: priority.priorityAnalysis, patientMatch: match.matchAnalysis, tasks: tasks.tasks };
+async function fullAnalysis(integration, { extractedData, existingPatients }) {
+  // Match first, then tasks from the referral data alone (D234: there is no
+  // priority answer for the task prompt to take). Preserved as ordering, not
+  // merely as two calls.
+  const match = await matchPatient(integration, { extractedData, existingPatients });
+  const tasks = await generateTasks(integration, { referralData: extractedData });
+  return { success: true, patientMatch: match.matchAnalysis, tasks: tasks.tasks };
 }
 
 export async function analyzeReferral({ params, integration }) {
   const { action, ...rest } = isObject(params) ? params : {};
   switch (action) {
-    case 'analyze_priority': return analyzePriority(integration, rest);
     case 'generate_tasks': return generateTasks(integration, rest);
     case 'match_patient': return matchPatient(integration, rest);
     case 'full_analysis': return fullAnalysis(integration, rest);

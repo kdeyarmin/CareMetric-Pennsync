@@ -123,7 +123,7 @@ the queue and leaves this page alone fails the build — the guard AGENTS.md got
 in #250 and this page did not:
 
 ```
-port queue: entity_authorization=5 files=17 external_secret=2 none=82
+port queue: entity_authorization=5 files=17 external_secret=2 none=81
 ```
 
 105 carried capabilities, **82 written, 23 blocked** (2026-10-15), which is
@@ -1608,7 +1608,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   document is where such a judgement belongs; each is then re-checked against
   the tree, so a declared name that stops being a handler, or a read wave that
   gains a write, fails the build. "The rest by blast radius" is derived:
-  read-only, then mutating, then the twenty-seven that reach the runtime.
+  read-only, then mutating, then the twenty-six that reach the runtime.
 
   | Wave | Handlers | Migrations |
   | --- | ---: | ---: |
@@ -1617,10 +1617,10 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 61 | 34 |
   | `mutating` (derived) | 68 | 45 |
-  | `integration` (derived) | 27 | 25 |
+  | `integration` (derived) | 26 | 25 |
 
   **Three of them — `extractPatientDataFromDocument`, `extractClinicalDocument`
-  and `splitReferralPDF` — carry an operator cost the other twenty-four do not.**
+  and `splitReferralPDF` — carry an operator cost the other twenty-three do not.**
   They are the first three ports out of the `files` bucket, and they get there
   by taking the document's BYTES rather than a locator, so each brokers
   `UploadFile` under the caller's own subject — which put that name into

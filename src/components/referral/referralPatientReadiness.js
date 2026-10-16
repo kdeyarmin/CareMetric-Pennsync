@@ -74,7 +74,9 @@ export function buildIncompleteReferralFromTriage(analysis = {}, { assignedTo, r
     referral_source: cleanReferralValue(analysis.referral_source) || 'Manual triage',
     referral_date: referralDate || null,
     document_type: 'manual',
-    priority: analysis.priority || 'normal',
+    // No priority (D234): the builder used to default the referral's
+    // priority to 'normal' (or echo an analysis-carried one). Referrals
+    // carry no analyzer-assigned priority; the schema default applies.
     status: 'awaiting_info',
     assigned_to: assignedTo || null,
     requires_manual_review: true,

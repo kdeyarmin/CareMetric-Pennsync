@@ -461,8 +461,14 @@ function parseLLMJson(raw) {
 
 /**
  * Unified Referral Analysis Function
- * Handles: priority analysis, task generation, and patient matching
- * Replaces: analyzeReferralPriority, generateReferralTasks, matchPatientWithAI
+ * Handles: task generation and patient matching
+ * Replaces: generateReferralTasks, matchPatientWithAI
+ *
+ * D234: this dispatcher also ran a priority analysis (the analyze_priority
+ * action) and fed it into task generation. Referrals carry no
+ * analyzer-assigned urgency or priority level, so that action is gone and
+ * tasks are generated from the referral data alone. The standalone
+ * analyzeReferralPriority is retired in the same decision.
  */
 
 Deno.serve(async (req) => {
@@ -478,19 +484,16 @@ Deno.serve(async (req) => {
         const { action, ...params } = await req.json();
 
         switch (action) {
-            case 'analyze_priority':
-                return await analyzePriority(base44, params);
-            
             case 'generate_tasks':
                 return await generateTasks(base44, params);
-            
+
             case 'match_patient':
                 return await matchPatient(base44, params);
-            
+
             case 'full_analysis':
-                // Run all three analyses in parallel for complete referral processing
+                // Match the patient, then generate tasks from the referral
                 return await fullAnalysis(base44, params);
-            
+
             default:
                 return Response.json({ error: 'Invalid action' }, { status: 400 });
         }
@@ -503,76 +506,31 @@ Deno.serve(async (req) => {
     }
 });
 
-async function analyzePriority(base44, params) {
-    const { extractedData, analysisResults } = params;
-
-    const priorityAnalysis = await directInvokeLLM({
-        model: "automatic",
-        prompt: `You are a clinical triage AI specializing in home health referral prioritization with advanced Natural Language Processing (NLP) capabilities.
-
-Analyze this referral and determine the urgency/priority level based on:
-- Medical condition severity and complexity
-- Recent hospitalizations or ER visits
-- Clinical stability indicators
-- Wound severity or infection risks
-- Medication complexity and safety concerns
-- Fall risk or safety issues
-- Cognitive/mental health concerns
-- Social determinants and support system
-- Discharge planning urgency
-- Insurance/authorization timeline pressures
-- Unstructured Clinical Notes (NLP)
-
-REFERRAL DATA:
-${JSON.stringify(extractedData, null, 2)}
-
-AI-ASSISTED INITIAL ANALYSIS:
-${JSON.stringify(analysisResults, null, 2)}
-
-Provide a detailed priority assessment with clear reasoning.
-
-Return ONLY valid JSON, no prose or code fences, with this shape:
-{"priority":"urgent|high|normal|low","priority_score":0,"urgency_factors":[""],"clinical_risks":[""],"recommended_response_time":"","reasoning":"","critical_actions":[""]}`
-    });
-
-    return Response.json({
-        success: true,
-        priorityAnalysis: parseLLMJson(priorityAnalysis) || {}
-    });
-}
-
 async function generateTasks(base44, params) {
-    const { referralData, priorityAnalysis } = params;
+    const { referralData } = params;
 
     const tasks = await directInvokeLLM({
         model: "automatic",
-        prompt: `You are an expert home health intake coordinator. Based on the referral data and priority analysis, generate actionable tasks for office and clinical staff.
+        prompt: `You are an expert home health intake coordinator. Based on the referral data, generate actionable tasks for office and clinical staff.
 
 REFERRAL DATA:
 ${JSON.stringify(referralData, null, 2)}
 
-PRIORITY ANALYSIS:
-${JSON.stringify(priorityAnalysis, null, 2)}
-
 Generate tasks in these categories:
-1. Immediate/Critical Actions
+1. Time-Sensitive Clinical Actions
 2. Patient Intake & Verification
 3. Clinical Assessment & Coordination
 4. Administrative Tasks
 
 Each task should have:
-- title, description, type, priority, assigned_role, due_date, ai_reason
+- title, description, type, assigned_role, due_date, ai_reason
 
-Priority-based timing:
-- Urgent: Same day or within 4-6 hours
-- High: Within 24 hours
-- Normal: Within 2-3 days
-- Low: Within 1 week
+Set each due_date from the task's own clinical or regulatory timing (a face-to-face window, an expiring authorization, a first-visit target). Do not assign a priority or urgency level to any task: referrals carry no urgency level (D234).
 
-Return 5-12 tasks ordered by priority and due date.
+Return 5-12 tasks ordered by due date and clinical sequence.
 
 Return ONLY valid JSON, no prose or code fences, with this shape:
-{"tasks":[{"title":"","description":"","type":"call|notify|schedule|order|coordinate|document|safety|followup|other","priority":"high|medium|low","assigned_role":"intake_coordinator|nurse_manager|field_nurse|billing|admin|other","due_date":"YYYY-MM-DD","ai_reason":""}]}`
+{"tasks":[{"title":"","description":"","type":"call|notify|schedule|order|coordinate|document|safety|followup|other","assigned_role":"intake_coordinator|nurse_manager|field_nurse|billing|admin|other","due_date":"YYYY-MM-DD","ai_reason":""}]}`
     });
 
     const parsedTasks = parseLLMJson(tasks) || {};
@@ -658,28 +616,21 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 }
 
 async function fullAnalysis(base44, params) {
-    const { extractedData, analysisResults, existingPatients } = params;
+    const { extractedData, existingPatients } = params;
 
-    // Run all analyses in parallel for efficiency
-    const [priorityResult, matchResult] = await Promise.all([
-        analyzePriority(base44, { extractedData, analysisResults }),
-        matchPatient(base44, { extractedData, existingPatients })
-    ]);
-
-    const priorityData = await priorityResult.json();
+    const matchResult = await matchPatient(base44, { extractedData, existingPatients });
     const matchData = await matchResult.json();
 
-    // Generate tasks based on priority analysis
+    // Tasks are generated from the referral data alone (D234: no priority
+    // analysis exists to feed them).
     const tasksResult = await generateTasks(base44, {
-        referralData: extractedData,
-        priorityAnalysis: priorityData.priorityAnalysis
+        referralData: extractedData
     });
 
     const tasksData = await tasksResult.json();
 
     return Response.json({
         success: true,
-        priority: priorityData.priorityAnalysis,
         patientMatch: matchData.matchAnalysis,
         tasks: tasksData.tasks
     });

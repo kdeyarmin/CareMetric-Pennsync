@@ -76,7 +76,7 @@
     "analyzeRealTimePerformance": "hub",
     "analyzeReferral": "port",
     "analyzeReferralIntake": "port",
-    "analyzeReferralPriority": "port",
+    "analyzeReferralPriority": "retire",
     "analyzeVisitForSupplyUsage": "port",
     "appendPatientNoteHistory": "port",
     "archiveSignedDocument": "preserved_paused",

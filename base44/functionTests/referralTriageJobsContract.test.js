@@ -74,10 +74,30 @@ function fakeModel({ failRanges = new Set(), analysis } = {}) {
       patient_name: PATIENT_NAME,
       date_of_birth: '1940-01-02',
       primary_diagnosis: 'CHF',
-      urgency_level: 'high',
-      urgency_reason: 'Readmission risk',
       clinical_summary: 'Discharged after CHF exacerbation.',
       data_gaps: [],
+      face_to_face_date: '2026-09-01',
+      start_of_care_date: '2026-09-20',
+      diagnosis_coding_review: {
+        documented_primary: 'I50.9 heart failure',
+        ordering_assessment: 'The documented primary is affirmed.',
+        codes: [{
+          code: 'I50.9', description: 'Heart failure, unspecified', position: 1,
+          pdgm_role: 'primary_clinical_grouping',
+          justification: 'The condition the nursing plan treats.',
+          documentation_support: 'Discharge summary in the notes.',
+          specificity_flag: null, suggested_more_specific: null, conflict: null,
+        }],
+        candidates: [],
+        documentation_needs: [],
+      },
+      medicare_compliance: {
+        homebound_status: { status: 'satisfied', evidence: 'Documented in the notes.' },
+        referral_order: { status: 'missing', evidence: 'No order in the packet.' },
+        // The rest are omitted on purpose: the stored checklist must still
+        // carry all eight elements, and face-to-face timing must be computed
+        // from the dates (19 days before the start of care = satisfied).
+      },
     }));
   }
   const reply = (text) => new Response(JSON.stringify({
@@ -277,10 +297,36 @@ test('process reads every range as a PDF, writes the triage, and notifies the up
   const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
   assert.equal(processed.status, 200);
   assert.equal(processed.data.job.status, 'ready');
-  assert.equal(processed.data.job.urgency_level, 'HIGH');
-  assert.equal(processed.data.job.analysis.urgency_level, 'HIGH');
+  // D234: no urgency level anywhere — not on the job view, not on the stored
+  // row, not in the analysis. The patient name rides the view instead, so
+  // the packets list can label the packet by name.
+  assert.equal('urgency_level' in processed.data.job, false);
+  assert.equal(runtime.db.ReferralTriageJob[0].urgency_level, undefined);
+  assert.equal('urgency_level' in processed.data.job.analysis, false);
+  assert.equal('urgency_reason' in processed.data.job.analysis, false);
+  assert.equal(processed.data.job.patient_name, PATIENT_NAME);
   assert.equal(processed.data.job.analysis.patient_name, PATIENT_NAME);
   assert.equal(processed.data.job.pages_read, 40);
+
+  // The D234 review sections are stored with the analysis: the coding review
+  // keeps its justification, and the compliance checklist carries all eight
+  // elements — omitted ones filled as missing, F2F timing computed.
+  const stored = processed.data.job.analysis;
+  assert.equal(stored.diagnosis_coding_review.codes[0].code, 'I50.9');
+  assert.match(stored.diagnosis_coding_review.codes[0].justification, /nursing plan/);
+  assert.deepEqual(Object.keys(stored.medicare_compliance).sort(), [
+    'certifying_provider', 'diagnoses_valid', 'face_to_face_documented', 'face_to_face_timing',
+    'homebound_status', 'plan_of_care_elements', 'referral_order', 'skilled_need',
+  ]);
+  assert.equal(stored.medicare_compliance.face_to_face_timing.status, 'satisfied');
+  assert.match(stored.medicare_compliance.face_to_face_timing.evidence, /19 days before/);
+  assert.equal(stored.medicare_compliance.skilled_need.status, 'missing');
+  assert.equal(stored.medicare_compliance.referral_order.status, 'missing');
+
+  // The list view labels by patient name and carries no urgency either.
+  const listed = await runtime.call({ user: 'nurse', body: { action: 'list', agency_id: AGENCY } });
+  assert.equal(listed.data.jobs[0].patient_name, PATIENT_NAME);
+  assert.equal('urgency_level' in listed.data.jobs[0], false);
 
   // Each range went to the model as its own PDF, then one summary call.
   assert.deepEqual(model.calls.filter((c) => c.kind === 'pages').map((c) => c.range).sort(), ['1-15', '16-30', '31-40']);
@@ -297,6 +343,10 @@ test('process reads every range as a PDF, writes the triage, and notifies the up
     [AGENCY, 'nurse', 'membership-nurse', 3, 1, 'active', 'nurse@agency.test', 'report_ready'],
   );
   assert.equal(notice.action_url, `/ReferralTriage?job=${encodeURIComponent(job.id)}`);
+  // The completion notice's priority is the flat delivery constant now —
+  // it used to be derived from the job's urgency level (D234).
+  assert.equal(notice.priority, 'medium');
+  assert.doesNotMatch(notice.message, /urgency/i);
   assert.equal(runtime.emails.length, 1);
   assert.equal(runtime.emails[0].to, 'nurse@agency.test');
   assert.match(runtime.emails[0].body, /https:\/\/app\.pennsync\.test\/ReferralTriage\?job=/);
@@ -311,6 +361,111 @@ test('process reads every range as a PDF, writes the triage, and notifies the up
   assert.equal(again.data.job.status, 'ready');
   assert.equal(model.calls.length, 4);
   assert.equal(runtime.db.Notification.length, 1);
+});
+
+test('a model answer carrying urgency fields, a document MRN and an SSN is stored without them', async () => {
+  // The chunk notes quote the packet verbatim, so a synthesis answer can
+  // echo the sending facility's MRN or an SSN into a summary field. The
+  // stored analysis is the choke point (D233 + D234): urgency keys are
+  // dropped, MRN mentions and SSN-shaped strings are masked, and an MRN
+  // key never survives at any depth.
+  const model = fakeModel({
+    analysis: {
+      patient_name: PATIENT_NAME,
+      date_of_birth: '1940-01-02',
+      primary_diagnosis: 'CHF',
+      urgency_level: 'CRITICAL',
+      urgency_reason: 'Readmission risk',
+      clinical_summary: 'SSN 123-45-6789 appears on the face sheet; facility MRN 13383.',
+      medical_record_number: '13383',
+      data_gaps: [],
+      admission_notes: 'Call about MRN: 13383 before the visit.',
+    },
+  });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  assert.equal(processed.data.job.status, 'ready');
+  const analysis = processed.data.job.analysis;
+  assert.equal('urgency_level' in analysis, false);
+  assert.equal('urgency_reason' in analysis, false);
+  assert.equal('medical_record_number' in analysis, false);
+  const storedJson = JSON.stringify(analysis);
+  assert.equal(storedJson.includes('13383'), false, 'the document MRN is stored nowhere');
+  assert.equal(storedJson.includes('123-45-6789'), false, 'the SSN is stored nowhere');
+  assert.match(analysis.clinical_summary, /\[redacted\]/);
+  assert.match(analysis.admission_notes, /MRN \[not recorded\]/);
+  // A review the model omitted degrades to an absent key, not a failure:
+  // the job still completes and the surface reports the review's own status.
+  assert.equal('diagnosis_coding_review' in analysis, false);
+  assert.equal(Object.keys(analysis.medicare_compliance).length, 8);
+});
+
+test('face-to-face timing defaults to missing when a date is missing or unparseable, whatever the model answered', async () => {
+  // Timing is deterministic: a model verdict of satisfied is not evidence.
+  // With no computable window the element must read missing, so the timing
+  // documentation request reaches the missing-items packet instead of
+  // being suppressed by a confident summary.
+  const timingAnalysis = (overrides) => ({
+    patient_name: PATIENT_NAME,
+    primary_diagnosis: 'CHF',
+    clinical_summary: 'Discharged after CHF exacerbation.',
+    data_gaps: [],
+    medicare_compliance: {
+      face_to_face_timing: { status: 'satisfied', evidence: 'The model prose says the window is met.' },
+    },
+    ...overrides,
+  });
+  for (const overrides of [
+    // Encounter date missing entirely.
+    { face_to_face_date: '', start_of_care_date: '2026-09-20' },
+    // Start-of-care date present as prose, not a date.
+    { face_to_face_date: '2026-09-01', start_of_care_date: 'not documented' },
+  ]) {
+    const runtime = createRuntime({
+      model: fakeModel({ analysis: timingAnalysis(overrides) }),
+      files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+    });
+    runtime.addIntakeUser('nurse');
+    const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+    const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+    assert.equal(processed.data.job.status, 'ready');
+    const timing = processed.data.job.analysis.medicare_compliance.face_to_face_timing;
+    assert.equal(timing.status, 'missing', `timing must not pass without both dates: ${JSON.stringify(overrides)}`);
+    assert.match(timing.evidence, /cannot be verified/);
+    assert.doesNotMatch(timing.evidence, /model prose/i);
+  }
+});
+
+test('labeled MRN values in narrative fields are masked at storage, and ordinary numbers survive', async () => {
+  const model = fakeModel({
+    analysis: {
+      patient_name: PATIENT_NAME,
+      primary_diagnosis: 'CHF',
+      clinical_summary: 'Face sheet lists Medical Record Number: 13383 for the sending facility.',
+      admission_notes: 'Facility chart MRN: AB13383. Lasix 40 mg twice daily.',
+      data_gaps: [],
+    },
+  });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  assert.equal(processed.data.job.status, 'ready');
+  const analysis = processed.data.job.analysis;
+  const storedJson = JSON.stringify(analysis);
+  assert.equal(storedJson.includes('13383'), false, 'the spelled-out label form is masked');
+  assert.equal(storedJson.includes('AB13383'), false, 'the alphanumeric value form is masked');
+  assert.match(analysis.clinical_summary, /MRN \[not recorded\]/);
+  assert.match(analysis.admission_notes, /MRN \[not recorded\]/);
+  assert.match(analysis.admission_notes, /Lasix 40 mg twice daily/, 'a dose is not an identifier and survives');
 });
 
 test('a range that keeps failing is reported as unread, and the email waits for the delivery release', async () => {

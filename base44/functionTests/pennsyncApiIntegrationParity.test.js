@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
-import { analyzeReferralPriority } from '../../services/pennsync-api/referral-priority.mjs';
 import { analyzeReferralIntake } from '../../services/pennsync-api/referral-intake.mjs';
 import { generateReferralTasks } from '../../services/pennsync-api/referral-tasks.mjs';
 import { matchPatientWithAI } from '../../services/pennsync-api/patient-match.mjs';
@@ -88,17 +87,9 @@ const ANSWERS = [
 ];
 
 const PORTS = [
-  {
-    name: 'analyzeReferralPriority',
-    port: analyzeReferralPriority,
-    cases: [
-      { extractedData: { diagnosis: 'Synthetic wound care' }, analysisResults: { risk: 'synthetic' } },
-      // Absent fields: `JSON.stringify(undefined, null, 2)` is undefined, and
-      // both sides interpolate it, so the prompt carries the literal word.
-      { extractedData: undefined, analysisResults: undefined },
-      { extractedData: { nested: { deep: [1, 2, { three: true }] } }, analysisResults: null },
-    ],
-  },
+  // No analyzeReferralPriority entry: D234 retired that function (referrals
+  // carry no analyzer-assigned priority level), its port was deleted, and
+  // the dispatcher test below pins analyze_priority as a refused action.
   {
     name: 'analyzeReferralIntake',
     port: analyzeReferralIntake,
@@ -142,8 +133,7 @@ const PORTS = [
     name: 'analyzeReferral',
     port: analyzeReferral,
     cases: [
-      { action: 'analyze_priority', extractedData: { diagnosis: 'Synthetic' }, analysisResults: { risk: 'low' } },
-      { action: 'generate_tasks', referralData: { diagnosis: 'Synthetic' }, priorityAnalysis: { priority: 'high' } },
+      { action: 'generate_tasks', referralData: { diagnosis: 'Synthetic' } },
       {
         action: 'match_patient',
         extractedData: { demographics: { first_name: 'Synthetic' } },
@@ -153,8 +143,9 @@ const PORTS = [
           { id: 'p2', first_name: 'Other', last_name: 'Person' },
         ],
       },
-      // Three calls, and the order is behaviour: priority and match start
-      // together, tasks waits because its prompt takes the priority answer.
+      // Two calls, and the order is behaviour: the match runs first, then
+      // tasks are generated from the referral data alone — D234 removed the
+      // priority leg whose answer the task prompt used to take.
       {
         action: 'full_analysis',
         extractedData: { demographics: { first_name: 'Synthetic' }, diagnosis: 'Synthetic' },
@@ -201,7 +192,7 @@ test('the empty-referral guard answers without calling the model at all', async 
     const ported = await drivePort(analyzeReferralIntake, { extractedData, analysisResults: {} },
       'unused — the model must not be asked');
     assert.deepEqual(ported.calls, [], `${JSON.stringify(extractedData)} should skip the model`);
-    assert.deepEqual(ported.body.analysis.missing_critical_info.high_priority,
+    assert.deepEqual(ported.body.analysis.missing_critical_info.blocking,
       ['No referral data provided — cannot analyze.']);
   }
   // A non-empty object is analysed, so the guard is not simply always on.
@@ -211,9 +202,9 @@ test('the empty-referral guard answers without calling the model at all', async 
 
 test('the canned empty analysis cannot be mutated by a caller', async () => {
   const first = await drivePort(analyzeReferralIntake, { extractedData: {}, analysisResults: {} }, '');
-  first.body.analysis.missing_critical_info.high_priority.push('tampered');
+  first.body.analysis.missing_critical_info.blocking.push('tampered');
   const second = await drivePort(analyzeReferralIntake, { extractedData: {}, analysisResults: {} }, '');
-  assert.deepEqual(second.body.analysis.missing_critical_info.high_priority,
+  assert.deepEqual(second.body.analysis.missing_critical_info.blocking,
     ['No referral data provided — cannot analyze.']);
 });
 
@@ -267,7 +258,10 @@ test('the patient match refuses the same malformed input the original refused', 
 });
 
 test('the referral dispatcher refuses an action the original refused', async () => {
-  for (const action of [undefined, null, '', 'nope', 'ANALYZE_PRIORITY']) {
+  // analyze_priority joins the refused set in D234: the action was removed
+  // from BOTH the original and the port, so the dispatcher now refuses it
+  // exactly like any unknown action.
+  for (const action of [undefined, null, '', 'nope', 'ANALYZE_PRIORITY', 'analyze_priority']) {
     await assert.rejects(
       analyzeReferral({ params: { action }, integration: async () => assert.fail('the model must not be asked') }),
       error => error?.status === 400 && error?.code === 'INVALID_ACTION', `${action} should be refused`);
@@ -275,33 +269,30 @@ test('the referral dispatcher refuses an action the original refused', async () 
     assert.equal(original.body.error, 'Invalid action');
     assert.deepEqual(original.calls, []);
   }
-  assert.deepEqual([...REFERRAL_ACTIONS], ['analyze_priority', 'generate_tasks', 'match_patient', 'full_analysis']);
+  assert.deepEqual([...REFERRAL_ACTIONS], ['generate_tasks', 'match_patient', 'full_analysis']);
 });
 
-test('a full analysis asks for priority and match before it asks for tasks', async () => {
+test('a full analysis asks for the match before it asks for tasks', async () => {
   const params = {
     action: 'full_analysis',
     extractedData: { demographics: { first_name: 'Synthetic' }, diagnosis: 'Synthetic' },
-    analysisResults: { risk: 'low' },
     existingPatients: [{ id: 'p1', first_name: 'Synthetic', last_name: 'Patient' }],
   };
-  const answers = ['{"priority":"urgent"}', '{"best_match_id":"p1"}', '{"tasks":[{"title":"Synthetic"}]}'];
+  const answers = ['{"best_match_id":"p1"}', '{"tasks":[{"title":"Synthetic"}]}'];
   let index = 0;
   const seen = [];
   const body = await analyzeReferral({
     params,
     integration: async (_operation, argument) => { seen.push(argument.prompt); return answers[index++]; },
   });
-  assert.equal(seen.length, 3);
-  assert.match(seen[0], /clinical triage AI/);
-  assert.match(seen[1], /patient matching system/);
-  assert.match(seen[2], /intake coordinator/);
-  // The tasks prompt carries the priority answer, which is why it cannot start
-  // with the other two.
-  assert.match(seen[2], /"priority": "urgent"/);
+  assert.equal(seen.length, 2);
+  assert.match(seen[0], /patient matching system/);
+  assert.match(seen[1], /intake coordinator/);
+  // D234: no priority leg exists, so the answer carries none and the task
+  // prompt is built from the referral data alone.
+  assert.equal('priority' in body, false);
   assert.deepEqual(body, {
     success: true,
-    priority: { priority: 'urgent' },
     patientMatch: { best_match_id: 'p1' },
     tasks: [{ title: 'Synthetic' }],
   });

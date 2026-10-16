@@ -248,7 +248,7 @@ test('the git helper can carry this document, and a skip means an absent ref and
 // believed because it is written down is this file's whole subject, so the
 // guards get the same treatment as the predicate: sabotage, and watch it refuse.
 //
-// The arithmetic `233 - 22 = 211` cannot fail on its own — the base is DERIVED
+// The arithmetic `232 - 22 = 210` cannot fail on its own — the base is DERIVED
 // as the range minus the absent list — so what the guards catch is the two
 // typos that would make the derivation quietly produce a larger base than the
 // list reads: an absent number outside the range, which removes nothing, and a
@@ -365,22 +365,22 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // its message says so.
 //
 // **And a ninth turn.** #481 merged, the base grew to hold 233, and the
-// two converged an eighth time; the base was re-derived in a change that
-// files no new decision (211, the same window closed the same way), and
-// **the list has not been rewritten a ninth time — [233] stands inert, so
-// the two have not diverged again** — the third assertion is implied by
-// the first at this reading, and its message says so.
+// two converged an eighth time; the base was re-derived in the change that
+// files D234 (211, the same window closed the same way), and **the list has
+// been rewritten a ninth time, for D234, so the two have diverged
+// again** — the third assertion is independent at this reading too, and
+// its message says so.
 test('the figures quoted in prose are the figures the lists hold', () => {
   assert.equal(REAL_BASE_NUMBERS.length, 211,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D233 alone, now on the base and so inert until the next '
-    + "collection rewrites the list, and the figure is quoted in the module's rewrite "
-    + 'note, which attributes it to this pass');
-  assert.equal(EXPECTED_DOCUMENT.length, 211,
-    'the union: equal to the base figure now that D233 has merged, so implied by the '
-    + 'first assertion until the next collection is pending — the convergence the '
-    + 'comment above this test describes. It still catches a union built as a '
-    + 'concatenation, which neither other assertion would.');
+    'the collection figure: D234 alone, pending, so live until its collection '
+    + "merges and the list goes inert, and the figure is quoted in the module's "
+    + 'rewrite note, which attributes it to this pass');
+  assert.equal(EXPECTED_DOCUMENT.length, 212,
+    'the union: the base figure plus D234, which is not on the base yet, so this '
+    + 'assertion is independent of the first while the collection is pending — the '
+    + 'divergence the comment above this test describes. It still catches a union '
+    + 'built as a concatenation, which neither other assertion would.');
 });
