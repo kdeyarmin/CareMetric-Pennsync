@@ -83,7 +83,6 @@ export const PORTED_FUNCTIONS = Object.freeze({
   cancelTimeOffRequest: 'json',
   appendPatientNoteHistory: 'json',
   analyzeReferralIntake: 'json',
-  analyzeReferralPriority: 'json',
   generateAIReport: 'binary',
   generateBagTechniquePDF: 'binary',
   generatePatientHandout: 'json',
