@@ -258,7 +258,12 @@ function directAiStable(value) {
   return JSON.stringify(value);
 }
 function directAiValidateSchema(schema, depth, budget) {
-  if (depth > 12 || ++budget.nodes > 200) directAiFail(400, 'SCHEMA_TOO_COMPLEX');
+  // Complexity budget (D219): refuse schemas whose validation would be
+  // unbounded — depth over 12 or more than 500 schema nodes. The node cap
+  // was raised from 200 under D231 after a full call-site census measured
+  // the app's largest real schema (referral extraction) at 203 nodes:
+  // valid JSON Schema the retired InvokeLLM accepted, refused here by 3.
+  if (depth > 12 || ++budget.nodes > 500) directAiFail(400, 'SCHEMA_TOO_COMPLEX');
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)
     || Object.keys(schema).some((key) => !DIRECT_AI_SCHEMA_KEYS.includes(key))) directAiFail(400, 'UNSUPPORTED_SCHEMA');
   // A type is one kind or a union of kinds (D228): the ADR and clinical
@@ -286,8 +291,13 @@ function directAiValidateSchema(schema, depth, budget) {
     if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') directAiFail(400, 'UNSUPPORTED_SCHEMA');
     Object.values(properties).forEach((child) => directAiValidateSchema(child, depth + 1, budget));
   } else if (['properties', 'required', 'additionalProperties'].some((key) => Object.hasOwn(schema, key))) directAiFail(400, 'UNSUPPORTED_SCHEMA');
-  if (schemaTypes.includes('array')) directAiValidateSchema(schema.items, depth + 1, budget);
-  else if (Object.hasOwn(schema, 'items')) directAiFail(400, 'UNSUPPORTED_SCHEMA');
+  // An array may omit 'items' entirely: an itemless array is valid JSON
+  // Schema (any element is allowed) and Base44's InvokeLLM accepted it —
+  // the RegulatoryMonitor's compliance_check_updates is one, and a live
+  // production smoke on 2026-10-16 caught this validator refusing that
+  // schema with UNSUPPORTED_SCHEMA. An explicit undefined reads as absent.
+  if (schemaTypes.includes('array')) { if (schema.items !== undefined) directAiValidateSchema(schema.items, depth + 1, budget); }
+  else if (schema.items !== undefined) directAiFail(400, 'UNSUPPORTED_SCHEMA');
   for (const pair of [['minLength', 'maxLength', ['string']], ['minItems', 'maxItems', ['array']], ['minimum', 'maximum', ['number', 'integer']]]) {
     const low = pair[0], high = pair[1], kinds = pair[2];
     for (const key of [low, high]) {
@@ -311,7 +321,8 @@ function directAiConforms(value, schema) {
         && (Object.hasOwn(properties, key) ? directAiConforms(child, properties[key]) : schema.additionalProperties !== false));
   }
   if (schema.type === 'array') return Array.isArray(value) && value.length >= (schema.minItems ?? 0)
-    && value.length <= (schema.maxItems ?? 100000) && value.every((child) => directAiConforms(child, schema.items));
+    && value.length <= (schema.maxItems ?? 100000)
+    && (schema.items === undefined || value.every((child) => directAiConforms(child, schema.items)));
   if (schema.type === 'string') return typeof value === 'string' && [...value].length >= (schema.minLength ?? 0) && [...value].length <= (schema.maxLength ?? 1000000);
   if (schema.type === 'boolean') return typeof value === 'boolean';
   return typeof value === 'number' && Number.isFinite(value) && (schema.type !== 'integer' || Number.isInteger(value))
