@@ -15055,3 +15055,25 @@ the guard alone would restore nothing, and changing the constant
 is that track's release decision, not this wave's. The parity
 cross-check narrows accordingly: it now pins the model pin as the
 exception's whole remainder, where before it pinned the pair.
+
+**Addendum (PR #478 review, 2026-10-15).** Review of the wave's
+pull request found three places where the implementations did not
+yet do what this decision records, and all three are corrected on
+both paths. A resumed turn's answer is its segments together: the
+resumption kept only the final segment's content, discarding text
+a turn had already emitted before pausing, so accumulation — not
+replacement — is now the rule inside one logical call. The
+structured path's one prose re-ask is a call like any other: it
+previously went back to the provider bare, so a re-ask that paused
+mid-search failed `AI_RESULT_SCHEMA_MISMATCH`; it now runs under
+the same bounded resumption and fails `AI_RESULT_INCOMPLETE` if
+it never unpauses. And a plain grounded answer keeps its sources:
+Anthropic carries them as citations on the text blocks, not in the
+text, so the cited URLs the text does not already name are
+appended as a `Sources:` list — the platform integration's
+grounded text carried its URLs inline, and dropping them would
+have left plain web answers, which the broker serves, with no
+provenance at all. The structured shape is unchanged: there the
+model itself fills the schema's source fields from what it read.
+Contract tests pin all three behaviors in the helper, broker, and
+runtime suites.
