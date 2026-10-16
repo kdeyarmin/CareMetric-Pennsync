@@ -633,6 +633,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`getMyTenantContext failed: ${error.status} ${error.message}`);
       return jsonResponse({ error: error.message }, error.status);
     }
     const providerStatus = Number(error?.response?.status ?? error?.status);
@@ -647,7 +648,7 @@ Deno.serve(async (req) => {
       );
     }
     // Never retain provider error objects: they may embed identity or tenant data.
-    console.error('getMyTenantContext failed');
+    console.error(`getMyTenantContext failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });
