@@ -412,6 +412,22 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
       + 'as a new `port` — a population change, not a move — and the broker\'s inlined helper '
       + 'classifies `files`, taking the bucket to 17 and the queue total to 106',
   },
+  // The next link in the same chain: the reading D229 landed and D231, D232
+  // and D233 each closed by re-quoting, unchanged because none of those
+  // waves moved the queue. It WAS the measurement until 2026-10-16, when
+  // D234 retired `analyzeReferralPriority` — a disposition change, not a
+  // port — taking `none` to 81. Each quotation is its own entry's dated
+  // claim ("recorded as measured", "the queue does not move"), so they are
+  // kept as written; the present-tense pages (AGENTS.md, the go-live plan,
+  // the transition plan) were corrected instead, and D234 carries the new
+  // reading.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=17 external_secret=2 none=82',
+    reason: 'the measurement from Wave 3 (D229) until D234: it WAS the measurement until '
+      + '2026-10-16, when D234 retired `analyzeReferralPriority` out of the `none` bucket, '
+      + 'taking it to 81 without any port being written',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {
@@ -1329,7 +1345,13 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
     records_schema: 0, files: 17, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 82 });
+    external_secret: 2, none: 81 });
+  // D234 (2026-10-16) moved `none` 82 → 81 and the queue total 106 → 105 by
+  // RETIRING a capability rather than porting one: `analyzeReferralPriority`
+  // left the queue because referrals carry no analyzer-assigned priority
+  // level, so the capability it named no longer exists to be carried. Its
+  // blocker had been `none` — it waited on nothing but being written — which
+  // is exactly the bucket a retirement empties.
   // R1 of the direct-AI migration (2026-10-15) moved this distribution by
   // one without a port landing: `external_secret` 2 → 1 and the queue total
   // 105 → 104, with `none` unmoved. `transcribeAudioWithWhisper`'s provider
@@ -1597,7 +1619,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
       'analyzeClinicalEvents', 'analyzeClinicalTrends',
       'analyzeReferral', 'analyzeReferralIntake',
-      'analyzeReferralPriority', 'analyzeVisitForSupplyUsage',
+      'analyzeVisitForSupplyUsage',
       'appendPatientNoteHistory', 'auditDataQuality', 'cancelTimeOffRequest',
       'checkAdrDeadlines', 'checkExpiredInvitations',
       'createAuthorizedPatient', 'createAuthorizedVisit', 'createNotification',
