@@ -2,8 +2,10 @@ import { base44 } from "@/api/base44Client";
 import { runWithRetry } from "@/lib/aiCall";
 
 /**
- * Standardized, non-React wrapper around `base44.integrations.Core.InvokeLLM`
- * that applies the shared timeout + retry policy from `src/lib/aiCall.js`.
+ * Standardized, non-React wrapper around the app's own `invokeDirectLLM`
+ * broker function (base44/functions/invokeDirectLLM), which runs the direct
+ * Anthropic helper server-side. Applies the shared timeout + retry policy
+ * from `src/lib/aiCall.js`.
  *
  * This is the drop-in replacement for direct `InvokeLLM` calls at the many AI
  * sites that live in event handlers, loops, or utilities where the stateful
@@ -20,7 +22,10 @@ import { runWithRetry } from "@/lib/aiCall";
  * `useAICall` hook (src/hooks/useAICall.js), which wraps the same policy.
  */
 export function invokeLLM(params, options) {
-  return runWithRetry(() => base44.integrations.Core.InvokeLLM(params), options);
+  return runWithRetry(
+    () => base44.functions.invoke('invokeDirectLLM', params).then((response) => response.data),
+    options,
+  );
 }
 
 /**

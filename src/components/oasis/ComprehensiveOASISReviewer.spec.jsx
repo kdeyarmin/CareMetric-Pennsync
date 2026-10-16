@@ -12,7 +12,8 @@ const { invokeLLM, actionItemFilter, actionItemBulkCreate, openAuthorityBoundWin
 }));
 vi.mock('@/api/base44Client', () => ({
   base44: {
-    integrations: { Core: { InvokeLLM: invokeLLM } },
+    // Broker-shaped transport since Wave 3 (D229): see useAICall.spec.jsx.
+    functions: { invoke: (name, params) => invokeLLM(params).then((data) => ({ data })) },
     entities: {
       OASISActionItem: { filter: actionItemFilter, bulkCreate: actionItemBulkCreate },
     },

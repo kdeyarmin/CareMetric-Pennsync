@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { runWithRetry } from "@/lib/aiCall";
+import { invokeLLM } from "@/lib/invokeLLM";
 import { aiScheduler } from "@/lib/aiScheduler";
 
 /**
- * Standardized wrapper around `base44.integrations.Core.InvokeLLM` providing a
+ * Standardized wrapper around the app's AI transport (`@/lib/invokeLLM`,
+ * which calls the `invokeDirectLLM` broker function) providing a
  * shared timeout/retry policy plus loading/error/data state. Stale responses are
  * ignored (only the most recent `run` updates state), which prevents an earlier slow
  * call from overwriting a newer result.
@@ -69,7 +69,7 @@ export function useAICall(defaults = {}) {
     setError(null);
     try {
       const result = await aiScheduler.schedule(
-        () => runWithRetry(() => base44.integrations.Core.InvokeLLM(params), retryOptions),
+        () => invokeLLM(params, retryOptions),
         { priority, signal: cancelOnUnmount ? unmountedRef.current.signal : undefined }
       );
       if (id === reqIdRef.current) setData(result);

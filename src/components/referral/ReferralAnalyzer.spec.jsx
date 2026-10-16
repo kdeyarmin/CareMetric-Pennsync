@@ -7,7 +7,8 @@ import userEvent from '@testing-library/user-event';
 // can exercise loading, error, and out-of-order (raced) completions.
 const { invokeLLM } = vi.hoisted(() => ({ invokeLLM: vi.fn() }));
 vi.mock('@/api/base44Client', () => ({
-  base44: { integrations: { Core: { InvokeLLM: invokeLLM } } },
+  // Broker-shaped transport since Wave 3 (D229): see useAICall.spec.jsx.
+  base44: { functions: { invoke: (name, params) => invokeLLM(params).then((data) => ({ data })) } },
 }));
 
 // The diagnosis-code generator has its own logic tests (diagnosisCodeGenerator.test.js)
