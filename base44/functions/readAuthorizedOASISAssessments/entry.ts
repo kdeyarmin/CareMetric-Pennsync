@@ -1183,10 +1183,11 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`readAuthorizedOASISAssessments failed: ${error.status} ${error.message}`);
       return Response.json({ error: error.message }, { status: error.status });
     }
     // Provider failures can contain predicates or PHI; never return them.
-    console.error('readAuthorizedOASISAssessments failed');
+    console.error(`readAuthorizedOASISAssessments failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
