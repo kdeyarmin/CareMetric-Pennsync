@@ -74,7 +74,17 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // rewrite either: 227 is in `BASE_NUMBERS` below and `EXPECTED_DOCUMENT`
 // is the union, so what the document must hold is unchanged apart from
 // D228. What is bought back is the same differential, live a third time.
-export const EXPECTED_NEW = Object.freeze([228]);
+//
+// Rewritten a fourth time on 2026-10-15, for the collection in hand,
+// which adds D229 and nothing else. It held [228] from the rewrite above,
+// and that list went INERT when #474 merged and 228 reached the base, so
+// the differential had stood down a third time. Nothing is lost by this
+// rewrite either: 228 is in `BASE_NUMBERS` below (re-derived in this same
+// change, the window the base paragraphs describe) and
+// `EXPECTED_DOCUMENT` is the union, so what the document must hold is
+// unchanged apart from D229. What is bought back is the same
+// differential, live a fourth time.
+export const EXPECTED_NEW = Object.freeze([229]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //
@@ -97,8 +107,8 @@ export const EXPECTED_NEW = Object.freeze([228]);
 // of this comment SAID they were while nothing did it — a comment naming a check
 // that is not there, in the file whose write-up is about reading a setting for
 // something it does not say. Main-watch found it by looking for the assertion.
-// So what the check catches is stated rather than implied: `227 - 22 = 205`
-// holds automatically unless an absent number is outside `1..227` or repeated,
+// So what the check catches is stated rather than implied: `228 - 22 = 206`
+// holds automatically unless an absent number is outside `1..228` or repeated,
 // and those are the two typos that would silently ENLARGE the base: an absent
 // number that removes nothing leaves 206 where the list claims 205.
 //
@@ -146,7 +156,16 @@ export const EXPECTED_NEW = Object.freeze([228]);
 // number and no absent one, and the twenty-two absent numbers are unchanged.
 // The window above opened again and was closed the same way: the next branch
 // to merge `main` failed here in CI and carried this re-derivation.
-const BASE_HIGHEST = 227;
+//
+// Re-derived again 2026-10-15 from `origin/main` at `a0568d6`, where it had
+// been `227 - 22 = 205`. What moved on the base branch: #474 merged, landing
+// D228 and nothing else. D228 follows D227 directly, so the base gained that
+// one number and no absent one, and the twenty-two absent numbers are
+// unchanged. The window opened a third time and is closed here, in the same
+// change that files the next entry — the two clocks the paragraphs above
+// keep separate, landing in one change because the change that owed the
+// re-derivation is also the next collection.
+const BASE_HIGHEST = 228;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
   180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);
 for (const absent of BASE_ABSENT) {

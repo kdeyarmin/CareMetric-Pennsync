@@ -6,7 +6,12 @@ import { act, render, waitFor } from '@testing-library/react';
 // the app-wide AI budget, so only the network boundary is faked.
 const { invokeLLM } = vi.hoisted(() => ({ invokeLLM: vi.fn() }));
 vi.mock('@/api/base44Client', () => ({
-  base44: { integrations: { Core: { InvokeLLM: invokeLLM } } },
+  // The transport is the app's own invokeDirectLLM broker since the
+  // direct-AI migration's Wave 3 (D229): the real wrapper in
+  // src/lib/invokeLLM.js calls base44.functions.invoke and unwraps
+  // response.data, so the double answers in that shape while still
+  // receiving exactly the call params, as the platform integration did.
+  base44: { functions: { invoke: (name, params) => invokeLLM(params).then((data) => ({ data })) } },
 }));
 
 import { useAICall } from '@/hooks/useAICall';

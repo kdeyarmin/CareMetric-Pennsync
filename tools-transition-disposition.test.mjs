@@ -396,6 +396,22 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
       + 'total to 104, and the first wave inlined the directInvokeLLM helper into the four '
       + 'SmartNote capabilities and emptied `core_integration` into `files`',
   },
+  // The reading the whole of 2026-10-15's later work stood on, quoted by
+  // three entries in the register: D223's chain of re-reads, D227 (the
+  // Deepgram rebuild returning `transcribeAudioWithWhisper` to `port`,
+  // which restored these exact figures by the opposite road) and D228
+  // (which closes by recording that its wave moved nothing). Each
+  // quotation is its own entry's dated claim about the tree it landed
+  // on, so they are kept as written; the present-tense pages were
+  // corrected instead, and D229 carries the new reading.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=16 external_secret=2 none=82',
+    reason: 'the measurement from the direct-AI migration\'s first wave until its third: '
+      + 'it WAS the measurement until 2026-10-15, when Wave 3 (D229) added `invokeDirectLLM` '
+      + 'as a new `port` — a population change, not a move — and the broker\'s inlined helper '
+      + 'classifies `files`, taking the bucket to 17 and the queue total to 106',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {
@@ -1296,9 +1312,23 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // first, and none of them moved. Nothing was written and no disposition
   // changed: what moved is the measured reach of four modules, which is what
   // a bucket records.
+  //
+  // Then `files` 16 → 17 and the queue total 105 → 106 (2026-10-15): Wave 3
+  // of the direct-AI migration ADDED a capability rather than moving one —
+  // `invokeDirectLLM`, the authenticated broker the frontend's wrappers now
+  // call instead of the platform integration. It is a new `port`, so the
+  // population itself grew. Its only entity reach is the claims fence, so
+  // the record store is not what it waits on; what it waits on is the file
+  // layer, because the helper it inlines accepts hosted `file_urls` and
+  // fetches them server-side, and the runtime's InvokeLLM operation accepts
+  // only `cmfile:` URIs — the migration plan's §3a predicted this broker
+  // would read `external_secret` for its key read, and the classifier reads
+  // the inlined body in its own order, `file_urls` ahead of `Deno.env.get`,
+  // so the measured answer is `files`. The key read is real; it is not the
+  // first thing the module waits on.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 0, files: 16, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    records_schema: 0, files: 17, ported_function: 0, core_integration: 0, pdf_rendering: 0,
     external_secret: 2, none: 82 });
   // R1 of the direct-AI migration (2026-10-15) moved this distribution by
   // one without a port landing: `external_secret` 2 → 1 and the queue total
@@ -1548,12 +1578,21 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // own code; what the classifier meets is the `file_urls` contract inside
   // the directInvokeLLM helper inlined into all four, and a bucket records
   // the reach of the module as written, helper included.
+  //
+  // One more arrived the same day by ADDITION rather than arrival from
+  // another bucket: `invokeDirectLLM` (D229), the frontend broker, is a new
+  // capability, so the list grew instead of a name crossing it. Its own
+  // shell hands no stored file anywhere; the helper it inlines is the same
+  // one the SmartNote four carry, and it reads `files` on the same ground.
+  // The migration plan predicted `external_secret` for its key read; the
+  // classifier meets the helper's file contract first, and the bucket
+  // records the reach as written.
   assert.deepEqual(report.port_blockers.files, ['analyzeAdrLetter', 'checkSmartNoteCoverage',
     'checkSmartNoteGrounding', 'createAuthorizedDocument', 'draftSmartNote',
     'extractFaxContact', 'extractReferralResponseScan', 'generateAdrPacket',
-    'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
-    'preparePDFWithPatientInfo', 'reorderDeletePDFPages', 'structureDictatedVisit',
-    'verifyAdrResponsePacket']);
+    'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'invokeDirectLLM',
+    'mergePDFs', 'preparePDFWithPatientInfo', 'reorderDeletePDFPages',
+    'structureDictatedVisit', 'verifyAdrResponsePacket']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeAndGenerateClinicalTasks',
       'analyzeClinicalEvents', 'analyzeClinicalTrends',
@@ -2222,9 +2261,15 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // are carried `preserved_paused`, so neither adds to the port queue.
   // `generateNoteFromRecording` has the same claims-only entity reach; its
   // separate file work is why it remains in `files`, not `records_schema`.
+  // `invokeDirectLLM` (2026-10-15) joined it: the direct-AI migration's
+  // frontend broker reads no record at all — its whole entity reach is the
+  // claims fence that binds the caller's tenant context for attribution —
+  // and, like `generateNoteFromRecording`, its inlined helper's file path
+  // is why its queue bucket is `files` rather than `records_schema`.
   assert.deepEqual([...claims].sort(), [
     'autoImportPatients', 'generateAdmissionNoteFromReferral',
-    'generateCarePlanFromReferral', 'generateNoteFromRecording', 'submitAppFeedback',
+    'generateCarePlanFromReferral', 'generateNoteFromRecording', 'invokeDirectLLM',
+    'submitAppFeedback',
   ]);
 
   const report = checkCoverage(
