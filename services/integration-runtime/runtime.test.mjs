@@ -203,12 +203,44 @@ test('a paused web turn is handed back and resumed; one that never resumes fails
   const paused=()=>({content:[{type:'server_tool_use',id:'srv_1',name:'web_search',input:{query:'q'}},{type:'text',text:'Searching…'}],stop_reason:'pause_turn',usage:{server_tool_use:{web_search_requests:1}}});
   const bodies=[];const answers=[paused(),{content:[{type:'text',text:'Final.'}],stop_reason:'end_turn'}];
   const provider=createProviders(cfg(),{},async(_url,options)=>{bodies.push(JSON.parse(options.body));return Response.json(answers.shift());});
-  assert.equal(await provider('InvokeLLM',{prompt:'x',add_context_from_internet:true},actor),'Final.');
+  // Segments accumulate: the paused segment's text is part of the
+  // answer, not overwritten by the continuation (PR #478 review).
+  assert.equal(await provider('InvokeLLM',{prompt:'x',add_context_from_internet:true},actor),'Searching…\nFinal.');
   assert.equal(bodies.length,2);assert.equal(bodies[1].messages.length,2);
   assert.equal(bodies[1].messages[1].role,'assistant');assert.deepEqual(bodies[1].messages[1].content,paused().content);
   let calls=0;const stuck=createProviders(cfg(),{},async()=>{calls++;return Response.json(paused());});
   await assert.rejects(()=>stuck('InvokeLLM',{prompt:'x',add_context_from_internet:true},actor),e=>e.status===502&&e.code==='AI_RESULT_INCOMPLETE');
   assert.equal(calls,4,'the first answer plus the bounded resumes');
+});
+test('a plain web answer appends the sources its text cites, deduped, skipping ones the text names', async () => {
+  const cite=(url,i)=>({type:'web_search_result_location',url,title:'Source',encrypted_index:'e'+i});
+  const provider=createProviders(cfg(),{},async()=>Response.json({content:[
+    {type:'server_tool_use',id:'srv_1',name:'web_search',input:{query:'q'}},
+    {type:'text',text:'Per https://www.cms.gov/example the rule changed.',citations:[cite('https://www.cms.gov/example',1),cite('https://www.hhs.gov/example',2)]},
+    {type:'text',text:'Agencies must comply by March.',citations:[cite('https://www.hhs.gov/example',3)]}],stop_reason:'end_turn',usage:{server_tool_use:{web_search_requests:1}}}));
+  assert.equal(await provider('InvokeLLM',{prompt:'x',add_context_from_internet:true},actor),
+    'Per https://www.cms.gov/example the rule changed.\nAgencies must comply by March.\n\nSources:\n- https://www.hhs.gov/example');
+});
+test('a structured web call whose turn pauses before the tool call still unwraps the result', async () => {
+  const schema={type:'object',properties:{value:{type:'integer'}},required:['value']};
+  const answers=[
+    {content:[{type:'server_tool_use',id:'srv_1',name:'web_search',input:{query:'q'}},{type:'text',text:'Searching…'}],stop_reason:'pause_turn',usage:{server_tool_use:{web_search_requests:1}}},
+    {content:[{type:'tool_use',name:'return_result',input:{result:{value:3}}}],stop_reason:'tool_use',usage:{server_tool_use:{web_search_requests:1}}}];
+  const provider=createProviders(cfg(),{},async()=>Response.json(answers.shift()));
+  assert.deepEqual(await provider('InvokeLLM',{prompt:'x',response_json_schema:schema,add_context_from_internet:true},actor),{value:3});
+});
+test('a structured web re-ask that pauses resumes; one that never unpauses fails incomplete', async () => {
+  const schema={type:'object',properties:{value:{type:'integer'}},required:['value']};
+  const paused=()=>({content:[{type:'server_tool_use',id:'srv_1',name:'web_search',input:{query:'q'}}],stop_reason:'pause_turn',usage:{server_tool_use:{web_search_requests:1}}});
+  const answers=[{content:[{type:'text',text:'value is 3'}],stop_reason:'end_turn'},paused(),{content:[{type:'tool_use',name:'return_result',input:{result:{value:3}}}],stop_reason:'tool_use'}];
+  const provider=createProviders(cfg(),{},async()=>Response.json(answers.shift()));
+  assert.deepEqual(await provider('InvokeLLM',{prompt:'x',response_json_schema:schema,add_context_from_internet:true},actor),{value:3});
+  // Before the correction the re-ask never resumed, and a stuck re-ask
+  // failed as AI_RESULT_SCHEMA_MISMATCH instead of incomplete.
+  let calls=0;const prose={content:[{type:'text',text:'value is 3'}],stop_reason:'end_turn'};let first=true;
+  const stuck=createProviders(cfg(),{},async()=>{calls++;if(first){first=false;return Response.json(prose);}return Response.json(paused());});
+  await assert.rejects(()=>stuck('InvokeLLM',{prompt:'x',response_json_schema:schema,add_context_from_internet:true},actor),e=>e.status===502&&e.code==='AI_RESULT_INCOMPLETE');
+  assert.equal(calls,5,'the prose answer plus the re-ask and its bounded resumes');
 });
 test('email means provider accepted, not delivered, and its sender is server controlled', async () => {
   const provider=createProviders(cfg(),{},async(url,options)=>{assert.equal(url,'https://api.sendgrid.com/v3/mail/send');const body=JSON.parse(options.body);assert.equal(body.from.email,'test@example.test');assert.equal(body.tracking_settings.open_tracking.enable,false);return new Response(null,{status:202});});

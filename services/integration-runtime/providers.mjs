@@ -11,7 +11,11 @@ const FILE_URI = /^cmfile:([0-9a-f-]{36})$/i;
 // paths honor add_context_from_internet the same way: max_uses bounds the
 // searches one call may run, the pause bound caps 'pause_turn' resumptions,
 // and a grounded answer — one encrypted result blob per source — reads under
-// a larger response cap than a plain one.
+// a larger response cap than a plain one. A paused turn's segments are
+// accumulated rather than overwritten, the structured path's one prose
+// re-ask resumes under the same bound, and a plain grounded answer
+// appends the source URLs its text blocks cite (PR #478 review
+// corrections) — identical behavior to the helper's on all three.
 const WEB_SEARCH_TOOL = Object.freeze({ type: 'web_search_20250305', name: 'web_search', max_uses: 5 });
 const WEB_MAX_RESUMES = 3;
 const WEB_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -161,18 +165,32 @@ export function createProviders(config, store, fetcher = fetch) {
         || answer.content.some(block => block.type === 'refusal')) fail(502, 'AI_RESULT_INCOMPLETE');
       return answer;
     };
-    let result = await callModel();
-    // A web-grounded turn can stop at 'pause_turn' when the provider's
-    // server-side search loop reaches its iteration cap; handing the answer
-    // back as the assistant turn resumes it. Bounded — a call still paused
-    // at the bound fails as incomplete rather than returning a half-searched
-    // answer as though it were whole.
-    for (let resumes = 0; webSearch && result.stop_reason === 'pause_turn' && resumes < WEB_MAX_RESUMES; resumes++) {
-      body.messages.push({ role: 'assistant', content: result.content });
-      result = await callModel();
-    }
-    if (webSearch && result.stop_reason === 'pause_turn') fail(502, 'AI_RESULT_INCOMPLETE');
-    if (schema && result.stop_reason === 'end_turn' && !result.content.some(block => block.type === 'tool_use')) result = await callModel();
+    // One logical call, however many provider responses it takes. A
+    // web-grounded turn can stop at 'pause_turn' when the provider's
+    // server-side search loop reaches its iteration cap; handing the
+    // answer back as the assistant turn resumes it, and every segment's
+    // content is accumulated — a resumed answer is its segments
+    // together, not the last segment alone. Bounded — a call still
+    // paused at the bound fails as incomplete rather than returning a
+    // half-searched answer as though it were whole.
+    const runCall = async () => {
+      let segment = await callModel();
+      const content = [...segment.content];
+      let stopReason = segment.stop_reason;
+      for (let resumes = 0; webSearch && stopReason === 'pause_turn' && resumes < WEB_MAX_RESUMES; resumes++) {
+        body.messages.push({ role: 'assistant', content: segment.content });
+        segment = await callModel();
+        content.push(...segment.content);
+        stopReason = segment.stop_reason;
+      }
+      if (webSearch && stopReason === 'pause_turn') fail(502, 'AI_RESULT_INCOMPLETE');
+      return { content, stop_reason: stopReason };
+    };
+    let result = await runCall();
+    // The one prose re-ask is a call like any other and goes through
+    // runCall: a re-ask that pauses mid-search resumes under the same
+    // bound instead of failing as a schema mismatch.
+    if (schema && result.stop_reason === 'end_turn' && !result.content.some(block => block.type === 'tool_use')) result = await runCall();
     if (schema) {
       const tools = result.content.filter(block => block.type === 'tool_use');
       if (result.stop_reason !== 'tool_use' || tools.length !== 1 || tools[0].name !== 'return_result'
@@ -181,9 +199,20 @@ export function createProviders(config, store, fetcher = fetch) {
       return tools[0].input.result;
     }
     if (result.stop_reason !== 'end_turn') fail(502, 'AI_RESULT_INCOMPLETE');
-    const answer = result.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
-    if (!answer.trim()) fail(502, 'AI_RESULT_EMPTY');
-    return answer;
+    const textBlocks = result.content.filter(block => block.type === 'text');
+    const answerText = textBlocks.map(block => block.text).join('\n');
+    if (!answerText.trim()) fail(502, 'AI_RESULT_EMPTY');
+    // A grounded answer's sources ride in its text blocks' citations,
+    // not in the text itself; the cited URLs the text does not already
+    // name are appended as a source list rather than dropped.
+    const citedUrls = [];
+    for (const block of textBlocks) {
+      for (const citation of block.citations || []) {
+        if (citation && citation.type === 'web_search_result_location' && typeof citation.url === 'string'
+          && citation.url && !citedUrls.includes(citation.url) && !answerText.includes(citation.url)) citedUrls.push(citation.url);
+      }
+    }
+    return citedUrls.length ? answerText + '\n\nSources:\n' + citedUrls.map(url => '- ' + url).join('\n') : answerText;
   }
   return async function provide(operation, params, ctx) {
     validateParams(operation, params, config);
