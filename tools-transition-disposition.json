@@ -212,6 +212,7 @@
     "handleTelnyxStatusWebhook": "preserved_paused",
     "importProvidersCsv": "port",
     "indexPDF": "port",
+    "invokeDirectLLM": "port",
     "issueCertificate": "hub",
     "listAuthorizedDocuments": "port",
     "listAuthorizedPatients": "port",
