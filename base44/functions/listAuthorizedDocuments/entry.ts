@@ -1088,12 +1088,13 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`listAuthorizedDocuments failed: ${error.status} ${error.message}`);
       return Response.json({ error: error.message }, { status: error.status });
     }
     const throttled = backendThrottleResponse(error);
     if (throttled) return throttled;
     // Never log provider details that may embed predicates, filenames, URLs, or PHI.
-    console.error('listAuthorizedDocuments failed');
+    console.error(`listAuthorizedDocuments failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

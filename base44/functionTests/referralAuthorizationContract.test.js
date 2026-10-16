@@ -266,7 +266,7 @@ test('Referral is immutable-tenant broker-owned and the browser wrapper invokes 
   assert.match(broker, /AgencyMembership\.filter\(/);
   assert.match(broker, /Referral\.updateMany\(/);
   assert.doesNotMatch(broker, /Referral\.update\(/);
-  assert.match(broker, /console\.error\('manageAuthorizedReferral failed'\)/);
+  assert.match(broker, /console\.error\(`manageAuthorizedReferral failed: \$\{error\.status\} \$\{error\.message\}`\)/);
   assert.doesNotMatch(
     broker,
     /console\.error\([^)]*,\s*(?:error|body|input|referral)/i,

@@ -567,8 +567,8 @@ test('read brokers expose finite projections and contain no read bypass or Patie
   assert.doesNotMatch(listWrapper, /MAX_PAGE_OFFSET|next_offset|updated_desc|name_asc/);
   assert.match(getWrapper, /functions\.invoke\('getAuthorizedPatient'/);
   assert.match(listWrapper, /functions\.invoke\('listAuthorizedPatients'/);
-  assert.match(getSource, /console\.error\('getAuthorizedPatient failed'\)/);
-  assert.match(listSource, /console\.error\('listAuthorizedPatients failed'\)/);
+  assert.match(getSource, /console\.error\(`getAuthorizedPatient failed: \$\{error\.status\} \$\{error\.message\}`\)/);
+  assert.match(listSource, /console\.error\(`listAuthorizedPatients failed: \$\{error\.status\} \$\{error\.message\}`\)/);
   assert.doesNotMatch(getSource, /console\.error\([^)]*,\s*error\b/);
   assert.doesNotMatch(listSource, /console\.error\([^)]*,\s*error\b/);
 
@@ -1714,4 +1714,26 @@ test('list read fails closed when Patient authority drifts between bounded reads
   const { response, json } = await invoke(handler, 'listAuthorizedPatients', pageBody());
   assert.equal(response.status, 409);
   assert.match(json.error, /authority changed/);
+});
+
+test('a refused list read logs the PublicError status and message, not a bare failure', async () => {
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => logged.push(args);
+  let result;
+  try {
+    const initial = patient();
+    const changed = patient({ updated_date: '2026-09-03T12:01:00.000Z' });
+    const { handler } = await loadBroker('list', {
+      patientResponses: [[initial], [changed]],
+    });
+    result = await invoke(handler, 'listAuthorizedPatients', pageBody());
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(result.response.status, 409);
+  assert.equal(result.json.error, 'Patient read authority changed during request');
+  assert.deepEqual(logged, [
+    ['listAuthorizedPatients failed: 409 Patient read authority changed during request'],
+  ]);
 });

@@ -1468,10 +1468,11 @@ Deno.serve(async (req) => {
     return jsonResponse(response);
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`listAuthorizedPatients failed: ${error.status} ${error.message}`);
       return jsonResponse({ error: error.message }, { status: error.status });
     }
     // Never retain provider error objects: they may embed query predicates or PHI.
-    console.error('listAuthorizedPatients failed');
+    console.error(`listAuthorizedPatients failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return jsonResponse({ error: 'Internal server error' }, { status: 500 });
   }
 });

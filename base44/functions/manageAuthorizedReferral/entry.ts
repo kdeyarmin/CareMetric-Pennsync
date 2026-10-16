@@ -1320,13 +1320,14 @@ Deno.serve(async (req) => {
     return await deleteReferral(base44, authority, input.body);
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`manageAuthorizedReferral failed: ${error.status} ${error.message}`);
       return Response.json(
         { error: error.message, ...(error.code ? { code: error.code } : {}) },
         { status: error.status },
       );
     }
     // Provider errors may contain predicates or PHI; never log the object.
-    console.error('manageAuthorizedReferral failed');
+    console.error(`manageAuthorizedReferral failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
