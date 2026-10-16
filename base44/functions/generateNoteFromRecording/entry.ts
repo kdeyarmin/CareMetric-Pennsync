@@ -202,7 +202,13 @@ function directAiIsSafeFetchUrl(raw) {
 // tool (Wave 4, D230): the provider runs the searches inside the same turn
 // and grounds the answer, and the result comes back in the same shapes —
 // the concatenated text, or the return_result object when a schema is
-// passed (the two tools ride side by side in one tools array).
+// passed (the two tools ride side by side in one tools array). A turn
+// that pauses mid-search is resumed with every segment's content kept,
+// the structured path's one prose re-ask goes through the same bounded
+// resumption, and a plain grounded answer appends the source URLs its
+// text blocks cite — the platform integration's grounded text carried
+// them inline — as a 'Sources:' list when the text does not name them
+// (PR #478 review corrections).
 // Files are fetched server-side through the SSRF
 // guard embedded above this helper (a renamed copy of isSafeFetchUrl,
 // generated from the same canonical source, so the helper is self-contained).
@@ -439,23 +445,38 @@ async function directInvokeLLM(params, deps) {
     webUsage.output_tokens += u.output_tokens ?? 0;
     webUsage.web_search_requests += (u.server_tool_use || {}).web_search_requests ?? 0;
   };
-  let result = await callProvider();
-  absorbUsage(result.usage);
-  // A web-grounded turn can stop at 'pause_turn' when the provider's
-  // server-side search loop reaches its iteration cap; handing the answer
-  // back as the assistant turn resumes it. Bounded — a call still paused at
-  // the bound fails as incomplete rather than returning a half-searched
+  // One logical call, however many provider responses it takes. A
+  // web-grounded turn can stop at 'pause_turn' when the provider's
+  // server-side search loop reaches its iteration cap; handing the
+  // answer back as the assistant turn resumes it, and every segment's
+  // content is accumulated — a resumed answer is its segments together,
+  // not the last segment alone. Bounded — a call still paused at the
+  // bound fails as incomplete rather than returning a half-searched
   // answer as though it were whole.
-  for (let resumes = 0; webSearch && result.stop_reason === 'pause_turn' && resumes < DIRECT_AI_WEB_MAX_RESUMES; resumes++) {
-    body.messages.push({ role: 'assistant', content: result.content });
-    result = await callProvider();
-    absorbUsage(result.usage);
-  }
-  if (webSearch && result.stop_reason === 'pause_turn') directAiFail(502, 'AI_RESULT_INCOMPLETE');
-  // tool_choice 'auto' does not guarantee the call; ask once more before failing.
+  const runCall = async () => {
+    let segment = await callProvider();
+    absorbUsage(segment.usage);
+    const content = [...segment.content];
+    let stopReason = segment.stop_reason;
+    let lastUsage = segment.usage;
+    for (let resumes = 0; webSearch && stopReason === 'pause_turn' && resumes < DIRECT_AI_WEB_MAX_RESUMES; resumes++) {
+      body.messages.push({ role: 'assistant', content: segment.content });
+      segment = await callProvider();
+      absorbUsage(segment.usage);
+      content.push(...segment.content);
+      stopReason = segment.stop_reason;
+      lastUsage = segment.usage;
+    }
+    if (webSearch && stopReason === 'pause_turn') directAiFail(502, 'AI_RESULT_INCOMPLETE');
+    return { content, stop_reason: stopReason, usage: lastUsage };
+  };
+  let result = await runCall();
+  // tool_choice 'auto' does not guarantee the call; ask once more before
+  // failing. The re-ask is a call like any other and goes through
+  // runCall: a re-ask that pauses mid-search resumes under the same
+  // bound instead of failing as a schema mismatch.
   if (schema && result.stop_reason === 'end_turn' && !result.content.some((block) => block && block.type === 'tool_use')) {
-    result = await callProvider();
-    absorbUsage(result.usage);
+    result = await runCall();
   }
   const usage = webUsage || result.usage || {};
   const provenance = JSON.stringify({ event: 'direct_ai_call', model, tier: model.split('-')[1], class: schema ? 'structured' : 'plain', input_tokens: usage.input_tokens ?? null, output_tokens: usage.output_tokens ?? null, ...(webSearch ? { web_search_requests: webUsage.web_search_requests } : {}), latency_ms: Date.now() - started });
@@ -468,8 +489,23 @@ async function directInvokeLLM(params, deps) {
     return tools[0].input.result;
   }
   if (result.stop_reason !== 'end_turn') directAiFail(502, 'AI_RESULT_INCOMPLETE');
-  const answer = result.content.filter((block) => block && block.type === 'text').map((block) => block.text).join('\n');
-  if (!answer.trim()) directAiFail(502, 'AI_RESULT_EMPTY');
+  const textBlocks = result.content.filter((block) => block && block.type === 'text');
+  const answerText = textBlocks.map((block) => block.text).join('\n');
+  if (!answerText.trim()) directAiFail(502, 'AI_RESULT_EMPTY');
+  // A grounded answer's sources ride in its text blocks' citations, not
+  // in the text itself; the platform integration's grounded text carried
+  // its source URLs inline, so the cited URLs the text does not already
+  // name are appended as a source list rather than dropped.
+  const citedUrls = [];
+  for (const block of textBlocks) {
+    for (const citation of block.citations || []) {
+      if (citation && citation.type === 'web_search_result_location' && typeof citation.url === 'string'
+        && citation.url && !citedUrls.includes(citation.url) && !answerText.includes(citation.url)) citedUrls.push(citation.url);
+    }
+  }
+  const answer = citedUrls.length
+    ? answerText + '\n\nSources:\n' + citedUrls.map((url) => '- ' + url).join('\n')
+    : answerText;
   console.log(provenance);
   return answer;
 }
