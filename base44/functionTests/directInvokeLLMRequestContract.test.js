@@ -612,3 +612,142 @@ test('no Base44 function forces a tool choice', () => {
   });
   assert.deepEqual(offenders, []);
 });
+
+// --- Itemless arrays and the measured node budget (D231) -------------------
+// Production finding, 2026-10-16: RegulatoryMonitor's broker call failed
+// UNSUPPORTED_SCHEMA on exactly the schema below — a nested array declared
+// without `items`, which is valid JSON Schema the retired InvokeLLM
+// accepted. An itemless array constrains nothing about its elements; an
+// array with `items` keeps the element check it always had.
+
+const REGULATORY_MONITOR_SCHEMA = {
+  type: 'object',
+  properties: {
+    updates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          affected_areas: { type: 'array', items: { type: 'string' } },
+          compliance_check_updates: { type: 'array' },
+        },
+      },
+    },
+    scan_summary: { type: 'string' },
+  },
+};
+
+test('an itemless array validates, and a heterogeneous result conforms (D231)', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const heterogeneous = ['a string', 42, true, null, { nested: 'object' }, ['an', 'array']];
+  const { fetcher, requests } = fakeProvider([toolAnswer({ tags: heterogeneous })]);
+  const result = await directInvokeLLM(
+    { prompt: 'Tag.', response_json_schema: { type: 'object', properties: { tags: { type: 'array' } }, required: ['tags'] } },
+    { fetcher, apiKey: 'test-key' },
+  );
+  assert.deepEqual(result, { tags: heterogeneous });
+  assert.equal(requests.length, 1);
+});
+
+test('an itemless array still refuses a non-array result (D231)', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher } = fakeProvider([toolAnswer({ tags: 'not-an-array' })]);
+  await assert.rejects(
+    directInvokeLLM(
+      { prompt: 'Tag.', response_json_schema: { type: 'object', properties: { tags: { type: 'array' } }, required: ['tags'] } },
+      { fetcher, apiKey: 'test-key' },
+    ),
+    (error) => error.code === 'AI_RESULT_SCHEMA_MISMATCH',
+  );
+});
+
+test('items explicitly undefined behaves as absent (D231)', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher } = fakeProvider([toolAnswer({ tags: [1, 'two', false] })]);
+  const result = await directInvokeLLM(
+    { prompt: 'Tag.', response_json_schema: { type: 'object', properties: { tags: { type: 'array', items: undefined } }, required: ['tags'] } },
+    { fetcher, apiKey: 'test-key' },
+  );
+  assert.deepEqual(result, { tags: [1, 'two', false] });
+});
+
+test('the RegulatoryMonitor shape conforms: a bare array nested in an array item object (D231)', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const answer = {
+    updates: [{
+      title: 'CoP update',
+      affected_areas: ['nursing'],
+      compliance_check_updates: [{ check_name: 'Verify X' }, 'a plain string entry', 7],
+    }],
+    scan_summary: 'one update',
+  };
+  const { fetcher, requests } = fakeProvider([toolAnswer(answer)]);
+  const result = await directInvokeLLM(
+    { prompt: 'Scan.', response_json_schema: REGULATORY_MONITOR_SCHEMA },
+    { fetcher, apiKey: 'test-key' },
+  );
+  assert.deepEqual(result, answer);
+  assert.equal(requests.length, 1);
+});
+
+test('an array with items keeps checking every element (D231)', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher } = fakeProvider([toolAnswer({ tags: ['fine', 42] })]);
+  await assert.rejects(
+    directInvokeLLM(
+      { prompt: 'Tag.', response_json_schema: { type: 'object', properties: { tags: { type: 'array', items: { type: 'string' } } }, required: ['tags'] } },
+      { fetcher, apiKey: 'test-key' },
+    ),
+    (error) => error.code === 'AI_RESULT_SCHEMA_MISMATCH',
+  );
+});
+
+// Growth shaped the way real schemas grow: nested objects, each well under
+// the separate 100-properties-per-object bound (measured widest real
+// object: 35). branches × (1 + leaves) + 1 = total schema nodes.
+const wideSchema = (branches, leaves) => ({
+  type: 'object',
+  properties: Object.fromEntries(
+    Array.from({ length: branches }, (_, i) => [`section_${i}`, {
+      type: 'object',
+      properties: Object.fromEntries(
+        Array.from({ length: leaves }, (_, j) => [`field_${j}`, { type: 'string' }]),
+      ),
+    }]),
+  ),
+});
+
+test('a schema past the old 200-node cap but within the measured budget validates (D231)', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  // 50 sections × (1 + 4 fields) + 1 = 251 schema nodes: over the cap D231
+  // replaced, under the measured 500.
+  const { fetcher, requests } = fakeProvider([toolAnswer({ section_0: { field_0: 'x' } })]);
+  const result = await directInvokeLLM(
+    { prompt: 'Fill.', response_json_schema: wideSchema(50, 4) },
+    { fetcher, apiKey: 'test-key' },
+  );
+  assert.deepEqual(result, { section_0: { field_0: 'x' } });
+  assert.equal(requests.length, 1);
+});
+
+test('a schema beyond the 500-node budget still refuses as too complex (D231)', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  // 100 sections × (1 + 5 fields) + 1 = 601 schema nodes.
+  const { fetcher, requests } = fakeProvider([]);
+  await assert.rejects(
+    directInvokeLLM(
+      { prompt: 'Fill.', response_json_schema: wideSchema(100, 5) },
+      { fetcher, apiKey: 'test-key' },
+    ),
+    (error) => error.code === 'SCHEMA_TOO_COMPLEX' && error.status === 400,
+  );
+  assert.equal(requests.length, 0, 'the refusal never reaches the provider');
+});
