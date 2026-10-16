@@ -1161,12 +1161,13 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`getAuthorizedDocument failed: ${error.status} ${error.message}`);
       return Response.json({ error: error.message }, { status: error.status });
     }
     const throttled = backendThrottleResponse(error);
     if (throttled) return throttled;
     // Provider errors may include predicates, URLs, filenames, or PHI.
-    console.error('getAuthorizedDocument failed');
+    console.error(`getAuthorizedDocument failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

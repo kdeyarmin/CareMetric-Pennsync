@@ -247,7 +247,7 @@ test('selector source is service-owned, finite, read-only, and ignores mutable U
     source,
     /user\.(?:account_type|agency_id|agency_name|agency_role|tenant_role|is_approved|is_manager|manager_email|staff_role|care_scope)\b/,
   );
-  assert.match(source, /console\.error\('listMyTenantMemberships failed'\)/);
+  assert.match(source, /console\.error\(`listMyTenantMemberships failed: \$\{error\.status\} \$\{error\.message\}`\)/);
   assert.match(source, /backend_temporarily_unavailable/);
   assert.doesNotMatch(source, /console\.error\([^)]*,\s*error\b/);
   assert.match(wrapper, /TRANSIENT_MEMBERSHIP_STATUSES/);
@@ -649,7 +649,7 @@ test('a provider rate limit is retryable and does not become a generic 500', asy
     assert.equal(failedResult.response.status, 500);
     assert.deepEqual(failedResult.json, { error: 'Internal server error' });
     assert.equal(logged.length, 1);
-    assert.deepEqual(logged[0], ['listMyTenantMemberships failed']);
+    assert.deepEqual(logged[0], ['listMyTenantMemberships failed: 500 Error']);
   } finally {
     console.error = originalError;
   }

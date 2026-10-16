@@ -313,6 +313,7 @@ Deno.serve(async (req) => {
     }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`getAuthorizedInboundReferralFax failed: ${error.status} ${error.message}`);
       return Response.json(
         { success: false, error: error.message },
         {
@@ -324,7 +325,7 @@ Deno.serve(async (req) => {
         },
       );
     }
-    console.error('getAuthorizedInboundReferralFax failed');
+    console.error(`getAuthorizedInboundReferralFax failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return Response.json(
       { success: false, error: 'Unable to retrieve referral fax document' },
       { status: 500, headers: NO_STORE_HEADERS },
