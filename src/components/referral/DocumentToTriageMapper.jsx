@@ -11,7 +11,6 @@ import { todayEastern } from "@/components/utils/timezone";
 import { checkExtractedPatientMatch } from "./documentPatientMatch";
 import { findDuplicatesForCandidate } from "../patient/patientDuplicateUtils";
 import { referralPatientReadiness, splitPatientName } from "./referralPatientReadiness";
-import { toReferralPriority } from "./referralUrgency";
 import { toast } from "sonner";
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
@@ -210,9 +209,10 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
           patient_id: patientId,
           referral_source: extractedData.document_info?.source_facility || "Document Upload",
           diagnosis: extractedData.clinical?.primary_diagnosis || "",
-          // assessUrgency speaks urgent|high|routine; toReferralPriority accepts
-          // those plus the other analyzer dialects (STAT/CRITICAL/…).
-          priority: toReferralPriority(assessUrgency(extractedData)),
+          // No priority (D234): this mapper used to derive one from a local
+          // vitals/diagnosis heuristic (assessUrgency). Referrals carry no
+          // analyzer-assigned urgency/priority level, so the field is left
+          // to its schema default and to staff.
           status: "new",
           referral_date: todayEastern(),
           document_type: REFERRAL_DOC_TYPES.includes(extractedData.document_info?.document_type)
@@ -259,32 +259,6 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
     } finally {
       setProcessing(false);
     }
-  };
-
-  const assessUrgency = (data) => {
-    const vitals = data.vitals || {};
-    const clinical = data.clinical || {};
-
-    // Check critical vitals
-    if (vitals.heart_rate > 120 || vitals.heart_rate < 50) return "urgent";
-    if (vitals.blood_pressure_systolic > 180 || vitals.blood_pressure_systolic < 90) return "urgent";
-    if (vitals.oxygen_saturation < 90) return "urgent";
-    if (vitals.respiratory_rate > 30) return "urgent";
-    if (vitals.temperature > 103 || vitals.temperature < 95) return "urgent";
-
-    // Check concerning diagnoses
-    const urgentDiags = [
-      "sepsis", "stroke", "mi", "pneumonia", "acute", "crisis",
-      "cardiac", "respiratory", "hemorrhage", "trauma"
-    ];
-    const allDiags = [
-      clinical.primary_diagnosis,
-      ...( clinical.secondary_diagnoses || [])
-    ].join(" ").toLowerCase();
-
-    if (urgentDiags.some(d => allDiags.includes(d))) return "high";
-
-    return vitals.pain_level > 7 ? "high" : "routine";
   };
 
   if (result?.success) {

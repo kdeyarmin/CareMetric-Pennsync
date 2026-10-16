@@ -13,7 +13,7 @@ export const INTAKE_MODEL = 'automatic';
 
 /** The answer the original gives when there is nothing to analyse. */
 export const EMPTY_REFERRAL_ANALYSIS = Object.freeze({
-  missing_critical_info: { high_priority: ['No referral data provided — cannot analyze.'] },
+  missing_critical_info: { blocking: ['No referral data provided — cannot analyze.'] },
   suggested_next_steps: [],
 });
 
@@ -22,7 +22,7 @@ export const nothingToAnalyse = extractedData =>
   !extractedData || (typeof extractedData === 'object' && Object.keys(extractedData).length === 0);
 
 export function buildIntakePrompt(extractedData, analysisResults) {
-  return `You are an expert home health intake coordinator. Analyze this referral data and provide comprehensive insights.
+  return `You are an expert home health intake coordinator. Analyze this referral data and provide comprehensive insights. Do not assign an urgency or priority level to the referral or to any suggested step: PennSync referrals carry no urgency level (D234). Order suggested steps by clinical sequence and state a timeframe for each instead.
 
 REFERRAL DATA:
 ${JSON.stringify(extractedData, null, 2)}
@@ -38,9 +38,9 @@ Provide a JSON response with the following structure:
     "specialty_requirements": ["any special certifications or skills needed"]
   },
   "missing_critical_info": {
-    "high_priority": ["critical items missing that block admission"],
-    "medium_priority": ["important items missing but admission can proceed"],
-    "low_priority": ["nice-to-have items missing"]
+    "blocking": ["critical items missing that block admission"],
+    "important": ["important items missing but admission can proceed"],
+    "optional": ["nice-to-have items missing"]
   },
   "risk_assessment": {
     "clinical_complexity": "low|medium|high|critical",
@@ -52,7 +52,6 @@ Provide a JSON response with the following structure:
   "suggested_next_steps": [
     {
       "action": "description of action",
-      "priority": "immediate|urgent|high|medium|low",
       "timeframe": "within X hours/days",
       "responsible_role": "nurse|admin|physician|coordinator"
     }
@@ -64,7 +63,6 @@ Provide a JSON response with the following structure:
     "requires_specialized_skills": true|false
   },
   "care_coordination_needs": {
-    "physician_contact_priority": "immediate|high|routine",
     "dme_orders_needed": ["list of equipment"],
     "therapy_services_recommended": ["PT", "OT", "ST"],
     "other_services": ["home health aide", "social work", etc.]
