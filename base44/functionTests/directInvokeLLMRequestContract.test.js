@@ -315,6 +315,52 @@ test('a file over the size cap fails as too large', async (t) => {
   assert.equal(requests.length, 0);
 });
 
+// ---- Redirect mode (D232). The hosted functions run on an edge runtime
+// whose fetch rejects redirect: 'error' outright — the call threw before
+// sending, which no Node suite could see because Node's fetch accepts the
+// mode. Both fetches use 'manual', and a 3xx is refused by the same !ok
+// checks that refuse any other non-2xx: never followed, never read as an
+// answer.
+
+test('the provider fetch is issued with redirect manual and a provider 3xx is refused, not followed', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const seen = [];
+  const fetcher = async (url, options) => {
+    seen.push({ url: String(url), options });
+    // A redirect whose body is a perfectly valid answer: if the mode
+    // followed it, or the status were read as success, the call would
+    // return the summary instead of refusing.
+    return new Response(JSON.stringify(toolAnswer({ summary: 'ok' }).payload), {
+      status: 302,
+      headers: { 'content-type': 'application/json', location: 'https://redirect-target.example/collect' },
+    });
+  };
+  await assert.rejects(
+    directInvokeLLM({ prompt: 'Summarize.', response_json_schema: SCHEMA }, { fetcher, apiKey: 'test-key' }),
+    (error) => error.code === 'AI_PROVIDER_REJECTED' && error.status === 502);
+  assert.equal(seen.length, 1, 'a refused redirect is not retried and never followed');
+  assert.equal(seen[0].options.redirect, 'manual');
+});
+
+test('the file fetch is issued with redirect manual and a file 3xx fails as unavailable', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const url = `${FILE_BASE}/letter.pdf`;
+  const seen = [];
+  const fetcher = async (u, options) => {
+    seen.push({ url: String(u), options });
+    return new Response(null, { status: 302, headers: { location: 'https://redirect-target.example/collect' } });
+  };
+  await assert.rejects(
+    directInvokeLLM(
+      { prompt: 'Read the letter.', file_urls: [url], response_json_schema: SCHEMA },
+      { fetcher, apiKey: 'test-key' }),
+    (error) => error.code === 'FILE_UNAVAILABLE' && error.status === 503);
+  assert.equal(seen.length, 1, 'the provider is never called and the redirect is never followed');
+  assert.equal(seen[0].options.redirect, 'manual');
+});
+
 // ---- Union schema types (D228). The ADR and clinical-document schemas
 // name nullable fields ['string', 'null'] / ['number', 'null']; Base44's
 // InvokeLLM honors them, so validation accepts a union of kinds and the
