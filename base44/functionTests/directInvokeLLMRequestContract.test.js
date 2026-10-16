@@ -364,6 +364,144 @@ test('a union with an unknown or repeated kind is still unsupported', async (t) 
   assert.equal(requests.length, 0);
 });
 
+// ---- Web context (Wave 4, D230). add_context_from_internet: true enables
+// Anthropic's web_search server tool: the provider runs the searches inside
+// the same turn and the answer returns in the shapes callers already
+// consume. The tool rides beside return_result when a schema is passed —
+// syncCMSRegulations passes both — and a turn that stops at 'pause_turn' is
+// handed back for resumption, bounded.
+
+const WEB_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: 5 };
+
+const webTextAnswer = (text, searches = 1) => ({
+  payload: {
+    stop_reason: 'end_turn',
+    content: [
+      { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'CMS home health updates 2026' } },
+      {
+        type: 'web_search_tool_result', tool_use_id: 'srv_1',
+        content: [{ type: 'web_search_result', title: 'CMS Home Health', url: 'https://www.cms.gov/example', encrypted_content: 'blob', page_age: null }],
+      },
+      { type: 'text', text, citations: [{ type: 'web_search_result_location', url: 'https://www.cms.gov/example', title: 'CMS Home Health', encrypted_index: 'e1' }] },
+    ],
+    usage: { input_tokens: 20, output_tokens: 7, server_tool_use: { web_search_requests: searches } },
+  },
+});
+
+const pausedAnswer = () => ({
+  payload: {
+    stop_reason: 'pause_turn',
+    content: [
+      { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'OASIS-E guidance' } },
+      { type: 'text', text: 'Searching…' },
+    ],
+    usage: { input_tokens: 11, output_tokens: 3, server_tool_use: { web_search_requests: 1 } },
+  },
+});
+
+const captureLogs = (t) => {
+  const lines = [];
+  t.mock.method(console, 'log', (line) => lines.push(JSON.parse(line)));
+  return lines;
+};
+
+test('a web call sends the server tool alone and returns the grounded text', async (t) => {
+  const lines = captureLogs(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([webTextAnswer('The latest CMS guidance says…')]);
+  const answer = await directInvokeLLM(
+    { prompt: 'What changed?', add_context_from_internet: true },
+    { fetcher, apiKey: 'test-key' });
+  assert.equal(answer, 'The latest CMS guidance says…');
+  assert.equal(requests.length, 1);
+  const body = requests[0].body;
+  assert.deepEqual(body.tools, [WEB_TOOL]);
+  assert.equal(body.tool_choice, undefined);
+  assert.equal(body.system, undefined);
+  const call = lines.find((line) => line.event === 'direct_ai_call');
+  assert.equal(call.web_search_requests, 1);
+  assert.equal(call.input_tokens, 20);
+  assert.equal(call.output_tokens, 7);
+  assert.equal(call.class, 'plain');
+});
+
+test('a web call with a schema rides both tools and unwraps the structured result', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([{
+    payload: {
+      stop_reason: 'tool_use',
+      content: [
+        { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'CMS regulations' } },
+        {
+          type: 'web_search_tool_result', tool_use_id: 'srv_1',
+          content: [{ type: 'web_search_result', title: 'CMS', url: 'https://www.cms.gov/example', encrypted_content: 'blob', page_age: null }],
+        },
+        { type: 'tool_use', id: 'toolu_1', name: 'return_result', input: { result: { summary: 'ok' } } },
+      ],
+      usage: { input_tokens: 30, output_tokens: 9, server_tool_use: { web_search_requests: 2 } },
+    },
+  }]);
+  const result = await directInvokeLLM(
+    { prompt: 'Research and summarize.', add_context_from_internet: true, response_json_schema: SCHEMA },
+    { fetcher, apiKey: 'test-key' });
+  assert.deepEqual(result, { summary: 'ok' });
+  const body = requests[0].body;
+  assert.equal(body.tools.length, 2);
+  assert.equal(body.tools[0].name, 'return_result');
+  assert.deepEqual(body.tools[1], WEB_TOOL);
+  assert.deepEqual(body.tool_choice, { type: 'auto', disable_parallel_tool_use: true });
+});
+
+test('a paused web turn is handed back as the assistant turn and resumed', async (t) => {
+  const lines = captureLogs(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([pausedAnswer(), webTextAnswer('Final grounded answer.', 1)]);
+  const answer = await directInvokeLLM(
+    { prompt: 'What changed?', add_context_from_internet: true },
+    { fetcher, apiKey: 'test-key' });
+  assert.equal(answer, 'Final grounded answer.');
+  assert.equal(requests.length, 2);
+  const resumed = requests[1].body;
+  assert.equal(resumed.messages.length, 2);
+  assert.equal(resumed.messages[1].role, 'assistant');
+  assert.deepEqual(resumed.messages[1].content, pausedAnswer().payload.content);
+  // The provenance line totals both responses behind the one logical call.
+  const call = lines.find((line) => line.event === 'direct_ai_call');
+  assert.equal(call.web_search_requests, 2);
+  assert.equal(call.input_tokens, 31);
+  assert.equal(call.output_tokens, 10);
+});
+
+test('a web turn that never stops pausing fails as incomplete at the bound', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([pausedAnswer(), pausedAnswer(), pausedAnswer(), pausedAnswer(), pausedAnswer()]);
+  await assert.rejects(
+    directInvokeLLM(
+      { prompt: 'What changed?', add_context_from_internet: true },
+      { fetcher, apiKey: 'test-key' }),
+    (error) => error.code === 'AI_RESULT_INCOMPLETE' && error.status === 502);
+  assert.equal(requests.length, 4, 'the first answer plus the bounded resumes');
+});
+
+test('the web flag is a boolean: false stays plain, a non-boolean is refused', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([textAnswer('Ungrounded.')]);
+  const answer = await directInvokeLLM(
+    { prompt: 'Write.', add_context_from_internet: false },
+    { fetcher, apiKey: 'test-key' });
+  assert.equal(answer, 'Ungrounded.');
+  assert.equal(requests[0].body.tools, undefined);
+  await assert.rejects(
+    directInvokeLLM(
+      { prompt: 'Write.', add_context_from_internet: 'yes' },
+      { fetcher, apiKey: 'test-key' }),
+    (error) => error.code === 'INVALID_INPUT' && error.status === 400);
+  assert.equal(requests.length, 1, 'the refusal never reaches the provider');
+});
+
 test('no Base44 function forces a tool choice', () => {
   const root = join(process.cwd(), 'base44', 'functions');
   const offenders = readdirSync(root).filter((name) => {
