@@ -354,7 +354,11 @@ export default function PatientMatchReview({
                 </div>
                 <div>
                   <span className="block text-xs font-semibold text-slate-500">Medical Record #</span>
-                  <p className="text-sm">{referralData.medical_record_number || referralData.mrn || 'N/A'}</p>
+                  {/* Referrals carry no PennSync MRN: a number printed on the
+                      referral document is the sending facility's, never ours
+                      (D233), so it is never shown here. Ours is assigned by
+                      MatrixCare and appears on the patient chart. */}
+                  <p className="text-sm">N/A</p>
                 </div>
                 <div>
                   <span className="block text-xs font-semibold text-slate-500">Primary Diagnosis</span>

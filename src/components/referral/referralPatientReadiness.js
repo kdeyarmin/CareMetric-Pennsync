@@ -43,15 +43,18 @@ export function splitPatientName(fullName) {
 
 export function referralPatientReadiness(analysis = {}) {
   const { first_name, last_name, full_name } = splitPatientName(analysis.patient_name || analysis.full_name);
+  // D233: an MRN printed on a referral document is the SENDING facility's
+  // record number, never PennSync's — MatrixCare assigns ours. It is not an
+  // identifier here and is ignored even when a legacy analysis carries one:
+  // it must never flow into a chart this gate approves creating.
   const identifiers = {
     date_of_birth: cleanReferralValue(analysis.date_of_birth),
-    medical_record_number: cleanReferralValue(analysis.medical_record_number || analysis.mrn),
     phone: cleanReferralValue(analysis.phone),
     address: cleanReferralValue(analysis.address),
   };
   const missing = [];
   if (!first_name || !last_name) missing.push('patient full name');
-  if (!Object.values(identifiers).some(Boolean)) missing.push('DOB, MRN, phone, or address');
+  if (!Object.values(identifiers).some(Boolean)) missing.push('DOB, phone, or address');
   return {
     ready: missing.length === 0,
     missing,

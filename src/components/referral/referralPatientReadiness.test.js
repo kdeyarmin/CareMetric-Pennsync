@@ -23,8 +23,22 @@ test('referralPatientReadiness requires full name plus one verifiable identifier
   assert.equal(referralPatientReadiness({ patient_name: 'Jane Doe', phone: '(555) 123-4567' }).ready, true);
   const incomplete = referralPatientReadiness({ patient_name: 'Jane Doe', date_of_birth: 'Not provided' });
   assert.equal(incomplete.ready, false);
-  assert.deepEqual(incomplete.missing, ['DOB, MRN, phone, or address']);
-  assert.deepEqual(referralPatientReadiness({ patient_name: 'Jane' }).missing, ['patient full name', 'DOB, MRN, phone, or address']);
+  assert.deepEqual(incomplete.missing, ['DOB, phone, or address']);
+  assert.deepEqual(referralPatientReadiness({ patient_name: 'Jane' }).missing, ['patient full name', 'DOB, phone, or address']);
+});
+
+test('a document MRN is not an identifier and never enters the identifiers (D233)', () => {
+  // The MRN printed on a referral is the sending facility's number, not
+  // PennSync's — it cannot satisfy the identity bar on its own...
+  const mrnOnly = referralPatientReadiness({ patient_name: 'Jane Doe', medical_record_number: '13383', mrn: '13383' });
+  assert.equal(mrnOnly.ready, false);
+  assert.deepEqual(mrnOnly.missing, ['DOB, phone, or address']);
+  // ...and even alongside a real identifier it is dropped, not carried into
+  // any chart a caller creates from these identifiers.
+  const withPhone = referralPatientReadiness({ patient_name: 'Jane Doe', phone: '(555) 123-4567', medical_record_number: '13383' });
+  assert.equal(withPhone.ready, true);
+  assert.ok(!('medical_record_number' in withPhone.identifiers));
+  assert.deepEqual(Object.keys(withPhone.identifiers).sort(), ['address', 'date_of_birth', 'phone']);
 });
 
 test('buildIncompleteReferralFromTriage creates an awaiting-info referral payload with audit note', () => {
@@ -35,7 +49,7 @@ test('buildIncompleteReferralFromTriage creates an awaiting-info referral payloa
   assert.equal(payload.status, 'awaiting_info');
   assert.equal(payload.requires_manual_review, true);
   assert.equal(payload.assigned_to, 'intake@example.com');
-  assert.deepEqual(payload.extracted_data.missing_patient_identity, ['DOB, MRN, phone, or address']);
+  assert.deepEqual(payload.extracted_data.missing_patient_identity, ['DOB, phone, or address']);
   assert.match(payload.follow_up_notes[0].note, /Patient chart not created/);
 });
 
