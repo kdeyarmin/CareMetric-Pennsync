@@ -311,6 +311,27 @@ test('a web-grounded call rides the broker and returns the grounded answer', asy
   assert.equal(entry.actor_email, 'nurse@agency.test');
 });
 
+test('a web-grounded plain answer keeps the sources its text cites', async () => {
+  // The citation URL rides in the text block's citations, not in its
+  // text; the helper appends the ones the text does not name and the
+  // broker returns that string untouched (PR #478 review).
+  const webModel = fakeModel({
+    script: async () => new Response(JSON.stringify({
+      content: [
+        { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'CMS home health updates' } },
+        { type: 'text', text: 'The rule changed.', citations: [{ type: 'web_search_result_location', url: 'https://www.cms.gov/example', title: 'CMS', encrypted_index: 'e1' }] },
+      ],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 3, output_tokens: 2, server_tool_use: { web_search_requests: 1 } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  });
+  const runtime = createRuntime({ model: webModel });
+  runtime.addUser('nurse');
+  const ok = await runtime.call({ user: 'nurse', body: { prompt: 'Search first.', add_context_from_internet: true } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data, 'The rule changed.\n\nSources:\n- https://www.cms.gov/example');
+});
+
 test('a provider throttle passes through at 429 so the frontend rate-limit path keys on it', async () => {
   const throttled = fakeModel({
     script: async () => new Response(JSON.stringify({ error: { type: 'rate_limit_error', message: 'slow down' } }), {

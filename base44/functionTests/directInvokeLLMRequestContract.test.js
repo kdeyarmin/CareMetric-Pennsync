@@ -412,7 +412,10 @@ test('a web call sends the server tool alone and returns the grounded text', asy
   const answer = await directInvokeLLM(
     { prompt: 'What changed?', add_context_from_internet: true },
     { fetcher, apiKey: 'test-key' });
-  assert.equal(answer, 'The latest CMS guidance says…');
+  // The text returns verbatim; the source its text block cited rides in
+  // the block's citations, not the text, and is appended — not dropped
+  // (PR #478 review).
+  assert.equal(answer, 'The latest CMS guidance says…\n\nSources:\n- https://www.cms.gov/example');
   assert.equal(requests.length, 1);
   const body = requests[0].body;
   assert.deepEqual(body.tools, [WEB_TOOL]);
@@ -460,7 +463,9 @@ test('a paused web turn is handed back as the assistant turn and resumed', async
   const answer = await directInvokeLLM(
     { prompt: 'What changed?', add_context_from_internet: true },
     { fetcher, apiKey: 'test-key' });
-  assert.equal(answer, 'Final grounded answer.');
+  // The paused segment's text is part of the answer and is kept ahead
+  // of the continuation, not overwritten by it (PR #478 review).
+  assert.equal(answer, 'Searching…\nFinal grounded answer.\n\nSources:\n- https://www.cms.gov/example');
   assert.equal(requests.length, 2);
   const resumed = requests[1].body;
   assert.equal(resumed.messages.length, 2);
@@ -483,6 +488,102 @@ test('a web turn that never stops pausing fails as incomplete at the bound', asy
       { fetcher, apiKey: 'test-key' }),
     (error) => error.code === 'AI_RESULT_INCOMPLETE' && error.status === 502);
   assert.equal(requests.length, 4, 'the first answer plus the bounded resumes');
+});
+
+test('a plain web answer appends the sources its text cites, deduped, skipping ones the text names', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const cite = (url, i) => ({ type: 'web_search_result_location', url, title: 'Source', encrypted_index: 'e' + i });
+  const { fetcher } = fakeProvider([{
+    payload: {
+      stop_reason: 'end_turn',
+      content: [
+        { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'q' } },
+        { type: 'text', text: 'Per https://www.cms.gov/example the rule changed.', citations: [cite('https://www.cms.gov/example', 1), cite('https://www.hhs.gov/example', 2)] },
+        { type: 'text', text: 'Agencies must comply by March.', citations: [cite('https://www.hhs.gov/example', 3), cite('https://www.osha.gov/example', 4)] },
+      ],
+      usage: { input_tokens: 5, output_tokens: 5, server_tool_use: { web_search_requests: 1 } },
+    },
+  }]);
+  const answer = await directInvokeLLM(
+    { prompt: 'What changed?', add_context_from_internet: true },
+    { fetcher, apiKey: 'test-key' });
+  assert.equal(answer, 'Per https://www.cms.gov/example the rule changed.\nAgencies must comply by March.\n\nSources:\n- https://www.hhs.gov/example\n- https://www.osha.gov/example');
+});
+
+test('a twice-paused web answer keeps every segment of text, in order', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const segment = (text, stopReason) => ({
+    payload: {
+      stop_reason: stopReason,
+      content: [
+        { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'q' } },
+        { type: 'text', text },
+      ],
+      usage: { input_tokens: 5, output_tokens: 5, server_tool_use: { web_search_requests: 1 } },
+    },
+  });
+  const { fetcher, requests } = fakeProvider([
+    segment('Part one.', 'pause_turn'),
+    segment('Part two.', 'pause_turn'),
+    segment('Part three.', 'end_turn'),
+  ]);
+  const answer = await directInvokeLLM(
+    { prompt: 'What changed?', add_context_from_internet: true },
+    { fetcher, apiKey: 'test-key' });
+  assert.equal(answer, 'Part one.\nPart two.\nPart three.');
+  assert.equal(requests.length, 3);
+});
+
+test('a structured web call whose turn pauses before the tool call still unwraps the result', async (t) => {
+  const lines = captureLogs(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([pausedAnswer(), toolAnswer({ summary: 'ok' })]);
+  const result = await directInvokeLLM(
+    { prompt: 'Research and summarize.', add_context_from_internet: true, response_json_schema: SCHEMA },
+    { fetcher, apiKey: 'test-key' });
+  assert.deepEqual(result, { summary: 'ok' });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].body.messages.at(-1).role, 'assistant');
+  // The provenance line totals both responses behind the one logical call.
+  const call = lines.find((line) => line.event === 'direct_ai_call');
+  assert.equal(call.web_search_requests, 1);
+  assert.equal(call.input_tokens, 21);
+  assert.equal(call.output_tokens, 8);
+});
+
+test('a structured web re-ask that pauses resumes under the same bound', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([
+    textAnswer('The rule changed in March.'),
+    pausedAnswer(),
+    toolAnswer({ summary: 'ok' }),
+  ]);
+  const result = await directInvokeLLM(
+    { prompt: 'Research and summarize.', add_context_from_internet: true, response_json_schema: SCHEMA },
+    { fetcher, apiKey: 'test-key' });
+  // The first answer was prose; the re-ask paused mid-search and its
+  // resumption produced the tool call. Before the correction the
+  // re-ask never resumed and this failed as a schema mismatch.
+  assert.deepEqual(result, { summary: 'ok' });
+  assert.equal(requests.length, 3);
+});
+
+test('a structured web re-ask that never unpauses fails incomplete, not schema mismatch', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([
+    textAnswer('The rule changed in March.'),
+    pausedAnswer(), pausedAnswer(), pausedAnswer(), pausedAnswer(),
+  ]);
+  await assert.rejects(
+    directInvokeLLM(
+      { prompt: 'Research and summarize.', add_context_from_internet: true, response_json_schema: SCHEMA },
+      { fetcher, apiKey: 'test-key' }),
+    (error) => error.code === 'AI_RESULT_INCOMPLETE' && error.status === 502);
+  assert.equal(requests.length, 5, 'the prose answer plus the re-ask and its bounded resumes');
 });
 
 test('the web flag is a boolean: false stays plain, a non-boolean is refused', async (t) => {
