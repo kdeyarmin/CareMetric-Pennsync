@@ -76,16 +76,23 @@ test("diagnosis schema descriptions demand verbatim capture, never invention", (
   assert.match(dx.secondary_diagnoses.description, /documented in the referral, exactly as stated/);
 });
 
-test("quick scan prompt + schema drive form pre-fill and triage", () => {
+test("quick scan prompt + schema drive form pre-fill, with no urgency level anywhere (D234)", () => {
   const prompt = buildReferralQuickScanPrompt();
-  assert.match(prompt, /URGENCY ASSESSMENT/);
+  assert.doesNotMatch(prompt, /URGENCY ASSESSMENT/);
   assert.match(prompt, /SUGGESTED INITIAL TASKS/);
+  assert.match(prompt, /Do NOT assign an urgency or priority level/);
 
   const props = REFERRAL_QUICKSCAN_SCHEMA.properties;
-  for (const field of ["patient_name", "category", "urgency_level", "suggested_initial_tasks"]) {
+  for (const field of ["patient_name", "category", "suggested_initial_tasks"]) {
     assert.ok(props[field], `expected quick-scan schema to define ${field}`);
   }
-  assert.deepEqual(props.urgency_level.enum, ["urgent", "high", "normal", "low"]);
+  // The removed fields stay removed: no urgency level, no urgency factors,
+  // no urgency scores, and no per-task priority in the suggested tasks.
+  for (const removed of ["urgency_level", "urgency_factors", "clinical_urgency_score", "administrative_urgency_score"]) {
+    assert.equal(props[removed], undefined, `quick-scan schema must not define ${removed}`);
+  }
+  assert.equal(props.suggested_initial_tasks.items.properties.priority, undefined,
+    "suggested tasks carry a timeframe, never a priority");
 });
 
 // The run helpers take an injected `invoke` (the app's invokeLLM, which applies
