@@ -91,27 +91,25 @@ function assertNoForbiddenDetails(payload, label) {
   }
 }
 
-test('referral triage activity records only the non-identifying result category', () => {
+test('referral triage activity records that an analysis ran, and nothing else', () => {
   const payloads = userActivityPayloads(readEntry('triageReferralWithAI'));
   assert.equal(payloads.length, 1);
   const [payload] = payloads;
 
   assert.match(payload, /action:\s*'referral_triage_analysis'/);
-  // Urgency is normalized into a local before the create so the same category
-  // reaches both the SPA response and the trail (mixed-case answers used to
-  // pass the banner and still map to Referral.priority "normal").
-  assert.match(payload, /urgency_level:\s*urgency\b/);
-  assert.doesNotMatch(payload, /referralData|analysis\?\.patient_name/);
+  // D234: the event used to carry exactly one detail — the urgency category.
+  // Referrals carry no urgency level now, so the details are an empty object:
+  // the containment rule (never copy the analysis into the trail) survives
+  // with nothing left to carry.
+  assert.match(payload, /details:\s*\{\s*\}/);
+  assert.doesNotMatch(payload, /urgency_level|referralData|analysis\?\.patient_name/);
   assertNoForbiddenDetails(payload, 'referral triage activity');
 
   const source = readEntry('triageReferralWithAI');
-  assert.match(source, /const urgency = auditUrgencyLevel\(analysis\?\.urgency_level\)/);
-  assert.match(source, /TRIAGE_URGENCY_LEVELS\s*=\s*new Set\(\['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'\]\)/);
-  assert.match(
-    source,
-    /TRIAGE_URGENCY_LEVELS\.has\(normalized\)\s*\?\s*normalized\s*:\s*'UNKNOWN'/,
-    'an unexpected LLM value must become a fixed category rather than entering the audit log',
-  );
+  assert.doesNotMatch(source, /auditUrgencyLevel|TRIAGE_URGENCY_LEVELS/,
+    'the urgency vocabulary is gone with the level itself (D234)');
+  assert.match(source, /delete analysis\.urgency_level/);
+  assert.match(source, /delete analysis\.urgency_reason/);
   assert.match(source, /console\.error\('Referral triage analysis failed'\)/);
   assert.match(source, /console\.error\('Referral triage activity logging failed'\)/);
   assert.doesNotMatch(
