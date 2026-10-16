@@ -14914,3 +14914,73 @@ four unported functions of the six already classified `files` on
 their own file tokens and stay there; `extractClinicalDocument` and
 `splitReferralPDF` are written ports and stay `none`. The queue reads
 as it read before the wave: `port queue: entity_authorization=5 files=16 external_secret=2 none=82`.
+
+## D229 — The frontend's AI calls run through an authenticated broker of the app's own, and the funnel had two mouths, not one (2026-10-15)
+
+Wave 3 of the direct-AI migration (D223's sequence). The first two
+waves ported the backend functions; the frontend still called the
+platform's `InvokeLLM` integration, which is the platform's key, the
+platform's model names and the platform's web search. This wave moves
+the frontend onto the same direct path without touching a single
+consumer's call shape.
+
+**The broker.** `invokeDirectLLM` is a hosted function whose whole
+body is the shared `directInvokeLLM` helper (D223) behind the
+authorized-broker shell the app already uses: `base44.auth.me()`, the
+trusted-claims binding, the active-user check. A call is attributed
+to the authenticated user and the tenant their own membership binds —
+never to anything in the request body, because the helper's parameter
+allowlist refuses identity keys outright (`INVALID_INPUT`), which is
+stronger than the sibling brokers' ignore-what-you-do-not-need: a
+body that tries to name a tenant fails rather than being silently
+re-scoped. There is no per-feature function to write; the one broker
+is the frontend's whole surface, which is what keeps the wrapper diff
+below honest. Errors keep Base44's shape (`{error}` with a status),
+and a missing `ANTHROPIC_API_KEY` answers 500 with the body
+`src/lib/aiFeatureError.js`'s `configNotReadyMessage` pattern keys
+on, so the frontend's "isn't switched on yet" copy survives the move
+verbatim. Every call writes a provenance line naming the acting user,
+their id and their agency beside the helper's own fields — the abuse
+control a shared broker owes, since any signed-in user can now spend
+the app's key through it.
+
+**The funnel had two mouths.** The migration plan's census named
+`src/lib/invokeLLM.js` as the sole innermost call site and
+`src/hooks/useAICall.js` as a layer over it. Measured, the hook
+carried its OWN `integrations.Core.InvokeLLM` call inside the
+scheduler callback — same retry helper, same scheduler, different
+transport. Left there, the wave would have migrated the lib's callers
+and left every hook consumer on the platform path while reporting the
+path closed. The hook now delegates to the lib wrapper, so the
+frontend holds exactly ONE broker call site, and the three components
+passing `add_context_from_internet: true` ride it like everything
+else: until the web-search wave implements the provider tool, they
+meet the helper's honest `WEB_SEARCH_NOT_MIGRATED` refusal — a
+visible, named failure in the hook's error state — rather than
+silently succeeding against a search nobody migrated or failing
+somewhere blunter. The retry policy and the scheduler
+(`src/lib/aiCall.js`, `src/lib/aiScheduler.js`) are untouched, pinned
+byte-for-byte by the drain tests as before.
+
+**The bypass that was not one.** `src/api/integrations.js`
+re-exported the platform `InvokeLLM` as a standing invitation to
+bypass the wrappers. Censused: no module in `src/` imports it — the
+decisions record had already measured it a zero-consumer surface —
+so the re-export is removed rather than re-pointed. The file's other
+re-exports (`UploadFile`, `GenerateImage`,
+`ExtractDataFromUploadedFile`) keep their own dispositions and are
+not this wave's to move.
+
+**What it does to the queue: the population grows, and the new
+member reads `files`.** The broker is a new `port`, so the census
+goes 303 → 304 functions and the queue 105 → 106. The migration plan
+predicted the broker would classify `external_secret`: it reads
+`ANTHROPIC_API_KEY` from the environment, and that is its only
+provider reach. The classifier reads the inlined helper body in its
+own order and meets `file_urls` first, so the measured bucket is
+`files` — the same ordering D223's wave recorded for the SmartNote
+four. The key read is real; it is not the first thing the module
+waits on, because a runtime InvokeLLM that cannot accept a hosted
+file URL cannot serve this broker's file calls at all, while the key
+is a function secret the hosted side already holds. Recorded as
+measured, not as predicted: the queue reads `port queue: entity_authorization=5 files=17 external_secret=2 none=82`.
