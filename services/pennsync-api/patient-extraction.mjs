@@ -9,8 +9,15 @@
 // It is frozen at the leaves because the handler hands a clone of it to the
 // runtime on every call, and a schema a caller could mutate would change what
 // the next caller's document is read for.
+//
+// It carries no `medical_record_number` field, and the root `description`
+// says why to the model: an MRN printed on a document is the SENDING
+// facility's record number, never PennSync's — MatrixCare assigns ours
+// (D233). The field was the last document-MRN inflow the D233 census
+// missed; do not restore it here without restoring the rule.
 export const PATIENT_EXTRACTION_SCHEMA = Object.freeze({
   type: 'object',
+  description: 'Structured patient information present in the document. Do NOT extract any medical record number printed on the document: that number belongs to the sending facility\'s record system, not ours (D233).',
   properties: {
     first_name: { type: 'string', description: "Patient's first name" },
     middle_name: { type: 'string', description: "Patient's middle name or initial" },
@@ -19,7 +26,6 @@ export const PATIENT_EXTRACTION_SCHEMA = Object.freeze({
     phone: { type: 'string', description: 'Phone number' },
     email: { type: 'string', description: 'Email address' },
     address: { type: 'string', description: 'Full address' },
-    medical_record_number: { type: 'string', description: 'Medical record number (MRN)' },
     primary_diagnosis: { type: 'string', description: 'Primary diagnosis or chief complaint' },
     allergies: { type: 'string', description: 'Known allergies' },
     emergency_contact_name: { type: 'string', description: 'Emergency contact name' },

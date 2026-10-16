@@ -128,6 +128,24 @@ describe('ReferralTriage — create patient from triage', () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
+  it('ignores a document MRN carried by the analysis when creating the chart (D233)', async () => {
+    // The analysis names the SENDING facility's MRN (Heritage Ridge's 13383).
+    // It is not PennSync's number — MatrixCare assigns ours — so it must not
+    // reach the created chart under either key the extractors have used.
+    analysisState.value = { ...COMPLETE_ANALYSIS, medical_record_number: '13383', mrn: '13383' };
+    const user = userEvent.setup();
+    renderWithProviders(<ReferralTriage />);
+
+    await user.click(screen.getByText('run-triage'));
+    const createBtn = await screen.findByRole('button', { name: /Create Patient or Queue Referral/i });
+    await user.click(createBtn);
+
+    await waitFor(() => expect(patientCreate).toHaveBeenCalledTimes(1));
+    const payload = patientCreate.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('medical_record_number');
+    expect(JSON.stringify(payload)).not.toContain('13383');
+  });
+
   it('drops the previous packet\'s create action as soon as a new packet starts', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ReferralTriage />);
@@ -158,7 +176,7 @@ describe('ReferralTriage — create patient from triage', () => {
       requires_manual_review: true,
       assigned_to: 'nurse@x.com',
     });
-    expect(referralCreate.mock.calls[0][0].extracted_data.missing_patient_identity).toEqual(['DOB, MRN, phone, or address']);
+    expect(referralCreate.mock.calls[0][0].extracted_data.missing_patient_identity).toEqual(['DOB, phone, or address']);
     await waitFor(() => expect(taskCreate).toHaveBeenCalledTimes(1));
     expect(taskCreate.mock.calls[0][0]).toMatchObject({
       title: 'Complete referral identity: Jane Doe',

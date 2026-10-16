@@ -212,10 +212,6 @@ export default function DocumentIngestionUploader({ onDataExtracted, _patientId 
                     <p className="font-medium">{extractedData.patient?.date_of_birth || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-slate-600">MRN</p>
-                    <p className="font-medium">{extractedData.patient?.medical_record_number || "N/A"}</p>
-                  </div>
-                  <div>
                     <p className="text-slate-600">Phone</p>
                     <p className="font-medium">{extractedData.patient?.phone || "N/A"}</p>
                   </div>

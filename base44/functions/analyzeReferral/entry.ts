@@ -582,6 +582,15 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 async function matchPatient(base44, params) {
     const { extractedData, existingPatients } = params;
 
+    // D233: a referral document's MRN is the sending facility's record
+    // number, never PennSync's (MatrixCare assigns ours) — strip it before
+    // the model sees the referral data, so a legacy stored analysis that
+    // still carries one cannot be matched on it. The existing patients'
+    // own MRNs below are our charts' context, not comparison input.
+    const referralDemographics = { ...(extractedData.demographics || {}) };
+    delete referralDemographics.medical_record_number;
+    delete referralDemographics.mrn;
+
     const matchAnalysis = await directInvokeLLM({
         model: "automatic",
         prompt: `You are an expert patient matching system for healthcare records with advanced fuzzy matching capabilities.
@@ -589,7 +598,7 @@ async function matchPatient(base44, params) {
 Analyze the referral data and compare it against existing patients to find the best match.
 
 REFERRAL PATIENT DATA:
-${JSON.stringify(extractedData.demographics, null, 2)}
+${JSON.stringify(referralDemographics, null, 2)}
 
 EXISTING PATIENTS IN SYSTEM (Top Candidates):
 ${JSON.stringify(existingPatients.map(p => ({
@@ -619,8 +628,9 @@ ${JSON.stringify(existingPatients.map(p => ({
    - Middle name/initial differences
 3. **Phone Number** (15 points): Recent matches weighted higher
 4. **Address** (10 points): Consider moves, partial matches
-5. **Medical Record Number** (15 points): If available, strong identifier
-6. **Insurance Provider** (5 points): Supporting evidence
+5. **Insurance Provider** (5 points): Supporting evidence
+
+A medical record number printed on a referral document belongs to the SENDING facility's record system, not ours — never use it as match evidence for or against a patient (D233).
 
 **DISCREPANCY ANALYSIS:**
 For each potential match, identify and list ALL discrepancies:

@@ -485,14 +485,13 @@ Deno.serve(async (req) => {
 
     const extractedData = await directInvokeLLM({
       model: "automatic",
-      prompt: `Extract clinical information from this medical document. Return structured JSON with the following fields (use empty string if not found):
+      prompt: `Extract clinical information from this medical document. Return structured JSON with the following fields (use empty string if not found). Do NOT extract any medical record number printed on the document: that number belongs to the sending facility's record system, not ours (D233).
 
 {
   "patient": {
     "first_name": "string",
     "last_name": "string",
     "date_of_birth": "YYYY-MM-DD",
-    "medical_record_number": "string",
     "phone": "string",
     "address": "string",
     "email": "string"
@@ -540,7 +539,6 @@ Deno.serve(async (req) => {
               first_name: { type: "string" },
               last_name: { type: "string" },
               date_of_birth: { type: "string" },
-              medical_record_number: { type: "string" },
               phone: { type: "string" },
               address: { type: "string" },
               email: { type: "string" }

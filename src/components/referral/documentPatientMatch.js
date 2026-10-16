@@ -8,21 +8,25 @@
 //
 // Pure + offline (unit-tested with `node --test`). Reuses the dedupe engine's
 // canonical name/DOB normalizers so both features agree on identity.
+//
+// MRN is deliberately NOT compared (D233): an MRN printed on a referral
+// document is the sending facility's record number, while the chart's MRN is
+// PennSync's own, assigned by MatrixCare. The two numbers belong to different
+// systems, so their difference is not an identity conflict and their equality
+// would prove nothing — matching rests on name and DOB alone.
 
 import { normalizeName, parseDob } from "../patient/patientDuplicateUtils.js";
-
-const mrnKey = (v) => String(v ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
 
 /**
  * Compare the extracted patient identity to the target chart.
  *
  * Deliberately conservative in BOTH directions:
- *  - a hard conflict on DOB, last name, or MRN → "mismatch" (block/confirm);
+ *  - a hard conflict on DOB or last name → "mismatch" (block/confirm);
  *  - nothing comparable on either side → "unverifiable" (warn);
  *  - otherwise → "match".
  *
- * @param {{first_name?, last_name?, date_of_birth?, medical_record_number?}} extracted
- * @param {{first_name?, last_name?, date_of_birth?, medical_record_number?}} chart
+ * @param {{first_name?, last_name?, date_of_birth?}} extracted
+ * @param {{first_name?, last_name?, date_of_birth?}} chart
  * @returns {{ verdict: "match"|"mismatch"|"unverifiable", conflicts: string[], compared: string[] }}
  */
 export function checkExtractedPatientMatch(extracted = {}, chart = {}) {
@@ -57,15 +61,6 @@ export function checkExtractedPatientMatch(extracted = {}, chart = {}) {
     compared.push("date of birth");
     if (exDob.year !== chDob.year || exDob.month !== chDob.month || exDob.day !== chDob.day) {
       conflicts.push(`date of birth ("${extracted.date_of_birth}" vs chart "${chart.date_of_birth}")`);
-    }
-  }
-
-  const exMrn = mrnKey(extracted.medical_record_number);
-  const chMrn = mrnKey(chart.medical_record_number);
-  if (exMrn && chMrn) {
-    compared.push("MRN");
-    if (exMrn !== chMrn) {
-      conflicts.push(`MRN ("${extracted.medical_record_number}" vs chart "${chart.medical_record_number}")`);
     }
   }
 

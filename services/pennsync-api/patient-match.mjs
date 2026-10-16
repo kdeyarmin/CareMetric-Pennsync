@@ -59,7 +59,7 @@ export const PATIENT_MATCH_SCHEMA = Object.freeze({
       enum: ['definitive', 'high', 'medium', 'low', 'no_match'],
       description: 'Categorized confidence level',
     },
-    is_definitive: { type: 'boolean', description: 'True if MRN match or other definitive criteria met' },
+    is_definitive: { type: 'boolean', description: 'True if definitive criteria met (3+ high-priority exact matches)' },
     match_factors: {
       type: 'array', items: { type: 'string' },
       description: 'Specific factors supporting the match (be detailed)',
@@ -71,7 +71,6 @@ export const PATIENT_MATCH_SCHEMA = Object.freeze({
     field_matches: {
       type: 'object',
       properties: {
-        mrn_match: { type: 'boolean' },
         name_match: { type: 'string', enum: ['exact', 'close', 'partial', 'none'] },
         dob_match: { type: 'string', enum: ['exact', 'close', 'none'] },
         phone_match: { type: 'string', enum: ['exact', 'partial', 'none'] },
@@ -108,12 +107,20 @@ export const PATIENT_MATCH_SCHEMA = Object.freeze({
 });
 
 export function buildMatchPrompt(extractedData, existingPatients) {
+  // D233: a referral document's MRN is the sending facility's record
+  // number, never PennSync's (MatrixCare assigns ours) — strip it
+  // before the model sees the referral data, so a legacy stored
+  // analysis that still carries one cannot be matched on it.
+  const referralDemographics = { ...(extractedData.demographics || {}) };
+  delete referralDemographics.medical_record_number;
+  delete referralDemographics.mrn;
+
   return `You are an expert patient matching system for healthcare records with advanced fuzzy matching capabilities.
 
 Analyze the referral data and compare it against existing patients to find the best match.
 
 REFERRAL PATIENT DATA:
-${JSON.stringify(extractedData.demographics, null, 2)}
+${JSON.stringify(referralDemographics, null, 2)}
 
 EXISTING PATIENTS IN SYSTEM (${existingPatients.length} records):
 ${JSON.stringify(existingPatients.map(projectPatient), null, 2)}
@@ -127,23 +134,19 @@ ADVANCED MATCHING CRITERIA:
    - Maiden name vs married name considerations
    - Hyphenated names and name order variations
 
-2. **Medical Record Number** (DEFINITIVE if present):
-   - Exact MRN match = DEFINITIVE match regardless of other fields
-   - Similar MRNs (1 digit difference) = flag for manual review
-
-3. **Date of Birth** (High Priority):
+2. **Date of Birth** (High Priority):
    - Exact DOB match strongly supports match
    - Day/month transposition (common data entry error)
    - 1-day difference (timezone or transcription errors)
    - Missing DOB but other strong matches = medium confidence
 
-4. **Contact Information** (Medium-High Priority):
+3. **Contact Information** (Medium-High Priority):
    - Phone number exact match (ignore formatting)
    - Phone number partial match (last 4-7 digits)
    - Email exact match
    - Address similarity (street name, city, zip)
 
-5. **Clinical Context** (Medium Priority):
+4. **Clinical Context** (Medium Priority):
    - Physician name match
    - Physician phone match
    - Insurance provider match
@@ -151,21 +154,20 @@ ADVANCED MATCHING CRITERIA:
    - Diagnosis overlap
    - Recent admission dates (within 30 days)
 
-6. **Demographics** (Supporting Evidence):
+5. **Demographics** (Supporting Evidence):
    - Age consistency (DOB derived)
    - Gender consistency
    - Care type consistency (home health vs hospice)
 
 CONFIDENCE SCORING GUIDE:
-- **90-100%**: DEFINITIVE (MRN match or 3+ high-priority exact matches)
+- **90-100%**: DEFINITIVE (3+ high-priority exact matches)
 - **75-89%**: HIGH (Name + DOB + 1 contact match, or Name + 2 contact matches)
 - **60-74%**: MEDIUM (Name similarity + DOB or contact info)
 - **40-59%**: LOW (Partial name match + some demographics)
 - **0-39%**: NO MATCH (insufficient similarity)
 
 SPECIAL CONSIDERATIONS:
-- If referral has MRN and matches existing patient MRN exactly → DEFINITIVE match (100% confidence)
-- Multiple patients with similar names but different MRNs → NO match (create new)
+- A medical record number printed on a referral document belongs to the SENDING facility's record system, not ours — never use it as match evidence for or against a patient (D233)
 - Same name, DOB, and phone → HIGH confidence match
 - Consider patient status (prefer matching active patients over discharged)
 - Flag if existing patient is discharged but new referral suggests readmission

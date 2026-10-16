@@ -106,6 +106,20 @@ test('the schema handed over is a clone, so one call cannot change the next', as
     "Patient's first name");
 });
 
+test('the schema does not ask for a document MRN, and tells the model not to (D233)', async () => {
+  // An MRN printed on a document is the sending facility's record number,
+  // never PennSync's — MatrixCare assigns ours. The field is absent rather
+  // than merely unused, and the root description carries the refusal,
+  // because the schema is the only instruction this capability gives.
+  assert.equal('medical_record_number' in PATIENT_EXTRACTION_SCHEMA.properties, false);
+  assert.match(PATIENT_EXTRACTION_SCHEMA.description,
+    /Do NOT extract any medical record number printed on the document/);
+  const h = harness();
+  await entry.handle(h);
+  assert.equal('medical_record_number' in h.calls[1].payload.json_schema.properties, false,
+    'and the schema actually handed to the runtime holds no MRN field either');
+});
+
 test('a provider that answers a failure status is reported without its words', async () => {
   for (const extraction of [
     { status: 'error', details: 'upstream said something with a URL in it' },

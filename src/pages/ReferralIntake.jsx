@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { createAuthorizedPatient } from '@/functions/createAuthorizedPatient';
-import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
 import {
   createAuthorizedReferral,
   deleteAuthorizedReferral,
@@ -627,9 +626,9 @@ export default function ReferralIntake() {
             matchAnalysis.confidence_level === 'definitive'
             || (matchAnalysis.confidence_level === 'high' && matchAnalysis.confidence_score >= 90)
           )) {
-            // Definitive (e.g. exact MRN) or high confidence (90%+) may auto-match
+            // Definitive or high confidence (90%+) may auto-match
             // only when that same chart also clears the two-part name bar.
-            // Otherwise Jane Smith would be linked to John Smith and pick up his MRN.
+            // Otherwise Jane Smith would be linked to John Smith's chart.
             const aiLink = acceptAiAutoLink({ rankedMatches, matchAnalysis });
             if (aiLink?.patient) {
               if (!existingPatient) existingPatient = aiLink.patient;
@@ -682,7 +681,6 @@ export default function ReferralIntake() {
           patient_name: extractedData.demographics.full_name,
           full_name: extractedData.demographics.full_name,
           date_of_birth: extractedData.demographics.date_of_birth,
-          medical_record_number: extractedData.demographics.medical_record_number || extractedData.demographics.mrn,
           phone: extractedData.demographics.phone,
           address: extractedData.demographics.address,
         });
@@ -706,7 +704,9 @@ export default function ReferralIntake() {
           first_name: firstName,
           middle_name: middleName,
           last_name: lastName,
-          medical_record_number: extractedData.demographics.medical_record_number || extractedData.demographics.mrn || null,
+          // No medical_record_number (D233): the referral document's MRN is
+          // the sending facility's, never ours. MatrixCare assigns the new
+          // chart's MRN; the field is left unset at creation.
           date_of_birth: extractedData.demographics.date_of_birth,
           address: extractedData.demographics.address,
           phone: extractedData.demographics.phone,
@@ -756,13 +756,16 @@ export default function ReferralIntake() {
         }
       } else if (existingPatient && !updates.requires_manual_review) {
         // A deterministic name match that the AI still flagged for review must
-        // not copy the referral MRN or set patient_id. Linking waits for
-        // handleConfirmMatch, which may choose a different chart.
+        // not set patient_id. Linking waits for handleConfirmMatch, which may
+        // choose a different chart.
         // Re-authorize the exact match immediately before linking it. Combining
         // identity_match with the roster projection supplies the current
-        // updated_date without widening either broker purpose. Referral intake
-        // only fills a missing MRN; other clinical/contact merges require their
-        // own reviewed purpose and must not be inferred from omitted fields.
+        // updated_date without widening either broker purpose. Linking writes
+        // nothing onto the chart: in particular the referral document's MRN is
+        // never copied onto it (D233) — that number is the sending facility's,
+        // and MatrixCare assigns ours. Other clinical/contact merges require
+        // their own reviewed purpose and must not be inferred from omitted
+        // fields.
         const [reauthorizedPatient] = await resolveAuthorizedReferralPatients({
           tenantContext,
           patientIds: [existingPatient.id],
@@ -772,16 +775,6 @@ export default function ReferralIntake() {
         }
         existingPatient = reauthorizedPatient;
 
-        const referredMrn = extractedData.demographics?.medical_record_number
-          || extractedData.demographics?.mrn;
-        if (!existingPatient.medical_record_number && referredMrn) {
-          await updatePatientFields({
-            patientId: existingPatient.id,
-            agencyId: tenantContext?.agency_id,
-            expectedUpdatedDate: existingPatient.updated_date,
-            changes: { medical_record_number: referredMrn },
-          });
-        }
         updates.patient_id = existingPatient.id;
       }
 
@@ -1068,7 +1061,6 @@ export default function ReferralIntake() {
         patient_name: demo.full_name,
         full_name: demo.full_name,
         date_of_birth: demo.date_of_birth,
-        medical_record_number: demo.medical_record_number || demo.mrn,
         phone: demo.phone,
         address: demo.address,
       });
@@ -1081,7 +1073,9 @@ export default function ReferralIntake() {
         first_name: readiness.first_name,
         middle_name: '',
         last_name: readiness.last_name,
-        medical_record_number: demo?.medical_record_number || demo?.mrn || null,
+        // No medical_record_number (D233): the referral document's MRN is
+        // the sending facility's, never ours. MatrixCare assigns the new
+        // chart's MRN; the field is left unset at creation.
         date_of_birth: demo.date_of_birth,
         address: demo.address,
         phone: demo.phone,

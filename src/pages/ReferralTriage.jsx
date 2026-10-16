@@ -128,7 +128,9 @@ export default function ReferralTriage() {
         first_name: readiness.first_name,
         last_name: readiness.last_name,
         date_of_birth: readiness.identifiers.date_of_birth || null,
-        medical_record_number: readiness.identifiers.medical_record_number || null,
+        // No medical_record_number (D233): an MRN on a referral is the
+        // sending facility's, never ours. MatrixCare assigns the new
+        // chart's MRN; the field is left unset at creation.
         primary_diagnosis: lastAnalysis.primary_diagnosis,
         secondary_diagnoses: lastAnalysis.secondary_diagnoses || [],
         phone: readiness.identifiers.phone || null,

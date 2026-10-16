@@ -58,6 +58,23 @@ vi.mock('../utils/security', () => ({
   logSecurityEvent: vi.fn(),
 }));
 
+// The document scanner, stubbed to hand back what a scan of a Heritage
+// Ridge SNF packet carries if the model volunteers the facility's printed
+// MRN (13383) under both keys extractors have used. D233: that number is
+// the sending facility's, and it must never reach a PennSync chart
+// through this form — MatrixCare assigns our MRN.
+vi.mock('./OCRDocumentExtractor', () => ({
+  default: ({ onDataExtracted }) => (
+    <button onClick={() => onDataExtracted({
+      first_name: 'Robert',
+      last_name: 'Grove',
+      date_of_birth: '1936-06-23',
+      medical_record_number: '13383',
+      mrn: '13383',
+    })}>run-scan</button>
+  ),
+}));
+
 import PatientForm from './PatientForm';
 
 const EXISTING = {
@@ -148,6 +165,26 @@ describe('PatientForm add-time duplicate guard', () => {
     await waitFor(() => expect(scopedPatientsMock).toHaveBeenCalled());
     expect(scopedPatientsMock.mock.calls.every((call) => call[0]?.enabled === false)).toBe(true);
     expect(screen.getByLabelText(/First Name/i)).toBeInTheDocument();
+  });
+
+  it('drops a scanned document MRN instead of pre-populating the chart MRN (D233)', async () => {
+    const user = userEvent.setup();
+    const onSuccess = vi.fn();
+    renderWithProviders(<PatientForm onSuccess={onSuccess} onCancel={() => {}} />);
+    await waitFor(() => expect(scopedPatientsMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: 'run-scan' }));
+
+    // The scan pre-populates the form from the document...
+    await waitFor(() => expect(screen.getByLabelText(/First Name/i)).toHaveValue('Robert'));
+    // ...but the MRN field stays empty: the document's number is not ours.
+    expect(screen.getByLabelText(/Medical Record Number/i)).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: /Add Patient/i }));
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    const payload = createMock.mock.calls[0][0];
+    expect(payload.medical_record_number).toBe('');
+    expect(JSON.stringify(payload)).not.toContain('13383');
   });
 
   it('creates without warning when no existing patient matches', async () => {

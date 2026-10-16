@@ -148,7 +148,7 @@ function scorePatient(patient, demographics) {
 /**
  * An AI "definitive" or ≥90% pick may auto-link only when the same roster row
  * also clears the two-part name bar. Otherwise the caller must hold the
- * referral for review instead of copying an MRN onto a household member.
+ * referral for review instead of linking it to a household member's chart.
  * Returns null when this result is not an auto-link candidate at all.
  */
 export function acceptAiAutoLink({ rankedMatches, matchAnalysis } = {}) {
