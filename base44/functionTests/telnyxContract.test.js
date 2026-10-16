@@ -3358,7 +3358,7 @@ test("a voicemail is copied into private storage and the row keeps the private r
   await v.send(recordingSaved({ mp3: RECORDING_URL, wav: null }, { public_recording_urls: { mp3: "https://public.example/rec.mp3" } }));
   const download = v.calls.find((c) => c.url === RECORDING_URL);
   assert.ok(download, "downloaded the ten-minute link");
-  assert.equal(download.init.redirect, "error", "a redirect cannot take the download off the allowed host");
+  assert.equal(download.init.redirect, "manual", "a redirect cannot take the download off the allowed host: 'manual' never follows, the handler refuses any 3xx itself, and the edge runtime rejects 'error' outright (D232)");
   assert.equal(v.uploads.length, 1);
   assert.equal(v.uploads[0].type, "audio/mpeg");
   assert.deepEqual([...v.uploads[0].bytes], [...MP3_BYTES]);
@@ -3386,6 +3386,7 @@ test("a voicemail that cannot be copied keeps the provider link and logs only a 
       ["host_refused", { mp3: "https://example.com/recording.mp3" }, null],
       ["host_refused", { mp3: "http://s3.amazonaws.com/rec.mp3" }, null],
       ["download_rejected", { mp3: RECORDING_URL }, () => new Response("denied", { status: 403 })],
+      ["download_rejected", { mp3: RECORDING_URL }, () => new Response(null, { status: 302, headers: { location: "https://redirect-target.example/collect" } })],
       ["download_too_large", { mp3: RECORDING_URL }, () => new Response(MP3_BYTES, { status: 200, headers: { "content-length": String(64 * 1024 * 1024) } })],
       ["download_too_large", { mp3: RECORDING_URL }, () => new Response(new ReadableStream({
         start(controller) { for (let i = 0; i < 11; i += 1) controller.enqueue(new Uint8Array(1024 * 1024).fill(0xff)); controller.close(); },
