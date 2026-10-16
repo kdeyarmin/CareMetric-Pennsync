@@ -32,6 +32,24 @@ for (const variant of [`cmfile:${id}`, `cmfile:${id.toUpperCase()}`, `CMFILE:${i
   });
 }
 
+test('a storage redirect on the document load is refused, never followed (D232)', async () => {
+  const store = { async fileGet(input) {
+    assert.deepEqual(input, { p_id: id, p_app_id: appId, p_subject: subject });
+    return { id, app_id: appId, subject, owner_kind: 'subject', agency_id: null, object_path: objectPath, size_bytes: 10, sha256: 'c'.repeat(64) };
+  } };
+  const seen = [];
+  const provider = createProviders({ ...config, anthropicKey: 'synthetic', model: 'automatic' }, store, async (url, options) => {
+    seen.push({ url: String(url), options });
+    return new Response(null, { status: 302, headers: { location: 'https://redirect-target.example/collect' } });
+  });
+  await assert.rejects(
+    () => provider('InvokeLLM', { prompt: 'Read it.', file_uris: [`cmfile:${id}`] }, { subject }),
+    error => error.status === 503 && error.code === 'PRIVATE_FILE_UNAVAILABLE');
+  assert.equal(seen.length, 1, 'the provider is never called and the redirect is never followed');
+  assert.equal(seen[0].url, `${config.supabaseUrl}/storage/v1/object/authenticated/${BUCKET}/${objectPath}`);
+  assert.equal(seen[0].options.redirect, 'manual');
+});
+
 test('canonicalizing case never relaxes subject or exact storage-path authority', async () => {
   for (const patch of [{ subject: 'd'.repeat(64) }, { object_path: objectPath.replace(id, id.toUpperCase()) }]) {
     const provider = createProviders(config, { async fileGet() {
