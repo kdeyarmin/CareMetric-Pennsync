@@ -1,20 +1,25 @@
-import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   AlertCircle,
   Loader,
   Upload,
   CheckCircle2,
   AlertTriangle,
-  Copy,
   Download,
   FileText,
+  ListChecks,
   RefreshCw,
+  Send,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
+import { exportToPDF } from '@/components/utils/pdfExporter';
+import { announceLegacyFaxSubmit } from '@/components/fax/legacyFaxSubmitFeedback';
 import {
   PACKET_MAX_BYTES,
   describeJobProgress,
@@ -26,6 +31,13 @@ import {
   processPacketTriage,
   startPacketTriage,
 } from './referralTriageJobs';
+import {
+  buildAnalysisPdfContent,
+  buildPacketPdfContent,
+  buildReviewBundle,
+  formPdfContent,
+  packetLabel,
+} from './triageReview';
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
@@ -35,12 +47,26 @@ const pageRange = ({ start_page: start, end_page: end }) => (start === end ? `${
 const progressKey = (job) => `${job?.status}:${job?.parts_done}:${job?.summarizing}`;
 
 function statusBadge(job) {
+  // D234: status only. Referrals carry no urgency level, so the badge never
+  // appends one — including for legacy jobs whose stored row still has one.
   if (job.status === 'ready') {
-    return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{job.urgency_level ? `Ready · ${job.urgency_level}` : 'Ready'}</Badge>;
+    return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Ready</Badge>;
   }
   if (job.status === 'failed') return <Badge className="bg-red-100 text-red-800 border-red-200">Failed</Badge>;
   return <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">Analyzing</Badge>;
 }
+
+function complianceIcon(status) {
+  if (status === 'satisfied') return <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />;
+  if (status === 'conflicting') return <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />;
+  return <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />;
+}
+
+const FORM_LABELS = {
+  home_health_order: 'Home health order',
+  f2f_form: 'Face-to-face form',
+  request_cover: 'Request cover',
+};
 
 /**
  * Referral packet triage. The packet PDF is uploaded to private storage and
@@ -48,6 +74,11 @@ function statusBadge(job) {
  * 75-100 page scanned packet works and the user may leave while it runs; they
  * are notified when it is ready. While this panel is open it drives the job
  * itself, so a packet someone is watching finishes as fast as it can.
+ *
+ * The result surface is an office-staff surface (D234): no JSON export, no
+ * urgency level. Staff get the analysis as a PDF for the admitting nurse,
+ * the PDGM coding review, the Medicare compliance checklist, and the
+ * missing-items packet with its generated forms.
  */
 export default function ReferralTriageAnalyzer({
   agencyId,
@@ -64,21 +95,21 @@ export default function ReferralTriageAnalyzer({
   const [error, setError] = useState(null);
   const [connectionNotice, setConnectionNotice] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(null);
+  const [packetFaxNumber, setPacketFaxNumber] = useState('');
+  const [packetFaxName, setPacketFaxName] = useState('');
+  const [faxingPacket, setFaxingPacket] = useState(false);
   const fileInputRef = useRef(null);
   const callbacks = useRef({ onTriageComplete, onTriageReset });
   callbacks.current = { onTriageComplete, onTriageReset };
 
   const analysis = selectedJob?.status === 'ready' ? selectedJob.analysis : null;
 
-  const urgencyColors = {
-    CRITICAL: 'bg-red-100 text-red-800 border-red-300',
-    HIGH: 'bg-orange-100 text-orange-800 border-orange-300',
-    MEDIUM: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-    LOW: 'bg-green-100 text-green-800 border-green-300',
-  };
-  const urgencyBannerClass = (level) =>
-    urgencyColors[String(level || '').toUpperCase()]
-    || 'bg-slate-100 text-slate-800 border-slate-300';
+  // The review layer (coding review, compliance checklist, missing-items
+  // packet, generated forms) is derived from the analysis by pure builders:
+  // the same models render the cards below and fill the PDFs, and a degraded
+  // review surfaces as its own status rather than failing the analysis.
+  const bundle = useMemo(() => (analysis ? buildReviewBundle(analysis) : null), [analysis]);
 
   const rememberJob = useCallback((job) => {
     if (!job?.id) return;
@@ -215,21 +246,92 @@ export default function ReferralTriageAnalyzer({
     handlePacket(e.dataTransfer?.files?.[0]);
   };
 
-  const handleCopyAnalysis = async () => {
-    const text = JSON.stringify(analysis, null, 2);
-    if (!await copyTextToClipboard(text)) return;
-    toast.success('Analysis copied to clipboard');
+  // PDF downloads. Filenames stay non-identifying — embedding the patient's
+  // name would leak PHI into browser download history and stored file
+  // metadata; the name belongs inside the document, not on its filename.
+  const downloadPdf = async (key, build) => {
+    if (pdfBusy) return;
+    setPdfBusy(key);
+    try {
+      await build('save');
+      toast.success('PDF downloaded');
+    } catch (err) {
+      console.error('Referral PDF download failed:', err);
+      toast.error("Couldn't generate the PDF. Please try again.");
+    } finally {
+      setPdfBusy(null);
+    }
   };
 
-  const handleDownloadAnalysis = () => {
-    const dataStr = JSON.stringify(analysis, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const link = document.createElement('a');
-    link.setAttribute('href', dataUri);
-    // Non-identifying filename — embedding the patient's name would leak PHI into
-    // browser download history and stored file metadata.
-    link.setAttribute('download', `triage-${Date.now()}.json`);
-    link.click();
+  const handleDownloadAnalysisPdf = () => downloadPdf('analysis', (output) => exportToPDF({
+    output,
+    filename: `pennsync-referral-analysis-${Date.now()}.pdf`,
+    title: 'Referral Analysis',
+    subtitle: packetLabel(selectedJob),
+    content: buildAnalysisPdfContent(analysis, bundle),
+  }));
+
+  const handleDownloadPacketPdf = () => downloadPdf('packet', (output) => exportToPDF({
+    output,
+    filename: `pennsync-missing-items-packet-${Date.now()}.pdf`,
+    title: 'Missing-Items Packet',
+    subtitle: packetLabel(selectedJob),
+    content: buildPacketPdfContent(analysis, bundle),
+  }));
+
+  const handleDownloadFormPdf = (kind) => {
+    const form = kind === 'home_health_order' ? bundle?.forms.order
+      : kind === 'f2f_form' ? bundle?.forms.f2f
+        : bundle?.forms.cover;
+    if (!form) return;
+    downloadPdf(kind, (output) => exportToPDF({
+      output,
+      filename: `pennsync-${kind.replaceAll('_', '-')}-${Date.now()}.pdf`,
+      title: form.title,
+      subtitle: packetLabel(selectedJob),
+      content: formPdfContent(form),
+    }));
+  };
+
+  // The packet goes out on the legacy sendFax path, the same one
+  // ProviderFaxRequestCard uses: it works before any Referral record exists
+  // (patient_id null). The authority-tracked sendAuthorizedReferralFax needs
+  // an authorized Referral row, which the triage surface does not have until
+  // staff act on the analysis — so it is deliberately not used here.
+  const handleFaxPacket = async () => {
+    const to = packetFaxNumber.trim();
+    if (!to) {
+      toast.error("Enter the provider's fax number first.");
+      return;
+    }
+    if (faxingPacket) return;
+    setFaxingPacket(true);
+    try {
+      const blob = await exportToPDF({
+        output: 'blob',
+        filename: `pennsync-missing-items-packet-${Date.now()}.pdf`,
+        title: 'Missing-Items Packet',
+        subtitle: packetLabel(selectedJob),
+        content: buildPacketPdfContent(analysis, bundle),
+      });
+      const file = new File([blob], 'missing-items-packet.pdf', { type: 'application/pdf' });
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { data } = await base44.functions.invoke('sendFax', {
+        file_url,
+        to_number: to,
+        to_name: packetFaxName.trim() || null,
+        document_name: 'Missing-items packet — referral documentation request',
+        patient_id: null,
+      });
+      if (!data?.success) throw new Error(data?.error || 'Fax send failed');
+      // Legacy sendFax: accepted by Telnyx, but status is not authority-tracked.
+      announceLegacyFaxSubmit(toast, data);
+    } catch (err) {
+      console.error('Missing-items packet fax failed:', err);
+      toast.error(err?.message || "Couldn't fax the packet. Download the PDF and send it manually.");
+    } finally {
+      setFaxingPacket(false);
+    }
   };
 
   const dropZoneClass = uploading
@@ -241,6 +343,13 @@ export default function ReferralTriageAnalyzer({
   const progressPercent = selectedJob?.part_count
     ? Math.round(((selectedJob.parts_done || 0) / selectedJob.part_count) * (selectedJob.summarizing ? 100 : 90))
     : 0;
+
+  const review = bundle?.codingReview;
+  const generatedForms = [
+    ['home_health_order', bundle?.forms.order],
+    ['f2f_form', bundle?.forms.f2f],
+    ['request_cover', bundle?.forms.cover],
+  ].filter(([, form]) => form);
 
   return (
     <div className="w-full space-y-6">
@@ -308,17 +417,20 @@ export default function ReferralTriageAnalyzer({
         </CardContent>
       </Card>
 
-      {/* Selected packet: progress, failure, or partial-read note */}
+      {/* Selected packet: progress, failure, or partial-read note. The header
+          is the packet label (the patient's name once known), never the
+          uploaded file's name as the headline. */}
       {selectedJob && isOpenJob(selectedJob) && (
         <Card className="border-indigo-200">
           <CardContent className="p-5 space-y-3" role="status">
             <div className="flex items-center gap-2">
               <Loader className="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
-              <p className="font-semibold text-slate-900 truncate">{selectedJob.file_name}</p>
+              <p className="font-semibold text-slate-900 truncate">{packetLabel(selectedJob)}</p>
             </div>
             <p className="text-sm text-indigo-700">
               {describeJobProgress(selectedJob)}
               {selectedJob.page_count ? ` · ${selectedJob.page_count} pages` : ''}
+              {selectedJob.file_name ? ` · ${selectedJob.file_name}` : ''}
             </p>
             <div className="h-2 rounded-full bg-indigo-100 overflow-hidden">
               <div className="h-full bg-indigo-600 transition-all" style={{ width: `${Math.max(5, progressPercent)}%` }} />
@@ -335,7 +447,7 @@ export default function ReferralTriageAnalyzer({
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex gap-2">
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-red-900">{selectedJob.file_name} could not be analyzed</p>
+            <p className="text-sm font-semibold text-red-900">This packet could not be analyzed</p>
             <p className="text-sm text-red-700">{selectedJob.error_message || 'Upload the packet again.'}</p>
           </div>
         </div>
@@ -354,7 +466,8 @@ export default function ReferralTriageAnalyzer({
         </div>
       )}
 
-      {/* Recent packets */}
+      {/* Recent packets — labeled by patient name once the analysis exists;
+          the file name is secondary metadata only. */}
       {jobs.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -378,11 +491,12 @@ export default function ReferralTriageAnalyzer({
                     className={`w-full text-left py-3 px-2 rounded-md flex items-center justify-between gap-3 hover:bg-slate-50 ${job.id === selectedId ? 'bg-indigo-50' : ''}`}
                   >
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium text-slate-900 truncate">{job.file_name}</span>
+                      <span className="block text-sm font-medium text-slate-900 truncate">{packetLabel(job)}</span>
                       <span className="block text-xs text-slate-500">
                         {job.page_count ? `${job.page_count} pages · ` : ''}
                         {job.created_date ? new Date(job.created_date).toLocaleString() : ''}
                         {isOpenJob(job) ? ` · ${describeJobProgress(job)}` : ''}
+                        {job.file_name && packetLabel(job) !== job.file_name ? ` · ${job.file_name}` : ''}
                       </span>
                     </span>
                     {statusBadge(job)}
@@ -395,29 +509,8 @@ export default function ReferralTriageAnalyzer({
       )}
 
       {/* Analysis Results */}
-      {analysis && (
+      {analysis && bundle && (
         <div className="space-y-4">
-          {/* Urgency Banner */}
-          <div className={`p-4 rounded-lg border-2 ${urgencyBannerClass(analysis.urgency_level)}`}>
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2">
-                {String(analysis.urgency_level || '').toUpperCase() === 'CRITICAL' && (
-                  <AlertTriangle className="w-6 h-6" />
-                )}
-                {String(analysis.urgency_level || '').toUpperCase() === 'HIGH' && (
-                  <AlertCircle className="w-6 h-6" />
-                )}
-                {['MEDIUM', 'LOW'].includes(String(analysis.urgency_level || '').toUpperCase()) && (
-                  <CheckCircle2 className="w-6 h-6" />
-                )}
-                <div>
-                  <p className="text-sm font-bold">Urgency Level: {analysis.urgency_level || 'Unknown'}</p>
-                  <p className="text-xs mt-1">{analysis.urgency_reason}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Patient Information */}
           <Card>
             <CardHeader>
@@ -550,6 +643,209 @@ export default function ReferralTriageAnalyzer({
             </CardContent>
           </Card>
 
+          {/* Diagnosis Coding Review (PDGM) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Diagnosis Coding Review (PDGM)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!review?.available ? (
+                <p className="text-sm text-slate-600">
+                  Coding review unavailable for this analysis: no ICD-10 codes are documented in the packet.
+                  Codes are never assigned by the analyzer — obtain coded diagnoses from the referral source or a certified coder.
+                </p>
+              ) : (
+                <>
+                  {review.source === 'deterministic' && (
+                    <div className="p-2 rounded border border-amber-200 bg-amber-50">
+                      <p className="text-xs text-amber-800">
+                        The AI coding review was not returned for this analysis. The deterministic
+                        documentation check is shown instead — it lists only codes documented in the packet.
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-slate-600 uppercase font-semibold">Documented Primary Diagnosis</p>
+                    <p className="text-sm text-slate-900">{review.documented_primary || 'Not documented'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-600 uppercase font-semibold">Ordering Assessment</p>
+                    <p className="text-sm text-slate-700">{review.ordering_assessment}</p>
+                    {review.deterministic?.clinical_group && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        PDGM clinical group preview from the primary code: {review.deterministic.clinical_group}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    {review.codes.map((entry, i) => (
+                      <div key={i} className="border border-slate-200 rounded-lg p-3 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold text-slate-900">{entry.position}. {entry.code}</span>
+                          <span className="text-sm text-slate-700">{entry.description}</span>
+                          <Badge variant="outline">
+                            {entry.pdgm_role === 'primary_clinical_grouping' ? 'Primary — clinical grouping' : 'Secondary — comorbidity adjustment'}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-slate-700"><span className="font-semibold">Justification:</span> {entry.justification}</p>
+                        <p className="text-sm text-slate-600"><span className="font-semibold">Documentation:</span> {entry.documentation_support}</p>
+                        {entry.specificity_flag && (
+                          <p className="text-sm text-amber-800"><span className="font-semibold">Specificity:</span> {entry.specificity_flag}</p>
+                        )}
+                        {entry.suggested_more_specific && (
+                          <p className="text-sm text-emerald-800">
+                            <span className="font-semibold">More specific code supported by the packet:</span>{' '}
+                            {entry.suggested_more_specific.code} — {entry.suggested_more_specific.description} ({entry.suggested_more_specific.basis})
+                          </p>
+                        )}
+                        {entry.conflict && (
+                          <p className="text-sm text-red-800"><span className="font-semibold">Conflict — clarification required:</span> {entry.conflict}</p>
+                        )}
+                        {entry.deterministic_flag && (
+                          <p className="text-sm text-red-800"><span className="font-semibold">Coding check:</span> {entry.deterministic_flag}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {review.candidates?.length > 0 && (
+                    <div>
+                      <p className="text-xs text-slate-600 uppercase font-semibold mb-2">
+                        Additional Candidate Codes — Not Codable Until Documented
+                      </p>
+                      <ul className="space-y-2">
+                        {review.candidates.map((candidate, i) => (
+                          <li key={i} className="text-sm text-slate-700 border border-slate-200 rounded-lg p-3 space-y-1">
+                            <p className="font-semibold text-slate-900">
+                              {candidate.condition}
+                              {candidate.candidate_code ? ` (candidate ${candidate.candidate_code})` : ''}
+                            </p>
+                            <p><span className="font-semibold">Evidence:</span> {candidate.evidence}</p>
+                            <p><span className="font-semibold">PDGM relevance:</span> {candidate.pdgm_relevance}</p>
+                            <p><span className="font-semibold">Documentation required before use:</span> {candidate.documentation_required}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {review.documentation_needs?.length > 0 && (
+                    <div>
+                      <p className="text-xs text-slate-600 uppercase font-semibold mb-2">Diagnosis Documentation Needed</p>
+                      <ul className="space-y-1">
+                        {review.documentation_needs.map((need, i) => (
+                          <li key={i} className="text-sm text-slate-700">
+                            • {need.item}{need.for_code ? ` (for ${need.for_code})` : ''}: {need.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Medicare Compliance Checklist */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-slate-500" />
+                Medicare Compliance Checklist
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="divide-y divide-slate-100">
+                {bundle.compliance.map((entry) => (
+                  <li key={entry.key} className="py-2 flex gap-2">
+                    {complianceIcon(entry.status)}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900">
+                        {entry.label}
+                        <span className="ml-2 text-xs font-semibold uppercase text-slate-500">{entry.status}</span>
+                      </p>
+                      <p className="text-sm text-slate-600">{entry.evidence}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          {/* Missing-Items Packet */}
+          <Card className="border-amber-200">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ListChecks className="w-5 h-5 text-amber-600" />
+                Missing Items Packet
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {bundle.missingPacket.total === 0 ? (
+                <p className="text-sm text-slate-700 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  Nothing is missing: every compliance element is satisfied and the analysis found no gaps.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600">
+                    {bundle.missingPacket.total} item{bundle.missingPacket.total === 1 ? '' : 's'} still needed for this referral.
+                    PennSync has generated the documents it can generate — the order and face-to-face forms are
+                    populated and UNSIGNED, ready to send to the certifying provider for signature.
+                  </p>
+                  <ul className="space-y-2">
+                    {bundle.missingPacket.items.map((item) => (
+                      <li key={item.id} className="text-sm border border-slate-200 rounded-lg p-3 space-y-1">
+                        <p className="font-semibold text-slate-900">{item.label}</p>
+                        <p className="text-slate-600">{item.detail}</p>
+                        <p className="text-xs text-slate-500">
+                          Needed from: {item.needed_from}
+                          {item.generatable ? ` · Generated: ${FORM_LABELS[item.generatable]}` : ''}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={handleDownloadPacketPdf} variant="outline" className="gap-2" disabled={pdfBusy !== null}>
+                      <Download className="w-4 h-4" />
+                      Download Packet PDF
+                    </Button>
+                    {generatedForms.map(([kind]) => (
+                      <Button key={kind} onClick={() => handleDownloadFormPdf(kind)} variant="outline" className="gap-2" disabled={pdfBusy !== null}>
+                        <Download className="w-4 h-4" />
+                        {FORM_LABELS[kind]} PDF
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="border-t border-slate-100 pt-3 space-y-2">
+                    <p className="text-xs text-slate-600 uppercase font-semibold">Fax the packet to the provider</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Input
+                        value={packetFaxName}
+                        onChange={(e) => setPacketFaxName(e.target.value)}
+                        placeholder="Recipient name (optional)"
+                        aria-label="Packet fax recipient name"
+                        className="w-full sm:w-56"
+                      />
+                      <Input
+                        value={packetFaxNumber}
+                        onChange={(e) => setPacketFaxNumber(e.target.value)}
+                        placeholder="Provider fax number"
+                        aria-label="Packet fax number"
+                        className="w-full sm:w-56"
+                      />
+                      <Button onClick={handleFaxPacket} className="gap-2 bg-indigo-600 hover:bg-indigo-700" disabled={faxingPacket}>
+                        {faxingPacket ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        Fax Packet
+                      </Button>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Sends through the legacy fax path; delivery is confirmed by the receiving fax, not tracked in the app.
+                    </p>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Data Gaps */}
           {analysis.data_gaps?.length > 0 && (
             <Card className="border-slate-300">
@@ -581,23 +877,17 @@ export default function ReferralTriageAnalyzer({
             </CardContent>
           </Card>
 
-          {/* Export Actions */}
+          {/* Export Actions — PDF only (D234): this is an office-staff
+              surface, and the PDF is what goes to the admitting nurse. */}
           <div className="flex gap-2">
             <Button
-              onClick={handleCopyAnalysis}
+              onClick={handleDownloadAnalysisPdf}
               variant="outline"
               className="gap-2 flex-1"
-            >
-              <Copy className="w-4 h-4" />
-              Copy Analysis
-            </Button>
-            <Button
-              onClick={handleDownloadAnalysis}
-              variant="outline"
-              className="gap-2 flex-1"
+              disabled={pdfBusy !== null}
             >
               <Download className="w-4 h-4" />
-              Download JSON
+              Download PDF
             </Button>
           </div>
         </div>
