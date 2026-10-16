@@ -15282,3 +15282,27 @@ through DocumentToTriageMapper and through the ReferralTriage
 create flow, asserting the created chart has no
 `medical_record_number` property and the value appears nowhere in
 the payload.
+
+**Addendum (2026-10-16): the last inflow, closed.** The census
+above missed one producer: `extractPatientDataFromDocument` —
+the intake scanner behind the patient form — still asked the
+model for `medical_record_number` in its `PATIENT_SCHEMA`, and
+its ported copy (`services/pennsync-api/patient-extraction.mjs`)
+mirrored the field, as the parity suite requires of every field
+there. And the value was used: PatientForm's scan handler merges
+the extracted payload into the form, and the form's fields are
+the create/update payload, so a scanned document's MRN
+pre-populated the chart's MRN field and persisted on save. The
+field is removed from both schemas, which now carry the same
+do-not-extract note as `extractClinicalDocument`'s prompt (in
+the schema's root description — the only instruction this
+capability gives the model), and PatientForm drops
+`medical_record_number`/`mrn` from any scan payload before the
+merge: the defensive ignore at this choke point, mirroring the
+readiness one. The form's MRN field itself stays, for a number
+staff enter by hand or one a chart already carries. The pins:
+the port suite asserts the schema handed to the runtime holds
+no MRN field and carries the refusal, and a PatientForm spec
+drives a hostile scan carrying `13383` under both keys through
+to the create call, asserting the MRN field stayed empty and
+the value appears nowhere in the payload.
