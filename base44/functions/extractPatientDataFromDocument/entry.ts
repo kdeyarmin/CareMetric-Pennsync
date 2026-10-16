@@ -91,6 +91,7 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 const PATIENT_SCHEMA = {
   type: "object",
+  description: "Structured patient information present in the document. Do NOT extract any medical record number printed on the document: that number belongs to the sending facility's record system, not ours (D233).",
   properties: {
     first_name: { type: "string", description: "Patient's first name" },
     middle_name: { type: "string", description: "Patient's middle name or initial" },
@@ -99,7 +100,6 @@ const PATIENT_SCHEMA = {
     phone: { type: "string", description: "Phone number" },
     email: { type: "string", description: "Email address" },
     address: { type: "string", description: "Full address" },
-    medical_record_number: { type: "string", description: "Medical record number (MRN)" },
     primary_diagnosis: { type: "string", description: "Primary diagnosis or chief complaint" },
     allergies: { type: "string", description: "Known allergies" },
     emergency_contact_name: { type: "string", description: "Emergency contact name" },

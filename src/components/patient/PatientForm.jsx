@@ -36,6 +36,16 @@ const EMPTY_FORM = Object.freeze({
 
 const sameFormValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
+// D233: an MRN printed on a scanned document is the SENDING facility's
+// record number, never PennSync's — MatrixCare assigns ours. The document
+// scanner no longer asks for it, and a scan payload that still carries it
+// (a model volunteering the field) is dropped here rather than
+// pre-populating the form, because this form's fields are the
+// create/update payload: letting the value in would write a foreign
+// number into the chart on save. The MRN field itself stays — for a
+// number staff enter by hand, or one a chart already carries.
+const DOCUMENT_MRN_FIELDS = new Set(['medical_record_number', 'mrn']);
+
 export default function PatientForm({ patient, onSuccess, onCancel, rosterPatients = null }) {
   const { tenantContext } = useAuth();
   const patientCreateRequestId = useRef(null);
@@ -84,7 +94,7 @@ export default function PatientForm({ patient, onSuccess, onCancel, rosterPatien
     clearTimeout(validationTimerRef.current);
     const previousData = formDataRef.current;
     const extracted = Object.fromEntries(Object.entries(extractedData).filter(([field, value]) =>
-      value != null && (!Object.hasOwn(EMPTY_FORM, field) || (Array.isArray(EMPTY_FORM[field])
+      !DOCUMENT_MRN_FIELDS.has(field) && value != null && (!Object.hasOwn(EMPTY_FORM, field) || (Array.isArray(EMPTY_FORM[field])
         ? Array.isArray(value) && value.every(item => typeof item === 'string') : typeof value === 'string'))));
     const next = { ...previousData, ...extracted };
     formDataRef.current = next;
