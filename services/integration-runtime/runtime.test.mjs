@@ -179,6 +179,11 @@ test('text AI uses Anthropic directly without any Base44 Core request', async ()
   const urls=[];const provider=createProviders(cfg(),{},async(url,options)=>{urls.push(url);const b=JSON.parse(options.body);assert.equal(b.model,cfg().model);return Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'});});
   assert.equal(await provider('InvokeLLM',{prompt:'synthetic'},actor),'Synthetic answer');assert.deepEqual(urls,['https://api.anthropic.com/v1/messages']);
 });
+test('the provider fetch is issued with redirect manual and a provider 3xx is refused, not followed (D232)', async () => {
+  const seen=[];const provider=createProviders(cfg(),{},async(url,options)=>{seen.push(options);return new Response(null,{status:302,headers:{location:'https://redirect-target.example/collect'}});});
+  await assert.rejects(()=>provider('InvokeLLM',{prompt:'x'},actor),e=>e.status===502&&e.code==='AI_PROVIDER_REJECTED');
+  assert.equal(seen.length,1);assert.equal(seen[0].redirect,'manual');
+});
 test('structured AI uses a nonexecuting envelope and rejects truncated or invalid results', async () => {
   const schema={type:'array',items:{type:'integer'}};
   for(const output of [[1,2],['wrong']]) {
