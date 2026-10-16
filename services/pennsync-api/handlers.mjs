@@ -53,7 +53,6 @@ import {
 import {
   ROSTER_FORMAT, buildUserRoster, rosterFilename,
 } from './document-user-roster.mjs';
-import { analyzeReferralPriority as runReferralPriority } from './referral-priority.mjs';
 import { analyzeReferralIntake as runReferralIntake } from './referral-intake.mjs';
 import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs';
 import { matchPatientWithAI as runPatientMatch } from './patient-match.mjs';
@@ -1958,18 +1957,7 @@ export const HANDLERS = Object.freeze({
       return runReferralIntake({ params, integration });
     },
   }),
-  analyzeReferralPriority: Object.freeze({
-    // Reaches the integration runtime, so releasing it without one configured
-    // is a service that answers ready and then refuses every call.
-    needsIntegration: true,
-    // The first port that reaches outside the service. `integration` is bound
-    // to this caller by `app.mjs`; the handler never sees the credential that
-    // authorizes the brokered call.
-    handle({ params, integration }) {
-      exactObject(params, ['extractedData', 'analysisResults'], 'INVALID_PARAMS');
-      return runReferralPriority({ params, integration });
-    },
-  }),
+
   generateReferralTasks: Object.freeze({
     // Reaches the integration runtime, so releasing it without one configured
     // is a service that answers ready and then refuses every call.
