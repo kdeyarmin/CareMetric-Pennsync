@@ -133,6 +133,15 @@ export default function ReferralTriageAnalyzer({
 
   useEffect(() => { loadList(); }, [loadList]);
 
+  // The fax destination belongs to the packet on screen, never to the
+  // panel: switching packets (selection or upload) or agency clears both
+  // recipient fields, so one patient's packet can never be faxed to the
+  // previous patient's provider from a stale field.
+  useEffect(() => {
+    setPacketFaxNumber('');
+    setPacketFaxName('');
+  }, [selectedId, agencyId]);
+
   // Follow the selected job: read it, drive it while it is open, and hand a
   // finished triage to the page. Cancelled when the selection or agency changes.
   useEffect(() => {

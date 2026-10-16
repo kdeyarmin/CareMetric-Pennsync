@@ -211,6 +211,34 @@ describe('ReferralTriageAnalyzer', () => {
     expect(payload.file_url).toBe('https://files.example/packet.pdf');
   });
 
+  it('clears the fax destination when switching packets, so one patient\'s packet cannot go to the previous provider', async () => {
+    const other = { ...ANALYSIS, patient_name: 'John Roe', clinical_summary: 'Referred for wound care.' };
+    listJobs.mockResolvedValue([
+      ready({ id: 'job-1' }),
+      ready({ id: 'job-2', patient_name: 'John Roe', analysis: other }),
+    ]);
+    getJob.mockImplementation(async ({ jobId }) => (jobId === 'job-1'
+      ? ready({ id: 'job-1' })
+      : ready({ id: 'job-2', patient_name: 'John Roe', analysis: other })));
+    renderPanel({ initialJobId: 'job-1' });
+
+    expect(await screen.findByText('Missing Items Packet')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Packet fax number'), { target: { value: '7245550144' } });
+    fireEvent.change(screen.getByLabelText('Packet fax recipient name'), { target: { value: 'Dr. Smith' } });
+    expect(screen.getByLabelText('Packet fax number')).toHaveValue('7245550144');
+    expect(screen.getByLabelText('Packet fax recipient name')).toHaveValue('Dr. Smith');
+
+    fireEvent.click(await screen.findByRole('button', { name: /John Roe/ }));
+
+    expect(await screen.findByText('Referred for wound care.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Packet fax number')).toHaveValue(''));
+    expect(screen.getByLabelText('Packet fax recipient name')).toHaveValue('');
+    // A fax click now asks for a number instead of sending John Roe's
+    // packet to Jane Doe's provider from the stale field.
+    fireEvent.click(screen.getByRole('button', { name: /fax packet/i }));
+    expect(invokeFunction).not.toHaveBeenCalled();
+  });
+
   it('shows progress while the server reads the packet, and says the user can leave', async () => {
     let finish;
     processJob
