@@ -459,13 +459,6 @@ function parseLLMJson(raw) {
   }
 }
 
-const TRIAGE_URGENCY_LEVELS = new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']);
-
-function auditUrgencyLevel(value) {
-  const normalized = String(value || '').trim().toUpperCase();
-  return TRIAGE_URGENCY_LEVELS.has(normalized) ? normalized : 'UNKNOWN';
-}
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(userScopedClientRequest(req, PENNSYNC_PRODUCTION_APP_ID));
@@ -497,8 +490,6 @@ Provide a JSON response with this exact structure:
   "date_of_birth": "extracted DOB or 'Not provided'",
   "primary_diagnosis": "main diagnosis extracted",
   "secondary_diagnoses": ["list of other conditions"],
-  "urgency_level": "CRITICAL|HIGH|MEDIUM|LOW",
-  "urgency_reason": "brief explanation for urgency assignment",
   "key_risk_factors": ["list of identified risk factors"],
   "clinical_summary": "concise assessment of patient's current status",
   "preliminary_care_plan": {
@@ -516,24 +507,21 @@ Provide a JSON response with this exact structure:
 Return ONLY valid JSON, no markdown or explanation.`,
     });
     const analysis = parseLLMJson(rawAnalysis) || {};
-    // Normalize before return AND audit: callers map CRITICAL/HIGH/MEDIUM/LOW
-    // (e.g. ReferralTriage → Referral.priority). A mixed-case model answer used
-    // to pass the UI banner (which uppercases) and still land as priority
-    // "normal" because the create-patient path keyed the raw string. Only rewrite
-    // when the model supplied the field — an unparseable answer stays {}.
-    const urgency = auditUrgencyLevel(analysis?.urgency_level);
-    if (Object.hasOwn(analysis, 'urgency_level')) analysis.urgency_level = urgency;
+    // D234: referrals carry no analyzer-assigned urgency or priority level.
+    // Drop both fields outright if a model answer still offers them, so no
+    // caller can resurrect the removed level from this surface.
+    delete analysis.urgency_level;
+    delete analysis.urgency_reason;
 
-    // Log only the triage category. The analysis contains patient identity and
-    // clinical detail; UserActivity is a broad operational audit surface, not
-    // a second copy of the referral record.
+    // Log only that a triage analysis ran. The analysis contains patient
+    // identity and clinical detail; UserActivity is a broad operational
+    // audit surface, not a second copy of the referral record. With the
+    // urgency category removed (D234) the event carries no detail at all.
     await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'referral_triage_analysis',
-      details: {
-        urgency_level: urgency,
-      },
+      details: {},
       page: 'referral_triage',
       user_agent: req.headers.get('user-agent'),
     }).catch(() => console.error('Referral triage activity logging failed'));
