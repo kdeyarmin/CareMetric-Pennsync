@@ -29,15 +29,11 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+// The marker rides the patient summary narrative — the analysis field whose
+// text this component renders verbatim. (It rode the urgency reasoning
+// before D234 removed the urgency analysis entirely.)
 const analysisFor = (marker) => ({
-  urgency_analysis: {
-    clinical_urgency_score: 80,
-    administrative_urgency_score: 60,
-    overall_urgency_score: 75,
-    priority_level: 'High',
-    urgency_factors: [],
-    reasoning: marker,
-  },
+  patient_summary: { narrative: marker, key_conditions: [] },
   missing_information: { critical_missing: [], recommended_missing: [], data_completeness_score: 90 },
   scheduling_recommendations: { ideal_first_visit_timeframe: 'Within 24 hours' },
   risk_flags: [],
@@ -65,10 +61,10 @@ describe('ReferralAnalyzer', () => {
     await act(async () => { d.resolve(analysisFor('REASONING-A')); });
 
     expect(screen.getByText('REASONING-A')).toBeInTheDocument();
-    expect(screen.getByText(/Referral Priority/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Referral Priority/i)).not.toBeInTheDocument();
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
-      urgency_analysis: expect.objectContaining({ reasoning: 'REASONING-A' }),
+      patient_summary: expect.objectContaining({ narrative: 'REASONING-A' }),
     }));
   });
 
@@ -95,7 +91,7 @@ describe('ReferralAnalyzer', () => {
     expect(screen.queryByText('REASONING-A')).not.toBeInTheDocument();
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
-      urgency_analysis: expect.objectContaining({ reasoning: 'REASONING-B' }),
+      patient_summary: expect.objectContaining({ narrative: 'REASONING-B' }),
     }));
   });
 
@@ -281,17 +277,32 @@ describe('ReferralAnalyzer', () => {
     expect(screen.getByText('REASONING-A')).toBeInTheDocument();
   });
 
-  it('renders without the urgency sections when the model omits urgency_analysis', async () => {
+  it('never renders urgency sections — even when a legacy analysis still carries them (D234)', async () => {
     const d = deferred();
     invokeLLM.mockReturnValueOnce(d.promise);
 
     render(<ReferralAnalyzer referralData={referralA} />);
-    const partial = analysisFor('unused');
-    delete partial.urgency_analysis;
-    await act(async () => { d.resolve(partial); });
+    const legacy = {
+      ...analysisFor('Summary narrative'),
+      urgency_analysis: {
+        clinical_urgency_score: 80,
+        administrative_urgency_score: 60,
+        overall_urgency_score: 75,
+        priority_level: 'High',
+        urgency_factors: ['Legacy factor'],
+        reasoning: 'Legacy urgency reasoning',
+      },
+    };
+    await act(async () => { d.resolve(legacy); });
 
     expect(screen.queryByText(/Referral Priority/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/AI Urgency Analysis/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy urgency reasoning/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy factor/)).not.toBeInTheDocument();
     expect(screen.getByText(/Nurse Requirements/i)).toBeInTheDocument();
+    // And the schema the component asks the model for has no urgency in it.
+    const request = invokeLLM.mock.calls[0][0];
+    expect(request.prompt).not.toMatch(/URGENCY SCORING/);
+    expect(JSON.stringify(request.response_json_schema)).not.toMatch(/urgency/);
   });
 });
