@@ -15306,3 +15306,149 @@ no MRN field and carries the refusal, and a PatientForm spec
 drives a hostile scan carrying `13383` under both keys through
 to the create call, asserting the MRN field stayed empty and
 the value appears nowhere in the payload.
+
+## D234 — Referrals carry no urgency or priority level; the triage analysis gains a PDGM coding review, a Medicare compliance checklist, a missing-items packet with auto-generated forms, and a PDF-only download; the recent-packets list is labeled by patient name (2026-10-16)
+
+**The decision.** Six changes to the referral analysis, all directed on
+2026-10-16 after a live test on a real ninety-page packet from a skilled
+nursing facility: the analyzer assigns no urgency or priority level to a
+referral; the analysis carries a PDGM coding review that justifies every
+code it uses, flags what the documentation cannot support, and names the
+candidate codes the narrative suggests together with the documentation
+each one needs before it may be used; the whole referral is checked
+against the Medicare conditions at 42 CFR 424.22 and its neighbours; the
+gaps aggregate into a missing-items packet that auto-generates the items
+that can be generated — a populated home-health order, a face-to-face
+encounter form, a request cover for everything else — as unsigned PDFs
+ready to send for signature; the triage result's only download is a PDF
+of the whole analysis; and the recent-packets list is labeled by the
+patient's name rather than by the name of the file that was uploaded.
+
+**What the live test showed.** The analysis assigned the referral a
+priority level the agency does not use and does not want. Its coding
+overrode the packet's documented primary diagnosis — cellulitis of the
+groin — with a catheter-aftercare code, and gave no coding justification
+for the change. Unspecified codes passed without remark (an unspecified
+protein-calorie malnutrition, a urinary tract infection with no site, a
+depressive disorder carried as an alpha-suffixed category code), and a
+code asserting a ruptured abdominal aortic aneurysm stood unflagged
+against narrative describing the aneurysm as unrepaired and under
+vascular surveillance. The result offered a "Download JSON" on a surface
+office staff use to send the analysis to the nurse admitting the patient.
+And the packet list named the uploaded file, not the patient. Each of
+those is a defect in the analysis contract, not in the model: the
+contract asked for a priority, never asked for coding justification, and
+the page rendered what the contract carried.
+
+**Urgency leaves the contract, and the priority capability is retired.**
+The synthesis prompt in `referralTriageJobs` no longer asks for
+`urgency_level` or `urgency_reason`, and `summarize()` deletes both keys
+from whatever a model still offers, so a stored analysis cannot carry
+them; the same deletion is pinned in `triageReferralWithAI` and its port.
+`analyzeReferralIntake`'s missing-information buckets are renamed from
+priority levels to `blocking` / `important` / `optional` — a statement
+about what a missing document does to admission readiness, not a level
+assigned to the patient — and its suggested steps lose their `priority`
+field. `analyzeReferral`'s `analyze_priority` action is removed and the
+dispatch refuses it like any unknown action. `analyzeReferralPriority`
+itself is RETIRED in the transition disposition: the capability it named
+— an analyzer-assigned priority for a referral — no longer exists to be
+carried, which is what `retire` records. Its port module, its handler
+registration and its one frontend call site came out; its Base44
+original stays in the tree, as every retired function's does. What did
+NOT change: `Referral.priority` remains a staff-set field with its table
+filter, because a level staff choose is not a level the analyzer assigns;
+the scheduler's notification keeps its `priority: 'medium'` enum value,
+because `Notification.priority` requires one and the notice announces a
+finished analysis rather than grading a patient; and legacy analyses
+already stored with urgency fields are simply never rendered — no
+migration rewrites them, and the display layer sanitizes the fields out
+before render regardless.
+
+**The coding review.** The synthesis prompt now returns a
+`coding_review` section under standing instructions: affirm the
+documented primary diagnosis or justify a change explicitly; flag
+unspecified codes and offer a more specific code only where the packet's
+own documentation supports it, because a specificity suggestion without
+documentation behind it is upcoding; flag a code that contradicts the
+clinical text as a conflict requiring clarification; and scan the
+narrative for documented conditions the coded list omits, each candidate
+carrying its evidence, its PDGM relevance, and exactly what documentation
+must be obtained before it may be used — a candidate is never presented
+as codable. The browser then annotates the review deterministically with
+the app's existing diagnosis machinery (the code generator's PDGM
+exclusions, comorbidity tiers and specificity warnings, the primary
+validator, the clinical-group preview), so the specificity flags do not
+depend on the model noticing them. `summarize()` normalizes the section
+and preserves its absence: a model that returns no review degrades that
+section alone, and the analysis still completes. Every documentation
+need the review raises — specificity support for a code in use, the
+documentation a candidate requires — is emitted as a structured
+documentation item feeding the missing-items packet.
+
+**Compliance, the packet, and the forms.** The prompt also returns a
+`compliance_checklist` over eight elements — homebound status, skilled
+need, the face-to-face encounter, its timing, an eligible certifying
+provider, the referral order, plan-of-care elements, and valid specific
+diagnoses — each `satisfied`, `missing` or `conflicting` with an evidence
+pointer, and `summarize()` normalizes it so all eight elements are always
+present for the page to render; the face-to-face timing element is
+computed from the two dates the packet states (ninety days before to
+thirty days after the start of care) rather than taken from the model's
+verdict. The missing-items packet aggregates the compliance gaps, the
+analysis's own data gaps, and the coding review's documentation needs.
+Three documents are generated from the analysis data as PDFs through the
+app's existing print pipeline: a home-health order for the certifying
+provider carrying the patient demographics, the ordered diagnoses in the
+review's sequence, the disciplines and visit frequencies from the
+recommended plan, and the CMS certification statement 42 CFR 424.22
+requires; a face-to-face encounter form pre-filled with what the packet
+establishes and blank where the provider must attest; and a request
+cover listing exactly what cannot be generated — discharge summaries,
+homebound evidence, diagnosis documentation — for the referring facility.
+Every generated form goes out UNSIGNED, with blank signature and date
+lines: nothing in the packet asserts a signature exists. The packet's
+fax path uses the legacy `sendFax` route the referral surfaces already
+use for provider requests, because the authority-tracked
+`sendAuthorizedReferralFax` requires an authorized Referral row and at
+triage time none exists yet — creating one is the staff's admission
+decision, which this change does not automate; wiring the packet into
+that path belongs to the change that lets staff send it from the created
+referral. The PDF data model is built from the sanitized display model,
+and hostile payloads are pinned out of it: a document MRN or an
+SSN-shaped string in the analysis never reaches the PDF, carrying D233's
+rule into every new output this decision creates.
+
+**PDF only, and names.** "Download JSON" and "Copy Analysis" are gone
+from the triage result; "Download PDF" produces the complete analysis —
+extraction, coding review, compliance checklist, missing-items summary —
+through the same print-to-PDF pipeline the ADR packet review uses, under
+a filename that identifies nothing. The recent-packets list takes its
+label from the stored analysis: `jobView` exposes `patient_name` read out
+of the analysis the job already carries, so a completed packet is labeled
+with the patient's name, a processing packet reads as analyzing, and the
+uploaded file's name survives only as secondary metadata. The
+`ReferralTriageJob.patient_name` column stays unused, as D233 left the
+sibling MRN columns: filling it is a write-path decision for another day,
+not a read this page needs.
+
+**The ledger.** The decision register grows by one for the twenty-third
+consecutive turn: EXPECTED_NEW [234], base re-derived from origin/main at
+17bd7572 with D233 inert in it, so the base holds 211 numbered decisions,
+the register's regex reaches 233, and the union is 212. Retiring
+`analyzeReferralPriority` moves the port queue for the first time since
+D229: `port queue: entity_authorization=5 files=17 external_secret=2 none=81`,
+the total falling 106 → 105 and the ladder's handler count 164 → 163,
+with the reading it replaces declared as history in the disposition test
+beside D229's and D232's. The parity suite loses a net one test — the
+retired port's loop-generated cases — and gains the D234 pins in exchange.
+The Base44 coupling ceiling moves by the one new consumer this change
+deliberately adds: `client_importers` 375 → 376 and
+`core_integration_sites` 35 → 36, for the triage component's `UploadFile`
+call on the packet fax path — the same call the adjacent provider-request
+card already makes, counted rather than hidden inside another module.
+Gates at this entry: test:pennsync-api 345/345, test:utils 3024 pass and
+1 skipped of 3025, test:components 305 files and 2601 tests,
+test:contracts 471/471, test:external-integrations 379/379,
+test:security 1055/1055, check:shared-helpers clean over 300 consumers,
+check:backend-transpile clean over 304 functions.
