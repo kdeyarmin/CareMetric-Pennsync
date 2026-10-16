@@ -120,8 +120,11 @@ export function createProviders(config, store, fetcher = fetch) {
   }
   async function loadDocument(uri, ctx) {
     const row = await fileRecord(uri, ctx);
+    // 'manual', not 'error', for the same reason as the provider call below
+    // (D232): a redirect is refused by the !ok check rather than followed,
+    // identically on the hosted helper's file fetch and here.
     const response = await fetcher(`${storageBase}/object/authenticated/${BUCKET}/${row.object_path}`, {
-      headers: storageHeaders(), redirect: 'error', signal: AbortSignal.timeout(20000),
+      headers: storageHeaders(), redirect: 'manual', signal: AbortSignal.timeout(20000),
     });
     if (!response.ok) fail(503, 'PRIVATE_FILE_UNAVAILABLE');
     const bytes = await limitedBytes(response, MAX_FILE);
@@ -155,9 +158,14 @@ export function createProviders(config, store, fetcher = fetch) {
     if (webSearch) tools.push({ ...WEB_SEARCH_TOOL });
     if (tools.length) body.tools = tools;
     const callModel = async () => {
+      // Redirects are never followed: the x-api-key header carries the app's
+      // key, and a redirect would carry it to whatever host answered. The
+      // mode is 'manual', matching the hosted helper's fetch exactly (D232):
+      // the edge runtime there rejects 'error' outright, and the !ok refusal
+      // below is what a 3xx meets on both paths.
       const response = await fetcher('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'x-api-key': config.anthropicKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(90000),
+        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(90000),
       });
       if (!response.ok) fail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
       const answer = await readJson(response, webSearch ? WEB_MAX_RESPONSE_BYTES : 2 * 1024 * 1024);

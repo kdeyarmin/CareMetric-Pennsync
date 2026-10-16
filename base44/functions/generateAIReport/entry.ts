@@ -480,7 +480,12 @@ function directAiSniffFileType(bytes, headerType) {
 }
 async function directAiLoadFile(url, fetcher) {
   if (!directAiIsSafeFetchUrl(url)) directAiFail(400, 'INVALID_FILES');
-  const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(20000) });
+  // Redirects are never followed: the SSRF guard above admitted THIS url,
+  // and a redirect would carry the fetch to a host it never checked. The
+  // mode is 'manual' rather than 'error' because the edge runtime rejects
+  // 'error' outright (D232); the refusal a redirect used to get from the
+  // throwing mode now comes from the !ok check below, which a 3xx fails.
+  const response = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
   if (!response.ok) directAiFail(503, 'FILE_UNAVAILABLE');
   const bytes = await directAiReadBytes(response, DIRECT_AI_MAX_FILE_BYTES, 'INVALID_FILE_SIZE');
   if (!bytes.length) directAiFail(400, 'INVALID_FILE');
@@ -536,10 +541,16 @@ async function directInvokeLLM(params, deps) {
   const callProvider = async () => {
     let response;
     for (let attempt = 0; attempt < 2; attempt++) {
+      // Redirects are never followed: the x-api-key header carries the
+      // app's key, and a redirect would carry it to whatever host answered.
+      // The mode is 'manual' rather than 'error' because the edge runtime
+      // rejects 'error' outright (D232); the refusal a redirect used to
+      // get from the throwing mode now comes from the !ok check below,
+      // which a 3xx fails like any other non-2xx.
       response = await fetcher('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(90000),
+        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(90000),
       });
       if (response.ok || attempt === 1 || !(response.status === 429 || response.status >= 500)) break;
       await new Promise((resolve) => setTimeout(resolve, 1000));

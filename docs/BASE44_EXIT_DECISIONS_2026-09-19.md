@@ -15133,3 +15133,72 @@ three-way format branch assigns a real one; the empty object is
 unreachable as a schema-bearing call (the prompt is empty on the
 same path and refuses first), so it is recorded here rather than
 repaired.
+
+## D232 — The direct-AI fetches refuse redirects the portable way: 'manual', never 'error' (2026-10-16)
+
+**The production finding.** D231's repair was proved by the failure
+moving: the first RegulatoryMonitor scan after it published passed
+schema validation — the refusal D231 removed — and died one step
+later. The broker logged one `invokeDirectLLM` invocation answered
+`500`, with the handler's error verbatim: `TypeError: Invalid
+redirect value, must be one of "follow" or "manual" ("error" won't
+be implemented since it does not make sense at the edge; use
+"manual" and check the response status code)`. The hosted functions
+run on a Deno edge runtime, whose `fetch` rejects the `error`
+redirect mode at call time; Node's `fetch` accepts it. Every suite
+and CI job here runs on Node, and the integration runtime runs on
+Node too, so the mode was green everywhere it was measured and
+threw before sending everywhere it was served. The lesson already
+existed in this tree — the `checkAllIntegrations` probes, the
+`testTelnyxConnection` probe and `centralAdminRead` were all moved
+to `'manual'` for exactly this reason — and the direct-AI fetches,
+written later, did not inherit it.
+
+**The rule.** A fetch executed by a hosted function that must not
+follow a redirect uses `redirect: 'manual'` and refuses the 3xx
+through the same `!response.ok` check that refuses any other
+non-2xx; `redirect: 'error'` does not appear in edge-executed code.
+The security property is unchanged and is the reason the mode was
+there at all: the provider fetch carries the app's `x-api-key`, and
+the file fetch's URL was admitted by the SSRF guard — a followed
+redirect would carry the key, or the fetch, to a host neither check
+approved. What changed is only which mechanism refuses: the
+throwing mode on runtimes that implement it, the status check on
+all of them.
+
+**The census.** Every `redirect: 'error'` in the tree was read and
+dispositioned. Fixed in the helper generator source and inlined
+into the 30 consuming functions by regeneration: the provider fetch
+and the file fetch inside `directInvokeLLM`. Fixed in the mirror
+for behavioral parity: the Anthropic call and the document load in
+the integration runtime's `providers.mjs` (Node accepts `'error'`,
+so the runtime was never broken — the two paths now refuse
+identically rather than equivalently). Fixed in the same change,
+the same defect outside the AI path: `handleTelnyxStatusWebhook`'s
+voicemail-recording download, hand-written function code whose
+fetch threw into a catch that reports `download_failed`, so
+recording copies had been silently never landing. Already
+`'manual'` from their own earlier repairs: the health probes, the
+Telnyx probe, `centralAdminRead`. Deliberately untouched, each
+because `'error'` is valid where it runs: the integration runtime's
+remaining fetches (authority, preflight, telecom, the operator
+acceptance harnesses, and `providers.mjs`'s own SendGrid send,
+storage upload and signed-URL mint — none is the AI provider path),
+`pennsync-api`'s five, the authority client/store harnesses, and
+`tools-live-frontend-sync.mjs`, all Node; and the browser fetches
+in `src/lib/externalIntegrationTransport.js` and
+`src/lib/stagingEmailVerification.js`, where `'error'` is a valid
+spec mode in the browser that executes them.
+
+**The pins.** Node cannot reproduce the edge rejection — its fetch
+accepts the retired mode — so the contract tests pin the two things
+Node CAN hold: the option value on the wire (`redirect: 'manual'`
+asserted on the captured fetch options, helper and runtime, file
+fetch and provider fetch) and the refusal's shape (a fake provider
+answering `302` with a valid answer's body is refused as a provider
+rejection, never followed and never read as success; a storage
+`302` fails the document load as unavailable). A mode regression
+now fails a suite instead of a scan. The voicemail download's
+existing pin, which had asserted the retired mode on the wire, was
+updated to the new one in the same change, and its failure table
+gained the `302` case the refusal exists for.
