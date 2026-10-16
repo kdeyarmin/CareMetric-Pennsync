@@ -3946,7 +3946,11 @@ async function downloadVoicemailRecording(url, deadline) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), remaining);
   try {
-    const resp = await fetch(url, { method: 'GET', redirect: 'error', signal: controller.signal });
+    // 'manual', not 'error': the edge runtime rejects 'error' outright
+    // (D232), which read here as download_failed for every recording. A
+    // 3xx is refused by the !ok check below rather than followed — the
+    // host allowlist above admitted this url, not wherever it points.
+    const resp = await fetch(url, { method: 'GET', redirect: 'manual', signal: controller.signal });
     if (!resp.ok) {
       await resp.body?.cancel?.().catch(() => {});
       return { reason: 'download_rejected' };
