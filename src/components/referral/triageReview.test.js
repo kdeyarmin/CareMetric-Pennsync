@@ -227,6 +227,17 @@ test("a complete referral produces an empty packet and no forms", () => {
     data_gaps: [],
     diagnosis_coding_review: {
       ...ANALYSIS.diagnosis_coding_review,
+      // Complete also means no unresolved code-level findings: the I71.30
+      // conflict and the N39.0 specificity flag from the Grove-shaped
+      // fixture are resolved here (specified description, no conflict),
+      // because unresolved findings are packet items in their own right.
+      codes: ANALYSIS.diagnosis_coding_review.codes.map((c) => ({
+        ...c,
+        description: c.code === "N39.0" ? "Urinary tract infection" : c.description,
+        specificity_flag: null,
+        suggested_more_specific: null,
+        conflict: null,
+      })),
       candidates: [],
       documentation_needs: [],
     },
@@ -283,6 +294,118 @@ test("sanitizeForDisplay drops MRN keys and masks identifiers in prose", () => {
   assert.match(out.nested.note, /MRN \[not recorded\]/);
   assert.match(out.nested.note, /\[redacted\]/);
   assert.deepEqual(out.list, ["MRN [not recorded]"]);
+});
+
+test("sanitizeForDisplay masks labeled MRN values in every label form and leaves ordinary numbers alone", () => {
+  const out = sanitizeForDisplay({
+    a: "Medical Record Number: 13383",
+    b: "MRN: AB13383",
+    c: "medical_record_number: 99887766",
+    d: "Medical Record No. 4451 on file",
+    e: "Lasix 40 mg twice daily; room 204; MRN field left blank by the facility",
+  });
+  assert.equal(out.a.includes("13383"), false, "the spelled-out label form is masked");
+  assert.match(out.a, /MRN \[not recorded\]/);
+  assert.equal(out.b.includes("AB13383"), false, "an alphanumeric MRN value is masked");
+  assert.match(out.b, /MRN \[not recorded\]/);
+  assert.equal(out.c.includes("99887766"), false, "the field-name label form is masked");
+  assert.equal(out.d.includes("4451"), false, "the abbreviated label form is masked");
+  assert.equal(
+    out.e,
+    "Lasix 40 mg twice daily; room 204; MRN field left blank by the facility",
+    "doses, room numbers and a bare field mention are not identifiers and survive",
+  );
+});
+
+test("deterministic fallback: a rejected documented primary is flagged on its own code and named in the ordering assessment", () => {
+  const review = buildCodingReview({
+    primary_diagnosis: "I10 Essential hypertension",
+    secondary_diagnoses: ["I50.9 Heart failure, unspecified"],
+  });
+  assert.equal(review.source, "deterministic");
+  // The generator keeps I10 in sequenced (relabeled secondary) and leaves
+  // the accepted primary null — the review must still name I10, never
+  // "(null)", and carry its rejection on the I10 entry itself.
+  const i10 = review.codes.find((c) => c.code === "I10");
+  assert.match(i10.deterministic_flag, /unacceptable-principal-diagnosis/);
+  assert.match(review.ordering_assessment, /documented primary \(I10\) is not acceptable/);
+  assert.doesNotMatch(review.ordering_assessment, /\(null\)/);
+  assert.equal(review.deterministic.documented_primary_code, "I10");
+  assert.equal(review.deterministic.documented_primary_acceptable, false);
+  // The fallback pass also runs the specificity screen on harvested text.
+  const hf = review.codes.find((c) => c.code === "I50.9");
+  assert.match(hf.specificity_flag, /Deterministic check/);
+});
+
+test("deterministic fallback: codes with no documented primary report the ordering as unresolved", () => {
+  const review = buildCodingReview({ secondary_diagnoses: ["I50.9 Heart failure"] });
+  assert.equal(review.available, true);
+  assert.match(review.ordering_assessment, /ordering is unresolved/);
+  assert.equal(review.deterministic.documented_primary_code, null);
+});
+
+test("the deterministic specificity screen flags an unspecified code the model did not flag, in both review paths", () => {
+  const analysis = {
+    ...ANALYSIS,
+    diagnosis_coding_review: {
+      documented_primary: "I50.9 heart failure",
+      ordering_assessment: "Affirmed by the model.",
+      codes: [
+        {
+          code: "I50.9", description: "Heart failure, unspecified", position: 1,
+          pdgm_role: "primary_clinical_grouping",
+          justification: "Model justification.",
+          documentation_support: "Problem list.",
+          specificity_flag: null, suggested_more_specific: null, conflict: null,
+        },
+      ],
+      candidates: [],
+      documentation_needs: [],
+    },
+  };
+  const review = buildCodingReview(analysis);
+  assert.match(review.codes[0].specificity_flag, /Deterministic check/);
+  // The unresolved requirement feeds the missing-items packet.
+  const bundle = buildReviewBundle(analysis);
+  assert.ok(
+    bundle.missingPacket.items.some((i) => /Specificity documentation for I50\.9/.test(i.label)),
+    "the screened specificity gap becomes a packet documentation request",
+  );
+  // A specific code with no marker in its documented description is untouched,
+  // and a model-supplied flag is never overwritten by the screen.
+  const grove = buildCodingReview(ANALYSIS);
+  assert.equal(grove.codes.find((c) => c.code === "L03.314").specificity_flag, null);
+  assert.match(grove.codes.find((c) => c.code === "N39.0").specificity_flag, /Site not specified/);
+});
+
+test("unresolved code findings reach the missing-items packet even when documentation_needs omits them", () => {
+  const bundle = buildReviewBundle(ANALYSIS);
+  const conflictItem = bundle.missingPacket.items.find(
+    (i) => /Clarification required for I71\.30/.test(i.label),
+  );
+  assert.ok(conflictItem, "the I71.30 conflict produces its own clarification request");
+  assert.match(conflictItem.detail, /RUPTURED/);
+  assert.equal(conflictItem.generatable, "request_cover");
+  // N39.0's specificity gap is already asked by its explicit culture need —
+  // the derived item for the same code is deduplicated away.
+  assert.equal(
+    bundle.missingPacket.items.some((i) => /Specificity documentation for N39\.0/.test(i.label)),
+    false,
+  );
+});
+
+test("the generated order carries unresolved coding warnings on the printed diagnosis", () => {
+  const bundle = buildReviewBundle(ANALYSIS);
+  const aaa = bundle.forms.order.diagnoses.find((d) => d.code === "I71.30");
+  assert.match(aaa.warning, /Clarification required/);
+  assert.match(aaa.warning, /RUPTURED/);
+  assert.equal(
+    bundle.forms.order.diagnoses.find((d) => d.code === "L03.314").warning,
+    null,
+    "a diagnosis without findings prints unqualified",
+  );
+  const printed = JSON.stringify(formPdfContent(bundle.forms.order));
+  assert.match(printed, /Clarification required/, "the warning reaches the standalone signature form");
 });
 
 test("buildOrderFormModel orders diagnoses by the review's positions", () => {

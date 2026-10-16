@@ -405,6 +405,69 @@ test('a model answer carrying urgency fields, a document MRN and an SSN is store
   assert.equal(Object.keys(analysis.medicare_compliance).length, 8);
 });
 
+test('face-to-face timing defaults to missing when a date is missing or unparseable, whatever the model answered', async () => {
+  // Timing is deterministic: a model verdict of satisfied is not evidence.
+  // With no computable window the element must read missing, so the timing
+  // documentation request reaches the missing-items packet instead of
+  // being suppressed by a confident summary.
+  const timingAnalysis = (overrides) => ({
+    patient_name: PATIENT_NAME,
+    primary_diagnosis: 'CHF',
+    clinical_summary: 'Discharged after CHF exacerbation.',
+    data_gaps: [],
+    medicare_compliance: {
+      face_to_face_timing: { status: 'satisfied', evidence: 'The model prose says the window is met.' },
+    },
+    ...overrides,
+  });
+  for (const overrides of [
+    // Encounter date missing entirely.
+    { face_to_face_date: '', start_of_care_date: '2026-09-20' },
+    // Start-of-care date present as prose, not a date.
+    { face_to_face_date: '2026-09-01', start_of_care_date: 'not documented' },
+  ]) {
+    const runtime = createRuntime({
+      model: fakeModel({ analysis: timingAnalysis(overrides) }),
+      files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+    });
+    runtime.addIntakeUser('nurse');
+    const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+    const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+    assert.equal(processed.data.job.status, 'ready');
+    const timing = processed.data.job.analysis.medicare_compliance.face_to_face_timing;
+    assert.equal(timing.status, 'missing', `timing must not pass without both dates: ${JSON.stringify(overrides)}`);
+    assert.match(timing.evidence, /cannot be verified/);
+    assert.doesNotMatch(timing.evidence, /model prose/i);
+  }
+});
+
+test('labeled MRN values in narrative fields are masked at storage, and ordinary numbers survive', async () => {
+  const model = fakeModel({
+    analysis: {
+      patient_name: PATIENT_NAME,
+      primary_diagnosis: 'CHF',
+      clinical_summary: 'Face sheet lists Medical Record Number: 13383 for the sending facility.',
+      admission_notes: 'Facility chart MRN: AB13383. Lasix 40 mg twice daily.',
+      data_gaps: [],
+    },
+  });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  assert.equal(processed.data.job.status, 'ready');
+  const analysis = processed.data.job.analysis;
+  const storedJson = JSON.stringify(analysis);
+  assert.equal(storedJson.includes('13383'), false, 'the spelled-out label form is masked');
+  assert.equal(storedJson.includes('AB13383'), false, 'the alphanumeric value form is masked');
+  assert.match(analysis.clinical_summary, /MRN \[not recorded\]/);
+  assert.match(analysis.admission_notes, /MRN \[not recorded\]/);
+  assert.match(analysis.admission_notes, /Lasix 40 mg twice daily/, 'a dose is not an identifier and survives');
+});
+
 test('a range that keeps failing is reported as unread, and the email waits for the delivery release', async () => {
   const model = fakeModel({ failRanges: new Set(['16-30']) });
   const runtime = createRuntime({ model, files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(40) } });

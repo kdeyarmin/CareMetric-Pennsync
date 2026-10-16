@@ -37,7 +37,13 @@ import { validatePrimaryDiagnosis, previewClinicalGroup } from "./intakeDiagnosi
 // ---------------------------------------------------------------------------
 
 const SSN_SHAPED = /\b\d{3}-\d{2}-\d{4}\b/g;
-const MRN_MENTION = /\bMRN\s*[:#]?\s*\d+\b/gi;
+// Bounded label/value rule (mirrors the backend storage pass): an MRN
+// label followed by a bounded alphanumeric value containing at least one
+// digit. Label-anchored and digit-requiring so ordinary narrative numbers
+// and a bare mention of the field survive, while labeled values the old
+// numeric-only pattern missed — "Medical Record Number: 13383",
+// "MRN: AB13383" — are masked even in legacy stored analyses.
+const MRN_MENTION = /\b(?:MRN|Medical\s+Record\s+(?:Number|No\.?)|medical_record_number)\s*[:#]?\s*[A-Za-z0-9-]*\d[A-Za-z0-9-]{0,24}/gi;
 
 /** Deep-sanitize a value headed for render or PDF (mirrors the backend pass). */
 export function sanitizeForDisplay(value) {
@@ -158,7 +164,11 @@ function deterministicCodes(generated) {
     specificity_flag: null,
     suggested_more_specific: null,
     conflict: null,
-    deterministic_flag: entry.role === "primary" && entry.acceptablePrimary === false
+    // The generator retains a rejected documented primary in `sequenced`
+    // but relabels it secondary and leaves `primary` null — the rejection
+    // belongs to the DOCUMENTED entry, so the flag keys off
+    // documentedAsPrimary, not off the accepted-primary role.
+    deterministic_flag: entry.documentedAsPrimary && entry.acceptablePrimary === false
       ? entry.rtpReason
       : null,
   }));
@@ -177,6 +187,37 @@ function uncodedCandidates(generated) {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Deterministic specificity screen
+// ---------------------------------------------------------------------------
+//
+// ICD-10-CM defines an unspecified code in its own tabular title: the
+// title carries "unspecified" (I50.9 "Heart failure, unspecified", E46
+// "Unspecified protein-calorie malnutrition") or "not specified" (N39.0
+// "Urinary tract infection, site not specified"). The screen reads the
+// description the packet/review itself documents for the code — the same
+// signal referralFollowUpEngine screens the primary with — so an
+// unspecified code is flagged deterministically whether or not the model
+// noticed it. It never rewrites a model-supplied flag and never invents
+// specificity the documentation does not carry (no upcoding).
+const UNSPECIFIED_TITLE = /\bunspecified\b|\bnot specified\b/i;
+
+function codeKey(code) {
+  return String(code || "").toUpperCase().replace(/\./g, "");
+}
+
+function specificityScreen(entry, harvestedDescriptions) {
+  if (!entry || entry.specificity_flag || !entry.code) return entry;
+  const titles = [entry.description, ...(harvestedDescriptions || [])].filter(Boolean);
+  const hit = titles.find((title) => UNSPECIFIED_TITLE.test(title));
+  if (!hit) return entry;
+  return {
+    ...entry,
+    specificity_flag:
+      `Deterministic check: ${entry.code} carries an unspecified description ("${hit}") — documentation with greater specificity (type, site, laterality, stage or acuity, as applicable) is required before this code is relied on.`,
+  };
+}
+
 /**
  * The coding review the surface renders. The AI review (stored on the
  * analysis by the synthesis) is primary; the deterministic layer runs
@@ -190,11 +231,24 @@ export function buildCodingReview(analysis) {
   const generated = generateDiagnosisCodes(safe);
   const primaryCode = generated.primary?.displayCode || generated.primary?.code || "";
   const primaryCheck = primaryCode ? validatePrimaryDiagnosis(primaryCode) : null;
+  // The DOCUMENTED primary is a different entry from the generator's
+  // accepted primary: a rejected documented primary stays in `sequenced`
+  // (relabeled secondary) while `primary` is null, so validating only the
+  // accepted one reports a rejected I10 as "(null) is affirmed".
+  const documentedEntry = (generated.sequenced || []).find((entry) => entry.documentedAsPrimary) || null;
+  const documentedCode = documentedEntry ? (documentedEntry.displayCode || documentedEntry.code || "") : "";
+  const documentedCheck = documentedCode ? validatePrimaryDiagnosis(documentedCode) : null;
+  const harvestedByCode = new Map(
+    (generated.sequenced || []).map((entry) => [codeKey(entry.displayCode || entry.code), entry.description]),
+  );
   const deterministic = {
     clinical_group: primaryCode ? previewClinicalGroup(primaryCode).clinical_group : null,
     primary_code: primaryCode || null,
     primary_acceptable: primaryCheck ? primaryCheck.acceptable : null,
     primary_reason: primaryCheck ? primaryCheck.reason : null,
+    documented_primary_code: documentedCode || null,
+    documented_primary_acceptable: documentedCheck ? documentedCheck.acceptable : null,
+    documented_primary_reason: documentedCheck ? documentedCheck.reason : null,
     warnings: generated.warnings || [],
   };
 
@@ -203,12 +257,15 @@ export function buildCodingReview(analysis) {
     : null;
 
   if (!review) {
-    const codes = deterministicCodes(generated);
+    const codes = deterministicCodes(generated)
+      .map((entry) => specificityScreen(entry, []));
     const orderingAssessment = !generated.hasCodes
       ? "No ICD-10 codes are documented in this packet, so no ordering can be assessed. Codes are never assigned by the analyzer — obtain coded diagnoses from the referral source or a certified coder."
-      : deterministic.primary_acceptable === false
-        ? `The documented primary (${deterministic.primary_code}) is not acceptable as a PDGM principal diagnosis: ${deterministic.primary_reason} A qualified coding review must resolve the primary; no secondary has been promoted in its place.`
-        : `The documented primary (${deterministic.primary_code}) is affirmed as the diagnosis chiefly responsible for the plan of care, as documented in the packet.`;
+      : !documentedEntry
+        ? "No primary diagnosis is documented in this packet, so the ordering is unresolved. A qualified coding review must establish the diagnosis chiefly responsible for the plan of care; no secondary has been promoted in its place."
+        : documentedCheck && !documentedCheck.acceptable
+          ? `The documented primary (${documentedCode}) is not acceptable as a PDGM principal diagnosis: ${documentedCheck.reason} A qualified coding review must resolve the primary; no secondary has been promoted in its place.`
+          : `The documented primary (${documentedCode}) is affirmed as the diagnosis chiefly responsible for the plan of care, as documented in the packet.`;
     return sanitizeForDisplay({
       available: generated.hasCodes,
       source: "deterministic",
@@ -221,7 +278,8 @@ export function buildCodingReview(analysis) {
     });
   }
 
-  const codes = modelCodes(review);
+  const codes = modelCodes(review)
+    .map((entry) => specificityScreen(entry, [harvestedByCode.get(codeKey(entry.code))]));
   // The deterministic RTP screen annotates the model's primary even when
   // the model passed it — that disagreement is exactly what staff must see.
   const primaryEntry = codes.find((entry) => entry.pdgm_role === "primary_clinical_grouping") || codes[0];
@@ -368,6 +426,59 @@ export function buildMissingItems(analysis, { codingReview, compliance } = {}) {
     });
   }
 
+  // Unresolved code-level findings are packet items in their own right: a
+  // conflict, specificity gap or deterministic rejection the review carries
+  // only on the code must still produce its documentation/clarification
+  // request, even when the review's documentation_needs never repeats it —
+  // otherwise an otherwise-satisfied checklist reads "Nothing is missing"
+  // over a code that contradicts the packet. Explicit needs for the same
+  // code subsume the derived ask (they are the more specific request), so
+  // nothing is asked twice.
+  const explicitNeeds = review.documentation_needs || [];
+  for (const entry of review.codes || []) {
+    if (!entry.code) continue;
+    const needs = explicitNeeds.filter(
+      (need) => need.for_code && codeKey(need.for_code) === codeKey(entry.code),
+    );
+    const needText = needs.map((need) => `${need.item} ${need.detail}`).join(" ");
+    const subject = entry.description ? `${entry.code} (${entry.description})` : entry.code;
+    if (entry.conflict
+      && !/clarif|contradict/i.test(needText)
+      && !needText.includes(entry.conflict.slice(0, 40))) {
+      items.push({
+        id: `code-conflict-${items.length}`,
+        category: "diagnosis_documentation",
+        label: `Clarification required for ${subject}`,
+        detail: entry.conflict,
+        status: "missing",
+        needed_from: neededFromFor(safe, "documentation"),
+        generatable: "request_cover",
+      });
+    }
+    if (entry.specificity_flag && needs.length === 0) {
+      items.push({
+        id: `code-specificity-${items.length}`,
+        category: "diagnosis_documentation",
+        label: `Specificity documentation for ${subject}`,
+        detail: entry.specificity_flag,
+        status: "missing",
+        needed_from: neededFromFor(safe, "documentation"),
+        generatable: "request_cover",
+      });
+    }
+    if (entry.deterministic_flag && !/unacceptable|principal|return to provider/i.test(needText)) {
+      items.push({
+        id: `code-check-${items.length}`,
+        category: "diagnosis_documentation",
+        label: `Coding review required for ${subject}`,
+        detail: entry.deterministic_flag,
+        status: "missing",
+        needed_from: neededFromFor(safe, "documentation"),
+        generatable: "request_cover",
+      });
+    }
+  }
+
   for (const candidate of review.candidates || []) {
     if (!candidate.documentation_required) continue;
     items.push({
@@ -425,12 +536,23 @@ function patientBlock(analysis) {
 function orderedDiagnoses(codingReview) {
   const codes = (codingReview?.codes || []).filter((entry) => entry.code);
   if (codes.length > 0) {
-    return codes.map((entry) => ({
-      position: entry.position,
-      code: entry.code,
-      description: entry.description,
-      role: entry.pdgm_role === "primary_clinical_grouping" ? "Primary" : "Secondary",
-    }));
+    return codes.map((entry) => {
+      // Unresolved coding warnings travel with the diagnosis onto the
+      // generated order: a code the review says contradicts the packet or
+      // lacks specificity must not print as an unqualified diagnosis on
+      // the standalone signature form.
+      const warnings = [];
+      if (entry.conflict) warnings.push(`Clarification required: ${entry.conflict}`);
+      if (entry.specificity_flag) warnings.push(`Specificity: ${entry.specificity_flag}`);
+      if (entry.deterministic_flag) warnings.push(entry.deterministic_flag);
+      return {
+        position: entry.position,
+        code: entry.code,
+        description: entry.description,
+        role: entry.pdgm_role === "primary_clinical_grouping" ? "Primary" : "Secondary",
+        warning: warnings.length ? warnings.join(" ") : null,
+      };
+    });
   }
   return [];
 }
@@ -676,7 +798,12 @@ export function formPdfContent(model) {
     content.push({
       type: "table",
       headers: ["#", "Code", "Diagnosis", "Role"],
-      rows: (model.diagnoses || []).map((d) => [String(d.position), d.code, d.description, d.role]),
+      rows: (model.diagnoses || []).map((d) => [
+        String(d.position),
+        d.code,
+        d.warning ? `${d.description} — ${d.warning}` : d.description,
+        d.role,
+      ]),
     });
     content.push({ type: "heading", text: "Orders" });
     for (const discipline of model.disciplines || []) {
