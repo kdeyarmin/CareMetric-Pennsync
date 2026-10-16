@@ -8,14 +8,15 @@
 // **The audit rule is the original's and it is a containment rule**, stated in
 // its own comment:
 //
-//     "Log only the triage category. The analysis contains patient identity and
-//      clinical detail; UserActivity is a broad operational audit surface, not
-//      a second copy of the referral record."
+//     "Log only that a triage analysis ran. The analysis contains patient
+//      identity and clinical detail; UserActivity is a broad operational
+//      audit surface, not a second copy of the referral record."
 //
-// So the trail entry carries the urgency level and nothing else — the same
-// discipline D44 kept for a patched incident, where only the KEYS of the change
-// are recorded. `auditUrgencyLevel` normalises an unexpected answer to
-// `UNKNOWN` rather than writing whatever the model said into the trail.
+// The trail entry used to carry the triage category — the urgency level — and
+// nothing else, the same discipline D44 kept for a patched incident, where
+// only the KEYS of the change are recorded. D234 removed the urgency level
+// from referrals entirely, so the event now carries no detail at all: the
+// containment rule survives with an empty payload.
 //
 // **`audit_recorded` returns here, and that is not a reversal of D37.** D37
 // deleted the incident port's `audit_recorded` flag because one transaction
@@ -30,13 +31,6 @@ import { parseLLMJson } from './llm-json.mjs';
 import { fail } from './contracts.mjs';
 
 export const TRIAGE_MODEL = 'automatic';
-export const TRIAGE_URGENCY_LEVELS = Object.freeze(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']);
-
-/** The original's `auditUrgencyLevel`: a known level, or `UNKNOWN`. */
-export function auditUrgencyLevel(value) {
-  const normalized = String(value ?? '').trim().toUpperCase();
-  return TRIAGE_URGENCY_LEVELS.includes(normalized) ? normalized : 'UNKNOWN';
-}
 
 /** The original's prompt, verbatim: the schema it names is what the caller gets. */
 export const buildTriagePrompt = referralData =>
@@ -51,8 +45,6 @@ Provide a JSON response with this exact structure:
   "date_of_birth": "extracted DOB or 'Not provided'",
   "primary_diagnosis": "main diagnosis extracted",
   "secondary_diagnoses": ["list of other conditions"],
-  "urgency_level": "CRITICAL|HIGH|MEDIUM|LOW",
-  "urgency_reason": "brief explanation for urgency assignment",
   "key_risk_factors": ["list of identified risk factors"],
   "clinical_summary": "concise assessment of patient's current status",
   "preliminary_care_plan": {
@@ -79,18 +71,17 @@ export async function triageReferral({ params, integration, audit }) {
     prompt: buildTriagePrompt(referralData),
   });
   const analysis = parseLLMJson(raw) || {};
-  // Same as the Base44 original: normalize before return AND audit so a
-  // mixed-case model answer cannot reach callers as an unmapped priority.
-  // Only rewrite when the model supplied the field — an unparseable answer
-  // stays {} rather than inventing UNKNOWN on the analysis object.
-  const urgency = auditUrgencyLevel(analysis?.urgency_level);
-  if (Object.hasOwn(analysis, 'urgency_level')) analysis.urgency_level = urgency;
+  // Same as the Base44 original: D234 removed the urgency level from
+  // referrals, so both fields are dropped outright if a model answer still
+  // offers them — nothing downstream may resurrect the removed level.
+  delete analysis.urgency_level;
+  delete analysis.urgency_reason;
 
-  // The category and nothing else — see the note at the head of this file.
+  // No detail at all — see the note at the head of this file.
   let auditRecorded = true;
   try {
     await audit('referral_triage_analysis', {
-      detail: { urgency_level: urgency },
+      detail: {},
     });
   } catch {
     // Static, like the original's: a provider or store message can echo the

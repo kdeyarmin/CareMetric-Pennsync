@@ -511,7 +511,10 @@ test('readiness accounts for the runtime a released handler actually needs', asy
   assert.equal(ready({ functions: ['validatePatientData'] }).integrationsRequired, false);
 
   // One that does is not, and the readiness body says which dependency is missing.
-  for (const name of ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority',
+  // analyzeReferralPriority left this list in D234: the handler was retired
+  // (referrals carry no analyzer-assigned priority level) and deregistered,
+  // so readiness has no such handler left to account for.
+  for (const name of ['analyzeReferral', 'analyzeReferralIntake',
     'generateReferralTasks', 'matchPatientWithAI', 'generateUserGuidePDF']) {
     const report = ready({ functions: [name] });
     assert.equal(report.ready, false, `${name} must not report ready without its runtime`);
