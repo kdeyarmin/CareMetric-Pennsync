@@ -269,7 +269,7 @@ test('the base refuses the two typos that would silently enlarge it', async () =
     'the unmutated copy does not load to the same base, so a refusal below proves nothing');
 
   const CASES = [
-    ['outside-the-range', '225]', '325]', /outside 1\.\.232/],
+    ['outside-the-range', '225]', '325]', /outside 1\.\.233/],
     ['repeated', ', 216,', ', 214,', /repeats a number/],
   ];
   for (const [name, from, to, message] of CASES) {
@@ -363,16 +363,23 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // been rewritten an eighth time, for D233, so the two have diverged
 // again** — the third assertion is independent at this reading too, and
 // its message says so.
+//
+// **And a ninth turn.** #481 merged, the base grew to hold 233, and the
+// two converged an eighth time; the base was re-derived in the change that
+// files D234 (211, the same window closed the same way), and **the list has
+// been rewritten a ninth time, for D234, so the two have diverged
+// again** — the third assertion is independent at this reading too, and
+// its message says so.
 test('the figures quoted in prose are the figures the lists hold', () => {
-  assert.equal(REAL_BASE_NUMBERS.length, 210,
+  assert.equal(REAL_BASE_NUMBERS.length, 211,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D233 alone, pending, so live until its collection '
+    'the collection figure: D234 alone, pending, so live until its collection '
     + "merges and the list goes inert, and the figure is quoted in the module's "
     + 'rewrite note, which attributes it to this pass');
-  assert.equal(EXPECTED_DOCUMENT.length, 211,
-    'the union: the base figure plus D233, which is not on the base yet, so this '
+  assert.equal(EXPECTED_DOCUMENT.length, 212,
+    'the union: the base figure plus D234, which is not on the base yet, so this '
     + 'assertion is independent of the first while the collection is pending — the '
     + 'divergence the comment above this test describes. It still catches a union '
     + 'built as a concatenation, which neither other assertion would.');

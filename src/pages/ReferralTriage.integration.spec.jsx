@@ -72,6 +72,9 @@ const COMPLETE_ANALYSIS = {
   primary_diagnosis: 'CHF',
   secondary_diagnoses: ['COPD'],
   clinical_summary: 'Referred for skilled nursing.',
+  // A legacy stored analysis can still carry this (D234 removed the level);
+  // the create path must ignore it entirely — no referral priority, no
+  // urgency-derived task priority or timeframe.
   urgency_level: 'CRITICAL',
 };
 
@@ -121,8 +124,13 @@ describe('ReferralTriage — create patient from triage', () => {
 
     await waitFor(() => expect(referralCreate).toHaveBeenCalledTimes(1));
     expect(referralCreate.mock.calls[0][0]).toMatchObject({ patient_id: 'patient-1', status: 'ready_for_admission' });
+    // D234: no priority is written on the referral, and the admission task
+    // keeps the flat staff default — the legacy CRITICAL level on the
+    // analysis changes neither.
+    expect(referralCreate.mock.calls[0][0]).not.toHaveProperty('priority');
     await waitFor(() => expect(taskCreate).toHaveBeenCalledTimes(1));
-    expect(taskCreate.mock.calls[0][0]).toMatchObject({ priority: 'high', status: 'pending' });
+    expect(taskCreate.mock.calls[0][0]).toMatchObject({ priority: 'medium', status: 'pending', due_timeframe: 'this_week' });
+    expect(taskCreate.mock.calls[0][0].description).not.toMatch(/Urgency/);
 
     expect(toastSuccess).toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
@@ -177,8 +185,10 @@ describe('ReferralTriage — create patient from triage', () => {
       assigned_to: 'nurse@x.com',
     });
     expect(referralCreate.mock.calls[0][0].extracted_data.missing_patient_identity).toEqual(['DOB, phone, or address']);
+    expect(referralCreate.mock.calls[0][0]).not.toHaveProperty('priority');
     await waitFor(() => expect(taskCreate).toHaveBeenCalledTimes(1));
     expect(taskCreate.mock.calls[0][0]).toMatchObject({
+      priority: 'medium',
       title: 'Complete referral identity: Jane Doe',
       // Must be a member of Task.type's schema enum — 'referral_follow_up' was
       // not, so the value never persisted. The referral linkage is carried by
