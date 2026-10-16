@@ -1423,10 +1423,11 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`listAuthorizedVisits failed: ${error.status} ${error.message}`);
       return jsonResponse({ error: error.message }, { status: error.status });
     }
     // Never retain provider error objects: they may embed predicates or PHI.
-    console.error('listAuthorizedVisits failed');
+    console.error(`listAuthorizedVisits failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return jsonResponse({ error: 'Internal server error' }, { status: 500 });
   }
 });

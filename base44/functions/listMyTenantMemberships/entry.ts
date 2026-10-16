@@ -533,6 +533,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof PublicError) {
+      console.error(`listMyTenantMemberships failed: ${error.status} ${error.message}`);
       return jsonResponse({ error: error.message }, error.status);
     }
     const providerStatus = Number(error?.response?.status ?? error?.status);
@@ -547,7 +548,7 @@ Deno.serve(async (req) => {
       );
     }
     // Provider exceptions can contain identity or tenant fields; never retain them.
-    console.error('listMyTenantMemberships failed');
+    console.error(`listMyTenantMemberships failed: 500 ${error instanceof Error ? error.name : 'unknown'}`);
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });
