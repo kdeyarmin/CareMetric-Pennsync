@@ -37,7 +37,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   // Identity-mismatch gate: writing extracted clinical data onto a chart whose
-  // name/DOB/MRN conflicts with the document requires an explicit confirmation.
+  // name/DOB conflicts with the document requires an explicit confirmation.
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
   // Duplicate-chart gate: creating a patient that matches an existing chart
   // requires explicit confirmation (mirrors PatientForm's duplicate check).
@@ -76,7 +76,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
     }
 
     // Identity gate: the document's extracted patient must match the chart it
-    // is about to update. A conflict on name/DOB/MRN blocks the write unless
+    // is about to update. A conflict on name/DOB blocks the write unless
     // the operator explicitly confirms they verified the identity.
     if (mapping.updatePatient && identityCheck?.verdict === "mismatch" && !identityConfirmed) {
       setError(
@@ -98,7 +98,6 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
             || [extractedData.patient?.first_name, extractedData.patient?.last_name].filter(Boolean).join(' '),
           full_name: extractedData.patient?.full_name,
           date_of_birth: extractedData.patient?.date_of_birth,
-          medical_record_number: extractedData.patient?.medical_record_number || extractedData.patient?.mrn,
           phone: extractedData.patient?.phone,
           address: extractedData.patient?.address,
         });
@@ -118,7 +117,9 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
           first_name: readiness.first_name || structured.first_name,
           last_name: readiness.last_name || structured.last_name,
           date_of_birth: readiness.identifiers.date_of_birth || "",
-          medical_record_number: readiness.identifiers.medical_record_number || "",
+          // No medical_record_number: a document's MRN is the sending
+          // facility's, never ours (D233). MatrixCare assigns this chart's
+          // MRN; the field is left unset at creation.
           phone: readiness.identifiers.phone || "",
           email: extractedData.patient?.email || "",
           address: readiness.identifiers.address || "",

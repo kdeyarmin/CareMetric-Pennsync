@@ -56,7 +56,6 @@ export default function ReferralProcessor() {
         patient_name: extractedData.demographics?.full_name,
         full_name: extractedData.demographics?.full_name,
         date_of_birth: extractedData.demographics?.date_of_birth,
-        medical_record_number: extractedData.demographics?.medical_record_number || extractedData.demographics?.mrn,
         phone: extractedData.demographics?.phone,
         address: extractedData.demographics?.address,
       });
