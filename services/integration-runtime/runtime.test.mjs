@@ -140,6 +140,16 @@ test('the timeout override is a finite number when present: numbers validate, an
   assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',timeout_ms:'240000'},cfg()),e=>e.code==='INVALID_INPUT');
   assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',timeout_ms:NaN},cfg()),e=>e.code==='INVALID_INPUT');
 });
+test('the output-budget override is a finite number when present: numbers validate, anything else refuses', () => {
+  validateParams('InvokeLLM',{prompt:'x',max_tokens:32000},cfg());
+  assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',max_tokens:'32000'},cfg()),e=>e.code==='INVALID_INPUT');
+  assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',max_tokens:NaN},cfg()),e=>e.code==='INVALID_INPUT');
+});
+test('a valid output-budget override reaches the provider request body', async () => {
+  const bodies=[];const provider=createProviders(cfg(),{},async(_url,options)=>{bodies.push(JSON.parse(options.body));return Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'});});
+  assert.equal(await provider('InvokeLLM',{prompt:'x',max_tokens:32000},actor),'Synthetic answer');
+  assert.equal(bodies[0].max_tokens,32000);
+});
 test('a valid timeout override passes the validated provider path end to end', async () => {
   const provider=createProviders(cfg(),{},async()=>Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'}));
   assert.equal(await provider('InvokeLLM',{prompt:'x',timeout_ms:240000},actor),'Synthetic answer');
