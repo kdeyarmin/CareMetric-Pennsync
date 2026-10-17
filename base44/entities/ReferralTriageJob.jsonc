@@ -85,6 +85,10 @@
     "error_code": {
       "type": "string"
     },
+    "last_synthesis_error": {
+      "type": "string",
+      "description": "Enum code of the most recent failed synthesis attempt (AI helper error code or error class name); empty once synthesis succeeds. Diagnostic only — never message text."
+    },
     "claimed_by": {
       "type": "string",
       "description": "Run id of the invocation currently working the job; empty when no run holds it."

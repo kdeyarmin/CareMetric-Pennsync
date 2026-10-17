@@ -786,3 +786,39 @@ test('a synthesis failure logs the error code only, never message text', async (
     assert.match(line, /^Referral triage summary failed: [A-Z][A-Z0-9_]+$/);
   }
 });
+
+test('the synthesis failure code is persisted on the job row, and control characters in notes never reach a synthesis prompt', async () => {
+  // The hosted log views do not surface console.error text, so the code is
+  // also stored on the job (last_synthesis_error) where support can read it.
+  const failing = createRuntime({
+    model: fakeModel({ failReviews: true }),
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  failing.addIntakeUser('nurse');
+  const { data: { job: failedJob } } = await failing.call({ user: 'nurse', body: startBody() });
+  const failProcess = () => failing.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: failedJob.id } });
+  await failProcess();
+  await failProcess();
+  await failProcess();
+  assert.equal(failing.db.ReferralTriageJob[0].status, 'failed');
+  assert.match(failing.db.ReferralTriageJob[0].last_synthesis_error, /^[A-Z][A-Z0-9_]+$/);
+
+  // The AI helper rejects prompts containing control characters or DEL
+  // (0x7F). Chunk-note cleaning at storage time did not always strip DEL,
+  // so packetNotes cleans again when composing the synthesis prompts.
+  const model = fakeModel({ notesText: 'Patient notes with a DEL\u007fchar and a vertical\u000btab. (p. 1)' });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const process = () => runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  await process();
+  const result = await process();
+  assert.equal(result.data.job.status, 'ready');
+  assert.equal(runtime.db.ReferralTriageJob[0].last_synthesis_error, '');
+  for (const call of model.calls.filter((entry) => entry.kind === 'summary' || entry.kind === 'reviews')) {
+    assert.ok(!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(call.prompt), 'synthesis prompt carries no rejected control characters');
+  }
+});
