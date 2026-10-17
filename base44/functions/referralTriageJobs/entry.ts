@@ -1139,7 +1139,7 @@ async function readChunk(source: any, job: Record<string, any>, chunk: Record<st
     ),
     AI_CALL_TIMEOUT_MS,
   );
-  const text = String(notes || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ' ').trim();
+  const text = String(notes || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ' ').trim();
   if (!text) throw new Error('AI_RESULT_EMPTY');
   return text.slice(0, budget.characters);
 }
@@ -1190,7 +1190,10 @@ const NOTES_PROMPT_BUDGET = 78_000;
 function packetNotes(chunks: Array<Record<string, any>>) {
   const parts = chunks
     .filter((chunk) => chunk.status === 'done')
-    .map((chunk) => `=== Pages ${chunk.start_page}-${chunk.end_page} ===\n${chunk.notes}`);
+    // The AI helper rejects a prompt containing control characters or DEL;
+    // notes stored before that cleaning covered DEL (or by another path)
+    // are cleaned again here, at the point the prompt is composed.
+    .map((chunk) => `=== Pages ${chunk.start_page}-${chunk.end_page} ===\n${String(chunk.notes || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ' ')}`);
   let truncated = false;
   let notes = parts.join('\n\n');
   if (notes.length > NOTES_PROMPT_BUDGET) {
@@ -1620,8 +1623,13 @@ async function runJob(base44: Record<string, any>, job: Record<string, any>, run
           const analysis = await summarize(claimed, chunks);
           changes.status = 'ready';
           changes.analysis = analysis;
+          changes.last_synthesis_error = '';
         } catch (error) {
           console.error('Referral triage summary failed:', safeErrorCode(error));
+          // The hosted log views do not surface console.error text, so the
+          // failure code is also persisted on the job row, where support
+          // can read why synthesis failed without log archaeology.
+          changes.last_synthesis_error = safeErrorCode(error);
           if (attempts >= MAX_SYNTHESIS_ATTEMPTS) {
             changes.status = 'failed';
             changes.error_code = 'SUMMARY_FAILED';
