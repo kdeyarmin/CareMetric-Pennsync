@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@/test/testUtils";
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn(), download: vi.fn() }));
@@ -16,6 +16,9 @@ describe("AgencyComprehensiveReport", () => {
   beforeEach(() => {
     mocks.fetch.mockReset();
     mocks.download.mockReset();
+    // The panel now awaits the delivery result before claiming success, so
+    // the mock honors the helper's contract: true = the file was handed off.
+    mocks.download.mockReturnValue(true);
   });
 
   it("asks the server for one agency's PDF and downloads the bytes it returns", async () => {
@@ -33,6 +36,21 @@ describe("AgencyComprehensiveReport", () => {
     expect(blob.type).toBe("application/pdf");
     expect(blob.size).toBe(4);
     expect(filename).toMatch(/^pennsync-agency-report-\d{4}-\d{2}-\d{2}\.pdf$/);
+  });
+
+  it("claims nothing when the user dismisses the share sheet", async () => {
+    mocks.fetch.mockResolvedValue(new Response(new Uint8Array([37, 80, 68, 70]), {
+      status: 200,
+      headers: { "content-type": "application/pdf" },
+    }));
+    // The iOS delivery result for a dismissed share sheet: false, silently.
+    mocks.download.mockResolvedValue(false);
+    renderWithProviders(<AgencyComprehensiveReport agencyId="agency-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /download agency pdf report/i }));
+    await waitFor(() => expect(mocks.download).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows the server's refusal and downloads nothing", async () => {

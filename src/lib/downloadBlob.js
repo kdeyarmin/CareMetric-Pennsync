@@ -76,8 +76,22 @@ function anchorDownload(blob, downloadName, lease) {
  * Dispatch a protected Blob download under one captured tenant lease. The
  * dispatch (anchor click or share initiation) happens synchronously under
  * the lease; no library-owned timer dispatches anything after authority
- * teardown. Resolves `false` only when the user dismisses the iOS share
- * sheet — a choice, not an error — so callers can skip a success toast.
+ * teardown.
+ *
+ * Delivery result: `true` once the file is handed off. On the iOS share
+ * path the return is a Promise: it resolves `false` ONLY when the user
+ * dismisses the share sheet — a choice, not an error, so callers can skip
+ * a success toast — and it REJECTS when sharing itself fails, so an
+ * awaiting caller can report a real failure instead of claiming a
+ * delivery that never happened. There is deliberately no anchor fallback
+ * after a failed share on iOS: the webviews this path exists for have no
+ * blob-anchor download handler, so the fallback would report success for
+ * a file the user never received. (When file sharing is unavailable at
+ * all, the anchor path below is the only mechanism the platform offers
+ * and is used as before.) The promise carries an internal handled branch
+ * so fire-and-forget callers never produce an unhandled rejection;
+ * awaiting callers still receive the rejection from the returned promise
+ * itself.
  */
 export function downloadAuthorityBoundBlob(blob, filename) {
   if (!(blob instanceof Blob)) throw new TypeError('A Blob is required');
@@ -88,20 +102,15 @@ export function downloadAuthorityBoundBlob(blob, filename) {
     const file = shareableFile(blob, downloadName);
     if (file) {
       assertTenantSdkRealmLeaseCurrent(lease);
-      return navigator.share({ files: [file] }).then(
+      const delivery = navigator.share({ files: [file] }).then(
         () => true,
         (error) => {
           if (error && error.name === 'AbortError') return false;
-          // Sharing refused (e.g. the tap's user activation expired during
-          // document generation): fall back to the anchor path rather than
-          // losing the document entirely.
-          try {
-            return anchorDownload(blob, downloadName, lease);
-          } catch {
-            return false;
-          }
+          throw error;
         },
       );
+      delivery.catch(() => {});
+      return delivery;
     }
   }
   return anchorDownload(blob, downloadName, lease);

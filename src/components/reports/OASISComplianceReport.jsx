@@ -95,6 +95,8 @@ function EnabledOASISComplianceReport({ dateRange }) {
   });
 
   const handleExport = () => {
+    // Delivery can reject asynchronously (iOS share path); log it rather
+    // than leaving an unhandled rejection from a fire-and-forget call.
     exportToPDF({
       filename: `oasis-compliance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
       title: 'OASIS Compliance Report',
@@ -111,7 +113,7 @@ function EnabledOASISComplianceReport({ dateRange }) {
           { header: 'Count', key: 'count' }
         ]}
       ]
-    });
+    }).catch((error) => console.error('OASIS compliance PDF export failed:', error));
   };
 
   if (isLoading) {

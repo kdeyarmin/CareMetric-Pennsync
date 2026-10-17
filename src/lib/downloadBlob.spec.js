@@ -98,14 +98,18 @@ describe('downloadAuthorityBoundBlob', () => {
     expect(clickedAnchors).toHaveLength(0);
   });
 
-  it('iOS share refused (activation expired): falls back to the anchor download', async () => {
+  it('iOS share refused (activation expired): rejects, with no anchor fallback', async () => {
     const refused = new Error('not allowed');
     refused.name = 'NotAllowedError';
     const share = vi.fn().mockRejectedValue(refused);
     setNavigator({ userAgent: IOS_UA, maxTouchPoints: 5, share, canShare: () => true });
-    const result = await downloadAuthorityBoundBlob(new Blob(['pdf'], { type: 'application/pdf' }), 'order.pdf');
-    expect(result).toBe(true);
-    expect(clickedAnchors).toHaveLength(1);
+    // No anchor fallback: the webviews this path exists for have no
+    // blob-anchor download handler, so a fallback click would report a
+    // delivery that never happened. The awaiting caller gets the error.
+    await expect(
+      downloadAuthorityBoundBlob(new Blob(['pdf'], { type: 'application/pdf' }), 'order.pdf'),
+    ).rejects.toBe(refused);
+    expect(clickedAnchors).toHaveLength(0);
   });
 
   it('iOS without file sharing: uses the anchor download path', () => {

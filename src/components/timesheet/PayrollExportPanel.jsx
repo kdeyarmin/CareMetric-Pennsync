@@ -58,14 +58,22 @@ function PayrollTableCard({ serviceType, approvedTimesheets, allTimesheets, empl
   const totals = totalsRow(table);
   const empty = table.rows.length === 0;
 
-  const onPdf = () => {
-    downloadPayrollPDF(table, payrollFilename(serviceType, period.end, "pdf"));
-    toast.success(`${table.title} PDF downloaded.`);
+  const onPdf = async () => {
+    try {
+      // Delivery can be asynchronous (iOS share sheet): claim success only
+      // once the file is actually handed off. `false` means the user
+      // dismissed the share sheet — silent, not an error.
+      const delivered = await downloadPayrollPDF(table, payrollFilename(serviceType, period.end, "pdf"));
+      if (delivered) toast.success(`${table.title} PDF downloaded.`);
+    } catch {
+      toast.error(`${table.title} PDF could not be delivered. Please try again.`);
+    }
   };
-  const onCsv = () => {
-    const downloaded = downloadCsv(
+  const onCsv = async () => {
+    const downloaded = await downloadCsv(
       payrollFilename(serviceType, period.end, "csv"),
       buildPayrollCSV(table),
+      { onError: () => toast.error(`${table.title} spreadsheet could not be downloaded. Please try again.`) },
     );
     if (downloaded) toast.success(`${table.title} spreadsheet downloaded.`);
   };

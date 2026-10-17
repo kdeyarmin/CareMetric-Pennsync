@@ -68,8 +68,11 @@ export default function AgencyComprehensiveReport({ agencyId }) {
         return;
       }
       const blob = new Blob([await response.arrayBuffer()], { type: "application/pdf" });
-      downloadAuthorityBoundBlob(blob, `pennsync-agency-report-${todayEastern()}.pdf`);
-      setDone(true);
+      // Await delivery (asynchronous on the iOS share path) before claiming
+      // done; a dismissed share sheet leaves the panel not-done, and a real
+      // delivery failure lands in the catch below like any other failure.
+      const delivered = await downloadAuthorityBoundBlob(blob, `pennsync-agency-report-${todayEastern()}.pdf`);
+      if (delivered) setDone(true);
     } catch {
       setError("The report could not be generated. Please try again.");
     } finally {
