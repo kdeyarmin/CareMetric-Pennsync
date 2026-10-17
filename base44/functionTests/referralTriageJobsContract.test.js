@@ -56,12 +56,13 @@ function fakePdfLib({ bytesPerPage = 10 } = {}) {
 }
 
 // ---- Anthropic stand-in -----------------------------------------------------
-function fakeModel({ failRanges = new Set(), analysis, reviews, failReviews = false, notesText = null } = {}) {
+function fakeModel({ failRanges = new Set(), analysis, coding, compliance, failCoding = false, failCompliance = false, notesText = null } = {}) {
   const calls = [];
-  // One fixture per synthesis pass: `analysis` answers the core call and
-  // `reviews` the reviews call. Unset, the reviews call answers with the
-  // core fixture and the core call with the default fixture — which
-  // carries both review sections, the way the single pre-split answer did.
+  // One fixture per synthesis pass: `analysis` answers the core call,
+  // `coding` the coding-review call and `compliance` the compliance call.
+  // Unset, a review call answers with the core fixture and the core call
+  // with the default fixture — which carries both review sections, the
+  // way the single pre-split answer did.
   const fallback = {
     patient_name: PATIENT_NAME,
     date_of_birth: '1940-01-02',
@@ -102,11 +103,17 @@ function fakeModel({ failRanges = new Set(), analysis, reviews, failReviews = fa
       if (failRanges.has(range)) return new Response('{}', { status: 500 });
       return reply(notesText ?? `Patient: ${PATIENT_NAME} (p. ${range.split('-')[0]}). Notes for pages ${range}.`);
     }
-    // The reviews prompt is the one asking for the two review sections.
-    if (prompt.includes('Complete two reviews from the notes')) {
-      calls.push({ kind: 'reviews', prompt });
-      if (failReviews) return new Response('{}', { status: 500 });
-      return reply(JSON.stringify(reviews ?? analysis ?? fallback));
+    // The coding prompt is the one asking for the coding review alone.
+    if (prompt.includes('Complete the diagnosis coding review from the notes')) {
+      calls.push({ kind: 'coding', prompt });
+      if (failCoding) return new Response('{}', { status: 500 });
+      return reply(JSON.stringify(coding ?? analysis ?? fallback));
+    }
+    // The compliance prompt is the one asking for the compliance check alone.
+    if (prompt.includes('Complete the Medicare compliance check from the notes')) {
+      calls.push({ kind: 'compliance', prompt });
+      if (failCompliance) return new Response('{}', { status: 500 });
+      return reply(JSON.stringify(compliance ?? analysis ?? fallback));
     }
     calls.push({ kind: 'summary', prompt });
     return reply(JSON.stringify(analysis ?? fallback));
@@ -371,7 +378,7 @@ test('process reads every range as a PDF, writes the triage, and notifies the up
   // A finished job is answered, not re-run.
   const again = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
   assert.equal(again.data.job.status, 'ready');
-  assert.equal(model.calls.length, 5);
+  assert.equal(model.calls.length, 6);
   assert.equal(runtime.db.Notification.length, 1);
 });
 
@@ -550,13 +557,15 @@ test('the scheduler sweep needs its secret, finishes unattended jobs, and closes
   assert.deepEqual(runtime.db.Notification.map((row) => row.recipient_user_id), ['nurse']);
 });
 
-test('synthesis runs as two calls: the core prompt carries no reviews, the reviews prompt carries both reviews and the extracted diagnoses', async () => {
+test('synthesis runs as three calls: the core prompt carries no reviews, the coding and compliance prompts each carry one review and the extracted diagnoses', async () => {
   // The split exists because one answer carrying the core triage, the full
-  // coding review and the compliance checklist outgrew the call envelope
-  // and large packets failed synthesis outright. Pin the shape: the core
-  // prompt asks for the triage structure only, the reviews prompt asks for
-  // exactly the two review sections, aimed at the diagnoses the core call
-  // extracted, and the stored analysis merges both answers.
+  // coding review and the compliance checklist outgrew the output budget
+  // and large packets failed synthesis outright — first as one call, then
+  // (run #5) as core + a combined reviews call. Pin the shape: the core
+  // prompt asks for the triage structure only, the coding prompt asks for
+  // the coding review only, the compliance prompt asks for the compliance
+  // checklist only, each review aimed at the diagnoses the core call
+  // extracted, and the stored analysis merges all three answers.
   const model = fakeModel({
     analysis: {
       patient_name: PATIENT_NAME,
@@ -568,7 +577,7 @@ test('synthesis runs as two calls: the core prompt carries no reviews, the revie
       face_to_face_date: '2026-09-01',
       start_of_care_date: '2026-09-20',
     },
-    reviews: {
+    coding: {
       diagnosis_coding_review: {
         documented_primary: 'I50.9 heart failure',
         ordering_assessment: 'The documented primary is affirmed.',
@@ -582,6 +591,8 @@ test('synthesis runs as two calls: the core prompt carries no reviews, the revie
         candidates: [],
         documentation_needs: [],
       },
+    },
+    compliance: {
       medicare_compliance: {
         homebound_status: { status: 'satisfied', evidence: 'Documented in the notes.' },
       },
@@ -596,34 +607,43 @@ test('synthesis runs as two calls: the core prompt carries no reviews, the revie
   const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
   assert.equal(processed.data.job.status, 'ready');
 
-  // Exactly two synthesis calls, core first, then reviews.
+  // Exactly three synthesis calls, core first, then coding, then compliance.
   const synthesis = model.calls.filter((call) => call.kind !== 'pages');
-  assert.deepEqual(synthesis.map((call) => call.kind), ['summary', 'reviews']);
-  const [coreCall, reviewsCall] = synthesis;
+  assert.deepEqual(synthesis.map((call) => call.kind), ['summary', 'coding', 'compliance']);
+  const [coreCall, codingCall, complianceCall] = synthesis;
 
-  // The core prompt no longer carries the review instructions or the
-  // review keys in its requested structure, and asks for concise prose.
+  // The core prompt carries no review instructions or review keys, and
+  // asks for concise prose.
   assert.doesNotMatch(coreCall.prompt, /CODING REVIEW/);
   assert.doesNotMatch(coreCall.prompt, /MEDICARE COMPLIANCE/);
-  assert.doesNotMatch(coreCall.prompt, /"diagnosis_coding_review"/);
-  assert.doesNotMatch(coreCall.prompt, /"medicare_compliance"/);
+  assert.doesNotMatch(coreCall.prompt, /\"diagnosis_coding_review\"/);
+  assert.doesNotMatch(coreCall.prompt, /\"medicare_compliance\"/);
   assert.match(coreCall.prompt, /Keep the narrative fields concise/);
 
-  // The reviews prompt carries both review blocks, bounds their length,
+  // The coding prompt carries the coding block only, bounds its length,
   // and targets the diagnoses the core call extracted.
-  assert.match(reviewsCall.prompt, /CODING REVIEW/);
-  assert.match(reviewsCall.prompt, /MEDICARE COMPLIANCE/);
-  assert.match(reviewsCall.prompt, /"diagnosis_coding_review"/);
-  assert.match(reviewsCall.prompt, /"medicare_compliance"/);
-  assert.doesNotMatch(reviewsCall.prompt, /"patient_name"/);
-  assert.match(reviewsCall.prompt, /one or two sentences/);
-  assert.match(reviewsCall.prompt, /Primary diagnosis: Heart failure \(I50\.9\)/);
-  assert.match(reviewsCall.prompt, /Hypertension \(I10\); Type 2 diabetes \(E11\.9\)/);
-  // Both passes read the same chunk notes.
-  assert.match(reviewsCall.prompt, /Notes for pages 1-10/);
+  assert.match(codingCall.prompt, /CODING REVIEW/);
+  assert.match(codingCall.prompt, /\"diagnosis_coding_review\"/);
+  assert.doesNotMatch(codingCall.prompt, /MEDICARE COMPLIANCE/);
+  assert.doesNotMatch(codingCall.prompt, /\"medicare_compliance\"/);
+  assert.doesNotMatch(codingCall.prompt, /\"patient_name\"/);
+  assert.match(codingCall.prompt, /ONE sentence/);
+  assert.match(codingCall.prompt, /Primary diagnosis: Heart failure \(I50\.9\)/);
+  assert.match(codingCall.prompt, /Hypertension \(I10\); Type 2 diabetes \(E11\.9\)/);
+  assert.match(codingCall.prompt, /Notes for pages 1-10/);
 
-  // The stored analysis merges both answers: core fields from the core
-  // call, review sections from the reviews call, and the deterministic
+  // The compliance prompt carries the compliance block only, bounds its
+  // length, and targets the same extracted diagnoses.
+  assert.match(complianceCall.prompt, /MEDICARE COMPLIANCE/);
+  assert.match(complianceCall.prompt, /\"medicare_compliance\"/);
+  assert.doesNotMatch(complianceCall.prompt, /CODING REVIEW/);
+  assert.doesNotMatch(complianceCall.prompt, /\"diagnosis_coding_review\"/);
+  assert.doesNotMatch(complianceCall.prompt, /\"patient_name\"/);
+  assert.match(complianceCall.prompt, /Primary diagnosis: Heart failure \(I50\.9\)/);
+  assert.match(complianceCall.prompt, /Notes for pages 1-10/);
+
+  // The stored analysis merges all three answers: core fields from the
+  // core call, review sections from their own calls, and the deterministic
   // timing computation still runs over the merged dates and checklist.
   const stored = processed.data.job.analysis;
   assert.equal(stored.patient_name, PATIENT_NAME);
@@ -632,22 +652,24 @@ test('synthesis runs as two calls: the core prompt carries no reviews, the revie
   assert.equal(stored.medicare_compliance.homebound_status.status, 'satisfied');
   assert.equal(stored.medicare_compliance.face_to_face_timing.status, 'satisfied');
 });
-
-test('review sections the reviews answer omits or answers with a non-object fall back to the normalize defaults', async () => {
-  // The review sections come only from the reviews answer: a section that
-  // is absent or not a plain object stays absent from the stored analysis,
-  // so the coding review reads as unavailable and the compliance checklist
-  // defaults to all eight elements missing — the same defaults a single
-  // answer without the sections produced before the split.
+test('review sections a review answer omits or answers with a non-object fall back to the normalize defaults', async () => {
+  // Each review section comes only from its own call's answer: a section
+  // that is absent or not a plain object stays absent from the stored
+  // analysis, so the coding review reads as unavailable and the compliance
+  // checklist defaults to all eight elements missing — the same defaults
+  // a single answer without the sections produced before the split.
   const core = {
     patient_name: PATIENT_NAME,
     primary_diagnosis: 'CHF',
     clinical_summary: 'Discharged after CHF exacerbation.',
     data_gaps: [],
   };
-  for (const reviews of [{}, { diagnosis_coding_review: 'unavailable', medicare_compliance: 42 }]) {
+  for (const [coding, compliance] of [
+    [{}, {}],
+    [{ diagnosis_coding_review: 'unavailable' }, { medicare_compliance: 42 }],
+  ]) {
     const runtime = createRuntime({
-      model: fakeModel({ analysis: core, reviews }),
+      model: fakeModel({ analysis: core, coding, compliance }),
       files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
     });
     runtime.addIntakeUser('nurse');
@@ -655,19 +677,18 @@ test('review sections the reviews answer omits or answers with a non-object fall
     const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
     assert.equal(processed.data.job.status, 'ready');
     const analysis = processed.data.job.analysis;
-    assert.equal('diagnosis_coding_review' in analysis, false, `no review is stored for ${JSON.stringify(reviews)}`);
+    assert.equal('diagnosis_coding_review' in analysis, false, `no review is stored for ${JSON.stringify(coding)}`);
     assert.equal(Object.keys(analysis.medicare_compliance).length, 8);
     for (const entry of Object.values(analysis.medicare_compliance)) {
-      assert.equal(entry.status, 'missing', `every element defaults to missing for ${JSON.stringify(reviews)}`);
+      assert.equal(entry.status, 'missing', `every element defaults to missing for ${JSON.stringify(compliance)}`);
     }
   }
 });
-
 test('identifiers and urgency inside the reviews payload are stripped from the stored analysis', async () => {
   // The reviews quote the notes just as the core does, so the merged
-  // analysis passes the sanitizer once, whole: an MRN or SSN the reviews
+  // analysis passes the sanitizer once, whole: an MRN or SSN a review
   // answer echoes is masked wherever it lands, and urgency keys are
-  // absent — a top-level one in the reviews answer is never merged, and
+  // absent — a top-level one in a review answer is never merged, and
   // one nested in the review is dropped when the review is normalized.
   const model = fakeModel({
     analysis: {
@@ -676,7 +697,7 @@ test('identifiers and urgency inside the reviews payload are stripped from the s
       clinical_summary: 'Discharged after CHF exacerbation.',
       data_gaps: [],
     },
-    reviews: {
+    coding: {
       urgency_level: 'CRITICAL',
       diagnosis_coding_review: {
         documented_primary: 'I50.9 heart failure',
@@ -697,6 +718,8 @@ test('identifiers and urgency inside the reviews payload are stripped from the s
         }],
         documentation_needs: [],
       },
+    },
+    compliance: {
       medicare_compliance: {
         homebound_status: { status: 'satisfied', evidence: 'Chart copy lists MRN 13383 for the facility.' },
       },
@@ -720,12 +743,12 @@ test('identifiers and urgency inside the reviews payload are stripped from the s
   assert.equal('urgency_reason' in analysis.diagnosis_coding_review, false);
 });
 
-test('a failing reviews call fails synthesis instead of storing a core-only analysis', async () => {
+test('a failing coding call fails synthesis instead of storing a core-only analysis', async () => {
   // The reviews are part of the analysis contract, not an optional extra:
-  // when the reviews call fails, synthesis throws and the attempts
+  // when a review call fails, synthesis throws and the attempts
   // machinery retries, ending at SUMMARY_FAILED — the job never reads
   // ready with the core triage alone.
-  const model = fakeModel({ failReviews: true });
+  const model = fakeModel({ failCoding: true });
   const runtime = createRuntime({
     model,
     files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
@@ -743,10 +766,12 @@ test('a failing reviews call fails synthesis instead of storing a core-only anal
   assert.equal(result.data.job.status, 'failed');
   assert.equal(result.data.job.error_code, 'SUMMARY_FAILED');
   assert.equal(runtime.db.ReferralTriageJob[0].analysis, undefined);
-  // Each attempt ran both synthesis calls; the failing reviews call also
-  // draws the helper's one provider retry, so it lands twice per attempt.
+  // Each attempt ran the core call and then the failing coding call,
+  // which also draws the helper's one provider retry, so it lands twice
+  // per attempt; the compliance call is never reached.
   assert.equal(model.calls.filter((call) => call.kind === 'summary').length, 3);
-  assert.equal(model.calls.filter((call) => call.kind === 'reviews').length, 6);
+  assert.equal(model.calls.filter((call) => call.kind === 'coding').length, 6);
+  assert.equal(model.calls.filter((call) => call.kind === 'compliance').length, 0);
 });
 
 test('oversized chunk notes are condensed to a bounded block before synthesis', async () => {
@@ -755,7 +780,7 @@ test('oversized chunk notes are condensed to a bounded block before synthesis', 
   // ran long enough that the synthesis prompt crossed the AI helper's
   // 100,000-character limit and every attempt was rejected (SUMMARY_FAILED,
   // 2026-10-16). packetNotes caps the joined block deterministically, so
-  // both synthesis prompts stay under the limit and the job completes.
+  // all three synthesis prompts stay under the limit and the job completes.
   const line = 'Wound care and medication teaching documented for this range of pages. (p. 1)\n';
   const notesText = line.repeat(800); // ~62k characters per range
   const model = fakeModel({ notesText });
@@ -769,8 +794,8 @@ test('oversized chunk notes are condensed to a bounded block before synthesis', 
   await process();
   const result = await process();
   assert.equal(result.data.job.status, 'ready');
-  const synthesis = model.calls.filter((call) => call.kind === 'summary' || call.kind === 'reviews');
-  assert.equal(synthesis.length, 2);
+  const synthesis = model.calls.filter((call) => call.kind !== 'pages');
+  assert.equal(synthesis.length, 3);
   for (const call of synthesis) {
     assert.ok(call.prompt.length <= 100_000, `synthesis prompt within the helper limit (${call.prompt.length})`);
     assert.ok(call.prompt.includes('condensed to fit'), 'the prompt tells the model the notes were condensed');
@@ -782,7 +807,7 @@ test('a synthesis failure logs the error code only, never message text', async (
   const original = console.error;
   console.error = (...args) => { lines.push(args.map(String).join(' ')); };
   try {
-    const model = fakeModel({ failReviews: true });
+    const model = fakeModel({ failCoding: true });
     const runtime = createRuntime({
       model,
       files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
@@ -804,22 +829,25 @@ test('a synthesis failure logs the error code only, never message text', async (
   }
 });
 
-test('both synthesis passes ask the helper for the long synthesis timeout', async () => {
+test('all three synthesis passes ask the helper for the long synthesis timeout and the larger output budget', async () => {
   // Production recorded AI_TIMEOUT on every synthesis attempt for the
   // 90-page packet at the helper's 90s default (last_synthesis_error,
-  // 2026-10-16); the chunk reads keep the default, the two synthesis
-  // passes must pass the bounded longer window.
+  // 2026-10-16), then AI_RESULT_INCOMPLETE on every attempt once the
+  // timeout was raised (run #5, 2026-10-17); the chunk reads keep the
+  // defaults, the three synthesis passes must pass both bounded raises.
   const source = await readFile(new URL('../functions/referralTriageJobs/entry.ts', import.meta.url), 'utf8');
-  assert.equal(source.match(/timeout_ms: SYNTHESIS_PROVIDER_TIMEOUT_MS/g)?.length, 2);
+  assert.equal(source.match(/timeout_ms: SYNTHESIS_PROVIDER_TIMEOUT_MS/g)?.length, 3);
+  assert.equal(source.match(/max_tokens: SYNTHESIS_MAX_TOKENS/g)?.length, 3);
   assert.match(source, /const SYNTHESIS_PROVIDER_TIMEOUT_MS = 240_000;/);
   assert.match(source, /const SYNTHESIS_CALL_TIMEOUT_MS = 255_000;/);
+  assert.match(source, /const SYNTHESIS_MAX_TOKENS = 32_000;/);
 });
 
 test('the synthesis failure code is persisted on the job row, and control characters in notes never reach a synthesis prompt', async () => {
   // The hosted log views do not surface console.error text, so the code is
   // also stored on the job (last_synthesis_error) where support can read it.
   const failing = createRuntime({
-    model: fakeModel({ failReviews: true }),
+    model: fakeModel({ failCoding: true }),
     files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
   });
   failing.addIntakeUser('nurse');
@@ -829,7 +857,7 @@ test('the synthesis failure code is persisted on the job row, and control charac
   await failProcess();
   await failProcess();
   assert.equal(failing.db.ReferralTriageJob[0].status, 'failed');
-  assert.match(failing.db.ReferralTriageJob[0].last_synthesis_error, /^[A-Z][A-Z0-9_]+$/);
+  assert.match(failing.db.ReferralTriageJob[0].last_synthesis_error, /^CODING_[A-Z0-9_]+$/);
 
   // The AI helper rejects prompts containing control characters or DEL
   // (0x7F). Chunk-note cleaning at storage time did not always strip DEL,

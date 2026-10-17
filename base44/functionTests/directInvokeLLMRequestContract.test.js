@@ -367,6 +367,23 @@ test('the provider fetch timeout defaults to 90s and honors a bounded timeout_ms
   }
 });
 
+test('the output budget defaults to the per-class 16,000 and honors a bounded max_tokens', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const { fetcher, requests } = fakeProvider([textAnswer('one'), textAnswer('two'), textAnswer('three'), textAnswer('four')]);
+  const deps = { fetcher, apiKey: 'test-key' };
+  await directInvokeLLM({ prompt: 'Summarize.' }, deps);
+  await directInvokeLLM({ prompt: 'Summarize.', max_tokens: 32_000 }, deps);
+  await directInvokeLLM({ prompt: 'Summarize.', max_tokens: 10 }, deps);
+  await directInvokeLLM({ prompt: 'Summarize.', max_tokens: 9_999_999 }, deps);
+  // Default, asked, clamped low, clamped high — read off the request body
+  // the provider actually received.
+  assert.deepEqual(requests.map((request) => request.body.max_tokens), [16_000, 32_000, 1_000, 64_000]);
+  await assert.rejects(
+    directInvokeLLM({ prompt: 'Summarize.', max_tokens: '32000' }, deps),
+    (error) => error.code === 'INVALID_INPUT' && error.status === 400);
+});
+
 test('the file fetch is issued with redirect manual and a file 3xx fails as unavailable', async (t) => {
   quiet(t);
   const directInvokeLLM = loadHelper();

@@ -41,11 +41,12 @@ export function signedStorageUrl(raw, storageOrigin, objectPath) {
 }
 export function validateParams(operation, params, config) {
   if (operation === 'InvokeLLM') {
-    exactObject(params, ['prompt', 'model', 'response_json_schema', 'file_uris', 'add_context_from_internet', 'timeout_ms']);
+    exactObject(params, ['prompt', 'model', 'response_json_schema', 'file_uris', 'add_context_from_internet', 'timeout_ms', 'max_tokens']);
     text(params.prompt, 100000);
     if (Object.hasOwn(params, 'model') && (typeof params.model !== 'string' || !['automatic', config.model].includes(params.model))) fail(400, 'MODEL_MAPPING_REQUIRED');
     if (params.add_context_from_internet !== undefined && typeof params.add_context_from_internet !== 'boolean') fail(400, 'INVALID_INPUT');
     if (params.timeout_ms !== undefined && (typeof params.timeout_ms !== 'number' || !Number.isFinite(params.timeout_ms))) fail(400, 'INVALID_INPUT');
+    if (params.max_tokens !== undefined && (typeof params.max_tokens !== 'number' || !Number.isFinite(params.max_tokens))) fail(400, 'INVALID_INPUT');
     if (params.file_uris !== undefined && (!Array.isArray(params.file_uris) || params.file_uris.length > 3)) fail(400, 'INVALID_FILES');
     (params.file_uris || []).forEach(requireFileUri);
     if (Object.hasOwn(params, 'response_json_schema')) validateSchema(params.response_json_schema);
@@ -147,7 +148,12 @@ export function createProviders(config, store, fetcher = fetch) {
       : 90_000;
     // The default model thinks adaptively and its thinking counts against
     // max_tokens, so the budget carries headroom beyond the answer itself.
-    const body = { model: config.model, max_tokens: 16000, messages: [{ role: 'user', content }] };
+    // Mirrors the hosted helper: a caller with a legitimately large answer
+    // may raise the budget, bounded at 1,000..64,000.
+    const maxTokens = typeof params.max_tokens === 'number' && Number.isFinite(params.max_tokens)
+      ? Math.min(64_000, Math.max(1_000, Math.round(params.max_tokens)))
+      : 16000;
+    const body = { model: config.model, max_tokens: maxTokens, messages: [{ role: 'user', content }] };
     const tools = [];
     if (schema) {
       // Requested, not forced: the 5.5 models reject tool_choice 'tool'/'any'

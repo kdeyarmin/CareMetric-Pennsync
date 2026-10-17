@@ -227,7 +227,7 @@ const DIRECT_AI_MODEL_MAP = {
   claude_sonnet_4_6: 'claude-sonnet-5-5',
   claude_opus_4_8: 'claude-opus-5-5',
 };
-const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_urls', 'add_context_from_internet', 'timeout_ms'];
+const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_urls', 'add_context_from_internet', 'timeout_ms', 'max_tokens'];
 // Per-class output budget. The mapped models think adaptively by default and
 // their thinking tokens count against max_tokens, so both classes carry the
 // headroom a non-streaming request can use rather than the bare answer size.
@@ -415,6 +415,17 @@ async function directInvokeLLM(params, deps) {
     if (typeof params.timeout_ms !== 'number' || !Number.isFinite(params.timeout_ms)) directAiFail(400, 'INVALID_INPUT');
     providerTimeoutMs = Math.min(300_000, Math.max(5_000, Math.round(params.timeout_ms)));
   }
+  // The per-class output budget fits ordinary calls. A caller whose answer
+  // is legitimately large (a long synthesis over a big document) may ask
+  // for more, bounded by the mapped models' output ceiling:
+  // 1,000..64,000. Thinking tokens count against the same budget, so this
+  // headroom is what keeps a long answer from stopping at max_tokens
+  // (AI_RESULT_INCOMPLETE).
+  let maxTokens = null;
+  if (params.max_tokens !== undefined) {
+    if (typeof params.max_tokens !== 'number' || !Number.isFinite(params.max_tokens)) directAiFail(400, 'INVALID_INPUT');
+    maxTokens = Math.min(64_000, Math.max(1_000, Math.round(params.max_tokens)));
+  }
   const schema = params.response_json_schema;
   if (schema !== undefined) directAiValidateSchema(schema, 0, { nodes: 0 });
   const fetcher = deps && typeof deps.fetcher === 'function' ? deps.fetcher : fetch;
@@ -425,7 +436,7 @@ async function directInvokeLLM(params, deps) {
   const content = [];
   for (const url of params.file_urls || []) content.push(await directAiLoadFile(url, fetcher));
   content.push({ type: 'text', text: params.prompt });
-  const body = { model, max_tokens: schema ? DIRECT_AI_MAX_TOKENS.structured : DIRECT_AI_MAX_TOKENS.plain, messages: [{ role: 'user', content }] };
+  const body = { model, max_tokens: maxTokens ?? (schema ? DIRECT_AI_MAX_TOKENS.structured : DIRECT_AI_MAX_TOKENS.plain), messages: [{ role: 'user', content }] };
   const tools = [];
   if (schema) {
     body.system = DIRECT_AI_TOOL_INSTRUCTION;
