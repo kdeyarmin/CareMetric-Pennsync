@@ -56,8 +56,41 @@ function fakePdfLib({ bytesPerPage = 10 } = {}) {
 }
 
 // ---- Anthropic stand-in -----------------------------------------------------
-function fakeModel({ failRanges = new Set(), analysis } = {}) {
+function fakeModel({ failRanges = new Set(), analysis, reviews, failReviews = false } = {}) {
   const calls = [];
+  // One fixture per synthesis pass: `analysis` answers the core call and
+  // `reviews` the reviews call. Unset, the reviews call answers with the
+  // core fixture and the core call with the default fixture — which
+  // carries both review sections, the way the single pre-split answer did.
+  const fallback = {
+    patient_name: PATIENT_NAME,
+    date_of_birth: '1940-01-02',
+    primary_diagnosis: 'CHF',
+    clinical_summary: 'Discharged after CHF exacerbation.',
+    data_gaps: [],
+    face_to_face_date: '2026-09-01',
+    start_of_care_date: '2026-09-20',
+    diagnosis_coding_review: {
+      documented_primary: 'I50.9 heart failure',
+      ordering_assessment: 'The documented primary is affirmed.',
+      codes: [{
+        code: 'I50.9', description: 'Heart failure, unspecified', position: 1,
+        pdgm_role: 'primary_clinical_grouping',
+        justification: 'The condition the nursing plan treats.',
+        documentation_support: 'Discharge summary in the notes.',
+        specificity_flag: null, suggested_more_specific: null, conflict: null,
+      }],
+      candidates: [],
+      documentation_needs: [],
+    },
+    medicare_compliance: {
+      homebound_status: { status: 'satisfied', evidence: 'Documented in the notes.' },
+      referral_order: { status: 'missing', evidence: 'No order in the packet.' },
+      // The rest are omitted on purpose: the stored checklist must still
+      // carry all eight elements, and face-to-face timing must be computed
+      // from the dates (19 days before the start of care = satisfied).
+    },
+  };
   async function answer(body) {
     const content = body.messages[0].content;
     const document = content.find((block) => block.type === 'document');
@@ -69,36 +102,14 @@ function fakeModel({ failRanges = new Set(), analysis } = {}) {
       if (failRanges.has(range)) return new Response('{}', { status: 500 });
       return reply(`Patient: ${PATIENT_NAME} (p. ${range.split('-')[0]}). Notes for pages ${range}.`);
     }
+    // The reviews prompt is the one asking for the two review sections.
+    if (prompt.includes('Complete two reviews from the notes')) {
+      calls.push({ kind: 'reviews', prompt });
+      if (failReviews) return new Response('{}', { status: 500 });
+      return reply(JSON.stringify(reviews ?? analysis ?? fallback));
+    }
     calls.push({ kind: 'summary', prompt });
-    return reply(JSON.stringify(analysis ?? {
-      patient_name: PATIENT_NAME,
-      date_of_birth: '1940-01-02',
-      primary_diagnosis: 'CHF',
-      clinical_summary: 'Discharged after CHF exacerbation.',
-      data_gaps: [],
-      face_to_face_date: '2026-09-01',
-      start_of_care_date: '2026-09-20',
-      diagnosis_coding_review: {
-        documented_primary: 'I50.9 heart failure',
-        ordering_assessment: 'The documented primary is affirmed.',
-        codes: [{
-          code: 'I50.9', description: 'Heart failure, unspecified', position: 1,
-          pdgm_role: 'primary_clinical_grouping',
-          justification: 'The condition the nursing plan treats.',
-          documentation_support: 'Discharge summary in the notes.',
-          specificity_flag: null, suggested_more_specific: null, conflict: null,
-        }],
-        candidates: [],
-        documentation_needs: [],
-      },
-      medicare_compliance: {
-        homebound_status: { status: 'satisfied', evidence: 'Documented in the notes.' },
-        referral_order: { status: 'missing', evidence: 'No order in the packet.' },
-        // The rest are omitted on purpose: the stored checklist must still
-        // carry all eight elements, and face-to-face timing must be computed
-        // from the dates (19 days before the start of care = satisfied).
-      },
-    }));
+    return reply(JSON.stringify(analysis ?? fallback));
   }
   const reply = (text) => new Response(JSON.stringify({
     content: [{ type: 'text', text }],
@@ -328,7 +339,8 @@ test('process reads every range as a PDF, writes the triage, and notifies the up
   assert.equal(listed.data.jobs[0].patient_name, PATIENT_NAME);
   assert.equal('urgency_level' in listed.data.jobs[0], false);
 
-  // Each range went to the model as its own PDF, then one summary call.
+  // Each range went to the model as its own PDF, then the two synthesis
+  // calls (core, then reviews).
   assert.deepEqual(model.calls.filter((c) => c.kind === 'pages').map((c) => c.range).sort(), ['1-15', '16-30', '31-40']);
   const summary = model.calls.find((c) => c.kind === 'summary');
   assert.match(summary.prompt, /Notes for pages 16-30/);
@@ -359,7 +371,7 @@ test('process reads every range as a PDF, writes the triage, and notifies the up
   // A finished job is answered, not re-run.
   const again = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
   assert.equal(again.data.job.status, 'ready');
-  assert.equal(model.calls.length, 4);
+  assert.equal(model.calls.length, 5);
   assert.equal(runtime.db.Notification.length, 1);
 });
 
@@ -519,4 +531,203 @@ test('the scheduler sweep needs its secret, finishes unattended jobs, and closes
   assert.equal(byUser.leaver.status, 'failed');
   assert.equal(byUser.leaver.error_code, 'ACCESS_REVOKED');
   assert.deepEqual(runtime.db.Notification.map((row) => row.recipient_user_id), ['nurse']);
+});
+
+test('synthesis runs as two calls: the core prompt carries no reviews, the reviews prompt carries both reviews and the extracted diagnoses', async () => {
+  // The split exists because one answer carrying the core triage, the full
+  // coding review and the compliance checklist outgrew the call envelope
+  // and large packets failed synthesis outright. Pin the shape: the core
+  // prompt asks for the triage structure only, the reviews prompt asks for
+  // exactly the two review sections, aimed at the diagnoses the core call
+  // extracted, and the stored analysis merges both answers.
+  const model = fakeModel({
+    analysis: {
+      patient_name: PATIENT_NAME,
+      date_of_birth: '1940-01-02',
+      primary_diagnosis: 'Heart failure (I50.9)',
+      secondary_diagnoses: ['Hypertension (I10)', 'Type 2 diabetes (E11.9)'],
+      clinical_summary: 'Discharged after CHF exacerbation.',
+      data_gaps: [],
+      face_to_face_date: '2026-09-01',
+      start_of_care_date: '2026-09-20',
+    },
+    reviews: {
+      diagnosis_coding_review: {
+        documented_primary: 'I50.9 heart failure',
+        ordering_assessment: 'The documented primary is affirmed.',
+        codes: [{
+          code: 'I50.9', description: 'Heart failure, unspecified', position: 1,
+          pdgm_role: 'primary_clinical_grouping',
+          justification: 'The condition the nursing plan treats.',
+          documentation_support: 'Discharge summary in the notes.',
+          specificity_flag: null, suggested_more_specific: null, conflict: null,
+        }],
+        candidates: [],
+        documentation_needs: [],
+      },
+      medicare_compliance: {
+        homebound_status: { status: 'satisfied', evidence: 'Documented in the notes.' },
+      },
+    },
+  });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  assert.equal(processed.data.job.status, 'ready');
+
+  // Exactly two synthesis calls, core first, then reviews.
+  const synthesis = model.calls.filter((call) => call.kind !== 'pages');
+  assert.deepEqual(synthesis.map((call) => call.kind), ['summary', 'reviews']);
+  const [coreCall, reviewsCall] = synthesis;
+
+  // The core prompt no longer carries the review instructions or the
+  // review keys in its requested structure, and asks for concise prose.
+  assert.doesNotMatch(coreCall.prompt, /CODING REVIEW/);
+  assert.doesNotMatch(coreCall.prompt, /MEDICARE COMPLIANCE/);
+  assert.doesNotMatch(coreCall.prompt, /"diagnosis_coding_review"/);
+  assert.doesNotMatch(coreCall.prompt, /"medicare_compliance"/);
+  assert.match(coreCall.prompt, /Keep the narrative fields concise/);
+
+  // The reviews prompt carries both review blocks, bounds their length,
+  // and targets the diagnoses the core call extracted.
+  assert.match(reviewsCall.prompt, /CODING REVIEW/);
+  assert.match(reviewsCall.prompt, /MEDICARE COMPLIANCE/);
+  assert.match(reviewsCall.prompt, /"diagnosis_coding_review"/);
+  assert.match(reviewsCall.prompt, /"medicare_compliance"/);
+  assert.doesNotMatch(reviewsCall.prompt, /"patient_name"/);
+  assert.match(reviewsCall.prompt, /one or two sentences/);
+  assert.match(reviewsCall.prompt, /Primary diagnosis: Heart failure \(I50\.9\)/);
+  assert.match(reviewsCall.prompt, /Hypertension \(I10\); Type 2 diabetes \(E11\.9\)/);
+  // Both passes read the same chunk notes.
+  assert.match(reviewsCall.prompt, /Notes for pages 1-10/);
+
+  // The stored analysis merges both answers: core fields from the core
+  // call, review sections from the reviews call, and the deterministic
+  // timing computation still runs over the merged dates and checklist.
+  const stored = processed.data.job.analysis;
+  assert.equal(stored.patient_name, PATIENT_NAME);
+  assert.equal(stored.primary_diagnosis, 'Heart failure (I50.9)');
+  assert.equal(stored.diagnosis_coding_review.codes[0].code, 'I50.9');
+  assert.equal(stored.medicare_compliance.homebound_status.status, 'satisfied');
+  assert.equal(stored.medicare_compliance.face_to_face_timing.status, 'satisfied');
+});
+
+test('review sections the reviews answer omits or answers with a non-object fall back to the normalize defaults', async () => {
+  // The review sections come only from the reviews answer: a section that
+  // is absent or not a plain object stays absent from the stored analysis,
+  // so the coding review reads as unavailable and the compliance checklist
+  // defaults to all eight elements missing — the same defaults a single
+  // answer without the sections produced before the split.
+  const core = {
+    patient_name: PATIENT_NAME,
+    primary_diagnosis: 'CHF',
+    clinical_summary: 'Discharged after CHF exacerbation.',
+    data_gaps: [],
+  };
+  for (const reviews of [{}, { diagnosis_coding_review: 'unavailable', medicare_compliance: 42 }]) {
+    const runtime = createRuntime({
+      model: fakeModel({ analysis: core, reviews }),
+      files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+    });
+    runtime.addIntakeUser('nurse');
+    const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+    const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+    assert.equal(processed.data.job.status, 'ready');
+    const analysis = processed.data.job.analysis;
+    assert.equal('diagnosis_coding_review' in analysis, false, `no review is stored for ${JSON.stringify(reviews)}`);
+    assert.equal(Object.keys(analysis.medicare_compliance).length, 8);
+    for (const entry of Object.values(analysis.medicare_compliance)) {
+      assert.equal(entry.status, 'missing', `every element defaults to missing for ${JSON.stringify(reviews)}`);
+    }
+  }
+});
+
+test('identifiers and urgency inside the reviews payload are stripped from the stored analysis', async () => {
+  // The reviews quote the notes just as the core does, so the merged
+  // analysis passes the sanitizer once, whole: an MRN or SSN the reviews
+  // answer echoes is masked wherever it lands, and urgency keys are
+  // absent — a top-level one in the reviews answer is never merged, and
+  // one nested in the review is dropped when the review is normalized.
+  const model = fakeModel({
+    analysis: {
+      patient_name: PATIENT_NAME,
+      primary_diagnosis: 'CHF',
+      clinical_summary: 'Discharged after CHF exacerbation.',
+      data_gaps: [],
+    },
+    reviews: {
+      urgency_level: 'CRITICAL',
+      diagnosis_coding_review: {
+        documented_primary: 'I50.9 heart failure',
+        ordering_assessment: 'The documented primary is affirmed.',
+        urgency_reason: 'must not survive',
+        codes: [{
+          code: 'I50.9', description: 'Heart failure, unspecified', position: 1,
+          pdgm_role: 'primary_clinical_grouping',
+          justification: 'Coded from the face sheet, facility MRN: 13383.',
+          documentation_support: 'Discharge summary in the notes.',
+          specificity_flag: null, suggested_more_specific: null, conflict: null,
+        }],
+        candidates: [{
+          condition: 'Anemia', candidate_code: 'D64.9',
+          evidence: 'Face sheet shows SSN 123-45-6789 beside the labs.',
+          pdgm_relevance: 'Supports comorbidity adjustment.',
+          documentation_required: 'A documented anemia diagnosis from the provider.',
+        }],
+        documentation_needs: [],
+      },
+      medicare_compliance: {
+        homebound_status: { status: 'satisfied', evidence: 'Chart copy lists MRN 13383 for the facility.' },
+      },
+    },
+  });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const processed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  assert.equal(processed.data.job.status, 'ready');
+  const analysis = processed.data.job.analysis;
+  const storedJson = JSON.stringify(analysis);
+  assert.equal(storedJson.includes('13383'), false, 'the document MRN is stored nowhere');
+  assert.equal(storedJson.includes('123-45-6789'), false, 'the SSN is stored nowhere');
+  assert.match(analysis.diagnosis_coding_review.codes[0].justification, /MRN \[not recorded\]/);
+  assert.match(analysis.diagnosis_coding_review.candidates[0].evidence, /\[redacted\]/);
+  assert.equal('urgency_level' in analysis, false);
+  assert.equal('urgency_reason' in analysis.diagnosis_coding_review, false);
+});
+
+test('a failing reviews call fails synthesis instead of storing a core-only analysis', async () => {
+  // The reviews are part of the analysis contract, not an optional extra:
+  // when the reviews call fails, synthesis throws and the attempts
+  // machinery retries, ending at SUMMARY_FAILED — the job never reads
+  // ready with the core triage alone.
+  const model = fakeModel({ failReviews: true });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const process = () => runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+
+  let result = await process();
+  assert.equal(result.data.job.status, 'processing');
+  assert.equal(runtime.db.ReferralTriageJob[0].analysis, undefined);
+  result = await process();
+  assert.equal(result.data.job.status, 'processing');
+  result = await process();
+  assert.equal(result.data.job.status, 'failed');
+  assert.equal(result.data.job.error_code, 'SUMMARY_FAILED');
+  assert.equal(runtime.db.ReferralTriageJob[0].analysis, undefined);
+  // Each attempt ran both synthesis calls; the failing reviews call also
+  // draws the helper's one provider retry, so it lands twice per attempt.
+  assert.equal(model.calls.filter((call) => call.kind === 'summary').length, 3);
+  assert.equal(model.calls.filter((call) => call.kind === 'reviews').length, 6);
 });

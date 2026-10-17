@@ -134,6 +134,13 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // describe) and `EXPECTED_DOCUMENT` is the union, so what the document
 // must hold is unchanged apart from D234. What is bought back is the
 // same differential, live a ninth time.
+//
+// The D234 collection has since merged (#484), so this list stands
+// INERT a ninth time: 234 is in `BASE_NUMBERS` below (re-derived in
+// this same change) and the overlap is total, which the paragraphs
+// above defend as the designed state rather than an error. It is left
+// as [234] and will be rewritten when the next collection is filed;
+// this change files none — it repairs the referral triage synthesis.
 export const EXPECTED_NEW = Object.freeze([234]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
@@ -255,7 +262,16 @@ export const EXPECTED_NEW = Object.freeze([234]);
 // the twenty-two absent numbers are unchanged. The window opened an
 // eighth time and is closed here, in the same change that files the
 // next entry, exactly as the seventh was.
-const BASE_HIGHEST = 233;
+//
+// Re-derived an eighth time on 2026-10-16 from `origin/main` at
+// `627fb45`, where it had been `233 - 22 = 211`. What moved on the base
+// branch: #484 merged, landing D234 and nothing else. D234 follows D233
+// directly, so the base gained that one number and no absent one, and
+// the twenty-two absent numbers are unchanged. The window opened a
+// ninth time and is closed here, in a change that files no new entry —
+// it repairs the referral triage synthesis the D234 change built —
+// exactly as the seventh was.
+const BASE_HIGHEST = 234;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
   180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);
 for (const absent of BASE_ABSENT) {
