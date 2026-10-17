@@ -141,7 +141,15 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // above defend as the designed state rather than an error. It is left
 // as [234] and will be rewritten when the next collection is filed;
 // this change files none — it repairs the referral triage synthesis.
-export const EXPECTED_NEW = Object.freeze([234]);
+//
+// Rewritten a tenth time on 2026-10-17, for the collection in hand,
+// which adds D235 and nothing else. It held [234] INERT — 234 was
+// already in `BASE_NUMBERS` from the re-derivation above — so nothing
+// is lost by this rewrite either: `EXPECTED_DOCUMENT` is still the
+// union, and what the document must hold is unchanged apart from
+// D235. What is bought back is the same differential, live a tenth
+// time.
+export const EXPECTED_NEW = Object.freeze([235]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
 //

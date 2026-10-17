@@ -428,6 +428,19 @@ const HISTORICAL_PORT_QUEUE_READINGS = [
       + '2026-10-16, when D234 retired `analyzeReferralPriority` out of the `none` bucket, '
       + 'taking it to 81 without any port being written',
   },
+  // The next link in the same chain: the reading D234 landed, current for a
+  // day. D235 adds a `port` capability whose one record read is a schema the
+  // store does not carry, so `records_schema` stands at 1 for the first time
+  // since the bucket emptied — new work arriving, not a reclassification.
+  // The reading is quoted in D234's ledger and in D235's before column; the
+  // present-tense pages were corrected instead, and D235 carries the new one.
+  {
+    page: 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md',
+    reading: 'entity_authorization=5 files=17 external_secret=2 none=81',
+    reason: 'the measurement from D234 until D235: it WAS the measurement until '
+      + '2026-10-17, when D235 added `verifyReferralInsuranceEligibility`, whose '
+      + 'Referral read waits on a schema the store does not carry',
+  },
 ];
 
 test('the pages carrying the port queue carry what the tool measures', () => {
@@ -514,8 +527,13 @@ test('the pages carrying the port queue carry what the tool measures', () => {
   // in prose: D79 wrote "nothing startable left" into AGENTS.md, D84 then moved
   // three capabilities back in, and nothing failed. The bucket reached zero
   // again at D91 and is back at one, on a correction to `writtenColumns` rather
-  // than on a decision.
-  assert.deepEqual(report.port_blockers.records_schema, [],
+  // than on a decision. That entry arrived and left inside its own change, and
+  // the bucket stands at one again — this time on a decision, D235, and on
+  // genuinely new work: a capability written against a schema the store has
+  // not carried yet, which is the state this bucket has always named.
+  assert.deepEqual(report.port_blockers.records_schema, [
+    'verifyReferralInsuranceEligibility',
+  ],
     'the startable set changed; re-read what each entry now waits on and move AGENTS.md with it');
   for (const name of report.port_blockers.records_schema) {
     assert.ok(page.includes(name), `AGENTS.md should name ${name} as startable`);
@@ -1344,7 +1362,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // first thing the module waits on.
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 5, patient_access_model: 0,
-    records_schema: 0, files: 17, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    records_schema: 1, files: 17, ported_function: 0, core_integration: 0, pdf_rendering: 0,
     external_secret: 2, none: 81 });
   // D234 (2026-10-16) moved `none` 82 → 81 and the queue total 106 → 105 by
   // RETIRING a capability rather than porting one: `analyzeReferralPriority`
@@ -1474,7 +1492,16 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // The entry it holds now is the one worth reading twice, because it arrived
   // from `entity_authorization` rather than from a decision or a port: the
   // capability was never blocked, and the reader said it was.
-  assert.deepEqual(report.port_blockers.records_schema, []);
+  //
+  // That entry left inside its own change, and D235 puts a different one in:
+  // `verifyReferralInsuranceEligibility` arrived ON a decision, as new work,
+  // and it is blocked in exactly the way the bucket says — its one record
+  // read is the `Referral` row, and no carried schema serves it yet. Three
+  // arrivals, three different causes, and the count alone cannot tell them
+  // apart, which is why this paragraph exists.
+  assert.deepEqual(report.port_blockers.records_schema, [
+    'verifyReferralInsuranceEligibility',
+  ]);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -2338,7 +2365,19 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // `outboundDeliveryGate`"; it has ONE, and the branch it sits on is one the
   // module already refuses itself — D79's `generatePatientHandout` exactly, so
   // D81's partial shape served it. The other "SendEmail" was a docstring.
-  assert.deepEqual(report.port_blockers.records_schema, []);
+  //
+  // The bucket stands at one again, and this arrival is new work rather than
+  // a reclassification: D235's `verifyReferralInsuranceEligibility` is a new
+  // `port` capability whose one record read is the `Referral` row it verifies
+  // coverage for, and the store does not carry that schema yet. Its two other
+  // reads are the authority store's own `AgencyMembership` and `Agency`, which
+  // have never counted here. It leaves when the referral schema is carried —
+  // the same change that adds `Referral.insurance_verification` to the entity
+  // and owes the forward migration — and until then the honest reading is
+  // that this port cannot start, which is what the bucket exists to say.
+  assert.deepEqual(report.port_blockers.records_schema, [
+    'verifyReferralInsuranceEligibility',
+  ]);
 });
 
 test('a flag pinned true pauses a handler exactly as one pinned false does', () => {

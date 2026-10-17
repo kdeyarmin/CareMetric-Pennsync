@@ -377,17 +377,23 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // way), so **the list has NOT been rewritten — [234] stands inert in the
 // base** — the third assertion is implied by the first at this reading,
 // and its message says so.
+//
+// **And an eleventh turn.** Nothing carrying a number has merged since —
+// the base still holds 234 from the tenth turn's re-derivation (212, the
+// same window) — and **the list has been rewritten a tenth time, for
+// D235, so the two have diverged again** — the third assertion is
+// independent at this reading too, and its message says so.
 test('the figures quoted in prose are the figures the lists hold', () => {
   assert.equal(REAL_BASE_NUMBERS.length, 212,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D234 alone, now inert — its collection merged '
-    + "(#484) and the number stands in the base — and the figure is quoted in "
+    'the collection figure: D235 alone — its collection has not merged, so '
+    + "the number stands in EXPECTED_NEW only — and the figure is quoted in "
     + "the module's rewrite note, which attributes it to this pass");
-  assert.equal(EXPECTED_DOCUMENT.length, 212,
-    'the union: the base figure, with D234 already in it, so this assertion is '
-    + 'implied by the first at this reading — the convergence the comment above '
-    + 'this test describes. It still catches a union built as a concatenation, '
-    + 'which neither other assertion would.');
+  assert.equal(EXPECTED_DOCUMENT.length, 213,
+    'the union: the base figure plus D235, which the base does not hold, so '
+    + 'this assertion is independent at this reading — the divergence the '
+    + 'comment above this test describes. It still catches a union built as '
+    + 'a concatenation, which neither other assertion would.');
 });

@@ -362,7 +362,8 @@
     "validateFollowUpToken": "preserved_paused",
     "validatePatientData": "port",
     "validateSignerToken": "preserved_paused",
-    "verifyAdrResponsePacket": "port"
+    "verifyAdrResponsePacket": "port",
+    "verifyReferralInsuranceEligibility": "port"
   },
   "entities": {
     "AIConfiguration": "port",

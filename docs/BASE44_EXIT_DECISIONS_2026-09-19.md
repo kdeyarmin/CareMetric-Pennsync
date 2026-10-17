@@ -15452,3 +15452,61 @@ Gates at this entry: test:pennsync-api 345/345, test:utils 3024 pass and
 test:contracts 471/471, test:external-integrations 379/379,
 test:security 1055/1055, check:shared-helpers clean over 300 consumers,
 check:backend-transpile clean over 304 functions.
+
+## D235 — Office Ally eligibility verification is a hosted function that returns its outcome and writes nothing (2026-10-17)
+
+**Decision.** Automatic insurance eligibility verification on referral
+analysis is built as a hosted Base44 function,
+`verifyReferralInsuranceEligibility` (disposition `port`), calling Office
+Ally's Realtime RestAPI in its JSON 270/271 shape — not the SOAP/MIME
+raw-X12 route, and not the integration-runtime. Production referral
+processing and every other direct-provider integration (Anthropic under
+the direct-AI migration, Deepgram under D227) live on the hosted side
+today; the function ports with the referral domain in a later wave
+rather than coupling a referral feature to that migration now.
+
+**The shape.** The function is broker-shaped: the caller's tenant scope
+comes from their one exact active `AgencyMembership`, never from request
+input, and the referral is re-read server-side so no demographic is
+caller-supplied. It RETURNS the normalized verification outcome and
+writes nothing — persistence stays with the existing referral broker, so
+the referral keeps exactly one write path with its authority semantics.
+Credentials are Base44 function secrets under D227's seam
+(`OFFICE_ALLY_API_KEY`, with the submitter account alongside); without
+them the function answers a typed `not_configured` outcome and makes no
+outbound call, so the code ships safely ahead of Office Ally's Realtime
+RestAPI submitter onboarding and production behavior is a silent skip
+until then. Verification is best-effort by construction: it never
+blocks, fails, or re-prioritizes the referral it describes; answered
+271s are billable transactions, so there is no automatic resubmission —
+a SHA-256 fingerprint of payer, member and date of birth returns the
+stored payer-answered outcome on re-analysis, and only a manual
+re-verify spends again. No identifier is read from any MRN field (D233);
+the member ID is masked to its last four in the stored outcome, the raw
+271 is not retained, and no PHI reaches a log line. The payer directory
+is seeded with the Highmark entries the test payer (SecurityBlue) is
+expected to route under; an unrecognized payer name is a typed refusal,
+never a guessed payer ID. One design assumption did not survive contact
+with the tree: the agency's enrolled legal name and NPI were to be read
+from `AgencySettings`, which carries neither — Phase 1 reads the
+receiver identity from function configuration instead, and moving it
+into the entity is Phase 2's choice to make with the schema tooling in
+hand. This entry files Phase 1 (the function and its protocol fixtures);
+the `Referral.insurance_verification` field, the trigger, the surface
+card and the `checkAllIntegrations` entry are the following phases.
+
+**The ledger.** The decision register grows by one: EXPECTED_NEW [235],
+the base holding 212 numbered decisions (234 entered it when the
+triage-synthesis repair re-derived the base over the merged #484), so
+the union is 213. The port queue moves for the first time since D234,
+and it moves UP, which is the queue working rather than failing: before
+`port queue: entity_authorization=5 files=17 external_secret=2 none=81`,
+after `port queue: entity_authorization=5 records_schema=1 files=17 external_secret=2 none=81`,
+the total rising 105 → 106 and the function count 304 → 305, the one new
+entry being this capability's `Referral` read against a schema the store
+does not carry — with the reading it replaces declared as history in the
+disposition test beside D234's. The Base44 coupling ceiling does not
+move: this change adds no client importer and no Core integration site.
+Gates at this entry: test:contracts 500/500, test:utils 3030 pass and 1
+skipped of 3031, check:shared-helpers clean over 301 consumers,
+check:backend-transpile clean over 305 functions.
