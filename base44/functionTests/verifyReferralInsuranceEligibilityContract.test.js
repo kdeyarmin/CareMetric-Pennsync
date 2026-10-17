@@ -127,16 +127,20 @@ const ACTIVE_HOME_HEALTH_271 = responseEnvelope('OA-TRACE-1002', {
         messages: [],
       },
       {
-        // Deductible total: the first STC-30 'C' line's amount.
+        // Deductible total: the STC-30 'C' line explicitly qualified as
+        // individual (coverageLevel IND).
         benefitInformationCode: code('C', 'Deductible'),
+        coverageLevel: code('IND', 'Individual'),
         serviceTypeCodes: stc('30'),
         monetaryAmount: '250',
       },
       {
-        // Deductible remaining: evidenced only by a distinct second 'C' line.
+        // A family-qualified 'C' line: it must never feed the individual
+        // figures, whatever position it sits in.
         benefitInformationCode: code('C', 'Deductible'),
+        coverageLevel: code('FAM', 'Family'),
         serviceTypeCodes: stc('30'),
-        monetaryAmount: '75',
+        monetaryAmount: '500',
       },
       {
         benefitInformationCode: code('1', 'Active Coverage'),
@@ -180,6 +184,143 @@ const INACTIVE_271 = responseEnvelope('OA-TRACE-1003', {
         serviceTypeCodes: stc('30'),
         planName: 'SecurityBlue HMO',
         benefitDates: { eligibility: { startDate: '2025-01-01', endDate: '2026-06-30' } },
+        messages: [],
+      },
+    ],
+    plans: [],
+  },
+});
+
+// Blank and whitespace-only numeric strings are unanswered fields, not
+// zeroes; an explicit '0' is a real zero.
+const BLANK_AMOUNTS_271 = responseEnvelope('OA-TRACE-1004', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        messages: [],
+      },
+      {
+        // An explicitly zero deductible is still a zero.
+        benefitInformationCode: code('C', 'Deductible'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        monetaryAmount: '0',
+      },
+      {
+        benefitInformationCode: code('B', 'Co-Payment'),
+        serviceTypeCodes: stc('42'),
+        monetaryAmount: '',
+      },
+      {
+        benefitInformationCode: code('A', 'Co-Insurance'),
+        serviceTypeCodes: stc('42'),
+        percent: '   ',
+      },
+      {
+        benefitInformationCode: code('F', 'Limitations'),
+        serviceTypeCodes: stc('42'),
+        quantityType: code('VS', 'Visits'),
+        quantity: '',
+      },
+    ],
+    plans: [],
+  },
+});
+
+// No begin qualifier anywhere: the end range's single date is the
+// termination date, never an effective date.
+const END_ONLY_WINDOW_271 = responseEnvelope('OA-TRACE-1005', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        benefitDates: { eligibilityEnd: { startDate: '2026-06-30', endDate: null } },
+        messages: [],
+      },
+    ],
+    plans: [],
+  },
+});
+
+// Begin and end stated under separate qualifiers on the subscriber: each
+// contributes only its own date.
+const SEPARATE_BEGIN_END_271 = responseEnvelope('OA-TRACE-1006', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  dates: {
+    eligibilityBegin: { startDate: '2026-01-01', endDate: null },
+    eligibilityEnd: { startDate: '2026-12-31', endDate: null },
+  },
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        messages: [],
+      },
+    ],
+    plans: [],
+  },
+});
+
+// Deductible variants: one active STC-30 line plus the given 'C' lines.
+const cLine = (amount, level = null) => ({
+  benefitInformationCode: code('C', 'Deductible'),
+  ...(level ? { coverageLevel: code(level) } : {}),
+  serviceTypeCodes: stc('30'),
+  monetaryAmount: amount,
+});
+const deductible271 = (traceId, cLines) => responseEnvelope(traceId, {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        messages: [],
+      },
+      ...cLines,
+    ],
+    plans: [],
+  },
+});
+
+// The plan is named only on the subscriber, never on a benefit line.
+const SUBSCRIBER_PLAN_NAME_271 = responseEnvelope('OA-TRACE-1007', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
         messages: [],
       },
     ],
@@ -485,7 +626,7 @@ test('an active 271 with home-health lines yields the full verified_active outco
     visit_limit: 60,
     notes: 'Home health visits subject to plan limits.',
   });
-  assert.deepEqual(v.benefits.deductible, { individual_total: 250, individual_remaining: 75 });
+  assert.deepEqual(v.benefits.deductible, { individual_total: 250, individual_remaining: null });
   assert.equal(v.benefits.prior_auth, 'required');
   assert.equal(v.trace_id, 'OA-TRACE-1002');
   assert.equal(v.aaa_code, null);
@@ -520,6 +661,105 @@ test('an inactive 271 yields verified_inactive with the termination date', async
   assert.equal(v.status, 'verified_inactive');
   assert.ok(v.verified_at);
   assert.deepEqual(v.coverage, { active: false, effective_date: '2025-01-01', termination_date: '2026-06-30' });
+});
+
+test('blank and whitespace-only amounts stay unknown; an explicit zero still reads as zero', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(BLANK_AMOUNTS_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.deepEqual(v.benefits.deductible, { individual_total: 0, individual_remaining: null },
+    "an explicit '0' deductible is a real zero");
+  assert.deepEqual(v.benefits.home_health, {
+    copay: null, coinsurance_percent: null, visit_limit: null, notes: null,
+  }, 'blank amounts are unanswered fields, never zeroes');
+});
+
+test('an end-only coverage window reports the termination and no effective date', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(END_ONLY_WINDOW_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.deepEqual(v.coverage, { active: true, effective_date: null, termination_date: '2026-06-30' },
+    "an end qualifier's single date is the termination date, never an effective date");
+});
+
+test('separate begin and end qualifiers each contribute only their own date', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(SEPARATE_BEGIN_END_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.deepEqual(v.coverage, { active: true, effective_date: '2026-01-01', termination_date: '2026-12-31' });
+});
+
+test('deductible figures come from the individual qualifier, never from line order', async () => {
+  const cases = [
+    {
+      fixture: deductible271('OA-TRACE-1101', [cLine('250', 'IND'), cLine('500', 'FAM')]),
+      expected: { individual_total: 250, individual_remaining: null },
+      label: 'a family-qualified line is ignored',
+    },
+    {
+      fixture: deductible271('OA-TRACE-1102', [cLine('500', 'FAM'), cLine('250', 'IND')]),
+      expected: { individual_total: 250, individual_remaining: null },
+      label: 'reordering the lines changes nothing',
+    },
+    {
+      fixture: deductible271('OA-TRACE-1103', [cLine('250'), cLine('75')]),
+      expected: { individual_total: null, individual_remaining: null },
+      label: 'unqualified lines are ambiguous and yield nulls',
+    },
+    {
+      fixture: deductible271('OA-TRACE-1104', [cLine('250', 'IND'), cLine('300', 'IND')]),
+      expected: { individual_total: null, individual_remaining: null },
+      label: 'two indistinguishable individual lines are ambiguous and yield nulls',
+    },
+  ];
+  for (const { fixture, expected, label } of cases) {
+    const runtime = createRuntime({
+      respond: async () => new Response(JSON.stringify(fixture), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    });
+    runtime.addUser('nurse');
+    const result = await verify(runtime);
+    assert.equal(result.data.verification.status, 'verified_active', label);
+    assert.deepEqual(result.data.verification.benefits.deductible, expected, label);
+  }
+});
+
+test('plan_name falls back to the subscriber plan name when no benefit line names the plan', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(SUBSCRIBER_PLAN_NAME_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.equal(v.plan_name, 'SecurityBlue HMO');
+  assert.equal(v.plan_type, null, 'no line carries an insurance type, so none is invented');
 });
 
 test('AAA fixtures map to the §4.5 taxonomy', async () => {

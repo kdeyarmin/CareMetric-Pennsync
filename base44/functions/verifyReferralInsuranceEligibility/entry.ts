@@ -636,8 +636,9 @@ async function readBoundedText(response: Response) {
 //                           rejectReason: { codeValue, description },
 //                           followUpAction: { codeValue, description } }] | null,
 //     subscriber: { firstName, lastName, memberId, planName,
-//                   dates: { eligibilityBegin, eligibilityEnd, plan,
-//                            planBegin, planEnd: { startDate, endDate } },
+//                   dates: { eligibilityBegin, planBegin, benefitBegin,
+//                            eligibilityEnd, planEnd, benefitEnd,
+//                            eligibility, plan: { startDate, endDate } },
 //                   ebResponseDetails: { benefits: [BenefitContent],
 //                                        plans: [BenefitContent], … } } | null,
 //     x12: string | null }
@@ -648,8 +649,12 @@ async function readBoundedText(response: Response) {
 //                     planCoverageDescription, monetaryAmount: string,
 //                     percent: string, quantityType: { codeValue },
 //                     quantity, requiresAuthorization: { codeValue },
-//                     benefitDates: { plan, eligibility, benefitBegin,
-//                                     benefitEnd: { startDate, endDate } },
+//                     timePeriod: { codeValue },
+//                     networkIndicator: { codeValue },
+//                     benefitDates: { eligibilityBegin, planBegin,
+//                                     benefitBegin, eligibilityEnd,
+//                                     planEnd, benefitEnd, eligibility,
+//                                     plan: { startDate, endDate } },
 //                     planName, planNumber, groupOrPolicyNumber,
 //                     messages: [string] }
 //
@@ -673,6 +678,10 @@ function ebText(value: unknown) {
 
 function ebAmount(value: unknown) {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
+  // A blank or whitespace-only string is an unanswered field, not a zero:
+  // Number('') is 0, and an unanswered deductible or copay must never be
+  // presented as free.
+  if (typeof value === 'string' && value.trim() === '') return null;
   const amount = Number(value);
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
@@ -741,12 +750,15 @@ function isAcknowledgment(parsed: Record<string, any>) {
 
 type EbLine = {
   code: string;
+  coverageLevel: string;
   serviceTypes: string[];
   amount: number | null;
   percent: number | null;
   quantityQualifier: string;
   quantity: number | null;
   authorization: string;
+  timePeriod: string;
+  networkIndicator: string;
   planName: string;
   planDescription: string;
   planType: string;
@@ -766,6 +778,7 @@ function collectEbLines(subscriber: Record<string, any>): EbLine[] {
   ];
   return raw.filter((entry) => plainObject(entry)).map((entry) => ({
     code: ebCode(entry.benefitInformationCode),
+    coverageLevel: ebCode(entry.coverageLevel),
     serviceTypes: Array.isArray(entry.serviceTypeCodes)
       ? entry.serviceTypeCodes.map((code: unknown) => ebCode(code)).filter(Boolean)
       : [],
@@ -774,6 +787,8 @@ function collectEbLines(subscriber: Record<string, any>): EbLine[] {
     quantityQualifier: ebCode(entry.quantityType),
     quantity: ebAmount(entry.quantity),
     authorization: ebCode(entry.requiresAuthorization),
+    timePeriod: ebCode(entry.timePeriod),
+    networkIndicator: ebCode(entry.networkIndicator),
     planName: ebText(entry.planName),
     planDescription: ebText(entry.planCoverageDescription),
     planType: plainObject(entry.insuranceTypeCode)
@@ -788,37 +803,65 @@ function collectEbLines(subscriber: Record<string, any>): EbLine[] {
 
 // The coverage window comes from the EB line's own `benefitDates` ranges,
 // with the subscriber-level `dates` as the fallback (design §4.4: dates the
-// payer did not answer stay null, never derived).
+// payer did not answer stay null, never derived). The date qualifiers stay
+// separate: begin qualifiers (eligibilityBegin / planBegin / benefitBegin)
+// contribute ONLY the effective date — their startDate — and end
+// qualifiers (eligibilityEnd / planEnd / benefitEnd) ONLY the termination
+// date, which is their endDate when the range carries one and their
+// startDate when the termination is stated as a single date. An end
+// range's startDate must never surface as the effective date, and a begin
+// range's endDate is not a termination. The neutral period ranges
+// (eligibility / plan) carry both dates in place.
+const BEGIN_DATE_KEYS = ['eligibilityBegin', 'planBegin', 'benefitBegin'];
+const END_DATE_KEYS = ['eligibilityEnd', 'planEnd', 'benefitEnd'];
+const PERIOD_DATE_KEYS = ['eligibility', 'plan'];
+
 function coverageWindow(line: EbLine, subscriber: Record<string, any>) {
   const dates = plainObject(subscriber.dates) ? subscriber.dates : {};
-  const ranges = [
-    line.benefitDates.eligibility,
-    line.benefitDates.plan,
-    line.benefitDates.benefitBegin,
-    line.benefitDates.benefitEnd,
-    dates.eligibilityBegin,
-    dates.planBegin,
-    dates.plan,
-    dates.eligibilityEnd,
-    dates.planEnd,
-  ].filter((range) => plainObject(range));
+  const sources = [line.benefitDates, dates];
+  const rangeAt = (source: Record<string, any>, key: string) => (
+    plainObject(source[key]) ? source[key] : null
+  );
+
   let effective: string | null = null;
-  let effectiveRange: Record<string, any> | null = null;
-  for (const range of ranges) {
-    const start = ebDate(range.startDate);
-    if (start) {
-      effective = start;
-      effectiveRange = range;
-      break;
+  let effectivePeriod: Record<string, any> | null = null;
+  for (const source of sources) {
+    if (effective) break;
+    for (const key of [...BEGIN_DATE_KEYS, ...PERIOD_DATE_KEYS]) {
+      const range = rangeAt(source, key);
+      if (!range) continue;
+      const start = ebDate(range.startDate);
+      if (start) {
+        effective = start;
+        effectivePeriod = PERIOD_DATE_KEYS.includes(key) ? range : null;
+        break;
+      }
     }
   }
-  let termination = effectiveRange ? ebDate(effectiveRange.endDate) : null;
+
+  // The period range that supplied the effective date ends where its own
+  // endDate says; otherwise the end qualifiers answer, then the other
+  // period ranges' end dates.
+  let termination = effectivePeriod ? ebDate(effectivePeriod.endDate) : null;
   if (!termination) {
-    for (const range of ranges) {
-      const end = ebDate(range.endDate);
-      if (end) {
-        termination = end;
-        break;
+    for (const source of sources) {
+      if (termination) break;
+      for (const key of END_DATE_KEYS) {
+        const range = rangeAt(source, key);
+        if (!range) continue;
+        termination = ebDate(range.endDate) || ebDate(range.startDate);
+        if (termination) break;
+      }
+    }
+  }
+  if (!termination) {
+    for (const source of sources) {
+      if (termination) break;
+      for (const key of PERIOD_DATE_KEYS) {
+        const range = rangeAt(source, key);
+        if (!range) continue;
+        termination = ebDate(range.endDate);
+        if (termination) break;
       }
     }
   }
@@ -891,17 +934,20 @@ function parse271(parsed: Record<string, any>) {
   const noteParts = stc42.flatMap((entry) => entry.messages);
   if (noteParts.length > 0) homeHealth.notes = noteParts.join('; ').slice(0, 500);
 
-  // Deductible comes from STC-30 'C' lines. There is no remaining-amount
-  // field in the real shape: the total is the first 'C' line's amount, and
-  // the not-yet-met remainder is read ONLY when a distinct second 'C' line
-  // evidences it — otherwise it stays null, never derived.
+  // Deductible figures come ONLY from STC-30 'C' lines explicitly
+  // qualified as individual (coverageLevel 'IND') — never from line
+  // order: a family-qualified line must not become the individual total,
+  // and an unqualified line claims nothing about whose deductible it is.
+  // Exactly one individual line states the individual total; none, or
+  // more than one the parser cannot distinguish, leaves the figures null.
+  // The real shape carries no remaining-amount field and no qualifier
+  // that marks a remainder line, so individual_remaining stays null.
   const deductible = { individual_total: null as number | null, individual_remaining: null as number | null };
-  const deductibleEntries = stc30.filter((entry) => entry.code === 'C');
-  if (deductibleEntries.length > 0) {
-    deductible.individual_total = deductibleEntries[0].amount;
-    if (deductibleEntries.length > 1) {
-      deductible.individual_remaining = deductibleEntries[1].amount;
-    }
+  const individualDeductible = stc30.filter(
+    (entry) => entry.code === 'C' && entry.coverageLevel === 'IND',
+  );
+  if (individualDeductible.length === 1) {
+    deductible.individual_total = individualDeductible[0].amount;
   }
 
   // Prior auth: 'required' or 'not_required' ONLY on an explicit EB11
@@ -919,9 +965,12 @@ function parse271(parsed: Record<string, any>) {
     status: activeEntry ? 'verified_active' : 'verified_inactive',
     answered: true,
     aaa_code: null,
-    plan_name: (coverageEntry.planName || coverageEntry.planDescription).slice(0, 200)
-      || firstWith(benefits, 'planName')
-      || firstWith(benefits, 'planDescription'),
+    // Plan name: benefit-line planName first, then the lines' coverage
+    // description, then the planName the response carries on the
+    // subscriber — null only when none of them names the plan.
+    plan_name: (coverageEntry.planName.slice(0, 200) || firstWith(benefits, 'planName'))
+      || (coverageEntry.planDescription.slice(0, 200) || firstWith(benefits, 'planDescription'))
+      || (ebText(subscriber.planName).slice(0, 200) || null),
     plan_type: coverageEntry.planType.slice(0, 200)
       || firstWith(benefits, 'planType'),
     coverage: {
