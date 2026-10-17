@@ -335,7 +335,7 @@ const DIRECT_AI_MODEL_MAP = {
   claude_sonnet_4_6: 'claude-sonnet-5-5',
   claude_opus_4_8: 'claude-opus-5-5',
 };
-const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_urls', 'add_context_from_internet'];
+const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_urls', 'add_context_from_internet', 'timeout_ms'];
 // Per-class output budget. The mapped models think adaptively by default and
 // their thinking tokens count against max_tokens, so both classes carry the
 // headroom a non-streaming request can use rather than the bare answer size.
@@ -515,6 +515,14 @@ async function directInvokeLLM(params, deps) {
   const webSearch = params.add_context_from_internet === true;
   if (params.file_urls !== undefined && (!Array.isArray(params.file_urls) || params.file_urls.length > 3
     || params.file_urls.some((url) => typeof url !== 'string' || !url))) directAiFail(400, 'INVALID_FILES');
+  // The provider fetch aborts at 90s by default. A caller whose answer is
+  // legitimately slow (a long synthesis over a large document) may ask for
+  // more, bounded so a stuck call still dies: 5s..300s.
+  let providerTimeoutMs = 90_000;
+  if (params.timeout_ms !== undefined) {
+    if (typeof params.timeout_ms !== 'number' || !Number.isFinite(params.timeout_ms)) directAiFail(400, 'INVALID_INPUT');
+    providerTimeoutMs = Math.min(300_000, Math.max(5_000, Math.round(params.timeout_ms)));
+  }
   const schema = params.response_json_schema;
   if (schema !== undefined) directAiValidateSchema(schema, 0, { nodes: 0 });
   const fetcher = deps && typeof deps.fetcher === 'function' ? deps.fetcher : fetch;
@@ -550,7 +558,7 @@ async function directInvokeLLM(params, deps) {
       response = await fetcher('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(90000),
+        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(providerTimeoutMs),
       });
       if (response.ok || attempt === 1 || !(response.status === 429 || response.status >= 500)) break;
       await new Promise((resolve) => setTimeout(resolve, 1000));

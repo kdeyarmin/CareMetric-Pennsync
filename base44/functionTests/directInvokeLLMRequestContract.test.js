@@ -343,6 +343,30 @@ test('the provider fetch is issued with redirect manual and a provider 3xx is re
   assert.equal(seen[0].options.redirect, 'manual');
 });
 
+test('the provider fetch timeout defaults to 90s and honors a bounded timeout_ms', async (t) => {
+  quiet(t);
+  const directInvokeLLM = loadHelper();
+  const seen = [];
+  const originalTimeout = AbortSignal.timeout;
+  AbortSignal.timeout = (ms) => { seen.push(ms); return originalTimeout.call(AbortSignal, ms); };
+  try {
+    const { fetcher } = fakeProvider([textAnswer('one'), textAnswer('two'), textAnswer('three'), textAnswer('four')]);
+    const deps = { fetcher, apiKey: 'test-key' };
+    await directInvokeLLM({ prompt: 'Summarize.' }, deps);
+    await directInvokeLLM({ prompt: 'Summarize.', timeout_ms: 240_000 }, deps);
+    await directInvokeLLM({ prompt: 'Summarize.', timeout_ms: 10 }, deps);
+    await directInvokeLLM({ prompt: 'Summarize.', timeout_ms: 9_999_999 }, deps);
+    // The file fetcher never runs here (no file_urls), so every recorded
+    // timeout is the provider fetch's: default, asked, clamped low, clamped high.
+    assert.deepEqual(seen, [90_000, 240_000, 5_000, 300_000]);
+    await assert.rejects(
+      directInvokeLLM({ prompt: 'Summarize.', timeout_ms: '240000' }, deps),
+      (error) => error.code === 'INVALID_INPUT' && error.status === 400);
+  } finally {
+    AbortSignal.timeout = originalTimeout;
+  }
+});
+
 test('the file fetch is issued with redirect manual and a file 3xx fails as unavailable', async (t) => {
   quiet(t);
   const directInvokeLLM = loadHelper();

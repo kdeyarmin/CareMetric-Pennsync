@@ -139,6 +139,11 @@ export function createProviders(config, store, fetcher = fetch) {
     content.push({ type: 'text', text: params.prompt });
     const schema = params.response_json_schema;
     const webSearch = params.add_context_from_internet === true;
+    // Mirrors the hosted helper: the provider fetch aborts at 90s unless
+    // the caller asks for a bounded longer window (5s..300s).
+    const providerTimeoutMs = typeof params.timeout_ms === 'number' && Number.isFinite(params.timeout_ms)
+      ? Math.min(300_000, Math.max(5_000, Math.round(params.timeout_ms)))
+      : 90_000;
     // The default model thinks adaptively and its thinking counts against
     // max_tokens, so the budget carries headroom beyond the answer itself.
     const body = { model: config.model, max_tokens: 16000, messages: [{ role: 'user', content }] };
@@ -165,7 +170,7 @@ export function createProviders(config, store, fetcher = fetch) {
       // below is what a 3xx meets on both paths.
       const response = await fetcher('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'x-api-key': config.anthropicKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(90000),
+        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(providerTimeoutMs),
       });
       if (!response.ok) fail(response.status === 429 ? 429 : 502, 'AI_PROVIDER_REJECTED');
       const answer = await readJson(response, webSearch ? WEB_MAX_RESPONSE_BYTES : 2 * 1024 * 1024);

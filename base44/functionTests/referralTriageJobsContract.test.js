@@ -787,6 +787,17 @@ test('a synthesis failure logs the error code only, never message text', async (
   }
 });
 
+test('both synthesis passes ask the helper for the long synthesis timeout', async () => {
+  // Production recorded AI_TIMEOUT on every synthesis attempt for the
+  // 90-page packet at the helper's 90s default (last_synthesis_error,
+  // 2026-10-16); the chunk reads keep the default, the two synthesis
+  // passes must pass the bounded longer window.
+  const source = await readFile(new URL('../functions/referralTriageJobs/entry.ts', import.meta.url), 'utf8');
+  assert.equal(source.match(/timeout_ms: SYNTHESIS_PROVIDER_TIMEOUT_MS/g)?.length, 2);
+  assert.match(source, /const SYNTHESIS_PROVIDER_TIMEOUT_MS = 240_000;/);
+  assert.match(source, /const SYNTHESIS_CALL_TIMEOUT_MS = 255_000;/);
+});
+
 test('the synthesis failure code is persisted on the job row, and control characters in notes never reach a synthesis prompt', async () => {
   // The hosted log views do not surface console.error text, so the code is
   // also stored on the job (last_synthesis_error) where support can read it.
