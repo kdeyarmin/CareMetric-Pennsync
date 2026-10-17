@@ -309,7 +309,7 @@ const DIRECT_AI_MODEL_MAP = {
   claude_sonnet_4_6: 'claude-sonnet-5-5',
   claude_opus_4_8: 'claude-opus-5-5',
 };
-const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_urls', 'add_context_from_internet'];
+const DIRECT_AI_PARAM_KEYS = ['prompt', 'model', 'response_json_schema', 'file_urls', 'add_context_from_internet', 'timeout_ms'];
 // Per-class output budget. The mapped models think adaptively by default and
 // their thinking tokens count against max_tokens, so both classes carry the
 // headroom a non-streaming request can use rather than the bare answer size.
@@ -489,6 +489,14 @@ async function directInvokeLLM(params, deps) {
   const webSearch = params.add_context_from_internet === true;
   if (params.file_urls !== undefined && (!Array.isArray(params.file_urls) || params.file_urls.length > 3
     || params.file_urls.some((url) => typeof url !== 'string' || !url))) directAiFail(400, 'INVALID_FILES');
+  // The provider fetch aborts at 90s by default. A caller whose answer is
+  // legitimately slow (a long synthesis over a large document) may ask for
+  // more, bounded so a stuck call still dies: 5s..300s.
+  let providerTimeoutMs = 90_000;
+  if (params.timeout_ms !== undefined) {
+    if (typeof params.timeout_ms !== 'number' || !Number.isFinite(params.timeout_ms)) directAiFail(400, 'INVALID_INPUT');
+    providerTimeoutMs = Math.min(300_000, Math.max(5_000, Math.round(params.timeout_ms)));
+  }
   const schema = params.response_json_schema;
   if (schema !== undefined) directAiValidateSchema(schema, 0, { nodes: 0 });
   const fetcher = deps && typeof deps.fetcher === 'function' ? deps.fetcher : fetch;
@@ -524,7 +532,7 @@ async function directInvokeLLM(params, deps) {
       response = await fetcher('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(90000),
+        body: JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(providerTimeoutMs),
       });
       if (response.ok || attempt === 1 || !(response.status === 429 || response.status >= 500)) break;
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -687,10 +695,26 @@ const CHUNKS_PER_RUN = 3;
 const MAX_CHUNK_ATTEMPTS = 3;
 const MAX_SYNTHESIS_ATTEMPTS = 3;
 const AI_CALL_TIMEOUT_MS = 80_000;
+// Synthesis answers are the slowest calls in the app (a full triage plus
+// two reviews over a large packet's notes): production recorded AI_TIMEOUT
+// on every attempt for the 90-page packet at the 80s/90s defaults
+// (last_synthesis_error, 2026-10-16). Synthesis therefore asks the helper
+// for a 240s provider window, wrapped at 255s so the helper's own abort
+// is what surfaces if the call still dies.
+const SYNTHESIS_PROVIDER_TIMEOUT_MS = 240_000;
+const SYNTHESIS_CALL_TIMEOUT_MS = 255_000;
 // The summary call runs only when a run reaches it this early, so a run that
 // already read pages still ends inside the platform's request limit.
 const SYNTHESIS_START_BUDGET_MS = 30_000;
-const CLAIM_LEASE_MS = 3 * 60 * 1000;
+// The lease must outlast the longest legitimate run: chunk reads at the
+// default provider timeout plus two synthesis passes each wrapped at
+// SYNTHESIS_CALL_TIMEOUT_MS (255s). At 3 minutes a second run could reclaim
+// a job whose worker was still synthesizing; the reclaim's version bump
+// then voided the live worker's completion write, discarding its analysis
+// and duplicating the provider work. Fifteen minutes covers a full run
+// with margin, and a dead worker's job is still reclaimed well inside
+// JOB_EXPIRY_MS.
+const CLAIM_LEASE_MS = 15 * 60 * 1000;
 const JOB_EXPIRY_MS = 24 * 60 * 60 * 1000;
 const SWEEP_JOBS_PER_RUN = 2;
 const SWEEP_SCAN_LIMIT = 25;
@@ -1273,7 +1297,10 @@ Return ONLY valid JSON, no markdown or explanation.`;
  * diagnoses the core synthesis extracted, so both passes review the same
  * code list. It rides its own call because the core triage plus both
  * reviews in one answer outgrew the synthesis call envelope — large
- * packets read fully, then failed synthesis on every attempt.
+ * packets read fully, then failed synthesis on every attempt. (The
+ * persisted failure code later showed the binding limit was TIME —
+ * AI_TIMEOUT at the 80s/90s call defaults — so both passes now run
+ * under the longer synthesis timeout above.)
  */
 function reviewsPrompt(job: Record<string, any>, chunks: Array<Record<string, any>>, core: Record<string, any>) {
   const { notes, unread, truncated } = packetNotes(chunks);
@@ -1516,8 +1543,8 @@ function normalizeCodingReview(analysis: Record<string, any>) {
 
 async function summarize(job: Record<string, any>, chunks: Array<Record<string, any>>) {
   const coreRaw = await withTimeout(
-    directInvokeLLM({ model: 'automatic', prompt: synthesisPrompt(job, chunks) }),
-    AI_CALL_TIMEOUT_MS,
+    directInvokeLLM({ model: 'automatic', prompt: synthesisPrompt(job, chunks), timeout_ms: SYNTHESIS_PROVIDER_TIMEOUT_MS }),
+    SYNTHESIS_CALL_TIMEOUT_MS,
   );
   const core = parseLLMJson(coreRaw);
   if (!plainObject(core)) throw new Error('AI_RESULT_UNPARSEABLE');
@@ -1528,8 +1555,8 @@ async function summarize(job: Record<string, any>, chunks: Array<Record<string, 
   // whole synthesis — the attempts machinery retries the job — rather
   // than storing a core-only analysis as ready.
   const reviewsRaw = await withTimeout(
-    directInvokeLLM({ model: 'automatic', prompt: reviewsPrompt(job, chunks, core) }),
-    AI_CALL_TIMEOUT_MS,
+    directInvokeLLM({ model: 'automatic', prompt: reviewsPrompt(job, chunks, core), timeout_ms: SYNTHESIS_PROVIDER_TIMEOUT_MS }),
+    SYNTHESIS_CALL_TIMEOUT_MS,
   );
   const reviews = parseLLMJson(reviewsRaw);
   // The review sections come only from the reviews answer. A section it
