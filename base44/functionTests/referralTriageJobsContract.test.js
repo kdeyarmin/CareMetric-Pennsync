@@ -56,7 +56,7 @@ function fakePdfLib({ bytesPerPage = 10 } = {}) {
 }
 
 // ---- Anthropic stand-in -----------------------------------------------------
-function fakeModel({ failRanges = new Set(), analysis, reviews, failReviews = false } = {}) {
+function fakeModel({ failRanges = new Set(), analysis, reviews, failReviews = false, notesText = null } = {}) {
   const calls = [];
   // One fixture per synthesis pass: `analysis` answers the core call and
   // `reviews` the reviews call. Unset, the reviews call answers with the
@@ -100,7 +100,7 @@ function fakeModel({ failRanges = new Set(), analysis, reviews, failReviews = fa
       const range = (pdf.match(/RANGE:(\d+-\d+)/) || [])[1];
       calls.push({ kind: 'pages', range, prompt });
       if (failRanges.has(range)) return new Response('{}', { status: 500 });
-      return reply(`Patient: ${PATIENT_NAME} (p. ${range.split('-')[0]}). Notes for pages ${range}.`);
+      return reply(notesText ?? `Patient: ${PATIENT_NAME} (p. ${range.split('-')[0]}). Notes for pages ${range}.`);
     }
     // The reviews prompt is the one asking for the two review sections.
     if (prompt.includes('Complete two reviews from the notes')) {
@@ -730,4 +730,59 @@ test('a failing reviews call fails synthesis instead of storing a core-only anal
   // draws the helper's one provider retry, so it lands twice per attempt.
   assert.equal(model.calls.filter((call) => call.kind === 'summary').length, 3);
   assert.equal(model.calls.filter((call) => call.kind === 'reviews').length, 6);
+});
+
+test('oversized chunk notes are condensed to a bounded block before synthesis', async () => {
+  // The chunk prompts ask for a per-range word budget, but words do not
+  // bound characters: on the 90-page production packet the stored notes
+  // ran long enough that the synthesis prompt crossed the AI helper's
+  // 100,000-character limit and every attempt was rejected (SUMMARY_FAILED,
+  // 2026-10-16). packetNotes caps the joined block deterministically, so
+  // both synthesis prompts stay under the limit and the job completes.
+  const line = 'Wound care and medication teaching documented for this range of pages. (p. 1)\n';
+  const notesText = line.repeat(800); // ~62k characters per range
+  const model = fakeModel({ notesText });
+  const runtime = createRuntime({
+    model,
+    files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(45) },
+  });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  const process = () => runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  await process();
+  const result = await process();
+  assert.equal(result.data.job.status, 'ready');
+  const synthesis = model.calls.filter((call) => call.kind === 'summary' || call.kind === 'reviews');
+  assert.equal(synthesis.length, 2);
+  for (const call of synthesis) {
+    assert.ok(call.prompt.length <= 100_000, `synthesis prompt within the helper limit (${call.prompt.length})`);
+    assert.ok(call.prompt.includes('condensed to fit'), 'the prompt tells the model the notes were condensed');
+  }
+});
+
+test('a synthesis failure logs the error code only, never message text', async () => {
+  const lines = [];
+  const original = console.error;
+  console.error = (...args) => { lines.push(args.map(String).join(' ')); };
+  try {
+    const model = fakeModel({ failReviews: true });
+    const runtime = createRuntime({
+      model,
+      files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+    });
+    runtime.addIntakeUser('nurse');
+    const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+    const process = () => runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+    await process();
+    await process();
+    const result = await process();
+    assert.equal(result.data.job.status, 'failed');
+  } finally {
+    console.error = original;
+  }
+  const failures = lines.filter((line) => line.startsWith('Referral triage summary failed'));
+  assert.equal(failures.length, 3);
+  for (const line of failures) {
+    assert.match(line, /^Referral triage summary failed: [A-Z][A-Z0-9_]+$/);
+  }
 });
