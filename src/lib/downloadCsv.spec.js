@@ -40,6 +40,7 @@ describe("downloadCsv", () => {
   });
 
   it("builds a text/csv blob, sets the filename, triggers a click, and returns true", () => {
+    vi.useFakeTimers();
     const ok = downloadCsv("report.csv", "a,b\n1,2");
     expect(ok).toBe(true);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
@@ -47,7 +48,13 @@ describe("downloadCsv", () => {
     expect(blob.type).toBe("text/csv;charset=utf-8;");
     expect(created[0].download).toBe("report.csv");
     expect(clickSpy).toHaveBeenCalledTimes(1);
+    // Revocation is deferred (see downloadBlob.js): revoking the object URL
+    // in the same task cancels the fetch in Safari before the download
+    // starts, so it must not have happened yet.
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(60_000);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock");
+    vi.useRealTimers();
   });
 
   it("on failure: does not throw, returns false, and calls onError", () => {

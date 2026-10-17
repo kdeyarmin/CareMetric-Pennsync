@@ -262,7 +262,10 @@ export default function ReferralTriageAnalyzer({
     if (pdfBusy) return;
     setPdfBusy(key);
     try {
-      await build('save');
+      const delivered = await build('save');
+      // `false` = the user dismissed the iOS share sheet; not a download
+      // and not an error, so no toast either way.
+      if (delivered === false) return;
       toast.success('PDF downloaded');
     } catch (err) {
       console.error('Referral PDF download failed:', err);
