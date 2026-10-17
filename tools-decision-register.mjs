@@ -149,6 +149,14 @@ export const DOCUMENT_PATH = 'docs/BASE44_EXIT_DECISIONS_2026-09-19.md';
 // union, and what the document must hold is unchanged apart from
 // D235. What is bought back is the same differential, live a tenth
 // time.
+//
+// The D235 collection has since merged (#490), so this list stands
+// INERT a tenth time: 235 is in `BASE_NUMBERS` below (re-derived in
+// this same change) and the overlap is total, which the paragraphs
+// above defend as the designed state rather than an error. It is left
+// as [235] and will be rewritten when the next collection is filed;
+// this change files none — it reconciles the Office Ally eligibility
+// wire layer with the confirmed v1 contract.
 export const EXPECTED_NEW = Object.freeze([235]);
 
 // The base's own numbers, TYPED like the list above and for the same reason.
@@ -279,7 +287,16 @@ export const EXPECTED_NEW = Object.freeze([235]);
 // ninth time and is closed here, in a change that files no new entry —
 // it repairs the referral triage synthesis the D234 change built —
 // exactly as the seventh was.
-const BASE_HIGHEST = 234;
+//
+// Re-derived a ninth time on 2026-10-17 from `origin/main` at
+// `e2acc12`, where it had been `234 - 22 = 212`. What moved on the base
+// branch: #490 merged, landing D235 and nothing else. D235 follows
+// D234 directly, so the base gained that one number and no absent one,
+// and the twenty-two absent numbers are unchanged. The window opened
+// a tenth time and is closed here, in a change that files no new
+// entry — it reconciles the Office Ally eligibility wire layer the
+// D235 change built — exactly as the eighth was.
+const BASE_HIGHEST = 235;
 const BASE_ABSENT = Object.freeze([101, 107, 111, 152, 153, 154, 161, 162, 164, 175, 177,
   180, 184, 187, 188, 196, 200, 209, 214, 216, 219, 225]);
 for (const absent of BASE_ABSENT) {

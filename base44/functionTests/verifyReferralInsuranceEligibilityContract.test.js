@@ -66,98 +66,277 @@ function referralRow(overrides = {}) {
   };
 }
 
-const ACTIVE_GENERIC_271 = {
-  transactionSetIdentifierCode: '271',
-  traceId: 'OA-TRACE-1001',
-  informationSource: { payerId: 'SHCPAP', organizationName: 'Highmark Senior Health Company (PA)' },
-  subscriber: {
-    memberId: MEMBER_ID,
+// 271 fixtures use the REAL `EligibilityResponse` shape from the v1 Swagger
+// contract (confirmed 2026-10-17): coded values are `{ codeValue,
+// description }` objects, dollar amounts and percents are strings, benefit
+// lines live under `subscriber.ebResponseDetails.benefits`, and AAA errors
+// arrive as `transactionErrors` keyed by X12 loop.
+
+const responseEnvelope = (transactionId, subscriber, transactionErrors = []) => ({
+  responseStatus: { codeValue: '1', description: 'Eligibility response' },
+  transactionId,
+  userId: 1269874,
+  oaPayer: { name: 'Highmark Senior Health Company (PA)', payerId: 'SHCPAP' },
+  transactionErrors,
+  subscriber,
+  x12: null,
+});
+
+const code = (codeValue, description = '') => ({ codeValue, description });
+const stc = (...codes) => codes.map((value) => code(value));
+
+const ACTIVE_GENERIC_271 = responseEnvelope('OA-TRACE-1001', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  dates: { eligibilityBegin: { startDate: '2026-01-01', endDate: null } },
+  ebResponseDetails: {
     benefits: [
       {
-        eligibilityOrBenefitInformationCode: '1',
-        serviceTypeCode: '30',
-        coverageLevelCode: 'IND',
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        insuranceTypeCode: code('HN', 'Medicare Advantage HMO'),
         planName: 'SecurityBlue HMO',
-        planType: 'Medicare Advantage HMO',
-        startDate: '2026-01-01',
-        endDate: null,
-        authorizationOrCertificationIndicator: 'N',
+        planCoverageDescription: 'SecurityBlue HMO',
+        requiresAuthorization: code('N'),
+        benefitDates: { eligibility: { startDate: '2026-01-01', endDate: null } },
+        messages: [],
       },
     ],
+    plans: [],
   },
-};
+});
 
-const ACTIVE_HOME_HEALTH_271 = {
-  transactionSetIdentifierCode: '271',
-  traceId: 'OA-TRACE-1002',
-  informationSource: { payerId: 'SHCPAP', organizationName: 'Highmark Senior Health Company (PA)' },
-  subscriber: {
-    memberId: MEMBER_ID,
+const ACTIVE_HOME_HEALTH_271 = responseEnvelope('OA-TRACE-1002', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
     benefits: [
       {
-        eligibilityOrBenefitInformationCode: '1',
-        serviceTypeCode: '30',
-        coverageLevelCode: 'IND',
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        insuranceTypeCode: code('HN', 'Medicare Advantage HMO'),
         planName: 'SecurityBlue HMO',
-        planType: 'Medicare Advantage HMO',
-        startDate: '2026-01-01',
-        endDate: null,
+        planCoverageDescription: 'SecurityBlue HMO',
+        benefitDates: { eligibility: { startDate: '2026-01-01', endDate: null } },
+        messages: [],
       },
       {
-        eligibilityOrBenefitInformationCode: 'C',
-        serviceTypeCode: '30',
-        coverageLevelCode: 'IND',
-        amount: 250,
-        remainingAmount: 75,
+        // Deductible total: the STC-30 'C' line explicitly qualified as
+        // individual (coverageLevel IND).
+        benefitInformationCode: code('C', 'Deductible'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        monetaryAmount: '250',
       },
       {
-        eligibilityOrBenefitInformationCode: '1',
-        serviceTypeCode: '42',
-        coverageLevelCode: 'IND',
-        startDate: '2026-01-01',
-        authorizationOrCertificationIndicator: 'Y',
+        // A family-qualified 'C' line: it must never feed the individual
+        // figures, whatever position it sits in.
+        benefitInformationCode: code('C', 'Deductible'),
+        coverageLevel: code('FAM', 'Family'),
+        serviceTypeCodes: stc('30'),
+        monetaryAmount: '500',
       },
-      { eligibilityOrBenefitInformationCode: 'B', serviceTypeCode: '42', amount: 25 },
-      { eligibilityOrBenefitInformationCode: 'A', serviceTypeCode: '42', percent: 0.2 },
       {
-        eligibilityOrBenefitInformationCode: 'F',
-        serviceTypeCode: '42',
-        quantityQualifier: 'VS',
+        benefitInformationCode: code('1', 'Active Coverage'),
+        serviceTypeCodes: stc('42'),
+        requiresAuthorization: code('Y'),
+        benefitDates: { eligibility: { startDate: '2026-01-01', endDate: null } },
+        messages: [],
+      },
+      {
+        benefitInformationCode: code('B', 'Co-Payment'),
+        serviceTypeCodes: stc('42'),
+        monetaryAmount: '25',
+      },
+      {
+        benefitInformationCode: code('A', 'Co-Insurance'),
+        serviceTypeCodes: stc('42'),
+        percent: '0.20',
+      },
+      {
+        benefitInformationCode: code('F', 'Limitations'),
+        serviceTypeCodes: stc('42'),
+        quantityType: code('VS', 'Visits'),
         quantity: 60,
         messages: ['Home health visits subject to plan limits.'],
       },
     ],
-  },
-};
-
-const INACTIVE_271 = {
-  transactionSetIdentifierCode: '271',
-  traceId: 'OA-TRACE-1003',
-  informationSource: { payerId: 'SHCPAP', organizationName: 'Highmark Senior Health Company (PA)' },
-  subscriber: {
-    memberId: MEMBER_ID,
-    benefits: [
-      {
-        eligibilityOrBenefitInformationCode: '6',
-        serviceTypeCode: '30',
-        coverageLevelCode: 'IND',
-        planName: 'SecurityBlue HMO',
-        startDate: '2025-01-01',
-        endDate: '2026-06-30',
-      },
-    ],
-  },
-};
-
-const aaa271 = (level, actionCode, traceId) => ({
-  transactionSetIdentifierCode: '271',
-  traceId,
-  informationSource: { payerId: 'SHCPAP', organizationName: 'Highmark Senior Health Company (PA)' },
-  subscriber: {
-    memberId: MEMBER_ID,
-    aaa: [{ level, validRequestIndicator: 'N', actionCode, followUpActionCode: 'C' }],
+    plans: [],
   },
 });
+
+const INACTIVE_271 = responseEnvelope('OA-TRACE-1003', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('6', 'Inactive'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        benefitDates: { eligibility: { startDate: '2025-01-01', endDate: '2026-06-30' } },
+        messages: [],
+      },
+    ],
+    plans: [],
+  },
+});
+
+// Blank and whitespace-only numeric strings are unanswered fields, not
+// zeroes; an explicit '0' is a real zero.
+const BLANK_AMOUNTS_271 = responseEnvelope('OA-TRACE-1004', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        messages: [],
+      },
+      {
+        // An explicitly zero deductible is still a zero.
+        benefitInformationCode: code('C', 'Deductible'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        monetaryAmount: '0',
+      },
+      {
+        benefitInformationCode: code('B', 'Co-Payment'),
+        serviceTypeCodes: stc('42'),
+        monetaryAmount: '',
+      },
+      {
+        benefitInformationCode: code('A', 'Co-Insurance'),
+        serviceTypeCodes: stc('42'),
+        percent: '   ',
+      },
+      {
+        benefitInformationCode: code('F', 'Limitations'),
+        serviceTypeCodes: stc('42'),
+        quantityType: code('VS', 'Visits'),
+        quantity: '',
+      },
+    ],
+    plans: [],
+  },
+});
+
+// No begin qualifier anywhere: the end range's single date is the
+// termination date, never an effective date.
+const END_ONLY_WINDOW_271 = responseEnvelope('OA-TRACE-1005', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        benefitDates: { eligibilityEnd: { startDate: '2026-06-30', endDate: null } },
+        messages: [],
+      },
+    ],
+    plans: [],
+  },
+});
+
+// Begin and end stated under separate qualifiers on the subscriber: each
+// contributes only its own date.
+const SEPARATE_BEGIN_END_271 = responseEnvelope('OA-TRACE-1006', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  dates: {
+    eligibilityBegin: { startDate: '2026-01-01', endDate: null },
+    eligibilityEnd: { startDate: '2026-12-31', endDate: null },
+  },
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        messages: [],
+      },
+    ],
+    plans: [],
+  },
+});
+
+// Deductible variants: one active STC-30 line plus the given 'C' lines.
+const cLine = (amount, level = null) => ({
+  benefitInformationCode: code('C', 'Deductible'),
+  ...(level ? { coverageLevel: code(level) } : {}),
+  serviceTypeCodes: stc('30'),
+  monetaryAmount: amount,
+});
+const deductible271 = (traceId, cLines) => responseEnvelope(traceId, {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        planName: 'SecurityBlue HMO',
+        messages: [],
+      },
+      ...cLines,
+    ],
+    plans: [],
+  },
+});
+
+// The plan is named only on the subscriber, never on a benefit line.
+const SUBSCRIBER_PLAN_NAME_271 = responseEnvelope('OA-TRACE-1007', {
+  firstName: 'Jane',
+  lastName: 'Sample',
+  memberId: MEMBER_ID,
+  planName: 'SecurityBlue HMO',
+  ebResponseDetails: {
+    benefits: [
+      {
+        benefitInformationCode: code('1', 'Active Coverage'),
+        coverageLevel: code('IND', 'Individual'),
+        serviceTypeCodes: stc('30'),
+        messages: [],
+      },
+    ],
+    plans: [],
+  },
+});
+
+const aaa271 = (loopId, loopName, actionCode, traceId) => responseEnvelope(traceId, null, [
+  {
+    loopId,
+    loopName,
+    validRequestIndicator: 'N',
+    rejectReason: code(actionCode, 'Rejected — see follow-up action'),
+    followUpAction: code('C', 'Please Correct and Resubmit'),
+  },
+]);
 
 // ---- in-memory Base44 + Office Ally stand-in --------------------------------
 
@@ -447,7 +626,7 @@ test('an active 271 with home-health lines yields the full verified_active outco
     visit_limit: 60,
     notes: 'Home health visits subject to plan limits.',
   });
-  assert.deepEqual(v.benefits.deductible, { individual_total: 250, individual_remaining: 75 });
+  assert.deepEqual(v.benefits.deductible, { individual_total: 250, individual_remaining: null });
   assert.equal(v.benefits.prior_auth, 'required');
   assert.equal(v.trace_id, 'OA-TRACE-1002');
   assert.equal(v.aaa_code, null);
@@ -484,12 +663,111 @@ test('an inactive 271 yields verified_inactive with the termination date', async
   assert.deepEqual(v.coverage, { active: false, effective_date: '2025-01-01', termination_date: '2026-06-30' });
 });
 
+test('blank and whitespace-only amounts stay unknown; an explicit zero still reads as zero', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(BLANK_AMOUNTS_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.deepEqual(v.benefits.deductible, { individual_total: 0, individual_remaining: null },
+    "an explicit '0' deductible is a real zero");
+  assert.deepEqual(v.benefits.home_health, {
+    copay: null, coinsurance_percent: null, visit_limit: null, notes: null,
+  }, 'blank amounts are unanswered fields, never zeroes');
+});
+
+test('an end-only coverage window reports the termination and no effective date', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(END_ONLY_WINDOW_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.deepEqual(v.coverage, { active: true, effective_date: null, termination_date: '2026-06-30' },
+    "an end qualifier's single date is the termination date, never an effective date");
+});
+
+test('separate begin and end qualifiers each contribute only their own date', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(SEPARATE_BEGIN_END_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.deepEqual(v.coverage, { active: true, effective_date: '2026-01-01', termination_date: '2026-12-31' });
+});
+
+test('deductible figures come from the individual qualifier, never from line order', async () => {
+  const cases = [
+    {
+      fixture: deductible271('OA-TRACE-1101', [cLine('250', 'IND'), cLine('500', 'FAM')]),
+      expected: { individual_total: 250, individual_remaining: null },
+      label: 'a family-qualified line is ignored',
+    },
+    {
+      fixture: deductible271('OA-TRACE-1102', [cLine('500', 'FAM'), cLine('250', 'IND')]),
+      expected: { individual_total: 250, individual_remaining: null },
+      label: 'reordering the lines changes nothing',
+    },
+    {
+      fixture: deductible271('OA-TRACE-1103', [cLine('250'), cLine('75')]),
+      expected: { individual_total: null, individual_remaining: null },
+      label: 'unqualified lines are ambiguous and yield nulls',
+    },
+    {
+      fixture: deductible271('OA-TRACE-1104', [cLine('250', 'IND'), cLine('300', 'IND')]),
+      expected: { individual_total: null, individual_remaining: null },
+      label: 'two indistinguishable individual lines are ambiguous and yield nulls',
+    },
+  ];
+  for (const { fixture, expected, label } of cases) {
+    const runtime = createRuntime({
+      respond: async () => new Response(JSON.stringify(fixture), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    });
+    runtime.addUser('nurse');
+    const result = await verify(runtime);
+    assert.equal(result.data.verification.status, 'verified_active', label);
+    assert.deepEqual(result.data.verification.benefits.deductible, expected, label);
+  }
+});
+
+test('plan_name falls back to the subscriber plan name when no benefit line names the plan', async () => {
+  const runtime = createRuntime({
+    respond: async () => new Response(JSON.stringify(SUBSCRIBER_PLAN_NAME_271), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  runtime.addUser('nurse');
+  const result = await verify(runtime);
+  const v = result.data.verification;
+  assert.equal(v.status, 'verified_active');
+  assert.equal(v.plan_name, 'SecurityBlue HMO');
+  assert.equal(v.plan_type, null, 'no line carries an insurance type, so none is invented');
+});
+
 test('AAA fixtures map to the §4.5 taxonomy', async () => {
   const cases = [
-    { fixture: aaa271('subscriber', '42', 'OA-TRACE-2001'), status: 'payer_unavailable', aaa: '42' },
-    { fixture: aaa271('subscriber', '80', 'OA-TRACE-2002'), status: 'payer_unavailable', aaa: '80' },
-    { fixture: aaa271('subscriber', '15', 'OA-TRACE-2003'), status: 'member_not_found', aaa: '15' },
-    { fixture: aaa271('receiver', '50', 'OA-TRACE-2004'), status: 'provider_not_enrolled', aaa: '50' },
+    { fixture: aaa271('2000C', 'Subscriber', '42', 'OA-TRACE-2001'), status: 'payer_unavailable', aaa: '42' },
+    { fixture: aaa271('2000C', 'Subscriber', '80', 'OA-TRACE-2002'), status: 'payer_unavailable', aaa: '80' },
+    { fixture: aaa271('2000C', 'Subscriber', '15', 'OA-TRACE-2003'), status: 'member_not_found', aaa: '15' },
+    { fixture: aaa271('2000B', 'Information Receiver', '50', 'OA-TRACE-2004'), status: 'provider_not_enrolled', aaa: '50' },
   ];
   for (const { fixture, status, aaa } of cases) {
     const runtime = createRuntime({
@@ -501,10 +779,10 @@ test('AAA fixtures map to the §4.5 taxonomy', async () => {
     runtime.addUser('nurse');
     const result = await verify(runtime);
     const v = result.data.verification;
-    assert.equal(v.status, status, JSON.stringify(fixture.subscriber.aaa));
+    assert.equal(v.status, status, JSON.stringify(fixture.transactionErrors));
     assert.equal(v.aaa_code, aaa);
     assert.ok(v.verified_at, 'an AAA 271 is a payer answer');
-    assert.equal(v.trace_id, fixture.traceId);
+    assert.equal(v.trace_id, fixture.transactionId);
     assert.equal(runtime.oaCalls.length, 1, 'no automatic resubmission');
   }
 });
@@ -545,15 +823,28 @@ test('malformed, error-status, redirect, and oversized responses are error outco
   const oversizedResult = await verify(oversized);
   assert.equal(oversizedResult.data.verification.status, 'error');
 
-  const ack999 = createRuntime({
+  const x12Only = createRuntime({
     respond: async () => new Response(JSON.stringify({
-      transactionSetIdentifierCode: '999', traceId: 'OA-TRACE-9999',
+      x12: 'ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *260101*0000*^*00501*000000905*0*T*:~',
     }), { status: 200 }),
   });
-  ack999.addUser('nurse');
-  const ackResult = await verify(ack999);
-  assert.equal(ackResult.data.verification.status, 'error');
-  assert.equal(ackResult.data.verification.trace_id, 'OA-TRACE-9999');
+  x12Only.addUser('nurse');
+  const x12Result = await verify(x12Only);
+  assert.equal(x12Result.data.verification.status, 'error', 'an X12-only body is not a readable answer');
+  assert.equal(x12Result.data.verification.trace_id, null);
+  assert.equal(x12Result.data.verification.verified_at, null);
+
+  const emptyResponse = createRuntime({
+    respond: async () => new Response(JSON.stringify(responseEnvelope('OA-TRACE-3001', {
+      memberId: MEMBER_ID,
+      ebResponseDetails: { benefits: [], plans: [] },
+    })), { status: 200 }),
+  });
+  emptyResponse.addUser('nurse');
+  const emptyResult = await verify(emptyResponse);
+  assert.equal(emptyResult.data.verification.status, 'error', 'no errors and no benefit lines is not an answer');
+  assert.equal(emptyResult.data.verification.trace_id, 'OA-TRACE-3001');
+  assert.equal(emptyResult.data.verification.verified_at, null);
 });
 
 test('a transport failure answers payer_unavailable without a verified_at', async () => {
@@ -571,27 +862,45 @@ test('a transport failure answers payer_unavailable without a verified_at', asyn
 
 // ---- wire shape + PHI discipline -------------------------------------------------
 
-test('the 270 carries the receiver identity, EQ 30+42, and the policy number — never an MRN', async () => {
+test('the 270 matches the real v1 EligibilityClientRequest shape — and never carries an MRN, SSN, or MBI', async () => {
   const runtime = createRuntime();
   runtime.addUser('nurse');
   const result = await verify(runtime);
   assert.equal(result.data.verification.status, 'verified_active');
   assert.equal(runtime.oaCalls.length, 1);
   const { url, init } = runtime.oaCalls[0];
-  assert.equal(url, 'https://edi.officeally.io/api/eligibility');
+  assert.equal(url, 'https://edi.officeally.io/v1/realtime-eligibility');
   assert.equal(init.redirect, 'manual');
-  assert.equal(init.headers['x-api-key'], 'oa-test-key');
+  assert.equal(init.headers.Authorization, 'oa-test-key', 'the API key rides the Authorization header, raw');
+  assert.equal(init.headers['x-api-key'], undefined);
   const body = JSON.parse(init.body);
-  assert.equal(body.informationSource.payerId, 'SHCPAP');
-  assert.equal(body.informationReceiver.organizationName, 'Penn Home Health LLC');
-  assert.equal(body.informationReceiver.npi, '1234567890');
-  assert.equal(body.subscriber.memberId, MEMBER_ID, 'the policy number is the member ID');
-  assert.equal(body.subscriber.lastName, 'Sample');
-  assert.equal(body.subscriber.firstName, 'Jane');
-  assert.equal(body.subscriber.dateOfBirth, '19620304');
-  assert.deepEqual(body.subscriber.serviceTypeCodes, ['30', '42']);
-  assert.equal(body.subscriber.dateOfService, result.data.verification.date_of_service);
-  assert.ok(!JSON.stringify(body).includes('MRN-998877'), 'the sending facility MRN never reaches the 270');
+  assert.deepEqual(
+    Object.keys(body).sort(),
+    ['dateOfServiceStart', 'payerId', 'placeOfServiceCode', 'provider', 'serviceTypeCodes', 'subscriber'],
+    'the request carries exactly the EligibilityClientRequest fields we send',
+  );
+  assert.equal(body.payerId, 'SHCPAP');
+  assert.deepEqual(body.provider, { lastName: 'Penn Home Health LLC', npi: '1234567890' });
+  assert.deepEqual(body.subscriber, {
+    memberId: MEMBER_ID,
+    firstName: 'Jane',
+    lastName: 'Sample',
+    dob: '1962-03-04T00:00:00.000Z',
+  }, 'the policy number is the member ID; DOB is an ISO date-time');
+  assert.equal(
+    body.dateOfServiceStart,
+    `${result.data.verification.date_of_service}T00:00:00.000Z`,
+  );
+  assert.equal(body.placeOfServiceCode, '12');
+  assert.deepEqual(body.serviceTypeCodes, ['30', '42']);
+  const serialized = JSON.stringify(body);
+  for (const key of [
+    'medicalRecordNumber', 'ssn', 'mbi', 'patientAccountNumber',
+    'identityCardNumber', 'submitterAccountId',
+  ]) {
+    assert.ok(!serialized.includes(`"${key}"`), `${key} must never be emitted`);
+  }
+  assert.ok(!serialized.includes('MRN-998877'), 'the sending facility MRN never reaches the 270');
   assert.ok(!JSON.stringify(result.data).includes(MEMBER_ID), 'the full member ID is never in the outcome');
   assert.ok(!JSON.stringify(result.data).includes('MRN-998877'));
 });
@@ -670,7 +979,7 @@ test('payer name variants normalize onto the seeded directory', async () => {
     });
     const result = await verify(runtime);
     assert.equal(result.data.verification.payer_id, payerId, payer);
-    assert.equal(JSON.parse(runtime.oaCalls[0].init.body).informationSource.payerId, payerId, payer);
+    assert.equal(JSON.parse(runtime.oaCalls[0].init.body).payerId, payerId, payer);
   }
 });
 
@@ -693,5 +1002,5 @@ test('member ID falls back through member_id then legacy policy_numbers', async 
   assert.equal(legacyBody.subscriber.memberId, MEMBER_ID);
   assert.equal(legacyBody.subscriber.lastName, 'Sample');
   assert.equal(legacyBody.subscriber.firstName, 'Jane');
-  assert.equal(legacyBody.subscriber.dateOfBirth, '19620304');
+  assert.equal(legacyBody.subscriber.dob, '1962-03-04T00:00:00.000Z');
 });

@@ -115,13 +115,16 @@ const MEMBERSHIP_SCAN_LIMIT = 100;
 // ---------------------------------------------------------------------------
 // Office Ally RestAPI client configuration.
 //
-// PLACEHOLDER VALUES — the exact RestAPI endpoint path and the API-key header
-// name are confirmed during Realtime RestAPI EDI Submitter onboarding
-// (design §2.2 / §6 item 1); the Swagger document is script-rendered and was
-// not machine-readable when this was written. They are isolated here so
-// onboarding changes exactly two constants. The configuration seam is
-// fail-closed: without the API key AND the information-receiver identity the
-// function answers `not_configured` and never calls out.
+// CONFIRMED 2026-10-17 against the published v1 contract
+// (https://edi.officeally.io/swagger/v1/swagger.json), the day the CareMetric
+// AI submitter credentials were issued (User ID 1269874): the endpoint is
+// POST /v1/realtime-eligibility (the v1 route answers with the
+// EligibilityResponse directly, no envelope), and the API key rides the
+// `Authorization` header as the raw key (OpenAPI apiKey scheme, in header,
+// no prefix). The schema has NO submitter-account field — account identity
+// rides the key, and responses echo it back as `userId`. The configuration
+// seam is fail-closed: without the API key AND the information-receiver
+// identity the function answers `not_configured` and never calls out.
 //
 // Receiver identity is env config in Phase 1 (design §4.6 names AgencySettings
 // as the eventual home): at current main neither AgencySettings nor Agency
@@ -129,8 +132,8 @@ const MEMBERSHIP_SCAN_LIMIT = 100;
 // read it from yet. Phase 2 may move it onto AgencySettings with the entity
 // change that adds `insurance_verification`.
 // ---------------------------------------------------------------------------
-const OFFICE_ALLY_API_URL = 'https://edi.officeally.io/api/eligibility';
-const OFFICE_ALLY_API_KEY_HEADER = 'x-api-key';
+const OFFICE_ALLY_API_URL = 'https://edi.officeally.io/v1/realtime-eligibility';
+const OFFICE_ALLY_API_KEY_HEADER = 'Authorization';
 const OFFICE_ALLY_TIMEOUT_MS = 30_000;
 const OFFICE_ALLY_MAX_RESPONSE_BYTES = 256 * 1024;
 
@@ -544,23 +547,29 @@ function readConfig() {
   const apiKey = String(Deno.env.get('OFFICE_ALLY_API_KEY') || '').trim();
   const receiverName = String(Deno.env.get('OFFICE_ALLY_RECEIVER_NAME') || '').trim();
   const receiverNpi = String(Deno.env.get('OFFICE_ALLY_RECEIVER_NPI') || '').trim();
-  const accountId = String(Deno.env.get('OFFICE_ALLY_ACCOUNT_ID') || '').trim();
   if (!apiKey || !receiverName || !receiverNpi) return null;
-  return { apiKey, receiverName, receiverNpi, accountId: accountId || null };
+  return { apiKey, receiverName, receiverNpi };
 }
 
 // ---------------------------------------------------------------------------
-// JSON 270 builder. The shape below is the JSON-X12 structure the parser and
-// fixtures are written against; the exact RestAPI envelope is confirmed at
-// onboarding (design §6 item 1) and changes stay inside this section and the
-// parser. EQ service types 30 (Health Benefit Plan Coverage) and 42 (Home
-// Health Care) are both requested so home-health benefit lines come back
-// when the payer supports service-type-specific responses (design §2.5).
+// JSON 270 builder — the real `EligibilityClientRequest` shape from the v1
+// Swagger contract (confirmed 2026-10-17; see the configuration block).
+// `provider.lastName` is schema-required (the enrolled receiver name) and
+// the NPI is the enrollment identity. EQ service types 30 (Health Benefit
+// Plan Coverage) and 42 (Home Health Care) are both requested so
+// home-health benefit lines come back when the payer supports
+// service-type-specific responses (design §2.5); place of service 12 is
+// the patient's home, where home-health care is delivered.
+//
+// The subscriber schema also OFFERS medicalRecordNumber, ssn, mbi,
+// patientAccountNumber and identityCardNumber. They are NEVER emitted:
+// a referral document's MRN is the sending facility's number (D233), and
+// the 270 search keys are payer member ID + name + DOB only (design §3.2).
 // ---------------------------------------------------------------------------
 
 function buildEligibilityRequest(input: {
   payer: { payerId: string; payerName: string };
-  config: { receiverName: string; receiverNpi: string; accountId: string | null };
+  config: { receiverName: string; receiverNpi: string };
   memberId: string;
   fullName: string;
   dob: string;
@@ -568,26 +577,20 @@ function buildEligibilityRequest(input: {
 }) {
   const { lastName, firstName } = parseFullName(input.fullName);
   return {
-    transactionSetIdentifierCode: '270',
-    ...(input.config.accountId ? { submitterAccountId: input.config.accountId } : {}),
-    informationSource: {
-      entityType: 'payer',
-      payerId: input.payer.payerId,
-      organizationName: input.payer.payerName,
-    },
-    informationReceiver: {
-      entityType: 'provider',
-      organizationName: input.config.receiverName,
+    payerId: input.payer.payerId,
+    provider: {
+      lastName: input.config.receiverName,
       npi: input.config.receiverNpi,
     },
     subscriber: {
       memberId: input.memberId,
-      lastName,
       firstName,
-      dateOfBirth: input.dob.replace(/-/g, ''),
-      dateOfService: input.dateOfService,
-      serviceTypeCodes: ['30', '42'],
+      lastName,
+      dob: `${input.dob}T00:00:00.000Z`,
     },
+    dateOfServiceStart: `${input.dateOfService}T00:00:00.000Z`,
+    placeOfServiceCode: '12',
+    serviceTypeCodes: ['30', '42'],
   };
 }
 
@@ -624,27 +627,46 @@ async function readBoundedText(response: Response) {
 }
 
 // ---------------------------------------------------------------------------
-// JSON 271 parser → outcome fields. Fixture shape (design §5 Phase 1):
+// JSON 271 parser → outcome fields. Real response shape (`EligibilityResponse`
+// from the v1 Swagger contract, confirmed 2026-10-17):
 //
-//   { transactionSetIdentifierCode: '271', traceId,
-//     informationSource: { payerId, organizationName },
-//     subscriber: {
-//       memberId,
-//       aaa: [{ level: 'source' | 'receiver' | 'subscriber',
-//               validRequestIndicator: 'Y' | 'N', actionCode }],
-//       benefits: [{ eligibilityOrBenefitInformationCode, serviceTypeCode,
-//                    coverageLevelCode, planName, planType,
-//                    startDate, endDate, amount, remainingAmount, percent,
-//                    quantityQualifier, quantity,
-//                    authorizationOrCertificationIndicator, messages: [] }],
-//     } }
+//   { responseStatus: { codeValue, description } | null,
+//     transactionId, userId, oaPayer: { name, payerId } | null,
+//     transactionErrors: [{ loopId, loopName, validRequestIndicator,
+//                           rejectReason: { codeValue, description },
+//                           followUpAction: { codeValue, description } }] | null,
+//     subscriber: { firstName, lastName, memberId, planName,
+//                   dates: { eligibilityBegin, planBegin, benefitBegin,
+//                            eligibilityEnd, planEnd, benefitEnd,
+//                            eligibility, plan: { startDate, endDate } },
+//                   ebResponseDetails: { benefits: [BenefitContent],
+//                                        plans: [BenefitContent], … } } | null,
+//     x12: string | null }
+//
+//   BenefitContent: { benefitInformationCode: { codeValue, description },
+//                     coverageLevel: { codeValue }, serviceTypeCodes: [{ codeValue }],
+//                     insuranceTypeCode: { codeValue, description },
+//                     planCoverageDescription, monetaryAmount: string,
+//                     percent: string, quantityType: { codeValue },
+//                     quantity, requiresAuthorization: { codeValue },
+//                     timePeriod: { codeValue },
+//                     networkIndicator: { codeValue },
+//                     benefitDates: { eligibilityBegin, planBegin,
+//                                     benefitBegin, eligibilityEnd,
+//                                     planEnd, benefitEnd, eligibility,
+//                                     plan: { startDate, endDate } },
+//                     planName, planNumber, groupOrPolicyNumber,
+//                     messages: [string] }
 //
 // EB01 codes used: '1'–'4' active coverage variants, '6'–'8' inactive
 // variants, 'A' co-insurance, 'B' co-payment, 'C' deductible, 'D' benefit
-// description. AAA03 mapping (design §2.4 / §4.5): a receiver-level (2100B)
-// AAA means the payer does not recognize the agency NPI → provider_not_enrolled;
-// '42'/'80' → payer_unavailable; any other subscriber-level (2100C) AAA →
-// member_not_found.
+// description. AAA03 mapping (design §2.4 / §4.5), with precedence in this
+// order: a receiver-level AAA (loop 2000B, the information receiver) means
+// the payer does not recognize the agency NPI → provider_not_enrolled;
+// then '42'/'80' at any level → payer_unavailable; then any other
+// subscriber-level AAA (loop 2000C) → member_not_found. A source-level
+// (2000A) AAA with any other code is not a payer answer we can classify →
+// error.
 // ---------------------------------------------------------------------------
 
 const ACTIVE_EB_CODES = new Set(['1', '2', '3', '4']);
@@ -656,6 +678,10 @@ function ebText(value: unknown) {
 
 function ebAmount(value: unknown) {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
+  // A blank or whitespace-only string is an unanswered field, not a zero:
+  // Number('') is 0, and an unanswered deductible or copay must never be
+  // presented as free.
+  if (typeof value === 'string' && value.trim() === '') return null;
   const amount = Number(value);
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
@@ -664,48 +690,188 @@ function ebDate(value: unknown) {
   const text = ebText(value);
   if (!text) return null;
   const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(text);
-  const candidate = compact ? `${compact[1]}-${compact[2]}-${compact[3]}` : text;
-  return normalizeDob(candidate);
+  if (compact) return normalizeDob(`${compact[1]}-${compact[2]}-${compact[3]}`);
+  // Real responses carry full date-time values ('2026-01-01T00:00:00.000Z');
+  // the calendar day is the leading ISO date.
+  const dateTime = /^(\d{4}-\d{2}-\d{2})T/.exec(text);
+  return normalizeDob(dateTime ? dateTime[1] : text);
 }
 
-function collectAaa(parsed: Record<string, any>) {
-  const subscriber = plainObject(parsed.subscriber) ? parsed.subscriber : {};
-  const lists = [
-    ...(Array.isArray(parsed.aaa) ? parsed.aaa : []),
-    ...(Array.isArray(subscriber.aaa) ? subscriber.aaa : []),
-  ];
+function ebCode(value: unknown) {
+  return plainObject(value) ? ebText(value.codeValue) : '';
+}
+
+// AAA errors arrive as `transactionErrors`. The level is not a field — it
+// is derived from the loop the rejection belongs to: 2000B (information
+// receiver) → 'receiver', 2000A (information source) → 'source', anything
+// else (2000C subscriber, or an unrecognized loop) → 'subscriber'.
+function collectTransactionErrors(parsed: Record<string, any>) {
+  const lists = Array.isArray(parsed.transactionErrors) ? parsed.transactionErrors : [];
   return lists
     .filter((entry) => plainObject(entry))
-    .map((entry) => ({
-      level: ebText(entry.level) || 'subscriber',
-      actionCode: ebText(entry.actionCode),
-      validRequestIndicator: ebText(entry.validRequestIndicator),
-    }))
+    .map((entry) => {
+      const loopId = ebText(entry.loopId);
+      const loopName = ebText(entry.loopName);
+      let level = 'subscriber';
+      if (loopId.includes('2000B') || /receiver|information receiver/i.test(loopName)) {
+        level = 'receiver';
+      } else if (loopId.includes('2000A') || /source|payer/i.test(loopName)) {
+        level = 'source';
+      }
+      return {
+        level,
+        actionCode: ebCode(entry.rejectReason),
+        validRequestIndicator: ebText(entry.validRequestIndicator),
+      };
+    })
     .filter((entry) => entry.actionCode);
 }
 
-function extractTraceId(parsed: Record<string, any>, response: Response) {
-  const candidate = ebText(parsed.traceId)
-    || ebText(parsed.controlNumber)
-    || ebText(parsed.transactionControlNumber)
-    || ebText(response.headers.get('x-trace-id'));
+function extractTraceId(parsed: Record<string, any>) {
+  const candidate = ebText(parsed.transactionId);
   return candidate ? candidate.slice(0, 128) : null;
 }
 
 function isAcknowledgment(parsed: Record<string, any>) {
-  const setId = ebText(parsed.transactionSetIdentifierCode);
-  return setId === '999'
-    || setId === 'TA1'
-    || plainObject(parsed.functionalAcknowledgment)
-    || plainObject(parsed.interchangeAcknowledgment);
+  // The real API answers a JSON EligibilityResponse or an HTTP error (the
+  // HTTP-error path is handled before parsing). A 200 body carrying none of
+  // the response's identifying fields, or carrying only a raw X12 string,
+  // is not an answer this parser can read.
+  const hasResponseFields = [
+    'responseStatus', 'transactionId', 'transactionErrors', 'subscriber',
+    'oaPayer', 'responsePayer', 'requestingProvider', 'userId',
+  ].some((key) => key in parsed);
+  if (!hasResponseFields) return true;
+  return typeof parsed.x12 === 'string'
+    && parsed.x12 !== ''
+    && !plainObject(parsed.subscriber)
+    && !plainObject(parsed.responseStatus);
+}
+
+type EbLine = {
+  code: string;
+  coverageLevel: string;
+  serviceTypes: string[];
+  amount: number | null;
+  percent: number | null;
+  quantityQualifier: string;
+  quantity: number | null;
+  authorization: string;
+  timePeriod: string;
+  networkIndicator: string;
+  planName: string;
+  planDescription: string;
+  planType: string;
+  benefitDates: Record<string, any>;
+  messages: string[];
+};
+
+// EB lines live under `subscriber.ebResponseDetails`: `benefits` first,
+// then `plans`, in that order.
+function collectEbLines(subscriber: Record<string, any>): EbLine[] {
+  const details = plainObject(subscriber.ebResponseDetails)
+    ? subscriber.ebResponseDetails
+    : {};
+  const raw = [
+    ...(Array.isArray(details.benefits) ? details.benefits : []),
+    ...(Array.isArray(details.plans) ? details.plans : []),
+  ];
+  return raw.filter((entry) => plainObject(entry)).map((entry) => ({
+    code: ebCode(entry.benefitInformationCode),
+    coverageLevel: ebCode(entry.coverageLevel),
+    serviceTypes: Array.isArray(entry.serviceTypeCodes)
+      ? entry.serviceTypeCodes.map((code: unknown) => ebCode(code)).filter(Boolean)
+      : [],
+    amount: ebAmount(entry.monetaryAmount),
+    percent: ebAmount(entry.percent),
+    quantityQualifier: ebCode(entry.quantityType),
+    quantity: ebAmount(entry.quantity),
+    authorization: ebCode(entry.requiresAuthorization),
+    timePeriod: ebCode(entry.timePeriod),
+    networkIndicator: ebCode(entry.networkIndicator),
+    planName: ebText(entry.planName),
+    planDescription: ebText(entry.planCoverageDescription),
+    planType: plainObject(entry.insuranceTypeCode)
+      ? ebText(entry.insuranceTypeCode.description)
+      : '',
+    benefitDates: plainObject(entry.benefitDates) ? entry.benefitDates : {},
+    messages: Array.isArray(entry.messages)
+      ? entry.messages.filter((message: unknown) => typeof message === 'string')
+      : [],
+  }));
+}
+
+// The coverage window comes from the EB line's own `benefitDates` ranges,
+// with the subscriber-level `dates` as the fallback (design §4.4: dates the
+// payer did not answer stay null, never derived). The date qualifiers stay
+// separate: begin qualifiers (eligibilityBegin / planBegin / benefitBegin)
+// contribute ONLY the effective date — their startDate — and end
+// qualifiers (eligibilityEnd / planEnd / benefitEnd) ONLY the termination
+// date, which is their endDate when the range carries one and their
+// startDate when the termination is stated as a single date. An end
+// range's startDate must never surface as the effective date, and a begin
+// range's endDate is not a termination. The neutral period ranges
+// (eligibility / plan) carry both dates in place.
+const BEGIN_DATE_KEYS = ['eligibilityBegin', 'planBegin', 'benefitBegin'];
+const END_DATE_KEYS = ['eligibilityEnd', 'planEnd', 'benefitEnd'];
+const PERIOD_DATE_KEYS = ['eligibility', 'plan'];
+
+function coverageWindow(line: EbLine, subscriber: Record<string, any>) {
+  const dates = plainObject(subscriber.dates) ? subscriber.dates : {};
+  const sources = [line.benefitDates, dates];
+  const rangeAt = (source: Record<string, any>, key: string) => (
+    plainObject(source[key]) ? source[key] : null
+  );
+
+  let effective: string | null = null;
+  let effectivePeriod: Record<string, any> | null = null;
+  for (const source of sources) {
+    if (effective) break;
+    for (const key of [...BEGIN_DATE_KEYS, ...PERIOD_DATE_KEYS]) {
+      const range = rangeAt(source, key);
+      if (!range) continue;
+      const start = ebDate(range.startDate);
+      if (start) {
+        effective = start;
+        effectivePeriod = PERIOD_DATE_KEYS.includes(key) ? range : null;
+        break;
+      }
+    }
+  }
+
+  // The period range that supplied the effective date ends where its own
+  // endDate says; otherwise the end qualifiers answer, then the other
+  // period ranges' end dates.
+  let termination = effectivePeriod ? ebDate(effectivePeriod.endDate) : null;
+  if (!termination) {
+    for (const source of sources) {
+      if (termination) break;
+      for (const key of END_DATE_KEYS) {
+        const range = rangeAt(source, key);
+        if (!range) continue;
+        termination = ebDate(range.endDate) || ebDate(range.startDate);
+        if (termination) break;
+      }
+    }
+  }
+  if (!termination) {
+    for (const source of sources) {
+      if (termination) break;
+      for (const key of PERIOD_DATE_KEYS) {
+        const range = rangeAt(source, key);
+        if (!range) continue;
+        termination = ebDate(range.endDate);
+        if (termination) break;
+      }
+    }
+  }
+  return { effective_date: effective, termination_date: termination };
 }
 
 function parse271(parsed: Record<string, any>) {
   const subscriber = plainObject(parsed.subscriber) ? parsed.subscriber : null;
-  const benefits = subscriber && Array.isArray(subscriber.benefits)
-    ? subscriber.benefits.filter((entry: unknown) => plainObject(entry))
-    : [];
-  const aaa = collectAaa(parsed);
+  const benefits = subscriber ? collectEbLines(subscriber) : [];
+  const aaa = collectTransactionErrors(parsed);
 
   if (aaa.length > 0) {
     const receiverAaa = aaa.find((entry) => entry.level === 'receiver');
@@ -726,37 +892,33 @@ function parse271(parsed: Record<string, any>) {
   if (!subscriber || benefits.length === 0) return null;
 
   const byServiceType = (code: string) => benefits.filter(
-    (entry: Record<string, any>) => ebText(entry.serviceTypeCode) === code,
+    (entry) => entry.serviceTypes.includes(code),
   );
   const stc30 = byServiceType('30');
   const stc42 = byServiceType('42');
   const statusEntry = (codes: Set<string>) => stc30.find(
-    (entry: Record<string, any>) => codes.has(ebText(entry.eligibilityOrBenefitInformationCode)),
+    (entry) => codes.has(entry.code),
   ) || benefits.find(
-    (entry: Record<string, any>) => codes.has(ebText(entry.eligibilityOrBenefitInformationCode)),
+    (entry) => codes.has(entry.code),
   ) || null;
   const activeEntry = statusEntry(ACTIVE_EB_CODES);
   const inactiveEntry = activeEntry ? null : statusEntry(INACTIVE_EB_CODES);
   const coverageEntry = activeEntry || inactiveEntry;
   if (!coverageEntry) return null;
 
-  const firstWith = (entries: Array<Record<string, any>>, field: string) => {
-    const found = entries.find((entry) => ebText(entry[field]));
-    return found ? ebText(found[field]).slice(0, 200) : null;
+  const firstWith = (entries: EbLine[], field: 'planName' | 'planDescription' | 'planType') => {
+    const found = entries.find((entry) => entry[field]);
+    return found ? found[field].slice(0, 200) : null;
   };
 
   // Home-health benefits come ONLY from STC-42 lines (design §2.5): a
   // generic STC-30 copay must never be presented as the home-health copay.
   const homeHealth = { copay: null as number | null, coinsurance_percent: null as number | null, visit_limit: null as number | null, notes: null as string | null };
-  const copayEntry = stc42.find(
-    (entry: Record<string, any>) => ebText(entry.eligibilityOrBenefitInformationCode) === 'B',
-  );
-  if (copayEntry) homeHealth.copay = ebAmount(copayEntry.amount);
-  const coinsuranceEntry = stc42.find(
-    (entry: Record<string, any>) => ebText(entry.eligibilityOrBenefitInformationCode) === 'A',
-  );
+  const copayEntry = stc42.find((entry) => entry.code === 'B');
+  if (copayEntry) homeHealth.copay = copayEntry.amount;
+  const coinsuranceEntry = stc42.find((entry) => entry.code === 'A');
   if (coinsuranceEntry) {
-    const percent = ebAmount(coinsuranceEntry.percent);
+    const percent = coinsuranceEntry.percent;
     if (percent !== null) {
       // X12 EB08 is a fraction (0.20 = 20%); values above 1 are already in
       // percent units. Stored in percent units either way.
@@ -766,27 +928,26 @@ function parse271(parsed: Record<string, any>) {
     }
   }
   const visitEntry = stc42.find(
-    (entry: Record<string, any>) => ebText(entry.quantityQualifier) === 'VS'
-      && ebAmount(entry.quantity) !== null,
+    (entry) => entry.quantityQualifier === 'VS' && entry.quantity !== null,
   );
-  if (visitEntry) homeHealth.visit_limit = ebAmount(visitEntry.quantity);
-  const noteParts = stc42.flatMap((entry: Record<string, any>) => (
-    Array.isArray(entry.messages)
-      ? entry.messages.filter((message: unknown) => typeof message === 'string')
-      : []
-  ));
+  if (visitEntry) homeHealth.visit_limit = visitEntry.quantity;
+  const noteParts = stc42.flatMap((entry) => entry.messages);
   if (noteParts.length > 0) homeHealth.notes = noteParts.join('; ').slice(0, 500);
 
-  // Deductible comes from STC-30 lines: EB 'C' carries the total in `amount`
-  // and the not-yet-met remainder in `remainingAmount` when the payer
-  // returns it; a missing remainder stays null, never derived.
+  // Deductible figures come ONLY from STC-30 'C' lines explicitly
+  // qualified as individual (coverageLevel 'IND') — never from line
+  // order: a family-qualified line must not become the individual total,
+  // and an unqualified line claims nothing about whose deductible it is.
+  // Exactly one individual line states the individual total; none, or
+  // more than one the parser cannot distinguish, leaves the figures null.
+  // The real shape carries no remaining-amount field and no qualifier
+  // that marks a remainder line, so individual_remaining stays null.
   const deductible = { individual_total: null as number | null, individual_remaining: null as number | null };
-  const deductibleEntry = stc30.find(
-    (entry: Record<string, any>) => ebText(entry.eligibilityOrBenefitInformationCode) === 'C',
+  const individualDeductible = stc30.filter(
+    (entry) => entry.code === 'C' && entry.coverageLevel === 'IND',
   );
-  if (deductibleEntry) {
-    deductible.individual_total = ebAmount(deductibleEntry.amount);
-    deductible.individual_remaining = ebAmount(deductibleEntry.remainingAmount);
+  if (individualDeductible.length === 1) {
+    deductible.individual_total = individualDeductible[0].amount;
   }
 
   // Prior auth: 'required' or 'not_required' ONLY on an explicit EB11
@@ -794,11 +955,9 @@ function parse271(parsed: Record<string, any>) {
   // else stays 'unknown' and is never presented as "no auth needed" (§2.5).
   const authEntries = [...stc42, ...stc30];
   let priorAuth: 'required' | 'not_required' | 'unknown' = 'unknown';
-  if (authEntries.some((entry) => ebText(entry.authorizationOrCertificationIndicator) === 'Y')) {
+  if (authEntries.some((entry) => entry.authorization === 'Y')) {
     priorAuth = 'required';
-  } else if (
-    authEntries.some((entry) => ebText(entry.authorizationOrCertificationIndicator) === 'N')
-  ) {
+  } else if (authEntries.some((entry) => entry.authorization === 'N')) {
     priorAuth = 'not_required';
   }
 
@@ -806,14 +965,17 @@ function parse271(parsed: Record<string, any>) {
     status: activeEntry ? 'verified_active' : 'verified_inactive',
     answered: true,
     aaa_code: null,
-    plan_name: ebText(coverageEntry.planName).slice(0, 200)
-      || firstWith(benefits, 'planName'),
-    plan_type: ebText(coverageEntry.planType).slice(0, 200)
+    // Plan name: benefit-line planName first, then the lines' coverage
+    // description, then the planName the response carries on the
+    // subscriber — null only when none of them names the plan.
+    plan_name: (coverageEntry.planName.slice(0, 200) || firstWith(benefits, 'planName'))
+      || (coverageEntry.planDescription.slice(0, 200) || firstWith(benefits, 'planDescription'))
+      || (ebText(subscriber.planName).slice(0, 200) || null),
+    plan_type: coverageEntry.planType.slice(0, 200)
       || firstWith(benefits, 'planType'),
     coverage: {
       active: !!activeEntry,
-      effective_date: ebDate(coverageEntry.startDate ?? coverageEntry.effectiveDate),
-      termination_date: ebDate(coverageEntry.endDate ?? coverageEntry.terminationDate),
+      ...coverageWindow(coverageEntry, subscriber),
     },
     benefits: { home_health: homeHealth, deductible, prior_auth: priorAuth },
   };
@@ -971,11 +1133,11 @@ async function verifyEligibility(
     parsed = null;
   }
   if (!plainObject(parsed) || isAcknowledgment(parsed)) {
-    // A 999/TA1 acknowledgment or an unparseable body is our defect class:
-    // logged loudly with whatever trace identifier can be recovered, never
+    // An unrecognized or unparseable body is our defect class: logged
+    // loudly with whatever trace identifier can be recovered, never
     // retried automatically. No PHI is ever logged.
     outcome.status = 'error';
-    if (plainObject(parsed)) outcome.trace_id = extractTraceId(parsed, response);
+    if (plainObject(parsed)) outcome.trace_id = extractTraceId(parsed);
     outcome.message = outcomeMessage('error', outcome);
     console.error(
       `verifyReferralInsuranceEligibility outcome: error trace: ${outcome.trace_id || 'none'}`,
@@ -983,7 +1145,7 @@ async function verifyEligibility(
     return outcome;
   }
 
-  outcome.trace_id = extractTraceId(parsed, response);
+  outcome.trace_id = extractTraceId(parsed);
   const result = parse271(parsed);
   if (!result) {
     outcome.status = 'error';

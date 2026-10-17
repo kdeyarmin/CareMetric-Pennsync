@@ -269,7 +269,7 @@ test('the base refuses the two typos that would silently enlarge it', async () =
     'the unmutated copy does not load to the same base, so a refusal below proves nothing');
 
   const CASES = [
-    ['outside-the-range', '225]', '325]', /outside 1\.\.234/],
+    ['outside-the-range', '225]', '325]', /outside 1\.\.235/],
     ['repeated', ', 216,', ', 214,', /repeats a number/],
   ];
   for (const [name, from, to, message] of CASES) {
@@ -383,17 +383,25 @@ test('the base refuses the two typos that would silently enlarge it', async () =
 // same window) — and **the list has been rewritten a tenth time, for
 // D235, so the two have diverged again** — the third assertion is
 // independent at this reading too, and its message says so.
+//
+// **And a twelfth turn, of the other kind.** #490 merged, the base grew
+// to hold 235, and the two converged a tenth time; the base was
+// re-derived in a change that files NO entry (213, the same window
+// closed the same way), so **the list has NOT been rewritten — [235]
+// stands inert in the base** — the third assertion is implied by the
+// first at this reading, and its message says so.
 test('the figures quoted in prose are the figures the lists hold', () => {
-  assert.equal(REAL_BASE_NUMBERS.length, 212,
+  assert.equal(REAL_BASE_NUMBERS.length, 213,
     "the base figure is quoted in the module's dated paragraph and in this file's "
     + 'sabotage range, and in no live sentence of the register');
   assert.equal(EXPECTED_NEW.length, 1,
-    'the collection figure: D235 alone — its collection has not merged, so '
-    + "the number stands in EXPECTED_NEW only — and the figure is quoted in "
-    + "the module's rewrite note, which attributes it to this pass");
+    'the collection figure: D235 alone — its collection has merged, so '
+    + 'the number stands in BASE_NUMBERS as well and EXPECTED_NEW is '
+    + "inert — the state the module's inert note describes");
   assert.equal(EXPECTED_DOCUMENT.length, 213,
-    'the union: the base figure plus D235, which the base does not hold, so '
-    + 'this assertion is independent at this reading — the divergence the '
+    'the union: the base figure itself, since D235 — the only number '
+    + 'EXPECTED_NEW holds — is already on the base, so this assertion is '
+    + 'implied by the first at this reading — the convergence the '
     + 'comment above this test describes. It still catches a union built as '
     + 'a concatenation, which neither other assertion would.');
 });
