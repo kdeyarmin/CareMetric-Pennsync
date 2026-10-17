@@ -135,6 +135,15 @@ test('the web flag is a boolean: true and false validate, anything else refuses'
   validateParams('InvokeLLM',{prompt:'x',add_context_from_internet:false},cfg());
   assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',add_context_from_internet:'yes'},cfg()),e=>e.code==='INVALID_INPUT');
 });
+test('the timeout override is a finite number when present: numbers validate, anything else refuses', () => {
+  validateParams('InvokeLLM',{prompt:'x',timeout_ms:240000},cfg());
+  assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',timeout_ms:'240000'},cfg()),e=>e.code==='INVALID_INPUT');
+  assert.throws(()=>validateParams('InvokeLLM',{prompt:'x',timeout_ms:NaN},cfg()),e=>e.code==='INVALID_INPUT');
+});
+test('a valid timeout override passes the validated provider path end to end', async () => {
+  const provider=createProviders(cfg(),{},async()=>Response.json({content:[{type:'text',text:'Synthetic answer'}],stop_reason:'end_turn'}));
+  assert.equal(await provider('InvokeLLM',{prompt:'x',timeout_ms:240000},actor),'Synthetic answer');
+});
 test('strict schema supports primitives and rejects unsupported semantics', () => {
   for (const schema of [{type:'string',pattern:'anything'},{type:'object',$ref:'https://evil.test'},{type:'string',minLength:10,maxLength:2}]) assert.throws(()=>validateSchema(schema));
   const schema=validateSchema({type:'object',properties:{value:{type:'integer',minimum:0}},required:['value'],additionalProperties:false});

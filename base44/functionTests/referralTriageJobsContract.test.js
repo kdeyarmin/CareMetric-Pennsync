@@ -514,6 +514,23 @@ test('a job held by another run is not read twice', async () => {
   assert.equal(model.calls.length, 0);
 });
 
+test('a claim ten minutes old is still held (the lease covers a full synthesis), and an older claim is reclaimed', async () => {
+  const model = fakeModel();
+  const runtime = createRuntime({ model, files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) } });
+  runtime.addIntakeUser('nurse');
+  const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+  Object.assign(runtime.db.ReferralTriageJob[0], { claimed_by: 'other-run', claimed_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() });
+
+  const held = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  assert.equal(held.status, 200);
+  assert.equal(held.data.busy, true);
+  assert.equal(model.calls.length, 0);
+
+  Object.assign(runtime.db.ReferralTriageJob[0], { claimed_at: new Date(Date.now() - 16 * 60 * 1000).toISOString() });
+  const reclaimed = await runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+  assert.equal(reclaimed.data.job.status, 'ready');
+});
+
 test('the scheduler sweep needs its secret, finishes unattended jobs, and closes jobs whose uploader lost access', async () => {
   const runtime = createRuntime({ files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) } });
   runtime.addIntakeUser('nurse');

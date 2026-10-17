@@ -706,7 +706,15 @@ const SYNTHESIS_CALL_TIMEOUT_MS = 255_000;
 // The summary call runs only when a run reaches it this early, so a run that
 // already read pages still ends inside the platform's request limit.
 const SYNTHESIS_START_BUDGET_MS = 30_000;
-const CLAIM_LEASE_MS = 3 * 60 * 1000;
+// The lease must outlast the longest legitimate run: chunk reads at the
+// default provider timeout plus two synthesis passes each wrapped at
+// SYNTHESIS_CALL_TIMEOUT_MS (255s). At 3 minutes a second run could reclaim
+// a job whose worker was still synthesizing; the reclaim's version bump
+// then voided the live worker's completion write, discarding its analysis
+// and duplicating the provider work. Fifteen minutes covers a full run
+// with margin, and a dead worker's job is still reclaimed well inside
+// JOB_EXPIRY_MS.
+const CLAIM_LEASE_MS = 15 * 60 * 1000;
 const JOB_EXPIRY_MS = 24 * 60 * 60 * 1000;
 const SWEEP_JOBS_PER_RUN = 2;
 const SWEEP_SCAN_LIMIT = 25;
