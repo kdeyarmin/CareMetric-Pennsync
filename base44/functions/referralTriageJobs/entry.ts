@@ -1590,12 +1590,20 @@ function normalizeCodingReview(analysis: Record<string, any>) {
 // One synthesis pass, tagged with its name: when a pass fails, the tag is
 // prefixed to the helper's error code (CORE_AI_TIMEOUT,
 // CODING_AI_RESULT_INCOMPLETE, ...) so the code persisted on the job row
-// says WHICH call failed, not just that synthesis did.
+// says WHICH call failed, not just that synthesis did. The label is
+// uppercased (camel-case humps split) before the wrap: for a native
+// failure safeErrorCode falls back to the error class name — TimeoutError
+// from the provider fetch's abort signal, TypeError from a failed fetch —
+// and a mixed-case wrapped code would fail the enum check when the
+// failure is sanitized again for last_synthesis_error, collapsing the
+// persisted code to a bare "Error" with the pass and the failure class
+// both lost. The cap keeps pass + label inside that enum check's length.
 async function synthesisPass(pass: string, call: () => Promise<Record<string, any>>) {
   try {
     return await call();
   } catch (error) {
-    throw new Error(`${pass}_${safeErrorCode(error)}`);
+    const label = safeErrorCode(error).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase().slice(0, 29);
+    throw new Error(`${pass}_${label}`);
   }
 }
 

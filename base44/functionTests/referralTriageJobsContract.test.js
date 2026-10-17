@@ -56,7 +56,7 @@ function fakePdfLib({ bytesPerPage = 10 } = {}) {
 }
 
 // ---- Anthropic stand-in -----------------------------------------------------
-function fakeModel({ failRanges = new Set(), analysis, coding, compliance, failCoding = false, failCompliance = false, notesText = null } = {}) {
+function fakeModel({ failRanges = new Set(), analysis, coding, compliance, failCoding = false, failCompliance = false, throwCoding = null, throwCompliance = null, notesText = null } = {}) {
   const calls = [];
   // One fixture per synthesis pass: `analysis` answers the core call,
   // `coding` the coding-review call and `compliance` the compliance call.
@@ -106,12 +106,14 @@ function fakeModel({ failRanges = new Set(), analysis, coding, compliance, failC
     // The coding prompt is the one asking for the coding review alone.
     if (prompt.includes('Complete the diagnosis coding review from the notes')) {
       calls.push({ kind: 'coding', prompt });
+      if (throwCoding) throw throwCoding;
       if (failCoding) return new Response('{}', { status: 500 });
       return reply(JSON.stringify(coding ?? analysis ?? fallback));
     }
     // The compliance prompt is the one asking for the compliance check alone.
     if (prompt.includes('Complete the Medicare compliance check from the notes')) {
       calls.push({ kind: 'compliance', prompt });
+      if (throwCompliance) throw throwCompliance;
       if (failCompliance) return new Response('{}', { status: 500 });
       return reply(JSON.stringify(compliance ?? analysis ?? fallback));
     }
@@ -876,5 +878,41 @@ test('the synthesis failure code is persisted on the job row, and control charac
   assert.equal(runtime.db.ReferralTriageJob[0].last_synthesis_error, '');
   for (const call of model.calls.filter((entry) => entry.kind === 'summary' || entry.kind === 'reviews')) {
     assert.ok(!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(call.prompt), 'synthesis prompt carries no rejected control characters');
+  }
+});
+
+test('a native provider failure keeps its pass tag and failure class in the persisted code', async () => {
+  // A provider fetch that dies natively — the abort signal's TimeoutError,
+  // a network TypeError — carries no helper error code, so safeErrorCode
+  // labels it by class name. The pass tag must survive the second
+  // sanitization on its way to last_synthesis_error: a mixed-case wrap
+  // (COMPLIANCE_TimeoutError) failed the enum check there and persisted
+  // as a bare "Error", losing both the pass and the failure class.
+  const cases = [
+    {
+      label: 'compliance timeout',
+      model: fakeModel({ throwCompliance: new DOMException('The operation was aborted due to timeout', 'TimeoutError') }),
+      expected: 'COMPLIANCE_TIMEOUT_ERROR',
+    },
+    {
+      label: 'coding network failure',
+      model: fakeModel({ throwCoding: new TypeError('fetch failed') }),
+      expected: 'CODING_TYPE_ERROR',
+    },
+  ];
+  for (const { label, model, expected } of cases) {
+    const runtime = createRuntime({
+      model,
+      files: { 'private/694ec16e72e01b60d22f7cbf/packet.pdf': packet(10) },
+    });
+    runtime.addIntakeUser('nurse');
+    const { data: { job } } = await runtime.call({ user: 'nurse', body: startBody() });
+    const process = () => runtime.call({ user: 'nurse', body: { action: 'process', agency_id: AGENCY, job_id: job.id } });
+    await process();
+    await process();
+    const result = await process();
+    assert.equal(result.data.job.status, 'failed', label);
+    assert.equal(result.data.job.error_code, 'SUMMARY_FAILED', label);
+    assert.equal(runtime.db.ReferralTriageJob[0].last_synthesis_error, expected, label);
   }
 });
